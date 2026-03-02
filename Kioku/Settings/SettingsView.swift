@@ -1,5 +1,6 @@
 import SwiftUI
 
+// Presents typography controls and a live preview for reading settings.
 struct SettingsView: View {
     @AppStorage(TypographySettings.textSizeKey)
     private var textSize = TypographySettings.defaultTextSize
@@ -13,8 +14,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Shows live typography preview content.
                 Section {
-                    TextKitAttributedTextPreview(
+                    RichTextPreview(
                         text: previewText,
                         textSize: textSize,
                         lineSpacing: lineSpacing,
@@ -31,7 +33,9 @@ struct SettingsView: View {
                     Text("Preview")
                 }
 
+                // Hosts typography sliders that update read and preview rendering.
                 Section {
+                    // Controls base font size.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Text Size")
@@ -42,6 +46,7 @@ struct SettingsView: View {
                         Slider(value: $textSize, in: TypographySettings.textSizeRange, step: 1)
                     }
 
+                    // Controls additional line spacing.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Line Spacing")
@@ -52,6 +57,7 @@ struct SettingsView: View {
                         Slider(value: $lineSpacing, in: TypographySettings.lineSpacingRange, step: 1)
                     }
 
+                    // Controls character spacing.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Kerning")

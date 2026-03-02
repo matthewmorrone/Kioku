@@ -9,15 +9,18 @@ import XCTest
 
 final class KiokuUITestsLaunchTests: XCTestCase {
 
+    // Runs launch tests for each target configuration to validate startup behavior broadly.
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true
     }
 
+    // Sets launch-test execution defaults before each launch scenario.
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
     @MainActor
+    // Captures launch-screen evidence after app startup completes.
     func testLaunch() throws {
         let app = XCUIApplication()
         app.launch()

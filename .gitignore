@@ -1,2 +1,3 @@
-Kioku/Resources/*
-!Kioku/Resources/data_manifest.json
+Resources/*
+!Resources/data_manifest.json
+!Resources/generate_db.py

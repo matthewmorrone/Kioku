@@ -5,6 +5,7 @@ struct Note: Identifiable, Codable, Equatable {
     var title: String
     var content: String
 
+    // Creates a note value with optional defaults for new-note workflows.
     init(id: UUID = UUID(), title: String = "", content: String = "") {
         self.id = id
         self.title = title

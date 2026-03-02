@@ -1,6 +1,7 @@
 import SwiftUI
 
-struct LearnView: View {
+// Reserves the words tab container for dictionary and saved-word workflows.
+struct WordsView: View {
     var body: some View {
         NavigationStack {
             
@@ -10,5 +11,5 @@ struct LearnView: View {
 }
 
 #Preview {
-    ContentView(selectedTab: .learn)
+    ContentView(selectedTab: .words)
 }

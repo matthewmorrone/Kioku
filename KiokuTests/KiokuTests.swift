@@ -11,12 +11,14 @@ import UIKit
 
 struct KiokuTests {
 
+    // Provides a placeholder test case for future unit coverage.
     @Test func example() async throws {
         // Write your test here and use APIs like `#expect(...)` to check expected conditions.
     }
 
+    // Guards the TextKit 2 invariant used by rich text rendering components.
     @Test func readEditorUsesTextKit2() async throws {
-        let textView = ReadEditorTextViewFactory.makeTextView()
+        let textView = TextViewFactory.makeTextView()
         #expect(textView.textLayoutManager != nil)
     }
 
