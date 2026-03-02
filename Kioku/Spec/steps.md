@@ -1,17 +1,44 @@
-# Kioku Build Execution Prompts
+# STEP 0 — Project Scaffolding + Guardrails
 
-Submit ONE step at a time.
-Do NOT combine steps.
-Do NOT expand scope.
-Do NOT allow architectural drift.
-Each step must add tests that fail before and pass after.
+```
+Implement Step 0 ONLY.
+
+Scope:
+- Allowed edits: Project structure only (folders/groups), empty placeholder types, test target setup, and build settings needed for tests.
+- Forbidden: UI screens, segmentation logic, reading logic, rendering logic, persistence logic, feature implementation.
+
+Requirements:
+- Must conform to spec/structure.md, spec/system.md, spec/schema.md, and spec/features.md.
+- Create a source layout that mirrors the architecture:
+  - Core/
+    - Model/
+    - Validation/
+    - Pipeline/
+    - Rendering/
+    - Storage/
+    - Dictionary/
+    - Study/
+  - App/ (UI may live here later, but do not implement it now)
+- Ensure an XCTest target exists and builds.
+- Add an empty test file named SpanValidatorTests that compiles.
+- Add a README_DEV.md containing these guardrails:
+  1) Do not implement beyond the current step’s scope.
+  2) All span logic must use UTF-16 offsets and half-open ranges.
+  3) All mutations must pass SpanValidator.
+  4) Tests are required for every step.
+  5) Rendering artifacts must never be persisted.
+
+Output:
+- Apply changes in place.
+- No commentary.
+```
 
 ---
 
 # STEP 1 — Span Model + Invariants Enforcement
 
 ```
-Implement Step 1 from spec/steps.md ONLY.
+Implement Step 1 ONLY.
 
 Scope:
 - Allowed edits: Model layer only (Span type, SpanValidator, associated tests).
@@ -19,6 +46,7 @@ Scope:
 - Forbidden: UI (SwiftUI views), persistence, dictionary access, pipeline stages, rendering logic, refactors outside this step.
 
 Requirements:
+- Must conform to spec/structure.md, spec/system.md, spec/schema.md, and spec/features.md.
 - Create a Span type using explicit half-open ranges: [start, end).
 - Use UTF-16 code unit offsets.
 - Implement SpanValidator enforcing:
@@ -38,7 +66,6 @@ Requirements:
 Output:
 - Apply changes in place.
 - No commentary.
-- No extra features.
 ```
 
 ---
@@ -46,7 +73,7 @@ Output:
 # STEP 2 — Stage 10–20 Segmentation Skeleton
 
 ```
-Implement Step 2 from spec/steps.md ONLY.
+Implement Step 2 ONLY.
 
 Scope:
 - Allowed edits: Pipeline layer only.
@@ -54,6 +81,7 @@ Scope:
 - Forbidden: UI, reading attachment, overrides, embeddings, persistence changes.
 
 Requirements:
+- Must conform to spec/structure.md, spec/system.md, spec/schema.md, and spec/features.md.
 - Stage 10: Produce baseline spans from text input.
 - Ensure full coverage.
 - Stage 20: Allow merges (aux chains, deinflection groups).
@@ -73,13 +101,14 @@ Output:
 # STEP 3 — Stage 40 Reading Attachment
 
 ```
-Implement Step 3 from spec/steps.md ONLY.
+Implement Step 3 ONLY.
 
 Scope:
 - Allowed edits: Reading attachment layer.
 - Forbidden: Span boundary logic, UI, overrides, embeddings.
 
 Requirements:
+- Must conform to spec/structure.md, spec/system.md, spec/schema.md, and spec/features.md.
 - Attach readings using dictionary-backed lookup.
 - Must not modify spans.
 - Validate spans unchanged before/after reading attachment.
@@ -98,13 +127,14 @@ Output:
 # STEP 4 — Rendering Atomic Layout Enforcement
 
 ```
-Implement Step 4 from spec/steps.md ONLY.
+Implement Step 4 ONLY.
 
 Scope:
 - Allowed edits: Rendering layer only.
 - Forbidden: Persistence, segmentation, overrides.
 
 Requirements:
+- Must conform to spec/structure.md, spec/system.md, spec/schema.md, and spec/features.md.
 - Implement envelope width rule:
   envelopeWidth = max(headwordWidth, rubyWidth)
 - Ensure:
@@ -125,13 +155,14 @@ Output:
 # STEP 5 — Override Shifting Logic
 
 ```
-Implement Step 5 from spec/steps.md ONLY.
+Implement Step 5 ONLY.
 
 Scope:
 - Allowed edits: Override handling layer only.
 - Forbidden: Span boundary modification, UI, embeddings.
 
 Requirements:
+- Must conform to spec/structure.md, spec/system.md, spec/schema.md, and spec/features.md.
 - Store overrides as [start, end) ranges.
 - On insertion before override: shift start and end by delta.
 - On deletion overlapping override: invalidate override.
@@ -152,13 +183,14 @@ Output:
 # STEP 6 — Embedding Refinement (Stage 30)
 
 ```
-Implement Step 6 from spec/steps.md ONLY.
+Implement Step 6 ONLY.
 
 Scope:
 - Allowed edits: Stage 30 only.
 - Forbidden: UI, persistence refactors.
 
 Requirements:
+- Must conform to spec/structure.md, spec/system.md, spec/schema.md, and spec/features.md.
 - Implement embedding-based boundary refinement.
 - Execute only if dataset present.
 - Deterministic for fixed dataset.
@@ -176,13 +208,14 @@ Output:
 # STEP 7 — Words + Canonical Identity
 
 ```
-Implement Step 7 from spec/steps.md ONLY.
+Implement Step 7 ONLY.
 
 Scope:
 - Allowed edits: Word persistence layer.
 - Forbidden: Span logic, rendering.
 
 Requirements:
+- Must conform to spec/structure.md, spec/system.md, spec/schema.md, and spec/features.md.
 - Store saved words by canonical_entry_id.
 - Deduplicate on canonical_entry_id.
 - Maintain review stats keyed by canonical_entry_id.
@@ -199,13 +232,14 @@ Output:
 # STEP 8 — Study Layer
 
 ```
-Implement Step 8 from spec/steps.md ONLY.
+Implement Step 8 ONLY.
 
 Scope:
 - Allowed edits: Study logic layer only.
 - Forbidden: Segmentation refactors, persistence schema changes.
 
 Requirements:
+- Must conform to spec/structure.md, spec/system.md, spec/schema.md, and spec/features.md.
 - Implement flashcard session logic.
 - Track correctness using canonical_entry_id.
 - Update review stats correctly.
