@@ -25,8 +25,15 @@ struct RichTextEditor: UIViewRepresentable {
     // Refreshes the visible editor typography while keeping cursor placement stable.
     func updateUIView(_ uiView: UITextView, context: Context) {
         let style = (textSize: textSize, lineSpacing: lineSpacing, kerning: kerning)
+        let needsStyleUpdate: Bool
 
-        if context.coordinator.lastAppliedStyle != style || uiView.text != text {
+        if let lastAppliedStyle = context.coordinator.lastAppliedStyle {
+            needsStyleUpdate = lastAppliedStyle != style
+        } else {
+            needsStyleUpdate = true
+        }
+
+        if needsStyleUpdate || uiView.text != text {
             let selectedRange = uiView.selectedRange
             applyTypography(to: uiView, text: text)
             if selectedRange.location <= uiView.text.utf16.count {
