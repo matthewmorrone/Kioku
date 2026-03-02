@@ -4,6 +4,10 @@ struct ReadView: View {
     @Binding var selectedNote: Note?
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
+    @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
+    @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
+    @AppStorage(TypographySettings.kerningKey) private var kerning = TypographySettings.defaultKerning
+
     @State private var customTitle = ""
     @State private var fallbackTitle = ""
     @State private var titleDraft = ""
@@ -33,8 +37,12 @@ struct ReadView: View {
                     }
                 }
             VStack(spacing: 10) {
-                TextEditor(text: $text)
-                    .scrollContentBackground(.hidden)
+                TextKitAttributedTextEditor(
+                    text: $text,
+                    textSize: textSize,
+                    lineSpacing: lineSpacing,
+                    kerning: kerning
+                )
                     .padding(8)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(
