@@ -23,38 +23,45 @@ struct ContentView: View {
             ReadView(selectedNote: $selectedReadNote, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
             })
-                .tag(Tab.read)
-                .tabItem {
-                    Label("Read", systemImage: "book")
-                }
+            .tag(Tab.read)
+            .tabItem {
+                Label("Read", systemImage: "book")
+            }
 
             NotesView(onSelectNote: { note in
                 selectedReadNote = note
                 lastActiveNoteID = note.id.uuidString
                 selectedTab = .read
+            }, onCreateNote: {
+                notesStore.addNote()
+                guard let note = notesStore.notes.first else { return }
+
+                selectedReadNote = note
+                lastActiveNoteID = note.id.uuidString
+                selectedTab = .read
             })
-                .tag(Tab.notes)
-                .tabItem {
-                    Label("Notes", systemImage: "text.line.magnify")
-                }
+            .tag(Tab.notes)
+            .tabItem {
+                Label("Notes", systemImage: "text.line.magnify")
+            }
 
             WordsView()
-                .tag(Tab.words)
-                .tabItem {
-                    Label("Words", systemImage: "text.page.badge.magnifyingglass")
-                }
+            .tag(Tab.words)
+            .tabItem {
+                Label("Words", systemImage: "text.page.badge.magnifyingglass")
+            }
 
             LearnView()
-                .tag(Tab.learn)
-                .tabItem {
-                    Label("Learn", systemImage: "rectangle.on.rectangle.angled")
-                }
+            .tag(Tab.learn)
+            .tabItem {
+                Label("Learn", systemImage: "rectangle.on.rectangle.angled")
+            }
 
             SettingsView()
-                .tag(Tab.settings)
-                .tabItem {
-                    Label("Settings", systemImage: "gear")
-                }
+            .tag(Tab.settings)
+            .tabItem {
+                Label("Settings", systemImage: "gear")
+            }
         }
         .environmentObject(notesStore)
         .onAppear {

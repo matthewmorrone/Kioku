@@ -20,23 +20,6 @@ final class NotesStore: ObservableObject {
         notes.insert(Note(), at: 0)
     }
 
-    func addNote(title: String, content: String) {
-        notes.insert(Note(title: title, content: content), at: 0)
-    }
-
-    @discardableResult
-    func upsertNote(id: UUID?, title: String, content: String) -> UUID {
-        if let id, let index = notes.firstIndex(where: { $0.id == id }) {
-            notes[index].title = title
-            notes[index].content = content
-            return id
-        }
-
-        let newNote = Note(title: title, content: content)
-        notes.insert(newNote, at: 0)
-        return newNote.id
-    }
-
     func moveNotes(from source: IndexSet, to destination: Int) {
         notes.move(fromOffsets: source, toOffset: destination)
     }
