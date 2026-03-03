@@ -26,7 +26,6 @@ struct RichTextEditor: UIViewRepresentable {
     func updateUIView(_ uiView: UITextView, context: Context) {
         let style = (textSize: textSize, lineSpacing: lineSpacing, kerning: kerning)
         let needsStyleUpdate: Bool
-
         if let lastAppliedStyle = context.coordinator.lastAppliedStyle {
             needsStyleUpdate = lastAppliedStyle != style
         } else {

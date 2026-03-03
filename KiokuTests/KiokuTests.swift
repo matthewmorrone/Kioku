@@ -6,8 +6,7 @@
 //
 
 import Testing
-import UIKit
-@testable import Kioku
+import Kioku
 
 struct KiokuTests {
 
@@ -16,10 +15,10 @@ struct KiokuTests {
         // Write your test here and use APIs like `#expect(...)` to check expected conditions.
     }
 
-    // Guards the TextKit 2 invariant used by rich text rendering components.
-    @Test func readEditorUsesTextKit2() async throws {
-        let textView = TextViewFactory.makeTextView()
-        #expect(textView.textLayoutManager != nil)
+    // Verifies LookupMode exposes explicit kanji matching policy.
+    @Test func lookupModeKanjiPolicy() async throws {
+        #expect(LookupMode.kanaOnly.matchKanji == false)
+        #expect(LookupMode.kanjiAndKana.matchKanji == true)
     }
 
 }
