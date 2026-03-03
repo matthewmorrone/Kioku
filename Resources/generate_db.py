@@ -37,14 +37,18 @@ def create_schema(conn):
         );
 
         CREATE TABLE kanji (
+            id INTEGER PRIMARY KEY,
             text TEXT NOT NULL,
             entry_id INTEGER NOT NULL,
+            priority TEXT,
             FOREIGN KEY(entry_id) REFERENCES entries(id)
         );
 
         CREATE TABLE kana_forms (
+            id INTEGER PRIMARY KEY,
             text TEXT NOT NULL,
             entry_id INTEGER NOT NULL,
+            priority TEXT,
             FOREIGN KEY(entry_id) REFERENCES entries(id)
         );
 
@@ -60,6 +64,7 @@ def create_schema(conn):
         );
 
         CREATE TABLE glosses (
+            id INTEGER PRIMARY KEY,
             sense_id INTEGER NOT NULL,
             order_index INTEGER NOT NULL,
             gloss TEXT NOT NULL,
@@ -91,8 +96,8 @@ def build_database():
         raise ValueError("Unexpected JMdict JSON structure")
 
     entry_insert = "INSERT INTO entries (ent_seq, priority, is_common) VALUES (?, ?, ?)"
-    kanji_insert = "INSERT INTO kanji (text, entry_id) VALUES (?, ?)"
-    kana_insert  = "INSERT INTO kana_forms (text, entry_id) VALUES (?, ?)"
+    kanji_insert = "INSERT INTO kanji (text, entry_id, priority) VALUES (?, ?, ?)"
+    kana_insert  = "INSERT INTO kana_forms (text, entry_id, priority) VALUES (?, ?, ?)"
     sense_insert = "INSERT INTO senses (entry_id, order_index, pos, misc, field, dialect) VALUES (?, ?, ?, ?, ?, ?)"
     gloss_insert = "INSERT INTO glosses (sense_id, order_index, gloss) VALUES (?, ?, ?)"
 
@@ -120,10 +125,12 @@ def build_database():
         entry_id = cur.lastrowid
 
         for k in entry.get("kanji", []):
-            conn.execute(kanji_insert, (k["text"], entry_id))
+            k_priorities = ",".join(sorted(set(k.get("priority", []) or []))) if k.get("priority") else None
+            conn.execute(kanji_insert, (k["text"], entry_id, k_priorities))
 
         for r in entry.get("kana", []):
-            conn.execute(kana_insert, (r["text"], entry_id))
+            r_priorities = ",".join(sorted(set(r.get("priority", []) or []))) if r.get("priority") else None
+            conn.execute(kana_insert, (r["text"], entry_id, r_priorities))
 
         for s_idx, sense in enumerate(entry.get("sense", [])):
             pos = ",".join(sense.get("partOfSpeech", []) or []) if sense.get("partOfSpeech") else None

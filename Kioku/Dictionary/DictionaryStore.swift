@@ -35,22 +35,50 @@ public final class DictionaryStore {
         sqlite3_close(db)
     }
 
-    // Routes lookup behavior by script so pure-kana input only hits kana forms.
-    public func lookup(surface: String) throws -> [DictionaryEntry] {
-        if ScriptClassifier.isPureKana(surface) {
-            return try lookupEntries(surface: surface, matchKana: true, matchKanji: false)
-        }
-        return try lookupEntries(surface: surface, matchKana: true, matchKanji: true)
+    // Performs lookup with an explicit mode so callers own script-policy decisions.
+    public func lookup(surface: String, mode: LookupMode) throws -> [DictionaryEntry] {
+        try lookupEntries(surface: surface, matchKana: true, matchKanji: mode.allowsKanjiMatching)
     }
 
-    // Performs an exact kana_forms match for the provided surface string.
+    // Performs a kana-only lookup using explicit lookup mode policy.
     public func lookupExactKana(surface: String) throws -> [DictionaryEntry] {
-        try lookupEntries(surface: surface, matchKana: true, matchKanji: false)
+        try lookup(surface: surface, mode: .kanaOnly)
     }
 
     // Performs an exact kanji match for the provided surface string.
     public func lookupExactKanji(surface: String) throws -> [DictionaryEntry] {
         try lookupEntries(surface: surface, matchKana: false, matchKanji: true)
+    }
+
+    // Fetches all unique dictionary surfaces from kana and kanji tables.
+    public func fetchAllSurfaces() throws -> [String] {
+        let sql = """
+        SELECT text FROM kana_forms
+        UNION
+        SELECT text FROM kanji
+        ORDER BY text ASC
+        """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        try prepare(sql: sql, statement: &statement)
+
+        var surfaces: [String] = []
+        var stepCode = sqlite3_step(statement)
+
+        while stepCode == SQLITE_ROW {
+            if let textPointer = sqlite3_column_text(statement, 0) {
+                surfaces.append(String(cString: textPointer))
+            }
+            stepCode = sqlite3_step(statement)
+        }
+
+        guard stepCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage())
+        }
+
+        return surfaces
     }
 
     // Builds fully materialized dictionary entries from matched entry headers.
@@ -142,7 +170,7 @@ public final class DictionaryStore {
         SELECT text
         FROM kanji
         WHERE entry_id = ?1
-        ORDER BY is_common DESC, priority ASC, id ASC
+        ORDER BY text ASC
         """
 
         return try fetchOrderedStrings(sql: sql, entryID: entryID)
@@ -154,7 +182,7 @@ public final class DictionaryStore {
         SELECT text
         FROM kana_forms
         WHERE entry_id = ?1
-        ORDER BY is_common DESC, priority ASC, id ASC
+        ORDER BY text ASC
         """
 
         return try fetchOrderedStrings(sql: sql, entryID: entryID)
@@ -194,11 +222,10 @@ public final class DictionaryStore {
     // Fetches senses and ordered glosses for one entry from the normalized tables.
     private func fetchSenses(entryID: Int64) throws -> [DictionaryEntrySense] {
         let sql = """
-        SELECT s.id, s.pos, g.text
+                SELECT s.id, s.pos, g.gloss
         FROM senses s
         LEFT JOIN glosses g
-          ON g.sense_id = s.id
-         AND g.entry_id = s.entry_id
+                    ON g.sense_id = s.id
         WHERE s.entry_id = ?1
         ORDER BY s.order_index ASC, g.order_index ASC, g.id ASC
         """
