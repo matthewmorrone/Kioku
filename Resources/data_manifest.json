@@ -1,0 +1,24 @@
+{
+  "resources": [
+    {
+      "name": "jmdict-eng",
+      "type": "jmdict",
+      "path": "Kioku/Resources/jmdict-eng-3.6.2.json",
+      "required": true,
+      "derived": false,
+      "url": "https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260223124729/jmdict-eng-3.6.2%2B20260223124729.json.zip",
+      "sha256": "1c6fb944f8e3a26d71c73bca8a024e0d5e34fea7a728842e162dc4bfc32850eb",
+      "provenance": "scriptin/jmdict-simplified release asset; local extracted file hash pinned"
+    },
+    {
+      "name": "dictionary",
+      "type": "sqlite",
+      "path": "Kioku/Resources/dictionary.sqlite",
+      "required": true,
+      "derived": true,
+      "url": null,
+      "sha256": "1c6fb944f8e3a26d71c73bca8a024e0d5e34fea7a728842e162dc4bfc32850eb",
+      "provenance": "generated database script"
+    }
+  ]
+}
