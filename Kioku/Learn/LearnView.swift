@@ -1,6 +1,7 @@
 import SwiftUI
 
-struct WordsView: View {
+// Reserves the learning tab container for study-related features.
+struct LearnView: View {
     var body: some View {
         NavigationStack {
             
@@ -10,5 +11,5 @@ struct WordsView: View {
 }
 
 #Preview {
-    ContentView(selectedTab: .words)
+    ContentView(selectedTab: .learn)
 }

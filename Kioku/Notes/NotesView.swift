@@ -1,5 +1,6 @@
 import SwiftUI
 
+// Displays the notes list and supports selection, editing, and creation actions.
 struct NotesView: View {
     var onSelectNote: ((Note) -> Void)? = nil
     var onCreateNote: (() -> Void)? = nil
@@ -10,8 +11,10 @@ struct NotesView: View {
 
     var body: some View {
         NavigationStack {
+            // Displays the selectable/reorderable list of notes.
             List(selection: $selectedNoteIDs) {
                 ForEach(store.notes) { note in
+                    // Renders a single note row with title and content preview.
                     VStack(alignment: .leading, spacing: 4) {
                         Text(note.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : note.title)
                             .font(.headline)
@@ -52,6 +55,7 @@ struct NotesView: View {
             }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    // Shows bulk-delete action while edit mode is active.
                     if editMode == .active {
                         Button {
                             store.deleteNotes(ids: selectedNoteIDs)
@@ -65,6 +69,7 @@ struct NotesView: View {
                         .disabled(selectedNoteIDs.isEmpty)
                     }
 
+                    // Toggles multi-select editing mode for list operations.
                     Button {
                         editMode = editMode == .active ? .inactive : .active
                     } label: {
@@ -74,6 +79,7 @@ struct NotesView: View {
                     }
                     .accessibilityLabel(editMode == .active ? "Done Editing" : "Edit All")
 
+                    // Creates a new note using callback override or store default behavior.
                     Button {
                         if let onCreateNote {
                             onCreateNote()

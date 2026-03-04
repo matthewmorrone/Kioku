@@ -1,3 +1,3 @@
 Resources/*
-!Resources/generate_db.py
 !Resources/data_manifest.json
+!Resources/generate_db.py
