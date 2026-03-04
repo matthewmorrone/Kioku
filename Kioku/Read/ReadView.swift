@@ -18,6 +18,7 @@ struct ReadView: View {
     @State private var titleDraft = ""
     @State private var isShowingTitleAlert = false
     @State private var text = ""
+    @State private var segmentationRanges: [Range<String.Index>] = []
     @State private var activeNoteID: UUID?
     @State private var isLoadingSelectedNote = false
 
@@ -46,6 +47,7 @@ struct ReadView: View {
                 // Displays the main text editing surface for note content.
                 RichTextEditor(
                     text: $text,
+                    segmentationRanges: segmentationRanges,
                     textSize: $textSize,
                     lineSpacing: lineSpacing,
                     kerning: kerning
@@ -76,13 +78,14 @@ struct ReadView: View {
             loadSelectedNoteIfNeeded()
         }
         .onChange(of: text) { _, _ in
+            // Recomputes segments so alternating colors stay in sync with edits.
+            refreshSegmentationRanges()
             // Persists edits as content changes.
             persistCurrentNoteIfNeeded()
             // Prints lattice details and segmented output while the user edits text.
             if !isLoadingSelectedNote {
                 segmenter.debugPrintLattice(for: text)
-                let segments = segmenter.longestMatchSegments(for: text)
-                let segmentStrings = segments.map { range in
+                let segmentStrings = segmentationRanges.map { range in
                     String(text[range])
                 }
                 print(segmentStrings.joined(separator: " | "))
@@ -101,6 +104,7 @@ struct ReadView: View {
             ? firstLineTitle(from: selectedNote.content)
             : selectedNote.title
         text = selectedNote.content
+        refreshSegmentationRanges()
         self.selectedNote = nil
         isLoadingSelectedNote = false
     }
@@ -176,6 +180,11 @@ struct ReadView: View {
     private func firstLineTitle(from content: String) -> String {
         let firstLine = content.components(separatedBy: .newlines).first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return firstLine
+    }
+
+    // Rebuilds greedy segmentation ranges used by alternating segment colors in the editor.
+    private func refreshSegmentationRanges() {
+        segmentationRanges = segmenter.longestMatchSegments(for: text)
     }
 }
 

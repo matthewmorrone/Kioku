@@ -4,6 +4,7 @@ import UIKit
 // Bridges a TextKit 2-backed editable text view into SwiftUI.
 struct RichTextEditor: UIViewRepresentable {
     @Binding var text: String
+    let segmentationRanges: [Range<String.Index>]
     @Binding var textSize: Double
     let lineSpacing: Double
     let kerning: Double
@@ -15,6 +16,7 @@ struct RichTextEditor: UIViewRepresentable {
         textView.backgroundColor = .clear
         textView.adjustsFontForContentSizeCategory = true
         textView.alwaysBounceVertical = true
+        textView.keyboardDismissMode = .interactive
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textContainer.lineFragmentPadding = 0
         let pinchRecognizer = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(RichTextEditorCoordinator.handlePinch(_:)))
@@ -56,14 +58,51 @@ struct RichTextEditor: UIViewRepresentable {
         paragraphStyle.lineSpacing = lineSpacing
         paragraphStyle.lineBreakMode = .byWordWrapping
 
-        let attributes: [NSAttributedString.Key: Any] = [
+        let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: textSize),
             .kern: kerning,
             .paragraphStyle: paragraphStyle,
             .foregroundColor: UIColor.label,
         ]
 
-        textView.attributedText = NSAttributedString(string: text, attributes: attributes)
-        textView.typingAttributes = attributes
+        let attributedText = NSMutableAttributedString(string: text, attributes: baseAttributes)
+        let evenSegmentForeground = UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark ? .systemOrange : .systemRed
+        }
+        let oddSegmentForeground = UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo
+        }
+        var colorAlternationIndex = 0
+
+        // Alternates foreground colors by segment index so token boundaries remain visually distinct.
+        for segmentRange in segmentationRanges {
+            let nsRange = NSRange(segmentRange, in: text)
+            if nsRange.location == NSNotFound || nsRange.length == 0 {
+                continue
+            }
+
+            let segmentText = String(text[segmentRange])
+            // Keeps spacing and punctuation neutral so they do not shift meaningful token alternation.
+            if shouldIgnoreSegmentForAlternation(segmentText) {
+                continue
+            }
+
+            if colorAlternationIndex.isMultiple(of: 2) {
+                attributedText.addAttribute(.foregroundColor, value: evenSegmentForeground, range: nsRange)
+            } else {
+                attributedText.addAttribute(.foregroundColor, value: oddSegmentForeground, range: nsRange)
+            }
+
+            colorAlternationIndex += 1
+        }
+
+        textView.attributedText = attributedText
+        textView.typingAttributes = baseAttributes
+    }
+
+    // Identifies ranges that should not affect token color parity (spacing and punctuation only).
+    private func shouldIgnoreSegmentForAlternation(_ segmentText: String) -> Bool {
+        let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+        return segmentText.unicodeScalars.allSatisfy { ignoredScalars.contains($0) }
     }
 }
