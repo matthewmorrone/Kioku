@@ -16,7 +16,7 @@ struct KiokuTests {
     }
 
     @Test func readEditorUsesTextKit2() async throws {
-        let textView = ReadEditorTextViewFactory.makeTextView()
+        let textView = await ReadEditorTextViewFactory.makeTextView()
         #expect(textView.textLayoutManager != nil)
     }
 
