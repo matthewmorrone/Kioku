@@ -9,7 +9,7 @@ struct SettingsView: View {
     @AppStorage(TypographySettings.kerningKey)
     private var kerning = TypographySettings.defaultKerning
 
-    private let previewText = "情報処理技術者試験対策資料を精読し、概念理解を深める。\n国際経済情勢分析報告書を参照し、課題解決方針を検討する。"
+    private let previewText = "情報処理技術者試験対策資料を精読し、概念理解を深める。"
 
     var body: some View {
         NavigationStack {

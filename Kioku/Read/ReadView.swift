@@ -3,6 +3,7 @@ import SwiftUI
 // Provides the primary reading and editing surface for an active note.
 struct ReadView: View {
     @Binding var selectedNote: Note?
+    let segmenter: Segmenter
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
     @AppStorage(TypographySettings.textSizeKey) 
@@ -45,7 +46,7 @@ struct ReadView: View {
                 // Displays the main text editing surface for note content.
                 RichTextEditor(
                     text: $text,
-                    textSize: textSize,
+                    textSize: $textSize,
                     lineSpacing: lineSpacing,
                     kerning: kerning
                 )
@@ -77,6 +78,10 @@ struct ReadView: View {
         .onChange(of: text) { _, _ in
             // Persists edits as content changes.
             persistCurrentNoteIfNeeded()
+            // Prints the current segmentation lattice while the user edits text.
+            if !isLoadingSelectedNote {
+                segmenter.debugPrintLattice(for: text)
+            }
         }
     }
 
@@ -170,5 +175,5 @@ struct ReadView: View {
 }
 
 #Preview {
-    ReadView(selectedNote: .constant(nil))
+    ReadView(selectedNote: .constant(nil), segmenter: Segmenter(trie: DictionaryTrie()))
 }

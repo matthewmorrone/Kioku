@@ -6,6 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		E32B0CE32F57BC070020F5C2 /* data_manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDE2F57BC070020F5C2 /* data_manifest.json */; };
+		E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
+		E32B0CE52F57BC070020F5C2 /* jmdict-eng-3.6.2.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE12F57BC070020F5C2 /* jmdict-eng-3.6.2.json */; };
+		E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE02F57BC070020F5C2 /* generate_db.py */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		E3070AF62F4DFDB8005FD323 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,22 +34,16 @@
 		E3070AE82F4DFDB6005FD323 /* Kioku.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kioku.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AF52F4DFDB8005FD323 /* KiokuTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AFF2F4DFDB8005FD323 /* KiokuUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E32B0CDE2F57BC070020F5C2 /* data_manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = data_manifest.json; sourceTree = "<group>"; };
+		E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dictionary.sqlite; sourceTree = "<group>"; };
+		E32B0CE02F57BC070020F5C2 /* generate_db.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = generate_db.py; sourceTree = "<group>"; };
+		E32B0CE12F57BC070020F5C2 /* jmdict-eng-3.6.2.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "jmdict-eng-3.6.2.json"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		E3070AEA2F4DFDB6005FD323 /* Kioku */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Kioku;
-			sourceTree = "<group>";
-		};
-		E3070AF82F4DFDB8005FD323 /* KiokuTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = KiokuTests;
-			sourceTree = "<group>";
-		};
-		E3070B022F4DFDB8005FD323 /* KiokuUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = KiokuUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,9 +76,8 @@
 		E3070ADF2F4DFDB6005FD323 = {
 			isa = PBXGroup;
 			children = (
+				E32B0CE22F57BC070020F5C2 /* Resources */,
 				E3070AEA2F4DFDB6005FD323 /* Kioku */,
-				E3070AF82F4DFDB8005FD323 /* KiokuTests */,
-				E3070B022F4DFDB8005FD323 /* KiokuUITests */,
 				E3070AE92F4DFDB6005FD323 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -90,6 +90,17 @@
 				E3070AFF2F4DFDB8005FD323 /* KiokuUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		E32B0CE22F57BC070020F5C2 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				E32B0CDE2F57BC070020F5C2 /* data_manifest.json */,
+				E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */,
+				E32B0CE02F57BC070020F5C2 /* generate_db.py */,
+				E32B0CE12F57BC070020F5C2 /* jmdict-eng-3.6.2.json */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -130,9 +141,6 @@
 			dependencies = (
 				E3070AF72F4DFDB8005FD323 /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				E3070AF82F4DFDB8005FD323 /* KiokuTests */,
-			);
 			name = KiokuTests;
 			packageProductDependencies = (
 			);
@@ -152,9 +160,6 @@
 			);
 			dependencies = (
 				E3070B012F4DFDB8005FD323 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				E3070B022F4DFDB8005FD323 /* KiokuUITests */,
 			);
 			name = KiokuUITests;
 			packageProductDependencies = (
@@ -212,6 +217,10 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E32B0CE32F57BC070020F5C2 /* data_manifest.json in Resources */,
+				E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */,
+				E32B0CE52F57BC070020F5C2 /* jmdict-eng-3.6.2.json in Resources */,
+				E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

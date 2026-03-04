@@ -15,8 +15,10 @@ struct RichTextPreview: UIViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = false
         textView.isScrollEnabled = false
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textContainer.lineFragmentPadding = 0
+        textView.textContainer.widthTracksTextView = true
         applyTypography(to: textView)
         return textView
     }
@@ -30,6 +32,7 @@ struct RichTextPreview: UIViewRepresentable {
     private func applyTypography(to textView: UITextView) {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing
+        paragraphStyle.lineBreakMode = .byWordWrapping
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: textSize),

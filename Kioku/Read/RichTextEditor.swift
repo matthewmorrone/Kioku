@@ -4,7 +4,7 @@ import UIKit
 // Bridges a TextKit 2-backed editable text view into SwiftUI.
 struct RichTextEditor: UIViewRepresentable {
     @Binding var text: String
-    let textSize: Double
+    @Binding var textSize: Double
     let lineSpacing: Double
     let kerning: Double
 
@@ -17,6 +17,9 @@ struct RichTextEditor: UIViewRepresentable {
         textView.alwaysBounceVertical = true
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textContainer.lineFragmentPadding = 0
+        let pinchRecognizer = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(RichTextEditorCoordinator.handlePinch(_:)))
+        pinchRecognizer.cancelsTouchesInView = false
+        textView.addGestureRecognizer(pinchRecognizer)
 
         applyTypography(to: textView, text: text)
         return textView
@@ -44,13 +47,14 @@ struct RichTextEditor: UIViewRepresentable {
 
     // Connects the on-screen editor callbacks back to SwiftUI state.
     func makeCoordinator() -> RichTextEditorCoordinator {
-        RichTextEditorCoordinator(text: $text)
+        RichTextEditorCoordinator(text: $text, textSize: $textSize)
     }
 
     // Applies font, kerning, and paragraph spacing to both content and typing attributes.
     private func applyTypography(to textView: UITextView, text: String) {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing
+        paragraphStyle.lineBreakMode = .byWordWrapping
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: textSize),

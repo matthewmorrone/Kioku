@@ -6,16 +6,18 @@ struct ContentView: View {
     @StateObject private var notesStore = NotesStore()
     @State private var selectedReadNote: Note?
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
+    private let segmenter: Segmenter
 
     // Initializes the selected tab so previews and deep links can choose an initial section.
     init(selectedTab: ContentTab = .read) {
         _selectedTab = State(initialValue: selectedTab)
+        segmenter = Self.makeReadSegmenter()
     }
 
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, onActiveNoteChanged: { id in
+            ReadView(selectedNote: $selectedReadNote, segmenter: segmenter, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
             })
             .tag(ContentTab.read)
@@ -77,6 +79,23 @@ struct ContentView: View {
 
         selectedReadNote = note
         selectedTab = .read
+    }
+
+    // Builds the read-tab segmenter from bundled dictionary surfaces for live lattice debugging.
+    private static func makeReadSegmenter() -> Segmenter {
+        let trie = DictionaryTrie()
+
+        do {
+            let store = try DictionaryStore()
+            let surfaces = try store.fetchAllSurfaces()
+            for surface in surfaces {
+                trie.insert(surface)
+            }
+        } catch {
+            print("Segmenter initialization failed: \(error)")
+        }
+
+        return Segmenter(trie: trie)
     }
 }
 
