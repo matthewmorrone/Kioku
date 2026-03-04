@@ -6,7 +6,7 @@ final class Segmenter {
     private let trie: DictionaryTrie
     private let deinflector: Deinflector?
     private let config: SegmenterConfig
-    private let maxTokenLength = 20
+    private let scoring: SegmenterScoring
     private let boundaryCharacters: Set<Character> = [
         " ", "\t", "\n", "\r", "　",
         ".", ",", "!", "?", ";", ":",
@@ -16,19 +16,18 @@ final class Segmenter {
         "[", "]", "{", "}",
         "-", "—", "…", "，", "．"
     ]
-    private let particleSurfaces: Set<String> = [
-        "に", "を", "が", "は", 
-        "で", "と", "へ", "も", 
-        "や", "の", "か", "ね", 
-        "よ", "な", "ぞ", "さ", 
-        "わ"
-    ]
 
     // Stores trie dependency used for prefix lookup when constructing lattices.
-    init(trie: DictionaryTrie, deinflector: Deinflector? = nil, config: SegmenterConfig = SegmenterConfig()) {
+    init(
+        trie: DictionaryTrie,
+        deinflector: Deinflector? = nil,
+        config: SegmenterConfig = SegmenterConfig(),
+        scoring: SegmenterScoring = .default
+    ) {
         self.trie = trie
         self.deinflector = deinflector
         self.config = config
+        self.scoring = scoring
     }
 
     // Generates all dictionary-backed lattice edges for every start position in the input text.
@@ -47,113 +46,84 @@ final class Segmenter {
                         end: nextIndex,
                         surface: boundarySurface,
                         lemma: boundarySurface,
-                        pos: "boundary",
-                        cost: nodeCost(isDictionaryWord: true, length: 1)
+                        isDictionaryMatch: false
                     )
                 )
                 index = nextIndex
                 continue
             }
 
-            // Walks only dictionary-valid prefixes from this position via trie traversal.
-            let effectiveMaxTokenLength = min(maxTokenLength, config.maxMatchLength)
-            let scanResult = trie.prefixScan(in: text, startingAt: index, maxLength: effectiveMaxTokenLength)
-            let prefixRanges = scanResult.matches
             var keptMatches = 0
-            var seenEdgeKeys = Set<String>()
-            var hasDictionaryMatch = false
+            var endIndex = index
 
-            for surfaceRange in prefixRanges {
-                let characterLength = text.distance(from: surfaceRange.lowerBound, to: surfaceRange.upperBound)
-                guard characterLength <= effectiveMaxTokenLength else {
-                    continue
+            // Scans forward substrings and builds lattice nodes from dictionary or deinflection matches.
+            while endIndex < text.endIndex {
+                let nextCharacter = text[endIndex]
+                if isLineBreakCharacter(nextCharacter) {
+                    break
                 }
 
+                endIndex = text.index(after: endIndex)
+                let surfaceRange = index..<endIndex
                 let surface = String(text[surfaceRange])
-                let startOffset = text.distance(from: text.startIndex, to: surfaceRange.lowerBound)
-                let endOffset = text.distance(from: text.startIndex, to: surfaceRange.upperBound)
-                let edgeKey = "\(startOffset):\(endOffset):\(surface)"
-                guard seenEdgeKeys.insert(edgeKey).inserted else {
-                    continue
+                let characterLength = text.distance(from: surfaceRange.lowerBound, to: surfaceRange.upperBound)
+                if characterLength > config.maxMatchLength {
+                    break
                 }
 
-                edges.append(
-                    LatticeEdge(
-                        start: surfaceRange.lowerBound,
-                        end: surfaceRange.upperBound,
-                        surface: surface,
-                        lemma: surface,
-                        pos: inferredPartOfSpeech(surface: surface, lemma: surface),
-                        cost: nodeCost(isDictionaryWord: true, length: characterLength)
+                if trie.contains(surface) {
+                    edges.append(
+                        LatticeEdge(
+                            start: surfaceRange.lowerBound,
+                            end: surfaceRange.upperBound,
+                            surface: surface,
+                            lemma: surface,
+                            isDictionaryMatch: true
+                        )
                     )
-                )
-                hasDictionaryMatch = true
-                keptMatches += 1
+                    keptMatches += 1
+                } else if let deinflector {
+                    let candidates = deinflector.generateCandidates(for: surface)
+                    let matchedLemmas = candidates
+                        .filter { candidate in
+                            trie.contains(candidate)
+                        }
+                        .sorted()
+
+                    for lemma in matchedLemmas {
+                        edges.append(
+                            LatticeEdge(
+                                start: surfaceRange.lowerBound,
+                                end: surfaceRange.upperBound,
+                                surface: surface,
+                                lemma: lemma,
+                                isDictionaryMatch: true
+                            )
+                        )
+                        keptMatches += 1
+
+                        if keptMatches >= config.maxMatchesPerPosition {
+                            break
+                        }
+                    }
+                }
 
                 if keptMatches >= config.maxMatchesPerPosition {
                     break
                 }
             }
 
-            // Runs deinflection only as fallback when no dictionary match exists at this position.
-            if !hasDictionaryMatch, let deinflector, scanResult.scannedEnd > index, keptMatches < config.maxMatchesPerPosition {
-                // Uses exactly one full span from the current position to the farthest trie-scanned index.
-                // Do not deinflect partial substrings generated during scanning.
-                let fullScannedRange = index..<scanResult.scannedEnd
-                let fullSurface = String(text[fullScannedRange])
-                let endsInHiragana = fullSurface.last?.unicodeScalars.allSatisfy { scalar in
-                    (0x3040...0x309F).contains(scalar.value)
-                } ?? false
-                guard endsInHiragana else {
-                    index = text.index(after: index)
-                    continue
-                }
-                let candidates = deinflector.deinflect(fullSurface).sorted()
-
-                for candidate in candidates {
-                    guard trie.contains(candidate) else {
-                        continue
-                    }
-
-                    let startOffset = text.distance(from: text.startIndex, to: fullScannedRange.lowerBound)
-                    let endOffset = text.distance(from: text.startIndex, to: fullScannedRange.upperBound)
-                    let edgeKey = "\(startOffset):\(endOffset):\(candidate)"
-                    guard seenEdgeKeys.insert(edgeKey).inserted else {
-                        continue
-                    }
-
-                    edges.append(
-                        LatticeEdge(
-                            start: fullScannedRange.lowerBound,
-                            end: fullScannedRange.upperBound,
-                            surface: fullSurface,
-                            lemma: candidate,
-                            pos: inferredPartOfSpeech(surface: fullSurface, lemma: candidate),
-                            cost: nodeCost(
-                                isDictionaryWord: true,
-                                length: text.distance(from: fullScannedRange.lowerBound, to: fullScannedRange.upperBound)
-                            )
-                        )
-                    )
-                    keptMatches += 1
-
-                    if keptMatches >= config.maxMatchesPerPosition {
-                        break
-                    }
-                }
-            }
-
-            if !hasDictionaryMatch && keptMatches == 0 {
+            // Ensures every character position has at least one outgoing edge.
+            if keptMatches == 0 {
                 let nextIndex = text.index(after: index)
-                let unknownSurface = String(text[index..<nextIndex])
+                let fallbackSurface = String(text[index..<nextIndex])
                 edges.append(
                     LatticeEdge(
                         start: index,
                         end: nextIndex,
-                        surface: unknownSurface,
-                        lemma: unknownSurface,
-                        pos: inferredPartOfSpeech(surface: unknownSurface, lemma: unknownSurface),
-                        cost: nodeCost(isDictionaryWord: false, length: 1)
+                        surface: fallbackSurface,
+                        lemma: fallbackSurface,
+                        isDictionaryMatch: false
                     )
                 )
             }
@@ -166,21 +136,88 @@ final class Segmenter {
 
     // Prints lattice edges with integer offsets and matched text for tokenizer debugging.
     func debugPrintLattice(for text: String) {
-        let edges = buildLattice(for: text)
+        var index = text.startIndex
 
-        for edge in edges {
-            let startOffset = text.distance(from: text.startIndex, to: edge.start)
-            let endOffset = text.distance(from: text.startIndex, to: edge.end)
-            let matchedText = String(text[edge.start..<edge.end])
-            print("\(startOffset)→\(endOffset) \(matchedText) [lemma: \(edge.lemma)]")
+        while index < text.endIndex {
+            if boundaryCharacters.contains(text[index]) {
+                let nextIndex = text.index(after: index)
+                let boundarySurface = String(text[index..<nextIndex])
+                let startOffset = text.distance(from: text.startIndex, to: index)
+                let endOffset = text.distance(from: text.startIndex, to: nextIndex)
+                print("\(startOffset)→\(endOffset) \(boundarySurface) [lemma: \(boundarySurface)]")
+                index = nextIndex
+                continue
+            }
+
+            var keptMatches = 0
+            var endIndex = index
+
+            while endIndex < text.endIndex {
+                let nextCharacter = text[endIndex]
+                if isLineBreakCharacter(nextCharacter) {
+                    break
+                }
+
+                endIndex = text.index(after: endIndex)
+                let surfaceRange = index..<endIndex
+                let surface = String(text[surfaceRange])
+                let characterLength = text.distance(from: surfaceRange.lowerBound, to: surfaceRange.upperBound)
+                if characterLength > config.maxMatchLength {
+                    break
+                }
+
+                let startOffset = text.distance(from: text.startIndex, to: surfaceRange.lowerBound)
+                let endOffset = text.distance(from: text.startIndex, to: surfaceRange.upperBound)
+
+                if trie.contains(surface) {
+                    print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [lemma: \(escapedForDebug(surface))]")
+                    keptMatches += 1
+                } else if let deinflector {
+                    let candidates = deinflector.generateCandidates(for: surface)
+                    let matchedLemmas = candidates
+                        .filter { candidate in
+                            trie.contains(candidate)
+                        }
+                        .sorted()
+
+                    if matchedLemmas.isEmpty {
+                        print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [no-match]")
+                    } else {
+                        for lemma in matchedLemmas {
+                            print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [lemma: \(escapedForDebug(lemma))]")
+                            keptMatches += 1
+
+                            if keptMatches >= config.maxMatchesPerPosition {
+                                break
+                            }
+                        }
+                    }
+                } else {
+                    print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [no-match]")
+                }
+
+                if keptMatches >= config.maxMatchesPerPosition {
+                    break
+                }
+            }
+
+            if keptMatches == 0 {
+                let nextIndex = text.index(after: index)
+                let fallbackSurface = String(text[index..<nextIndex])
+                let startOffset = text.distance(from: text.startIndex, to: index)
+                let endOffset = text.distance(from: text.startIndex, to: nextIndex)
+                print("\(startOffset)→\(endOffset) \(escapedForDebug(fallbackSurface)) [lemma: \(escapedForDebug(fallbackSurface))] [fallback]")
+            }
+
+            index = text.index(after: index)
         }
     }
 
     // Builds a greedy segmentation by selecting the farthest-reaching edge at each text index.
     func longestMatchSegments(for text: String) -> [Range<String.Index>] {
-        let bestPath = viterbiBestPath(for: text)
-        if !bestPath.isEmpty {
-            return bestPath.map { edge in
+        let path = viterbiBestPath(for: text)
+        if !path.isEmpty {
+            return path.map { edge in
                 edge.start..<edge.end
             }
         }
@@ -212,85 +249,98 @@ final class Segmenter {
         return segments
     }
 
-    // Selects the minimum-cost segmentation path using dynamic programming with backpointers.
+    // Selects the lowest-cost segmentation path from the lattice using a minimal Viterbi pass.
     func viterbiBestPath(for text: String) -> [LatticeEdge] {
         let edges = buildLattice(for: text)
         guard !edges.isEmpty else {
             return []
         }
 
-        var edgeIndicesByEnd: [String.Index: [Int]] = [:]
+        var edgesByEnd: [String.Index: [Int]] = [:]
         for (index, edge) in edges.enumerated() {
-            edgeIndicesByEnd[edge.end, default: []].append(index)
+            edgesByEnd[edge.end, default: []].append(index)
         }
 
-        let sortedEdgeIndices = edges.indices.sorted { lhs, rhs in
-            let leftEnd = edges[lhs].end
-            let rightEnd = edges[rhs].end
-            if leftEnd == rightEnd {
-                let leftStart = edges[lhs].start
-                let rightStart = edges[rhs].start
-                return text.distance(from: text.startIndex, to: leftStart) < text.distance(from: text.startIndex, to: rightStart)
+        let sortedEdgeIndices = edges.indices.sorted { leftIndex, rightIndex in
+            let leftDistance = text.distance(from: text.startIndex, to: edges[leftIndex].end)
+            let rightDistance = text.distance(from: text.startIndex, to: edges[rightIndex].end)
+            if leftDistance == rightDistance {
+                let leftStartDistance = text.distance(from: text.startIndex, to: edges[leftIndex].start)
+                let rightStartDistance = text.distance(from: text.startIndex, to: edges[rightIndex].start)
+                return leftStartDistance < rightStartDistance
             }
 
-            return text.distance(from: text.startIndex, to: leftEnd) < text.distance(from: text.startIndex, to: rightEnd)
+            return leftDistance < rightDistance
         }
 
-        var bestCostByEdgeIndex: [Int: Int] = [:]
-        var backpointerByEdgeIndex: [Int: Int?] = [:]
+        var bestCost: [Int: Int] = [:]
+        var backpointer: [Int: Int?] = [:]
 
         for edgeIndex in sortedEdgeIndices {
             let edge = edges[edgeIndex]
-            let previousEdgeIndices = edgeIndicesByEnd[edge.start] ?? []
+            let length = edge.surface.count
+            var nodeCost = scoring.baseCost - (length * scoring.lengthReward)
+            if length == 1 {
+                nodeCost += scoring.singleCharacterPenalty
+            }
+
+            if edge.surface != edge.lemma {
+                nodeCost += scoring.deinflectionPenalty
+            }
+
+            if edge.isDictionaryMatch {
+                nodeCost -= scoring.dictionaryBonus
+            }
 
             if edge.start == text.startIndex {
-                bestCostByEdgeIndex[edgeIndex] = edge.cost
-                backpointerByEdgeIndex[edgeIndex] = nil
+                bestCost[edgeIndex] = nodeCost
+                backpointer[edgeIndex] = nil
                 continue
             }
 
+            let previousEdgeIndices = edgesByEnd[edge.start] ?? []
             var bestCandidateCost: Int?
-            var bestPreviousEdgeIndex: Int?
+            var bestPreviousIndex: Int?
 
             for previousEdgeIndex in previousEdgeIndices {
-                guard let previousCost = bestCostByEdgeIndex[previousEdgeIndex] else {
+                guard let previousCost = bestCost[previousEdgeIndex] else {
                     continue
                 }
 
-                let transition = transitionCost(from: edges[previousEdgeIndex], to: edge)
-                let candidateCost = previousCost + transition + edge.cost
-
-                if let currentBestCost = bestCandidateCost {
-                    if candidateCost < currentBestCost {
+                let candidateCost = previousCost + nodeCost
+                if let currentBest = bestCandidateCost {
+                    if candidateCost < currentBest {
                         bestCandidateCost = candidateCost
-                        bestPreviousEdgeIndex = previousEdgeIndex
+                        bestPreviousIndex = previousEdgeIndex
                     }
                 } else {
                     bestCandidateCost = candidateCost
-                    bestPreviousEdgeIndex = previousEdgeIndex
+                    bestPreviousIndex = previousEdgeIndex
                 }
             }
 
             if let bestCandidateCost {
-                bestCostByEdgeIndex[edgeIndex] = bestCandidateCost
-                backpointerByEdgeIndex[edgeIndex] = bestPreviousEdgeIndex
+                bestCost[edgeIndex] = bestCandidateCost
+                backpointer[edgeIndex] = bestPreviousIndex
             }
         }
 
-        let terminalEdges = edges.indices.filter { edgeIndex in
-            edges[edgeIndex].end == text.endIndex && bestCostByEdgeIndex[edgeIndex] != nil
+        let terminalEdgeIndices = edges.indices.filter { edgeIndex in
+            edges[edgeIndex].end == text.endIndex && bestCost[edgeIndex] != nil
         }
-        guard let bestTerminalEdgeIndex = terminalEdges.min(by: { lhs, rhs in
-            (bestCostByEdgeIndex[lhs] ?? Int.max) < (bestCostByEdgeIndex[rhs] ?? Int.max)
+
+        guard let bestTerminalIndex = terminalEdgeIndices.min(by: { leftIndex, rightIndex in
+            (bestCost[leftIndex] ?? Int.max) < (bestCost[rightIndex] ?? Int.max)
         }) else {
             return []
         }
 
         var pathIndices: [Int] = []
-        var currentEdgeIndex: Int? = bestTerminalEdgeIndex
-        while let currentIndex = currentEdgeIndex {
-            pathIndices.append(currentIndex)
-            currentEdgeIndex = backpointerByEdgeIndex[currentIndex] ?? nil
+        var currentIndex: Int? = bestTerminalIndex
+
+        while let edgeIndex = currentIndex {
+            pathIndices.append(edgeIndex)
+            currentIndex = backpointer[edgeIndex] ?? nil
         }
 
         return pathIndices.reversed().map { edgeIndex in
@@ -298,109 +348,33 @@ final class Segmenter {
         }
     }
 
-    // Computes node-level token cost with unknown-word penalty and short-token bias.
-    private func nodeCost(isDictionaryWord: Bool, length: Int) -> Int {
-        var cost = isDictionaryWord ? 1 : 5
-        if length == 1 {
-            cost += 10
-        } else if length == 2 {
-            cost += 3
-        }
-        cost -= length
-        return cost
-    }
-
-    // Computes transition penalty between adjacent lattice nodes using coarse POS heuristics.
-    private func transitionCost(from previous: LatticeEdge, to next: LatticeEdge) -> Int {
-        let previousPOS = previous.pos ?? inferredPartOfSpeech(surface: previous.surface, lemma: previous.lemma)
-        let nextPOS = next.pos ?? inferredPartOfSpeech(surface: next.surface, lemma: next.lemma)
-
-        if isEntirelyHiragana(next.surface) && endsWithKanji(previous.surface) {
-            return 8
-        }
-
-        if previousPOS == "noun" && nextPOS == "particle" {
-            return 0
-        }
-
-        if previousPOS == "particle" && nextPOS == "verb" {
-            return 0
-        }
-
-        if previousPOS == "noun" && nextPOS == "noun" {
-            return 3
-        }
-
-        if previousPOS == "verb" && nextPOS == "verb" {
-            return 3
-        }
-
-        return 1
-    }
-
-    // Determines whether a token consists entirely of hiragana scalars.
-    private func isEntirelyHiragana(_ text: String) -> Bool {
-        guard !text.isEmpty else {
-            return false
-        }
-
-        for scalar in text.unicodeScalars {
-            if !(0x3040...0x309F).contains(scalar.value) {
-                return false
-            }
-        }
-
-        return true
-    }
-
-    // Determines whether the last scalar of a token is a kanji code point.
-    private func endsWithKanji(_ text: String) -> Bool {
-        guard let lastScalar = text.unicodeScalars.last else {
-            return false
-        }
-
-        let value = lastScalar.value
-        return (0x4E00...0x9FFF).contains(value) || (0x3400...0x4DBF).contains(value)
-    }
-
-    // Infers a coarse part of speech from known particles and lemma-ending heuristics.
-    private func inferredPartOfSpeech(surface: String, lemma: String) -> String {
-        if particleSurfaces.contains(surface) {
-            return "particle"
-        }
-
-        if lemma == "する" || lemma == "くる" {
-            return "verb"
-        }
-
-        if let lastCharacter = lemma.last {
-            let lastString = String(lastCharacter)
-            if ["る", "う", "く", "ぐ", "す", "つ", "ぬ", "ぶ", "む"].contains(lastString) {
-                return "verb"
-            }
-
-            if lastString == "い" && lemma.count > 1 {
-                return "adjective"
-            }
-        }
-
-        return "noun"
-    }
-
     // Prints greedy longest-match segments line-by-line for tokenizer debugging.
     func debugPrintSegments(for text: String) {
-        let bestPath = viterbiBestPath(for: text)
-
-        if !bestPath.isEmpty {
-            for node in bestPath {
-                print(node.surface)
-            }
-            return
-        }
-
         let segments = longestMatchSegments(for: text)
+
         for segment in segments {
             print(String(text[segment]))
         }
+    }
+
+    // Detects Unicode newline characters so scanned spans never cross line boundaries.
+    private func isLineBreakCharacter(_ character: Character) -> Bool {
+        for scalar in character.unicodeScalars {
+            if CharacterSet.newlines.contains(scalar) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    // Escapes control line-break characters for stable single-line debug output.
+    private func escapedForDebug(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\r\n", with: "\\n")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 }

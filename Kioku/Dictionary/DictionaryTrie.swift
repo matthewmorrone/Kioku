@@ -76,7 +76,7 @@ public final class DictionaryTrie {
             matches.append(index..<index)
         }
 
-        while currentIndex < text.endIndex && traversedLength < maxSurfaceLength {
+        while currentIndex < text.endIndex && traversedLength < maxLength {
             let character = text[currentIndex]
             guard let next = node.children[character] else {
                 break

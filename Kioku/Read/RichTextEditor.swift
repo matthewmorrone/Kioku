@@ -5,7 +5,6 @@ import UIKit
 struct RichTextEditor: UIViewRepresentable {
     @Binding var text: String
     @Binding var textSize: Double
-    let segmentRanges: [Range<String.Index>]
     let lineSpacing: Double
     let kerning: Double
 
@@ -64,65 +63,7 @@ struct RichTextEditor: UIViewRepresentable {
             .foregroundColor: UIColor.label,
         ]
 
-        let attributedText = NSMutableAttributedString(string: text, attributes: attributes)
-        let alternatingColors: [UIColor] = [
-            .systemBlue,
-            .systemRed,
-            // .systemPurple,
-            // .systemTeal,
-            // .systemIndigo,
-            // .systemOrange,
-        ]
-        var colorIndex = 0
-
-        for range in segmentRanges {
-            let segment = String(text[range])
-            guard shouldCountForAlternatingColor(segment) else {
-                continue
-            }
-
-            guard let nsRange = nsRange(from: range, in: text) else {
-                continue
-            }
-
-            attributedText.addAttribute(
-                .foregroundColor,
-                value: alternatingColors[colorIndex % alternatingColors.count],
-                range: nsRange
-            )
-            colorIndex += 1
-        }
-
-        textView.attributedText = attributedText
+        textView.attributedText = NSAttributedString(string: text, attributes: attributes)
         textView.typingAttributes = attributes
-    }
-
-    // Determines whether a segment should advance alternating color parity.
-    private func shouldCountForAlternatingColor(_ segment: String) -> Bool {
-        guard !segment.isEmpty else {
-            return false
-        }
-
-        for character in segment {
-            if !ScriptClassifier.isBoundaryCharacter(character) {
-                return true
-            }
-        }
-
-        return false
-    }
-
-    // Converts a String.Index-based range into NSRange for attributed-text updates.
-    private func nsRange(from range: Range<String.Index>, in text: String) -> NSRange? {
-        guard
-            let lowerBound = range.lowerBound.samePosition(in: text.utf16),
-            let upperBound = range.upperBound.samePosition(in: text.utf16)
-        else {
-            return nil
-        }
-
-        let location = text.utf16.distance(from: text.utf16.startIndex, to: lowerBound)
-        let length = text.utf16.distance(from: lowerBound, to: upperBound)
-        return NSRange(location: location, length: length)
     }
 }
