@@ -54,8 +54,17 @@ public final class DictionaryTrie {
 
     // Returns all surface match ranges starting at the given text index.
     public func prefixMatches(in text: String, startingAt index: String.Index) -> [Range<String.Index>] {
+        prefixScan(in: text, startingAt: index, maxLength: maxSurfaceLength).matches
+    }
+
+    // Returns terminal prefix matches and the farthest index reached during trie walking.
+    public func prefixScan(
+        in text: String,
+        startingAt index: String.Index,
+        maxLength: Int
+    ) -> (matches: [Range<String.Index>], scannedEnd: String.Index) {
         guard index <= text.endIndex else {
-            return []
+            return (matches: [], scannedEnd: text.endIndex)
         }
 
         var matches: [Range<String.Index>] = []
@@ -82,6 +91,6 @@ public final class DictionaryTrie {
             }
         }
 
-        return matches
+        return (matches: matches, scannedEnd: currentIndex)
     }
 }

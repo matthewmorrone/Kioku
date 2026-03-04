@@ -84,6 +84,7 @@ struct ContentView: View {
     // Builds the read-tab segmenter from bundled dictionary surfaces for live lattice debugging.
     private static func makeReadSegmenter() -> Segmenter {
         let trie = DictionaryTrie()
+        var deinflector: Deinflector?
 
         do {
             let store = try DictionaryStore()
@@ -95,7 +96,13 @@ struct ContentView: View {
             print("Segmenter initialization failed: \(error)")
         }
 
-        return Segmenter(trie: trie)
+        do {
+            deinflector = try Deinflector(bundle: .main, resourceName: "deinflection", fileExtension: "json")
+        } catch {
+            print("Deinflector initialization failed: \(error)")
+        }
+
+        return Segmenter(trie: trie, deinflector: deinflector)
     }
 }
 

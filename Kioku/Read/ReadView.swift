@@ -18,6 +18,7 @@ struct ReadView: View {
     @State private var titleDraft = ""
     @State private var isShowingTitleAlert = false
     @State private var text = ""
+    @State private var segmentedRanges: [Range<String.Index>] = []
     @State private var activeNoteID: UUID?
     @State private var isLoadingSelectedNote = false
 
@@ -47,6 +48,7 @@ struct ReadView: View {
                 RichTextEditor(
                     text: $text,
                     textSize: $textSize,
+                    segmentRanges: segmentedRanges,
                     lineSpacing: lineSpacing,
                     kerning: kerning
                 )
@@ -78,9 +80,9 @@ struct ReadView: View {
         .onChange(of: text) { _, _ in
             // Persists edits as content changes.
             persistCurrentNoteIfNeeded()
-            // Prints the current segmentation lattice while the user edits text.
+            // Prints the current longest-match segmentation while the user edits text.
             if !isLoadingSelectedNote {
-                segmenter.debugPrintLattice(for: text)
+                refreshSegmentation()
             }
         }
     }
@@ -96,8 +98,18 @@ struct ReadView: View {
             ? firstLineTitle(from: selectedNote.content)
             : selectedNote.title
         text = selectedNote.content
+        refreshSegmentation()
         self.selectedNote = nil
         isLoadingSelectedNote = false
+    }
+
+    // Recomputes tokenizer segments for on-screen coloring and debug output.
+    private func refreshSegmentation() {
+        segmentedRanges = segmenter.longestMatchSegments(for: text)
+        let segmentStrings = segmentedRanges.map { range in
+            String(text[range])
+        }
+        print(segmentStrings.joined(separator: " | "))
     }
 
     // Saves the in-memory editor state to storage and maintains active note identity.
