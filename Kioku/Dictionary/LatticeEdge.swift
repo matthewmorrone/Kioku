@@ -6,5 +6,4 @@ struct LatticeEdge {
     let end: String.Index
     let surface: String
     let lemma: String
-    let isDictionaryMatch: Bool
 }

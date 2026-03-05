@@ -45,8 +45,7 @@ final class Segmenter {
                         start: index,
                         end: nextIndex,
                         surface: boundarySurface,
-                        lemma: boundarySurface,
-                        isDictionaryMatch: false
+                        lemma: boundarySurface
                     )
                 )
                 index = nextIndex
@@ -54,9 +53,9 @@ final class Segmenter {
             }
 
             var keptMatches = 0
+
             var endIndex = index
 
-            // Scans forward substrings and builds lattice nodes from dictionary or deinflection matches.
             while endIndex < text.endIndex {
                 let nextCharacter = text[endIndex]
                 if isLineBreakCharacter(nextCharacter) {
@@ -65,65 +64,49 @@ final class Segmenter {
 
                 endIndex = text.index(after: endIndex)
                 let surfaceRange = index..<endIndex
-                let surface = String(text[surfaceRange])
                 let characterLength = text.distance(from: surfaceRange.lowerBound, to: surfaceRange.upperBound)
+
                 if characterLength > config.maxMatchLength {
                     break
                 }
 
+                let surface = String(text[surfaceRange])
+                var lemmas: Set<String> = []
+
                 if trie.contains(surface) {
+                    lemmas.insert(surface)
+                }
+
+                if let deinflector {
+                    let candidates = deinflector.generateCandidates(for: surface)
+                    for candidate in candidates where trie.contains(candidate) {
+                        lemmas.insert(candidate)
+                    }
+                }
+
+                for lemma in lemmas {
                     edges.append(
                         LatticeEdge(
                             start: surfaceRange.lowerBound,
                             end: surfaceRange.upperBound,
                             surface: surface,
-                            lemma: surface,
-                            isDictionaryMatch: true
+                            lemma: lemma
                         )
                     )
                     keptMatches += 1
-                } else if let deinflector {
-                    let candidates = deinflector.generateCandidates(for: surface)
-                    let matchedLemmas = candidates
-                        .filter { candidate in
-                            trie.contains(candidate)
-                        }
-                        .sorted()
-
-                    for lemma in matchedLemmas {
-                        edges.append(
-                            LatticeEdge(
-                                start: surfaceRange.lowerBound,
-                                end: surfaceRange.upperBound,
-                                surface: surface,
-                                lemma: lemma,
-                                isDictionaryMatch: true
-                            )
-                        )
-                        keptMatches += 1
-
-                        if keptMatches >= config.maxMatchesPerPosition {
-                            break
-                        }
-                    }
-                }
-
-                if keptMatches >= config.maxMatchesPerPosition {
-                    break
                 }
             }
 
             // Ensures every character position has at least one outgoing edge.
             if keptMatches == 0 {
-                let nextIndex = text.index(after: index)
-                let fallbackSurface = String(text[index..<nextIndex])
+                let fallbackRange = unknownFallbackRange(in: text, startingAt: index)
+                let fallbackSurface = String(text[fallbackRange])
                 edges.append(
                     LatticeEdge(
-                        start: index,
-                        end: nextIndex,
+                        start: fallbackRange.lowerBound,
+                        end: fallbackRange.upperBound,
                         surface: fallbackSurface,
-                        lemma: fallbackSurface,
-                        isDictionaryMatch: false
+                        lemma: fallbackSurface
                     )
                 )
             }
@@ -181,7 +164,7 @@ final class Segmenter {
                         .sorted()
 
                     if matchedLemmas.isEmpty {
-                        print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [no-match]")
+                        // print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [no-match]")
                     } else {
                         for lemma in matchedLemmas {
                             print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [lemma: \(escapedForDebug(lemma))]")
@@ -193,7 +176,7 @@ final class Segmenter {
                         }
                     }
                 } else {
-                    print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [no-match]")
+                    // print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [no-match]")
                 }
 
                 if keptMatches >= config.maxMatchesPerPosition {
@@ -215,13 +198,6 @@ final class Segmenter {
 
     // Builds a greedy segmentation by selecting the farthest-reaching edge at each text index.
     func longestMatchSegments(for text: String) -> [Range<String.Index>] {
-        let path = viterbiBestPath(for: text)
-        if !path.isEmpty {
-            return path.map { edge in
-                edge.start..<edge.end
-            }
-        }
-
         let edges = buildLattice(for: text)
         var edgesByStart: [String.Index: [LatticeEdge]] = [:]
 
@@ -234,9 +210,9 @@ final class Segmenter {
 
         while index < text.endIndex {
             if let candidates = edgesByStart[index],
-               let longestEdge = candidates.max(by: { lhs, rhs in
-                   lhs.end < rhs.end
-               }) {
+            let longestEdge = candidates.max(by: { lhs, rhs in
+                lhs.end < rhs.end
+            }) {
                 segments.append(longestEdge.start..<longestEdge.end)
                 index = longestEdge.end
             } else {
@@ -249,104 +225,98 @@ final class Segmenter {
         return segments
     }
 
-    // Selects the lowest-cost segmentation path from the lattice using a minimal Viterbi pass.
-    func viterbiBestPath(for text: String) -> [LatticeEdge] {
-        let edges = buildLattice(for: text)
-        guard !edges.isEmpty else {
-            return []
+    // Determines how far an unknown token should extend by grouping contiguous same-script runs.
+    private func unknownFallbackRange(in text: String, startingAt index: String.Index) -> Range<String.Index> {
+        let firstCharacter = text[index]
+        guard let group = unknownGrouping(for: firstCharacter) else {
+            let nextIndex = text.index(after: index)
+            return index..<nextIndex
         }
 
-        var edgesByEnd: [String.Index: [Int]] = [:]
-        for (index, edge) in edges.enumerated() {
-            edgesByEnd[edge.end, default: []].append(index)
-        }
+        var currentIndex = text.index(after: index)
+        var groupedLength = 1
 
-        let sortedEdgeIndices = edges.indices.sorted { leftIndex, rightIndex in
-            let leftDistance = text.distance(from: text.startIndex, to: edges[leftIndex].end)
-            let rightDistance = text.distance(from: text.startIndex, to: edges[rightIndex].end)
-            if leftDistance == rightDistance {
-                let leftStartDistance = text.distance(from: text.startIndex, to: edges[leftIndex].start)
-                let rightStartDistance = text.distance(from: text.startIndex, to: edges[rightIndex].start)
-                return leftStartDistance < rightStartDistance
+        while currentIndex < text.endIndex && groupedLength < config.maxMatchLength {
+            let character = text[currentIndex]
+            if boundaryCharacters.contains(character) || isLineBreakCharacter(character) {
+                break
             }
 
-            return leftDistance < rightDistance
-        }
-
-        var bestCost: [Int: Int] = [:]
-        var backpointer: [Int: Int?] = [:]
-
-        for edgeIndex in sortedEdgeIndices {
-            let edge = edges[edgeIndex]
-            let length = edge.surface.count
-            var nodeCost = scoring.baseCost - (length * scoring.lengthReward)
-            if length == 1 {
-                nodeCost += scoring.singleCharacterPenalty
+            if unknownGrouping(for: character) != group {
+                break
             }
 
-            if edge.surface != edge.lemma {
-                nodeCost += scoring.deinflectionPenalty
-            }
-
-            if edge.isDictionaryMatch {
-                nodeCost -= scoring.dictionaryBonus
-            }
-
-            if edge.start == text.startIndex {
-                bestCost[edgeIndex] = nodeCost
-                backpointer[edgeIndex] = nil
-                continue
-            }
-
-            let previousEdgeIndices = edgesByEnd[edge.start] ?? []
-            var bestCandidateCost: Int?
-            var bestPreviousIndex: Int?
-
-            for previousEdgeIndex in previousEdgeIndices {
-                guard let previousCost = bestCost[previousEdgeIndex] else {
-                    continue
-                }
-
-                let candidateCost = previousCost + nodeCost
-                if let currentBest = bestCandidateCost {
-                    if candidateCost < currentBest {
-                        bestCandidateCost = candidateCost
-                        bestPreviousIndex = previousEdgeIndex
-                    }
-                } else {
-                    bestCandidateCost = candidateCost
-                    bestPreviousIndex = previousEdgeIndex
-                }
-            }
-
-            if let bestCandidateCost {
-                bestCost[edgeIndex] = bestCandidateCost
-                backpointer[edgeIndex] = bestPreviousIndex
-            }
+            currentIndex = text.index(after: currentIndex)
+            groupedLength += 1
         }
 
-        let terminalEdgeIndices = edges.indices.filter { edgeIndex in
-            edges[edgeIndex].end == text.endIndex && bestCost[edgeIndex] != nil
-        }
-
-        guard let bestTerminalIndex = terminalEdgeIndices.min(by: { leftIndex, rightIndex in
-            (bestCost[leftIndex] ?? Int.max) < (bestCost[rightIndex] ?? Int.max)
-        }) else {
-            return []
-        }
-
-        var pathIndices: [Int] = []
-        var currentIndex: Int? = bestTerminalIndex
-
-        while let edgeIndex = currentIndex {
-            pathIndices.append(edgeIndex)
-            currentIndex = backpointer[edgeIndex] ?? nil
-        }
-
-        return pathIndices.reversed().map { edgeIndex in
-            edges[edgeIndex]
-        }
+        return index..<currentIndex
     }
+
+    // Classifies unknown-token script groups used for simple fallback token coalescing.
+    private func unknownGrouping(for character: Character) -> String? {
+        guard let scalar = character.unicodeScalars.first else {
+            return nil
+        }
+
+        let value = scalar.value
+        if (0x3040...0x309F).contains(value) {
+            return "hiragana"
+        }
+
+        if (0x30A0...0x30FF).contains(value) {
+            return "katakana"
+        }
+
+        if (0x0030...0x0039).contains(value) || (0xFF10...0xFF19).contains(value) {
+            return "number"
+        }
+
+        if (0x0041...0x005A).contains(value) ||
+            (0x0061...0x007A).contains(value) ||
+            (0xFF21...0xFF3A).contains(value) ||
+            (0xFF41...0xFF5A).contains(value) {
+            return "latin"
+        }
+
+        return nil
+    }
+
+    // Applies unknown penalty to non-dictionary non-boundary edges so punctuation separators are not over-penalized.
+    private func shouldApplyUnknownTokenPenalty(_ edge: LatticeEdge) -> Bool {
+        if isDictionaryEdge(edge) {
+            return false
+        }
+
+        for character in edge.surface {
+            if !boundaryCharacters.contains(character) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    // Determines whether an edge is dictionary-backed without database access.
+    private func isDictionaryEdge(_ edge: LatticeEdge) -> Bool {
+        trie.contains(edge.surface) || trie.contains(edge.lemma)
+    }
+
+/*     // Compares two path scores, preferring lower cost first, then fewer tokens, then longer last span.
+    private func isBetterPathScore(
+        _ candidate: (cost: Int, tokenCount: Int, lastSpan: Int),
+        than existing: (cost: Int, tokenCount: Int, lastSpan: Int)
+    ) -> Bool {
+        if candidate.cost != existing.cost {
+            return candidate.cost < existing.cost
+        }
+
+        if candidate.tokenCount != existing.tokenCount {
+            return candidate.tokenCount < existing.tokenCount
+        }
+
+        return candidate.lastSpan > existing.lastSpan
+    } */
 
     // Prints greedy longest-match segments line-by-line for tokenizer debugging.
     func debugPrintSegments(for text: String) {
@@ -377,4 +347,5 @@ final class Segmenter {
             .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
             .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
+
 }
