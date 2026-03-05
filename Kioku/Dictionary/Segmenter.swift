@@ -273,9 +273,9 @@ final class Segmenter {
         }
 
         if (0x0041...0x005A).contains(value) ||
-            (0x0061...0x007A).contains(value) ||
-            (0xFF21...0xFF3A).contains(value) ||
-            (0xFF41...0xFF5A).contains(value) {
+           (0x0061...0x007A).contains(value) ||
+           (0xFF21...0xFF3A).contains(value) ||
+           (0xFF41...0xFF5A).contains(value) {
             return "latin"
         }
 
@@ -302,22 +302,6 @@ final class Segmenter {
         trie.contains(edge.surface) || trie.contains(edge.lemma)
     }
 
-/*     // Compares two path scores, preferring lower cost first, then fewer tokens, then longer last span.
-    private func isBetterPathScore(
-        _ candidate: (cost: Int, tokenCount: Int, lastSpan: Int),
-        than existing: (cost: Int, tokenCount: Int, lastSpan: Int)
-    ) -> Bool {
-        if candidate.cost != existing.cost {
-            return candidate.cost < existing.cost
-        }
-
-        if candidate.tokenCount != existing.tokenCount {
-            return candidate.tokenCount < existing.tokenCount
-        }
-
-        return candidate.lastSpan > existing.lastSpan
-    } */
-
     // Prints greedy longest-match segments line-by-line for tokenizer debugging.
     func debugPrintSegments(for text: String) {
         let segments = longestMatchSegments(for: text)
@@ -340,8 +324,7 @@ final class Segmenter {
 
     // Escapes control line-break characters for stable single-line debug output.
     private func escapedForDebug(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\r\n", with: "\\n")
+        text.replacingOccurrences(of: "\r\n", with: "\\n")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
             .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
