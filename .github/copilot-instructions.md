@@ -21,19 +21,11 @@ Add more required invariants below. Copilot should treat them as mandatory.
 4. Swift file length limit.
    - Swift files should never exceed 1,000 lines.
 
-5. Source folder layout is mandatory.
-    - Tab-specific Swift files must live in exactly one of:
-       - `Kioku/Read/`
-       - `Kioku/Notes/`
-       - `Kioku/Words/`
-       - `Kioku/Learn/`
-       - `Kioku/Settings/`
-    - Dictionary-related Swift files must live in `Kioku/Dictionary/`.
-    - Only app-shell files may remain at `Kioku/` root:
-       - `KiokuApp.swift`
-       - `ContentView.swift`
-       - `ContentTab.swift`
-    - Do not add new Swift files outside these locations.
+5. Organize Swift files by functionality.
+    - Prefer grouping files by feature/domain responsibility (for example: reading, notes, dictionary, segmentation, settings).
+    - Existing folder names under `Kioku/` are examples, not hard constraints.
+    - New folders are allowed when they improve functional cohesion and discoverability.
+    - Keep app-shell entry files (`KiokuApp.swift`, `ContentView.swift`, `ContentTab.swift`) easy to locate.
 
 6. Function-level intent comments are required.
     - Every function must include at least one line comment explaining why the function exists.
