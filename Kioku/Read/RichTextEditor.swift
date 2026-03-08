@@ -6,8 +6,11 @@ struct RichTextEditor: UIViewRepresentable {
     @Binding var text: String
     let segmentationRanges: [Range<String.Index>]
     let furiganaBySegmentLocation: [Int: String]
+    let furiganaLengthBySegmentLocation: [Int: Int]
     let isVisualEnhancementsEnabled: Bool
     let isEditMode: Bool
+    let externalContentOffsetY: CGFloat
+    let onScrollOffsetYChanged: (CGFloat) -> Void
     @Binding var textSize: Double
     let lineSpacing: Double
     let kerning: Double
@@ -19,6 +22,7 @@ struct RichTextEditor: UIViewRepresentable {
         textView.backgroundColor = .clear
         textView.adjustsFontForContentSizeCategory = true
         textView.alwaysBounceVertical = true
+        textView.showsVerticalScrollIndicator = false
         textView.keyboardDismissMode = .interactive
         textView.isEditable = isEditMode
         textView.isSelectable = true
@@ -52,11 +56,14 @@ struct RichTextEditor: UIViewRepresentable {
             }
             context.coordinator.lastAppliedStyle = style
         }
+
+        context.coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
+        context.coordinator.applyExternalScrollIfNeeded(to: uiView, targetOffsetY: externalContentOffsetY)
     }
 
     // Connects the on-screen editor callbacks back to SwiftUI state.
     func makeCoordinator() -> RichTextEditorCoordinator {
-        RichTextEditorCoordinator(text: $text, textSize: $textSize)
+        RichTextEditorCoordinator(text: $text, textSize: $textSize, onScrollOffsetYChanged: onScrollOffsetYChanged)
     }
 
     // Applies font, kerning, and paragraph spacing to both content and typing attributes.

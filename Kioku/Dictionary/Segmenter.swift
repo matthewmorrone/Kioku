@@ -198,6 +198,13 @@ final class Segmenter {
 
     // Builds a greedy segmentation by selecting the farthest-reaching edge at each text index.
     func longestMatchSegments(for text: String) -> [Range<String.Index>] {
+        longestMatchEdges(for: text).map { edge in
+            edge.start..<edge.end
+        }
+    }
+
+    // Builds a greedy segmentation edge list so downstream features can use chosen surface/lemma references.
+    func longestMatchEdges(for text: String) -> [LatticeEdge] {
         let edges = buildLattice(for: text)
         var edgesByStart: [String.Index: [LatticeEdge]] = [:]
 
@@ -205,7 +212,7 @@ final class Segmenter {
             edgesByStart[edge.start, default: []].append(edge)
         }
 
-        var segments: [Range<String.Index>] = []
+        var selectedEdges: [LatticeEdge] = []
         var index = text.startIndex
 
         while index < text.endIndex {
@@ -213,16 +220,24 @@ final class Segmenter {
             let longestEdge = candidates.max(by: { lhs, rhs in
                 lhs.end < rhs.end
             }) {
-                segments.append(longestEdge.start..<longestEdge.end)
+                selectedEdges.append(longestEdge)
                 index = longestEdge.end
             } else {
                 let nextIndex = text.index(after: index)
-                segments.append(index..<nextIndex)
+                let fallbackSurface = String(text[index..<nextIndex])
+                selectedEdges.append(
+                    LatticeEdge(
+                        start: index,
+                        end: nextIndex,
+                        surface: fallbackSurface,
+                        lemma: fallbackSurface
+                    )
+                )
                 index = nextIndex
             }
         }
 
-        return segments
+        return selectedEdges
     }
 
     // Determines how far an unknown token should extend by grouping contiguous same-script runs.
