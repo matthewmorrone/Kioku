@@ -5,19 +5,22 @@ struct ContentView: View {
     @State private var selectedTab: ContentTab
     @StateObject private var notesStore = NotesStore()
     @State private var selectedReadNote: Note?
+    @State private var segmenter = Segmenter(trie: DictionaryTrie())
+    @State private var dictionaryStore: DictionaryStore?
+    @State private var readResourcesReady = false
+    @State private var segmenterRevision = 0
+    @State private var hasLoadedReadResources = false
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
-    private let segmenter: Segmenter
 
     // Initializes the selected tab so previews and deep links can choose an initial section.
     init(selectedTab: ContentTab = .read) {
         _selectedTab = State(initialValue: selectedTab)
-        segmenter = Self.makeReadSegmenter()
     }
 
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, segmenter: segmenter, onActiveNoteChanged: { id in
+            ReadView(selectedNote: $selectedReadNote, segmenter: segmenter, dictionaryStore: dictionaryStore, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
             })
             .tag(ContentTab.read)
@@ -67,6 +70,7 @@ struct ContentView: View {
         .environmentObject(notesStore)
         .onAppear {
             restoreLastActiveNote()
+            loadReadResourcesIfNeeded()
         }
     }
 
@@ -81,13 +85,31 @@ struct ContentView: View {
         selectedTab = .read
     }
 
-    // Builds the read-tab segmenter from bundled dictionary surfaces for live lattice debugging.
-    private static func makeReadSegmenter() -> Segmenter {
+    // Loads heavy read resources asynchronously so initial app launch stays responsive.
+    private func loadReadResourcesIfNeeded() {
+        guard !hasLoadedReadResources else { return }
+        hasLoadedReadResources = true
+
+        Task.detached(priority: .utility) {
+            let readResources = Self.makeReadResources()
+            await MainActor.run {
+                segmenter = readResources.segmenter
+                dictionaryStore = readResources.dictionaryStore
+                readResourcesReady = true
+                segmenterRevision += 1
+            }
+        }
+    }
+
+    // Builds the read-tab segmenter and dictionary store used for furigana lookup.
+    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?) {
         let trie = DictionaryTrie()
+        var dictionaryStore: DictionaryStore?
         var deinflector: Deinflector?
 
         do {
             let store = try DictionaryStore()
+            dictionaryStore = store
             let surfaces = try store.fetchAllSurfaces()
             for surface in surfaces {
                 trie.insert(surface)
@@ -102,7 +124,7 @@ struct ContentView: View {
             print("Deinflector initialization failed: \(error)")
         }
 
-        return Segmenter(trie: trie, deinflector: deinflector)
+        return (segmenter: Segmenter(trie: trie, deinflector: deinflector), dictionaryStore: dictionaryStore)
     }
 }
 

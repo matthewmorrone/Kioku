@@ -4,6 +4,9 @@ import SwiftUI
 struct ReadView: View {
     @Binding var selectedNote: Note?
     let segmenter: Segmenter
+    let dictionaryStore: DictionaryStore?
+    let segmenterRevision: Int
+    let readResourcesReady: Bool
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
     @AppStorage(TypographySettings.textSizeKey) 
@@ -19,8 +22,11 @@ struct ReadView: View {
     @State private var isShowingTitleAlert = false
     @State private var text = ""
     @State private var segmentationRanges: [Range<String.Index>] = []
+    @State private var furiganaBySegmentLocation: [Int: String] = [:]
+    @State private var furiganaCache: [String: String?] = [:]
     @State private var activeNoteID: UUID?
     @State private var isLoadingSelectedNote = false
+    @State private var isEditMode = false
 
     private let storageKey = "kioku.notes.v1"
 
@@ -44,26 +50,68 @@ struct ReadView: View {
                     }
                 }
             VStack(spacing: 10) {
-                // Displays the main text editing surface for note content.
-                RichTextEditor(
-                    text: $text,
-                    segmentationRanges: segmentationRanges,
-                    textSize: $textSize,
-                    lineSpacing: lineSpacing,
-                    kerning: kerning
-                )
+                // Displays either the custom furigana reading renderer or editable text surface.
+                Group {
+                    if isEditMode {
+                        RichTextEditor(
+                            text: $text,
+                            segmentationRanges: readResourcesReady ? segmentationRanges : [],
+                            furiganaBySegmentLocation: readResourcesReady ? furiganaBySegmentLocation : [:],
+                            isVisualEnhancementsEnabled: readResourcesReady,
+                            isEditMode: isEditMode,
+                            textSize: $textSize,
+                            lineSpacing: lineSpacing,
+                            kerning: kerning
+                        )
+                    } else {
+                        FuriganaTextRenderer(
+                            text: text,
+                            segmentationRanges: readResourcesReady ? segmentationRanges : [],
+                            furiganaBySegmentLocation: readResourcesReady ? furiganaBySegmentLocation : [:],
+                            isVisualEnhancementsEnabled: readResourcesReady,
+                            textSize: $textSize,
+                            lineSpacing: lineSpacing,
+                            kerning: kerning
+                        )
+                    }
+                }
                     .padding(8)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(
                         RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(.secondarySystemBackground))
+                            .fill(isEditMode ? Color(.systemBackground) : Color(.secondarySystemBackground))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                            .stroke(
+                                isEditMode ? Color.accentColor.opacity(0.45) : Color.secondary.opacity(0.3),
+                                lineWidth: isEditMode ? 2 : 1
+                            )
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal, 8)
+
+                // Renders a single unlabeled button that toggles between view and edit modes.
+                HStack {
+                    Spacer()
+                    // Uses one icon button whose visual treatment reflects active edit state.
+                    Button {
+                        isEditMode.toggle()
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(isEditMode ? Color.white : Color.secondary)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                Circle()
+                                    .fill(isEditMode ? Color.accentColor : Color(.tertiarySystemFill))
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .opacity(isEditMode ? 1 : 0.7)
+                    .accessibilityLabel(isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
+                }
+                .padding(.horizontal, 8)
             }
         }
         .padding(.horizontal, 12)
@@ -78,18 +126,16 @@ struct ReadView: View {
             loadSelectedNoteIfNeeded()
         }
         .onChange(of: text) { _, _ in
-            // Recomputes segments so alternating colors stay in sync with edits.
-            refreshSegmentationRanges()
             // Persists edits as content changes.
             persistCurrentNoteIfNeeded()
-            // Prints lattice details and segmented output while the user edits text.
-            if !isLoadingSelectedNote {
-                segmenter.debugPrintLattice(for: text)
-                let segmentStrings = segmentationRanges.map { range in
-                    String(text[range])
-                }
-                print(segmentStrings.joined(separator: " | "))
+            // Recomputes segments only after full read resources are ready.
+            if readResourcesReady {
+                refreshSegmentationRanges()
             }
+        }
+        .onChange(of: segmenterRevision) { _, _ in
+            // Recomputes segmentation after background dictionary loading completes.
+            refreshSegmentationRanges()
         }
     }
 
@@ -184,10 +230,67 @@ struct ReadView: View {
 
     // Rebuilds greedy segmentation ranges used by alternating segment colors in the editor.
     private func refreshSegmentationRanges() {
-        segmentationRanges = segmenter.longestMatchSegments(for: text)
+        guard readResourcesReady else {
+            segmentationRanges = []
+            furiganaBySegmentLocation = [:]
+            return
+        }
+
+        let refreshedSegments = segmenter.longestMatchSegments(for: text)
+        segmentationRanges = refreshedSegments
+        furiganaBySegmentLocation = buildFuriganaBySegmentLocation(for: text, segments: refreshedSegments)
+    }
+
+    // Resolves per-segment furigana keyed by UTF-16 location so UIKit ranges can apply ruby text.
+    private func buildFuriganaBySegmentLocation(for sourceText: String, segments: [Range<String.Index>]) -> [Int: String] {
+        var resolvedFurigana: [Int: String] = [:]
+
+        for segmentRange in segments {
+            let segmentSurface = String(sourceText[segmentRange])
+            // Skip non-kanji segments to avoid redundant ruby annotations.
+            guard ScriptClassifier.containsKanji(segmentSurface) else {
+                continue
+            }
+
+            guard let reading = readingForSegment(segmentSurface), !reading.isEmpty, reading != segmentSurface else {
+                continue
+            }
+
+            let nsRange = NSRange(segmentRange, in: sourceText)
+            if nsRange.location == NSNotFound || nsRange.length == 0 {
+                continue
+            }
+
+            resolvedFurigana[nsRange.location] = reading
+        }
+
+        return resolvedFurigana
+    }
+
+    // Looks up a segment reading and caches it for subsequent furigana rendering passes.
+    private func readingForSegment(_ segmentSurface: String) -> String? {
+        if let cachedReading = furiganaCache[segmentSurface] {
+            return cachedReading
+        }
+
+        guard let dictionaryStore else {
+            furiganaCache[segmentSurface] = nil
+            return nil
+        }
+
+        do {
+            let entries = try dictionaryStore.lookup(surface: segmentSurface, mode: .kanjiAndKana)
+            let bestReading = entries.first?.kanaForms.first
+            furiganaCache[segmentSurface] = bestReading
+            return bestReading
+        } catch {
+            print("Furigana lookup failed for \(segmentSurface): \(error)")
+            furiganaCache[segmentSurface] = nil
+            return nil
+        }
     }
 }
 
 #Preview {
-    ReadView(selectedNote: .constant(nil), segmenter: Segmenter(trie: DictionaryTrie()))
+    ReadView(selectedNote: .constant(nil), segmenter: Segmenter(trie: DictionaryTrie()), dictionaryStore: nil, segmenterRevision: 0, readResourcesReady: false)
 }

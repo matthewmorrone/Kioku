@@ -4,7 +4,7 @@ import UIKit
 final class RichTextEditorCoordinator: NSObject, UITextViewDelegate {
     @Binding var text: String
     @Binding var textSize: Double
-    var lastAppliedStyle: (textSize: Double, lineSpacing: Double, kerning: Double)?
+    var lastAppliedStyle: (textSize: Double, lineSpacing: Double, kerning: Double, isEditMode: Bool)?
     private var pinchStartTextSize: Double?
 
     // Connects the SwiftUI text binding to the UIKit delegate coordinator.
