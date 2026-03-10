@@ -4,10 +4,14 @@ import UIKit
 // Bridges a TextKit 2-backed editable text view into SwiftUI.
 struct RichTextEditor: UIViewRepresentable {
     @Binding var text: String
+    let isLineWrappingEnabled: Bool
     let segmentationRanges: [Range<String.Index>]
     let furiganaBySegmentLocation: [Int: String]
     let furiganaLengthBySegmentLocation: [Int: Int]
     let isVisualEnhancementsEnabled: Bool
+    let isColorAlternationEnabled: Bool
+    let isHighlightUnknownEnabled: Bool
+    let segmenter: Segmenter
     let isEditMode: Bool
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void
@@ -19,6 +23,7 @@ struct RichTextEditor: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textView = TextViewFactory.makeTextView()
         textView.delegate = context.coordinator
+        textView.layoutManager.delegate = context.coordinator
         textView.backgroundColor = .clear
         textView.adjustsFontForContentSizeCategory = true
         textView.alwaysBounceVertical = true
@@ -28,6 +33,7 @@ struct RichTextEditor: UIViewRepresentable {
         textView.isSelectable = true
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textContainer.lineFragmentPadding = 0
+        configureWrapping(for: textView)
         let pinchRecognizer = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(RichTextEditorCoordinator.handlePinch(_:)))
         pinchRecognizer.cancelsTouchesInView = false
         textView.addGestureRecognizer(pinchRecognizer)
@@ -40,13 +46,9 @@ struct RichTextEditor: UIViewRepresentable {
     func updateUIView(_ uiView: UITextView, context: Context) {
         uiView.isEditable = isEditMode
         uiView.isSelectable = true
-        let style = (textSize: textSize, lineSpacing: lineSpacing, kerning: kerning, isEditMode: isEditMode)
-        let needsStyleUpdate: Bool
-        if let lastAppliedStyle = context.coordinator.lastAppliedStyle {
-            needsStyleUpdate = lastAppliedStyle != style
-        } else {
-            needsStyleUpdate = true
-        }
+        context.coordinator.configureSegmentationRanges(segmentationRanges, in: text)
+        configureWrapping(for: uiView)
+        let needsStyleUpdate = true
 
         if needsStyleUpdate || uiView.text != text {
             let selectedRange = uiView.selectedRange
@@ -54,7 +56,6 @@ struct RichTextEditor: UIViewRepresentable {
             if selectedRange.location <= uiView.text.utf16.count {
                 uiView.selectedRange = selectedRange
             }
-            context.coordinator.lastAppliedStyle = style
         }
 
         context.coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
@@ -71,7 +72,7 @@ struct RichTextEditor: UIViewRepresentable {
         let font = UIFont.systemFont(ofSize: textSize)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing + (font.lineHeight * 0.5)
-        paragraphStyle.lineBreakMode = .byWordWrapping
+        paragraphStyle.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping
 
         let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -92,6 +93,9 @@ struct RichTextEditor: UIViewRepresentable {
         }
         let oddSegmentForeground = UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo
+        }
+        let unknownSegmentForeground = UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark ? .systemYellow : .systemOrange
         }
         let furiganaAttributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: max(textSize * 0.5, 8)),
@@ -115,10 +119,15 @@ struct RichTextEditor: UIViewRepresentable {
                 continue
             }
 
-            if colorAlternationIndex.isMultiple(of: 2) {
-                attributedText.addAttribute(.foregroundColor, value: evenSegmentForeground, range: nsRange)
-            } else {
-                attributedText.addAttribute(.foregroundColor, value: oddSegmentForeground, range: nsRange)
+            // Highlights unknown tokens only when alternation is active; otherwise keep default foreground styling.
+            if isHighlightUnknownEnabled && isColorAlternationEnabled && !isTokenInDictionary(segmentText) {
+                attributedText.addAttribute(.foregroundColor, value: unknownSegmentForeground, range: nsRange)
+            } else if isColorAlternationEnabled {
+                if colorAlternationIndex.isMultiple(of: 2) {
+                    attributedText.addAttribute(.foregroundColor, value: evenSegmentForeground, range: nsRange)
+                } else {
+                    attributedText.addAttribute(.foregroundColor, value: oddSegmentForeground, range: nsRange)
+                }
             }
 
             // Queues inline furigana text for segments when a reading is available.
@@ -139,9 +148,29 @@ struct RichTextEditor: UIViewRepresentable {
         textView.typingAttributes = baseAttributes
     }
 
+    // Keeps the editor text container in wrapped or horizontal-scroll layout based on the display option.
+    private func configureWrapping(for textView: UITextView) {
+        let contentInsets = textView.textContainerInset
+        let availableWidth = max(
+            textView.bounds.width - contentInsets.left - contentInsets.right,
+            0
+        )
+        textView.textContainer.widthTracksTextView = isLineWrappingEnabled
+        textView.textContainer.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping
+        textView.textContainer.size = CGSize(
+            width: isLineWrappingEnabled ? availableWidth : CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+    }
+
     // Identifies ranges that should not affect token color parity (spacing and punctuation only).
     private func shouldIgnoreSegmentForAlternation(_ segmentText: String) -> Bool {
         let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
         return segmentText.unicodeScalars.allSatisfy { ignoredScalars.contains($0) }
+    }
+
+    // Checks whether a token resolves through the segmenter's trie plus deinflection path.
+    private func isTokenInDictionary(_ surface: String) -> Bool {
+        segmenter.resolvesSurface(surface)
     }
 }

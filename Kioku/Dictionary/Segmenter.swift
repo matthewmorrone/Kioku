@@ -71,18 +71,7 @@ final class Segmenter {
                 }
 
                 let surface = String(text[surfaceRange])
-                var lemmas: Set<String> = []
-
-                if trie.contains(surface) {
-                    lemmas.insert(surface)
-                }
-
-                if let deinflector {
-                    let candidates = deinflector.generateCandidates(for: surface)
-                    for candidate in candidates where trie.contains(candidate) {
-                        lemmas.insert(candidate)
-                    }
-                }
+                let lemmas = resolvedTrieLemmas(for: surface)
 
                 for lemma in lemmas {
                     edges.append(
@@ -152,27 +141,14 @@ final class Segmenter {
                 let startOffset = text.distance(from: text.startIndex, to: surfaceRange.lowerBound)
                 let endOffset = text.distance(from: text.startIndex, to: surfaceRange.upperBound)
 
-                if trie.contains(surface) {
-                    print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [lemma: \(escapedForDebug(surface))]")
-                    keptMatches += 1
-                } else if let deinflector {
-                    let candidates = deinflector.generateCandidates(for: surface)
-                    let matchedLemmas = candidates
-                        .filter { candidate in
-                            trie.contains(candidate)
-                        }
-                        .sorted()
+                let matchedLemmas = resolvedTrieLemmas(for: surface).sorted()
+                if matchedLemmas.isEmpty == false {
+                    for lemma in matchedLemmas {
+                        print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [lemma: \(escapedForDebug(lemma))]")
+                        keptMatches += 1
 
-                    if matchedLemmas.isEmpty {
-                        // print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [no-match]")
-                    } else {
-                        for lemma in matchedLemmas {
-                            print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [lemma: \(escapedForDebug(lemma))]")
-                            keptMatches += 1
-
-                            if keptMatches >= config.maxMatchesPerPosition {
-                                break
-                            }
+                        if keptMatches >= config.maxMatchesPerPosition {
+                            break
                         }
                     }
                 } else {
@@ -314,7 +290,61 @@ final class Segmenter {
 
     // Determines whether an edge is dictionary-backed without database access.
     private func isDictionaryEdge(_ edge: LatticeEdge) -> Bool {
-        trie.contains(edge.surface) || trie.contains(edge.lemma)
+        resolvesSurface(edge.surface) || resolvesSurface(edge.lemma)
+    }
+
+    // Checks whether a surface string exists directly in the dictionary trie without deinflection.
+    func containsSurface(_ surface: String) -> Bool {
+        matchedTrieLemmas(for: surface).isEmpty == false
+    }
+
+    // Checks whether a surface resolves through the same trie plus deinflection path used by segmentation.
+    func resolvesSurface(_ surface: String) -> Bool {
+        resolvedTrieLemmas(for: surface).isEmpty == false
+    }
+
+    // Resolves all trie-backed lemmas reachable from a surface, including deinflection candidates.
+    private func resolvedTrieLemmas(for surface: String) -> Set<String> {
+        var lemmas = matchedTrieLemmas(for: surface)
+
+        if let deinflector {
+            let candidates = deinflector.generateCandidates(for: surface)
+            for candidate in candidates {
+                lemmas.formUnion(matchedTrieLemmas(for: candidate))
+            }
+        }
+
+        return lemmas
+    }
+
+    // Resolves all trie-backed membership lemmas for a surface, including katakana-to-hiragana fallback.
+    private func matchedTrieLemmas(for surface: String) -> Set<String> {
+        var lemmas: Set<String> = []
+
+        if trie.contains(surface) {
+            lemmas.insert(surface)
+        }
+
+        let hiraganaSurface = katakanaToHiragana(surface)
+        if hiraganaSurface != surface, trie.contains(hiraganaSurface) {
+            lemmas.insert(hiraganaSurface)
+        }
+
+        return lemmas
+    }
+
+    // Converts katakana scalars to hiragana so dictionary membership can fall back across kana scripts.
+    private func katakanaToHiragana(_ text: String) -> String {
+        let convertedScalars = text.unicodeScalars.map { scalar -> UnicodeScalar in
+            switch scalar.value {
+            case 0x30A1...0x30F6, 0x30FD...0x30FE:
+                return UnicodeScalar(scalar.value - 0x60) ?? scalar
+            default:
+                return scalar
+            }
+        }
+
+        return String(String.UnicodeScalarView(convertedScalars))
     }
 
     // Prints greedy longest-match segments line-by-line for tokenizer debugging.

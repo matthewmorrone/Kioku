@@ -3,22 +3,23 @@ import SwiftUI
 import UIKit
 
 // Stores renderer state so expensive furigana layout only runs when inputs change.
-final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
+final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSLayoutManagerDelegate {
     @Binding private var textSize: Double
     var onScrollOffsetYChanged: (CGFloat) -> Void
-    var onSegmentTapped: (Int?) -> Void
+    var onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
     private var lastRenderSignature: Int?
     private var lastTextRenderSignature: Int?
     private var pinchStartTextSize: Double?
     private var isApplyingExternalScroll = false
     private var segmentationNSRanges: [NSRange] = []
     private var wasActive = false
+    private var lastPublishedScrollOffsetY: CGFloat?
 
     // Stores shared state bindings used by the renderer coordinator.
     init(
         textSize: Binding<Double>,
         onScrollOffsetYChanged: @escaping (CGFloat) -> Void,
-        onSegmentTapped: @escaping (Int?) -> Void
+        onSegmentTapped: @escaping (Int?, CGRect?, UITextView?) -> Void
     ) {
         _textSize = textSize
         self.onScrollOffsetYChanged = onScrollOffsetYChanged
@@ -85,6 +86,9 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
             return
         }
 
+        // Forces an overlay-only refresh on the next SwiftUI update so furigana tracks lazy layout near the viewport edges.
+        lastRenderSignature = nil
+        lastPublishedScrollOffsetY = scrollView.contentOffset.y
         onScrollOffsetYChanged(scrollView.contentOffset.y)
     }
 
@@ -101,6 +105,8 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         isApplyingExternalScroll = true
         textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedTargetY), animated: false)
         isApplyingExternalScroll = false
+        lastRenderSignature = nil
+        lastPublishedScrollOffsetY = clampedTargetY
     }
 
     // Maps pinch gestures in read mode to persisted text-size updates.
@@ -130,18 +136,36 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         }
 
         let tapPoint = recognizer.location(in: textView)
-        guard let textPosition = textView.closestPosition(to: tapPoint) else {
-            onSegmentTapped(nil)
+        guard let tappedCharacterRange = textView.characterRange(at: tapPoint) else {
+            onSegmentTapped(nil, nil, textView)
             return
         }
+
+        let tappedCharacterRect = textView.firstRect(for: tappedCharacterRange)
+        let hitTestToleranceRect = tappedCharacterRect.insetBy(dx: -8, dy: -6)
+        if tappedCharacterRect.isEmpty || hitTestToleranceRect.contains(tapPoint) == false {
+            onSegmentTapped(nil, nil, textView)
+            return
+        }
+
+        let textPosition = tappedCharacterRange.start
 
         let utf16Index = textView.offset(from: textView.beginningOfDocument, to: textPosition)
         if let tappedRange = resolveTappedRange(at: utf16Index) {
-            onSegmentTapped(tappedRange.location)
+            guard isSelectableSegment(tappedRange, in: textView.text) else {
+                onSegmentTapped(nil, nil, textView)
+                return
+            }
+
+            onSegmentTapped(
+                tappedRange.location,
+                tokenRectInTextView(textView: textView, nsRange: tappedRange),
+                textView
+            )
             return
         }
 
-        onSegmentTapped(nil)
+        onSegmentTapped(nil, nil, textView)
     }
 
     // Resolves the segment range containing the tapped UTF-16 location.
@@ -156,5 +180,68 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         }
 
         return nil
+    }
+
+    // Rejects whitespace and punctuation-only segments so non-lexical tokens never become selectable.
+    private func isSelectableSegment(_ nsRange: NSRange, in sourceText: String) -> Bool {
+        guard
+            nsRange.location != NSNotFound,
+            nsRange.length > 0,
+            let range = Range(nsRange, in: sourceText)
+        else {
+            return false
+        }
+
+        let segmentText = sourceText[range]
+        let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+        return segmentText.unicodeScalars.contains { ignoredScalars.contains($0) == false }
+    }
+
+    // Resolves a token rect in text-view coordinates for anchoring read-mode tooltips near tapped words.
+    private func tokenRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
+        let documentStart = textView.beginningOfDocument
+        guard
+            let rangeStart = textView.position(from: documentStart, offset: nsRange.location),
+            let rangeEnd = textView.position(from: rangeStart, offset: nsRange.length),
+            let textRange = textView.textRange(from: rangeStart, to: rangeEnd)
+        else {
+            return nil
+        }
+
+        let tokenRect = textView.firstRect(for: textRange)
+        if tokenRect.isEmpty {
+            return nil
+        }
+
+        return tokenRect
+    }
+
+    // Rejects proposed wrap points that would split a lexical segment across two visual lines.
+    func layoutManager(
+        _ layoutManager: NSLayoutManager,
+        shouldBreakLineByWordBeforeCharacterAt charIndex: Int
+    ) -> Bool {
+        shouldAllowLineBreak(beforeCharacterAt: charIndex)
+    }
+
+    // Rejects hyphenation-based breaks inside segments so no fallback path can split a token.
+    func layoutManager(
+        _ layoutManager: NSLayoutManager,
+        shouldBreakLineByHyphenatingBeforeCharacterAt charIndex: Int
+    ) -> Bool {
+        shouldAllowLineBreak(beforeCharacterAt: charIndex)
+    }
+
+    // Allows wrapping only at segment boundaries or outside tracked lexical ranges.
+    private func shouldAllowLineBreak(beforeCharacterAt charIndex: Int) -> Bool {
+        for nsRange in segmentationNSRanges {
+            let lowerBound = nsRange.location
+            let upperBound = nsRange.location + nsRange.length
+            if charIndex > lowerBound && charIndex < upperBound {
+                return false
+            }
+        }
+
+        return true
     }
 }

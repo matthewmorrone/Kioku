@@ -1,19 +1,40 @@
 import SwiftUI
 import UIKit
 
-final class RichTextEditorCoordinator: NSObject, UITextViewDelegate {
+final class RichTextEditorCoordinator: NSObject, UITextViewDelegate, NSLayoutManagerDelegate {
     @Binding var text: String
     @Binding var textSize: Double
     var onScrollOffsetYChanged: (CGFloat) -> Void
-    var lastAppliedStyle: (textSize: Double, lineSpacing: Double, kerning: Double, isEditMode: Bool)?
+    var lastAppliedStyle: (
+        textSize: Double,
+        lineSpacing: Double,
+        kerning: Double,
+        isEditMode: Bool,
+        isVisualEnhancementsEnabled: Bool,
+        isColorAlternationEnabled: Bool,
+        isHighlightUnknownEnabled: Bool
+    )?
     private var pinchStartTextSize: Double?
     private var isApplyingExternalScroll = false
+    private var segmentationNSRanges: [NSRange] = []
 
     // Connects the SwiftUI text binding to the UIKit delegate coordinator.
     init(text: Binding<String>, textSize: Binding<Double>, onScrollOffsetYChanged: @escaping (CGFloat) -> Void) {
         _text = text
         _textSize = textSize
         self.onScrollOffsetYChanged = onScrollOffsetYChanged
+    }
+
+    // Caches NSRange segment boundaries used to keep wrapped lines from splitting a token.
+    func configureSegmentationRanges(_ segmentationRanges: [Range<String.Index>], in text: String) {
+        segmentationNSRanges = segmentationRanges.compactMap { segmentRange in
+            let nsRange = NSRange(segmentRange, in: text)
+            if nsRange.location == NSNotFound || nsRange.length == 0 {
+                return nil
+            }
+
+            return nsRange
+        }
     }
 
     // Propagates text view edits into SwiftUI state after each user change.
@@ -68,5 +89,34 @@ final class RichTextEditorCoordinator: NSObject, UITextViewDelegate {
         if recognizer.state == .ended || recognizer.state == .cancelled || recognizer.state == .failed {
             pinchStartTextSize = nil
         }
+    }
+
+    // Rejects proposed wrap points that would split a lexical segment across two visual lines.
+    func layoutManager(
+        _ layoutManager: NSLayoutManager,
+        shouldBreakLineByWordBeforeCharacterAt charIndex: Int
+    ) -> Bool {
+        shouldAllowLineBreak(beforeCharacterAt: charIndex)
+    }
+
+    // Rejects hyphenation-based breaks inside segments so no fallback path can split a token.
+    func layoutManager(
+        _ layoutManager: NSLayoutManager,
+        shouldBreakLineByHyphenatingBeforeCharacterAt charIndex: Int
+    ) -> Bool {
+        shouldAllowLineBreak(beforeCharacterAt: charIndex)
+    }
+
+    // Allows wrapping only at segment boundaries or outside tracked lexical ranges.
+    private func shouldAllowLineBreak(beforeCharacterAt charIndex: Int) -> Bool {
+        for nsRange in segmentationNSRanges {
+            let lowerBound = nsRange.location
+            let upperBound = nsRange.location + nsRange.length
+            if charIndex > lowerBound && charIndex < upperBound {
+                return false
+            }
+        }
+
+        return true
     }
 }

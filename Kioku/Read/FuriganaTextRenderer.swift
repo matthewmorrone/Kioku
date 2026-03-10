@@ -5,14 +5,20 @@ import UIKit
 struct FuriganaTextRenderer: UIViewRepresentable {
     let isActive: Bool
     let text: String
+    let isLineWrappingEnabled: Bool
     let segmentationRanges: [Range<String.Index>]
     let selectedSegmentLocation: Int?
+    let selectedHighlightRangeOverride: NSRange?
+    let illegalMergeBoundaryLocation: Int?
     let furiganaBySegmentLocation: [Int: String]
     let furiganaLengthBySegmentLocation: [Int: Int]
     let isVisualEnhancementsEnabled: Bool
+    let isColorAlternationEnabled: Bool
+    let isHighlightUnknownEnabled: Bool
+    let segmenter: Segmenter
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void
-    let onSegmentTapped: (Int?) -> Void
+    let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
     @Binding var textSize: Double
     let lineSpacing: Double
     let kerning: Double
@@ -30,6 +36,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textView = TextViewFactory.makeTextView()
         textView.delegate = context.coordinator
+        textView.layoutManager.delegate = context.coordinator
         textView.tag = 7_331
         textView.backgroundColor = .clear
         textView.isEditable = false
@@ -39,6 +46,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         textView.adjustsFontForContentSizeCategory = true
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textContainer.lineFragmentPadding = 0
+        configureWrapping(for: textView)
         textView.clipsToBounds = true
         let pinchRecognizer = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(FuriganaTextRendererCoordinator.handlePinch(_:)))
         pinchRecognizer.cancelsTouchesInView = false
@@ -69,9 +77,12 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         context.coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
         context.coordinator.onSegmentTapped = onSegmentTapped
         context.coordinator.configureTapSegmentationRanges(segmentationRanges, in: text)
+        configureWrapping(for: textView)
         if context.coordinator.shouldApplyInitialExternalSync(isActive: true) {
             context.coordinator.applyExternalScrollIfNeeded(to: textView, targetOffsetY: externalContentOffsetY)
         }
+
+        ensureTextLayout(for: textView)
 
         let renderSignature = makeRenderSignature(for: textView)
         guard context.coordinator.shouldRender(for: renderSignature) else {
@@ -80,16 +91,29 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
         let textRenderSignature = makeTextRenderSignature(for: textView)
 
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         overlayView.subviews.forEach { $0.removeFromSuperview() }
 
         let renderPayload = makeAttributedBaseText()
         if context.coordinator.shouldRenderText(for: textRenderSignature) {
+            let preservedOffsetY = textView.contentOffset.y
             textView.attributedText = renderPayload.attributedText
-            textView.layoutIfNeeded()
+            ensureTextLayout(for: textView)
+            let minOffsetY = -textView.adjustedContentInset.top
+            let maxOffsetY = max(minOffsetY, textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom)
+            let clampedOffsetY = min(max(preservedOffsetY, minOffsetY), maxOffsetY)
+            textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedOffsetY), animated: false)
             context.coordinator.markTextRendered(signature: textRenderSignature)
         }
 
-        overlayView.frame = CGRect(origin: .zero, size: textView.contentSize)
+        overlayView.frame = CGRect(
+            origin: .zero,
+            size: CGSize(
+                width: max(textView.contentSize.width, textView.bounds.width),
+                height: max(textView.contentSize.height, textView.bounds.height)
+            )
+        )
 
         if let selectedSegmentRange = selectedSegmentNSRange(in: text),
            let selectedSegmentRect = tokenRectInTextView(textView: textView, nsRange: selectedSegmentRange) {
@@ -104,6 +128,18 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             highlightView.layer.cornerRadius = 4
             highlightView.isUserInteractionEnabled = false
             overlayView.addSubview(highlightView)
+        }
+
+        if let illegalMergeBoundaryLocation,
+           let illegalBoundaryRect = boundaryIndicatorRectInTextView(
+            textView: textView,
+            boundaryUTF16Location: illegalMergeBoundaryLocation
+           ) {
+            let boundaryView = UIView(frame: illegalBoundaryRect)
+            boundaryView.backgroundColor = UIColor.systemRed.withAlphaComponent(0.9)
+            boundaryView.layer.cornerRadius = 1.5
+            boundaryView.isUserInteractionEnabled = false
+            overlayView.addSubview(boundaryView)
         }
 
         guard isVisualEnhancementsEnabled else {
@@ -146,6 +182,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             overlayView.addSubview(furiganaLabel)
         }
 
+        CATransaction.commit()
+
         context.coordinator.markRendered(signature: renderSignature)
     }
 
@@ -154,7 +192,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         let baseFont = UIFont.systemFont(ofSize: textSize)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing + (baseFont.lineHeight * 0.5)
-        paragraphStyle.lineBreakMode = .byWordWrapping
+        paragraphStyle.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping
 
         let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: baseFont,
@@ -169,6 +207,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         }
         let oddSegmentForeground = UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo
+        }
+        let unknownSegmentForeground = UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark ? .systemYellow : .systemOrange
         }
 
         guard isVisualEnhancementsEnabled else {
@@ -188,15 +229,24 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 continue
             }
 
-            if colorAlternationIndex.isMultiple(of: 2) {
-                attributedText.addAttribute(.foregroundColor, value: evenSegmentForeground, range: nsRange)
+            // Highlights unknown tokens only when alternation is active; otherwise keep default foreground styling.
+            if isHighlightUnknownEnabled && isColorAlternationEnabled && !isTokenInDictionary(segmentText) {
+                attributedText.addAttribute(.foregroundColor, value: unknownSegmentForeground, range: nsRange)
                 for offset in 0..<nsRange.length {
-                    tokenColorByLocation[nsRange.location + offset] = evenSegmentForeground
+                    tokenColorByLocation[nsRange.location + offset] = unknownSegmentForeground
                 }
-            } else {
-                attributedText.addAttribute(.foregroundColor, value: oddSegmentForeground, range: nsRange)
-                for offset in 0..<nsRange.length {
-                    tokenColorByLocation[nsRange.location + offset] = oddSegmentForeground
+            } else if isColorAlternationEnabled {
+                // Alternates foreground colors by segment index so token boundaries remain visually distinct.
+                if colorAlternationIndex.isMultiple(of: 2) {
+                    attributedText.addAttribute(.foregroundColor, value: evenSegmentForeground, range: nsRange)
+                    for offset in 0..<nsRange.length {
+                        tokenColorByLocation[nsRange.location + offset] = evenSegmentForeground
+                    }
+                } else {
+                    attributedText.addAttribute(.foregroundColor, value: oddSegmentForeground, range: nsRange)
+                    for offset in 0..<nsRange.length {
+                        tokenColorByLocation[nsRange.location + offset] = oddSegmentForeground
+                    }
                 }
             }
 
@@ -208,36 +258,123 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
     // Resolves the visual token rectangle used to anchor furigana over the same glyph layout.
     private func tokenRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
-        let documentStart = textView.beginningOfDocument
+        guard nsRange.location != NSNotFound, nsRange.length > 0 else {
+            return nil
+        }
+
+        ensureTextLayout(for: textView)
+        let layoutManager = textView.layoutManager
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: nsRange, actualCharacterRange: nil)
+        guard glyphRange.length > 0 else {
+            return nil
+        }
+
+        let glyphRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer)
+        guard glyphRect.isNull == false, glyphRect.isInfinite == false, glyphRect.isEmpty == false else {
+            return nil
+        }
+
+        return textViewRect(for: glyphRect, in: textView)
+    }
+
+    // Keeps the text container in wrapped or horizontal-scroll layout based on the display option.
+    private func configureWrapping(for textView: UITextView) {
+        let contentInsets = textView.textContainerInset
+        let availableWidth = max(
+            textView.bounds.width - contentInsets.left - contentInsets.right,
+            0
+        )
+        textView.textContainer.widthTracksTextView = isLineWrappingEnabled
+        textView.textContainer.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping
+        textView.textContainer.size = CGSize(
+            width: isLineWrappingEnabled ? availableWidth : CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+    }
+
+    // Resolves a thin rect at a UTF-16 boundary for illegal-merge flash feedback.
+    private func boundaryIndicatorRectInTextView(textView: UITextView, boundaryUTF16Location: Int) -> CGRect? {
+        let textLength = (textView.text as NSString).length
+        guard boundaryUTF16Location > 0, boundaryUTF16Location < textLength else {
+            return nil
+        }
+
+        ensureTextLayout(for: textView)
+        let layoutManager = textView.layoutManager
+        let nextCharacterRange = NSRange(location: boundaryUTF16Location, length: 1)
+        let nextGlyphRange = layoutManager.glyphRange(forCharacterRange: nextCharacterRange, actualCharacterRange: nil)
+        guard nextGlyphRange.length > 0 else {
+            return nil
+        }
+
+        let nextGlyphRect = layoutManager.boundingRect(forGlyphRange: nextGlyphRange, in: textView.textContainer)
+        let lineFragmentRect = layoutManager.lineFragmentUsedRect(forGlyphAt: nextGlyphRange.location, effectiveRange: nil)
         guard
-            let rangeStart = textView.position(from: documentStart, offset: nsRange.location),
-            let rangeEnd = textView.position(from: rangeStart, offset: nsRange.length),
-            let textRange = textView.textRange(from: rangeStart, to: rangeEnd)
+            nextGlyphRect.isNull == false,
+            nextGlyphRect.isInfinite == false,
+            lineFragmentRect.isNull == false,
+            lineFragmentRect.isInfinite == false
         else {
             return nil
         }
 
-        let tokenRect = textView.firstRect(for: textRange)
-        if tokenRect.isEmpty {
-            return nil
-        }
+        let textViewLineRect = textViewRect(for: lineFragmentRect, in: textView)
+        let textViewNextGlyphRect = textViewRect(for: nextGlyphRect, in: textView)
+        let indicatorHeight = max(textViewLineRect.height + 6, 16)
+        return CGRect(
+            x: textViewNextGlyphRect.minX - 1.5,
+            y: textViewLineRect.minY - 3,
+            width: 3,
+            height: indicatorHeight
+        )
+    }
 
-        return tokenRect
+    // Converts a TextKit text-container rect into text-view coordinates for overlay placement.
+    private func textViewRect(for rect: CGRect, in textView: UITextView) -> CGRect {
+        CGRect(
+            x: rect.origin.x + textView.textContainerInset.left,
+            y: rect.origin.y + textView.textContainerInset.top,
+            width: rect.width,
+            height: rect.height
+        )
+    }
+
+    // Forces lazy TextKit layout to complete before any geometry is queried for annotations.
+    private func ensureTextLayout(for textView: UITextView) {
+        textView.layoutManager.ensureLayout(for: textView.textContainer)
+        textView.layoutIfNeeded()
     }
 
     // Builds a stable signature so expensive rendering only runs when visual inputs actually change.
     private func makeRenderSignature(for textView: UITextView) -> Int {
         var hasher = Hasher()
         hasher.combine(text)
-        hasher.combine(segmentationRanges.count)
-        hasher.combine(furiganaBySegmentLocation.count)
+        for segmentRange in segmentationRanges {
+            let nsRange = NSRange(segmentRange, in: text)
+            hasher.combine(nsRange.location)
+            hasher.combine(nsRange.length)
+        }
+        hasher.combine(isLineWrappingEnabled)
+        let furiganaLocations = furiganaBySegmentLocation.keys.sorted()
+        for location in furiganaLocations {
+            hasher.combine(location)
+            hasher.combine(furiganaBySegmentLocation[location])
+            hasher.combine(furiganaLengthBySegmentLocation[location] ?? 0)
+        }
         hasher.combine(selectedSegmentLocation)
+        hasher.combine(selectedHighlightRangeOverride?.location)
+        hasher.combine(selectedHighlightRangeOverride?.length)
+        hasher.combine(illegalMergeBoundaryLocation)
         hasher.combine(textSize)
         hasher.combine(lineSpacing)
         hasher.combine(kerning)
         hasher.combine(isActive)
+        hasher.combine(isColorAlternationEnabled)
+        hasher.combine(isHighlightUnknownEnabled)
         hasher.combine(textView.bounds.width)
         hasher.combine(textView.bounds.height)
+        hasher.combine(textView.contentSize.width)
+        hasher.combine(textView.contentSize.height)
         return hasher.finalize()
     }
 
@@ -245,19 +382,35 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     private func makeTextRenderSignature(for textView: UITextView) -> Int {
         var hasher = Hasher()
         hasher.combine(text)
-        hasher.combine(segmentationRanges.count)
+        for segmentRange in segmentationRanges {
+            let nsRange = NSRange(segmentRange, in: text)
+            hasher.combine(nsRange.location)
+            hasher.combine(nsRange.length)
+        }
+        hasher.combine(isLineWrappingEnabled)
         hasher.combine(isVisualEnhancementsEnabled)
+        hasher.combine(isColorAlternationEnabled)
+        hasher.combine(isHighlightUnknownEnabled)
         hasher.combine(textSize)
         hasher.combine(lineSpacing)
         hasher.combine(kerning)
         hasher.combine(isActive)
         hasher.combine(textView.bounds.width)
         hasher.combine(textView.bounds.height)
+        hasher.combine(textView.contentSize.width)
+        hasher.combine(textView.contentSize.height)
         return hasher.finalize()
     }
 
     // Finds the selected segment NSRange so overlay highlighting can target the tapped token.
     private func selectedSegmentNSRange(in sourceText: String) -> NSRange? {
+        if let selectedHighlightRangeOverride,
+           selectedHighlightRangeOverride.location != NSNotFound,
+           selectedHighlightRangeOverride.length > 0,
+           selectedHighlightRangeOverride.upperBound <= (sourceText as NSString).length {
+            return selectedHighlightRangeOverride
+        }
+
         guard let selectedSegmentLocation else {
             return nil
         }
@@ -286,5 +439,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     private func shouldIgnoreSegmentForAlternation(_ segmentText: String) -> Bool {
         let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
         return segmentText.unicodeScalars.allSatisfy { ignoredScalars.contains($0) }
+    }
+
+    // Checks whether a token resolves through the segmenter's trie plus deinflection path.
+    private func isTokenInDictionary(_ surface: String) -> Bool {
+        segmenter.resolvesSurface(surface)
     }
 }
