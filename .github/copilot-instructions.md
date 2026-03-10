@@ -38,3 +38,11 @@ Add more required invariants below. Copilot should treat them as mandatory.
 8. Respect titleless navigation by default.
    - Do not add `.navigationTitle(...)` to a screen where it has been removed.
    - Only add or restore navigation titles when explicitly requested.
+
+9. Text layout and furigana geometry must use a single TextKit coordinate pipeline.
+   - Annotation geometry must be expressed in the text view coordinate space only.
+   - Convert TextKit rectangles into text view coordinates by offsetting with `textContainerInset` before rendering.
+   - Never cache glyph geometry across scrolling or layout changes.
+   - Ensure layout before querying annotation geometry.
+   - Never compensate annotation placement using `contentOffset`.
+   - Required pipeline: TextKit rect -> text view coordinates -> render annotation.
