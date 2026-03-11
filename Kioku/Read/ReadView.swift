@@ -4,6 +4,7 @@ import UIKit
 // Provides the primary reading and editing surface for an active note.
 struct ReadView: View {
     @Binding var selectedNote: Note?
+    @EnvironmentObject var notesStore: NotesStore
     let segmenter: Segmenter
     let dictionaryStore: DictionaryStore?
     let readingBySurface: [String: String]
@@ -12,7 +13,7 @@ struct ReadView: View {
     let readResourcesReady: Bool
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
-    @AppStorage(TypographySettings.textSizeKey) 
+    @AppStorage(TypographySettings.textSizeKey)
     private var textSize = TypographySettings.defaultTextSize
     @AppStorage(TypographySettings.lineSpacingKey) 
     private var lineSpacing = TypographySettings.defaultLineSpacing
@@ -43,6 +44,7 @@ struct ReadView: View {
     @State var furiganaBySegmentLocation: [Int: String] = [:]
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
     @State var furiganaComputationTask: Task<Void, Never>?
+    @State var pendingPersistenceTask: Task<Void, Never>?
     @State var activeNoteID: UUID?
     @State var isLoadingSelectedNote = false
     @State var isEditMode = false
@@ -52,7 +54,27 @@ struct ReadView: View {
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
 
-    let storageKey = "kioku.notes.v1"
+    // Initializes the read screen with the active note selection and shared read resources.
+    init(
+        selectedNote: Binding<Note?>,
+        segmenter: Segmenter,
+        dictionaryStore: DictionaryStore?,
+        readingBySurface: [String: String],
+        readingCandidatesBySurface: [String: [String]],
+        segmenterRevision: Int,
+        readResourcesReady: Bool,
+        onActiveNoteChanged: ((UUID) -> Void)? = nil
+    ) {
+        _selectedNote = selectedNote
+        self.segmenter = segmenter
+        self.dictionaryStore = dictionaryStore
+        self.readingBySurface = readingBySurface
+        self.readingCandidatesBySurface = readingCandidatesBySurface
+        self.segmenterRevision = segmenterRevision
+        self.readResourcesReady = readResourcesReady
+        self.onActiveNoteChanged = onActiveNoteChanged
+    }
+
     let prefersSheetDirectSegmentActions = true
 
     var body: some View {
@@ -95,7 +117,7 @@ struct ReadView: View {
         }
         .onChange(of: text) { _, _ in
             // Persists edits as content changes.
-            persistCurrentNoteIfNeeded()
+            scheduleCurrentNotePersistenceIfNeeded()
             if isEditMode {
                 tokenRanges = nil
                 illegalMergeBoundaryLocation = nil
@@ -132,6 +154,7 @@ struct ReadView: View {
                 furiganaBySegmentLocation = [:]
                 furiganaLengthBySegmentLocation = [:]
             } else if readResourcesReady {
+                flushPendingNotePersistenceIfNeeded()
                 // Recomputes once when returning to view mode so furigana matches latest text.
                 refreshSegmentationRanges()
             }
@@ -139,6 +162,10 @@ struct ReadView: View {
         .onChange(of: segmenterRevision) { _, _ in
             // Recomputes segmentation after background dictionary loading completes.
             refreshSegmentationRanges()
+        }
+        .onDisappear {
+            // Flushes any pending edit persistence before leaving the read screen.
+            flushPendingNotePersistenceIfNeeded()
         }
     }
 
@@ -157,7 +184,7 @@ struct ReadView: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Save") {
                     customTitle = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    persistCurrentNoteIfNeeded()
+                    flushPendingNotePersistenceIfNeeded()
                 }
             }
     }
@@ -431,4 +458,5 @@ struct ReadView: View {
 
 #Preview {
     ReadView(selectedNote: .constant(nil), segmenter: Segmenter(trie: DictionaryTrie()), dictionaryStore: nil, readingBySurface: [:], readingCandidatesBySurface: [:], segmenterRevision: 0, readResourcesReady: false)
+        .environmentObject(NotesStore())
 }

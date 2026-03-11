@@ -3,20 +3,60 @@ import UIKit
 
 // Hosts note loading and persistence helpers for the read screen.
 extension ReadView {
+    // Schedules the current note state for background persistence so large pastes do not block the UI.
+    func scheduleCurrentNotePersistenceIfNeeded() {
+        guard !isLoadingSelectedNote else { return }
+
+        pendingPersistenceTask?.cancel()
+        let snapshotText = text
+        let snapshotTitle = customTitle
+        let snapshotTokenRanges = tokenRanges
+        let snapshotActiveNoteID = activeNoteID
+
+        pendingPersistenceTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard
+                    text == snapshotText,
+                    customTitle == snapshotTitle,
+                    tokenRanges == snapshotTokenRanges,
+                    activeNoteID == snapshotActiveNoteID
+                else {
+                    return
+                }
+
+                persistCurrentNoteIfNeeded()
+                pendingPersistenceTask = nil
+            }
+        }
+    }
+
+    // Flushes any pending persistence work immediately when the screen changes mode or disappears.
+    func flushPendingNotePersistenceIfNeeded() {
+        pendingPersistenceTask?.cancel()
+        pendingPersistenceTask = nil
+        persistCurrentNoteIfNeeded()
+    }
+
     // Loads the selected note into editor state when navigation targets change.
     func loadSelectedNoteIfNeeded() {
         guard let selectedNote else { return }
+        pendingPersistenceTask?.cancel()
+        pendingPersistenceTask = nil
+        let noteToLoad = notesStore.note(withID: selectedNote.id) ?? selectedNote
         isLoadingSelectedNote = true
-        activeNoteID = selectedNote.id
-        onActiveNoteChanged?(selectedNote.id)
-        customTitle = selectedNote.title
-        fallbackTitle = selectedNote.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? firstLineTitle(from: selectedNote.content)
-            : selectedNote.title
-        text = selectedNote.content
+        activeNoteID = noteToLoad.id
+        onActiveNoteChanged?(noteToLoad.id)
+        customTitle = noteToLoad.title
+        fallbackTitle = noteToLoad.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? firstLineTitle(from: noteToLoad.content)
+            : noteToLoad.title
+        text = noteToLoad.content
         tokenRanges = normalizedTokenRanges(
-            selectedNote.tokenRanges,
-            for: selectedNote.content
+            noteToLoad.tokenRanges,
+            for: noteToLoad.content
         )
         refreshSegmentationRanges()
         self.selectedNote = nil
@@ -33,53 +73,20 @@ extension ReadView {
             return
         }
 
-        var notes = loadNotesFromStorage()
         // Prefer explicit titles; otherwise derive one from first content line.
         let titleToSave = customTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? firstLineTitle(from: text)
             : customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         fallbackTitle = titleToSave
 
-        if let activeNoteID, let index = notes.firstIndex(where: { $0.id == activeNoteID }) {
-            // Update the existing note in place when editing an active item.
-            notes[index].title = titleToSave
-            notes[index].content = text
-            notes[index].tokenRanges = tokenRanges
-        } else {
-            // Insert a new note only when no active note identity exists.
-            let newNote = Note(
-                title: titleToSave,
-                content: text,
-                tokenRanges: tokenRanges
-            )
-            notes.insert(newNote, at: 0)
-            activeNoteID = newNote.id
-            onActiveNoteChanged?(newNote.id)
-        }
-
-        if let activeNoteID {
-            onActiveNoteChanged?(activeNoteID)
-        }
-
-        saveNotesToStorage(notes)
-    }
-
-    // Reads note payloads from user defaults storage.
-    func loadNotesFromStorage() -> [Note] {
-        guard
-            let data = UserDefaults.standard.data(forKey: storageKey),
-            let decoded = try? JSONDecoder().decode([Note].self, from: data)
-        else {
-            return []
-        }
-
-        return decoded
-    }
-
-    // Writes note payloads to user defaults storage.
-    func saveNotesToStorage(_ notes: [Note]) {
-        guard let encoded = try? JSONEncoder().encode(notes) else { return }
-        UserDefaults.standard.set(encoded, forKey: storageKey)
+        let savedNoteID = notesStore.scheduleReadEditorPersist(
+            id: activeNoteID,
+            title: titleToSave,
+            content: text,
+            tokenRanges: tokenRanges
+        )
+        activeNoteID = savedNoteID
+        onActiveNoteChanged?(savedNoteID)
     }
 
     var resolvedTitle: String {
