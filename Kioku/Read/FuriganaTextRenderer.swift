@@ -15,6 +15,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let isVisualEnhancementsEnabled: Bool
     let isColorAlternationEnabled: Bool
     let isHighlightUnknownEnabled: Bool
+    let unknownSegmentLocations: Set<Int>
     let segmenter: Segmenter
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void
@@ -86,22 +87,33 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             return
         }
 
-        let textRenderSignature = makeTextRenderSignature(for: textView)
+        let baseTextRenderSignature = makeBaseTextRenderSignature(for: textView)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         overlayView.subviews.forEach { $0.removeFromSuperview() }
 
-        let renderPayload = makeAttributedBaseText()
-        if context.coordinator.shouldRenderText(for: textRenderSignature) {
+        let textStylePayload = ReadTextStyleResolver(
+            text: text,
+            segmentationRanges: segmentationRanges,
+            textSize: textSize,
+            lineSpacing: lineSpacing,
+            kerning: kerning,
+            isLineWrappingEnabled: isLineWrappingEnabled,
+            isVisualEnhancementsEnabled: isVisualEnhancementsEnabled,
+            isColorAlternationEnabled: isColorAlternationEnabled,
+            isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+            unknownSegmentLocations: unknownSegmentLocations
+        ).makePayload()
+        if context.coordinator.shouldRenderText(for: baseTextRenderSignature) {
             let preservedOffsetY = textView.contentOffset.y
-            textView.attributedText = renderPayload.attributedText
+            textView.attributedText = textStylePayload.attributedText
             ensureTextLayout(for: textView)
             let minOffsetY = -textView.adjustedContentInset.top
             let maxOffsetY = max(minOffsetY, textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom)
             let clampedOffsetY = min(max(preservedOffsetY, minOffsetY), maxOffsetY)
             textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedOffsetY), animated: false)
-            context.coordinator.markTextRendered(signature: textRenderSignature)
+            context.coordinator.markTextRendered(signature: baseTextRenderSignature)
         }
 
         overlayView.frame = CGRect(
@@ -166,7 +178,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             let furiganaLabel = UILabel()
             furiganaLabel.backgroundColor = .clear
             furiganaLabel.font = furiganaFont
-            furiganaLabel.textColor = renderPayload.tokenColorByLocation[location] ?? .secondaryLabel
+            furiganaLabel.textColor = textStylePayload.tokenForegroundByLocation[location] ?? .secondaryLabel
             furiganaLabel.textAlignment = .center
             furiganaLabel.lineBreakMode = .byClipping
             furiganaLabel.text = furigana
@@ -182,75 +194,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         CATransaction.commit()
 
         context.coordinator.markRendered(signature: renderSignature)
-    }
-
-    // Creates the base attributed text so view-mode wrapping and spacing match the edit-mode text view.
-    private func makeAttributedBaseText() -> (attributedText: NSAttributedString, tokenColorByLocation: [Int: UIColor]) {
-        let baseFont = UIFont.systemFont(ofSize: textSize)
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineSpacing = lineSpacing + (baseFont.lineHeight * 0.5)
-        paragraphStyle.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping
-
-        let baseAttributes: [NSAttributedString.Key: Any] = [
-            .font: baseFont,
-            .kern: kerning,
-            .paragraphStyle: paragraphStyle,
-            .foregroundColor: UIColor.label,
-        ]
-
-        let attributedText = NSMutableAttributedString(string: text, attributes: baseAttributes)
-        let evenSegmentForeground = UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? .systemOrange : .systemRed
-        }
-        let oddSegmentForeground = UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo
-        }
-        let unknownSegmentForeground = UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? .systemYellow : .systemOrange
-        }
-
-        guard isVisualEnhancementsEnabled else {
-            return (attributedText: attributedText, tokenColorByLocation: [:])
-        }
-
-        var colorAlternationIndex = 0
-        var tokenColorByLocation: [Int: UIColor] = [:]
-        for segmentRange in segmentationRanges {
-            let nsRange = NSRange(segmentRange, in: text)
-            if nsRange.location == NSNotFound || nsRange.length == 0 {
-                continue
-            }
-
-            let segmentText = String(text[segmentRange])
-            if shouldIgnoreSegmentForAlternation(segmentText) {
-                continue
-            }
-
-            // Highlights unknown tokens only when alternation is active; otherwise keep default foreground styling.
-            if isHighlightUnknownEnabled && isColorAlternationEnabled && !isTokenInDictionary(segmentText) {
-                attributedText.addAttribute(.foregroundColor, value: unknownSegmentForeground, range: nsRange)
-                for offset in 0..<nsRange.length {
-                    tokenColorByLocation[nsRange.location + offset] = unknownSegmentForeground
-                }
-            } else if isColorAlternationEnabled {
-                // Alternates foreground colors by segment index so token boundaries remain visually distinct.
-                if colorAlternationIndex.isMultiple(of: 2) {
-                    attributedText.addAttribute(.foregroundColor, value: evenSegmentForeground, range: nsRange)
-                    for offset in 0..<nsRange.length {
-                        tokenColorByLocation[nsRange.location + offset] = evenSegmentForeground
-                    }
-                } else {
-                    attributedText.addAttribute(.foregroundColor, value: oddSegmentForeground, range: nsRange)
-                    for offset in 0..<nsRange.length {
-                        tokenColorByLocation[nsRange.location + offset] = oddSegmentForeground
-                    }
-                }
-            }
-
-            colorAlternationIndex += 1
-        }
-
-        return (attributedText: attributedText, tokenColorByLocation: tokenColorByLocation)
     }
 
     // Resolves the visual token rectangle used to anchor furigana over the same glyph layout.
@@ -370,6 +313,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(isActive)
         hasher.combine(isColorAlternationEnabled)
         hasher.combine(isHighlightUnknownEnabled)
+        for location in unknownSegmentLocations.sorted() {
+            hasher.combine(location)
+        }
         hasher.combine(textView.bounds.width)
         hasher.combine(textView.bounds.height)
         hasher.combine(textView.contentSize.width)
@@ -377,8 +323,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         return hasher.finalize()
     }
 
-    // Builds a stable signature for base text styling changes that require replacing attributed text.
-    private func makeTextRenderSignature(for textView: UITextView) -> Int {
+    // Builds a stable signature for read-mode base text styling changes.
+    private func makeBaseTextRenderSignature(for textView: UITextView) -> Int {
         var hasher = Hasher()
         hasher.combine(text)
         for segmentRange in segmentationRanges {
@@ -390,6 +336,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(isVisualEnhancementsEnabled)
         hasher.combine(isColorAlternationEnabled)
         hasher.combine(isHighlightUnknownEnabled)
+        for location in unknownSegmentLocations.sorted() {
+            hasher.combine(location)
+        }
         hasher.combine(textSize)
         hasher.combine(lineSpacing)
         hasher.combine(kerning)
@@ -434,14 +383,4 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         return ceil((value as NSString).size(withAttributes: attributes).width)
     }
 
-    // Identifies ranges that should not affect token color parity (spacing and punctuation only).
-    private func shouldIgnoreSegmentForAlternation(_ segmentText: String) -> Bool {
-        let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
-        return segmentText.unicodeScalars.allSatisfy { ignoredScalars.contains($0) }
-    }
-
-    // Checks whether a token resolves through the segmenter's trie plus deinflection path.
-    private func isTokenInDictionary(_ surface: String) -> Bool {
-        segmenter.resolvesSurface(surface)
-    }
 }

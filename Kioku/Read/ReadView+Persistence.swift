@@ -58,6 +58,10 @@ extension ReadView {
             noteToLoad.tokenRanges,
             for: noteToLoad.content
         )
+        if shouldActivateEditModeOnLoad {
+            isEditMode = true
+            shouldActivateEditModeOnLoad = false
+        }
         refreshSegmentationRanges()
         self.selectedNote = nil
         isLoadingSelectedNote = false

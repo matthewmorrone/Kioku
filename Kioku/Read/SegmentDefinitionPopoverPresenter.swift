@@ -7,6 +7,19 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
     private weak var presentedController: UIViewController?
     private weak var presentedSheetController: UIViewController?
     private var onDismiss: (() -> Void)?
+    private var onSheetSelectPrevious: (() -> Void)?
+    private var onSheetSelectNext: (() -> Void)?
+    private var updatePresentedSheetSelection: ((
+        String,
+        String?,
+        String?,
+        (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
+        (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
+        (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
+        (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
+        ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
+        (() -> Void)?
+    ) -> Void)?
 
     // Prevents external construction so a single presenter coordinates popover lifecycle.
     private override init() {
@@ -33,7 +46,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             return
         }
 
-        var currentSurface = surface
+        let currentSurface = surface
 
         let viewController = UIViewController()
         viewController.view.backgroundColor = .systemBackground
@@ -67,6 +80,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                     surface: currentSurface,
                     leftNeighborSurface: leftNeighborSurface,
                     rightNeighborSurface: rightNeighborSurface,
+                    onSelectPrevious: nil,
+                    onSelectNext: nil,
                     onMergeLeft: onMergeLeft,
                     onMergeRight: onMergeRight,
                     onSplitApply: onSplitApply,
@@ -119,16 +134,36 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         surface: String,
         leftNeighborSurface: String?,
         rightNeighborSurface: String?,
+        onSelectPrevious: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
+        onSelectNext: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
         onMergeLeft: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
         onMergeRight: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
         onSplitApply: ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
+        if let updatePresentedSheetSelection {
+            self.onDismiss = onDismiss
+            updatePresentedSheetSelection(
+                surface,
+                leftNeighborSurface,
+                rightNeighborSurface,
+                onSelectPrevious,
+                onSelectNext,
+                onMergeLeft,
+                onMergeRight,
+                onSplitApply,
+                onDismiss
+            )
+            return
+        }
+
         self.onDismiss = onDismiss
         presentSurfaceSheet(
             surface: surface,
             leftNeighborSurface: leftNeighborSurface,
             rightNeighborSurface: rightNeighborSurface,
+            onSelectPrevious: onSelectPrevious,
+            onSelectNext: onSelectNext,
             onMergeLeft: onMergeLeft,
             onMergeRight: onMergeRight,
             onSplitApply: onSplitApply,
@@ -165,6 +200,9 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
     // Dismisses the currently presented action sheet if one is active.
     private func dismissSheet(completion: (() -> Void)? = nil) {
         guard let presentedSheetController else {
+            onSheetSelectPrevious = nil
+            onSheetSelectNext = nil
+            updatePresentedSheetSelection = nil
             completion?()
             return
         }
@@ -173,6 +211,9 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             completion?()
         }
         self.presentedSheetController = nil
+        onSheetSelectPrevious = nil
+        onSheetSelectNext = nil
+        updatePresentedSheetSelection = nil
     }
 
     // Clears tracked presentation references when users dismiss controllers interactively.
@@ -184,6 +225,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
 
         if presentedSheetController === presentationController.presentedViewController {
             presentedSheetController = nil
+            updatePresentedSheetSelection = nil
             fireOnDismissIfNeeded()
         }
     }
@@ -236,6 +278,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         surface: String,
         leftNeighborSurface: String?,
         rightNeighborSurface: String?,
+        onSelectPrevious: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
+        onSelectNext: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
         onMergeLeft: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
         onMergeRight: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
         onSplitApply: ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
@@ -247,6 +291,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             }
 
             self.onDismiss = onDismiss
+            self.onSheetSelectPrevious = nil
+            self.onSheetSelectNext = nil
 
             var currentSurface = surface
 
@@ -255,7 +301,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             // Keeps content clear of the grabber area so the title is never clipped.
             sheetController.additionalSafeAreaInsets.top = 20
 
-            let surfaceLabel = UILabel()
+            let surfaceLabel = CopyableLabel()
             surfaceLabel.translatesAutoresizingMaskIntoConstraints = false
             surfaceLabel.textColor = .label
             surfaceLabel.font = .systemFont(ofSize: 20, weight: .semibold)
@@ -438,6 +484,11 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
 
             var currentLeftNeighborSurface = leftNeighborSurface
             var currentRightNeighborSurface = rightNeighborSurface
+            var currentOnSelectPrevious = onSelectPrevious
+            var currentOnSelectNext = onSelectNext
+            var currentOnMergeLeft = onMergeLeft
+            var currentOnMergeRight = onMergeRight
+            var currentOnSplitApply = onSplitApply
             var leftSplitValue = ""
             var rightSplitValue = ""
             var splitEntryLeftValue = ""
@@ -489,6 +540,16 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 mergeRightButton.alpha = currentRightNeighborSurface == nil ? 0.45 : 1
             }
 
+            func updateCurrentSurface(_ outcome: (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)) {
+                currentSurface = outcome.surface
+                currentLeftNeighborSurface = outcome.leftNeighborSurface
+                currentRightNeighborSurface = outcome.rightNeighborSurface
+                surfaceLabel.text = currentSurface
+                splitButton.isEnabled = currentSurface.count > 1
+                splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
+                updateMergeButtonAvailability()
+            }
+
             func resetSplitInputs(using outcomeSurface: String) {
                 let characters = Array(outcomeSurface)
                 if characters.count <= 1 {
@@ -511,20 +572,75 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 rightInputTapButton.alpha = rightInputTapButton.isEnabled ? 1 : 0.45
             }
 
+            self.onSheetSelectNext = {
+                guard isSplitEditorVisible == false, let outcome = currentOnSelectNext?() else {
+                    return
+                }
+
+                updateCurrentSurface(outcome)
+                updateSheetPreferredHeight(animated: true)
+            }
+
+            self.onSheetSelectPrevious = {
+                guard isSplitEditorVisible == false, let outcome = currentOnSelectPrevious?() else {
+                    return
+                }
+
+                updateCurrentSurface(outcome)
+                updateSheetPreferredHeight(animated: true)
+            }
+
+            self.updatePresentedSheetSelection = {
+                updatedSurface,
+                updatedLeftNeighborSurface,
+                updatedRightNeighborSurface,
+                updatedOnSelectPrevious,
+                updatedOnSelectNext,
+                updatedOnMergeLeft,
+                updatedOnMergeRight,
+                updatedOnSplitApply,
+                updatedOnDismiss in
+                currentOnSelectPrevious = updatedOnSelectPrevious
+                currentOnSelectNext = updatedOnSelectNext
+                currentOnMergeLeft = updatedOnMergeLeft
+                currentOnMergeRight = updatedOnMergeRight
+                currentOnSplitApply = updatedOnSplitApply
+                self.onDismiss = updatedOnDismiss
+
+                if isSplitEditorVisible {
+                    setSplitEditorVisible(false)
+                }
+
+                updateCurrentSurface((
+                    surface: updatedSurface,
+                    leftNeighborSurface: updatedLeftNeighborSurface,
+                    rightNeighborSurface: updatedRightNeighborSurface
+                ))
+                updateSheetPreferredHeight(animated: true)
+            }
+
+            let swipeLeftGesture = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
+            swipeLeftGesture.direction = .left
+            sheetController.view.addGestureRecognizer(swipeLeftGesture)
+
+            let swipeRightGesture = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
+            swipeRightGesture.direction = .right
+            sheetController.view.addGestureRecognizer(swipeRightGesture)
+
             mergeLeftButton.addAction(
                 UIAction { _ in
-                    if let mergeResult = onMergeLeft?() {
-                        currentSurface = mergeResult.surface
-                        currentLeftNeighborSurface = mergeResult.leftNeighborSurface
-                        currentRightNeighborSurface = mergeResult.rightNeighborSurface
+                    if let mergeResult = currentOnMergeLeft?() {
+                        updateCurrentSurface(mergeResult)
                     } else if let leftNeighbor = currentLeftNeighborSurface {
                         currentSurface = leftNeighbor + currentSurface
                         currentLeftNeighborSurface = nil
+                        surfaceLabel.text = currentSurface
                     } else {
                         return
                     }
 
-                    surfaceLabel.text = currentSurface
+                    splitButton.isEnabled = currentSurface.count > 1
+                    splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
                     updateMergeButtonAvailability()
                     if isSplitEditorVisible {
                         resetSplitInputs(using: currentSurface)
@@ -536,18 +652,18 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
 
             mergeRightButton.addAction(
                 UIAction { _ in
-                    if let mergeResult = onMergeRight?() {
-                        currentSurface = mergeResult.surface
-                        currentLeftNeighborSurface = mergeResult.leftNeighborSurface
-                        currentRightNeighborSurface = mergeResult.rightNeighborSurface
+                    if let mergeResult = currentOnMergeRight?() {
+                        updateCurrentSurface(mergeResult)
                     } else if let rightNeighbor = currentRightNeighborSurface {
                         currentSurface = currentSurface + rightNeighbor
                         currentRightNeighborSurface = nil
+                        surfaceLabel.text = currentSurface
                     } else {
                         return
                     }
 
-                    surfaceLabel.text = currentSurface
+                    splitButton.isEnabled = currentSurface.count > 1
+                    splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
                     updateMergeButtonAvailability()
                     if isSplitEditorVisible {
                         resetSplitInputs(using: currentSurface)
@@ -566,12 +682,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
 
                     if characters.count == 2 {
                         let offset = String(characters[0]).utf16.count
-                        if let splitResult = onSplitApply?(offset) {
-                            currentSurface = splitResult.surface
-                            currentLeftNeighborSurface = splitResult.leftNeighborSurface
-                            currentRightNeighborSurface = splitResult.rightNeighborSurface
-                            surfaceLabel.text = currentSurface
-                            updateMergeButtonAvailability()
+                        if let splitResult = currentOnSplitApply?(offset) {
+                            updateCurrentSurface(splitResult)
                         }
                         return
                     }
@@ -648,15 +760,15 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             applySplitButton.addAction(
                 UIAction { _ in
                     let splitOffset = splitOffsetUTF16()
-                    if let splitResult = onSplitApply?(splitOffset) {
-                        currentSurface = splitResult.surface
-                        currentLeftNeighborSurface = splitResult.leftNeighborSurface
-                        currentRightNeighborSurface = splitResult.rightNeighborSurface
+                    if let splitResult = currentOnSplitApply?(splitOffset) {
+                        updateCurrentSurface(splitResult)
                     } else {
                         currentSurface = leftSplitValue + rightSplitValue
+                        surfaceLabel.text = currentSurface
                     }
 
-                    surfaceLabel.text = currentSurface
+                    splitButton.isEnabled = currentSurface.count > 1
+                    splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
                     updateMergeButtonAvailability()
                     setSplitEditorVisible(false)
                     updateSheetPreferredHeight(animated: true)
@@ -724,6 +836,18 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         onDismiss()
     }
 
+    // Routes horizontal sheet swipe gestures to the current selection-navigation callbacks.
+    @objc private func handleSheetSwipe(_ gestureRecognizer: UISwipeGestureRecognizer) {
+        switch gestureRecognizer.direction {
+        case .left:
+            onSheetSelectNext?()
+        case .right:
+            onSheetSelectPrevious?()
+        default:
+            break
+        }
+    }
+
     // Generates initial left and right token groups for split mode from the tapped surface text.
     private func initialSplitTokens(for surface: String) -> (left: [String], right: [String]) {
         let allTokens = tokenizeSurface(surface)
@@ -776,7 +900,9 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             tokenButton.setTitle(token, for: .normal)
             tokenButton.setTitleColor(.label, for: .normal)
             tokenButton.titleLabel?.font = .systemFont(ofSize: 13)
-            tokenButton.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+            var configuration = UIButton.Configuration.plain()
+            configuration.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
+            tokenButton.configuration = configuration
             tokenButton.backgroundColor = UIColor.secondarySystemFill
             tokenButton.layer.cornerRadius = 8
             tokenButton.addAction(
@@ -796,7 +922,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         label.numberOfLines = 0
         label.text = surface
 
-        let availableWidth = max(200, UIScreen.main.bounds.width - 32)
+        let availableWidth = max(200, activeScreenBounds().width - 32)
         let measured = label.sizeThatFits(
             CGSize(width: availableWidth, height: CGFloat.greatestFiniteMagnitude)
         )
@@ -806,6 +932,15 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         let splitEditorExtra: CGFloat = isSplitEditorVisible ? 128 : 0
         let minimumCollapsedHeight: CGFloat = 260
         return min(max(minimumCollapsedHeight, ceil(measured.height) + baseChrome + splitEditorExtra), 440)
+    }
+
+    // Resolves the active screen bounds without relying on deprecated global UIScreen access.
+    private func activeScreenBounds() -> CGRect {
+        guard let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else {
+            return CGRect(x: 0, y: 0, width: 390, height: 844)
+        }
+
+        return windowScene.screen.bounds
     }
 
     // Resolves the top-most view controller so popovers present from the active screen context.

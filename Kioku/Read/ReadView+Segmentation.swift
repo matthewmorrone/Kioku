@@ -16,8 +16,10 @@ extension ReadView {
         if readResourcesReady && isEditMode == false {
             refreshSegmentationRanges()
         } else {
+            segmentationLatticeEdges = []
             segmentationEdges = []
             segmentationRanges = []
+            unknownSegmentLocations = []
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
         }
@@ -219,8 +221,10 @@ extension ReadView {
             illegalMergeBoundaryLocation = nil
             illegalMergeFlashTask?.cancel()
             furiganaComputationTask?.cancel()
+            segmentationLatticeEdges = []
             segmentationEdges = []
             segmentationRanges = []
+            unknownSegmentLocations = []
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
             selectedMergedEdgeBounds = nil
@@ -230,11 +234,19 @@ extension ReadView {
             return
         }
 
-        let baseEdges = segmenter.longestMatchEdges(for: text)
+        let segmentationResult = segmenter.longestMatchResult(for: text)
+        segmentationLatticeEdges = segmentationResult.latticeEdges
+        let baseEdges = segmentationResult.selectedEdges
         let refreshedEdges: [LatticeEdge]
         if let tokenRanges,
            let overriddenEdges = edgesFromTokenRanges(tokenRanges, in: text) {
-            refreshedEdges = overriddenEdges
+            if shouldDiscardPersistedTokenOverride(overriddenEdges: overriddenEdges, computedEdges: baseEdges) {
+                self.tokenRanges = nil
+                persistCurrentNoteIfNeeded()
+                refreshedEdges = baseEdges
+            } else {
+                refreshedEdges = overriddenEdges
+            }
         } else {
             if tokenRanges != nil {
                 tokenRanges = nil
@@ -247,12 +259,7 @@ extension ReadView {
         segmentationRanges = refreshedEdges.map { edge in
             edge.start..<edge.end
         }
-
-        let refreshedTokenRanges = buildTokenRanges(from: refreshedEdges)
-        if tokenRanges != refreshedTokenRanges {
-            tokenRanges = refreshedTokenRanges
-            persistCurrentNoteIfNeeded()
-        }
+        unknownSegmentLocations = unknownTokenLocations(for: refreshedEdges)
 
         // Clears stale selection if the tapped segment no longer exists after recomputing ranges.
         if let selectedSegmentLocation {
@@ -269,6 +276,19 @@ extension ReadView {
         }
 
         scheduleFuriganaGeneration(for: text, edges: refreshedEdges)
+    }
+
+    // Drops persisted token overrides when they are redundant or strictly worse than the current computed segmentation.
+    func shouldDiscardPersistedTokenOverride(overriddenEdges: [LatticeEdge], computedEdges: [LatticeEdge]) -> Bool {
+        let computedTokenRanges = buildTokenRanges(from: computedEdges)
+        let overriddenTokenRanges = buildTokenRanges(from: overriddenEdges)
+        if overriddenTokenRanges == computedTokenRanges {
+            return true
+        }
+
+        let overriddenUnknownCount = unknownTokenLocations(for: overriddenEdges).count
+        let computedUnknownCount = unknownTokenLocations(for: computedEdges).count
+        return computedUnknownCount < overriddenUnknownCount
     }
 
     // Updates selection state and shows a UIKit popover with the highest-priority dictionary definition for the tapped segment.
@@ -292,6 +312,7 @@ extension ReadView {
         selectedSegmentLocation = tappedSegmentLocation
         selectedHighlightRangeOverride = nil
         selectedMergedEdgeBounds = initialMergedEdgeBounds(for: tappedSegmentLocation)
+        debugPrintLatticeSectionForCurrentSelection(at: tappedSegmentLocation)
 
         let adjacentSurfaces = adjacentSegmentSurfaces(for: tappedSegmentLocation)
 
@@ -306,6 +327,12 @@ extension ReadView {
                 surface: segmentSurface,
                 leftNeighborSurface: adjacentSurfaces.left,
                 rightNeighborSurface: adjacentSurfaces.right,
+                onSelectPrevious: {
+                    moveSelectedSegmentSelection(isMovingForward: false)
+                },
+                onSelectNext: {
+                    moveSelectedSegmentSelection(isMovingForward: true)
+                },
                 onMergeLeft: {
                     mergeAdjacentSegment(isMergingLeft: true)
                 },
@@ -353,81 +380,6 @@ extension ReadView {
             sourceView: sourceView,
             sourceRect: tappedSegmentRect
         )
-    }
-
-    // Clears selected token state when token action UI is dismissed by user interaction.
-    func clearSelectedSegmentStateAfterPopoverDismissal() {
-        selectedSegmentLocation = nil
-        selectedHighlightRangeOverride = nil
-        selectedMergedEdgeBounds = nil
-    }
-
-    // Resolves segment surface text for a selected location without dictionary lookup overhead.
-    func surfaceForSegment(at selectedLocation: Int) -> String? {
-        guard
-            let tappedSegmentRange = segmentationRanges.first(where: { segmentRange in
-                let nsRange = NSRange(segmentRange, in: text)
-                return nsRange.location == selectedLocation && nsRange.length > 0
-            })
-        else {
-            return nil
-        }
-
-        let tappedSurface = String(text[tappedSegmentRange])
-        if shouldIgnoreSegmentForDefinitionLookup(tappedSurface) {
-            return nil
-        }
-
-        return tappedSurface
-    }
-
-    // Scrolls the selected segment line to a stable position midway between the read area top and sheet top.
-    func preScrollSegmentForSheetVisibility(sourceView: UITextView?, tappedSegmentRect: CGRect?) {
-        guard let sourceView, let tappedSegmentRect else {
-            return
-        }
-
-        // Treats tap geometry as content-space coordinates so scroll math uses the token's visible position.
-        let normalizedSegmentRect = tappedSegmentRect.offsetBy(dx: 0, dy: -sourceView.contentOffset.y)
-
-        let estimatedSheetHeight: CGFloat = 360
-        let estimatedRelativeCoverage = sourceView.bounds.height * 0.64
-        let expectedCoveredHeight = max(estimatedSheetHeight, estimatedRelativeCoverage)
-        let coveredTopY = sourceView.bounds.height - expectedCoveredHeight
-
-        let targetLineMidY = max(24, coveredTopY * 0.5)
-        let requestedOffsetY = sourceView.contentOffset.y + (normalizedSegmentRect.midY - targetLineMidY)
-        let minOffsetY = -sourceView.adjustedContentInset.top
-        let maxContentOffsetY = max(
-            minOffsetY,
-            sourceView.contentSize.height - sourceView.bounds.height + sourceView.adjustedContentInset.bottom
-        )
-        let overscrollAllowance: CGFloat = expectedCoveredHeight * 0.5
-        let clampedOffsetY = min(max(requestedOffsetY, minOffsetY), maxContentOffsetY + overscrollAllowance)
-
-        sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: clampedOffsetY), animated: true)
-        sharedScrollOffsetY = clampedOffsetY
-    }
-
-    // Removes temporary sheet-induced overscroll once the token action sheet is dismissed.
-    func restoreScrollAfterSheetDismissal(sourceView: UITextView?) {
-        guard let sourceView else {
-            return
-        }
-
-        let minOffsetY = -sourceView.adjustedContentInset.top
-        let maxContentOffsetY = max(
-            minOffsetY,
-            sourceView.contentSize.height - sourceView.bounds.height + sourceView.adjustedContentInset.bottom
-        )
-        let clampedOffsetY = min(max(sharedScrollOffsetY, minOffsetY), maxContentOffsetY)
-        guard abs(clampedOffsetY - sourceView.contentOffset.y) > 0.5 else {
-            sharedScrollOffsetY = clampedOffsetY
-            return
-        }
-
-        sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: clampedOffsetY), animated: true)
-        sharedScrollOffsetY = clampedOffsetY
     }
 
     // Resolves the tapped segment surface and the best-ordered gloss from dictionary results.
@@ -813,6 +765,7 @@ extension ReadView {
         segmentationRanges = edges.map { edge in
             edge.start..<edge.end
         }
+        unknownSegmentLocations = unknownTokenLocations(for: edges)
 
         if persistOverride {
             let tokenRanges = buildTokenRanges(from: edges)
@@ -821,6 +774,24 @@ extension ReadView {
         }
 
         scheduleFuriganaGeneration(for: text, edges: edges)
+    }
+
+    // Marks the UTF-16 start locations of segments that do not resolve through the dictionary pipeline.
+    func unknownTokenLocations(for edges: [LatticeEdge]) -> Set<Int> {
+        var unknownLocations: Set<Int> = []
+
+        for edge in edges {
+            let nsRange = NSRange(edge.start..<edge.end, in: text)
+            guard nsRange.location != NSNotFound, nsRange.length > 0 else {
+                continue
+            }
+
+            if segmenter.resolvesSurface(edge.surface) == false && segmenter.resolvesSurface(edge.lemma) == false {
+                unknownLocations.insert(nsRange.location)
+            }
+        }
+
+        return unknownLocations
     }
 
     // Converts segmentation edges to explicit UTF-16 token ranges for note persistence.

@@ -4,6 +4,7 @@ import UIKit
 // Provides the primary reading and editing surface for an active note.
 struct ReadView: View {
     @Binding var selectedNote: Note?
+    @Binding var shouldActivateEditModeOnLoad: Bool
     @EnvironmentObject var notesStore: NotesStore
     let segmenter: Segmenter
     let dictionaryStore: DictionaryStore?
@@ -35,8 +36,10 @@ struct ReadView: View {
     @State private var titleDraft = ""
     @State private var isShowingTitleAlert = false
     @State var text = ""
+    @State var segmentationLatticeEdges: [LatticeEdge] = []
     @State var segmentationEdges: [LatticeEdge] = []
     @State var segmentationRanges: [Range<String.Index>] = []
+    @State var unknownSegmentLocations: Set<Int> = []
     @State var selectedSegmentLocation: Int?
     @State var selectedHighlightRangeOverride: NSRange?
     @State var selectedMergedEdgeBounds: ClosedRange<Int>?
@@ -57,6 +60,7 @@ struct ReadView: View {
     // Initializes the read screen with the active note selection and shared read resources.
     init(
         selectedNote: Binding<Note?>,
+        shouldActivateEditModeOnLoad: Binding<Bool> = .constant(false),
         segmenter: Segmenter,
         dictionaryStore: DictionaryStore?,
         readingBySurface: [String: String],
@@ -66,6 +70,7 @@ struct ReadView: View {
         onActiveNoteChanged: ((UUID) -> Void)? = nil
     ) {
         _selectedNote = selectedNote
+        _shouldActivateEditModeOnLoad = shouldActivateEditModeOnLoad
         self.segmenter = segmenter
         self.dictionaryStore = dictionaryStore
         self.readingBySurface = readingBySurface
@@ -124,6 +129,7 @@ struct ReadView: View {
                 illegalMergeFlashTask?.cancel()
                 // Clears stale range state while editing so view-mode reactivation never reads mismatched ranges.
                 furiganaComputationTask?.cancel()
+                segmentationLatticeEdges = []
                 segmentationEdges = []
                 segmentationRanges = []
                 selectedSegmentLocation = nil
@@ -145,6 +151,7 @@ struct ReadView: View {
                 illegalMergeBoundaryLocation = nil
                 illegalMergeFlashTask?.cancel()
                 furiganaComputationTask?.cancel()
+                segmentationLatticeEdges = []
                 segmentationEdges = []
                 segmentationRanges = []
                 selectedSegmentLocation = nil
@@ -205,6 +212,7 @@ struct ReadView: View {
                 isVisualEnhancementsEnabled: readResourcesReady,
                 isColorAlternationEnabled: isColorAlternationEnabled,
                 isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                unknownSegmentLocations: unknownSegmentLocations,
                 segmenter: segmenter,
                 externalContentOffsetY: sharedScrollOffsetY,
                 onScrollOffsetYChanged: { newOffsetY in
@@ -395,7 +403,7 @@ struct ReadView: View {
             }
         }
         .padding(12)
-        .frame(width: 250)
+        .frame(width: 270)
         .background(Color(.systemBackground))
     }
 
@@ -414,8 +422,11 @@ struct ReadView: View {
                     .frame(width: 20)
 
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(isEnabled ? Color.accentColor : Color.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .allowsTightening(true)
 
                 Spacer(minLength: 0)
 
@@ -457,6 +468,6 @@ struct ReadView: View {
 }
 
 #Preview {
-    ReadView(selectedNote: .constant(nil), segmenter: Segmenter(trie: DictionaryTrie()), dictionaryStore: nil, readingBySurface: [:], readingCandidatesBySurface: [:], segmenterRevision: 0, readResourcesReady: false)
+    ReadView(selectedNote: .constant(nil), shouldActivateEditModeOnLoad: .constant(false), segmenter: Segmenter(trie: DictionaryTrie()), dictionaryStore: nil, readingBySurface: [:], readingCandidatesBySurface: [:], segmenterRevision: 0, readResourcesReady: false)
         .environmentObject(NotesStore())
 }

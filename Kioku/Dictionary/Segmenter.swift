@@ -7,6 +7,16 @@ final class Segmenter {
     private let deinflector: Deinflector?
     private let config: SegmenterConfig
     private let scoring: SegmenterScoring
+    private let grammaticalizedCompoundVerbSuffixes = [
+        "つづける", "続ける",
+        "はじめる", "始める",
+        "おわる", "終わる",
+        "だす", "出す",
+        "すぎる", "過ぎる",
+        "なおす", "直す",
+        "きる", "切る",
+        "かける", "掛ける",
+    ]
     private let boundaryCharacters: Set<Character> = [
         " ", "\t", "\n", "\r", "　",
         ".", ",", "!", "?", ";", ":",
@@ -179,12 +189,12 @@ final class Segmenter {
         }
     }
 
-    // Builds a greedy segmentation edge list so downstream features can use chosen surface/lemma references.
-    func longestMatchEdges(for text: String) -> [LatticeEdge] {
-        let edges = buildLattice(for: text)
+    // Produces both the full candidate lattice and the currently selected greedy path for one text snapshot.
+    func longestMatchResult(for text: String) -> (latticeEdges: [LatticeEdge], selectedEdges: [LatticeEdge]) {
+        let latticeEdges = buildLattice(for: text)
         var edgesByStart: [String.Index: [LatticeEdge]] = [:]
 
-        for edge in edges {
+        for edge in latticeEdges {
             edgesByStart[edge.start, default: []].append(edge)
         }
 
@@ -193,9 +203,9 @@ final class Segmenter {
 
         while index < text.endIndex {
             if let candidates = edgesByStart[index],
-            let longestEdge = candidates.max(by: { lhs, rhs in
-                lhs.end < rhs.end
-            }) {
+               let longestEdge = candidates.max(by: { lhs, rhs in
+                   compareEdgePriority(lhs, rhs, in: text)
+               }) {
                 selectedEdges.append(longestEdge)
                 index = longestEdge.end
             } else {
@@ -213,7 +223,33 @@ final class Segmenter {
             }
         }
 
-        return selectedEdges
+        return (latticeEdges: latticeEdges, selectedEdges: selectedEdges)
+    }
+
+    // Builds a greedy segmentation edge list so downstream features can use chosen surface/lemma references.
+    func longestMatchEdges(for text: String) -> [LatticeEdge] {
+        longestMatchResult(for: text).selectedEdges
+    }
+
+    // Breaks longest-match ties by preferring higher-quality lemma resolution for the same span.
+    private func compareEdgePriority(_ lhs: LatticeEdge, _ rhs: LatticeEdge, in text: String) -> Bool {
+        let lhsLength = text.distance(from: lhs.start, to: lhs.end)
+        let rhsLength = text.distance(from: rhs.start, to: rhs.end)
+        if lhsLength != rhsLength {
+            return lhsLength < rhsLength
+        }
+
+        let lhsLemmaScore = preferredLemmaScore(for: lhs.lemma, sourceSurface: lhs.surface)
+        let rhsLemmaScore = preferredLemmaScore(for: rhs.lemma, sourceSurface: rhs.surface)
+        if lhsLemmaScore != rhsLemmaScore {
+            return lhsLemmaScore < rhsLemmaScore
+        }
+
+        if lhs.lemma.count != rhs.lemma.count {
+            return lhs.lemma.count < rhs.lemma.count
+        }
+
+        return lhs.lemma > rhs.lemma
     }
 
     // Determines how far an unknown token should extend by grouping contiguous same-script runs.
@@ -353,7 +389,123 @@ final class Segmenter {
             lemmas.insert(hiraganaSurface)
         }
 
+        lemmas.formUnion(mixedScriptStemLemmas(for: surface))
+        lemmas.formUnion(grammaticalizedCompoundVerbLemmas(for: surface))
+
         return lemmas
+    }
+
+    // Resolves grammaticalized compound verbs like 追いつづける to their first-verb lemmas for segmentation bias.
+    private func grammaticalizedCompoundVerbLemmas(for surface: String) -> Set<String> {
+        var lemmas: Set<String> = []
+
+        for suffix in grammaticalizedCompoundVerbSuffixes {
+            guard surface.count > suffix.count, surface.hasSuffix(suffix) else {
+                continue
+            }
+
+            let stemEndIndex = surface.index(surface.endIndex, offsetBy: -suffix.count)
+            let headStem = String(surface[..<stemEndIndex])
+            if headStem.isEmpty {
+                continue
+            }
+
+            lemmas.formUnion(verbStemLemmas(for: headStem))
+        }
+
+        return lemmas
+    }
+
+    // Resolves a continuative verb stem back to plausible dictionary lemmas.
+    private func verbStemLemmas(for surface: String) -> Set<String> {
+        var lemmas = mixedScriptStemLemmas(for: surface)
+
+        if let trailingCharacter = surface.last,
+           let dictionaryEnding = continuativeDictionaryEnding(for: trailingCharacter) {
+            let dictionaryCandidate = String(surface.dropLast()) + String(dictionaryEnding)
+            if trie.contains(dictionaryCandidate) {
+                lemmas.insert(dictionaryCandidate)
+            }
+        }
+
+        if surface.isEmpty == false {
+            let ichidanCandidate = surface + "る"
+            if trie.contains(ichidanCandidate) {
+                lemmas.insert(ichidanCandidate)
+            }
+        }
+
+        if surface == "し", trie.contains("する") {
+            lemmas.insert("する")
+        }
+
+        if surface == "き" || surface == "来" {
+            if trie.contains("くる") {
+                lemmas.insert("くる")
+            }
+            if trie.contains("来る") {
+                lemmas.insert("来る")
+            }
+        }
+
+        return lemmas
+    }
+
+    // Resolves mixed-script continuative verb stems like 追い back to dictionary lemmas such as 追う.
+    private func mixedScriptStemLemmas(for surface: String) -> Set<String> {
+        guard ScriptClassifier.containsKanji(surface) else {
+            return []
+        }
+
+        let characters = Array(surface)
+        guard
+            let trailingCharacter = characters.last,
+            trailingCharacter.unicodeScalars.allSatisfy({ scalar in
+                (0x3040...0x309F).contains(scalar.value)
+            }),
+            characters.dropLast().contains(where: { character in
+                ScriptClassifier.containsKanji(String(character))
+            })
+        else {
+            return []
+        }
+
+        guard let dictionaryEnding = continuativeDictionaryEnding(for: trailingCharacter) else {
+            return []
+        }
+
+        let dictionaryCandidate = String(characters.dropLast()) + String(dictionaryEnding)
+        guard trie.contains(dictionaryCandidate) else {
+            return []
+        }
+
+        return [dictionaryCandidate]
+    }
+
+    // Maps godan continuative endings back to their dictionary-form okurigana.
+    private func continuativeDictionaryEnding(for character: Character) -> Character? {
+        switch character {
+        case "い":
+            return "う"
+        case "き":
+            return "く"
+        case "ぎ":
+            return "ぐ"
+        case "し":
+            return "す"
+        case "ち":
+            return "つ"
+        case "に":
+            return "ぬ"
+        case "び":
+            return "ぶ"
+        case "み":
+            return "む"
+        case "り":
+            return "る"
+        default:
+            return nil
+        }
     }
 
     // Scores competing lemmas so furigana and segmentation can favor script-preserving dictionary forms.

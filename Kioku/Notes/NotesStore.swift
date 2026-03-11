@@ -46,6 +46,18 @@ final class NotesStore: ObservableObject {
         notes.first(where: { $0.id == id })
     }
 
+    // Packages the current notes array into an export document.
+    func makeTransferDocument() -> NotesTransferDocument {
+        NotesTransferDocument(notes: notes)
+    }
+
+    // Replaces the current notes collection with imported data and persists it.
+    func importTransferDocument(_ document: NotesTransferDocument) {
+        pendingReadEditorPersistWorkItem?.cancel()
+        pendingReadEditorPersistWorkItem = nil
+        notes = document.payload.notes
+    }
+
     // Inserts or updates one note in memory so editing does not re-read the full store.
     func upsertNote(id: UUID?, title: String, content: String, tokenRanges: [TokenRange]?) -> UUID {
         if let id, let index = notes.firstIndex(where: { $0.id == id }) {

@@ -248,6 +248,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		F5A9C1D92F90000100ABCDEF /* Validate Copilot Invariants */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);

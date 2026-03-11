@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var selectedTab: ContentTab
     @StateObject private var notesStore = NotesStore()
     @State private var selectedReadNote: Note?
+    @State private var shouldActivateReadEditMode = false
     @State private var segmenter = Segmenter(trie: DictionaryTrie())
     @State private var dictionaryStore: DictionaryStore?
     @State private var readingBySurface: [String: String] = [:]
@@ -22,7 +23,7 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, segmenter: segmenter, dictionaryStore: dictionaryStore, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
+            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: segmenter, dictionaryStore: dictionaryStore, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
             })
             .tag(ContentTab.read)
@@ -39,6 +40,7 @@ struct ContentView: View {
                 notesStore.addNote()
                 guard let note = notesStore.notes.first else { return }
 
+                shouldActivateReadEditMode = true
                 selectedReadNote = note
                 lastActiveNoteID = note.id.uuidString
                 selectedTab = .read

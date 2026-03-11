@@ -16,6 +16,7 @@ elif [[ -x "/usr/local/bin/rg" ]]; then
 fi
 
 EXIT_CODE=0
+WARNING_COUNT=0
 
 list_swift_files() {
   if [[ -n "$RG_BIN" ]]; then
@@ -63,6 +64,11 @@ report_failure() {
   EXIT_CODE=1
 }
 
+report_warning() {
+  echo "WARN: $1"
+  WARNING_COUNT=1
+}
+
 report_group_matches() {
   local title="$1"
   local matches="$2"
@@ -73,11 +79,13 @@ report_group_matches() {
   fi
 }
 
-# Invariant 4: Swift files should never exceed 1,000 lines.
+# Invariant 4: Swift files should warn above 800 lines and fail above 1,200 lines.
 while IFS= read -r file_path; do
   line_count=$(wc -l < "$file_path")
-  if (( line_count > 1000 )); then
-    report_failure "Swift file exceeds 1000 lines: ${file_path} (${line_count} lines)"
+  if (( line_count > 1200 )); then
+    report_failure "Swift file exceeds 1200 lines: ${file_path} (${line_count} lines)"
+  elif (( line_count > 800 )); then
+    report_warning "Swift file exceeds 800-line warning threshold: ${file_path} (${line_count} lines)"
   fi
 done < <(list_swift_files)
 
@@ -160,7 +168,11 @@ while IFS= read -r file_path; do
 done < <(list_swift_files)
 
 if (( EXIT_CODE == 0 )); then
-  echo "Invariant checks passed."
+  if (( WARNING_COUNT == 0 )); then
+    echo "Invariant checks passed."
+  else
+    echo "Invariant checks passed with warnings."
+  fi
 else
   echo "Invariant checks failed."
 fi

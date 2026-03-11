@@ -430,7 +430,7 @@ extension ReadView {
         return candidates.first ?? readingBySurface[segmentSurface]
     }
 
-    // Detects single-kanji contexts where kunyomi should be preferred (standalone or particle-attached).
+    // Detects single-kanji segments where kunyomi should be preferred for reader-friendly isolation defaults.
     func shouldPreferKunyomiForSingleKanji(surface: String, in sourceText: String, segmentRange: Range<String.Index>) -> Bool {
         let surfaceCharacters = Array(surface)
         let kanjiCharacterCount = surfaceCharacters.reduce(into: 0) { count, character in
@@ -439,51 +439,9 @@ extension ReadView {
             }
         }
 
-        guard kanjiCharacterCount == 1 else {
-            return false
-        }
-
-        let particleCharacters: Set<Character> = ["の", "は", "が", "を", "に", "へ", "と", "で", "も", "や", "か", "な", "ね", "よ", "ぞ", "さ", "わ"]
-
-        let hasBoundaryOnLeft: Bool
-        let leftCharacter: Character?
-        if segmentRange.lowerBound == sourceText.startIndex {
-            hasBoundaryOnLeft = true
-            leftCharacter = nil
-        } else {
-            let previousIndex = sourceText.index(before: segmentRange.lowerBound)
-            let character = sourceText[previousIndex]
-            hasBoundaryOnLeft = ScriptClassifier.isBoundaryCharacter(character)
-            leftCharacter = character
-        }
-
-        let hasBoundaryOnRight: Bool
-        let rightCharacter: Character?
-        if segmentRange.upperBound == sourceText.endIndex {
-            hasBoundaryOnRight = true
-            rightCharacter = nil
-        } else {
-            let character = sourceText[segmentRange.upperBound]
-            hasBoundaryOnRight = ScriptClassifier.isBoundaryCharacter(character)
-            rightCharacter = character
-        }
-
-        let hasParticleOnLeft = leftCharacter.map { particleCharacters.contains($0) } ?? false
-        let hasParticleOnRight = rightCharacter.map { particleCharacters.contains($0) } ?? false
-
-        if hasBoundaryOnLeft && hasBoundaryOnRight {
-            return true
-        }
-
-        if hasBoundaryOnLeft && hasParticleOnRight {
-            return true
-        }
-
-        if hasParticleOnLeft && hasBoundaryOnRight {
-            return true
-        }
-
-        return false
+        _ = sourceText
+        _ = segmentRange
+        return kanjiCharacterCount == 1
     }
 
     // Picks a kunyomi-leaning candidate for standalone single-kanji contexts.

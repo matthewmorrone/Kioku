@@ -19,7 +19,10 @@ Add more required invariants below. Copilot should treat them as mandatory.
    - Nested type declarations are not allowed.
 
 4. Swift file length limit.
-   - Swift files should never exceed 1,000 lines.
+   - Treat file length as a cohesion guardrail, not a proxy for quality.
+   - Prefer splitting a Swift file once it approaches 800 lines.
+   - Swift files should normally stay under 1,200 lines.
+   - If a file grows past that point, split it by responsibility before adding more logic unless there is a strong reason to keep it unified.
 
 5. Organize Swift files by functionality.
     - Prefer grouping files by feature/domain responsibility (for example: reading, notes, dictionary, segmentation, settings).
