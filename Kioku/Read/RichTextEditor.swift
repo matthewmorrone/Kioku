@@ -23,7 +23,6 @@ struct RichTextEditor: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textView = TextViewFactory.makeTextView()
         textView.delegate = context.coordinator
-        textView.layoutManager.delegate = context.coordinator
         textView.backgroundColor = .clear
         textView.adjustsFontForContentSizeCategory = true
         textView.alwaysBounceVertical = true
@@ -39,6 +38,8 @@ struct RichTextEditor: UIViewRepresentable {
         textView.addGestureRecognizer(pinchRecognizer)
 
         applyTypography(to: textView, text: text)
+        context.coordinator.lastRenderedText = text
+        context.coordinator.lastAppliedStyle = styleSignature
         return textView
     }
 
@@ -46,16 +47,20 @@ struct RichTextEditor: UIViewRepresentable {
     func updateUIView(_ uiView: UITextView, context: Context) {
         uiView.isEditable = isEditMode
         uiView.isSelectable = true
-        context.coordinator.configureSegmentationRanges(segmentationRanges, in: text)
+        context.coordinator.configureSegmentationRanges(isEditMode ? segmentationRanges : [], in: text)
         configureWrapping(for: uiView)
-        let needsStyleUpdate = true
+        let styleSignature = styleSignature
+        let needsTextUpdate = context.coordinator.lastRenderedText != text
+        let needsStyleUpdate = context.coordinator.lastAppliedStyle != styleSignature
 
-        if needsStyleUpdate || uiView.text != text {
+        if needsStyleUpdate || needsTextUpdate {
             let selectedRange = uiView.selectedRange
             applyTypography(to: uiView, text: text)
             if selectedRange.location <= uiView.text.utf16.count {
                 uiView.selectedRange = selectedRange
             }
+            context.coordinator.lastRenderedText = text
+            context.coordinator.lastAppliedStyle = styleSignature
         }
 
         context.coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
@@ -81,71 +86,20 @@ struct RichTextEditor: UIViewRepresentable {
             .foregroundColor: UIColor.label,
         ]
 
-        let attributedText = NSMutableAttributedString(string: text, attributes: baseAttributes)
-        guard !isEditMode && isVisualEnhancementsEnabled else {
-            textView.attributedText = attributedText
-            textView.typingAttributes = baseAttributes
-            return
-        }
-
-        let evenSegmentForeground = UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? .systemOrange : .systemRed
-        }
-        let oddSegmentForeground = UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo
-        }
-        let unknownSegmentForeground = UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? .systemYellow : .systemOrange
-        }
-        let furiganaAttributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: max(textSize * 0.5, 8)),
-            .kern: 0,
-            .paragraphStyle: paragraphStyle,
-            .foregroundColor: UIColor.secondaryLabel,
-        ]
-        var colorAlternationIndex = 0
-        var furiganaInsertions: [(index: Int, text: String)] = []
-
-        // Alternates foreground colors by segment index so token boundaries remain visually distinct.
-        for segmentRange in segmentationRanges {
-            let nsRange = NSRange(segmentRange, in: text)
-            if nsRange.location == NSNotFound || nsRange.length == 0 {
-                continue
-            }
-
-            let segmentText = String(text[segmentRange])
-            // Keeps spacing and punctuation neutral so they do not shift meaningful token alternation.
-            if shouldIgnoreSegmentForAlternation(segmentText) {
-                continue
-            }
-
-            // Highlights unknown tokens only when alternation is active; otherwise keep default foreground styling.
-            if isHighlightUnknownEnabled && isColorAlternationEnabled && !isTokenInDictionary(segmentText) {
-                attributedText.addAttribute(.foregroundColor, value: unknownSegmentForeground, range: nsRange)
-            } else if isColorAlternationEnabled {
-                if colorAlternationIndex.isMultiple(of: 2) {
-                    attributedText.addAttribute(.foregroundColor, value: evenSegmentForeground, range: nsRange)
-                } else {
-                    attributedText.addAttribute(.foregroundColor, value: oddSegmentForeground, range: nsRange)
-                }
-            }
-
-            // Queues inline furigana text for segments when a reading is available.
-            if let furigana = furiganaBySegmentLocation[nsRange.location] {
-                furiganaInsertions.append((index: nsRange.location + nsRange.length, text: "（\(furigana)）"))
-            }
-
-            colorAlternationIndex += 1
-        }
-
-        // Inserts furigana in reverse order so earlier indices remain stable while mutating the string.
-        for insertion in furiganaInsertions.sorted(by: { $0.index > $1.index }) {
-            let annotation = NSAttributedString(string: insertion.text, attributes: furiganaAttributes)
-            attributedText.insert(annotation, at: insertion.index)
-        }
-
-        textView.attributedText = attributedText
+        // Keeps the hidden editor lightweight because read-mode enhancements render in FuriganaTextRenderer.
+        textView.attributedText = NSAttributedString(string: text, attributes: baseAttributes)
         textView.typingAttributes = baseAttributes
+    }
+
+    // Captures the editor inputs that require a full attributed-text rebuild when they change.
+    private var styleSignature: RichTextEditorStyleSignature {
+        RichTextEditorStyleSignature(
+            textSize: textSize,
+            lineSpacing: lineSpacing,
+            kerning: kerning,
+            isLineWrappingEnabled: isLineWrappingEnabled,
+            isEditMode: isEditMode
+        )
     }
 
     // Keeps the editor text container in wrapped or horizontal-scroll layout based on the display option.

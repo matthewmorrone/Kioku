@@ -387,11 +387,8 @@ extension ReadView {
             return
         }
 
-        var normalizedSegmentRect = tappedSegmentRect
-        let isOutsideViewBounds = tappedSegmentRect.maxY > sourceView.bounds.maxY + 40 || tappedSegmentRect.minY < sourceView.bounds.minY - 40
-        if isOutsideViewBounds, let window = sourceView.window {
-            normalizedSegmentRect = sourceView.convert(tappedSegmentRect, from: window)
-        }
+        // Treats tap geometry as content-space coordinates so scroll math uses the token's visible position.
+        let normalizedSegmentRect = tappedSegmentRect.offsetBy(dx: 0, dy: -sourceView.contentOffset.y)
 
         let estimatedSheetHeight: CGFloat = 360
         let estimatedRelativeCoverage = sourceView.bounds.height * 0.64

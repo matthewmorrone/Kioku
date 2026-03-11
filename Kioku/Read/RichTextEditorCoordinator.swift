@@ -1,19 +1,12 @@
 import SwiftUI
 import UIKit
 
-final class RichTextEditorCoordinator: NSObject, UITextViewDelegate, NSLayoutManagerDelegate {
+final class RichTextEditorCoordinator: NSObject, UITextViewDelegate {
     @Binding var text: String
     @Binding var textSize: Double
     var onScrollOffsetYChanged: (CGFloat) -> Void
-    var lastAppliedStyle: (
-        textSize: Double,
-        lineSpacing: Double,
-        kerning: Double,
-        isEditMode: Bool,
-        isVisualEnhancementsEnabled: Bool,
-        isColorAlternationEnabled: Bool,
-        isHighlightUnknownEnabled: Bool
-    )?
+    var lastAppliedStyle: RichTextEditorStyleSignature?
+    var lastRenderedText = ""
     private var pinchStartTextSize: Double?
     private var isApplyingExternalScroll = false
     private var segmentationNSRanges: [NSRange] = []
@@ -39,7 +32,9 @@ final class RichTextEditorCoordinator: NSObject, UITextViewDelegate, NSLayoutMan
 
     // Propagates text view edits into SwiftUI state after each user change.
     func textViewDidChange(_ textView: UITextView) {
-        text = textView.text
+        let latestText = textView.text ?? ""
+        text = latestText
+        lastRenderedText = latestText
     }
 
     // Publishes user-driven scroll offsets to the shared read/edit sync state.
@@ -91,32 +86,4 @@ final class RichTextEditorCoordinator: NSObject, UITextViewDelegate, NSLayoutMan
         }
     }
 
-    // Rejects proposed wrap points that would split a lexical segment across two visual lines.
-    func layoutManager(
-        _ layoutManager: NSLayoutManager,
-        shouldBreakLineByWordBeforeCharacterAt charIndex: Int
-    ) -> Bool {
-        shouldAllowLineBreak(beforeCharacterAt: charIndex)
-    }
-
-    // Rejects hyphenation-based breaks inside segments so no fallback path can split a token.
-    func layoutManager(
-        _ layoutManager: NSLayoutManager,
-        shouldBreakLineByHyphenatingBeforeCharacterAt charIndex: Int
-    ) -> Bool {
-        shouldAllowLineBreak(beforeCharacterAt: charIndex)
-    }
-
-    // Allows wrapping only at segment boundaries or outside tracked lexical ranges.
-    private func shouldAllowLineBreak(beforeCharacterAt charIndex: Int) -> Bool {
-        for nsRange in segmentationNSRanges {
-            let lowerBound = nsRange.location
-            let upperBound = nsRange.location + nsRange.length
-            if charIndex > lowerBound && charIndex < upperBound {
-                return false
-            }
-        }
-
-        return true
-    }
 }

@@ -98,9 +98,84 @@ extension ReadView {
                 resolvedFurigana[nsRange.location] = annotation.reading
                 resolvedFuriganaLengths[nsRange.location] = nsRange.length
             }
+
+            let segmentNSRange = NSRange(segmentRange, in: sourceText)
+            if segmentHasAttachedFurigana(
+                segmentNSRange: segmentNSRange,
+                furiganaByLocation: resolvedFurigana,
+                lengthByLocation: resolvedFuriganaLengths
+            ) == false,
+               let fallbackReading = fallbackSegmentFuriganaReading(
+                for: edge,
+                readingBySurface: readingBySurface,
+                readingCandidatesBySurface: readingCandidatesBySurface,
+                sourceText: sourceText
+               ) {
+                resolvedFurigana[segmentNSRange.location] = fallbackReading
+                resolvedFuriganaLengths[segmentNSRange.location] = segmentNSRange.length
+            }
         }
 
         return (furiganaByLocation: resolvedFurigana, lengthByLocation: resolvedFuriganaLengths)
+    }
+
+    // Verifies that a kanji-bearing segment has at least one ruby annotation overlapping its range.
+    func segmentHasAttachedFurigana(
+        segmentNSRange: NSRange,
+        furiganaByLocation: [Int: String],
+        lengthByLocation: [Int: Int]
+    ) -> Bool {
+        for location in furiganaByLocation.keys {
+            guard let length = lengthByLocation[location], length > 0 else {
+                continue
+            }
+
+            let annotationRange = NSRange(location: location, length: length)
+            if NSIntersectionRange(annotationRange, segmentNSRange).length > 0 {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    // Synthesizes a segment-level reading when run-level furigana alignment fails for a kanji segment.
+    func fallbackSegmentFuriganaReading(
+        for edge: LatticeEdge,
+        readingBySurface: [String: String],
+        readingCandidatesBySurface: [String: [String]],
+        sourceText: String
+    ) -> String? {
+        let segmentRange = edge.start..<edge.end
+        let preferKunyomiForContext = shouldPreferKunyomiForSingleKanji(
+            surface: edge.surface,
+            in: sourceText,
+            segmentRange: segmentRange
+        )
+        let preferredLemmaReference = preferredFuriganaLemmaReference(
+            for: edge.surface,
+            lemmaReference: edge.lemma
+        )
+
+        if let surfaceReading = readingForSegment(
+            edge.surface,
+            readingBySurface: readingBySurface,
+            readingCandidatesBySurface: readingCandidatesBySurface,
+            preferKunyomiForStandaloneKanji: preferKunyomiForContext
+        ), surfaceReading != edge.surface {
+            return surfaceReading
+        }
+
+        if let lemmaReading = readingForSegment(
+            preferredLemmaReference,
+            readingBySurface: readingBySurface,
+            readingCandidatesBySurface: readingCandidatesBySurface,
+            preferKunyomiForStandaloneKanji: preferKunyomiForContext
+        ), lemmaReading != edge.surface, lemmaReading != preferredLemmaReference {
+            return lemmaReading
+        }
+
+        return nil
     }
 
     // Produces kanji-run furigana annotations, including mixed forms with multiple kanji clusters.
@@ -122,15 +197,19 @@ extension ReadView {
             in: sourceText,
             segmentRange: segmentRange
         )
+        let furiganaLemmaReference = preferredFuriganaLemmaReference(
+            for: segmentSurface,
+            lemmaReference: lemmaReference
+        )
 
         if runs.count == 1,
               let lemmaReading = readingForSegment(
-                     lemmaReference,
+                     furiganaLemmaReference,
                      readingBySurface: readingBySurface,
                      readingCandidatesBySurface: readingCandidatesBySurface,
                 preferKunyomiForStandaloneKanji: preferKunyomiForContext
               ),
-           let lemmaCoreReading = firstKanjiRunReading(in: lemmaReference, using: lemmaReading) {
+           let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: lemmaReading) {
             return [
                 (
                     reading: lemmaCoreReading,
@@ -140,15 +219,15 @@ extension ReadView {
             ]
         }
 
-        let lemmaRuns = kanjiRuns(in: lemmaReference)
+        let lemmaRuns = kanjiRuns(in: furiganaLemmaReference)
         var projectedReadings: [String]?
         if let lemmaReading = readingForSegment(
-            lemmaReference,
+            furiganaLemmaReference,
             readingBySurface: readingBySurface,
             readingCandidatesBySurface: readingCandidatesBySurface,
             preferKunyomiForStandaloneKanji: preferKunyomiForContext
         ), lemmaRuns.count == runs.count {
-            projectedReadings = projectRunReadings(surface: lemmaReference, reading: lemmaReading)
+            projectedReadings = projectRunReadings(surface: furiganaLemmaReference, reading: lemmaReading)
         }
 
         if projectedReadings == nil,
@@ -190,6 +269,19 @@ extension ReadView {
         }
 
         return annotations
+    }
+
+    // Recovers a script-preserving lemma so kanji segments still receive furigana when edge lemmas fall back to kana.
+    func preferredFuriganaLemmaReference(for segmentSurface: String, lemmaReference: String) -> String {
+        guard ScriptClassifier.containsKanji(segmentSurface) else {
+            return lemmaReference
+        }
+
+        if let preferredLemma = segmenter.preferredLemma(for: segmentSurface) {
+            return preferredLemma
+        }
+
+        return lemmaReference
     }
 
     // Splits a surface reading into per-kanji-run readings using kana delimiters from the source surface.

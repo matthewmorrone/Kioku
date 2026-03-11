@@ -303,6 +303,29 @@ final class Segmenter {
         resolvedTrieLemmas(for: surface).isEmpty == false
     }
 
+    // Picks the highest-priority resolved lemma for a surface, preferring script-preserving kanji matches.
+    func preferredLemma(for surface: String) -> String? {
+        let lemmas = resolvedTrieLemmas(for: surface)
+        guard lemmas.isEmpty == false else {
+            return nil
+        }
+
+        return lemmas.max { lhs, rhs in
+            let lhsScore = preferredLemmaScore(for: lhs, sourceSurface: surface)
+            let rhsScore = preferredLemmaScore(for: rhs, sourceSurface: surface)
+
+            if lhsScore != rhsScore {
+                return lhsScore < rhsScore
+            }
+
+            if lhs.count != rhs.count {
+                return lhs.count < rhs.count
+            }
+
+            return lhs > rhs
+        }
+    }
+
     // Resolves all trie-backed lemmas reachable from a surface, including deinflection candidates.
     private func resolvedTrieLemmas(for surface: String) -> Set<String> {
         var lemmas = matchedTrieLemmas(for: surface)
@@ -331,6 +354,29 @@ final class Segmenter {
         }
 
         return lemmas
+    }
+
+    // Scores competing lemmas so furigana and segmentation can favor script-preserving dictionary forms.
+    private func preferredLemmaScore(for lemma: String, sourceSurface: String) -> Int {
+        var score = 0
+
+        if lemma == sourceSurface {
+            score += 100
+        }
+
+        if ScriptClassifier.containsKanji(sourceSurface) {
+            if ScriptClassifier.containsKanji(lemma) {
+                score += 40
+            } else if ScriptClassifier.isPureKana(lemma) {
+                score -= 20
+            }
+        }
+
+        if ScriptClassifier.isPureKana(sourceSurface) && ScriptClassifier.isPureKana(lemma) {
+            score += 10
+        }
+
+        return score
     }
 
     // Converts katakana scalars to hiragana so dictionary membership can fall back across kana scripts.

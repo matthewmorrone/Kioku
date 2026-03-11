@@ -36,7 +36,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textView = TextViewFactory.makeTextView()
         textView.delegate = context.coordinator
-        textView.layoutManager.delegate = context.coordinator
         textView.tag = 7_331
         textView.backgroundColor = .clear
         textView.isEditable = false
@@ -81,8 +80,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         if context.coordinator.shouldApplyInitialExternalSync(isActive: true) {
             context.coordinator.applyExternalScrollIfNeeded(to: textView, targetOffsetY: externalContentOffsetY)
         }
-
-        ensureTextLayout(for: textView)
 
         let renderSignature = makeRenderSignature(for: textView)
         guard context.coordinator.shouldRender(for: renderSignature) else {
@@ -258,23 +255,21 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
     // Resolves the visual token rectangle used to anchor furigana over the same glyph layout.
     private func tokenRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
-        guard nsRange.location != NSNotFound, nsRange.length > 0 else {
+        guard
+            nsRange.location != NSNotFound,
+            nsRange.length > 0,
+            let textRange = textRange(in: textView, nsRange: nsRange)
+        else {
             return nil
         }
 
         ensureTextLayout(for: textView)
-        let layoutManager = textView.layoutManager
-        let glyphRange = layoutManager.glyphRange(forCharacterRange: nsRange, actualCharacterRange: nil)
-        guard glyphRange.length > 0 else {
+        let tokenRect = textView.firstRect(for: textRange)
+        guard tokenRect.isNull == false, tokenRect.isInfinite == false, tokenRect.isEmpty == false else {
             return nil
         }
 
-        let glyphRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer)
-        guard glyphRect.isNull == false, glyphRect.isInfinite == false, glyphRect.isEmpty == false else {
-            return nil
-        }
-
-        return textViewRect(for: glyphRect, in: textView)
+        return tokenRect
     }
 
     // Keeps the text container in wrapped or horizontal-scroll layout based on the display option.
@@ -300,49 +295,53 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         }
 
         ensureTextLayout(for: textView)
-        let layoutManager = textView.layoutManager
-        let nextCharacterRange = NSRange(location: boundaryUTF16Location, length: 1)
-        let nextGlyphRange = layoutManager.glyphRange(forCharacterRange: nextCharacterRange, actualCharacterRange: nil)
-        guard nextGlyphRange.length > 0 else {
-            return nil
-        }
-
-        let nextGlyphRect = layoutManager.boundingRect(forGlyphRange: nextGlyphRange, in: textView.textContainer)
-        let lineFragmentRect = layoutManager.lineFragmentUsedRect(forGlyphAt: nextGlyphRange.location, effectiveRange: nil)
         guard
-            nextGlyphRect.isNull == false,
-            nextGlyphRect.isInfinite == false,
-            lineFragmentRect.isNull == false,
-            lineFragmentRect.isInfinite == false
+            let previousTextRange = textRange(in: textView, nsRange: NSRange(location: boundaryUTF16Location - 1, length: 1)),
+            let nextTextRange = textRange(in: textView, nsRange: NSRange(location: boundaryUTF16Location, length: 1))
         else {
             return nil
         }
 
-        let textViewLineRect = textViewRect(for: lineFragmentRect, in: textView)
-        let textViewNextGlyphRect = textViewRect(for: nextGlyphRect, in: textView)
-        let indicatorHeight = max(textViewLineRect.height + 6, 16)
-        return CGRect(
-            x: textViewNextGlyphRect.minX - 1.5,
-            y: textViewLineRect.minY - 3,
-            width: 3,
-            height: indicatorHeight
-        )
-    }
+        let previousRect = textView.firstRect(for: previousTextRange)
+        let nextRect = textView.firstRect(for: nextTextRange)
+        guard
+            previousRect.isNull == false,
+            previousRect.isInfinite == false,
+            previousRect.isEmpty == false,
+            nextRect.isNull == false,
+            nextRect.isInfinite == false,
+            nextRect.isEmpty == false
+        else {
+            return nil
+        }
 
-    // Converts a TextKit text-container rect into text-view coordinates for overlay placement.
-    private func textViewRect(for rect: CGRect, in textView: UITextView) -> CGRect {
-        CGRect(
-            x: rect.origin.x + textView.textContainerInset.left,
-            y: rect.origin.y + textView.textContainerInset.top,
-            width: rect.width,
-            height: rect.height
+        let lineTopY = min(previousRect.minY, nextRect.minY)
+        let lineBottomY = max(previousRect.maxY, nextRect.maxY)
+        return CGRect(
+            x: nextRect.minX - 1.5,
+            y: lineTopY - 3,
+            width: 3,
+            height: max((lineBottomY - lineTopY) + 6, 16)
         )
     }
 
     // Forces lazy TextKit layout to complete before any geometry is queried for annotations.
     private func ensureTextLayout(for textView: UITextView) {
-        textView.layoutManager.ensureLayout(for: textView.textContainer)
+        textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
         textView.layoutIfNeeded()
+    }
+
+    // Converts a UTF-16 range into the UITextInput range used by TextKit 2 geometry queries.
+    private func textRange(in textView: UITextView, nsRange: NSRange) -> UITextRange? {
+        let documentStart = textView.beginningOfDocument
+        guard
+            let rangeStart = textView.position(from: documentStart, offset: nsRange.location),
+            let rangeEnd = textView.position(from: rangeStart, offset: nsRange.length)
+        else {
+            return nil
+        }
+
+        return textView.textRange(from: rangeStart, to: rangeEnd)
     }
 
     // Builds a stable signature so expensive rendering only runs when visual inputs actually change.

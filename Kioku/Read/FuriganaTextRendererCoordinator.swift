@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 
 // Stores renderer state so expensive furigana layout only runs when inputs change.
-final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSLayoutManagerDelegate {
+final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
     @Binding private var textSize: Double
     var onScrollOffsetYChanged: (CGFloat) -> Void
     var onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
@@ -216,32 +216,4 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSLay
         return tokenRect
     }
 
-    // Rejects proposed wrap points that would split a lexical segment across two visual lines.
-    func layoutManager(
-        _ layoutManager: NSLayoutManager,
-        shouldBreakLineByWordBeforeCharacterAt charIndex: Int
-    ) -> Bool {
-        shouldAllowLineBreak(beforeCharacterAt: charIndex)
-    }
-
-    // Rejects hyphenation-based breaks inside segments so no fallback path can split a token.
-    func layoutManager(
-        _ layoutManager: NSLayoutManager,
-        shouldBreakLineByHyphenatingBeforeCharacterAt charIndex: Int
-    ) -> Bool {
-        shouldAllowLineBreak(beforeCharacterAt: charIndex)
-    }
-
-    // Allows wrapping only at segment boundaries or outside tracked lexical ranges.
-    private func shouldAllowLineBreak(beforeCharacterAt charIndex: Int) -> Bool {
-        for nsRange in segmentationNSRanges {
-            let lowerBound = nsRange.location
-            let upperBound = nsRange.location + nsRange.length
-            if charIndex > lowerBound && charIndex < upperBound {
-                return false
-            }
-        }
-
-        return true
-    }
 }
