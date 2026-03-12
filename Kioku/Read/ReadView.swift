@@ -107,6 +107,7 @@ struct ReadView: View {
             SegmentListView(
                 text: text,
                 edges: segmentationEdges,
+                latticeEdges: segmentationLatticeEdges,
                 sourceNoteID: activeNoteID,
                 onMergeLeft: { edgeIndex in
                     mergeSegmentFromSegmentList(at: edgeIndex, isMergingLeft: true)

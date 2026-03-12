@@ -2,5 +2,29 @@
 	{
 		"kana": "スターズ",
 		"gloss": "stars"
+	},
+	{
+		"kana": [
+			"ピッ"
+		],
+		"is_common": 1,
+		"priority": [
+			"custom"
+		],
+		"senses": [
+			{
+				"partOfSpeech": [
+					"adverb (fukushi)"
+				],
+				"misc": [
+					"onomatopoeic or mimetic word"
+				],
+				"gloss": [
+					{
+						"text": "quickly; with a short sharp motion or sound"
+					}
+				]
+			}
+		]
 	}
 ]

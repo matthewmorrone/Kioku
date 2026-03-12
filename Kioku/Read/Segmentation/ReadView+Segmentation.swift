@@ -294,17 +294,11 @@ extension ReadView {
         )
     }
 
-    // Drops persisted segment overrides when they are redundant or strictly worse than the current computed segmentation.
+    // Drops persisted segment overrides only when they are fully redundant with the current computed segmentation.
     func shouldDiscardPersistedSegmentOverride(overriddenEdges: [LatticeEdge], computedEdges: [LatticeEdge]) -> Bool {
         let computedSegmentRanges = buildSegmentRanges(from: computedEdges)
         let overriddenSegmentRanges = buildSegmentRanges(from: overriddenEdges)
-        if overriddenSegmentRanges == computedSegmentRanges {
-            return true
-        }
-
-        let overriddenUnknownCount = unknownSegmentLocations(for: overriddenEdges).count
-        let computedUnknownCount = unknownSegmentLocations(for: computedEdges).count
-        return computedUnknownCount < overriddenUnknownCount
+        return overriddenSegmentRanges == computedSegmentRanges
     }
 
     // Updates selection state and shows a UIKit popover with the highest-priority dictionary definition for the tapped segment.
@@ -442,16 +436,35 @@ extension ReadView {
     // Builds de-duplicated lookup candidates in priority order: tapped surface first, then lemma fallback.
     func orderedLookupCandidates(surface: String, lemma: String?) -> [String] {
         var candidates: [String] = []
+        var seenCandidates = Set<String>()
+
+        // Adds a lookup candidate in order while preventing duplicate retries.
+        func appendCandidate(_ candidate: String) {
+            guard seenCandidates.contains(candidate) == false else {
+                return
+            }
+
+            seenCandidates.insert(candidate)
+            candidates.append(candidate)
+        }
 
         let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedSurface.isEmpty == false {
-            candidates.append(trimmedSurface)
+            appendCandidate(trimmedSurface)
+            let expandedSurfaceCandidates = ScriptClassifier.iterationExpandedCandidates(for: trimmedSurface).sorted()
+            for expandedSurface in expandedSurfaceCandidates where expandedSurface != trimmedSurface {
+                appendCandidate(expandedSurface)
+            }
         }
 
         if let lemma {
             let trimmedLemma = lemma.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmedLemma.isEmpty == false && trimmedLemma != trimmedSurface {
-                candidates.append(trimmedLemma)
+                appendCandidate(trimmedLemma)
+                let expandedLemmaCandidates = ScriptClassifier.iterationExpandedCandidates(for: trimmedLemma).sorted()
+                for expandedLemma in expandedLemmaCandidates where expandedLemma != trimmedLemma {
+                    appendCandidate(expandedLemma)
+                }
             }
         }
 

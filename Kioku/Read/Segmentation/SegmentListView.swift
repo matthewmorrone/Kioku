@@ -6,6 +6,7 @@ struct SegmentListView: View {
 
     let text: String
     let edges: [LatticeEdge]
+    let latticeEdges: [LatticeEdge]
     let sourceNoteID: UUID?
     let onMergeLeft: (Int) -> Void
     let onMergeRight: (Int) -> Void
@@ -64,12 +65,24 @@ struct SegmentListView: View {
                                 }
                             }
 
-                            let availableOffsets = splitOffsets(for: edge.surface)
-                            if availableOffsets.isEmpty == false {
+                            let latticeBackedOffsets = latticeBackedSplitOffsetSet(for: edge)
+                            let availableOffsets = splitOffsets(for: edge)
+                            let orderedOffsets = availableOffsets.sorted { lhs, rhs in
+                                let lhsIsLatticeBacked = latticeBackedOffsets.contains(lhs)
+                                let rhsIsLatticeBacked = latticeBackedOffsets.contains(rhs)
+                                if lhsIsLatticeBacked != rhsIsLatticeBacked {
+                                    return lhsIsLatticeBacked
+                                }
+
+                                return lhs < rhs
+                            }
+
+                            if orderedOffsets.isEmpty == false {
                                 Menu("Split") {
-                                    ForEach(availableOffsets, id: \.self) { offset in
+                                    ForEach(orderedOffsets, id: \.self) { offset in
                                         if let preview = splitPreview(for: edge.surface, offsetUTF16: offset) {
-                                            Button("\(preview.left) | \(preview.right)") {
+                                            let labelPrefix = latticeBackedOffsets.contains(offset) ? "Suggested: " : "Manual: "
+                                            Button("\(labelPrefix)\(preview.left) | \(preview.right)") {
                                                 onSplit(index, offset)
                                             }
                                         }
@@ -122,26 +135,64 @@ struct SegmentListView: View {
         }
     }
 
-    // Builds valid UTF-16 split offsets for a segment by iterating character boundaries.
-    private func splitOffsets(for surface: String) -> [Int] {
-        guard surface.isEmpty == false else {
+    // Builds valid UTF-16 split offsets for a segment by iterating source-text character boundaries.
+    private func splitOffsets(for edge: LatticeEdge) -> [Int] {
+        guard edge.start < edge.end else {
             return []
         }
 
         var offsets: [Int] = []
-        var cursor = surface.startIndex
+        var cursor = edge.start
         var utf16Offset = 0
 
-        while cursor < surface.endIndex {
-            let nextIndex = surface.index(after: cursor)
-            utf16Offset += surface[cursor..<nextIndex].utf16.count
-            if nextIndex < surface.endIndex {
+        while cursor < edge.end {
+            let nextIndex = text.index(after: cursor)
+            utf16Offset += text[cursor..<nextIndex].utf16.count
+            if nextIndex < edge.end {
                 offsets.append(utf16Offset)
             }
             cursor = nextIndex
         }
 
         return offsets
+    }
+
+    // Collects split offsets that have lattice boundary evidence inside the selected segment span.
+    private func latticeBackedSplitOffsetSet(for edge: LatticeEdge) -> Set<Int> {
+        guard edge.start < edge.end else {
+            return []
+        }
+
+        let enclosedLatticeEdges = latticeEdges.filter { latticeEdge in
+            latticeEdge.start >= edge.start && latticeEdge.end <= edge.end
+        }
+
+        var latticeStarts = Set<String.Index>()
+        var latticeEnds = Set<String.Index>()
+        for enclosedEdge in enclosedLatticeEdges {
+            latticeStarts.insert(enclosedEdge.start)
+            latticeEnds.insert(enclosedEdge.end)
+        }
+
+        var supportedOffsets = Set<Int>()
+        var cursor = edge.start
+        var utf16Offset = 0
+
+        while cursor < edge.end {
+            let nextIndex = text.index(after: cursor)
+            utf16Offset += text[cursor..<nextIndex].utf16.count
+
+            if nextIndex > edge.start,
+               nextIndex < edge.end,
+               latticeStarts.contains(nextIndex),
+               latticeEnds.contains(nextIndex) {
+                supportedOffsets.insert(utf16Offset)
+            }
+
+            cursor = nextIndex
+        }
+
+        return supportedOffsets
     }
 
     // Excludes newline-only rows so the word list mirrors visible lexical segment editing intent.

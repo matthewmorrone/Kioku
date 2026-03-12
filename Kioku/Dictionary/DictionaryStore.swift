@@ -37,7 +37,7 @@ public final class DictionaryStore {
 
     // Performs lookup with an explicit mode so callers own script-policy decisions.
     public func lookup(surface: String, mode: LookupMode) throws -> [DictionaryEntry] {
-        try lookupEntries(surface: surface, matchKana: true, matchKanji: mode.allowsKanjiMatching)
+        try lookupEntries(surfaces: lookupSurfaces(for: surface), matchKana: true, matchKanji: mode.allowsKanjiMatching)
     }
 
     // Performs a kana-only lookup using explicit lookup mode policy.
@@ -47,7 +47,7 @@ public final class DictionaryStore {
 
     // Performs an exact kanji match for the provided surface string.
     public func lookupExactKanji(surface: String) throws -> [DictionaryEntry] {
-        try lookupEntries(surface: surface, matchKana: false, matchKanji: true)
+        try lookupEntries(surfaces: lookupSurfaces(for: surface), matchKana: false, matchKanji: true)
     }
 
     // Fetches all unique dictionary surfaces from kana and kanji tables.
@@ -180,12 +180,38 @@ public final class DictionaryStore {
     }
 
     // Builds fully materialized dictionary entries from matched entry headers.
-    private func lookupEntries(surface: String, matchKana: Bool, matchKanji: Bool) throws -> [DictionaryEntry] {
-        if surface.isEmpty {
+    private func lookupEntries(surfaces: [String], matchKana: Bool, matchKanji: Bool) throws -> [DictionaryEntry] {
+        guard surfaces.isEmpty == false else {
             return []
         }
 
-        let matchedEntries = try fetchMatchedEntries(surface: surface, matchKana: matchKana, matchKanji: matchKanji)
+        var matchedEntriesByID: [Int64: (isCommon: Bool, matchedSurface: String)] = [:]
+
+        for surface in surfaces {
+            let matchedEntries = try fetchMatchedEntries(surface: surface, matchKana: matchKana, matchKanji: matchKanji)
+            for header in matchedEntries {
+                if matchedEntriesByID[header.entryID] == nil {
+                    matchedEntriesByID[header.entryID] = (isCommon: header.isCommon, matchedSurface: surface)
+                }
+            }
+        }
+
+        let matchedEntries = matchedEntriesByID
+            .map { key, value in
+                (entryID: key, isCommon: value.isCommon, matchedSurface: value.matchedSurface)
+            }
+            .sorted { lhs, rhs in
+                if lhs.isCommon != rhs.isCommon {
+                    return lhs.isCommon && !rhs.isCommon
+                }
+
+                if lhs.entryID != rhs.entryID {
+                    return lhs.entryID < rhs.entryID
+                }
+
+                return lhs.matchedSurface < rhs.matchedSurface
+            }
+
         var results: [DictionaryEntry] = []
         results.reserveCapacity(matchedEntries.count)
 
@@ -198,7 +224,7 @@ public final class DictionaryStore {
                 DictionaryEntry(
                     entryId: header.entryID,
                     isCommon: header.isCommon,
-                    matchedSurface: surface,
+                    matchedSurface: header.matchedSurface,
                     kanjiForms: kanjiForms,
                     kanaForms: kanaForms,
                     senses: senses
@@ -207,6 +233,22 @@ public final class DictionaryStore {
         }
 
         return results
+    }
+
+    // Builds ordered lookup surfaces so iteration-mark expansions can resolve through standard dictionary queries.
+    private func lookupSurfaces(for surface: String) -> [String] {
+        let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedSurface.isEmpty == false else {
+            return []
+        }
+
+        var orderedSurfaces: [String] = [trimmedSurface]
+        let expandedSurfaces = ScriptClassifier.iterationExpandedCandidates(for: trimmedSurface).sorted()
+        for expandedSurface in expandedSurfaces where expandedSurface != trimmedSurface {
+            orderedSurfaces.append(expandedSurface)
+        }
+
+        return orderedSurfaces
     }
 
     // Fetches distinct entry headers with deterministic ordering by commonness then sense order.

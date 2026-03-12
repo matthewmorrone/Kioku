@@ -99,9 +99,25 @@ final class NotesStore: ObservableObject {
         return duplicatedNote
     }
 
-    // Returns the latest in-memory note for a known identifier.
+    // Returns the freshest note snapshot for a known identifier, preferring pending writes and newer persisted data.
     func note(withID id: UUID) -> Note? {
-        notes.first(where: { $0.id == id })
+        if let pendingReadEditorPersistNote, pendingReadEditorPersistNote.id == id {
+            return pendingReadEditorPersistNote
+        }
+
+        let inMemoryNote = notes.first(where: { $0.id == id })
+        let persistedNote = Self.readNotes(for: storageKey).first(where: { $0.id == id })
+
+        switch (inMemoryNote, persistedNote) {
+        case let (inMemory?, persisted?):
+            return persisted.modifiedAt >= inMemory.modifiedAt ? persisted : inMemory
+        case let (inMemory?, nil):
+            return inMemory
+        case let (nil, persisted?):
+            return persisted
+        case (nil, nil):
+            return nil
+        }
     }
 
     // Records the latest runtime segmentation for a note so export can reuse live read-view state.

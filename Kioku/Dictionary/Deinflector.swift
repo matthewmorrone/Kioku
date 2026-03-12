@@ -122,7 +122,9 @@ final class Deinflector {
 
     // Collects all alternate surfaces owned by the normalization and recovery layer.
     private func alternateSurfaceCandidates(for surface: String) -> Set<String> {
-        normalizedKanaCandidates(for: surface)
+        var candidates = normalizedKanaCandidates(for: surface)
+        candidates.formUnion(ScriptClassifier.iterationExpandedCandidates(for: surface))
+        return candidates
     }
 
     // Produces kana-normalized candidates while rejecting arbitrary mixed-script noise.
