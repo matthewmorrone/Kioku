@@ -82,7 +82,7 @@ struct NotesView: View {
                     notePendingReset = nil
                 }
             } message: {
-                Text("This clears the note title, content, and saved token segmentation.")
+                Text("This clears the note title, content, and saved segmentation units.")
             }
             .confirmationDialog(
                 "Delete Note?",

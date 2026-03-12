@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Renders the saved-word list screen for words starred from the read token list.
+// Renders the saved-word list screen for words starred from the read segment list.
 struct WordsView: View {
     @State private var savedWords: [SavedWord] = []
     private let savedWordsStorageKey = "kioku.words.v1"

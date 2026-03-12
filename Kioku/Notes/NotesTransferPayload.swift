@@ -12,10 +12,10 @@ struct NotesTransferPayload: Codable {
         self.notes = notes
     }
 
-    // Decodes payload metadata while remaining compatible with legacy exports without exportedAt.
+    // Decodes transfer payload metadata from the current export schema.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: NotesTransferPayloadCodingKeys.self)
-        version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 2
         exportedAt = try container.decodeIfPresent(Date.self, forKey: .exportedAt) ?? Date()
         notes = try container.decode([Note].self, forKey: .notes)
     }

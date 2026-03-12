@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// Renders the read-mode text surface with furigana overlayed above tokens while preserving text-view layout.
+// Renders the read-mode text surface with furigana overlayed above segments while preserving text-view layout.
 struct FuriganaTextRenderer: UIViewRepresentable {
     let isActive: Bool
     let text: String
@@ -64,7 +64,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         return textView
     }
 
-    // Syncs text-view typography and positions furigana overlays above token rects from the same layout engine.
+    // Syncs text-view typography and positions furigana overlays above segment rects from the same layout engine.
     func updateUIView(_ uiView: UITextView, context: Context) {
         guard let overlayView = uiView.viewWithTag(7_332) as? FuriganaOverlayView else { return }
         let textView = uiView
@@ -125,13 +125,13 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         var selectedSegmentRect: CGRect?
         var selectedSegmentColor: UIColor?
         if let selectedSegmentRange = selectedSegmentNSRange(in: text),
-           let selectedTokenRect = tokenRectInTextView(textView: textView, nsRange: selectedSegmentRange) {
+           let selectedRect = segmentRectInTextView(textView: textView, nsRange: selectedSegmentRange) {
             selectedSegmentColor = UIColor { traitCollection in
                 traitCollection.userInterfaceStyle == .dark
                     ? UIColor.systemYellow.withAlphaComponent(0.26)
                     : UIColor.systemYellow.withAlphaComponent(0.32)
             }
-            selectedSegmentRect = selectedTokenRect.insetBy(dx: -1, dy: 0)
+            selectedSegmentRect = selectedRect.insetBy(dx: -1, dy: 0)
         }
 
         var illegalBoundaryRect: CGRect?
@@ -162,22 +162,22 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 }
 
                 let nsRange = NSRange(location: location, length: length)
-                guard let tokenRect = tokenRectInTextView(textView: textView, nsRange: nsRange) else {
+                guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else {
                     continue
                 }
 
-                let furiganaWidth = max(measureTextWidth(furigana, font: furiganaFont, kerning: 0), tokenRect.width)
-                let furiganaX = tokenRect.midX - (furiganaWidth / 2)
+                let furiganaWidth = max(measureTextWidth(furigana, font: furiganaFont, kerning: 0), segmentRect.width)
+                let furiganaX = segmentRect.midX - (furiganaWidth / 2)
                 furiganaStrings.append(furigana)
                 furiganaFrames.append(
                     CGRect(
                         x: furiganaX,
-                        y: max(tokenRect.minY - furiganaFont.lineHeight + 1, 0),
+                        y: max(segmentRect.minY - furiganaFont.lineHeight + 1, 0),
                         width: furiganaWidth,
                         height: furiganaFont.lineHeight
                     )
                 )
-                furiganaColors.append(textStylePayload.tokenForegroundByLocation[location] ?? .secondaryLabel)
+                furiganaColors.append(textStylePayload.segmentForegroundByLocation[location] ?? .secondaryLabel)
             }
         }
 
@@ -201,8 +201,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         context.coordinator.markRendered(signature: renderSignature)
     }
 
-    // Resolves the visual token rectangle used to anchor furigana over the same glyph layout.
-    private func tokenRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
+    // Resolves the visual segment rectangle used to anchor furigana over the same glyph layout.
+    private func segmentRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
         guard
             nsRange.location != NSNotFound,
             nsRange.length > 0,
@@ -212,12 +212,12 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         }
 
         ensureTextLayout(for: textView)
-        let tokenRect = textView.firstRect(for: textRange)
-        guard tokenRect.isNull == false, tokenRect.isInfinite == false, tokenRect.isEmpty == false else {
+        let segmentRect = textView.firstRect(for: textRange)
+        guard segmentRect.isNull == false, segmentRect.isInfinite == false, segmentRect.isEmpty == false else {
             return nil
         }
 
-        return tokenRect
+        return segmentRect
     }
 
     // Keeps the text container in wrapped or horizontal-scroll layout based on the display option.
@@ -361,7 +361,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         return hasher.finalize()
     }
 
-    // Finds the selected segment NSRange so overlay highlighting can target the tapped token.
+    // Finds the selected segment NSRange so overlay highlighting can target the tapped segment.
     private func selectedSegmentNSRange(in sourceText: String) -> NSRange? {
         if let selectedHighlightRangeOverride,
            selectedHighlightRangeOverride.location != NSNotFound,

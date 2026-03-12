@@ -62,7 +62,7 @@ final class NotesStore: ObservableObject {
         return notes.remove(at: index)
     }
 
-    // Renames one note while preserving its content and token metadata.
+    // Renames one note while preserving its content and segment metadata.
     func renameNote(id: UUID, title: String) {
         guard let index = notes.firstIndex(where: { $0.id == id }) else {
             return
@@ -72,7 +72,7 @@ final class NotesStore: ObservableObject {
         notes[index].modifiedAt = Date()
     }
 
-    // Resets one note back to a blank title, blank content, and no stored token overrides.
+    // Resets one note back to a blank title, blank content, and no stored segment overrides.
     func resetNote(id: UUID) {
         guard let index = notes.firstIndex(where: { $0.id == id }) else {
             return
@@ -186,7 +186,7 @@ final class NotesStore: ObservableObject {
         return resolvedID
     }
 
-    // Flushes any pending read-editor write so exports include the latest debounced note content and token ranges.
+    // Flushes any pending read-editor write so exports include the latest debounced note content and segment ranges.
     private func flushPendingReadEditorPersistIfNeeded() -> [Note]? {
         guard let noteToPersist = pendingReadEditorPersistNote else {
             return nil
@@ -216,7 +216,7 @@ final class NotesStore: ObservableObject {
         pendingReadEditorPersistNote = nil
     }
 
-    // Produces export token ranges from existing runtime or persisted state without recomputing segmentation.
+    // Produces export segment ranges from existing runtime or persisted state without recomputing segmentation.
     private func exportSegmentRanges(for note: Note) -> [SegmentRange] {
         if let runtimeSnapshot = runtimeSegmentationByNoteID[note.id],
            runtimeSnapshot.content == note.content,

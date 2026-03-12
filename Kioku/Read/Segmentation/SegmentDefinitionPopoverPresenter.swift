@@ -1,6 +1,6 @@
 import UIKit
 
-// Presents a native UIKit popover anchored to tapped token rects in the read-mode text view.
+// Presents a native UIKit popover anchored to tapped segment rects in the read-mode text view.
 final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationControllerDelegate, UIAdaptivePresentationControllerDelegate {
     static let shared = SegmentDefinitionPopoverPresenter()
 
@@ -26,7 +26,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         super.init()
     }
 
-    // Presents the current definition in a UIKit popover anchored to the tapped token rectangle.
+    // Presents the current definition in a UIKit popover anchored to the tapped segment rectangle.
     func presentPopover(
         definition: String,
         surface: String,
@@ -129,7 +129,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         presentedController = viewController
     }
 
-    // Presents the token action sheet directly without first showing a popover.
+    // Presents the segment action sheet directly without first showing a popover.
     func presentSheet(
         surface: String,
         leftNeighborSurface: String?,
@@ -171,7 +171,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         )
     }
 
-    // Dismisses any active token presentation (sheet/popover), used when selection clears.
+    // Dismisses any active segment presentation (sheet/popover), used when selection clears.
     func dismissPopover(notifyDismissal: Bool = true, completion: (() -> Void)? = nil) {
         dismissSheet { [weak self] in
             guard let self else {
@@ -230,7 +230,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         }
     }
 
-    // Keeps popover style in compact environments so token-anchored callouts retain the pointer arrow.
+    // Keeps popover style in compact environments so segment-anchored callouts retain the pointer arrow.
     func adaptivePresentationStyle(
         for controller: UIPresentationController,
         traitCollection: UITraitCollection
@@ -848,45 +848,45 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         }
     }
 
-    // Generates initial left and right token groups for split mode from the tapped surface text.
-    private func initialSplitTokens(for surface: String) -> (left: [String], right: [String]) {
-        let allTokens = tokenizeSurface(surface)
-        if allTokens.isEmpty {
+    // Generates initial left and right segment groups for split mode from the tapped surface text.
+    private func initialSplitSegments(for surface: String) -> (left: [String], right: [String]) {
+        let allSegments = segmentizeSurface(surface)
+        if allSegments.isEmpty {
             return (left: [surface], right: [])
         }
 
-        if allTokens.count == 1 {
-            return (left: [allTokens[0]], right: [])
+        if allSegments.count == 1 {
+            return (left: [allSegments[0]], right: [])
         }
 
-        return (left: [allTokens[0]], right: Array(allTokens.dropFirst()))
+        return (left: [allSegments[0]], right: Array(allSegments.dropFirst()))
     }
 
-    // Splits surface text into token units for transfer between split inputs.
-    private func tokenizeSurface(_ surface: String) -> [String] {
-        let whitespaceTokens = surface
+    // Splits surface text into segment units for transfer between split inputs.
+    private func segmentizeSurface(_ surface: String) -> [String] {
+        let whitespaceSegments = surface
             .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
             .map(String.init)
 
-        if whitespaceTokens.isEmpty == false {
-            return whitespaceTokens
+        if whitespaceSegments.isEmpty == false {
+            return whitespaceSegments
         }
 
         return surface.map { String($0) }
     }
 
-    // Rebuilds one token row with tappable chip buttons that transfer tokens across split inputs.
-    private func rebuildTokenRow(
+    // Rebuilds one segment row with tappable chip buttons that transfer segments across split inputs.
+    private func rebuildSegmentRow(
         _ row: UIStackView,
-        tokens: [String],
-        onTokenPressed: @escaping (String) -> Void
+        segments: [String],
+        onSegmentPressed: @escaping (String) -> Void
     ) {
         row.arrangedSubviews.forEach { arrangedSubview in
             row.removeArrangedSubview(arrangedSubview)
             arrangedSubview.removeFromSuperview()
         }
 
-        if tokens.isEmpty {
+        if segments.isEmpty {
             let placeholder = UILabel()
             placeholder.text = "—"
             placeholder.textColor = .tertiaryLabel
@@ -895,23 +895,23 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             return
         }
 
-        for token in tokens {
-            let tokenButton = UIButton(type: .system)
-            tokenButton.setTitle(token, for: .normal)
-            tokenButton.setTitleColor(.label, for: .normal)
-            tokenButton.titleLabel?.font = .systemFont(ofSize: 13)
+        for segment in segments {
+            let segmentButton = UIButton(type: .system)
+            segmentButton.setTitle(segment, for: .normal)
+            segmentButton.setTitleColor(.label, for: .normal)
+            segmentButton.titleLabel?.font = .systemFont(ofSize: 13)
             var configuration = UIButton.Configuration.plain()
             configuration.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
-            tokenButton.configuration = configuration
-            tokenButton.backgroundColor = UIColor.secondarySystemFill
-            tokenButton.layer.cornerRadius = 8
-            tokenButton.addAction(
+            segmentButton.configuration = configuration
+            segmentButton.backgroundColor = UIColor.secondarySystemFill
+            segmentButton.layer.cornerRadius = 8
+            segmentButton.addAction(
                 UIAction { _ in
-                    onTokenPressed(token)
+                    onSegmentPressed(segment)
                 },
                 for: .touchUpInside
             )
-            row.addArrangedSubview(tokenButton)
+            row.addArrangedSubview(segmentButton)
         }
     }
 

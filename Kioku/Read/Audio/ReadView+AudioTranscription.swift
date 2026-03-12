@@ -746,7 +746,7 @@ extension ReadView {
         return charactersPerMinute < 50
     }
 
-    // Extracts high-signal phrase hints from the current note with Japanese-aware tokenization for better recognition bias.
+    // Extracts high-signal phrase hints from the current note with Japanese-aware segmentation for better recognition bias.
     nonisolated static func makeSpeechContextualStrings(from noteText: String, title: String) -> [String] {
         let combinedSource = "\(title)\n\(noteText)"
         let sourceNSString = combinedSource as NSString
@@ -757,19 +757,19 @@ extension ReadView {
         tokenizer.setLanguage(.japanese)
 
         var rawParts: [String] = []
-        tokenizer.enumerateTokens(in: fullRange) { tokenRange, _ in
-            let token = String(combinedSource[tokenRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard token.isEmpty == false else {
+        tokenizer.enumerateTokens(in: fullRange) { segmentRange, _ in
+            let segment = String(combinedSource[segmentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard segment.isEmpty == false else {
                 return true
             }
 
-            let containsJapanese = token.unicodeScalars.contains { scalar in
+            let containsJapanese = segment.unicodeScalars.contains { scalar in
                 (0x3040...0x30FF).contains(Int(scalar.value)) || (0x4E00...0x9FFF).contains(Int(scalar.value))
             }
 
-            // Allows single-character Japanese tokens while filtering noisy short latin fragments.
-            if containsJapanese || token.count >= 2 {
-                rawParts.append(token)
+            // Allows single-character Japanese segments while filtering noisy short latin fragments.
+            if containsJapanese || segment.count >= 2 {
+                rawParts.append(segment)
             }
             return true
         }

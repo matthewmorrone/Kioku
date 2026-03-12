@@ -67,7 +67,7 @@ enum ScriptClassifier {
         return false
     }
 
-    // Classifies known Japanese punctuation symbols used by token boundaries.
+    // Classifies known Japanese punctuation symbols used by segment boundaries.
     static func isJapanesePunctuation(_ character: Character) -> Bool {
         guard !character.unicodeScalars.isEmpty else { return false }
 
@@ -99,7 +99,7 @@ enum ScriptClassifier {
         return true
     }
 
-    // Marks hard-boundary characters used by segmentation to split tokens safely.
+    // Marks hard-boundary characters used by segmentation to split segments safely.
     static func isBoundaryCharacter(_ character: Character) -> Bool {
         for scalar in character.unicodeScalars {
             if CharacterSet.whitespacesAndNewlines.contains(scalar) {

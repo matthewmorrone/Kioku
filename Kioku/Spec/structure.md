@@ -80,7 +80,7 @@ Must NOT:
 Responsible for:
 - Attributed layout projection
 - Envelope width enforcement
-- Atomic token layout guarantees
+- Atomic segment layout guarantees
 
 Must NOT:
 - Persist layout artifacts
@@ -203,8 +203,8 @@ Rendering must guarantee:
 - No span may visually split across lines.
 - Ruby and headword wrap atomically.
 - Envelope width = max(headwordWidth, rubyWidth).
-- Token block must align to left inset guide.
-- Token block must never overflow right inset guide.
+- Segment block must align to left inset guide.
+- Segment block must never overflow right inset guide.
 - No layout artifact may be persisted.
 
 ---
@@ -232,4 +232,4 @@ Partial backup is not permitted.
 - No cloud-sync requirement.
 - No network dependency for segmentation.
 - No rendering-state persistence.
-- No boundary-only token storage.
+- No boundary-only segment storage.

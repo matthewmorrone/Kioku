@@ -7,7 +7,7 @@ struct SegmenterScoring {
     let singleCharacterPenalty: Int
     let deinflectionPenalty: Int
     let dictionaryBonus: Int
-    let unknownTokenPenalty: Int
+    let unknownSegmentPenalty: Int
     let posGoodTransitionBonus: Int
     let posBadTransitionPenalty: Int
 
@@ -17,7 +17,7 @@ struct SegmenterScoring {
         singleCharacterPenalty: 3,
         deinflectionPenalty: 2,
         dictionaryBonus: 6,
-        unknownTokenPenalty: 40,
+        unknownSegmentPenalty: 40,
         posGoodTransitionBonus: -50,
         posBadTransitionPenalty: 150
     )

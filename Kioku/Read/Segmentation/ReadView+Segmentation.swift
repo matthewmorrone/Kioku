@@ -1,10 +1,10 @@
 import SwiftUI
 import UIKit
 
-// Hosts segmentation and token action helpers for the read screen.
+// Hosts segmentation and segment action helpers for the read screen.
 extension ReadView {
-    // Clears note-backed token range overrides and restores computed segmentation from the segmenter.
-    func resetTokenSegmentationToComputed() {
+    // Clears note-backed segment range overrides and restores computed segmentation from the segmenter.
+    func resetSegmentSegmentationToComputed() {
         segments = nil
         illegalMergeBoundaryLocation = nil
         illegalMergeFlashTask?.cancel()
@@ -27,8 +27,8 @@ extension ReadView {
         persistCurrentNoteIfNeeded()
     }
 
-    // Merges one token with its immediate neighbor from the token list screen.
-    func mergeSegmentFromTokenList(at edgeIndex: Int, isMergingLeft: Bool) {
+    // Merges one segment with its immediate neighbor from the segment list screen.
+    func mergeSegmentFromSegmentList(at edgeIndex: Int, isMergingLeft: Bool) {
         guard segmentationEdges.indices.contains(edgeIndex) else {
             return
         }
@@ -67,7 +67,7 @@ extension ReadView {
 
         var updatedEdges = segmentationEdges
         
-        // Applies merge globally to all matching token pairs when enabled.
+        // Applies merge globally to all matching segment pairs when enabled.
         if shouldApplyChangesGlobally {
             var indicesToRemove: Set<Int> = []
             var newEdges: [LatticeEdge] = []
@@ -120,8 +120,8 @@ extension ReadView {
         SegmentDefinitionPopoverPresenter.shared.dismissPopover()
     }
 
-    // Splits one token at a UTF-16 boundary selected from the token list screen.
-    func splitSegmentFromTokenList(at edgeIndex: Int, offsetUTF16: Int) {
+    // Splits one segment at a UTF-16 boundary selected from the segment list screen.
+    func splitSegmentFromSegmentList(at edgeIndex: Int, offsetUTF16: Int) {
         guard segmentationEdges.indices.contains(edgeIndex) else {
             return
         }
@@ -151,7 +151,7 @@ extension ReadView {
 
         var updatedEdges = segmentationEdges
         
-        // Applies split globally to all matching tokens when enabled.
+        // Applies split globally to all matching segments when enabled.
         if shouldApplyChangesGlobally {
             var newEdges: [LatticeEdge] = []
             
@@ -241,7 +241,7 @@ extension ReadView {
         let refreshedEdges: [LatticeEdge]
         if let segments,
            let overriddenEdges = edgesFromSegmentRanges(segments, in: text) {
-            if shouldDiscardPersistedTokenOverride(overriddenEdges: overriddenEdges, computedEdges: baseEdges) {
+            if shouldDiscardPersistedSegmentOverride(overriddenEdges: overriddenEdges, computedEdges: baseEdges) {
                 self.segments = nil
                 persistCurrentNoteIfNeeded()
                 refreshedEdges = baseEdges
@@ -260,7 +260,7 @@ extension ReadView {
         segmentationRanges = refreshedEdges.map { edge in
             edge.start..<edge.end
         }
-        unknownSegmentLocations = unknownTokenLocations(for: refreshedEdges)
+        unknownSegmentLocations = unknownSegmentLocations(for: refreshedEdges)
         recordRuntimeSegmentationSnapshot(for: refreshedEdges)
 
         // Clears stale selection if the tapped segment no longer exists after recomputing ranges.
@@ -280,7 +280,7 @@ extension ReadView {
         scheduleFuriganaGeneration(for: text, edges: refreshedEdges)
     }
 
-    // Records the current runtime segmentation for the active note so export can reuse live token boundaries.
+    // Records the current runtime segmentation for the active note so export can reuse live segment boundaries.
     func recordRuntimeSegmentationSnapshot(for edges: [LatticeEdge]) {
         guard let activeNoteID else {
             return
@@ -294,16 +294,16 @@ extension ReadView {
         )
     }
 
-    // Drops persisted token overrides when they are redundant or strictly worse than the current computed segmentation.
-    func shouldDiscardPersistedTokenOverride(overriddenEdges: [LatticeEdge], computedEdges: [LatticeEdge]) -> Bool {
+    // Drops persisted segment overrides when they are redundant or strictly worse than the current computed segmentation.
+    func shouldDiscardPersistedSegmentOverride(overriddenEdges: [LatticeEdge], computedEdges: [LatticeEdge]) -> Bool {
         let computedSegmentRanges = buildSegmentRanges(from: computedEdges)
         let overriddenSegmentRanges = buildSegmentRanges(from: overriddenEdges)
         if overriddenSegmentRanges == computedSegmentRanges {
             return true
         }
 
-        let overriddenUnknownCount = unknownTokenLocations(for: overriddenEdges).count
-        let computedUnknownCount = unknownTokenLocations(for: computedEdges).count
+        let overriddenUnknownCount = unknownSegmentLocations(for: overriddenEdges).count
+        let computedUnknownCount = unknownSegmentLocations(for: computedEdges).count
         return computedUnknownCount < overriddenUnknownCount
     }
 
@@ -735,7 +735,7 @@ extension ReadView {
         return (surface: leftSurface, leftNeighborSurface: leftNeighborSurface, rightNeighborSurface: rightSurface)
     }
 
-    // Resolves the currently highlighted merged token range used by merge/split actions.
+    // Resolves the currently highlighted merged segment range used by merge/split actions.
     func currentMergedSelectionNSRange() -> NSRange? {
         if let selectedHighlightRangeOverride,
            selectedHighlightRangeOverride.location != NSNotFound,
@@ -775,13 +775,13 @@ extension ReadView {
         return String(text[range])
     }
 
-    // Applies active segmentation edges to UI state and refreshes furigana using those exact token boundaries.
+    // Applies active segmentation edges to UI state and refreshes furigana using those exact segment boundaries.
     func applySegmentationEdges(_ edges: [LatticeEdge], persistOverride: Bool) {
         segmentationEdges = edges
         segmentationRanges = edges.map { edge in
             edge.start..<edge.end
         }
-        unknownSegmentLocations = unknownTokenLocations(for: edges)
+        unknownSegmentLocations = unknownSegmentLocations(for: edges)
         recordRuntimeSegmentationSnapshot(for: edges)
 
         if persistOverride {
@@ -794,7 +794,7 @@ extension ReadView {
     }
 
     // Marks the UTF-16 start locations of segments that do not resolve through the dictionary pipeline.
-    func unknownTokenLocations(for edges: [LatticeEdge]) -> Set<Int> {
+    func unknownSegmentLocations(for edges: [LatticeEdge]) -> Set<Int> {
         var unknownLocations: Set<Int> = []
 
         for edge in edges {
@@ -811,7 +811,7 @@ extension ReadView {
         return unknownLocations
     }
 
-    // Converts segmentation edges to explicit UTF-16 token ranges for note persistence.
+    // Converts segmentation edges to explicit UTF-16 segment ranges for note persistence.
     func buildSegmentRanges(from edges: [LatticeEdge]) -> [SegmentRange] {
         edges.compactMap { edge in
             let nsRange = NSRange(edge.start..<edge.end, in: text)
@@ -826,7 +826,7 @@ extension ReadView {
         }
     }
 
-    // Rebuilds segmentation edges from persisted UTF-16 token ranges.
+    // Rebuilds segmentation edges from persisted UTF-16 segment ranges.
     func edgesFromSegmentRanges(_ segments: [SegmentRange], in sourceText: String) -> [LatticeEdge]? {
         let utf16TotalLength = sourceText.utf16.count
         guard utf16TotalLength > 0 else {
@@ -834,9 +834,9 @@ extension ReadView {
         }
 
         var rebuiltEdges: [LatticeEdge] = []
-        for tokenRange in segments {
-            let startOffset = tokenRange.start
-            let endOffset = tokenRange.end
+        for segmentRange in segments {
+            let startOffset = segmentRange.start
+            let endOffset = segmentRange.end
             guard endOffset > startOffset else {
                 continue
             }
@@ -861,7 +861,7 @@ extension ReadView {
         return rebuiltEdges.isEmpty ? nil : rebuiltEdges
     }
 
-    // Normalizes persisted token ranges from a note so only valid ranges are applied.
+    // Normalizes persisted segment ranges from a note so only valid ranges are applied.
     func normalizedSegmentRanges(_ segments: [SegmentRange]?, for sourceText: String) -> [SegmentRange]? {
         guard let segments else {
             return nil
@@ -873,10 +873,10 @@ extension ReadView {
         }
 
         let normalizedRanges = segments
-            .filter { tokenRange in
-                tokenRange.start >= 0
-                    && tokenRange.end > tokenRange.start
-                    && tokenRange.end <= utf16TotalLength
+            .filter { segmentRange in
+                segmentRange.start >= 0
+                    && segmentRange.end > segmentRange.start
+                    && segmentRange.end <= utf16TotalLength
             }
             .sorted { lhs, rhs in
                 if lhs.start != rhs.start {
@@ -891,11 +891,11 @@ extension ReadView {
 
         // Require exact contiguous coverage of the full text to keep range persistence deterministic.
         var cursor = 0
-        for tokenRange in normalizedRanges {
-            guard tokenRange.start == cursor else {
+        for segmentRange in normalizedRanges {
+            guard segmentRange.start == cursor else {
                 return nil
             }
-            cursor = tokenRange.end
+            cursor = segmentRange.end
         }
 
         guard cursor == utf16TotalLength else {
@@ -939,7 +939,7 @@ extension ReadView {
         return true
     }
 
-    // Determines whether a token surface includes lexical content rather than punctuation/whitespace only.
+    // Determines whether a segment surface includes lexical content rather than punctuation/whitespace only.
     func isLexicalSurface(_ surface: String) -> Bool {
         let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
         return surface.unicodeScalars.contains { ignoredScalars.contains($0) == false }

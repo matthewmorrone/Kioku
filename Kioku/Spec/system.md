@@ -139,7 +139,7 @@ Partial restores are not permitted.
 
 Rendering must enforce:
 
-- Atomic token wrapping
+- Atomic segment wrapping
 - Ruby and headword wrap together
 - Envelope width = max(headwordWidth, rubyWidth)
 - No right inset overflow

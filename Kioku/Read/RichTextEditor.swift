@@ -117,14 +117,14 @@ struct RichTextEditor: UIViewRepresentable {
         )
     }
 
-    // Identifies ranges that should not affect token color parity (spacing and punctuation only).
+    // Identifies ranges that should not affect segment color parity (spacing and punctuation only).
     private func shouldIgnoreSegmentForAlternation(_ segmentText: String) -> Bool {
         let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
         return segmentText.unicodeScalars.allSatisfy { ignoredScalars.contains($0) }
     }
 
-    // Checks whether a token resolves through the segmenter's trie plus deinflection path.
-    private func isTokenInDictionary(_ surface: String) -> Bool {
+    // Checks whether a segment resolves through the segmenter's trie plus deinflection path.
+    private func isSegmentInDictionary(_ surface: String) -> Bool {
         segmenter.resolvesSurface(surface)
     }
 }

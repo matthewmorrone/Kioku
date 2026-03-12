@@ -3,7 +3,7 @@ import UIKit
 
 // Hosts sheet-selection and sheet-driven scroll helpers for the read screen.
 extension ReadView {
-    // Clears selected token state when token action UI is dismissed by user interaction.
+    // Clears selected segment state when segment action UI is dismissed by user interaction.
     func clearSelectedSegmentStateAfterPopoverDismissal() {
         selectedSegmentLocation = nil
         selectedHighlightRangeOverride = nil
@@ -35,7 +35,7 @@ extension ReadView {
             return
         }
 
-        // Treats tap geometry as content-space coordinates so scroll math uses the token's visible position.
+        // Treats tap geometry as content-space coordinates so scroll math uses the segment's visible position.
         let normalizedSegmentRect = tappedSegmentRect.offsetBy(dx: 0, dy: -sourceView.contentOffset.y)
 
         let estimatedSheetHeight: CGFloat = 360
@@ -43,7 +43,7 @@ extension ReadView {
         let expectedCoveredHeight = max(estimatedSheetHeight, estimatedRelativeCoverage)
         let coveredTopY = sourceView.bounds.height - expectedCoveredHeight
 
-        // Keeps already-visible tokens fixed and only moves lower ones enough to clear the sheet edge.
+        // Keeps already-visible segments fixed and only moves lower ones enough to clear the sheet edge.
         let visibilityPadding: CGFloat = 16
         let visibleBottomLimitY = max(24, coveredTopY - visibilityPadding)
         let requiredScrollDeltaY = max(0, normalizedSegmentRect.maxY - visibleBottomLimitY)
@@ -65,7 +65,7 @@ extension ReadView {
         sharedScrollOffsetY = clampedOffsetY
     }
 
-    // Removes temporary sheet-induced overscroll once the token action sheet is dismissed.
+    // Removes temporary sheet-induced overscroll once the segment action sheet is dismissed.
     func restoreScrollAfterSheetDismissal(sourceView: UITextView?) {
         guard let sourceView else {
             return

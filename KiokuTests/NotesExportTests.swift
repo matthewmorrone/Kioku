@@ -1,11 +1,11 @@
 import XCTest
 @testable import Kioku
 
-// Verifies note export includes token ranges from existing persisted/runtime state without recomputation.
+// Verifies note export includes segment ranges from existing persisted/runtime state without recomputation.
 @MainActor
 final class NotesExportTests: XCTestCase {
 
-    // Verifies export leaves token ranges empty when neither persisted overrides nor runtime snapshots exist.
+    // Verifies export leaves segment ranges empty when neither persisted overrides nor runtime snapshots exist.
     func testExportLeavesSegmentRangesEmptyWhenNoExistingSegmentationDataExists() {
         let store = NotesStore()
         store.notes = [
@@ -24,7 +24,7 @@ final class NotesExportTests: XCTestCase {
         XCTAssertEqual(exportedRanges, [])
     }
 
-    // Verifies export preserves existing token range overrides instead of replacing them.
+    // Verifies export preserves existing segment range overrides instead of replacing them.
     func testExportPreservesExistingSegmentRangesOverride() {
         let store = NotesStore()
         let overrideRanges = [SegmentRange(start: 0, end: 3)]

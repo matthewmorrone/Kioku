@@ -43,24 +43,24 @@ Users can:
 - Adjust ruby typography settings
 - Toggle headword padding
 - Toggle wrapping
-- Toggle alternate token colors
-- Highlight unknown tokens
+- Toggle alternate segment colors
+- Highlight unknown segments
 
 Rendering guarantees:
 
 - Ruby and headword wrap atomically
-- Tokens never visually split across lines
+- Segments never visually split across lines
 - No overflow past right inset
 - Alignment to left inset preserved
 
 ---
 
-### 2.3 Token Interactions
+### 2.3 Segment Interactions
 
 Users can:
 
-- Tap a token to view dictionary details
-- Split a token into smaller spans
+- Tap a segment to view dictionary details
+- Split a segment into smaller spans
 - Merge adjacent spans
 - Reset a span to automatic segmentation
 - Apply a custom reading override
@@ -79,10 +79,10 @@ Span operations must always preserve:
 
 Users can:
 
-- View tokens extracted from a note
+- View segments extracted from a note
 - Hide duplicates
 - Filter common particles
-- Jump to token location in note
+- Jump to segment location in note
 - Save one or multiple words
 
 Saved words link to canonical dictionary entries.
@@ -261,6 +261,6 @@ If data is absent, the UI degrades gracefully.
 Kioku does not include:
 
 - Karaoke alignment
-- Hard-cut token boundaries
+- Hard-cut segment boundaries
 - Surface-based word identity
 - Cloud dependency

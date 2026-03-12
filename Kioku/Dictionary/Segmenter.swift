@@ -107,7 +107,7 @@ final class Segmenter {
     }
 
     /*
-    // Prints lattice edges with integer offsets and matched text for tokenizer debugging.
+    // Prints lattice edges with integer offsets and matched text for segmenter debugging.
     func debugPrintLattice(for text: String) {
         var index = text.startIndex
 
@@ -245,7 +245,7 @@ final class Segmenter {
         return lhs.lemma > rhs.lemma
     }
 
-    // Determines how far an unknown token should extend by grouping contiguous same-script runs.
+    // Determines how far an unknown segment should extend by grouping contiguous same-script runs.
     private func unknownFallbackRange(in text: String, startingAt index: String.Index) -> Range<String.Index> {
         let firstCharacter = text[index]
         guard let group = unknownGrouping(for: firstCharacter) else {
@@ -273,7 +273,7 @@ final class Segmenter {
         return index..<currentIndex
     }
 
-    // Classifies unknown-token script groups used for simple fallback token coalescing.
+    // Classifies unknown-segment script groups used for simple fallback segment coalescing.
     private func unknownGrouping(for character: Character) -> String? {
         guard let scalar = character.unicodeScalars.first else {
             return nil
@@ -303,7 +303,7 @@ final class Segmenter {
     }
 
     // Applies unknown penalty to non-dictionary non-boundary edges so punctuation separators are not over-penalized.
-    private func shouldApplyUnknownTokenPenalty(_ edge: LatticeEdge) -> Bool {
+    private func shouldApplyUnknownSegmentPenalty(_ edge: LatticeEdge) -> Bool {
         if isDictionaryEdge(edge) {
             return false
         }
@@ -465,7 +465,7 @@ final class Segmenter {
         return score
     }
 
-    // Prints greedy longest-match segments line-by-line for tokenizer debugging.
+    // Prints greedy longest-match segments line-by-line for segmenter debugging.
     func debugPrintSegments(for text: String) {
         let segments = longestMatchSegments(for: text)
 

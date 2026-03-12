@@ -18,7 +18,7 @@ final class RichTextEditorCoordinator: NSObject, UITextViewDelegate {
         self.onScrollOffsetYChanged = onScrollOffsetYChanged
     }
 
-    // Caches NSRange segment boundaries used to keep wrapped lines from splitting a token.
+    // Caches NSRange segment boundaries used to keep wrapped lines from splitting a segment.
     func configureSegmentationRanges(_ segmentationRanges: [Range<String.Index>], in text: String) {
         segmentationNSRanges = segmentationRanges.compactMap { segmentRange in
             let nsRange = NSRange(segmentRange, in: text)

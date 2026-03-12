@@ -1,7 +1,7 @@
 import SwiftUI
 
-// Renders the token-management screen for all current paste-area tokens.
-struct TokenListView: View {
+// Renders the segment-management screen for all current paste-area segments.
+struct SegmentListView: View {
     @Environment(\.dismiss) private var dismiss
 
     let text: String
@@ -24,12 +24,12 @@ struct TokenListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Displays every active token in source order.
+                // Displays every active segment in source order.
                 List {
                     ForEach(displayRows, id: \.sourceIndex) { row in
                         let index = row.sourceIndex
                         let edge = row.edge
-                        // Shows token text with a right-side star toggle and split/merge context actions.
+                        // Shows segment text with a right-side star toggle and split/merge context actions.
                         HStack(spacing: 10) {
                             Text(edge.surface)
                                 .font(.headline)
@@ -108,7 +108,7 @@ struct TokenListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                // Dismisses the token list sheet without depending on scroll-position gesture handoff.
+                // Dismisses the segment list sheet without depending on scroll-position gesture handoff.
                 Button {
                     dismiss()
                 } label: {
@@ -122,7 +122,7 @@ struct TokenListView: View {
         }
     }
 
-    // Builds valid UTF-16 split offsets for a token by iterating character boundaries.
+    // Builds valid UTF-16 split offsets for a segment by iterating character boundaries.
     private func splitOffsets(for surface: String) -> [Int] {
         guard surface.isEmpty == false else {
             return []
@@ -144,7 +144,7 @@ struct TokenListView: View {
         return offsets
     }
 
-    // Excludes newline-only rows so the word list mirrors visible lexical token editing intent.
+    // Excludes newline-only rows so the word list mirrors visible lexical segment editing intent.
     private var displayRows: [(sourceIndex: Int, edge: LatticeEdge)] {
         var filteredRows = Array(edges.enumerated())
             .filter { _, edge in
@@ -175,13 +175,13 @@ struct TokenListView: View {
         }
     }
 
-    // Detects whether a token surface is one of the common Japanese particles used for extraction filtering.
+    // Detects whether a segment surface is one of the common Japanese particles used for extraction filtering.
     private func isCommonParticle(_ surface: String) -> Bool {
         let normalizedSurface = normalizedSurfaceForFiltering(surface)
         return commonParticles.contains(normalizedSurface)
     }
 
-    // Normalizes a token surface for stable duplicate and particle comparisons.
+    // Normalizes a segment surface for stable duplicate and particle comparisons.
     private func normalizedSurfaceForFiltering(_ surface: String) -> String {
         surface.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -206,7 +206,7 @@ struct TokenListView: View {
         .accessibilityValue(isOn ? "On" : "Off")
     }
 
-    // Toggles one token surface in the saved-word list storage.
+    // Toggles one segment surface in the saved-word list storage.
     private func toggleSavedWord(_ surface: String) {
         var entries = loadSavedWordEntriesFromStorage()
         if entries.contains(where: { $0.surface == surface }) {

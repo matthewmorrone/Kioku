@@ -139,7 +139,7 @@ Requirements:
   envelopeWidth = max(headwordWidth, rubyWidth)
 - Ensure:
   - Ruby and headword wrap atomically
-  - No token splits across lines
+  - No segment splits across lines
   - No right inset overflow
   - Left inset alignment preserved
 - Rendering must not persist layout artifacts.

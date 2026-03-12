@@ -50,7 +50,7 @@ extension ReadView {
         return overrides[surface]
     }
 
-    // Scores readings so standalone-kanji tokens can prefer kunyomi-like options.
+    // Scores readings so standalone-kanji segments can prefer kunyomi-like options.
     func kunyomiPreferenceScore(_ reading: String) -> Int {
         let scalarValues = reading.unicodeScalars.map(\.value)
         let hasSmallKana = scalarValues.contains { value in

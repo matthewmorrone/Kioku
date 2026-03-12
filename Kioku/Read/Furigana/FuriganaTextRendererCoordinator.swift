@@ -151,7 +151,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         onScrollOffsetYChanged(offsetY)
     }
 
-    // Maps a tap point to a segment location so read mode can highlight the tapped token range.
+    // Maps a tap point to a segment location so read mode can highlight the tapped segment range.
     @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
         guard let textView = recognizer.view as? UITextView else {
             return
@@ -181,7 +181,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
 
             onSegmentTapped(
                 tappedRange.location,
-                tokenRectInTextView(textView: textView, nsRange: tappedRange),
+                segmentRectInTextView(textView: textView, nsRange: tappedRange),
                 textView
             )
             return
@@ -204,7 +204,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         return nil
     }
 
-    // Rejects whitespace and punctuation-only segments so non-lexical tokens never become selectable.
+    // Rejects whitespace and punctuation-only segments so non-lexical segments never become selectable.
     private func isSelectableSegment(_ nsRange: NSRange, in sourceText: String) -> Bool {
         guard
             nsRange.location != NSNotFound,
@@ -219,8 +219,8 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         return segmentText.unicodeScalars.contains { ignoredScalars.contains($0) == false }
     }
 
-    // Resolves a token rect in text-view coordinates for anchoring read-mode tooltips near tapped words.
-    private func tokenRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
+    // Resolves a segment rect in text-view coordinates for anchoring read-mode tooltips near tapped words.
+    private func segmentRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
         let documentStart = textView.beginningOfDocument
         guard
             let rangeStart = textView.position(from: documentStart, offset: nsRange.location),
@@ -230,12 +230,12 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
             return nil
         }
 
-        let tokenRect = textView.firstRect(for: textRange)
-        if tokenRect.isEmpty {
+        let segmentRect = textView.firstRect(for: textRange)
+        if segmentRect.isEmpty {
             return nil
         }
 
-        return tokenRect
+        return segmentRect
     }
 
 }

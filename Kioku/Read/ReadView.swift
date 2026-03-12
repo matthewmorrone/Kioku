@@ -54,7 +54,7 @@ struct ReadView: View {
     @State var isLoadingSelectedNote = false
     @State var isEditMode = false
     @State var sharedScrollOffsetY: CGFloat = 0
-    @State private var isShowingTokenList = false
+    @State private var isShowingSegmentList = false
     @State private var isShowingDisplayOptions = false
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
@@ -103,22 +103,22 @@ struct ReadView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
         .toolbar(.visible, for: .tabBar)
-        .sheet(isPresented: $isShowingTokenList) {
-            TokenListView(
+        .sheet(isPresented: $isShowingSegmentList) {
+            SegmentListView(
                 text: text,
                 edges: segmentationEdges,
                 sourceNoteID: activeNoteID,
                 onMergeLeft: { edgeIndex in
-                    mergeSegmentFromTokenList(at: edgeIndex, isMergingLeft: true)
+                    mergeSegmentFromSegmentList(at: edgeIndex, isMergingLeft: true)
                 },
                 onMergeRight: { edgeIndex in
-                    mergeSegmentFromTokenList(at: edgeIndex, isMergingLeft: false)
+                    mergeSegmentFromSegmentList(at: edgeIndex, isMergingLeft: false)
                 },
                 onSplit: { edgeIndex, splitOffset in
-                    splitSegmentFromTokenList(at: edgeIndex, offsetUTF16: splitOffset)
+                    splitSegmentFromSegmentList(at: edgeIndex, offsetUTF16: splitOffset)
                 },
                 onReset: {
-                    resetTokenSegmentationToComputed()
+                    resetSegmentSegmentationToComputed()
                 }
             )
         }
@@ -342,17 +342,17 @@ struct ReadView: View {
         HStack {
             Spacer()
             resetButton
-            tokenListButton
+            segmentListButton
             furiganaButton
             editModeButton
         }
         .padding(.horizontal, 8)
     }
 
-    // Resets custom token segmentation back to computed segmentation.
+    // Resets custom segment segmentation back to computed segmentation.
     private var resetButton: some View {
         Button {
-            resetTokenSegmentationToComputed()
+            resetSegmentSegmentationToComputed()
         } label: {
             Image(systemName: "arrow.counterclockwise")
                 .font(.system(size: 16, weight: .semibold))
@@ -366,13 +366,13 @@ struct ReadView: View {
         .buttonStyle(PlainButtonStyle())
         .disabled(segments == nil || isEditMode)
         .opacity(segments == nil || isEditMode ? 0.5 : 0.7)
-        .accessibilityLabel("Reset Token Segmentation")
+        .accessibilityLabel("Reset Segment Segmentation")
     }
 
-    // Opens the token list screen for split/merge actions synced to the paste area.
-    private var tokenListButton: some View {
+    // Opens the segment list screen for split/merge actions synced to the paste area.
+    private var segmentListButton: some View {
         Button {
-            isShowingTokenList = true
+            isShowingSegmentList = true
         } label: {
             Image(systemName: "list.bullet")
                 .font(.system(size: 16, weight: .semibold))
@@ -388,7 +388,7 @@ struct ReadView: View {
         .buttonStyle(PlainButtonStyle())
         .disabled(isEditMode)
         .opacity(isEditMode ? 0.5 : 0.7)
-        .accessibilityLabel("Show Token List")
+        .accessibilityLabel("Show Segment List")
     }
 
     // Toggles whether furigana annotations render in the main paste area.
