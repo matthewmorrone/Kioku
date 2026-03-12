@@ -45,19 +45,17 @@ struct ContentView: View {
                 lastActiveNoteID = note.id.uuidString
                 selectedTab = .read
             }, onUpdateSelectedNote: { updatedNote in
-                guard let currentSelectedReadNote = selectedReadNote else {
-                    return
-                }
-
-                if let updatedNote, updatedNote.id == currentSelectedReadNote.id {
+                if let currentSelectedReadNote = selectedReadNote, let updatedNote, updatedNote.id == currentSelectedReadNote.id {
                     selectedReadNote = updatedNote
                     lastActiveNoteID = updatedNote.id.uuidString
                     return
                 }
 
                 if updatedNote == nil {
-                    if notesStore.note(withID: currentSelectedReadNote.id) == nil {
+                    if let currentSelectedReadNote = selectedReadNote, notesStore.note(withID: currentSelectedReadNote.id) == nil {
                         selectedReadNote = nil
+                        lastActiveNoteID = ""
+                    } else if let activeNoteID = UUID(uuidString: lastActiveNoteID), notesStore.note(withID: activeNoteID) == nil {
                         lastActiveNoteID = ""
                     }
                 }

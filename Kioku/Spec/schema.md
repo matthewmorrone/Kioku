@@ -1,6 +1,4 @@
-# Kioku Data Schema
-
-This document defines the authoritative data model for Kioku.
+#This document defines the authoritative data model for Kioku.
 It does not describe legacy storage.
 It defines the structures the new system must persist.
 

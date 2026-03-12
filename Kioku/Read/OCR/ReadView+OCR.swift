@@ -17,20 +17,22 @@ extension ReadView {
         )
     }
 
-    // Renders the control row at the top of the note area so OCR import is always reachable.
-    var noteAreaHeader: some View {
-        HStack {
-            ocrImportButton
-            Spacer()
-        }
-    }
-
     // Renders the top-left OCR button that lets the user pick an image to recognize into a new note.
     var ocrImportButton: some View {
-        Button {
-            isShowingOCRSourceOptions = true
+        Menu {
+            Button {
+                presentCameraOCRIfAvailable()
+            } label: {
+                Label("Camera", systemImage: "camera")
+            }
+
+            Button {
+                isShowingPhotoLibraryPicker = true
+            } label: {
+                Label("Photo Library", systemImage: "photo.on.rectangle")
+            }
         } label: {
-            HStack(spacing: 6) {
+            Group {
                 if isPerformingOCRImport {
                     ProgressView()
                         .controlSize(.small)
@@ -38,13 +40,9 @@ extension ReadView {
                     Image(systemName: "text.viewfinder")
                         .font(.system(size: 14, weight: .semibold))
                 }
-
-                Text(isPerformingOCRImport ? "Reading" : "OCR")
-                    .font(.caption.weight(.semibold))
             }
             .foregroundStyle(isPerformingOCRImport ? Color.secondary : Color.accentColor)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .frame(width: 30, height: 30)
             .background(
                 Capsule()
                     .fill(Color(.tertiarySystemFill))

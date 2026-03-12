@@ -42,7 +42,35 @@ extension ReadView {
 
     // Loads the selected note into editor state when navigation targets change.
     func loadSelectedNoteIfNeeded() {
-        guard let selectedNote else { return }
+        guard let selectedNote else {
+            // Clears stale read content only when the active note was deleted from storage.
+            guard let currentActiveNoteID = activeNoteID, notesStore.note(withID: currentActiveNoteID) == nil else {
+                return
+            }
+
+            pendingPersistenceTask?.cancel()
+            pendingPersistenceTask = nil
+            isLoadingSelectedNote = true
+            activeNoteID = nil
+            customTitle = ""
+            fallbackTitle = ""
+            text = ""
+            tokenRanges = nil
+            segmentationLatticeEdges = []
+            segmentationEdges = []
+            segmentationRanges = []
+            unknownSegmentLocations = []
+            selectedSegmentLocation = nil
+            selectedHighlightRangeOverride = nil
+            selectedMergedEdgeBounds = nil
+            furiganaBySegmentLocation = [:]
+            furiganaLengthBySegmentLocation = [:]
+            illegalMergeBoundaryLocation = nil
+            SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+            isLoadingSelectedNote = false
+            return
+        }
+
         pendingPersistenceTask?.cancel()
         pendingPersistenceTask = nil
         let noteToLoad = notesStore.note(withID: selectedNote.id) ?? selectedNote

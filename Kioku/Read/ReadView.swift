@@ -55,7 +55,6 @@ struct ReadView: View {
     @State var sharedScrollOffsetY: CGFloat = 0
     @State private var isShowingTokenList = false
     @State private var isShowingDisplayOptions = false
-    @State var isShowingOCRSourceOptions = false
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
     @State var selectedOCRImageItem: PhotosPickerItem?
@@ -211,48 +210,39 @@ struct ReadView: View {
         } message: {
             Text(ocrImportErrorMessage)
         }
-        .confirmationDialog(
-            "Import Text with OCR",
-            isPresented: $isShowingOCRSourceOptions,
-            titleVisibility: .visible
-        ) {
-            Button("Camera") {
-                presentCameraOCRIfAvailable()
-            }
-            Button("Photo Library") {
-                isShowingPhotoLibraryPicker = true
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Choose an image source for OCR.")
-        }
     }
 
     // Displays the editable note title at the top of the reading screen.
     private var titleView: some View {
-        Text(displayTitle)
-            .font(.system(size: 24, weight: .bold))
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 8)
-            .onTapGesture {
-                titleDraft = resolvedTitle
-                isShowingTitleAlert = true
-            }
-            .alert("Edit Title", isPresented: $isShowingTitleAlert) {
-                TextField("Title", text: $titleDraft)
-                Button("Cancel", role: .cancel) {}
-                Button("Save") {
-                    customTitle = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    flushPendingNotePersistenceIfNeeded()
+        ZStack {
+            Text(displayTitle)
+                .font(.system(size: 24, weight: .bold))
+                .onTapGesture {
+                    titleDraft = resolvedTitle
+                    isShowingTitleAlert = true
                 }
+
+            HStack {
+                Spacer()
+                ocrImportButton
+                newNoteButton
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 8)
+        .alert("Edit Title", isPresented: $isShowingTitleAlert) {
+            TextField("Title", text: $titleDraft)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                customTitle = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                flushPendingNotePersistenceIfNeeded()
+            }
+        }
     }
 
     // Keeps both read and edit renderers mounted so mode toggles are instant.
     private var editorView: some View {
         VStack(spacing: 8) {
-            noteAreaHeader
-
             ZStack {
                 FuriganaTextRenderer(
                     isActive: isEditMode == false,
@@ -409,6 +399,31 @@ struct ReadView: View {
             displayOptionsPopover
                 .presentationCompactAdaptation(.popover)
         }
+    }
+
+    // Renders the title-row button that creates and selects a fresh note for immediate editing.
+    private var newNoteButton: some View {
+        Button {
+            flushPendingNotePersistenceIfNeeded()
+            notesStore.addNote()
+            guard let createdNote = notesStore.notes.first else {
+                return
+            }
+
+            shouldActivateEditModeOnLoad = true
+            selectedNote = createdNote
+        } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 30, height: 30)
+                .background(
+                    Capsule()
+                        .fill(Color(.tertiarySystemFill))
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("New Note")
     }
 
     // Renders the tappable furigana icon that also exposes display options on long press.
