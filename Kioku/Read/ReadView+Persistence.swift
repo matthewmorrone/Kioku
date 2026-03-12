@@ -10,7 +10,7 @@ extension ReadView {
         pendingPersistenceTask?.cancel()
         let snapshotText = text
         let snapshotTitle = customTitle
-        let snapshotTokenRanges = tokenRanges
+        let snapshotSegmentRanges = segments
         let snapshotActiveNoteID = activeNoteID
 
         pendingPersistenceTask = Task {
@@ -21,7 +21,7 @@ extension ReadView {
                 guard
                     text == snapshotText,
                     customTitle == snapshotTitle,
-                    tokenRanges == snapshotTokenRanges,
+                    segments == snapshotSegmentRanges,
                     activeNoteID == snapshotActiveNoteID
                 else {
                     return
@@ -55,7 +55,7 @@ extension ReadView {
             customTitle = ""
             fallbackTitle = ""
             text = ""
-            tokenRanges = nil
+            segments = nil
             segmentationLatticeEdges = []
             segmentationEdges = []
             segmentationRanges = []
@@ -82,8 +82,8 @@ extension ReadView {
             ? firstLineTitle(from: noteToLoad.content)
             : noteToLoad.title
         text = noteToLoad.content
-        tokenRanges = normalizedTokenRanges(
-            noteToLoad.tokenRanges,
+        segments = normalizedSegmentRanges(
+            noteToLoad.segments,
             for: noteToLoad.content
         )
         if shouldActivateEditModeOnLoad {
@@ -115,7 +115,7 @@ extension ReadView {
             id: activeNoteID,
             title: titleToSave,
             content: text,
-            tokenRanges: tokenRanges
+            segments: segments
         )
         activeNoteID = savedNoteID
         onActiveNoteChanged?(savedNoteID)

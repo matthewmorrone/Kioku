@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		E32B0CE32F57BC070020F5C2 /* data_manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDE2F57BC070020F5C2 /* data_manifest.json */; };
 		E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
-		E32B0CE52F57BC070020F5C2 /* jmdict-eng-3.6.2.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE12F57BC070020F5C2 /* jmdict-eng-3.6.2.json */; };
 		E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE02F57BC070020F5C2 /* generate_db.py */; };
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
 /* End PBXBuildFile section */
@@ -38,7 +37,6 @@
 		E32B0CDE2F57BC070020F5C2 /* data_manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = data_manifest.json; sourceTree = "<group>"; };
 		E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dictionary.sqlite; sourceTree = "<group>"; };
 		E32B0CE02F57BC070020F5C2 /* generate_db.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = generate_db.py; sourceTree = "<group>"; };
-		E32B0CE12F57BC070020F5C2 /* jmdict-eng-3.6.2.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "jmdict-eng-3.6.2.json"; sourceTree = "<group>"; };
 		E32B0CE82F57BC070020F5C2 /* deinflection.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = deinflection.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -107,7 +105,6 @@
 				E32B0CE82F57BC070020F5C2 /* deinflection.json */,
 				E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */,
 				E32B0CE02F57BC070020F5C2 /* generate_db.py */,
-				E32B0CE12F57BC070020F5C2 /* jmdict-eng-3.6.2.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -233,7 +230,6 @@
 				E32B0CE32F57BC070020F5C2 /* data_manifest.json in Resources */,
 				E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */,
 				E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */,
-				E32B0CE52F57BC070020F5C2 /* jmdict-eng-3.6.2.json in Resources */,
 				E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -450,6 +446,7 @@
 				GCC_OPTIMIZATION_LEVEL = s;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture text for OCR into a new note.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Allow speech recognition to transcribe imported audio into notes with karaoke timing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -488,6 +485,7 @@
 				GCC_OPTIMIZATION_LEVEL = s;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture text for OCR into a new note.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Allow speech recognition to transcribe imported audio into notes with karaoke timing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 import UIKit
 
 // Provides the primary reading and editing surface for an active note.
@@ -44,7 +45,7 @@ struct ReadView: View {
     @State var selectedSegmentLocation: Int?
     @State var selectedHighlightRangeOverride: NSRange?
     @State var selectedMergedEdgeBounds: ClosedRange<Int>?
-    @State var tokenRanges: [TokenRange]?
+    @State var segments: [SegmentRange]?
     @State var furiganaBySegmentLocation: [Int: String] = [:]
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
     @State var furiganaComputationTask: Task<Void, Never>?
@@ -57,9 +58,12 @@ struct ReadView: View {
     @State private var isShowingDisplayOptions = false
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
+    @State var isShowingAudioFileImporter = false
     @State var selectedOCRImageItem: PhotosPickerItem?
     @State var isPerformingOCRImport = false
+    @State var isPerformingAudioTranscription = false
     @State var ocrImportErrorMessage = ""
+    @State var audioTranscriptionErrorMessage = ""
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
 
@@ -131,6 +135,13 @@ struct ReadView: View {
             matching: .images,
             preferredItemEncoding: .automatic
         )
+        .fileImporter(
+            isPresented: $isShowingAudioFileImporter,
+            allowedContentTypes: [.audio],
+            allowsMultipleSelection: false
+        ) { result in
+            handleAudioImportSelection(result)
+        }
         .onAppear {
             // Syncs editor state when this screen first appears.
             loadSelectedNoteIfNeeded()
@@ -143,7 +154,7 @@ struct ReadView: View {
             // Persists edits as content changes.
             scheduleCurrentNotePersistenceIfNeeded()
             if isEditMode {
-                tokenRanges = nil
+                segments = nil
                 illegalMergeBoundaryLocation = nil
                 illegalMergeFlashTask?.cancel()
                 // Clears stale range state while editing so view-mode reactivation never reads mismatched ranges.
@@ -210,6 +221,13 @@ struct ReadView: View {
         } message: {
             Text(ocrImportErrorMessage)
         }
+        .alert("Audio Transcription Failed", isPresented: audioTranscriptionErrorPresented) {
+            Button("OK", role: .cancel) {
+                audioTranscriptionErrorMessage = ""
+            }
+        } message: {
+            Text(audioTranscriptionErrorMessage)
+        }
     }
 
     // Displays the editable note title at the top of the reading screen.
@@ -224,6 +242,7 @@ struct ReadView: View {
 
             HStack {
                 Spacer()
+                audioTranscriptionButton
                 ocrImportButton
                 newNoteButton
             }
@@ -337,7 +356,7 @@ struct ReadView: View {
         } label: {
             Image(systemName: "arrow.counterclockwise")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(tokenRanges == nil ? Color.secondary.opacity(0.5) : Color.secondary)
+                .foregroundStyle(segments == nil ? Color.secondary.opacity(0.5) : Color.secondary)
                 .frame(width: 36, height: 36)
                 .background(
                     Circle()
@@ -345,8 +364,8 @@ struct ReadView: View {
                 )
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(tokenRanges == nil || isEditMode)
-        .opacity(tokenRanges == nil || isEditMode ? 0.5 : 0.7)
+        .disabled(segments == nil || isEditMode)
+        .opacity(segments == nil || isEditMode ? 0.5 : 0.7)
         .accessibilityLabel("Reset Token Segmentation")
     }
 

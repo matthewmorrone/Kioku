@@ -23,27 +23,24 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Shows live typography preview content.
+                // Hosts typography sliders that update read and preview rendering.
                 Section {
+                        // Shows live typography preview content.
                     RichTextPreview(
                         text: previewText,
                         textSize: textSize,
                         lineSpacing: lineSpacing,
                         kerning: kerning
                     )
-                        .frame(minHeight: 96)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(.secondarySystemBackground))
-                        )
-                } header: {
-                    Text("Preview")
-                }
+                    .frame(minHeight: 96)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(.secondarySystemBackground))
+                    )
 
-                // Hosts typography sliders that update read and preview rendering.
-                Section {
+
                     // Controls base font size.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -80,34 +77,19 @@ struct SettingsView: View {
                     Text("Typography")
                 }
 
-                // Exports the current notes collection and saved segments to a JSON file.
                 Section {
+                    // Exports the current notes collection and saved segments to a JSON file.
                     Button {
                         beginNotesExport()
                     } label: {
-                        Label("Export Notes", systemImage: "square.and.arrow.up")
+                        Label("Export", systemImage: "square.and.arrow.up")
                     }
-
-                    Text("Exports notes and their saved segments as a JSON file.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } header: {
-                    Text("Export")
-                }
-
-                // Imports a JSON export and replaces the current notes collection.
-                Section {
+                    // Imports a JSON export and replaces the current notes collection.
                     Button {
                         isShowingImporter = true
                     } label: {
-                        Label("Import Notes", systemImage: "square.and.arrow.down")
+                        Label("Import", systemImage: "square.and.arrow.down")
                     }
-
-                    Text("Import replaces all current notes with the contents of the selected export file.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } header: {
-                    Text("Import")
                 }
             }
             .navigationTitle("Settings")
@@ -117,7 +99,7 @@ struct SettingsView: View {
             isPresented: $isShowingExporter,
             document: exportDocument,
             contentType: .json,
-            defaultFilename: "kioku-notes"
+            defaultFilename: "kioku-export"
         ) { result in
             handleExportResult(result)
         }

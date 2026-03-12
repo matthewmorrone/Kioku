@@ -30,19 +30,15 @@ struct NotesTransferDocument: FileDocument {
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(payload)
         return FileWrapper(regularFileWithContents: data)
     }
 
-    // Supports both versioned exports and legacy raw note arrays during import.
+    // Decodes the current versioned transfer payload format.
     private static func decodePayload(from data: Data) throws -> NotesTransferPayload {
         let decoder = JSONDecoder()
-
-        if let payload = try? decoder.decode(NotesTransferPayload.self, from: data) {
-            return payload
-        }
-
-        let notes = try decoder.decode([Note].self, from: data)
-        return NotesTransferPayload(notes: notes)
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(NotesTransferPayload.self, from: data)
     }
 }
