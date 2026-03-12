@@ -8,6 +8,7 @@ import time
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RESOURCES_DIR = PROJECT_ROOT / "Resources"
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
+EXTRAS_PATH = RESOURCES_DIR / "extras.json"
 OUTPUT_DB = RESOURCES_DIR / "dictionary.sqlite"
 
 def sha256_of_file(path: Path) -> str:
@@ -78,6 +79,179 @@ def create_schema(conn):
     )
 
 
+def load_jmdict_entries():
+    with open(JMDICT_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and "words" in data:
+        return data["words"]
+
+    raise ValueError("Unexpected JMdict JSON structure")
+
+
+def load_extra_entries():
+    # [
+    #   {
+    #     ent_seq?: integer,
+    #     is_common?: 0 | 1,
+    #     priority?: [string],
+    #     kanji?: [ string |
+    #       {
+    #         text: string,
+    #         priority?: [string]
+    #       }
+    #     ],
+    #     kana?: [ string |
+    #       {
+    #         text: string,
+    #         priority?: [string]
+    #       }
+    #     ],
+    #     senses?: [
+    #       {
+    #         partOfSpeech?: [string],
+    #         misc?: [string],
+    #         field?: [string],
+    #         dialect?: [string],
+    #         gloss?: [ string |
+    #           {
+    #             text: string
+    #           }
+    #         ]
+    #       }
+    #     ],
+    #     gloss?: string | { text: string } | [ string | { text: string } ]
+    #       # shorthand allowed only when senses is omitted;
+    #       # normalizes to senses: [{ gloss: [...] }]
+    #   }
+    # ]
+    if not EXTRAS_PATH.exists():
+        return []
+
+    with open(EXTRAS_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if isinstance(data, list):
+        return [normalize_extra_entry(entry, entry_index) for entry_index, entry in enumerate(data)]
+
+    raise ValueError("Unexpected extras JSON structure")
+
+
+def normalize_extra_entry(entry, entry_index):
+    if not isinstance(entry, dict):
+        raise ValueError(f"extras.json entry {entry_index} must be an object")
+
+    normalized_entry = dict(entry)
+
+    for form_key in ("kanji", "kana"):
+        form_value = normalized_entry.get(form_key)
+        if isinstance(form_value, str):
+            normalized_entry[form_key] = [form_value]
+        elif form_value is not None and not isinstance(form_value, list):
+            raise ValueError(f"extras.json entry {entry_index} field '{form_key}' must be a string or array")
+
+    shorthand_gloss = normalized_entry.pop("gloss", None)
+    existing_senses = normalized_entry.get("senses")
+
+    if shorthand_gloss is not None and existing_senses is not None:
+        raise ValueError(
+            f"extras.json entry {entry_index} cannot specify both 'gloss' shorthand and 'senses'"
+        )
+
+    if isinstance(existing_senses, str):
+        normalized_entry["senses"] = [{"gloss": [existing_senses]}]
+    elif isinstance(existing_senses, dict):
+        normalized_entry["senses"] = [existing_senses]
+    elif existing_senses is not None and not isinstance(existing_senses, list):
+        raise ValueError(f"extras.json entry {entry_index} field 'senses' must be a string, object, or array")
+
+    if shorthand_gloss is not None:
+        if isinstance(shorthand_gloss, list):
+            gloss_list = shorthand_gloss
+        else:
+            gloss_list = [shorthand_gloss]
+
+        normalized_entry["senses"] = [{"gloss": gloss_list}]
+
+    return normalized_entry
+
+
+def insert_entry(conn, entry_insert, kanji_insert, kana_insert, sense_insert, gloss_insert, entry, ent_seq):
+    priorities = []
+    for k in entry.get("kanji", []):
+        if isinstance(k, str):
+            continue
+        for p in k.get("priority", []) or []:
+            priorities.append(p)
+    for r in entry.get("kana", []):
+        if isinstance(r, str):
+            continue
+        for p in r.get("priority", []) or []:
+            priorities.append(p)
+
+    priority_str = ",".join(sorted(set(priorities))) if priorities else None
+    is_common = 1 if any(
+        p.startswith(("news", "ichi", "spec", "custom"))
+        for p in priorities
+    ) else int(entry.get("is_common", 0))
+
+    cur = conn.execute(entry_insert, (ent_seq, priority_str, is_common))
+    entry_id = cur.lastrowid
+
+    for k in entry.get("kanji", []):
+        if isinstance(k, str):
+            conn.execute(kanji_insert, (k, entry_id, None))
+            continue
+
+        k_priorities = ",".join(sorted(set(k.get("priority", []) or []))) if k.get("priority") else None
+        conn.execute(kanji_insert, (k["text"], entry_id, k_priorities))
+
+    for r in entry.get("kana", []):
+        if isinstance(r, str):
+            conn.execute(kana_insert, (r, entry_id, None))
+            continue
+
+        r_priorities = ",".join(sorted(set(r.get("priority", []) or []))) if r.get("priority") else None
+        conn.execute(kana_insert, (r["text"], entry_id, r_priorities))
+
+    for s_idx, sense in enumerate(entry.get("senses", [])):
+        pos = ",".join(sense.get("partOfSpeech", []) or []) if sense.get("partOfSpeech") else None
+        misc = ",".join(sense.get("misc", []) or []) if sense.get("misc") else None
+        field = ",".join(sense.get("field", []) or []) if sense.get("field") else None
+        dialect = ",".join(sense.get("dialect", []) or []) if sense.get("dialect") else None
+
+        cur = conn.execute(
+            sense_insert,
+            (entry_id, s_idx, pos, misc, field, dialect)
+        )
+        sense_id = cur.lastrowid
+
+        for g_idx, gloss in enumerate(sense.get("gloss", [])):
+            if isinstance(gloss, dict):
+                conn.execute(gloss_insert, (sense_id, g_idx, gloss.get("text", "")))
+            else:
+                conn.execute(gloss_insert, (sense_id, g_idx, gloss))
+
+
+def resolve_extra_ent_seq(entry, entry_index, used_ent_seqs, next_custom_ent_seq):
+    explicit_ent_seq = entry.get("ent_seq")
+    if explicit_ent_seq is not None:
+        ent_seq = int(explicit_ent_seq)
+        if ent_seq in used_ent_seqs:
+            raise ValueError(
+                f"extras.json entry {entry_index} specifies ent_seq {ent_seq}, but that ent_seq is already in use"
+            )
+        return ent_seq, next_custom_ent_seq
+
+    ent_seq = next_custom_ent_seq
+    while ent_seq in used_ent_seqs:
+        ent_seq -= 1
+
+    return ent_seq, ent_seq - 1
+
+
 def build_database():
     if OUTPUT_DB.exists():
         OUTPUT_DB.unlink()
@@ -85,70 +259,50 @@ def build_database():
     conn = sqlite3.connect(OUTPUT_DB)
     create_schema(conn)
 
-    with open(JMDICT_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    if isinstance(data, list):
-        entries = data
-    elif isinstance(data, dict) and "words" in data:
-        entries = data["words"]
-    else:
-        raise ValueError("Unexpected JMdict JSON structure")
+    entries = load_jmdict_entries()
+    extra_entries = load_extra_entries()
 
     entry_insert = "INSERT INTO entries (ent_seq, priority, is_common) VALUES (?, ?, ?)"
     kanji_insert = "INSERT INTO kanji (text, entry_id, priority) VALUES (?, ?, ?)"
     kana_insert  = "INSERT INTO kana_forms (text, entry_id, priority) VALUES (?, ?, ?)"
     sense_insert = "INSERT INTO senses (entry_id, order_index, pos, misc, field, dialect) VALUES (?, ?, ?, ?, ?, ?)"
     gloss_insert = "INSERT INTO glosses (sense_id, order_index, gloss) VALUES (?, ?, ?)"
+    used_ent_seqs = set()
 
     for entry in entries:
         ent_seq = int(entry.get("id"))
+        insert_entry(
+            conn,
+            entry_insert,
+            kanji_insert,
+            kana_insert,
+            sense_insert,
+            gloss_insert,
+            entry,
+            ent_seq
+        )
+        used_ent_seqs.add(ent_seq)
 
-        # Extract priority markers from kanji/kana forms
-        priorities = []
-        for k in entry.get("kanji", []):
-            for p in k.get("priority", []) or []:
-                priorities.append(p)
-        for r in entry.get("kana", []):
-            for p in r.get("priority", []) or []:
-                priorities.append(p)
+    next_custom_ent_seq = -1
+    for entry_index, entry in enumerate(extra_entries):
+        ent_seq, next_custom_ent_seq = resolve_extra_ent_seq(
+            entry,
+            entry_index,
+            used_ent_seqs,
+            next_custom_ent_seq
+        )
 
-        priority_str = ",".join(sorted(set(priorities))) if priorities else None
-
-        # Common heuristic: JMdict "news", "ichi", or "spec" markers imply common
-        is_common = 1 if any(
-            p.startswith(("news", "ichi", "spec"))
-            for p in priorities
-        ) else 0
-
-        cur = conn.execute(entry_insert, (ent_seq, priority_str, is_common))
-        entry_id = cur.lastrowid
-
-        for k in entry.get("kanji", []):
-            k_priorities = ",".join(sorted(set(k.get("priority", []) or []))) if k.get("priority") else None
-            conn.execute(kanji_insert, (k["text"], entry_id, k_priorities))
-
-        for r in entry.get("kana", []):
-            r_priorities = ",".join(sorted(set(r.get("priority", []) or []))) if r.get("priority") else None
-            conn.execute(kana_insert, (r["text"], entry_id, r_priorities))
-
-        for s_idx, sense in enumerate(entry.get("sense", [])):
-            pos = ",".join(sense.get("partOfSpeech", []) or []) if sense.get("partOfSpeech") else None
-            misc = ",".join(sense.get("misc", []) or []) if sense.get("misc") else None
-            field = ",".join(sense.get("field", []) or []) if sense.get("field") else None
-            dialect = ",".join(sense.get("dialect", []) or []) if sense.get("dialect") else None
-
-            cur = conn.execute(
-                sense_insert,
-                (entry_id, s_idx, pos, misc, field, dialect)
-            )
-            sense_id = cur.lastrowid
-
-            for g_idx, gloss in enumerate(sense.get("gloss", [])):
-                if isinstance(gloss, dict):
-                    conn.execute(gloss_insert, (sense_id, g_idx, gloss.get("text", "")))
-                else:
-                    conn.execute(gloss_insert, (sense_id, g_idx, gloss))
+        insert_entry(
+            conn,
+            entry_insert,
+            kanji_insert,
+            kana_insert,
+            sense_insert,
+            gloss_insert,
+            entry,
+            ent_seq
+        )
+        used_ent_seqs.add(ent_seq)
 
     conn.commit()
     conn.close()
@@ -160,6 +314,10 @@ def main():
 
     print("Building dictionary.sqlite...")
     print(f"JMdict SHA256: {sha256_of_file(JMDICT_PATH)}")
+    if EXTRAS_PATH.exists():
+        print(f"Extras SHA256: {sha256_of_file(EXTRAS_PATH)}")
+    else:
+        print("Extras SHA256: (missing; no supplemental entries loaded)")
 
     build_database()
 

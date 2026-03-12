@@ -1,5 +1,6 @@
 Resources/*
 !Resources/data_manifest.json
 !Resources/deinflection.json
+!Resources/extras.json
 !Resources/generate_db.py
 Kioku.xcodeproj/xcuserdata/matthewmorrone.xcuserdatad/xcdebugger/Breakpoints_v2.xcbkptlist

@@ -129,7 +129,12 @@ struct ContentView: View {
         }
 
         do {
-            deinflector = try Deinflector(bundle: .main, resourceName: "deinflection", fileExtension: "json")
+            deinflector = try Deinflector(
+                trie: trie,
+                bundle: .main,
+                resourceName: "deinflection",
+                fileExtension: "json"
+            )
         } catch {
             print("Deinflector initialization failed: \(error)")
         }

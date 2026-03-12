@@ -19,6 +19,39 @@ enum ScriptClassifier {
         return true
     }
 
+    // Determines whether text is composed only of katakana code points and prolonged sound marks.
+    static func isPureKatakana(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+
+        for scalar in text.unicodeScalars {
+            let value = scalar.value
+            let isKatakana = (0x30A0...0x30FF).contains(value)
+            let isProlongedSoundMark = value == 0x30FC
+
+            if !isKatakana && !isProlongedSoundMark {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    // Determines whether text is composed only of hiragana code points.
+    static func isPureHiragana(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+
+        for scalar in text.unicodeScalars {
+            let value = scalar.value
+            let isHiragana = (0x3040...0x309F).contains(value)
+
+            if !isHiragana {
+                return false
+            }
+        }
+
+        return true
+    }
+
     // Detects whether any scalar belongs to the supported kanji blocks.
     static func containsKanji(_ text: String) -> Bool {
         for scalar in text.unicodeScalars {

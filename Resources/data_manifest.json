@@ -11,6 +11,16 @@
       "provenance": "scriptin/jmdict-simplified release asset; local extracted file hash pinned"
     },
     {
+      "name": "extras",
+      "type": "supplemental-dictionary",
+      "path": "Kioku/Resources/extras.json",
+      "required": false,
+      "derived": false,
+      "url": null,
+      "sha256": "943ea37e2f4d35b023423fcf5238993beb26677caf3d15a5675d86d289210ae4",
+      "provenance": "project-maintained supplemental dictionary entries"
+    },
+    {
       "name": "dictionary",
       "type": "sqlite",
       "path": "Kioku/Resources/dictionary.sqlite",

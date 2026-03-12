@@ -7,16 +7,6 @@ final class Segmenter {
     private let deinflector: Deinflector?
     private let config: SegmenterConfig
     private let scoring: SegmenterScoring
-    private let grammaticalizedCompoundVerbSuffixes = [
-        "つづける", "続ける",
-        "はじめる", "始める",
-        "おわる", "終わる",
-        "だす", "出す",
-        "すぎる", "過ぎる",
-        "なおす", "直す",
-        "きる", "切る",
-        "かける", "掛ける",
-    ]
     private let boundaryCharacters: Set<Character> = [
         " ", "\t", "\n", "\r", "　",
         ".", ",", "!", "?", ";", ":",
@@ -154,7 +144,8 @@ final class Segmenter {
                 let matchedLemmas = resolvedTrieLemmas(for: surface).sorted()
                 if matchedLemmas.isEmpty == false {
                     for lemma in matchedLemmas {
-                        print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [lemma: \(escapedForDebug(lemma))]")
+                        let resolutionSummary = debugResolutionSummary(for: surface, lemma: lemma)
+                        print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [lemma: \(escapedForDebug(lemma))] [\(resolutionSummary)]")
                         keptMatches += 1
 
                         if keptMatches >= config.maxMatchesPerPosition {
@@ -362,13 +353,19 @@ final class Segmenter {
         }
     }
 
-    // Resolves all trie-backed lemmas reachable from a surface, including deinflection candidates.
+    // Resolves all trie-backed lemmas reachable from a surface, including alternate candidates from the deinflector.
     private func resolvedTrieLemmas(for surface: String) -> Set<String> {
         var lemmas = matchedTrieLemmas(for: surface)
+        let hasExactSurfaceMatch = trie.contains(surface)
 
         if let deinflector {
             let candidates = deinflector.generateCandidates(for: surface)
             for candidate in candidates {
+                if hasExactSurfaceMatch,
+                   candidate != surface,
+                   deinflector.isNormalizedKanaCandidate(candidate, for: surface) {
+                    continue
+                }
                 lemmas.formUnion(matchedTrieLemmas(for: candidate))
             }
         }
@@ -376,7 +373,63 @@ final class Segmenter {
         return lemmas
     }
 
-    // Resolves all trie-backed membership lemmas for a surface, including katakana-to-hiragana fallback.
+    // Builds a debug summary showing how the current resolver pipeline admits one emitted lemma for a surface.
+    func debugResolutionSummary(for surface: String, lemma: String) -> String {
+        let (exactLemmas, alternateResolutions) = debugResolutionSources(for: surface)
+        let matchingAlternateCandidates = alternateResolutions
+            .filter { resolution in
+                resolution.lemmas.contains(lemma)
+            }
+            .map { resolution in
+                resolution.candidate
+            }
+            .sorted()
+
+        var parts = [
+            "exact_hits: \(exactLemmas.count)",
+            "alternate_hits: \(alternateResolutions.count)"
+        ]
+
+        if exactLemmas.contains(lemma) {
+            parts.append("exact_match")
+        }
+
+        if matchingAlternateCandidates.isEmpty == false {
+            parts.append("via: \(matchingAlternateCandidates.joined(separator: ", "))")
+        }
+
+        return parts.joined(separator: "; ")
+    }
+
+    // Enumerates exact and alternate candidate resolutions using the same admission rules as lattice generation.
+    private func debugResolutionSources(for surface: String) -> (exactLemmas: Set<String>, alternateResolutions: [(candidate: String, lemmas: Set<String>)]) {
+        let exactLemmas = matchedTrieLemmas(for: surface)
+        let hasExactSurfaceMatch = trie.contains(surface)
+        var alternateResolutions: [(candidate: String, lemmas: Set<String>)] = []
+
+        if let deinflector {
+            let candidates = deinflector.generateCandidates(for: surface).sorted()
+            for candidate in candidates {
+                if candidate == surface {
+                    continue
+                }
+
+                if hasExactSurfaceMatch,
+                   deinflector.isNormalizedKanaCandidate(candidate, for: surface) {
+                    continue
+                }
+
+                let lemmas = matchedTrieLemmas(for: candidate)
+                if lemmas.isEmpty == false {
+                    alternateResolutions.append((candidate: candidate, lemmas: lemmas))
+                }
+            }
+        }
+
+        return (exactLemmas, alternateResolutions)
+    }
+
+    // Resolves direct trie-backed membership lemmas for a surface without alternate-surface recovery.
     private func matchedTrieLemmas(for surface: String) -> Set<String> {
         var lemmas: Set<String> = []
 
@@ -384,128 +437,7 @@ final class Segmenter {
             lemmas.insert(surface)
         }
 
-        let hiraganaSurface = katakanaToHiragana(surface)
-        if hiraganaSurface != surface, trie.contains(hiraganaSurface) {
-            lemmas.insert(hiraganaSurface)
-        }
-
-        lemmas.formUnion(mixedScriptStemLemmas(for: surface))
-        lemmas.formUnion(grammaticalizedCompoundVerbLemmas(for: surface))
-
         return lemmas
-    }
-
-    // Resolves grammaticalized compound verbs like 追いつづける to their first-verb lemmas for segmentation bias.
-    private func grammaticalizedCompoundVerbLemmas(for surface: String) -> Set<String> {
-        var lemmas: Set<String> = []
-
-        for suffix in grammaticalizedCompoundVerbSuffixes {
-            guard surface.count > suffix.count, surface.hasSuffix(suffix) else {
-                continue
-            }
-
-            let stemEndIndex = surface.index(surface.endIndex, offsetBy: -suffix.count)
-            let headStem = String(surface[..<stemEndIndex])
-            if headStem.isEmpty {
-                continue
-            }
-
-            lemmas.formUnion(verbStemLemmas(for: headStem))
-        }
-
-        return lemmas
-    }
-
-    // Resolves a continuative verb stem back to plausible dictionary lemmas.
-    private func verbStemLemmas(for surface: String) -> Set<String> {
-        var lemmas = mixedScriptStemLemmas(for: surface)
-
-        if let trailingCharacter = surface.last,
-           let dictionaryEnding = continuativeDictionaryEnding(for: trailingCharacter) {
-            let dictionaryCandidate = String(surface.dropLast()) + String(dictionaryEnding)
-            if trie.contains(dictionaryCandidate) {
-                lemmas.insert(dictionaryCandidate)
-            }
-        }
-
-        if surface.isEmpty == false {
-            let ichidanCandidate = surface + "る"
-            if trie.contains(ichidanCandidate) {
-                lemmas.insert(ichidanCandidate)
-            }
-        }
-
-        if surface == "し", trie.contains("する") {
-            lemmas.insert("する")
-        }
-
-        if surface == "き" || surface == "来" {
-            if trie.contains("くる") {
-                lemmas.insert("くる")
-            }
-            if trie.contains("来る") {
-                lemmas.insert("来る")
-            }
-        }
-
-        return lemmas
-    }
-
-    // Resolves mixed-script continuative verb stems like 追い back to dictionary lemmas such as 追う.
-    private func mixedScriptStemLemmas(for surface: String) -> Set<String> {
-        guard ScriptClassifier.containsKanji(surface) else {
-            return []
-        }
-
-        let characters = Array(surface)
-        guard
-            let trailingCharacter = characters.last,
-            trailingCharacter.unicodeScalars.allSatisfy({ scalar in
-                (0x3040...0x309F).contains(scalar.value)
-            }),
-            characters.dropLast().contains(where: { character in
-                ScriptClassifier.containsKanji(String(character))
-            })
-        else {
-            return []
-        }
-
-        guard let dictionaryEnding = continuativeDictionaryEnding(for: trailingCharacter) else {
-            return []
-        }
-
-        let dictionaryCandidate = String(characters.dropLast()) + String(dictionaryEnding)
-        guard trie.contains(dictionaryCandidate) else {
-            return []
-        }
-
-        return [dictionaryCandidate]
-    }
-
-    // Maps godan continuative endings back to their dictionary-form okurigana.
-    private func continuativeDictionaryEnding(for character: Character) -> Character? {
-        switch character {
-        case "い":
-            return "う"
-        case "き":
-            return "く"
-        case "ぎ":
-            return "ぐ"
-        case "し":
-            return "す"
-        case "ち":
-            return "つ"
-        case "に":
-            return "ぬ"
-        case "び":
-            return "ぶ"
-        case "み":
-            return "む"
-        case "り":
-            return "る"
-        default:
-            return nil
-        }
     }
 
     // Scores competing lemmas so furigana and segmentation can favor script-preserving dictionary forms.
@@ -529,20 +461,6 @@ final class Segmenter {
         }
 
         return score
-    }
-
-    // Converts katakana scalars to hiragana so dictionary membership can fall back across kana scripts.
-    private func katakanaToHiragana(_ text: String) -> String {
-        let convertedScalars = text.unicodeScalars.map { scalar -> UnicodeScalar in
-            switch scalar.value {
-            case 0x30A1...0x30F6, 0x30FD...0x30FE:
-                return UnicodeScalar(scalar.value - 0x60) ?? scalar
-            default:
-                return scalar
-            }
-        }
-
-        return String(String.UnicodeScalarView(convertedScalars))
     }
 
     // Prints greedy longest-match segments line-by-line for tokenizer debugging.

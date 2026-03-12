@@ -41,17 +41,6 @@
                ReferencedContainer = "container:Kioku.xcodeproj">
             </BuildableReference>
          </TestableReference>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E3070AFE2F4DFDB8005FD323"
-               BuildableName = "KiokuUITests.xctest"
-               BlueprintName = "KiokuUITests"
-               ReferencedContainer = "container:Kioku.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

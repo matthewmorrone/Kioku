@@ -2,7 +2,7 @@ import SwiftUI
 
 // Hosts runtime lattice inspection helpers for the read screen.
 extension ReadView {
-    // Prints the retained lattice section for the current selected segment so decomposition candidates are visible in logs.
+    // Prints the retained lattice section for the current selected segment so the selected span's edges are visible in logs.
     func debugPrintLatticeSectionForCurrentSelection(at selectedLocation: Int) {
         guard let selectedBounds = selectedMergedEdgeBounds ?? initialMergedEdgeBounds(for: selectedLocation) else {
             return
@@ -51,104 +51,8 @@ extension ReadView {
                 continue
             }
 
-            print("  \(edgeRange.location)->\(edgeRange.location + edgeRange.length) \(edge.surface) [lemma: \(edge.lemma)]")
-        }
-
-        let decompositionPaths = latticeDecompositionPaths(
-            within: selectedStart..<selectedEnd,
-            maxPathCount: 12
-        )
-
-        if decompositionPaths.isEmpty {
-            print("  decompositions: none")
-            return
-        }
-
-        print("  decompositions:")
-        for path in decompositionPaths {
-            let surfaces = path.map(\.surface).joined(separator: " | ")
-            print("    \(surfaces)")
-        }
-    }
-
-    // Enumerates bounded lattice paths that exactly cover the selected span so component candidates are easy to inspect.
-    func latticeDecompositionPaths(within selectedRange: Range<String.Index>, maxPathCount: Int) -> [[LatticeEdge]] {
-        var edgesByStart: [String.Index: [LatticeEdge]] = [:]
-
-        for edge in segmentationLatticeEdges {
-            if edge.start >= selectedRange.lowerBound && edge.end <= selectedRange.upperBound {
-                edgesByStart[edge.start, default: []].append(edge)
-            }
-        }
-
-        for key in edgesByStart.keys {
-            edgesByStart[key]?.sort { lhs, rhs in
-                let lhsLength = text.distance(from: lhs.start, to: lhs.end)
-                let rhsLength = text.distance(from: rhs.start, to: rhs.end)
-                if lhsLength != rhsLength {
-                    return lhsLength > rhsLength
-                }
-
-                if lhs.surface != rhs.surface {
-                    return lhs.surface < rhs.surface
-                }
-
-                return lhs.lemma < rhs.lemma
-            }
-        }
-
-        var results: [[LatticeEdge]] = []
-        collectLatticeDecompositionPaths(
-            from: selectedRange.lowerBound,
-            targetEnd: selectedRange.upperBound,
-            edgesByStart: edgesByStart,
-            currentPath: [],
-            results: &results,
-            maxPathCount: maxPathCount
-        )
-
-        return results.filter { path in
-            path.count > 1
-        }
-    }
-
-    // Walks the retained lattice recursively to collect exact-cover paths within the selected span.
-    func collectLatticeDecompositionPaths(
-        from currentIndex: String.Index,
-        targetEnd: String.Index,
-        edgesByStart: [String.Index: [LatticeEdge]],
-        currentPath: [LatticeEdge],
-        results: inout [[LatticeEdge]],
-        maxPathCount: Int
-    ) {
-        if results.count >= maxPathCount {
-            return
-        }
-
-        if currentIndex == targetEnd {
-            if currentPath.isEmpty == false {
-                results.append(currentPath)
-            }
-            return
-        }
-
-        guard let candidates = edgesByStart[currentIndex], candidates.isEmpty == false else {
-            return
-        }
-
-        for edge in candidates {
-            if results.count >= maxPathCount {
-                return
-            }
-
-            collectLatticeDecompositionPaths(
-                from: edge.end,
-                targetEnd: targetEnd,
-                edgesByStart: edgesByStart,
-                currentPath: currentPath + [edge],
-                results: &results,
-                maxPathCount: maxPathCount
-            )
+            let resolutionSummary = segmenter.debugResolutionSummary(for: edge.surface, lemma: edge.lemma)
+            print("  \(edgeRange.location)->\(edgeRange.location + edgeRange.length) \(edge.surface) [lemma: \(edge.lemma)] [\(resolutionSummary)]")
         }
     }
 }
