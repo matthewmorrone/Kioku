@@ -26,6 +26,11 @@ final class NotesStore: ObservableObject {
         notes.insert(Note(), at: 0)
     }
 
+    // Inserts a provided note at the top of the list and persists it with the current collection.
+    func addNote(_ note: Note) {
+        notes.insert(note, at: 0)
+    }
+
     // Reorders notes using list move semantics.
     func moveNotes(from source: IndexSet, to destination: Int) {
         notes.move(fromOffsets: source, toOffset: destination)
@@ -39,6 +44,51 @@ final class NotesStore: ObservableObject {
     // Deletes notes whose identifiers are currently selected.
     func deleteNotes(ids: Set<UUID>) {
         notes.removeAll { ids.contains($0.id) }
+    }
+
+    // Deletes one note by identifier and returns the removed note if it existed.
+    @discardableResult
+    func deleteNote(id: UUID) -> Note? {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else {
+            return nil
+        }
+
+        return notes.remove(at: index)
+    }
+
+    // Renames one note while preserving its content and token metadata.
+    func renameNote(id: UUID, title: String) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        notes[index].title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Resets one note back to a blank title, blank content, and no stored token overrides.
+    func resetNote(id: UUID) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        notes[index].title = ""
+        notes[index].content = ""
+        notes[index].tokenRanges = nil
+    }
+
+    // Duplicates one note into a new identifier and inserts the copy at the top of the list.
+    func duplicateNote(id: UUID) -> Note? {
+        guard let sourceNote = note(withID: id) else {
+            return nil
+        }
+
+        let duplicatedNote = Note(
+            title: sourceNote.title,
+            content: sourceNote.content,
+            tokenRanges: sourceNote.tokenRanges
+        )
+        notes.insert(duplicatedNote, at: 0)
+        return duplicatedNote
     }
 
     // Returns the latest in-memory note for a known identifier.

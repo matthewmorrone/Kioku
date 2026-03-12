@@ -55,7 +55,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         tapRecognizer.cancelsTouchesInView = false
         textView.addGestureRecognizer(tapRecognizer)
 
-        let overlayView = UIView()
+        let overlayView = FuriganaOverlayView()
         overlayView.tag = 7_332
         overlayView.backgroundColor = .clear
         overlayView.isUserInteractionEnabled = false
@@ -66,7 +66,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
     // Syncs text-view typography and positions furigana overlays above token rects from the same layout engine.
     func updateUIView(_ uiView: UITextView, context: Context) {
-        guard let overlayView = uiView.viewWithTag(7_332) else { return }
+        guard let overlayView = uiView.viewWithTag(7_332) as? FuriganaOverlayView else { return }
         let textView = uiView
 
         guard isActive else {
@@ -88,10 +88,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         }
 
         let baseTextRenderSignature = makeBaseTextRenderSignature(for: textView)
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        overlayView.subviews.forEach { $0.removeFromSuperview() }
 
         let textStylePayload = ReadTextStyleResolver(
             text: text,
@@ -116,7 +112,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             context.coordinator.markTextRendered(signature: baseTextRenderSignature)
         }
 
-        overlayView.frame = CGRect(
+        ensureTextLayout(for: textView, exhaustive: true)
+
+        let overlayFrame = CGRect(
             origin: .zero,
             size: CGSize(
                 width: max(textView.contentSize.width, textView.bounds.width),
@@ -124,74 +122,81 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             )
         )
 
+        var selectedSegmentRect: CGRect?
+        var selectedSegmentColor: UIColor?
         if let selectedSegmentRange = selectedSegmentNSRange(in: text),
-           let selectedSegmentRect = tokenRectInTextView(textView: textView, nsRange: selectedSegmentRange) {
-            let selectedSegmentBackground = UIColor { traitCollection in
+           let selectedTokenRect = tokenRectInTextView(textView: textView, nsRange: selectedSegmentRange) {
+            selectedSegmentColor = UIColor { traitCollection in
                 traitCollection.userInterfaceStyle == .dark
                     ? UIColor.systemYellow.withAlphaComponent(0.26)
                     : UIColor.systemYellow.withAlphaComponent(0.32)
             }
-
-            let highlightView = UIView(frame: selectedSegmentRect.insetBy(dx: -1, dy: 0))
-            highlightView.backgroundColor = selectedSegmentBackground
-            highlightView.layer.cornerRadius = 4
-            highlightView.isUserInteractionEnabled = false
-            overlayView.addSubview(highlightView)
+            selectedSegmentRect = selectedTokenRect.insetBy(dx: -1, dy: 0)
         }
 
+        var illegalBoundaryRect: CGRect?
+        var illegalBoundaryColor: UIColor?
         if let illegalMergeBoundaryLocation,
-           let illegalBoundaryRect = boundaryIndicatorRectInTextView(
+           let boundaryRect = boundaryIndicatorRectInTextView(
             textView: textView,
             boundaryUTF16Location: illegalMergeBoundaryLocation
            ) {
-            let boundaryView = UIView(frame: illegalBoundaryRect)
-            boundaryView.backgroundColor = UIColor.systemRed.withAlphaComponent(0.9)
-            boundaryView.layer.cornerRadius = 1.5
-            boundaryView.isUserInteractionEnabled = false
-            overlayView.addSubview(boundaryView)
+            illegalBoundaryColor = UIColor.systemRed.withAlphaComponent(0.9)
+            illegalBoundaryRect = boundaryRect
         }
 
-        guard isVisualEnhancementsEnabled else {
+        var furiganaStrings: [String] = []
+        var furiganaFrames: [CGRect] = []
+        var furiganaColors: [UIColor] = []
+
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        if isVisualEnhancementsEnabled {
+            for location in furiganaBySegmentLocation.keys.sorted() {
+                guard
+                    let furigana = furiganaBySegmentLocation[location],
+                    !furigana.isEmpty,
+                    let length = furiganaLengthBySegmentLocation[location],
+                    length > 0
+                else {
+                    continue
+                }
+
+                let nsRange = NSRange(location: location, length: length)
+                guard let tokenRect = tokenRectInTextView(textView: textView, nsRange: nsRange) else {
+                    continue
+                }
+
+                let furiganaWidth = max(measureTextWidth(furigana, font: furiganaFont, kerning: 0), tokenRect.width)
+                let furiganaX = tokenRect.midX - (furiganaWidth / 2)
+                furiganaStrings.append(furigana)
+                furiganaFrames.append(
+                    CGRect(
+                        x: furiganaX,
+                        y: max(tokenRect.minY - furiganaFont.lineHeight + 1, 0),
+                        width: furiganaWidth,
+                        height: furiganaFont.lineHeight
+                    )
+                )
+                furiganaColors.append(textStylePayload.tokenForegroundByLocation[location] ?? .secondaryLabel)
+            }
+        }
+
+        overlayView.apply(
+            overlayFrame: overlayFrame,
+            selectedSegmentRect: selectedSegmentRect,
+            selectedSegmentColor: selectedSegmentColor,
+            illegalBoundaryRect: illegalBoundaryRect,
+            illegalBoundaryColor: illegalBoundaryColor,
+            furiganaStrings: furiganaStrings,
+            furiganaFrames: furiganaFrames,
+            furiganaColors: furiganaColors,
+            furiganaFont: furiganaFont
+        )
+
+        guard isVisualEnhancementsEnabled || selectedSegmentRect != nil || illegalBoundaryRect != nil else {
             context.coordinator.markRendered(signature: renderSignature)
             return
         }
-
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
-        for location in furiganaBySegmentLocation.keys.sorted() {
-            guard
-                let furigana = furiganaBySegmentLocation[location],
-                !furigana.isEmpty,
-                let length = furiganaLengthBySegmentLocation[location],
-                length > 0
-            else {
-                continue
-            }
-
-            let nsRange = NSRange(location: location, length: length)
-            guard let tokenRect = tokenRectInTextView(textView: textView, nsRange: nsRange) else {
-                continue
-            }
-
-            let furiganaWidth = max(measureTextWidth(furigana, font: furiganaFont, kerning: 0), tokenRect.width)
-            let furiganaX = tokenRect.midX - (furiganaWidth / 2)
-
-            let furiganaLabel = UILabel()
-            furiganaLabel.backgroundColor = .clear
-            furiganaLabel.font = furiganaFont
-            furiganaLabel.textColor = textStylePayload.tokenForegroundByLocation[location] ?? .secondaryLabel
-            furiganaLabel.textAlignment = .center
-            furiganaLabel.lineBreakMode = .byClipping
-            furiganaLabel.text = furigana
-            furiganaLabel.frame = CGRect(
-                x: furiganaX,
-                y: max(tokenRect.minY - furiganaFont.lineHeight + 1, 0),
-                width: furiganaWidth,
-                height: furiganaFont.lineHeight
-            )
-            overlayView.addSubview(furiganaLabel)
-        }
-
-        CATransaction.commit()
 
         context.coordinator.markRendered(signature: renderSignature)
     }
@@ -269,8 +274,14 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     }
 
     // Forces lazy TextKit layout to complete before any geometry is queried for annotations.
-    private func ensureTextLayout(for textView: UITextView) {
-        textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
+    private func ensureTextLayout(for textView: UITextView, exhaustive: Bool = false) {
+        if exhaustive,
+           let textLayoutManager = textView.textLayoutManager,
+           let documentRange = textLayoutManager.textContentManager?.documentRange {
+            textLayoutManager.ensureLayout(for: documentRange)
+        } else {
+            textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        }
         textView.layoutIfNeeded()
     }
 

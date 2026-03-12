@@ -49,3 +49,8 @@ Add more required invariants below. Copilot should treat them as mandatory.
    - Ensure layout before querying annotation geometry.
    - Never compensate annotation placement using `contentOffset`.
    - Required pipeline: TextKit rect -> text view coordinates -> render annotation.
+
+10. Deinflection behavior must stay data-driven.
+   - Do not hardcode Japanese suffix or surface rewrite rules in `Deinflector.swift`.
+   - Add or refine deinflection behavior by updating `Resources/deinflection.json` and the generic rule application pipeline.
+   - Keep `Deinflector.swift` focused on loading rules, traversing rule states, and generic candidate admission logic.

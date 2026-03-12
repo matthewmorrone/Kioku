@@ -30,9 +30,7 @@ struct NotesTransferDocument: FileDocument {
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try MainActor.assumeIsolated {
-            try encoder.encode(payload)
-        }
+        let data = try encoder.encode(payload)
         return FileWrapper(regularFileWithContents: data)
     }
 
@@ -40,15 +38,11 @@ struct NotesTransferDocument: FileDocument {
     private static func decodePayload(from data: Data) throws -> NotesTransferPayload {
         let decoder = JSONDecoder()
 
-        if let payload = try? MainActor.assumeIsolated({
-            try decoder.decode(NotesTransferPayload.self, from: data)
-        }) {
+        if let payload = try? decoder.decode(NotesTransferPayload.self, from: data) {
             return payload
         }
 
-        let notes = try MainActor.assumeIsolated {
-            try decoder.decode([Note].self, from: data)
-        }
+        let notes = try decoder.decode([Note].self, from: data)
         return NotesTransferPayload(notes: notes)
     }
 }

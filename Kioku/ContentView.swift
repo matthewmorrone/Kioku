@@ -44,6 +44,23 @@ struct ContentView: View {
                 selectedReadNote = note
                 lastActiveNoteID = note.id.uuidString
                 selectedTab = .read
+            }, onUpdateSelectedNote: { updatedNote in
+                guard let currentSelectedReadNote = selectedReadNote else {
+                    return
+                }
+
+                if let updatedNote, updatedNote.id == currentSelectedReadNote.id {
+                    selectedReadNote = updatedNote
+                    lastActiveNoteID = updatedNote.id.uuidString
+                    return
+                }
+
+                if updatedNote == nil {
+                    if notesStore.note(withID: currentSelectedReadNote.id) == nil {
+                        selectedReadNote = nil
+                        lastActiveNoteID = ""
+                    }
+                }
             })
             .tag(ContentTab.notes)
             .tabItem {

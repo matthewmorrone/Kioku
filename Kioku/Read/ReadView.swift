@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -54,6 +55,12 @@ struct ReadView: View {
     @State var sharedScrollOffsetY: CGFloat = 0
     @State private var isShowingTokenList = false
     @State private var isShowingDisplayOptions = false
+    @State var isShowingOCRSourceOptions = false
+    @State var isShowingPhotoLibraryPicker = false
+    @State var isShowingCameraPicker = false
+    @State var selectedOCRImageItem: PhotosPickerItem?
+    @State var isPerformingOCRImport = false
+    @State var ocrImportErrorMessage = ""
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
 
@@ -112,6 +119,19 @@ struct ReadView: View {
                 }
             )
         }
+        .sheet(isPresented: $isShowingCameraPicker) {
+            CameraImagePicker(onImagePicked: { imageData in
+                Task {
+                    await importTextFromOCRImageData(imageData)
+                }
+            })
+        }
+        .photosPicker(
+            isPresented: $isShowingPhotoLibraryPicker,
+            selection: $selectedOCRImageItem,
+            matching: .images,
+            preferredItemEncoding: .automatic
+        )
         .onAppear {
             // Syncs editor state when this screen first appears.
             loadSelectedNoteIfNeeded()
@@ -170,9 +190,41 @@ struct ReadView: View {
             // Recomputes segmentation after background dictionary loading completes.
             refreshSegmentationRanges()
         }
+        .onChange(of: selectedOCRImageItem) { _, newItem in
+            guard let newItem else {
+                return
+            }
+
+            // Starts OCR import once the user has picked an image for recognition.
+            Task {
+                await importTextFromSelectedOCRImage(newItem)
+            }
+        }
         .onDisappear {
             // Flushes any pending edit persistence before leaving the read screen.
             flushPendingNotePersistenceIfNeeded()
+        }
+        .alert("OCR Import Failed", isPresented: ocrImportErrorPresented) {
+            Button("OK", role: .cancel) {
+                ocrImportErrorMessage = ""
+            }
+        } message: {
+            Text(ocrImportErrorMessage)
+        }
+        .confirmationDialog(
+            "Import Text with OCR",
+            isPresented: $isShowingOCRSourceOptions,
+            titleVisibility: .visible
+        ) {
+            Button("Camera") {
+                presentCameraOCRIfAvailable()
+            }
+            Button("Photo Library") {
+                isShowingPhotoLibraryPicker = true
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose an image source for OCR.")
         }
     }
 
@@ -198,61 +250,66 @@ struct ReadView: View {
 
     // Keeps both read and edit renderers mounted so mode toggles are instant.
     private var editorView: some View {
-        ZStack {
-            FuriganaTextRenderer(
-                isActive: isEditMode == false,
-                text: text,
-                isLineWrappingEnabled: isLineWrappingEnabled,
-                segmentationRanges: readResourcesReady ? segmentationRanges : [],
-                selectedSegmentLocation: selectedSegmentLocation,
-                selectedHighlightRangeOverride: selectedHighlightRangeOverride,
-                illegalMergeBoundaryLocation: illegalMergeBoundaryLocation,
-                furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
-                furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
-                isVisualEnhancementsEnabled: readResourcesReady,
-                isColorAlternationEnabled: isColorAlternationEnabled,
-                isHighlightUnknownEnabled: isHighlightUnknownEnabled,
-                unknownSegmentLocations: unknownSegmentLocations,
-                segmenter: segmenter,
-                externalContentOffsetY: sharedScrollOffsetY,
-                onScrollOffsetYChanged: { newOffsetY in
-                    sharedScrollOffsetY = newOffsetY
-                },
-                onSegmentTapped: { tappedSegmentLocation, tappedSegmentRect, sourceView in
-                    handleReadModeSegmentTap(
-                        tappedSegmentLocation,
-                        tappedSegmentRect: tappedSegmentRect,
-                        sourceView: sourceView
-                    )
-                },
-                textSize: $textSize,
-                lineSpacing: lineSpacing,
-                kerning: kerning
-            )
-            .opacity(isEditMode ? 0 : 1)
-            .allowsHitTesting(isEditMode == false)
+        VStack(spacing: 8) {
+            noteAreaHeader
 
-            RichTextEditor(
-                text: $text,
-                isLineWrappingEnabled: isLineWrappingEnabled,
-                segmentationRanges: readResourcesReady ? segmentationRanges : [],
-                furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
-                furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
-                isVisualEnhancementsEnabled: readResourcesReady,
-                isColorAlternationEnabled: isColorAlternationEnabled,
-                isHighlightUnknownEnabled: isHighlightUnknownEnabled,
-                segmenter: segmenter,
-                isEditMode: isEditMode,
-                externalContentOffsetY: sharedScrollOffsetY,
-                onScrollOffsetYChanged: { newOffsetY in
-                    sharedScrollOffsetY = newOffsetY
-                },
-                textSize: $textSize,
-                lineSpacing: lineSpacing,
-                kerning: kerning
-            )
-            .opacity(isEditMode ? 1 : 0)
-            .allowsHitTesting(isEditMode)
+            ZStack {
+                FuriganaTextRenderer(
+                    isActive: isEditMode == false,
+                    text: text,
+                    isLineWrappingEnabled: isLineWrappingEnabled,
+                    segmentationRanges: readResourcesReady ? segmentationRanges : [],
+                    selectedSegmentLocation: selectedSegmentLocation,
+                    selectedHighlightRangeOverride: selectedHighlightRangeOverride,
+                    illegalMergeBoundaryLocation: illegalMergeBoundaryLocation,
+                    furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
+                    furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                    isVisualEnhancementsEnabled: readResourcesReady,
+                    isColorAlternationEnabled: isColorAlternationEnabled,
+                    isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                    unknownSegmentLocations: unknownSegmentLocations,
+                    segmenter: segmenter,
+                    externalContentOffsetY: sharedScrollOffsetY,
+                    onScrollOffsetYChanged: { newOffsetY in
+                        sharedScrollOffsetY = newOffsetY
+                    },
+                    onSegmentTapped: { tappedSegmentLocation, tappedSegmentRect, sourceView in
+                        handleReadModeSegmentTap(
+                            tappedSegmentLocation,
+                            tappedSegmentRect: tappedSegmentRect,
+                            sourceView: sourceView
+                        )
+                    },
+                    textSize: $textSize,
+                    lineSpacing: lineSpacing,
+                    kerning: kerning
+                )
+                .opacity(isEditMode ? 0 : 1)
+                .allowsHitTesting(isEditMode == false)
+
+                RichTextEditor(
+                    text: $text,
+                    isLineWrappingEnabled: isLineWrappingEnabled,
+                    segmentationRanges: readResourcesReady ? segmentationRanges : [],
+                    furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
+                    furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                    isVisualEnhancementsEnabled: readResourcesReady,
+                    isColorAlternationEnabled: isColorAlternationEnabled,
+                    isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                    segmenter: segmenter,
+                    isEditMode: isEditMode,
+                    externalContentOffsetY: sharedScrollOffsetY,
+                    onScrollOffsetYChanged: { newOffsetY in
+                        sharedScrollOffsetY = newOffsetY
+                    },
+                    textSize: $textSize,
+                    lineSpacing: lineSpacing,
+                    kerning: kerning
+                )
+                .opacity(isEditMode ? 1 : 0)
+                .allowsHitTesting(isEditMode)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

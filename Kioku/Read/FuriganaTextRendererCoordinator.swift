@@ -4,6 +4,8 @@ import UIKit
 
 // Stores renderer state so expensive furigana layout only runs when inputs change.
 final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
+    private static let overlayRefreshScrollDelta: CGFloat = 24
+
     @Binding private var textSize: Double
     var onScrollOffsetYChanged: (CGFloat) -> Void
     var onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
@@ -86,10 +88,19 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
             return
         }
 
-        // Forces an overlay-only refresh on the next SwiftUI update so furigana tracks lazy layout near the viewport edges.
-        lastRenderSignature = nil
-        lastPublishedScrollOffsetY = scrollView.contentOffset.y
-        onScrollOffsetYChanged(scrollView.contentOffset.y)
+        publishScrollOffsetIfNeeded(scrollView.contentOffset.y, force: false)
+    }
+
+    // Publishes the final drag offset immediately so read/edit mode handoff stays accurate after user scrolling stops.
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if decelerate == false {
+            publishScrollOffsetIfNeeded(scrollView.contentOffset.y, force: true)
+        }
+    }
+
+    // Publishes the final decelerated offset so overlay refresh catches the resting viewport position.
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        publishScrollOffsetIfNeeded(scrollView.contentOffset.y, force: true)
     }
 
     // Applies external scroll offsets without triggering reciprocal updates.
@@ -105,7 +116,6 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         isApplyingExternalScroll = true
         textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedTargetY), animated: false)
         isApplyingExternalScroll = false
-        lastRenderSignature = nil
         lastPublishedScrollOffsetY = clampedTargetY
     }
 
@@ -127,6 +137,18 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         if recognizer.state == .ended || recognizer.state == .cancelled || recognizer.state == .failed {
             pinchStartTextSize = nil
         }
+    }
+
+    // Coalesces scroll-driven overlay refreshes so furigana layout updates only after meaningful viewport movement.
+    private func publishScrollOffsetIfNeeded(_ offsetY: CGFloat, force: Bool) {
+        if force == false,
+           let lastPublishedScrollOffsetY,
+           abs(offsetY - lastPublishedScrollOffsetY) < Self.overlayRefreshScrollDelta {
+            return
+        }
+
+        lastPublishedScrollOffsetY = offsetY
+        onScrollOffsetYChanged(offsetY)
     }
 
     // Maps a tap point to a segment location so read mode can highlight the tapped token range.

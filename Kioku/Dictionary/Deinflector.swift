@@ -6,16 +6,6 @@ final class Deinflector {
     private let rules: [DeinflectionRule]
     private let trie: DictionaryTrie
     private let maxDepth = 4
-    private let grammaticalizedCompoundVerbSuffixes = [
-        "つづける", "続ける",
-        "はじめる", "始める",
-        "おわる", "終わる",
-        "だす", "出す",
-        "すぎる", "過ぎる",
-        "なおす", "直す",
-        "きる", "切る",
-        "かける", "掛ける",
-    ]
 
     // Stores deinflection rules used by candidate generation.
     init(rules: [DeinflectionRule], trie: DictionaryTrie) {
@@ -132,10 +122,7 @@ final class Deinflector {
 
     // Collects all alternate surfaces owned by the normalization and recovery layer.
     private func alternateSurfaceCandidates(for surface: String) -> Set<String> {
-        var candidates = normalizedKanaCandidates(for: surface)
-        candidates.formUnion(mixedScriptStemCandidates(for: surface))
-        candidates.formUnion(grammaticalizedCompoundVerbCandidates(for: surface))
-        return candidates
+        normalizedKanaCandidates(for: surface)
     }
 
     // Produces kana-normalized candidates while rejecting arbitrary mixed-script noise.
@@ -168,119 +155,6 @@ final class Deinflector {
         }
 
         return candidates
-    }
-
-    // Resolves grammaticalized compound verbs like 追いつづける to first-verb lemma surfaces.
-    private func grammaticalizedCompoundVerbCandidates(for surface: String) -> Set<String> {
-        var candidates: Set<String> = []
-
-        for suffix in grammaticalizedCompoundVerbSuffixes {
-            guard surface.count > suffix.count, surface.hasSuffix(suffix) else {
-                continue
-            }
-
-            let stemEndIndex = surface.index(surface.endIndex, offsetBy: -suffix.count)
-            let headStem = String(surface[..<stemEndIndex])
-            if headStem.isEmpty {
-                continue
-            }
-
-            candidates.formUnion(verbStemCandidates(for: headStem))
-        }
-
-        return candidates
-    }
-
-    // Resolves continuative verb stems back to plausible dictionary-form candidate surfaces.
-    private func verbStemCandidates(for surface: String) -> Set<String> {
-        var candidates = mixedScriptStemCandidates(for: surface)
-
-        if let trailingCharacter = surface.last,
-           let dictionaryEnding = continuativeDictionaryEnding(for: trailingCharacter) {
-            let dictionaryCandidate = String(surface.dropLast()) + String(dictionaryEnding)
-            if trie.contains(dictionaryCandidate) {
-                candidates.insert(dictionaryCandidate)
-            }
-        }
-
-        if surface.isEmpty == false {
-            let ichidanCandidate = surface + "る"
-            if trie.contains(ichidanCandidate) {
-                candidates.insert(ichidanCandidate)
-            }
-        }
-
-        if surface == "し", trie.contains("する") {
-            candidates.insert("する")
-        }
-
-        if surface == "き" || surface == "来" {
-            if trie.contains("くる") {
-                candidates.insert("くる")
-            }
-            if trie.contains("来る") {
-                candidates.insert("来る")
-            }
-        }
-
-        return candidates
-    }
-
-    // Resolves mixed-script continuative stems like 追い back to dictionary-form candidate surfaces.
-    private func mixedScriptStemCandidates(for surface: String) -> Set<String> {
-        guard ScriptClassifier.containsKanji(surface) else {
-            return []
-        }
-
-        let characters = Array(surface)
-        guard
-            let trailingCharacter = characters.last,
-            trailingCharacter.unicodeScalars.allSatisfy({ scalar in
-                (0x3040...0x309F).contains(scalar.value)
-            }),
-            characters.dropLast().contains(where: { character in
-                ScriptClassifier.containsKanji(String(character))
-            })
-        else {
-            return []
-        }
-
-        guard let dictionaryEnding = continuativeDictionaryEnding(for: trailingCharacter) else {
-            return []
-        }
-
-        let dictionaryCandidate = String(characters.dropLast()) + String(dictionaryEnding)
-        guard trie.contains(dictionaryCandidate) else {
-            return []
-        }
-
-        return [dictionaryCandidate]
-    }
-
-    // Maps continuative endings back to dictionary-form okurigana for verb recovery.
-    private func continuativeDictionaryEnding(for character: Character) -> Character? {
-        switch character {
-        case "い":
-            return "う"
-        case "き":
-            return "く"
-        case "ぎ":
-            return "ぐ"
-        case "し":
-            return "す"
-        case "ち":
-            return "つ"
-        case "に":
-            return "ぬ"
-        case "び":
-            return "ぶ"
-        case "み":
-            return "む"
-        case "り":
-            return "る"
-        default:
-            return nil
-        }
     }
 
     // Returns the length of a katakana-only leading prefix when the surface starts with katakana.

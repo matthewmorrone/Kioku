@@ -72,10 +72,7 @@ extension ReadView {
         }
 
         let minOffsetY = -sourceView.adjustedContentInset.top
-        let maxContentOffsetY = max(
-            minOffsetY,
-            sourceView.contentSize.height - sourceView.bounds.height + sourceView.adjustedContentInset.bottom
-        )
+        let maxContentOffsetY = max(minOffsetY, sourceView.contentSize.height - sourceView.bounds.height + sourceView.adjustedContentInset.bottom)
         let clampedOffsetY = min(max(sharedScrollOffsetY, minOffsetY), maxContentOffsetY)
         guard abs(clampedOffsetY - sourceView.contentOffset.y) > 0.5 else {
             sharedScrollOffsetY = clampedOffsetY
@@ -108,7 +105,7 @@ extension ReadView {
                 selectedMergedEdgeBounds = candidateIndex...candidateIndex
                 selectedSegmentLocation = candidateRange.location
                 selectedHighlightRangeOverride = candidateRange
-                debugPrintLatticeSectionForCurrentSelection(at: candidateRange.location)
+                // debugPrintLatticeSectionForCurrentSelection(at: candidateRange.location)
 
                 let leftNeighborSurface = candidateIndex > 0 ? segmentationEdges[candidateIndex - 1].surface : nil
                 let rightNeighborIndex = candidateIndex + 1

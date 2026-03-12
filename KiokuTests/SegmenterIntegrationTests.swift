@@ -14,6 +14,11 @@ final class SegmenterIntegrationTests: XCTestCase {
         try sharedResources().segmenter.buildLattice(for: text)
     }
 
+    // Returns deinflection candidates from the shared real deinflector for one surface.
+    private func deinflectionCandidates(for surface: String) throws -> Set<String> {
+        try sharedResources().deinflector.generateCandidates(for: surface)
+    }
+
     // Builds human-readable inclusion lines for the full real lattice in source order using the segmenter's debug summary.
     private func inclusionLines(for text: String) throws -> [String] {
         let resources = try sharedResources()
@@ -90,6 +95,38 @@ final class SegmenterIntegrationTests: XCTestCase {
 
         XCTAssertTrue(latticeEdges.contains { edge in
             edge.surface == "さがしつづける" && edge.lemma == "さがす"
+        })
+    }
+
+    // Verifies mixed-script passive stems recover the underlying godan dictionary lemma.
+    func testDeinflectorRecoversGodanPassiveLemmaForMixedScriptStem() throws {
+        let candidates = try deinflectionCandidates(for: "導かれ")
+
+        XCTAssertTrue(candidates.contains("導く"))
+    }
+
+    // Verifies the lattice admits the full passive stem span once the recovery candidate is available.
+    func testBuildLatticeUsesPassiveStemRecoveryCandidate() throws {
+        let latticeEdges = try buildLattice(for: "導かれ")
+
+        XCTAssertTrue(latticeEdges.contains { edge in
+            edge.surface == "導かれ" && edge.lemma == "導く"
+        })
+    }
+
+    // Verifies mixed-script desiderative chains recover the underlying verb lemma.
+    func testDeinflectorRecoversVerbLemmaForMixedScriptDesiderativeChain() throws {
+        let candidates = try deinflectionCandidates(for: "言いたくない")
+
+        XCTAssertTrue(candidates.contains("言う"))
+    }
+
+    // Verifies the lattice keeps the full desiderative-negative span once the verb lemma is reachable.
+    func testBuildLatticeUsesDesiderativeRecoveryCandidate() throws {
+        let latticeEdges = try buildLattice(for: "言いたくない")
+
+        XCTAssertTrue(latticeEdges.contains { edge in
+            edge.surface == "言いたくない" && edge.lemma == "言う"
         })
     }
 

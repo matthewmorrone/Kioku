@@ -236,7 +236,7 @@ extension ReadView {
 
         let segmentationResult = segmenter.longestMatchResult(for: text)
         segmentationLatticeEdges = segmentationResult.latticeEdges
-    segmenter.debugPrintLattice(for: text)
+        // segmenter.debugPrintLattice(for: text)
         let baseEdges = segmentationResult.selectedEdges
         let refreshedEdges: [LatticeEdge]
         if let tokenRanges,
@@ -313,7 +313,7 @@ extension ReadView {
         selectedSegmentLocation = tappedSegmentLocation
         selectedHighlightRangeOverride = nil
         selectedMergedEdgeBounds = initialMergedEdgeBounds(for: tappedSegmentLocation)
-        debugPrintLatticeSectionForCurrentSelection(at: tappedSegmentLocation)
+        // debugPrintLatticeSectionForCurrentSelection(at: tappedSegmentLocation)
 
         let adjacentSurfaces = adjacentSegmentSurfaces(for: tappedSegmentLocation)
 

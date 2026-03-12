@@ -106,6 +106,7 @@ final class Segmenter {
         return edges
     }
 
+    /*
     // Prints lattice edges with integer offsets and matched text for tokenizer debugging.
     func debugPrintLattice(for text: String) {
         var index = text.startIndex
@@ -172,6 +173,7 @@ final class Segmenter {
             index = text.index(after: index)
         }
     }
+    */
 
     // Builds a greedy segmentation by selecting the farthest-reaching edge at each text index.
     func longestMatchSegments(for text: String) -> [Range<String.Index>] {
