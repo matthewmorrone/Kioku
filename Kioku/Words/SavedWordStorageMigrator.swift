@@ -1,0 +1,53 @@
+import Foundation
+
+// Loads and persists canonical-entry keyed saved words in normalized form.
+struct SavedWordStorageMigrator {
+    // Loads canonical saved words from storage and rewrites them in normalized form.
+    static func loadSavedWords(
+        storageKey: String,
+        userDefaults: UserDefaults = .standard
+    ) -> [SavedWord] {
+        if let data = userDefaults.data(forKey: storageKey) {
+            if let decodedEntries = try? JSONDecoder().decode([SavedWord].self, from: data) {
+                let normalizedEntries = normalizedEntries(decodedEntries)
+                persist(entries: normalizedEntries, storageKey: storageKey, userDefaults: userDefaults)
+                return normalizedEntries
+            }
+        }
+
+        return []
+    }
+
+    // Persists saved-word entries as normalized canonical-entry keyed payloads.
+    static func persist(entries: [SavedWord], storageKey: String, userDefaults: UserDefaults = .standard) {
+        let normalized = normalizedEntries(entries)
+        if let encoded = try? JSONEncoder().encode(normalized) {
+            userDefaults.set(encoded, forKey: storageKey)
+        }
+    }
+
+    // Coalesces duplicate saves by canonical entry id while preserving first-seen order.
+    static func normalizedEntries(_ entries: [SavedWord]) -> [SavedWord] {
+        var mergedByEntryID: [Int64: SavedWord] = [:]
+        var orderedEntryIDs: [Int64] = []
+
+        for entry in entries {
+            if var existing = mergedByEntryID[entry.canonicalEntryID] {
+                let preferredSurface = existing.surface.isEmpty ? entry.surface : existing.surface
+                let preferredSourceNoteID = existing.sourceNoteID ?? entry.sourceNoteID
+                existing = SavedWord(
+                    canonicalEntryID: existing.canonicalEntryID,
+                    surface: preferredSurface,
+                    sourceNoteID: preferredSourceNoteID
+                )
+                mergedByEntryID[entry.canonicalEntryID] = existing
+                continue
+            }
+
+            mergedByEntryID[entry.canonicalEntryID] = entry
+            orderedEntryIDs.append(entry.canonicalEntryID)
+        }
+
+        return orderedEntryIDs.compactMap { mergedByEntryID[$0] }
+    }
+}

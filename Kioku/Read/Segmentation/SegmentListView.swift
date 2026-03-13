@@ -284,79 +284,25 @@ struct SegmentListView: View {
             )
         }
 
-        let normalizedEntries = normalizedSavedWordEntries(entries)
+        let normalizedEntries = SavedWordStorageMigrator.normalizedEntries(entries)
         persistSavedWordEntriesToStorage(normalizedEntries)
         savedWordEntryIDs = Set(normalizedEntries.map(\.canonicalEntryID))
     }
 
     // Loads saved words from persistent storage for star-state rendering.
     private func loadSavedWordsFromStorage() {
-        let entries = normalizedSavedWordEntries(loadSavedWordEntriesFromStorage())
-        persistSavedWordEntriesToStorage(entries)
+        let entries = loadSavedWordEntriesFromStorage()
         savedWordEntryIDs = Set(entries.map(\.canonicalEntryID))
     }
 
-    // Loads saved-word entries while migrating legacy plain-string storage values.
+    // Loads canonical saved-word entries from shared storage.
     private func loadSavedWordEntriesFromStorage() -> [SavedWord] {
-        if let data = UserDefaults.standard.data(forKey: savedWordsStorageKey),
-           let decodedEntries = try? JSONDecoder().decode([SavedWord].self, from: data) {
-            return normalizedSavedWordEntries(decodedEntries)
-        }
-
-        if let data = UserDefaults.standard.data(forKey: savedWordsStorageKey),
-           let legacyPayload = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            var migratedEntries: [SavedWord] = []
-            migratedEntries.reserveCapacity(legacyPayload.count)
-
-            for item in legacyPayload {
-                guard let surface = item["surface"] as? String,
-                      let canonicalEntryID = resolveCanonicalEntryID(for: surface) else {
-                    continue
-                }
-
-                let sourceNoteID: UUID?
-                if let sourceNoteIDString = item["sourceNoteID"] as? String {
-                    sourceNoteID = UUID(uuidString: sourceNoteIDString)
-                } else {
-                    sourceNoteID = nil
-                }
-
-                migratedEntries.append(
-                    SavedWord(
-                        canonicalEntryID: canonicalEntryID,
-                        surface: normalizedSurfaceForFiltering(surface),
-                        sourceNoteID: sourceNoteID
-                    )
-                )
-            }
-
-            return normalizedSavedWordEntries(migratedEntries)
-        }
-
-        if let legacyWords = UserDefaults.standard.array(forKey: savedWordsStorageKey) as? [String] {
-            let migratedEntries = legacyWords.compactMap { legacyWord -> SavedWord? in
-                guard let canonicalEntryID = resolveCanonicalEntryID(for: legacyWord) else {
-                    return nil
-                }
-
-                return SavedWord(
-                    canonicalEntryID: canonicalEntryID,
-                    surface: normalizedSurfaceForFiltering(legacyWord),
-                    sourceNoteID: nil
-                )
-            }
-
-            return normalizedSavedWordEntries(migratedEntries)
-        }
-
-        return []
+        SavedWordStorageMigrator.loadSavedWords(storageKey: savedWordsStorageKey)
     }
 
     // Persists saved-word entries including optional source note references.
     private func persistSavedWordEntriesToStorage(_ entries: [SavedWord]) {
-        if let encoded = try? JSONEncoder().encode(normalizedSavedWordEntries(entries)) {
-            UserDefaults.standard.set(encoded, forKey: savedWordsStorageKey)
-        }
+        SavedWordStorageMigrator.persist(entries: entries, storageKey: savedWordsStorageKey)
     }
 
     // Resolves star state by canonical dictionary identity for the provided surface.
@@ -392,31 +338,6 @@ struct SegmentListView: View {
         for surface in surfaces where canonicalEntryIDBySurface[surface] == nil {
             _ = resolveCanonicalEntryID(for: surface)
         }
-    }
-
-    // Coalesces duplicate saves by canonical entry id while preserving first-seen order.
-    private func normalizedSavedWordEntries(_ entries: [SavedWord]) -> [SavedWord] {
-        var mergedByEntryID: [Int64: SavedWord] = [:]
-        var orderedEntryIDs: [Int64] = []
-
-        for entry in entries {
-            if var existing = mergedByEntryID[entry.canonicalEntryID] {
-                let preferredSurface = existing.surface.isEmpty ? entry.surface : existing.surface
-                let preferredSourceNoteID = existing.sourceNoteID ?? entry.sourceNoteID
-                existing = SavedWord(
-                    canonicalEntryID: existing.canonicalEntryID,
-                    surface: preferredSurface,
-                    sourceNoteID: preferredSourceNoteID
-                )
-                mergedByEntryID[entry.canonicalEntryID] = existing
-                continue
-            }
-
-            mergedByEntryID[entry.canonicalEntryID] = entry
-            orderedEntryIDs.append(entry.canonicalEntryID)
-        }
-
-        return orderedEntryIDs.compactMap { mergedByEntryID[$0] }
     }
 
     // Generates preview text for a proposed split boundary.
