@@ -655,43 +655,8 @@ extension ReadView {
             duration: CMTime(seconds: max(end - start, 0.01), preferredTimescale: 600)
         )
 
-        if #available(iOS 18.0, *) {
-            try await exporter.export(to: chunkURL, as: .m4a)
-        } else {
-            try await Self.awaitExportCompletion(exporter)
-        }
+        try await exporter.export(to: chunkURL, as: .m4a)
         return chunkURL
-    }
-
-    // Awaits asynchronous AVAssetExportSession completion and surfaces a meaningful failure when export does not complete.
-    @available(iOS, introduced: 13.0, obsoleted: 18.0)
-    nonisolated static func awaitExportCompletion(_ exporter: AVAssetExportSession) async throws {
-        try await withCheckedThrowingContinuation { continuation in
-            exporter.exportAsynchronously {
-                switch exporter.status {
-                case .completed:
-                    continuation.resume(returning: ())
-                case .failed:
-                    continuation.resume(throwing: exporter.error ?? NSError(
-                        domain: "Kioku.AudioTranscription",
-                        code: 6,
-                        userInfo: [NSLocalizedDescriptionKey: "Audio chunk export failed."]
-                    ))
-                case .cancelled:
-                    continuation.resume(throwing: NSError(
-                        domain: "Kioku.AudioTranscription",
-                        code: 7,
-                        userInfo: [NSLocalizedDescriptionKey: "Audio chunk export was cancelled."]
-                    ))
-                default:
-                    continuation.resume(throwing: NSError(
-                        domain: "Kioku.AudioTranscription",
-                        code: 8,
-                        userInfo: [NSLocalizedDescriptionKey: "Audio chunk export finished in an unexpected state."]
-                    ))
-                }
-            }
-        }
     }
 
     // Merges chunk transcripts while removing simple overlap duplication introduced by chunk window overlap.

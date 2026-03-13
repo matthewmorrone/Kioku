@@ -269,7 +269,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  \"$SRCROOT/scripts/validate_invariants.sh\"\nfi\n";
+			shellScript = "if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  \"$SRCROOT/../../scripts/validate_invariants.sh\"\nfi\n";
 		};
 		F5A9C1DB2F90000300ABCDEF /* Rebuild Dictionary SQLite */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -280,19 +280,19 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				$SRCROOT/Resources/generate_db.py,
-				$SRCROOT/Resources/extras.json,
-				"$SRCROOT/Resources/jmdict-eng-3.6.2.json",
+				"$SRCROOT/../../Resources/generate_db.py",
+				"$SRCROOT/../../Resources/extras.json",
+				"$SRCROOT/../../Resources/jmdict-eng-3.6.2.json",
 			);
 			name = "Rebuild Dictionary SQLite";
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				$SRCROOT/Resources/dictionary.sqlite,
+				"$SRCROOT/../../Resources/dictionary.sqlite",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ ! -f \"$SRCROOT/Resources/jmdict-eng-3.6.2.json\" ]; then\n  echo \"warning: Skipping dictionary rebuild; missing Resources/jmdict-eng-3.6.2.json\"\n  exit 0\nfi\n/usr/bin/python3 \"$SRCROOT/Resources/generate_db.py\"\n";
+			shellScript = "if [ ! -f \"$SRCROOT/../../Resources/jmdict-eng-3.6.2.json\" ]; then\n  echo \"warning: Skipping dictionary rebuild; missing Resources/jmdict-eng-3.6.2.json\"\n  exit 0\nfi\n/usr/bin/python3 \"$SRCROOT/../../Resources/generate_db.py\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

@@ -91,6 +91,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                     onMergeLeft: onMergeLeft,
                     onMergeRight: onMergeRight,
                     onSplitApply: onSplitApply,
+                    sheetReadingsProvider: nil,
+                    sheetSublatticeProvider: nil,
                     onDismiss: onDismiss
                 )
             },

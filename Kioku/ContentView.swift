@@ -109,21 +109,19 @@ struct ContentView: View {
         guard !hasLoadedReadResources else { return }
         hasLoadedReadResources = true
 
-        Task.detached(priority: .utility) {
+        Task(priority: .utility) {
             let readResources = Self.makeReadResources()
-            await MainActor.run {
-                segmenter = readResources.segmenter
-                dictionaryStore = readResources.dictionaryStore
-                readingBySurface = readResources.readingBySurface
-                readingCandidatesBySurface = readResources.readingCandidatesBySurface
-                readResourcesReady = true
-                segmenterRevision += 1
-            }
+            segmenter = readResources.segmenter
+            dictionaryStore = readResources.dictionaryStore
+            readingBySurface = readResources.readingBySurface
+            readingCandidatesBySurface = readResources.readingCandidatesBySurface
+            readResourcesReady = true
+            segmenterRevision += 1
         }
     }
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
-    nonisolated private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]]) {
+    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]]) {
         let trie = DictionaryTrie()
         var dictionaryStore: DictionaryStore?
         var readingBySurface: [String: String] = [:]
