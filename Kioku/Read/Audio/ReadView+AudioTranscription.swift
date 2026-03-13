@@ -80,11 +80,11 @@ extension ReadView {
 
             try await Self.requestSpeechAuthorizationIfNeeded()
             let contextualStrings = Self.makeSpeechContextualStrings(from: text, title: resolvedTitle)
-            let audioDuration = try Self.audioDuration(for: copiedURL)
-            var chunkRanges = try Self.makeSpeechActiveChunkRanges(for: copiedURL, maxChunkDuration: 12.0, overlap: 0.4)
+            let audioDuration = try await Self.audioDuration(for: copiedURL)
+            var chunkRanges = try await Self.makeSpeechActiveChunkRanges(for: copiedURL, maxChunkDuration: 12.0, overlap: 0.4)
             if chunkRanges.isEmpty {
                 // Falls back to fixed chunking when speech-activity detection finds no reliable active regions.
-                chunkRanges = try Self.makeChunkRanges(for: copiedURL, chunkDuration: 12.0, overlap: 0.4)
+                chunkRanges = try await Self.makeChunkRanges(for: copiedURL, chunkDuration: 12.0, overlap: 0.4)
             }
             guard chunkRanges.isEmpty == false else {
                 audioTranscriptionErrorMessage = "The selected audio file does not contain a usable duration."
@@ -105,7 +105,7 @@ extension ReadView {
             var bestNonFatalErrorCount = firstPassResult.nonFatalChunkErrorCount
 
             if Self.shouldRetryForLowYield(transcript: firstPassResult.transcript, durationSeconds: audioDuration) {
-                let retryChunkRanges = try Self.makeChunkRanges(for: copiedURL, chunkDuration: 8.0, overlap: 0.8)
+                let retryChunkRanges = try await Self.makeChunkRanges(for: copiedURL, chunkDuration: 8.0, overlap: 0.8)
                 let retryResult = try await runChunkTranscriptionPass(
                     sourceURL: copiedURL,
                     chunkRanges: retryChunkRanges,
@@ -384,9 +384,10 @@ extension ReadView {
     }
 
     // Detects speech-active regions by adaptive energy thresholding and returns chunk ranges tailored for recognition.
-    nonisolated static func makeSpeechActiveChunkRanges(for fileURL: URL, maxChunkDuration: TimeInterval, overlap: TimeInterval) throws -> [(start: TimeInterval, end: TimeInterval)] {
+    nonisolated static func makeSpeechActiveChunkRanges(for fileURL: URL, maxChunkDuration: TimeInterval, overlap: TimeInterval) async throws -> [(start: TimeInterval, end: TimeInterval)] {
         let asset = AVURLAsset(url: fileURL)
-        guard let track = asset.tracks(withMediaType: .audio).first else {
+        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        guard let track = tracks.first else {
             throw NSError(
                 domain: "Kioku.AudioTranscription",
                 code: 10,
@@ -582,9 +583,10 @@ extension ReadView {
     }
 
     // Splits an audio file into overlapping fixed-duration chunk ranges to improve long-form transcription recall.
-    nonisolated static func makeChunkRanges(for fileURL: URL, chunkDuration: TimeInterval, overlap: TimeInterval) throws -> [(start: TimeInterval, end: TimeInterval)] {
+    nonisolated static func makeChunkRanges(for fileURL: URL, chunkDuration: TimeInterval, overlap: TimeInterval) async throws -> [(start: TimeInterval, end: TimeInterval)] {
         let asset = AVURLAsset(url: fileURL)
-        let durationSeconds = CMTimeGetSeconds(asset.duration)
+        let duration = try await asset.load(.duration)
+        let durationSeconds = CMTimeGetSeconds(duration)
         guard durationSeconds.isFinite, durationSeconds > 0 else {
             throw NSError(
                 domain: "Kioku.AudioTranscription",
@@ -613,9 +615,10 @@ extension ReadView {
     }
 
     // Returns full audio duration in seconds for quality heuristics and retry decisions.
-    nonisolated static func audioDuration(for fileURL: URL) throws -> TimeInterval {
+    nonisolated static func audioDuration(for fileURL: URL) async throws -> TimeInterval {
         let asset = AVURLAsset(url: fileURL)
-        let durationSeconds = CMTimeGetSeconds(asset.duration)
+        let duration = try await asset.load(.duration)
+        let durationSeconds = CMTimeGetSeconds(duration)
         guard durationSeconds.isFinite, durationSeconds > 0 else {
             throw NSError(
                 domain: "Kioku.AudioTranscription",
@@ -652,11 +655,16 @@ extension ReadView {
             duration: CMTime(seconds: max(end - start, 0.01), preferredTimescale: 600)
         )
 
-        try await Self.awaitExportCompletion(exporter)
+        if #available(iOS 18.0, *) {
+            try await exporter.export(to: chunkURL, as: .m4a)
+        } else {
+            try await Self.awaitExportCompletion(exporter)
+        }
         return chunkURL
     }
 
     // Awaits asynchronous AVAssetExportSession completion and surfaces a meaningful failure when export does not complete.
+    @available(iOS, introduced: 13.0, obsoleted: 18.0)
     nonisolated static func awaitExportCompletion(_ exporter: AVAssetExportSession) async throws {
         try await withCheckedThrowingContinuation { continuation in
             exporter.exportAsynchronously {

@@ -6,14 +6,14 @@ struct NotesTransferPayload: Codable {
     var notes: [Note]
 
     // Creates a versioned payload for note import and export workflows.
-    init(version: Int = 2, exportedAt: Date = Date(), notes: [Note]) {
+    nonisolated init(version: Int = 2, exportedAt: Date = Date(), notes: [Note]) {
         self.version = version
         self.exportedAt = exportedAt
         self.notes = notes
     }
 
     // Decodes transfer payload metadata from the current export schema.
-    init(from decoder: Decoder) throws {
+    nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: NotesTransferPayloadCodingKeys.self)
         version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 2
         exportedAt = try container.decodeIfPresent(Date.self, forKey: .exportedAt) ?? Date()
@@ -21,7 +21,7 @@ struct NotesTransferPayload: Codable {
     }
 
     // Encodes payload metadata and notes for portable exports.
-    func encode(to encoder: Encoder) throws {
+    nonisolated func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: NotesTransferPayloadCodingKeys.self)
         try container.encode(version, forKey: .version)
         try container.encode(exportedAt, forKey: .exportedAt)

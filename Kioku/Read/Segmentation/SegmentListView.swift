@@ -7,13 +7,15 @@ struct SegmentListView: View {
     let text: String
     let edges: [LatticeEdge]
     let latticeEdges: [LatticeEdge]
+    let dictionaryStore: DictionaryStore?
     let sourceNoteID: UUID?
     let onMergeLeft: (Int) -> Void
     let onMergeRight: (Int) -> Void
     let onSplit: (Int, Int) -> Void
     let onReset: () -> Void
 
-    @State private var savedWords: Set<String> = []
+    @State private var savedWordEntryIDs: Set<Int64> = []
+    @State private var canonicalEntryIDBySurface: [String: Int64] = [:]
     @State private var includesDuplicates = true
     @State private var includesCommonParticles = true
     private let savedWordsStorageKey = "kioku.words.v1"
@@ -40,12 +42,13 @@ struct SegmentListView: View {
                             Button {
                                 toggleSavedWord(edge.surface)
                             } label: {
-                                Image(systemName: savedWords.contains(edge.surface) ? "star.fill" : "star")
-                                    .foregroundStyle(savedWords.contains(edge.surface) ? Color.yellow : Color.secondary)
+                                let isSaved = isSavedSurface(edge.surface)
+                                Image(systemName: isSaved ? "star.fill" : "star")
+                                    .foregroundStyle(isSaved ? Color.yellow : Color.secondary)
                                     .font(.system(size: 16, weight: .semibold))
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel(savedWords.contains(edge.surface) ? "Unsave Word" : "Save Word")
+                            .accessibilityLabel(isSavedSurface(edge.surface) ? "Unsave Word" : "Save Word")
                         }
                         .padding(.vertical, 6)
                         .contextMenu {
@@ -132,6 +135,10 @@ struct SegmentListView: View {
         }
         .onAppear {
             loadSavedWordsFromStorage()
+            hydrateCanonicalEntryIDCacheForVisibleRows()
+        }
+        .onChange(of: edges.map(\.surface)) { _, _ in
+            hydrateCanonicalEntryIDCacheForVisibleRows()
         }
     }
 
@@ -259,34 +266,87 @@ struct SegmentListView: View {
 
     // Toggles one segment surface in the saved-word list storage.
     private func toggleSavedWord(_ surface: String) {
-        var entries = loadSavedWordEntriesFromStorage()
-        if entries.contains(where: { $0.surface == surface }) {
-            entries.removeAll { $0.surface == surface }
-        } else {
-            entries.append(SavedWord(surface: surface, sourceNoteID: sourceNoteID))
+        guard let canonicalEntryID = resolveCanonicalEntryID(for: surface) else {
+            return
         }
 
-        persistSavedWordEntriesToStorage(entries)
-        savedWords = Set(entries.map(\.surface))
+        let normalizedSurface = normalizedSurfaceForFiltering(surface)
+        var entries = loadSavedWordEntriesFromStorage()
+        if entries.contains(where: { $0.canonicalEntryID == canonicalEntryID }) {
+            entries.removeAll { $0.canonicalEntryID == canonicalEntryID }
+        } else {
+            entries.append(
+                SavedWord(
+                    canonicalEntryID: canonicalEntryID,
+                    surface: normalizedSurface,
+                    sourceNoteID: sourceNoteID
+                )
+            )
+        }
+
+        let normalizedEntries = normalizedSavedWordEntries(entries)
+        persistSavedWordEntriesToStorage(normalizedEntries)
+        savedWordEntryIDs = Set(normalizedEntries.map(\.canonicalEntryID))
     }
 
     // Loads saved words from persistent storage for star-state rendering.
     private func loadSavedWordsFromStorage() {
-        let entries = loadSavedWordEntriesFromStorage()
-        savedWords = Set(entries.map(\.surface))
+        let entries = normalizedSavedWordEntries(loadSavedWordEntriesFromStorage())
+        persistSavedWordEntriesToStorage(entries)
+        savedWordEntryIDs = Set(entries.map(\.canonicalEntryID))
     }
 
     // Loads saved-word entries while migrating legacy plain-string storage values.
     private func loadSavedWordEntriesFromStorage() -> [SavedWord] {
         if let data = UserDefaults.standard.data(forKey: savedWordsStorageKey),
            let decodedEntries = try? JSONDecoder().decode([SavedWord].self, from: data) {
-            return decodedEntries
+            return normalizedSavedWordEntries(decodedEntries)
+        }
+
+        if let data = UserDefaults.standard.data(forKey: savedWordsStorageKey),
+           let legacyPayload = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            var migratedEntries: [SavedWord] = []
+            migratedEntries.reserveCapacity(legacyPayload.count)
+
+            for item in legacyPayload {
+                guard let surface = item["surface"] as? String,
+                      let canonicalEntryID = resolveCanonicalEntryID(for: surface) else {
+                    continue
+                }
+
+                let sourceNoteID: UUID?
+                if let sourceNoteIDString = item["sourceNoteID"] as? String {
+                    sourceNoteID = UUID(uuidString: sourceNoteIDString)
+                } else {
+                    sourceNoteID = nil
+                }
+
+                migratedEntries.append(
+                    SavedWord(
+                        canonicalEntryID: canonicalEntryID,
+                        surface: normalizedSurfaceForFiltering(surface),
+                        sourceNoteID: sourceNoteID
+                    )
+                )
+            }
+
+            return normalizedSavedWordEntries(migratedEntries)
         }
 
         if let legacyWords = UserDefaults.standard.array(forKey: savedWordsStorageKey) as? [String] {
-            return legacyWords.map { legacyWord in
-                SavedWord(surface: legacyWord, sourceNoteID: nil)
+            let migratedEntries = legacyWords.compactMap { legacyWord -> SavedWord? in
+                guard let canonicalEntryID = resolveCanonicalEntryID(for: legacyWord) else {
+                    return nil
+                }
+
+                return SavedWord(
+                    canonicalEntryID: canonicalEntryID,
+                    surface: normalizedSurfaceForFiltering(legacyWord),
+                    sourceNoteID: nil
+                )
             }
+
+            return normalizedSavedWordEntries(migratedEntries)
         }
 
         return []
@@ -294,9 +354,69 @@ struct SegmentListView: View {
 
     // Persists saved-word entries including optional source note references.
     private func persistSavedWordEntriesToStorage(_ entries: [SavedWord]) {
-        if let encoded = try? JSONEncoder().encode(entries) {
+        if let encoded = try? JSONEncoder().encode(normalizedSavedWordEntries(entries)) {
             UserDefaults.standard.set(encoded, forKey: savedWordsStorageKey)
         }
+    }
+
+    // Resolves star state by canonical dictionary identity for the provided surface.
+    private func isSavedSurface(_ surface: String) -> Bool {
+        guard let canonicalEntryID = resolveCanonicalEntryID(for: surface) else {
+            return false
+        }
+
+        return savedWordEntryIDs.contains(canonicalEntryID)
+    }
+
+    // Resolves and caches canonical entry ids so save/unsave actions stay idempotent for duplicate surfaces.
+    private func resolveCanonicalEntryID(for surface: String) -> Int64? {
+        let normalizedSurface = normalizedSurfaceForFiltering(surface)
+        if let cachedEntryID = canonicalEntryIDBySurface[normalizedSurface] {
+            return cachedEntryID
+        }
+
+        guard normalizedSurface.isEmpty == false,
+              let dictionaryStore,
+              let firstMatch = try? dictionaryStore.lookup(surface: normalizedSurface, mode: .kanjiAndKana).first
+        else {
+            return nil
+        }
+
+        canonicalEntryIDBySurface[normalizedSurface] = firstMatch.entryId
+        return firstMatch.entryId
+    }
+
+    // Pre-resolves visible row surfaces so star rendering avoids repeated dictionary scans.
+    private func hydrateCanonicalEntryIDCacheForVisibleRows() {
+        let surfaces = Set(displayRows.map { normalizedSurfaceForFiltering($0.edge.surface) })
+        for surface in surfaces where canonicalEntryIDBySurface[surface] == nil {
+            _ = resolveCanonicalEntryID(for: surface)
+        }
+    }
+
+    // Coalesces duplicate saves by canonical entry id while preserving first-seen order.
+    private func normalizedSavedWordEntries(_ entries: [SavedWord]) -> [SavedWord] {
+        var mergedByEntryID: [Int64: SavedWord] = [:]
+        var orderedEntryIDs: [Int64] = []
+
+        for entry in entries {
+            if var existing = mergedByEntryID[entry.canonicalEntryID] {
+                let preferredSurface = existing.surface.isEmpty ? entry.surface : existing.surface
+                let preferredSourceNoteID = existing.sourceNoteID ?? entry.sourceNoteID
+                existing = SavedWord(
+                    canonicalEntryID: existing.canonicalEntryID,
+                    surface: preferredSurface,
+                    sourceNoteID: preferredSourceNoteID
+                )
+                mergedByEntryID[entry.canonicalEntryID] = existing
+                continue
+            }
+
+            mergedByEntryID[entry.canonicalEntryID] = entry
+            orderedEntryIDs.append(entry.canonicalEntryID)
+        }
+
+        return orderedEntryIDs.compactMap { mergedByEntryID[$0] }
     }
 
     // Generates preview text for a proposed split boundary.

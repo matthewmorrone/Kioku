@@ -38,6 +38,7 @@
 		E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dictionary.sqlite; sourceTree = "<group>"; };
 		E32B0CE02F57BC070020F5C2 /* generate_db.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = generate_db.py; sourceTree = "<group>"; };
 		E32B0CE82F57BC070020F5C2 /* deinflection.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = deinflection.json; sourceTree = "<group>"; };
+		E32D09B42F638C1600788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -107,6 +108,13 @@
 				E32B0CE02F57BC070020F5C2 /* generate_db.py */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		E32D09C32F638C1600788CAE /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -214,6 +222,12 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E3070AE92F4DFDB6005FD323 /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = E32D09C32F638C1600788CAE /* Products */;
+					ProjectRef = E32D09B42F638C1600788CAE /* Kioku.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				E3070AE72F4DFDB6005FD323 /* Kioku */,
@@ -280,15 +294,15 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$SRCROOT/Resources/generate_db.py",
-				"$SRCROOT/Resources/extras.json",
+				$SRCROOT/Resources/generate_db.py,
+				$SRCROOT/Resources/extras.json,
 				"$SRCROOT/Resources/jmdict-eng-3.6.2.json",
 			);
 			name = "Rebuild Dictionary SQLite";
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$SRCROOT/Resources/dictionary.sqlite",
+				$SRCROOT/Resources/dictionary.sqlite,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

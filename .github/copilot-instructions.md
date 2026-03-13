@@ -1,76 +1,347 @@
 # Copilot Coding Invariants
 
-These are required coding invariants for this repository.
+These are mandatory invariants for this repository.
+Copilot suggestions must not violate these rules.
 
-1. Avoid `while true` loops.
-   - Prefer explicit loop conditions.
-   - For SQLite stepping, use `while stepCode == SQLITE_ROW` and explicitly handle `SQLITE_DONE`.
+---
 
-## Additional Invariants
+## 1. Loop Safety
 
-Add more required invariants below. Copilot should treat them as mandatory.
+Avoid `while true`.
 
-2. Avoid empty `catch` blocks.
-   - Every `catch` must either handle the error meaningfully or rethrow/propagate it.
+Use explicit loop conditions.
 
-3. All type declarations must be in their own files.
-   - Applies to `struct`, `enum`, `class`, `actor`, and `protocol`.
-   - File name must match the type name.
-   - Nested type declarations are not allowed.
+For SQLite stepping use:
 
-4. Swift file length limit.
-   - Treat file length as a cohesion guardrail, not a proxy for quality.
-   - Prefer splitting a Swift file once it approaches 800 lines.
-   - Swift files should normally stay under 1,200 lines.
-   - If a file grows past that point, split it by responsibility before adding more logic unless there is a strong reason to keep it unified.
+```
+while stepCode == SQLITE_ROW
+```
 
-5. Organize Swift files by functionality.
-    - Prefer grouping files by feature/domain responsibility (for example: reading, notes, dictionary, segmentation, settings).
-    - Existing folder names under `Kioku/` are examples, not hard constraints.
-    - New folders are allowed when they improve functional cohesion and discoverability.
-    - Keep app-shell entry files (`KiokuApp.swift`, `ContentView.swift`, `ContentTab.swift`) easy to locate.
+Explicitly handle `SQLITE_DONE`.
 
-6. Function-level intent comments are required.
-    - Every function must include at least one line comment explaining why the function exists.
-    - Complex logic inside functions must include concise inline comments explaining intent and non-obvious decisions.
+---
 
-7. UI view component ownership comments are required.
-   - Every `View` and `UIViewRepresentable` must include comments describing what screen/component it renders.
-   - Complex view hierarchies must include inline comments mapping major blocks to on-screen sections (e.g., header, list, editor, toolbar actions, controls).
+## 2. Error Handling
 
-8. Respect titleless navigation by default.
-   - Do not add `.navigationTitle(...)` to a screen where it has been removed.
-   - Only add or restore navigation titles when explicitly requested.
+Empty `catch` blocks are not allowed.
 
-9. Text layout and furigana geometry must use a single TextKit coordinate pipeline.
-   - Annotation geometry must be expressed in the text view coordinate space only.
-   - Convert TextKit rectangles into text view coordinates by offsetting with `textContainerInset` before rendering.
-   - Never cache glyph geometry across scrolling or layout changes.
-   - Ensure layout before querying annotation geometry.
-   - Never compensate annotation placement using `contentOffset`.
-   - Required pipeline: TextKit rect -> text view coordinates -> render annotation.
+A catch must either:
 
-10. Deinflection behavior must stay data-driven.
-   - Do not hardcode Japanese suffix or surface rewrite rules in `Deinflector.swift`.
-   - Add or refine deinflection behavior by updating `Resources/deinflection.json` and the generic rule application pipeline.
-   - Keep `Deinflector.swift` focused on loading rules, traversing rule states, and generic candidate admission logic.
+- handle the error meaningfully
+- or rethrow it
 
-11. Enforce architecture layer boundaries.
-   - App shell code owns startup, dependency wiring, root navigation state, and store injection.
-   - Feature UI code may compose screens and dispatch mutations, but must not own lexical processing logic.
-   - Feature UI code must not redefine segmentation rules or mutate canonical dictionary state.
+---
 
-12. Keep lexical and rendering side effects constrained.
-   - Lexical processing code must not mutate note text.
-   - Lexical processing code must not persist derived rendering state.
-   - Rendering code must not mutate note text or span definitions.
-   - Rendering code must not persist layout artifacts.
+## 3. Type Organization
 
-13. Preserve span and backup architecture contracts.
-   - Persisted spans must remain UTF-16 half-open ranges with full coverage and contiguity invariants.
-   - Backup and restore paths must remain full-state only; do not introduce partial backup or partial restore behavior.
+Each type must live in its own file.
 
-14. Preserve architecture non-goals.
-   - Do not add cloud-sync requirements as part of core architecture.
-   - Do not add network dependency requirements for segmentation.
-   - Do not introduce boundary-only segment storage representations.
+Applies to:
+
+- struct
+- enum
+- class
+- actor
+- protocol
+
+File name must match the type name.
+
+Nested type declarations are not allowed.
+
+---
+
+## 4. File Size Guardrail
+
+Target:
+
+- under 800 lines preferred
+- under 1200 lines maximum
+
+Large files must be split by responsibility.
+
+---
+
+## 5. Folder Organization
+
+Group files by feature domain.
+
+Examples:
+
+- reading
+- notes
+- dictionary
+- segmentation
+- settings
+
+App-shell files must remain easy to locate.
+
+---
+
+## 6. Function Documentation
+
+Every function must include a comment explaining why it exists.
+
+Complex logic must include concise inline explanation.
+
+---
+
+## 7. View Ownership Comments
+
+Every `View` or `UIViewRepresentable` must document:
+
+- what screen it renders
+- major layout sections
+
+---
+
+## 8. Navigation Contract
+
+Navigation titles must not be added unless explicitly requested.
+
+---
+
+## 9. TextKit Geometry Contract
+
+Annotation placement must follow one coordinate pipeline:
+
+```
+TextKit rect
+→ convert using textContainerInset
+→ render in text-view coordinates
+```
+
+Rules:
+
+- never cache glyph geometry
+- never compensate using `contentOffset`
+- ensure layout before querying geometry
+
+---
+
+## 10. Deinflection Contract
+
+Deinflection must remain data-driven.
+
+Rules must live in:
+
+```
+Resources/deinflection.json
+```
+
+`Deinflector.swift` may only:
+
+- load rules
+- traverse rule graph
+- admit candidates
+
+No hard-coded suffix rules.
+
+---
+
+# Data Model Invariants
+
+## Note Persistence
+
+Notes must never persist:
+
+- rendering artifacts
+- karaoke state
+- layout state
+- hard cuts
+
+---
+
+## Span Invariants
+
+Spans must satisfy all of the following:
+
+- UTF-16 coordinate system
+- half-open ranges `[start, end)`
+- full text coverage
+- no gaps
+- no overlaps
+- strictly ascending order
+- `end > start`
+
+Editing note text **invalidates segmentation and forces recomputation**.
+
+---
+
+## Note Deletion Guarantee
+
+Deleting a note must **never delete saved words**.
+
+Saved words are independent of note lifecycle.
+
+---
+
+## Saved Word Identity
+
+Saved words are keyed by:
+
+```
+canonical_entry_id
+```
+
+Properties:
+
+- surface and reading are display properties
+- saving is idempotent under `canonical_entry_id`
+- duplicate saves enrich metadata
+
+Review statistics and history must reference `canonical_entry_id`.
+
+---
+
+## Backup Restore Invariants
+
+Restore operations must:
+
+- validate span invariants
+- reject corrupt backups
+- replace state atomically
+
+Partial backup or partial restore is **not permitted**.
+
+---
+
+## History Model
+
+History entries:
+
+- keyed by `canonical_entry_id`
+- bounded recency list
+- independent of note state
+
+---
+
+## Review Metrics
+
+Review metrics must include:
+
+- `canonical_entry_id`
+- `correctCount`
+- `incorrectCount`
+- `lastReviewedAt`
+
+Metrics persist across sessions and are included in backups.
+
+---
+
+## Determinism Guarantees
+
+The system must remain deterministic for fixed:
+
+- input text
+- dictionary dataset
+- embedding dataset
+- persisted spans
+- persisted overrides
+
+---
+
+## Segmentation Pipeline Order
+
+Segmentation and rendering pipeline stages must execute in a fixed order.
+
+Rules:
+
+- Stages execute strictly in ascending order.
+- Conditional stages may be skipped, but the ordering must not change.
+- No stage may mutate note text.
+- No stage may persist derived layout artifacts.
+- Pipeline output must be deterministic for fixed inputs and datasets.
+
+---
+
+# Architecture Layer Boundaries
+
+The architecture is divided into the following layers:
+
+- App Shell
+- Feature UI
+- Domain State
+- Lexical Processing
+- Rendering
+
+Responsibilities:
+
+**App Shell**
+
+- startup
+- dependency wiring
+- root navigation
+
+**Feature UI**
+
+- dispatch domain mutations
+- must not implement lexical logic
+
+**Domain State**
+
+- notes
+- spans
+- overrides
+- words
+- lists
+- review stats
+- history
+- preferences
+
+**Lexical Processing**
+
+- dictionary access
+- segmentation
+- reading attachment
+
+**Rendering**
+
+- layout projection
+- ruby placement
+- visual invariants
+
+---
+
+# Layout Enforcement
+
+Rendering must enforce:
+
+- atomic segment wrapping
+- ruby and headword wrap together
+- envelope width = max(rubyWidth, headwordWidth)
+- no right inset overflow
+- left inset alignment preserved
+
+Layout state must never be persisted.
+
+---
+
+# Concurrency Guarantees
+
+- lexical processing runs off the UI thread
+- UI publication occurs on the UI thread
+- stale pipeline results must not overwrite newer edits
+- long-running stages must support cancellation
+
+---
+
+# Failure Boundaries
+
+- dictionary lookup failure must not block editing
+- missing optional datasets must degrade gracefully
+- span invariant violations must fail loudly
+- backup import errors must surface explicit error states
+
+---
+
+# Architecture Non-Goals
+
+The system must never introduce:
+
+- hard cuts
+- boundary-only segmentation
+- karaoke subsystem
+- layout persistence
+- surface-based word identity
+- mandatory cloud sync
+- mandatory network dependency

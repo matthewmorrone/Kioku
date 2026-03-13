@@ -72,9 +72,20 @@ def create_schema(conn):
             FOREIGN KEY(sense_id) REFERENCES senses(id)
         );
 
+        CREATE TABLE surface_lookup (
+            surface TEXT NOT NULL,
+            entry_id INTEGER NOT NULL,
+            FOREIGN KEY(entry_id) REFERENCES entries(id)
+        );
+
         CREATE INDEX idx_kanji_text ON kanji(text);
         CREATE INDEX idx_kana_text ON kana_forms(text);
         CREATE INDEX idx_entries_ent_seq ON entries(ent_seq);
+        CREATE INDEX idx_kanji_entry_id ON kanji(entry_id);
+        CREATE INDEX idx_kana_entry_id ON kana_forms(entry_id);
+        CREATE INDEX idx_senses_entry_id ON senses(entry_id);
+        CREATE INDEX idx_glosses_sense_id ON glosses(sense_id);
+        CREATE INDEX idx_surface_lookup_surface ON surface_lookup(surface);
         """
     )
 
@@ -199,22 +210,27 @@ def insert_entry(conn, entry_insert, kanji_insert, kana_insert, sense_insert, gl
 
     cur = conn.execute(entry_insert, (ent_seq, priority_str, is_common))
     entry_id = cur.lastrowid
+    surface_insert = "INSERT INTO surface_lookup (surface, entry_id) VALUES (?, ?)"
 
     for k in entry.get("kanji", []):
         if isinstance(k, str):
             conn.execute(kanji_insert, (k, entry_id, None))
+            conn.execute(surface_insert, (k, entry_id))
             continue
 
         k_priorities = ",".join(sorted(set(k.get("priority", []) or []))) if k.get("priority") else None
         conn.execute(kanji_insert, (k["text"], entry_id, k_priorities))
+        conn.execute(surface_insert, (k["text"], entry_id))
 
     for r in entry.get("kana", []):
         if isinstance(r, str):
             conn.execute(kana_insert, (r, entry_id, None))
+            conn.execute(surface_insert, (r, entry_id))
             continue
 
         r_priorities = ",".join(sorted(set(r.get("priority", []) or []))) if r.get("priority") else None
         conn.execute(kana_insert, (r["text"], entry_id, r_priorities))
+        conn.execute(surface_insert, (r["text"], entry_id))
 
     for s_idx, sense in enumerate(entry.get("senses", [])):
         pos = ",".join(sense.get("partOfSpeech", []) or []) if sense.get("partOfSpeech") else None
@@ -257,6 +273,8 @@ def build_database():
         OUTPUT_DB.unlink()
 
     conn = sqlite3.connect(OUTPUT_DB)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("BEGIN")
     create_schema(conn)
 
     entries = load_jmdict_entries()
@@ -305,6 +323,7 @@ def build_database():
         used_ent_seqs.add(ent_seq)
 
     conn.commit()
+    conn.execute("PRAGMA optimize")
     conn.close()
 
 

@@ -123,7 +123,7 @@ struct ContentView: View {
     }
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
-    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]]) {
+    nonisolated private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]]) {
         let trie = DictionaryTrie()
         var dictionaryStore: DictionaryStore?
         var readingBySurface: [String: String] = [:]

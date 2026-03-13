@@ -1,0 +1,25 @@
+erDiagram
+
+    LEXEME {
+        TEXT id PK
+        TEXT source
+        TEXT source_id
+    }
+
+    FORM {
+        TEXT id PK
+        TEXT lexeme_id FK
+        TEXT spelling
+        TEXT reading
+        BOOLEAN is_primary
+    }
+
+    SENSE {
+        TEXT id PK
+        TEXT lexeme_id FK
+        INTEGER sense_index
+        TEXT gloss
+    }
+
+    LEXEME ||--o{ FORM : "id → lexeme_id"
+    LEXEME ||--o{ SENSE : "id → lexeme_id"

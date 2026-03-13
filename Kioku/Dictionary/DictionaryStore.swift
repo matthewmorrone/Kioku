@@ -53,10 +53,9 @@ public final class DictionaryStore {
     // Fetches all unique dictionary surfaces from kana and kanji tables.
     public func fetchAllSurfaces() throws -> [String] {
         let sql = """
-        SELECT text FROM kana_forms
-        UNION
-        SELECT text FROM kanji
-        ORDER BY text ASC
+        SELECT DISTINCT surface
+        FROM surface_lookup
+        ORDER BY surface ASC
         """
 
         var statement: OpaquePointer?
@@ -253,36 +252,60 @@ public final class DictionaryStore {
 
     // Fetches distinct entry headers with deterministic ordering by commonness then sense order.
     private func fetchMatchedEntries(surface: String, matchKana: Bool, matchKanji: Bool) throws -> [(entryID: Int64, isCommon: Bool)] {
-        let sql = """
-        SELECT e.id, e.is_common
-        FROM entries e
-        LEFT JOIN senses s ON s.entry_id = e.id
-        WHERE (
-            (?1 = 1 AND EXISTS (
+        guard matchKana || matchKanji else {
+            return []
+        }
+
+        let sql: String
+        if matchKana && matchKanji {
+            sql = """
+            SELECT e.id, e.is_common
+            FROM entries e
+            LEFT JOIN senses s ON s.entry_id = e.id
+            WHERE EXISTS (
+                SELECT 1
+                FROM surface_lookup sl
+                WHERE sl.entry_id = e.id
+                  AND sl.surface = ?1
+            )
+            GROUP BY e.id, e.is_common
+            ORDER BY e.is_common DESC, COALESCE(MIN(s.order_index), 2147483647) ASC, e.id ASC
+            """
+        } else if matchKana {
+            sql = """
+            SELECT e.id, e.is_common
+            FROM entries e
+            LEFT JOIN senses s ON s.entry_id = e.id
+            WHERE EXISTS (
                 SELECT 1
                 FROM kana_forms kf
                 WHERE kf.entry_id = e.id
-                  AND kf.text = ?3
-            ))
-            OR
-            (?2 = 1 AND EXISTS (
+                  AND kf.text = ?1
+            )
+            GROUP BY e.id, e.is_common
+            ORDER BY e.is_common DESC, COALESCE(MIN(s.order_index), 2147483647) ASC, e.id ASC
+            """
+        } else {
+            sql = """
+            SELECT e.id, e.is_common
+            FROM entries e
+            LEFT JOIN senses s ON s.entry_id = e.id
+            WHERE EXISTS (
                 SELECT 1
                 FROM kanji kj
                 WHERE kj.entry_id = e.id
-                  AND kj.text = ?3
-            ))
-        )
-        GROUP BY e.id, e.is_common
-        ORDER BY e.is_common DESC, COALESCE(MIN(s.order_index), 2147483647) ASC, e.id ASC
-        """
+                  AND kj.text = ?1
+            )
+            GROUP BY e.id, e.is_common
+            ORDER BY e.is_common DESC, COALESCE(MIN(s.order_index), 2147483647) ASC, e.id ASC
+            """
+        }
 
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
 
         try prepare(sql: sql, statement: &statement)
-        try bindInt(matchKana ? 1 : 0, index: 1, statement: statement)
-        try bindInt(matchKanji ? 1 : 0, index: 2, statement: statement)
-        try bindText(surface, index: 3, statement: statement)
+        try bindText(surface, index: 1, statement: statement)
 
         var items: [(entryID: Int64, isCommon: Bool)] = []
 
