@@ -130,6 +130,82 @@ final class SegmenterIntegrationTests: XCTestCase {
         })
     }
 
+    // Verifies ichidan negative forms recover their base lemma through deinflection.
+    func testDeinflectorRecoversIchidanLemmaForNegativeForm() throws {
+        let candidates = try deinflectionCandidates(for: "忘れない")
+
+        XCTAssertTrue(candidates.contains("忘れる"))
+    }
+
+    // Verifies potential/ichidan negative forms recover their base lemma through deinflection.
+    func testDeinflectorRecoversPotentialLemmaForNegativeForm() throws {
+        let candidates = try deinflectionCandidates(for: "できない")
+
+        XCTAssertTrue(candidates.contains("できる"))
+    }
+
+    // Verifies the lattice keeps the full ichidan-negative span when lemma recovery succeeds.
+    func testBuildLatticeUsesIchidanNegativeRecoveryCandidate() throws {
+        let latticeEdges = try buildLattice(for: "忘れない")
+
+        XCTAssertTrue(latticeEdges.contains { edge in
+            edge.surface == "忘れない" && edge.lemma == "忘れる"
+        })
+    }
+
+    // Verifies the lattice keeps the full potential-negative span when lemma recovery succeeds.
+    func testBuildLatticeUsesPotentialNegativeRecoveryCandidate() throws {
+        let latticeEdges = try buildLattice(for: "できない")
+
+        XCTAssertTrue(latticeEdges.contains { edge in
+            edge.surface == "できない" && edge.lemma == "できる"
+        })
+    }
+
+    // Verifies godan te-forms ending in って recover their dictionary lemma.
+    func testDeinflectorRecoversGodanLemmaFromTteFormForDeatte() throws {
+        let candidates = try deinflectionCandidates(for: "出逢って")
+
+        XCTAssertTrue(candidates.contains("出逢う"))
+    }
+
+    // Verifies the lattice keeps the full te-form span when 出逢って resolves through 出逢う.
+    func testBuildLatticeUsesGodanTeFormRecoveryCandidateForDeatte() throws {
+        let latticeEdges = try buildLattice(for: "出逢って")
+
+        XCTAssertTrue(latticeEdges.contains { edge in
+            edge.surface == "出逢って" && edge.lemma == "出逢う"
+        })
+    }
+
+    // Verifies adjective adverbial-plus-particle forms recover their base adjective lemma.
+    func testDeinflectorRecoversAdjectiveLemmaFromKuDeForm() throws {
+        let candidates = try deinflectionCandidates(for: "近くで")
+
+        XCTAssertTrue(candidates.contains("近い"))
+    }
+
+    // Verifies adjective nominalized forms recover their base adjective lemma.
+    func testDeinflectorRecoversAdjectiveLemmaFromSaNominalization() throws {
+        let candidates = try deinflectionCandidates(for: "淋しさ")
+
+        XCTAssertTrue(candidates.contains("淋しい"))
+    }
+
+    // Verifies godan causative te-forms recover their dictionary-form lemma.
+    func testDeinflectorRecoversGodanLemmaFromCausativeTeForm() throws {
+        let candidates = try deinflectionCandidates(for: "覗かせて")
+
+        XCTAssertTrue(candidates.contains("覗く"))
+    }
+
+    // Verifies additional adjective nominalized forms recover their base adjective lemma.
+    func testDeinflectorRecoversAdjectiveLemmaFromSaNominalizationForAishisa() throws {
+        let candidates = try deinflectionCandidates(for: "愛しさ")
+
+        XCTAssertTrue(candidates.contains("愛しい"))
+    }
+
     // Prints and verifies the real inclusion results for the katakana-heavy surface we have been inspecting.
     func testReportLatticeInclusionResultsForExaminedSurface() throws {
         let examinedText = "かなしみがいまセーラースマイル"

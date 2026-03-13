@@ -30,7 +30,7 @@ extension ReadView {
     }
 
     // Scrolls only enough to keep the selected segment above the incoming sheet.
-    func preScrollSegmentForSheetVisibility(sourceView: UITextView?, tappedSegmentRect: CGRect?) {
+    func preScrollSegmentForSheetVisibility(sourceView: UITextView?, tappedSegmentRect: CGRect?, animated: Bool = false) {
         guard let sourceView, let tappedSegmentRect else {
             return
         }
@@ -61,12 +61,12 @@ extension ReadView {
         let overscrollAllowance: CGFloat = expectedCoveredHeight * 0.5
         let clampedOffsetY = min(max(requestedOffsetY, minOffsetY), maxContentOffsetY + overscrollAllowance)
 
-        sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: clampedOffsetY), animated: true)
+        sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: clampedOffsetY), animated: animated)
         sharedScrollOffsetY = clampedOffsetY
     }
 
     // Removes temporary sheet-induced overscroll once the segment action sheet is dismissed.
-    func restoreScrollAfterSheetDismissal(sourceView: UITextView?) {
+    func restoreScrollAfterSheetDismissal(sourceView: UITextView?, animated: Bool = false) {
         guard let sourceView else {
             return
         }
@@ -79,7 +79,7 @@ extension ReadView {
             return
         }
 
-        sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: clampedOffsetY), animated: true)
+        sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: clampedOffsetY), animated: animated)
         sharedScrollOffsetY = clampedOffsetY
     }
 
@@ -121,5 +121,126 @@ extension ReadView {
         }
 
         return nil
+    }
+
+    // Resolves the selected segment rect in text-view coordinates so sheet-visibility scroll checks can re-run after swipe navigation.
+    func selectedSegmentRectInTextView(sourceView: UITextView, selectedLocation: Int) -> CGRect? {
+        guard
+            let tappedSegmentRange = segmentationRanges.first(where: { segmentRange in
+                let nsRange = NSRange(segmentRange, in: text)
+                return nsRange.location == selectedLocation && nsRange.length > 0
+            })
+        else {
+            return nil
+        }
+
+        let segmentNSRange = NSRange(tappedSegmentRange, in: text)
+        guard
+            segmentNSRange.location != NSNotFound,
+            segmentNSRange.length > 0,
+            let rangeStart = sourceView.position(from: sourceView.beginningOfDocument, offset: segmentNSRange.location),
+            let rangeEnd = sourceView.position(from: rangeStart, offset: segmentNSRange.length),
+            let textRange = sourceView.textRange(from: rangeStart, to: rangeEnd)
+        else {
+            return nil
+        }
+
+        let selectedRect = sourceView.firstRect(for: textRange)
+        guard selectedRect.isNull == false, selectedRect.isInfinite == false, selectedRect.isEmpty == false else {
+            return nil
+        }
+
+        return selectedRect
+    }
+
+    // Builds unique reading candidates for the currently selected kanji-containing segment(s) for future sheet UI usage.
+    func uniqueReadingsForCurrentSelectedKanjiSegment() -> [String] {
+        guard let selectedBounds = selectedMergedEdgeBounds else {
+            return []
+        }
+
+        let selectedEdges = Array(segmentationEdges[selectedBounds])
+        let containsKanji = selectedEdges.contains { edge in
+            ScriptClassifier.containsKanji(edge.surface)
+        }
+        guard containsKanji else {
+            return []
+        }
+
+        var readingCandidates: [String] = []
+        var seenReadings = Set<String>()
+
+        // Appends a reading while keeping insertion order stable and unique.
+        func appendReading(_ reading: String?) {
+            guard let reading, reading.isEmpty == false, seenReadings.contains(reading) == false else {
+                return
+            }
+
+            seenReadings.insert(reading)
+            readingCandidates.append(reading)
+        }
+
+        let selectedStart = selectedEdges.first?.start
+        let selectedEnd = selectedEdges.last?.end
+        if let selectedStart, let selectedEnd, selectedStart < selectedEnd {
+            let mergedSurface = String(text[selectedStart..<selectedEnd])
+            appendReading(readingBySurface[mergedSurface])
+            if let mergedReadingCandidates = readingCandidatesBySurface[mergedSurface] {
+                for reading in mergedReadingCandidates {
+                    appendReading(reading)
+                }
+            }
+        }
+
+        for edge in selectedEdges {
+            appendReading(readingBySurface[edge.surface])
+            if let surfaceReadingCandidates = readingCandidatesBySurface[edge.surface] {
+                for reading in surfaceReadingCandidates {
+                    appendReading(reading)
+                }
+            }
+
+            appendReading(readingBySurface[edge.lemma])
+            if let lemmaReadingCandidates = readingCandidatesBySurface[edge.lemma] {
+                for reading in lemmaReadingCandidates {
+                    appendReading(reading)
+                }
+            }
+        }
+
+        return readingCandidates
+    }
+
+    // Captures lattice edges enclosed by the currently selected merged segment span for future sheet UI usage.
+    func sublatticeEdgesForCurrentSelectedSegment() -> [LatticeEdge] {
+        guard let selectedBounds = selectedMergedEdgeBounds else {
+            return []
+        }
+
+        let selectedStart = segmentationEdges[selectedBounds.lowerBound].start
+        let selectedEnd = segmentationEdges[selectedBounds.upperBound].end
+
+        return segmentationLatticeEdges
+            .filter { edge in
+                edge.start >= selectedStart && edge.end <= selectedEnd
+            }
+            .sorted { lhs, rhs in
+                let lhsRange = NSRange(lhs.start..<lhs.end, in: text)
+                let rhsRange = NSRange(rhs.start..<rhs.end, in: text)
+
+                if lhsRange.location != rhsRange.location {
+                    return lhsRange.location < rhsRange.location
+                }
+
+                if lhsRange.length != rhsRange.length {
+                    return lhsRange.length > rhsRange.length
+                }
+
+                if lhs.surface != rhs.surface {
+                    return lhs.surface < rhs.surface
+                }
+
+                return lhs.lemma < rhs.lemma
+            }
     }
 }

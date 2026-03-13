@@ -4,7 +4,6 @@ import UIKit
 
 // Stores renderer state so expensive furigana layout only runs when inputs change.
 final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
-    private static let overlayRefreshScrollDelta: CGFloat = 24
 
     @Binding private var textSize: Double
     var onScrollOffsetYChanged: (CGFloat) -> Void
@@ -117,6 +116,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedTargetY), animated: false)
         isApplyingExternalScroll = false
         lastPublishedScrollOffsetY = clampedTargetY
+        onScrollOffsetYChanged(clampedTargetY)
     }
 
     // Maps pinch gestures in read mode to persisted text-size updates.
@@ -139,13 +139,9 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         }
     }
 
-    // Coalesces scroll-driven overlay refreshes so furigana layout updates only after meaningful viewport movement.
+    // Publishes every scroll delta so furigana overlay refresh checks stay tightly coupled to text movement.
     private func publishScrollOffsetIfNeeded(_ offsetY: CGFloat, force: Bool) {
-        if force == false,
-           let lastPublishedScrollOffsetY,
-           abs(offsetY - lastPublishedScrollOffsetY) < Self.overlayRefreshScrollDelta {
-            return
-        }
+        _ = force
 
         lastPublishedScrollOffsetY = offsetY
         onScrollOffsetYChanged(offsetY)

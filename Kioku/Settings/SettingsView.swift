@@ -14,6 +14,8 @@ struct SettingsView: View {
     @State private var exportDocument = NotesTransferDocument(notes: [])
     @State private var isShowingExporter = false
     @State private var isShowingImporter = false
+    @State private var isShowingImportModeMenu = false
+    @State private var selectedImportMode: NotesImportMode = .replaceAll
     @State private var isShowingTransferAlert = false
     @State private var transferAlertTitle = ""
     @State private var transferAlertMessage = ""
@@ -86,7 +88,7 @@ struct SettingsView: View {
                     }
                     // Imports a JSON export and replaces the current notes collection.
                     Button {
-                        isShowingImporter = true
+                        isShowingImportModeMenu = true
                     } label: {
                         Label("Import", systemImage: "square.and.arrow.down")
                     }
@@ -109,6 +111,31 @@ struct SettingsView: View {
             allowsMultipleSelection: false
         ) { result in
             handleImportResult(result)
+        }
+        .confirmationDialog(
+            "Import Notes",
+            isPresented: $isShowingImportModeMenu,
+            titleVisibility: .visible
+        ) {
+            Button(NotesImportMode.replaceAll.title) {
+                selectedImportMode = .replaceAll
+                isShowingImporter = true
+            }
+            Button(NotesImportMode.overwriteByID.title) {
+                selectedImportMode = .overwriteByID
+                isShowingImporter = true
+            }
+            Button(NotesImportMode.overwriteByTitle.title) {
+                selectedImportMode = .overwriteByTitle
+                isShowingImporter = true
+            }
+            Button(NotesImportMode.append.title) {
+                selectedImportMode = .append
+                isShowingImporter = true
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose how imported notes should be merged with your existing notes.")
         }
         .alert(transferAlertTitle, isPresented: $isShowingTransferAlert) {
             Button("OK", role: .cancel) {}
@@ -159,8 +186,11 @@ struct SettingsView: View {
 
         do {
             let document = try NotesTransferDocument(contentsOf: fileURL)
-            notesStore.importTransferDocument(document)
-            showTransferAlert(title: "Import Complete", message: "Imported \(document.payload.notes.count) notes.")
+            notesStore.importTransferDocument(document, mode: selectedImportMode)
+            showTransferAlert(
+                title: "Import Complete",
+                message: "\(selectedImportMode.completionVerb) \(document.payload.notes.count) notes."
+            )
         } catch {
             showTransferAlert(title: "Import Failed", message: error.localizedDescription)
         }

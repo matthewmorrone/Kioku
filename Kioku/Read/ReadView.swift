@@ -53,6 +53,7 @@ struct ReadView: View {
     @State var activeNoteID: UUID?
     @State var isLoadingSelectedNote = false
     @State var isEditMode = false
+    @State var isSheetSwipeTransitionActive = false
     @State var sharedScrollOffsetY: CGFloat = 0
     @State private var isShowingSegmentList = false
     @State private var isShowingDisplayOptions = false
@@ -266,6 +267,7 @@ struct ReadView: View {
             ZStack {
                 FuriganaTextRenderer(
                     isActive: isEditMode == false,
+                    isOverlayFrozen: isSheetSwipeTransitionActive,
                     text: text,
                     isLineWrappingEnabled: isLineWrappingEnabled,
                     segmentationRanges: readResourcesReady ? segmentationRanges : [],

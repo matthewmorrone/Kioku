@@ -172,6 +172,11 @@ extension ReadView {
             readingCandidatesBySurface: readingCandidatesBySurface,
             preferKunyomiForStandaloneKanji: preferKunyomiForContext
         ), lemmaReading != edge.surface, lemmaReading != preferredLemmaReference {
+            let isLemmaReadingCompatibleWithSurface = firstKanjiRunReading(in: edge.surface, using: lemmaReading) != nil
+            if isLemmaReadingCompatibleWithSurface == false {
+                return nil
+            }
+
             return lemmaReading
         }
 
@@ -389,11 +394,19 @@ extension ReadView {
             : ""
         var trimmedReading = reading
 
-        if !prefixSurface.isEmpty, hasPhoneticPrefix(trimmedReading, matching: prefixSurface) {
+        if !prefixSurface.isEmpty {
+            guard hasPhoneticPrefix(trimmedReading, matching: prefixSurface) else {
+                return nil
+            }
+
             trimmedReading.removeFirst(prefixSurface.count)
         }
 
-        if !suffixSurface.isEmpty, hasPhoneticSuffix(trimmedReading, matching: suffixSurface) {
+        if !suffixSurface.isEmpty {
+            guard hasPhoneticSuffix(trimmedReading, matching: suffixSurface) else {
+                return nil
+            }
+
             trimmedReading.removeLast(suffixSurface.count)
         }
 

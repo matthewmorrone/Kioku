@@ -4,6 +4,7 @@ import UIKit
 // Renders the read-mode text surface with furigana overlayed above segments while preserving text-view layout.
 struct FuriganaTextRenderer: UIViewRepresentable {
     let isActive: Bool
+    let isOverlayFrozen: Bool
     let text: String
     let isLineWrappingEnabled: Bool
     let segmentationRanges: [Range<String.Index>]
@@ -80,6 +81,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         configureWrapping(for: textView)
         if context.coordinator.shouldApplyInitialExternalSync(isActive: true) {
             context.coordinator.applyExternalScrollIfNeeded(to: textView, targetOffsetY: externalContentOffsetY)
+        }
+
+        if isOverlayFrozen {
+            return
         }
 
         let renderSignature = makeRenderSignature(for: textView)
@@ -331,6 +336,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(textView.bounds.height)
         hasher.combine(textView.contentSize.width)
         hasher.combine(textView.contentSize.height)
+        // Keeps furigana geometry checks in sync with fine-grained scroll movement.
+        hasher.combine(Int((externalContentOffsetY * 10).rounded()))
         return hasher.finalize()
     }
 

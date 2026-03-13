@@ -29,7 +29,7 @@ struct NotesTransferDocument: FileDocument {
     // Serializes the payload into a JSON file for export.
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = [.sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(payload)
         return FileWrapper(regularFileWithContents: data)

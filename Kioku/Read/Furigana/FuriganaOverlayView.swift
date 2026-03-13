@@ -51,6 +51,9 @@ final class FuriganaOverlayView: UIView {
 
     // Draws highlights, merge markers, and furigana labels in text-view coordinates so scrolling stays compositor-friendly.
     override func draw(_ rect: CGRect) {
+        // Clears stale overlay fragments from prior frames before redrawing the current dirty region.
+        UIGraphicsGetCurrentContext()?.clear(rect)
+
         if let selectedSegmentRect, let selectedSegmentColor, selectedSegmentRect.intersects(rect) {
             selectedSegmentColor.setFill()
             UIBezierPath(roundedRect: selectedSegmentRect, cornerRadius: 4).fill()

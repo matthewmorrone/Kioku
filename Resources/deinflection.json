@@ -120,6 +120,7 @@
         {"kanaIn": "さず", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "たなかった", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "さない", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "ない", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
         {"kanaIn": "たない", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "たず", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "なない", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
@@ -301,6 +302,8 @@
     ],
     "adjectiveForms": [
         {"kanaIn": "く", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
+        {"kanaIn": "くで", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
+        {"kanaIn": "さ", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
         {"kanaIn": "かった", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
         {"kanaIn": "くない", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
         {"kanaIn": "くなくて", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
@@ -345,6 +348,16 @@
 
         {"kanaIn": "させる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
         {"kanaIn": "させる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "させて", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
+        {"kanaIn": "わせて", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "かせて", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "がせて", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "させて", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "たせて", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "なせて", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "ばせて", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "ませて", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "らせて", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
 
         {"kanaIn": "らせる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "よう", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},

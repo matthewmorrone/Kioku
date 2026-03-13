@@ -137,10 +137,74 @@ final class NotesStore: ObservableObject {
         return NotesTransferDocument(notes: exportNotes)
     }
 
-    // Replaces the current notes collection with imported data and persists it.
-    func importTransferDocument(_ document: NotesTransferDocument) {
+    // Imports notes using the selected merge strategy and persists the resulting collection.
+    func importTransferDocument(_ document: NotesTransferDocument, mode: NotesImportMode) {
         clearPendingReadEditorPersistState()
-        notes = document.payload.notes
+
+        let importedNotes = document.payload.notes
+        switch mode {
+        case .replaceAll:
+            notes = importedNotes
+        case .overwriteByID:
+            notes = mergedNotesOverwritingByID(importedNotes)
+        case .overwriteByTitle:
+            notes = mergedNotesOverwritingByTitle(importedNotes)
+        case .append:
+            notes += importedNotes
+        }
+    }
+
+    // Merges imported notes by replacing existing entries with matching identifiers.
+    private func mergedNotesOverwritingByID(_ importedNotes: [Note]) -> [Note] {
+        var mergedNotes = notes
+        var existingIndexByID: [UUID: Int] = [:]
+
+        for (index, note) in mergedNotes.enumerated() {
+            existingIndexByID[note.id] = index
+        }
+
+        for importedNote in importedNotes {
+            if let existingIndex = existingIndexByID[importedNote.id] {
+                mergedNotes[existingIndex] = importedNote
+            } else {
+                existingIndexByID[importedNote.id] = mergedNotes.count
+                mergedNotes.append(importedNote)
+            }
+        }
+
+        return mergedNotes
+    }
+
+    // Merges imported notes by replacing existing entries whose trimmed title matches.
+    private func mergedNotesOverwritingByTitle(_ importedNotes: [Note]) -> [Note] {
+        var mergedNotes = notes
+        var existingIndexByNormalizedTitle: [String: Int] = [:]
+
+        for (index, note) in mergedNotes.enumerated() {
+            let normalizedTitle = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if normalizedTitle.isEmpty == false, existingIndexByNormalizedTitle[normalizedTitle] == nil {
+                existingIndexByNormalizedTitle[normalizedTitle] = index
+            }
+        }
+
+        for importedNote in importedNotes {
+            let normalizedImportedTitle = importedNote.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if normalizedImportedTitle.isEmpty == false,
+               let existingIndex = existingIndexByNormalizedTitle[normalizedImportedTitle] {
+                let existingNote = mergedNotes[existingIndex]
+                var updatedNote = importedNote
+                updatedNote.id = existingNote.id
+                updatedNote.createdAt = existingNote.createdAt
+                mergedNotes[existingIndex] = updatedNote
+            } else {
+                mergedNotes.append(importedNote)
+                if normalizedImportedTitle.isEmpty == false {
+                    existingIndexByNormalizedTitle[normalizedImportedTitle] = mergedNotes.count - 1
+                }
+            }
+        }
+
+        return mergedNotes
     }
 
     // Inserts or updates one note in memory so editing does not re-read the full store.
@@ -234,6 +298,11 @@ final class NotesStore: ObservableObject {
 
     // Produces export segment ranges from existing runtime or persisted state without recomputing segmentation.
     private func exportSegmentRanges(for note: Note) -> [SegmentRange] {
+        let utf16Length = note.content.utf16.count
+        guard utf16Length > 0 else {
+            return []
+        }
+
         if let runtimeSnapshot = runtimeSegmentationByNoteID[note.id],
            runtimeSnapshot.content == note.content,
            runtimeSnapshot.segments.isEmpty == false {
@@ -244,11 +313,8 @@ final class NotesStore: ObservableObject {
             return segments
         }
 
-        guard note.content.isEmpty == false else {
-            return []
-        }
-
-        return []
+        // Guarantees at least one export segment for non-empty content even when no manual segmentation exists.
+        return [SegmentRange(start: 0, end: utf16Length)]
     }
 
     // Persists the current notes array into user defaults immediately.

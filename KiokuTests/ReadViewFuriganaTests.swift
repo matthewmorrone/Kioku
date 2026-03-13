@@ -51,4 +51,33 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertFalse(furigana.furiganaByLocation.values.contains("ちかずく"))
         XCTAssertFalse(furigana.furiganaByLocation.values.contains("ちかづく"))
     }
+
+    // Verifies first-run extraction rejects lemma readings that do not match kana affixes in the surface form.
+    func testFirstKanjiRunReadingRejectsIncompatibleKanaAffixMatch() throws {
+        let readView = try makeReadView()
+
+        XCTAssertNil(readView.firstKanjiRunReading(in: "私たち", using: "わたくし"))
+    }
+
+    // Verifies mixed kanji+kana surfaces do not attach mismatched lemma readings to the kanji run.
+    func testBuildFuriganaBySegmentLocationDoesNotAttachMismatchedLemmaReadingForWatashitachi() throws {
+        let readView = try makeReadView()
+        let sourceText = "私たち"
+        let edge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText,
+            lemma: "私"
+        )
+
+        let furigana = readView.buildFuriganaBySegmentLocation(
+            for: sourceText,
+            edges: [edge],
+            readingBySurface: ["私": "わたくし"],
+            readingCandidatesBySurface: [:]
+        )
+
+        XCTAssertTrue(furigana.furiganaByLocation.isEmpty)
+        XCTAssertTrue(furigana.lengthByLocation.isEmpty)
+    }
 }

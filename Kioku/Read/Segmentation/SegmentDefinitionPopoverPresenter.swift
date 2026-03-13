@@ -9,6 +9,10 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
     private var onDismiss: (() -> Void)?
     private var onSheetSelectPrevious: (() -> Void)?
     private var onSheetSelectNext: (() -> Void)?
+    private var sheetReadingsProvider: (() -> [String])?
+    private var sheetSublatticeProvider: (() -> [LatticeEdge])?
+    private var currentSheetUniqueReadings: [String] = []
+    private var currentSheetSublatticeEdges: [LatticeEdge] = []
     private var updatePresentedSheetSelection: ((
         String,
         String?,
@@ -18,6 +22,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
         (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
         ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
+        (() -> [String])?,
+        (() -> [LatticeEdge])?,
         (() -> Void)?
     ) -> Void)?
 
@@ -125,7 +131,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         popoverPresentationController.sourceRect = sourceRect
         popoverPresentationController.permittedArrowDirections = [.up, .down]
 
-        presentingController.present(viewController, animated: true)
+        presentingController.present(viewController, animated: false)
         presentedController = viewController
     }
 
@@ -139,6 +145,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         onMergeLeft: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
         onMergeRight: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
         onSplitApply: ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
+        sheetReadingsProvider: (() -> [String])? = nil,
+        sheetSublatticeProvider: (() -> [LatticeEdge])? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
         if let updatePresentedSheetSelection {
@@ -152,6 +160,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 onMergeLeft,
                 onMergeRight,
                 onSplitApply,
+                sheetReadingsProvider,
+                sheetSublatticeProvider,
                 onDismiss
             )
             return
@@ -167,6 +177,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             onMergeLeft: onMergeLeft,
             onMergeRight: onMergeRight,
             onSplitApply: onSplitApply,
+            sheetReadingsProvider: sheetReadingsProvider,
+            sheetSublatticeProvider: sheetSublatticeProvider,
             onDismiss: onDismiss
         )
     }
@@ -187,7 +199,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 return
             }
 
-            presentedController.dismiss(animated: true) {
+            presentedController.dismiss(animated: false) {
                 if notifyDismissal {
                     self.fireOnDismissIfNeeded()
                 }
@@ -202,17 +214,25 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         guard let presentedSheetController else {
             onSheetSelectPrevious = nil
             onSheetSelectNext = nil
+            sheetReadingsProvider = nil
+            sheetSublatticeProvider = nil
+            currentSheetUniqueReadings = []
+            currentSheetSublatticeEdges = []
             updatePresentedSheetSelection = nil
             completion?()
             return
         }
 
-        presentedSheetController.dismiss(animated: true) {
+        presentedSheetController.dismiss(animated: false) {
             completion?()
         }
         self.presentedSheetController = nil
         onSheetSelectPrevious = nil
         onSheetSelectNext = nil
+        sheetReadingsProvider = nil
+        sheetSublatticeProvider = nil
+        currentSheetUniqueReadings = []
+        currentSheetSublatticeEdges = []
         updatePresentedSheetSelection = nil
     }
 
@@ -225,6 +245,10 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
 
         if presentedSheetController === presentationController.presentedViewController {
             presentedSheetController = nil
+            sheetReadingsProvider = nil
+            sheetSublatticeProvider = nil
+            currentSheetUniqueReadings = []
+            currentSheetSublatticeEdges = []
             updatePresentedSheetSelection = nil
             fireOnDismissIfNeeded()
         }
@@ -283,6 +307,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         onMergeLeft: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
         onMergeRight: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
         onSplitApply: ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
+        sheetReadingsProvider: (() -> [String])?,
+        sheetSublatticeProvider: (() -> [LatticeEdge])?,
         onDismiss: (() -> Void)?
     ) {
         dismissPopover(notifyDismissal: false) { [weak self] in
@@ -293,6 +319,9 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             self.onDismiss = onDismiss
             self.onSheetSelectPrevious = nil
             self.onSheetSelectNext = nil
+            self.sheetReadingsProvider = sheetReadingsProvider
+            self.sheetSublatticeProvider = sheetSublatticeProvider
+            self.refreshSheetSupplementalData()
 
             var currentSurface = surface
 
@@ -504,6 +533,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             }
 
             func updateSheetPreferredHeight(animated: Bool) {
+                _ = animated
                 currentSheetPreferredHeight = self.preferredSurfaceSheetHeight(
                     for: currentSurface,
                     isSplitEditorVisible: isSplitEditorVisible
@@ -514,15 +544,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 }
 
                 if #available(iOS 16.0, *) {
-                    let updates = {
-                        sheetPresentationController.invalidateDetents()
-                    }
-
-                    if animated {
-                        sheetPresentationController.animateChanges(updates)
-                    } else {
-                        updates()
-                    }
+                    sheetPresentationController.invalidateDetents()
                 }
             }
 
@@ -578,7 +600,9 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 }
 
                 updateCurrentSurface(outcome)
-                updateSheetPreferredHeight(animated: true)
+                // Keeps underlying read-surface overlays stable while swiping between segments.
+                updateSheetPreferredHeight(animated: false)
+                self.refreshSheetSupplementalData()
             }
 
             self.onSheetSelectPrevious = {
@@ -587,7 +611,9 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 }
 
                 updateCurrentSurface(outcome)
-                updateSheetPreferredHeight(animated: true)
+                // Keeps underlying read-surface overlays stable while swiping between segments.
+                updateSheetPreferredHeight(animated: false)
+                self.refreshSheetSupplementalData()
             }
 
             self.updatePresentedSheetSelection = {
@@ -599,12 +625,16 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 updatedOnMergeLeft,
                 updatedOnMergeRight,
                 updatedOnSplitApply,
+                updatedSheetReadingsProvider,
+                updatedSheetSublatticeProvider,
                 updatedOnDismiss in
                 currentOnSelectPrevious = updatedOnSelectPrevious
                 currentOnSelectNext = updatedOnSelectNext
                 currentOnMergeLeft = updatedOnMergeLeft
                 currentOnMergeRight = updatedOnMergeRight
                 currentOnSplitApply = updatedOnSplitApply
+                self.sheetReadingsProvider = updatedSheetReadingsProvider
+                self.sheetSublatticeProvider = updatedSheetSublatticeProvider
                 self.onDismiss = updatedOnDismiss
 
                 if isSplitEditorVisible {
@@ -617,6 +647,7 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                     rightNeighborSurface: updatedRightNeighborSurface
                 ))
                 updateSheetPreferredHeight(animated: true)
+                self.refreshSheetSupplementalData()
             }
 
             let swipeLeftGesture = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
@@ -821,9 +852,15 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 sheetPresentationController.prefersGrabberVisible = true
             }
 
-            presenter.present(sheetController, animated: true)
+            presenter.present(sheetController, animated: false)
             self.presentedSheetController = sheetController
         }
+    }
+
+    // Refreshes hidden per-selection sheet metadata for future UI usage.
+    private func refreshSheetSupplementalData() {
+        currentSheetUniqueReadings = sheetReadingsProvider?() ?? []
+        currentSheetSublatticeEdges = sheetSublatticeProvider?() ?? []
     }
 
     // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.
@@ -838,14 +875,19 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
 
     // Routes horizontal sheet swipe gestures to the current selection-navigation callbacks.
     @objc private func handleSheetSwipe(_ gestureRecognizer: UISwipeGestureRecognizer) {
-        switch gestureRecognizer.direction {
-        case .left:
-            onSheetSelectNext?()
-        case .right:
-            onSheetSelectPrevious?()
-        default:
-            break
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        UIView.performWithoutAnimation {
+            switch gestureRecognizer.direction {
+            case .left:
+                onSheetSelectNext?()
+            case .right:
+                onSheetSelectPrevious?()
+            default:
+                break
+            }
         }
+        CATransaction.commit()
     }
 
     // Generates initial left and right segment groups for split mode from the tapped surface text.

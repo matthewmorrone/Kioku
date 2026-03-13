@@ -280,15 +280,15 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$SRCROOT/Resources/generate_db.py",
-				"$SRCROOT/Resources/extras.json",
+				$SRCROOT/Resources/generate_db.py,
+				$SRCROOT/Resources/extras.json,
 				"$SRCROOT/Resources/jmdict-eng-3.6.2.json",
 			);
 			name = "Rebuild Dictionary SQLite";
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$SRCROOT/Resources/dictionary.sqlite",
+				$SRCROOT/Resources/dictionary.sqlite,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

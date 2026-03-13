@@ -54,3 +54,23 @@ Add more required invariants below. Copilot should treat them as mandatory.
    - Do not hardcode Japanese suffix or surface rewrite rules in `Deinflector.swift`.
    - Add or refine deinflection behavior by updating `Resources/deinflection.json` and the generic rule application pipeline.
    - Keep `Deinflector.swift` focused on loading rules, traversing rule states, and generic candidate admission logic.
+
+11. Enforce architecture layer boundaries.
+   - App shell code owns startup, dependency wiring, root navigation state, and store injection.
+   - Feature UI code may compose screens and dispatch mutations, but must not own lexical processing logic.
+   - Feature UI code must not redefine segmentation rules or mutate canonical dictionary state.
+
+12. Keep lexical and rendering side effects constrained.
+   - Lexical processing code must not mutate note text.
+   - Lexical processing code must not persist derived rendering state.
+   - Rendering code must not mutate note text or span definitions.
+   - Rendering code must not persist layout artifacts.
+
+13. Preserve span and backup architecture contracts.
+   - Persisted spans must remain UTF-16 half-open ranges with full coverage and contiguity invariants.
+   - Backup and restore paths must remain full-state only; do not introduce partial backup or partial restore behavior.
+
+14. Preserve architecture non-goals.
+   - Do not add cloud-sync requirements as part of core architecture.
+   - Do not add network dependency requirements for segmentation.
+   - Do not introduce boundary-only segment storage representations.

@@ -338,10 +338,38 @@ extension ReadView {
                 leftNeighborSurface: adjacentSurfaces.left,
                 rightNeighborSurface: adjacentSurfaces.right,
                 onSelectPrevious: {
-                    moveSelectedSegmentSelection(isMovingForward: false)
+                    isSheetSwipeTransitionActive = true
+                    let outcome = moveSelectedSegmentSelection(isMovingForward: false)
+                    if let sourceView,
+                       let selectedSegmentLocation,
+                       let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: sourceView, selectedLocation: selectedSegmentLocation) {
+                        preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect, animated: false)
+                    }
+
+                    Task { @MainActor in
+                        await Task.yield()
+                        isSheetSwipeTransitionActive = false
+                        scheduleFuriganaGeneration(for: text, edges: segmentationEdges)
+                    }
+
+                    return outcome
                 },
                 onSelectNext: {
-                    moveSelectedSegmentSelection(isMovingForward: true)
+                    isSheetSwipeTransitionActive = true
+                    let outcome = moveSelectedSegmentSelection(isMovingForward: true)
+                    if let sourceView,
+                       let selectedSegmentLocation,
+                       let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: sourceView, selectedLocation: selectedSegmentLocation) {
+                        preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect, animated: false)
+                    }
+
+                    Task { @MainActor in
+                        await Task.yield()
+                        isSheetSwipeTransitionActive = false
+                        scheduleFuriganaGeneration(for: text, edges: segmentationEdges)
+                    }
+
+                    return outcome
                 },
                 onMergeLeft: {
                     mergeAdjacentSegment(isMergingLeft: true)
@@ -352,9 +380,16 @@ extension ReadView {
                 onSplitApply: { splitOffset in
                     applySplitSelection(offsetUTF16: splitOffset)
                 },
+                sheetReadingsProvider: {
+                    uniqueReadingsForCurrentSelectedKanjiSegment()
+                },
+                sheetSublatticeProvider: {
+                    sublatticeEdgesForCurrentSelectedSegment()
+                },
                 onDismiss: {
+                    isSheetSwipeTransitionActive = false
                     clearSelectedSegmentStateAfterPopoverDismissal()
-                    restoreScrollAfterSheetDismissal(sourceView: sourceView)
+                    restoreScrollAfterSheetDismissal(sourceView: sourceView, animated: false)
                 }
             )
             return
