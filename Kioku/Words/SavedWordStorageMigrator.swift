@@ -10,7 +10,9 @@ struct SavedWordStorageMigrator {
         if let data = userDefaults.data(forKey: storageKey) {
             if let decodedEntries = try? JSONDecoder().decode([SavedWord].self, from: data) {
                 let normalizedEntries = normalizedEntries(decodedEntries)
-                persist(entries: normalizedEntries, storageKey: storageKey, userDefaults: userDefaults)
+                if let normalizedData = try? JSONEncoder().encode(normalizedEntries), normalizedData != data {
+                    userDefaults.set(normalizedData, forKey: storageKey)
+                }
                 return normalizedEntries
             }
         }
@@ -34,11 +36,13 @@ struct SavedWordStorageMigrator {
         for entry in entries {
             if var existing = mergedByEntryID[entry.canonicalEntryID] {
                 let preferredSurface = existing.surface.isEmpty ? entry.surface : existing.surface
-                let preferredSourceNoteID = existing.sourceNoteID ?? entry.sourceNoteID
+                let mergedSourceNoteIDs = Array(Set(existing.sourceNoteIDs).union(entry.sourceNoteIDs)).sorted { lhs, rhs in
+                    lhs.uuidString < rhs.uuidString
+                }
                 existing = SavedWord(
                     canonicalEntryID: existing.canonicalEntryID,
                     surface: preferredSurface,
-                    sourceNoteID: preferredSourceNoteID
+                    sourceNoteIDs: mergedSourceNoteIDs
                 )
                 mergedByEntryID[entry.canonicalEntryID] = existing
                 continue

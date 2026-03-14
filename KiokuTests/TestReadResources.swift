@@ -1,6 +1,18 @@
 import Foundation
 @testable import Kioku
 
+// Describes recoverable test-resource resolution failures without aborting the test process.
+private enum TestReadResourcesError: Error, LocalizedError {
+    case missingReadableResource(fileName: String, checkedPaths: [String])
+
+    var errorDescription: String? {
+        switch self {
+        case .missingReadableResource(let fileName, let checkedPaths):
+            return "Missing readable test resource '\(fileName)'. Checked: \(checkedPaths.joined(separator: "; "))"
+        }
+    }
+}
+
 // Reuses one real dictionary-backed segmenter pipeline across unit tests to avoid repeated trie allocation.
 final class TestReadResources {
     private static var cachedResources: TestReadResources?
@@ -46,16 +58,62 @@ final class TestReadResources {
     }
 
     // Resolves the checked-in SQLite dictionary path used by the real app pipeline.
-    private static func dictionaryDatabaseURL() -> URL {
-        repositoryRootURL()
-            .appendingPathComponent("Resources")
-            .appendingPathComponent("dictionary.sqlite")
+    private static func dictionaryDatabaseURL() throws -> URL {
+        try resolveResourceURL(fileName: "dictionary.sqlite")
     }
 
     // Resolves the checked-in deinflection rules file used by the real app pipeline.
-    private static func deinflectionRulesURL() -> URL {
-        repositoryRootURL()
+    private static func deinflectionRulesURL() throws -> URL {
+        try resolveResourceURL(fileName: "deinflection.json")
+    }
+
+    // Loads grouped deinflection rules using the same resource resolution path as the shared test harness.
+    static func groupedDeinflectionRules() throws -> [String: [DeinflectionRule]] {
+        let rulesData = try Data(contentsOf: resolveResourceURL(fileName: "deinflection.json"))
+        return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: rulesData)
+    }
+
+    // Resolves a test resource from repository checkout paths or built bundle resources.
+    private static func resolveResourceURL(fileName: String) throws -> URL {
+        let repositoryCandidate = repositoryRootURL()
             .appendingPathComponent("Resources")
-            .appendingPathComponent("deinflection.json")
+            .appendingPathComponent(fileName)
+
+        var candidates: [URL] = [repositoryCandidate]
+
+        let bundleCandidates: [URL?] = [
+            Bundle.main.resourceURL,
+            Bundle(for: TestReadResources.self).resourceURL
+        ]
+
+        for bundleResourceURL in bundleCandidates {
+            if let bundleResourceURL {
+                candidates.append(bundleResourceURL.appendingPathComponent(fileName))
+            }
+        }
+
+        for bundle in Bundle.allBundles {
+            if let resourceURL = bundle.resourceURL {
+                candidates.append(resourceURL.appendingPathComponent(fileName))
+            }
+        }
+
+        for bundle in Bundle.allFrameworks {
+            if let resourceURL = bundle.resourceURL {
+                candidates.append(resourceURL.appendingPathComponent(fileName))
+            }
+        }
+
+        let fileManager = FileManager.default
+        for candidate in candidates {
+            if fileManager.isReadableFile(atPath: candidate.path) {
+                return candidate
+            }
+        }
+
+        throw TestReadResourcesError.missingReadableResource(
+            fileName: fileName,
+            checkedPaths: candidates.map(\.path)
+        )
     }
 }

@@ -4,6 +4,7 @@ import SQLite3
 public final class DictionaryStore {
     private var db: OpaquePointer?
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    private let accessQueue = DispatchQueue(label: "Kioku.DictionaryStore.sqlite.access")
 
     // Resolves and opens the bundled dictionary database by resource name.
     public convenience init(
@@ -32,150 +33,194 @@ public final class DictionaryStore {
 
     // Closes the sqlite connection when the store is released.
     deinit {
-        sqlite3_close(db)
+        accessQueue.sync {
+            _ = sqlite3_close(db)
+        }
+    }
+
+    // Serializes sqlite access so one DictionaryStore connection is never used from multiple threads at once.
+    private func withSerializedDatabaseAccess<T>(_ operation: () throws -> T) rethrows -> T {
+        try accessQueue.sync {
+            try operation()
+        }
     }
 
     // Performs lookup with an explicit mode so callers own script-policy decisions.
     public func lookup(surface: String, mode: LookupMode) throws -> [DictionaryEntry] {
-        try lookupEntries(surfaces: lookupSurfaces(for: surface), matchKana: true, matchKanji: mode.allowsKanjiMatching)
+        try withSerializedDatabaseAccess {
+            try lookupEntries(surfaces: lookupSurfaces(for: surface), matchKana: true, matchKanji: mode.allowsKanjiMatching)
+        }
     }
 
     // Performs a kana-only lookup using explicit lookup mode policy.
     public func lookupExactKana(surface: String) throws -> [DictionaryEntry] {
-        try lookup(surface: surface, mode: .kanaOnly)
+        try withSerializedDatabaseAccess {
+            try lookupEntries(surfaces: lookupSurfaces(for: surface), matchKana: true, matchKanji: false)
+        }
     }
 
     // Performs an exact kanji match for the provided surface string.
     public func lookupExactKanji(surface: String) throws -> [DictionaryEntry] {
-        try lookupEntries(surfaces: lookupSurfaces(for: surface), matchKana: false, matchKanji: true)
+        try withSerializedDatabaseAccess {
+            try lookupEntries(surfaces: lookupSurfaces(for: surface), matchKana: false, matchKanji: true)
+        }
+    }
+
+    // Fetches one fully materialized entry by ID so UI layers can resolve stable lexeme identifiers.
+    public func lookupEntry(entryID: Int64) throws -> DictionaryEntry? {
+        try withSerializedDatabaseAccess {
+            guard let header = try fetchEntryHeader(entryID: entryID) else {
+                return nil
+            }
+
+            let kanjiForms = try fetchKanjiForms(entryID: header.entryID)
+            let kanaForms = try fetchKanaForms(entryID: header.entryID)
+            let senses = try fetchSenses(entryID: header.entryID)
+            let matchedSurface = kanjiForms.first ?? kanaForms.first ?? ""
+
+            return DictionaryEntry(
+                entryId: header.entryID,
+                isCommon: header.isCommon,
+                matchedSurface: matchedSurface,
+                kanjiForms: kanjiForms,
+                kanaForms: kanaForms,
+                senses: senses
+            )
+        }
     }
 
     // Fetches all unique dictionary surfaces from kana and kanji tables.
     public func fetchAllSurfaces() throws -> [String] {
-        let sql = """
-        SELECT DISTINCT surface
-        FROM surface_lookup
-        ORDER BY surface ASC
-        """
+        try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT DISTINCT surface
+            FROM surface_lookup
+            ORDER BY surface ASC
+            """
 
-        var statement: OpaquePointer?
-        defer { sqlite3_finalize(statement) }
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
 
-        try prepare(sql: sql, statement: &statement)
+            try prepare(sql: sql, statement: &statement)
 
-        var surfaces: [String] = []
-        var stepCode = sqlite3_step(statement)
+            var surfaces: [String] = []
+            var stepCode = sqlite3_step(statement)
 
-        while stepCode == SQLITE_ROW {
-            if let textPointer = sqlite3_column_text(statement, 0) {
-                surfaces.append(String(cString: textPointer))
+            while stepCode == SQLITE_ROW {
+                if let textPointer = sqlite3_column_text(statement, 0) {
+                    surfaces.append(String(cString: textPointer))
+                }
+                stepCode = sqlite3_step(statement)
             }
-            stepCode = sqlite3_step(statement)
-        }
 
-        guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
-        }
+            guard stepCode == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage())
+            }
 
-        return surfaces
+            return surfaces
+        }
     }
 
     // Builds a preferred surface-to-reading map for fast in-memory furigana lookups.
     public func fetchPreferredReadingsBySurface() throws -> [String: String] {
-        let sql = """
-        SELECT kj.text AS surface, kf.text AS reading, e.is_common
-        FROM kanji kj
-        JOIN entries e ON e.id = kj.entry_id
-        JOIN kana_forms kf ON kf.entry_id = e.id
-        ORDER BY kj.text ASC, e.is_common DESC, kf.text ASC
-        """
+        try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT kj.text AS surface, kf.text AS reading, e.is_common
+            FROM kanji kj
+            JOIN entries e ON e.id = kj.entry_id
+            JOIN kana_forms kf ON kf.entry_id = e.id
+            ORDER BY kj.text ASC, e.is_common DESC, kf.text ASC
+            """
 
-        var statement: OpaquePointer?
-        defer { sqlite3_finalize(statement) }
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
 
-        try prepare(sql: sql, statement: &statement)
+            try prepare(sql: sql, statement: &statement)
 
-        var readingsBySurface: [String: String] = [:]
-        var stepCode = sqlite3_step(statement)
+            var readingsBySurface: [String: String] = [:]
+            var stepCode = sqlite3_step(statement)
 
-        while stepCode == SQLITE_ROW {
-            guard
-                let surfacePointer = sqlite3_column_text(statement, 0),
-                let readingPointer = sqlite3_column_text(statement, 1)
-            else {
+            while stepCode == SQLITE_ROW {
+                guard
+                    let surfacePointer = sqlite3_column_text(statement, 0),
+                    let readingPointer = sqlite3_column_text(statement, 1)
+                else {
+                    stepCode = sqlite3_step(statement)
+                    continue
+                }
+
+                let surface = String(cString: surfacePointer)
+                let reading = String(cString: readingPointer)
+
+                // Keep first-seen reading because SQL ordering already prioritizes common entries.
+                if readingsBySurface[surface] == nil {
+                    readingsBySurface[surface] = reading
+                }
+
                 stepCode = sqlite3_step(statement)
-                continue
             }
 
-            let surface = String(cString: surfacePointer)
-            let reading = String(cString: readingPointer)
-
-            // Keep first-seen reading because SQL ordering already prioritizes common entries.
-            if readingsBySurface[surface] == nil {
-                readingsBySurface[surface] = reading
+            guard stepCode == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage())
             }
 
-            stepCode = sqlite3_step(statement)
+            return readingsBySurface
         }
-
-        guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
-        }
-
-        return readingsBySurface
     }
 
     // Builds bounded per-surface reading candidates for lightweight disambiguation heuristics.
     public func fetchReadingCandidatesBySurface(maxReadingsPerSurface: Int = 8) throws -> [String: [String]] {
-        let sql = """
-        SELECT kj.text AS surface, kf.text AS reading, e.is_common
-        FROM kanji kj
-        JOIN entries e ON e.id = kj.entry_id
-        JOIN kana_forms kf ON kf.entry_id = e.id
-        ORDER BY kj.text ASC, e.is_common DESC, kf.text ASC
-        """
+        try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT kj.text AS surface, kf.text AS reading, e.is_common
+            FROM kanji kj
+            JOIN entries e ON e.id = kj.entry_id
+            JOIN kana_forms kf ON kf.entry_id = e.id
+            ORDER BY kj.text ASC, e.is_common DESC, kf.text ASC
+            """
 
-        var statement: OpaquePointer?
-        defer { sqlite3_finalize(statement) }
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
 
-        try prepare(sql: sql, statement: &statement)
+            try prepare(sql: sql, statement: &statement)
 
-        var candidatesBySurface: [String: [String]] = [:]
-        var seenBySurface: [String: Set<String>] = [:]
+            var candidatesBySurface: [String: [String]] = [:]
+            var seenBySurface: [String: Set<String>] = [:]
 
-        var stepCode = sqlite3_step(statement)
-        while stepCode == SQLITE_ROW {
-            guard
-                let surfacePointer = sqlite3_column_text(statement, 0),
-                let readingPointer = sqlite3_column_text(statement, 1)
-            else {
-                stepCode = sqlite3_step(statement)
-                continue
-            }
-
-            let surface = String(cString: surfacePointer)
-            let reading = String(cString: readingPointer)
-
-            var seenReadings = seenBySurface[surface, default: Set<String>()]
-            if !seenReadings.contains(reading) {
-                seenReadings.insert(reading)
-                seenBySurface[surface] = seenReadings
-
-                var candidates = candidatesBySurface[surface, default: []]
-                if candidates.count < maxReadingsPerSurface {
-                    candidates.append(reading)
-                    candidatesBySurface[surface] = candidates
+            var stepCode = sqlite3_step(statement)
+            while stepCode == SQLITE_ROW {
+                guard
+                    let surfacePointer = sqlite3_column_text(statement, 0),
+                    let readingPointer = sqlite3_column_text(statement, 1)
+                else {
+                    stepCode = sqlite3_step(statement)
+                    continue
                 }
+
+                let surface = String(cString: surfacePointer)
+                let reading = String(cString: readingPointer)
+
+                var seenReadings = seenBySurface[surface, default: Set<String>()]
+                if !seenReadings.contains(reading) {
+                    seenReadings.insert(reading)
+                    seenBySurface[surface] = seenReadings
+
+                    var candidates = candidatesBySurface[surface, default: []]
+                    if candidates.count < maxReadingsPerSurface {
+                        candidates.append(reading)
+                        candidatesBySurface[surface] = candidates
+                    }
+                }
+
+                stepCode = sqlite3_step(statement)
             }
 
-            stepCode = sqlite3_step(statement)
-        }
+            guard stepCode == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage())
+            }
 
-        guard stepCode == SQLITE_DONE else {
-            throw DictionarySQLiteError.step(message: errorMessage())
+            return candidatesBySurface
         }
-
-        return candidatesBySurface
     }
 
     // Builds fully materialized dictionary entries from matched entry headers.
@@ -325,6 +370,41 @@ public final class DictionaryStore {
         }
 
         return items
+    }
+
+    // Fetches one entry header by ID so callers can rebuild full entry payloads deterministically.
+    private func fetchEntryHeader(entryID: Int64) throws -> (entryID: Int64, isCommon: Bool)? {
+        let sql = """
+        SELECT e.id, e.is_common
+        FROM entries e
+        WHERE e.id = ?1
+        LIMIT 1
+        """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        try prepare(sql: sql, statement: &statement)
+        try bindInt64(entryID, index: 1, statement: statement)
+
+        let stepCode = sqlite3_step(statement)
+        if stepCode == SQLITE_DONE {
+            return nil
+        }
+
+        guard stepCode == SQLITE_ROW else {
+            throw DictionarySQLiteError.step(message: errorMessage())
+        }
+
+        let resolvedEntryID = sqlite3_column_int64(statement, 0)
+        let isCommon = sqlite3_column_int(statement, 1) != 0
+
+        let completionCode = sqlite3_step(statement)
+        guard completionCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage())
+        }
+
+        return (entryID: resolvedEntryID, isCommon: isCommon)
     }
 
     // Fetches ordered kanji forms for one entry.

@@ -10,6 +10,7 @@ struct ReadView: View {
     @EnvironmentObject var notesStore: NotesStore
     let segmenter: Segmenter
     let dictionaryStore: DictionaryStore?
+    let lexiconDataSurface: Lexicon?
     let readingBySurface: [String: String]
     let readingCandidatesBySurface: [String: [String]]
     let segmenterRevision: Int
@@ -74,6 +75,7 @@ struct ReadView: View {
         shouldActivateEditModeOnLoad: Binding<Bool> = .constant(false),
         segmenter: Segmenter,
         dictionaryStore: DictionaryStore?,
+        lexiconDataSurface: Lexicon? = nil,
         readingBySurface: [String: String],
         readingCandidatesBySurface: [String: [String]],
         segmenterRevision: Int,
@@ -84,6 +86,7 @@ struct ReadView: View {
         _shouldActivateEditModeOnLoad = shouldActivateEditModeOnLoad
         self.segmenter = segmenter
         self.dictionaryStore = dictionaryStore
+        self.lexiconDataSurface = lexiconDataSurface
         self.readingBySurface = readingBySurface
         self.readingCandidatesBySurface = readingCandidatesBySurface
         self.segmenterRevision = segmenterRevision

@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class NotesExportTests: XCTestCase {
 
-    // Verifies export leaves segment ranges empty when neither persisted overrides nor runtime snapshots exist.
+    // Verifies export falls back to one full-content segment when no persisted or runtime segmentation exists.
     func testExportLeavesSegmentRangesEmptyWhenNoExistingSegmentationDataExists() {
         let store = NotesStore()
         store.notes = [
@@ -21,7 +21,7 @@ final class NotesExportTests: XCTestCase {
         let document = store.makeTransferDocument()
         let exportedRanges = document.payload.notes.first?.segments
 
-        XCTAssertEqual(exportedRanges, [])
+        XCTAssertEqual(exportedRanges, [SegmentRange(start: 0, end: 3)])
     }
 
     // Verifies export preserves existing segment range overrides instead of replacing them.

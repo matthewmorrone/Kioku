@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var shouldActivateReadEditMode = false
     @State private var segmenter = Segmenter(trie: DictionaryTrie())
     @State private var dictionaryStore: DictionaryStore?
+    @State private var lexiconDataSurface: Lexicon?
     @State private var readingBySurface: [String: String] = [:]
     @State private var readingCandidatesBySurface: [String: [String]] = [:]
     @State private var readResourcesReady = false
@@ -23,7 +24,7 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: segmenter, dictionaryStore: dictionaryStore, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
+            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: segmenter, dictionaryStore: dictionaryStore, lexiconDataSurface: lexiconDataSurface, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
             })
             .tag(ContentTab.read)
@@ -113,6 +114,7 @@ struct ContentView: View {
             let readResources = Self.makeReadResources()
             segmenter = readResources.segmenter
             dictionaryStore = readResources.dictionaryStore
+            lexiconDataSurface = readResources.lexiconDataSurface
             readingBySurface = readResources.readingBySurface
             readingCandidatesBySurface = readResources.readingCandidatesBySurface
             readResourcesReady = true
@@ -121,9 +123,10 @@ struct ContentView: View {
     }
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
-    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]]) {
+    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, lexiconDataSurface: Lexicon?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]]) {
         let trie = DictionaryTrie()
         var dictionaryStore: DictionaryStore?
+        var lexiconDataSurface: Lexicon?
         var readingBySurface: [String: String] = [:]
         var readingCandidatesBySurface: [String: [String]] = [:]
         var deinflector: Deinflector?
@@ -152,7 +155,28 @@ struct ContentView: View {
             print("Deinflector initialization failed: \(error)")
         }
 
-        return (segmenter: Segmenter(trie: trie, deinflector: deinflector), dictionaryStore: dictionaryStore, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface)
+        let segmenter = Segmenter(trie: trie, deinflector: deinflector)
+
+        do {
+            lexiconDataSurface = try Lexicon(
+                dictionaryStore: dictionaryStore,
+                segmenter: segmenter,
+                readingBySurface: readingBySurface,
+                bundle: .main,
+                resourceName: "deinflection",
+                fileExtension: "json"
+            )
+        } catch {
+            print("Lexicon data surface initialization failed: \(error)")
+        }
+
+        return (
+            segmenter: segmenter,
+            dictionaryStore: dictionaryStore,
+            lexiconDataSurface: lexiconDataSurface,
+            readingBySurface: readingBySurface,
+            readingCandidatesBySurface: readingCandidatesBySurface
+        )
     }
 }
 
