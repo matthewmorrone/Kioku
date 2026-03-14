@@ -50,13 +50,6 @@ final class SegmenterIntegrationTests: XCTestCase {
             }
     }
 
-    // Resolves the repository root so targeted tests can persist inspection output under tmp/.
-    private func repositoryRootURL() -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-    }
-
     // Verifies the shared harness does not rebuild a second trie instance for subsequent tests.
     func testSharedHarnessCachesResources() throws {
         let firstResources = try TestReadResources.shared()
@@ -210,18 +203,11 @@ final class SegmenterIntegrationTests: XCTestCase {
     func testReportLatticeInclusionResultsForExaminedSurface() throws {
         let examinedText = "かなしみがいまセーラースマイル"
         let lines = try inclusionLines(for: examinedText)
-        let reportURL = repositoryRootURL()
-            .appendingPathComponent("tmp")
-            .appendingPathComponent("examined-surface-lattice-report.txt")
 
         print("LATTICE INCLUSION REPORT \(examinedText)")
         for line in lines {
             print(line)
         }
-
-        let report = (["LATTICE INCLUSION REPORT \(examinedText)"] + lines).joined(separator: "\n") + "\n"
-        try FileManager.default.createDirectory(at: reportURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try report.write(to: reportURL, atomically: true, encoding: .utf8)
 
         XCTAssertTrue(lines.contains { line in
             line.contains("ス [lemma: す]")

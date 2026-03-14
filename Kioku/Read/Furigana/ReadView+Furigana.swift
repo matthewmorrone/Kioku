@@ -215,6 +215,24 @@ extension ReadView {
                 preferKunyomiForStandaloneKanji: preferKunyomiForContext
               ),
            let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: lemmaReading) {
+            let lemmaSurfaceRuns = kanjiRuns(in: furiganaLemmaReference)
+            if let lemmaRun = lemmaSurfaceRuns.first {
+                let segmentCharacters = Array(segmentSurface)
+                let lemmaCharacters = Array(furiganaLemmaReference)
+
+                let segmentSuffix = runs[0].end < segmentCharacters.count
+                    ? String(segmentCharacters[runs[0].end..<segmentCharacters.count])
+                    : ""
+                let lemmaSuffix = lemmaRun.end < lemmaCharacters.count
+                    ? String(lemmaCharacters[lemmaRun.end..<lemmaCharacters.count])
+                    : ""
+
+                // Avoid attaching full lemma readings when surface adds trailing kana not represented in the lemma.
+                if segmentSuffix.isEmpty == false, lemmaSuffix.isEmpty {
+                    return []
+                }
+            }
+
             return [
                 (
                     reading: lemmaCoreReading,
