@@ -43,12 +43,13 @@
 		E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dictionary.sqlite; sourceTree = "<group>"; };
 		E32B0CE02F57BC070020F5C2 /* generate_db.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = generate_db.py; sourceTree = "<group>"; };
 		E32B0CE82F57BC070020F5C2 /* deinflection.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = deinflection.json; sourceTree = "<group>"; };
+		E32D09B42F638C1600788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
+		E32D0BBB2F668D7400788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 		E4A100112F90000100AAA001 /* common_particles.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = common_particles.json; sourceTree = "<group>"; };
 		E4A100122F90000100AAA001 /* lattice_auxiliary_lemmas.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = lattice_auxiliary_lemmas.json; sourceTree = "<group>"; };
 		E4A100132F90000100AAA001 /* voiced_kana_pairs.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = voiced_kana_pairs.json; sourceTree = "<group>"; };
 		E4A100142F90000100AAA001 /* kana_alignment_normalizations.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = kana_alignment_normalizations.json; sourceTree = "<group>"; };
 		E4A100152F90000100AAA001 /* kunyomi_overrides.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = kunyomi_overrides.json; sourceTree = "<group>"; };
-		E32D09B42F638C1600788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -126,6 +127,13 @@
 			sourceTree = "<group>";
 		};
 		E32D09C32F638C1600788CAE /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E32D0BCD2F668D7400788CAE /* Products */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -238,6 +246,10 @@
 			productRefGroup = E3070AE92F4DFDB6005FD323 /* Products */;
 			projectDirPath = "";
 			projectReferences = (
+				{
+					ProductGroup = E32D0BCD2F668D7400788CAE /* Products */;
+					ProjectRef = E32D0BBB2F668D7400788CAE /* Kioku.xcodeproj */;
+				},
 				{
 					ProductGroup = E32D09C32F638C1600788CAE /* Products */;
 					ProjectRef = E32D09B42F638C1600788CAE /* Kioku.xcodeproj */;

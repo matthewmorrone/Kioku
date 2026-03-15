@@ -4,6 +4,8 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab: ContentTab
     @StateObject private var notesStore = NotesStore()
+    @StateObject private var wordsStore = WordsStore()
+    @StateObject private var wordListsStore = WordListsStore()
     @State private var selectedReadNote: Note?
     @State private var shouldActivateReadEditMode = false
     @State private var segmenter = Segmenter(trie: DictionaryTrie())
@@ -68,6 +70,8 @@ struct ContentView: View {
 
             // Renders the Words tab entry point.
             WordsView()
+                .environmentObject(wordsStore)
+                .environmentObject(wordListsStore)
             .tag(ContentTab.words)
             .tabItem {
                 Label("Words", systemImage: "text.page.badge.magnifyingglass")
@@ -88,6 +92,8 @@ struct ContentView: View {
             }
         }
         .environmentObject(notesStore)
+        .environmentObject(wordsStore)
+        .environmentObject(wordListsStore)
         .onAppear {
             restoreLastActiveNote()
             loadReadResourcesIfNeeded()

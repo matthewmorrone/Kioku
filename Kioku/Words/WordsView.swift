@@ -1,126 +1,89 @@
 import SwiftUI
 
-// Renders the saved-word list screen for words starred from the read segment list.
+// Renders the saved-word list screen for the Words tab.
+// Major sections: filtered word list, toolbar (filter button), remove confirmation dialog.
 struct WordsView: View {
-    @EnvironmentObject private var notesStore: NotesStore
-    @State private var savedWords: [SavedWord] = []
+    @EnvironmentObject private var wordsStore: WordsStore
+    @EnvironmentObject private var wordListsStore: WordListsStore
+
     @State private var selectedDetailWord: SavedWord?
-    private let savedWordsStorageKey = "kioku.words.v1"
+    @State private var wordPendingRemoval: SavedWord?
+    @State private var activeFilterListIDs: Set<UUID> = []
+    @State private var isFilterPopoverPresented = false
 
     var body: some View {
         NavigationStack {
-            // Displays saved words as a flat list with right-side membership labels.
             List {
-                if savedWords.isEmpty {
+                if visibleWords.isEmpty {
                     Text("No saved words yet")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(sortedSavedWords, id: \.canonicalEntryID) { savedWord in
-                        HStack(spacing: 10) {
-                            Text(savedWord.surface)
-                                .font(.headline)
-
-                            Spacer()
-                        }
-                        .padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            openWordDetail(for: savedWord)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                removeSavedWord(savedWord.canonicalEntryID)
-                            } label: {
-                                Label("Remove", systemImage: "trash")
-                            }
-                        }
+                    ForEach(visibleWords, id: \.canonicalEntryID) { savedWord in
+                        WordRowView(
+                            word: savedWord,
+                            lists: wordListsStore.lists,
+                            onOpenDetails: { selectedDetailWord = savedWord },
+                            onToggleList: { listID in wordsStore.toggleListMembership(wordID: savedWord.canonicalEntryID, listID: listID) },
+                            onRemove: { wordPendingRemoval = savedWord }
+                        )
                     }
                 }
             }
-            .onAppear {
-                // Loads persisted words when the tab becomes visible.
-                refreshSavedWords()
+            .toolbar {
+                // Opens the filter popover for multi-select list filtering and list CRUD.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isFilterPopoverPresented = true
+                    } label: {
+                        Image(systemName: activeFilterListIDs.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                    }
+                    .popover(isPresented: $isFilterPopoverPresented) {
+                        WordListFilterView(activeFilterListIDs: $activeFilterListIDs)
+                            .environmentObject(wordListsStore)
+                            .environmentObject(wordsStore)
+                            .frame(minWidth: 300, minHeight: 400)
+                    }
+                }
+            }
+            // Confirmation before removing a word so accidental swipes can be cancelled.
+            .confirmationDialog(
+                "Remove \"\(wordPendingRemoval?.surface ?? "")\"?",
+                isPresented: Binding(
+                    get: { wordPendingRemoval != nil },
+                    set: { if !$0 { wordPendingRemoval = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    if let word = wordPendingRemoval {
+                        wordsStore.remove(id: word.canonicalEntryID)
+                    }
+                    wordPendingRemoval = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    wordPendingRemoval = nil
+                }
             }
         }
         .toolbar(.visible, for: .tabBar)
         .sheet(item: $selectedDetailWord) { selectedWord in
-            WordDetailView(
-                word: selectedWord,
-                membershipTitles: membershipTitles(for: selectedWord)
-            )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
+            WordDetailView(word: selectedWord, lists: wordListsStore.lists)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
 
-    // Provides note titles keyed by note id for list-membership labeling.
-    private var noteTitleByID: [UUID: String] {
-        Dictionary(uniqueKeysWithValues: notesStore.notes.map { note in
-            (note.id, normalizedListTitle(for: note.title))
-        })
-    }
-
-    // Keeps the visible words list stable and alphabetically ordered.
-    private var sortedSavedWords: [SavedWord] {
-        savedWords.sorted { lhs, rhs in
+    // Applies the active list filter; shows all words when no filter is selected.
+    private var visibleWords: [SavedWord] {
+        let sorted = wordsStore.words.sorted { lhs, rhs in
             lhs.surface.localizedCaseInsensitiveCompare(rhs.surface) == .orderedAscending
         }
-    }
 
-    // Resolves all list titles that include one saved word.
-    private func membershipTitles(for savedWord: SavedWord) -> [String] {
-        if savedWord.sourceNoteIDs.isEmpty {
-            return ["Unsorted"]
+        guard !activeFilterListIDs.isEmpty else { return sorted }
+
+        return sorted.filter { word in
+            activeFilterListIDs.contains { word.wordListIDs.contains($0) }
         }
-
-        let titles = savedWord.sourceNoteIDs.map { sourceNoteID in
-            noteTitleByID[sourceNoteID] ?? "Deleted Note"
-        }
-
-        let uniqueTitles = Array(Set(titles))
-        let fixedOrder: [String] = ["Unsorted", "Deleted Note"]
-        let regularTitles = uniqueTitles
-            .filter { fixedOrder.contains($0) == false }
-            .sorted { lhs, rhs in
-                lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
-            }
-
-        let trailingTitles = fixedOrder.filter { uniqueTitles.contains($0) }
-        return regularTitles + trailingTitles
-    }
-
-    // Opens the full-screen word detail sheet with list-membership context for one row.
-    private func openWordDetail(for savedWord: SavedWord) {
-        selectedDetailWord = savedWord
-    }
-
-    // Normalizes a note title into a stable list name and falls back when title is empty.
-    private func normalizedListTitle(for title: String) -> String {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedTitle.isEmpty ? "Untitled Note" : trimmedTitle
-    }
-
-    // Loads and sorts saved words from shared persistent storage.
-    private func refreshSavedWords() {
-        savedWords = loadSavedWordEntriesFromStorage()
-    }
-
-    // Removes a single saved word and persists the updated list.
-    private func removeSavedWord(_ canonicalEntryID: Int64) {
-        var updatedWords = loadSavedWordEntriesFromStorage()
-        updatedWords.removeAll { $0.canonicalEntryID == canonicalEntryID }
-        persistSavedWordEntriesToStorage(updatedWords)
-        refreshSavedWords()
-    }
-
-    // Loads canonical saved-word entries from shared storage.
-    private func loadSavedWordEntriesFromStorage() -> [SavedWord] {
-        SavedWordStorageMigrator.loadSavedWords(storageKey: savedWordsStorageKey)
-    }
-
-    // Persists saved-word entries including optional source note references.
-    private func persistSavedWordEntriesToStorage(_ entries: [SavedWord]) {
-        SavedWordStorageMigrator.persist(entries: entries, storageKey: savedWordsStorageKey)
     }
 }
 
