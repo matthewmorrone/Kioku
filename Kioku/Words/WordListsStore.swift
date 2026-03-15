@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 // Owns word-list CRUD for the Words tab. Has no reference to WordsStore — cascade is caller responsibility.

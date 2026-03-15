@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct Note: Identifiable, Codable, Equatable {
     var id: UUID
@@ -7,6 +8,9 @@ struct Note: Identifiable, Codable, Equatable {
     var segments: [SegmentRange]?
     var createdAt: Date
     var modifiedAt: Date
+    // Non-nil when the note was created from a subtitle import with audio; references
+    // files managed by NoteAudioStore.
+    var audioAttachmentID: UUID?
 
     // Creates a note value with optional defaults for new-note workflows.
     init(
@@ -15,7 +19,8 @@ struct Note: Identifiable, Codable, Equatable {
         content: String = "",
         segments: [SegmentRange]? = nil,
         createdAt: Date = Date(),
-        modifiedAt: Date = Date()
+        modifiedAt: Date = Date(),
+        audioAttachmentID: UUID? = nil
     ) {
         self.id = id
         self.title = title
@@ -23,6 +28,7 @@ struct Note: Identifiable, Codable, Equatable {
         self.segments = segments
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
+        self.audioAttachmentID = audioAttachmentID
     }
 
     // Decodes a note using the current segments-based schema.
@@ -36,6 +42,7 @@ struct Note: Identifiable, Codable, Equatable {
         segments = try container.decodeIfPresent([SegmentRange].self, forKey: .segments)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? now
         modifiedAt = try container.decodeIfPresent(Date.self, forKey: .modifiedAt) ?? createdAt
+        audioAttachmentID = try container.decodeIfPresent(UUID.self, forKey: .audioAttachmentID)
     }
 
     // Encodes a note with explicit segmentation and timestamp fields for stable transfer files.
@@ -47,5 +54,6 @@ struct Note: Identifiable, Codable, Equatable {
         try container.encode(segments ?? [], forKey: .segments)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(modifiedAt, forKey: .modifiedAt)
+        try container.encodeIfPresent(audioAttachmentID, forKey: .audioAttachmentID)
     }
 }

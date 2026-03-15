@@ -68,6 +68,8 @@ struct ReadView: View {
     @State var audioTranscriptionErrorMessage = ""
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
+    @StateObject private var audioController = AudioPlaybackController()
+    @State private var audioAttachmentCues: [SubtitleCue] = []
 
     // Initializes the read screen with the active note selection and shared read resources.
     init(
@@ -101,6 +103,14 @@ struct ReadView: View {
             titleView
             VStack(spacing: 10) {
                 editorView
+                // Shows playback controls when the active note has an audio attachment with cues loaded.
+                if audioAttachmentCues.isEmpty == false {
+                    AudioPlayerBar(
+                        controller: audioController,
+                        cues: audioAttachmentCues,
+                        highlightRange: $selectedHighlightRangeOverride
+                    )
+                }
                 toolbarButtons
             }
         }
@@ -245,10 +255,10 @@ struct ReadView: View {
                     titleDraft = resolvedTitle
                     isShowingTitleAlert = true
                 }
-
+            Spacer()
             HStack {
                 Spacer()
-                audioTranscriptionButton
+                // audioTranscriptionButton
                 ocrImportButton
                 newNoteButton
             }
@@ -353,7 +363,7 @@ struct ReadView: View {
             furiganaButton
             editModeButton
         }
-        .padding(.horizontal, 8)
+        // .padding(.horizontal, 8)
     }
 
     // Resets custom segment segmentation back to computed segmentation.

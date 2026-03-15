@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 enum ScriptClassifier {
     private static let voicedKanaMap = loadVoicedKanaMap()

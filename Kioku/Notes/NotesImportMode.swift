@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // Defines supported merge strategies when importing notes from a transfer document.
 enum NotesImportMode: String, CaseIterable {

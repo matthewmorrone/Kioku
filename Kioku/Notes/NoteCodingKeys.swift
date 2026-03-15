@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 enum NoteCodingKeys: String, CodingKey {
     case id
@@ -7,4 +8,5 @@ enum NoteCodingKeys: String, CodingKey {
     case segments
     case createdAt
     case modifiedAt
+    case audioAttachmentID
 }
