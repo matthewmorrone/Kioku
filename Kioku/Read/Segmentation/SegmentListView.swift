@@ -437,83 +437,81 @@ struct SegmentListView: View {
         applySavedWordState(entries: normalizedEntries)
     }
 
-    // Saves every currently visible segment row to favorites while respecting active list filters.
+    // Saves every currently visible segment row to favorites while updating each star in real time.
     private func addAllVisibleWords() {
-        let visibleSurfaces = displayRows.map { normalizedSurfaceForFiltering($0.edge.surface) }
-        guard visibleSurfaces.isEmpty == false else {
+        let rows = displayRows
+        guard rows.isEmpty == false else {
             return
         }
 
-        let uncachedSurfaces = Array(
-            Set(visibleSurfaces.filter { surface in
-                surface.isEmpty == false && canonicalEntryIDBySurface[surface] == nil
-            })
-        )
+        Task {
+            var entries = loadSavedWordEntriesFromStorage()
+            var addedCount = 0
 
-        if uncachedSurfaces.isEmpty {
-            addAllVisibleWords(using: canonicalEntryIDBySurface)
-            return
-        }
-
-        hydrateCanonicalEntryIDs(for: uncachedSurfaces) { hydratedEntryIDs in
-            canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in
-                current
-            }
-            addAllVisibleWords(using: canonicalEntryIDBySurface)
-        }
-    }
-
-    // Applies bulk-favorite updates using the latest canonical-id map.
-    private func addAllVisibleWords(using canonicalIDsBySurface: [String: Int64]) {
-        var entries = loadSavedWordEntriesFromStorage()
-        var addedCount = 0
-
-        for row in displayRows {
-            let normalizedSurface = normalizedSurfaceForFiltering(row.edge.surface)
-            guard let canonicalEntryID = canonicalIDsBySurface[normalizedSurface] else {
-                continue
-            }
-
-            if let existingIndex = entries.firstIndex(where: { $0.canonicalEntryID == canonicalEntryID }) {
-                guard let sourceNoteID else {
+            for row in rows {
+                let normalizedSurface = normalizedSurfaceForFiltering(row.edge.surface)
+                guard normalizedSurface.isEmpty == false else {
                     continue
                 }
 
-                var existingEntry = entries[existingIndex]
-                var noteIDs = Set(existingEntry.sourceNoteIDs)
-                if noteIDs.contains(sourceNoteID) {
+                let entryID: Int64
+                if let cached = canonicalEntryIDBySurface[normalizedSurface] {
+                    entryID = cached
+                } else if let store = dictionaryStore {
+                    let surface = normalizedSurface
+                    guard let resolved = await withCheckedContinuation({ continuation in
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            let id = try? store.lookup(surface: surface, mode: .kanjiAndKana).first?.entryId
+                            continuation.resume(returning: id)
+                        }
+                    }) else {
+                        continue
+                    }
+                    entryID = resolved
+                    canonicalEntryIDBySurface[normalizedSurface] = entryID
+                } else {
                     continue
                 }
 
-                noteIDs.insert(sourceNoteID)
-                let orderedNoteIDs = noteIDs.sorted { lhs, rhs in
-                    lhs.uuidString < rhs.uuidString
+                if let existingIndex = entries.firstIndex(where: { $0.canonicalEntryID == entryID }) {
+                    guard let noteID = sourceNoteID else {
+                        continue
+                    }
+
+                    var existingEntry = entries[existingIndex]
+                    var noteIDs = Set(existingEntry.sourceNoteIDs)
+                    if noteIDs.contains(noteID) {
+                        continue
+                    }
+
+                    noteIDs.insert(noteID)
+                    existingEntry = SavedWord(
+                        canonicalEntryID: existingEntry.canonicalEntryID,
+                        surface: existingEntry.surface,
+                        sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString }
+                    )
+                    entries[existingIndex] = existingEntry
+                } else {
+                    let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
+                    entries.append(
+                        SavedWord(
+                            canonicalEntryID: entryID,
+                            surface: normalizedSurface,
+                            sourceNoteIDs: noteIDs
+                        )
+                    )
                 }
-                existingEntry = SavedWord(
-                    canonicalEntryID: existingEntry.canonicalEntryID,
-                    surface: existingEntry.surface,
-                    sourceNoteIDs: orderedNoteIDs
-                )
-                entries[existingIndex] = existingEntry
+
                 addedCount += 1
-                continue
+                savedWordSurfaces.insert(normalizedSurface)
+                savedWordEntryIDs.insert(entryID)
             }
 
-            let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
-            entries.append(
-                SavedWord(
-                    canonicalEntryID: canonicalEntryID,
-                    surface: normalizedSurface,
-                    sourceNoteIDs: noteIDs
-                )
-            )
-            addedCount += 1
+            let normalizedEntries = SavedWordStorageMigrator.normalizedEntries(entries)
+            persistSavedWordEntriesToStorage(normalizedEntries)
+            applySavedWordState(entries: normalizedEntries)
+            showAddAllFeedback(addedCount: addedCount)
         }
-
-        let normalizedEntries = SavedWordStorageMigrator.normalizedEntries(entries)
-        persistSavedWordEntriesToStorage(normalizedEntries)
-        applySavedWordState(entries: normalizedEntries)
-        showAddAllFeedback(addedCount: addedCount)
     }
 
     // Shows a short-lived status message after attempting to favorite all visible words.
