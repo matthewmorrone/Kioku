@@ -29,6 +29,7 @@ struct SavedWordStorageMigrator {
     }
 
     // Coalesces duplicate saves by canonical entry id while preserving first-seen order.
+    // wordListIDs are unioned across duplicates so list membership is never dropped.
     static func normalizedEntries(_ entries: [SavedWord]) -> [SavedWord] {
         var mergedByEntryID: [Int64: SavedWord] = [:]
         var orderedEntryIDs: [Int64] = []
@@ -39,10 +40,14 @@ struct SavedWordStorageMigrator {
                 let mergedSourceNoteIDs = Array(Set(existing.sourceNoteIDs).union(entry.sourceNoteIDs)).sorted { lhs, rhs in
                     lhs.uuidString < rhs.uuidString
                 }
+                let mergedWordListIDs = Array(Set(existing.wordListIDs).union(entry.wordListIDs)).sorted { lhs, rhs in
+                    lhs.uuidString < rhs.uuidString
+                }
                 existing = SavedWord(
                     canonicalEntryID: existing.canonicalEntryID,
                     surface: preferredSurface,
-                    sourceNoteIDs: mergedSourceNoteIDs
+                    sourceNoteIDs: mergedSourceNoteIDs,
+                    wordListIDs: mergedWordListIDs
                 )
                 mergedByEntryID[entry.canonicalEntryID] = existing
                 continue

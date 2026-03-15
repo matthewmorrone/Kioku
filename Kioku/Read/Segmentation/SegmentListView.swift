@@ -3,6 +3,8 @@ import SwiftUI
 // Renders the segment-management screen for all current paste-area segments.
 struct SegmentListView: View {
     @Environment(\.dismiss) private var dismiss
+    // Injected so that save/unsave operations trigger a refresh in WordsView without duplicating storage logic.
+    @EnvironmentObject private var wordsStore: WordsStore
 
     let text: String
     let edges: [LatticeEdge]
@@ -594,9 +596,10 @@ struct SegmentListView: View {
         SavedWordStorageMigrator.loadSavedWords(storageKey: savedWordsStorageKey)
     }
 
-    // Persists saved-word entries including optional source note references.
+    // Persists saved-word entries including optional source note references, then notifies WordsStore so WordsView reflects the change.
     private func persistSavedWordEntriesToStorage(_ entries: [SavedWord]) {
         SavedWordStorageMigrator.persist(entries: entries, storageKey: savedWordsStorageKey)
+        wordsStore.reload()
     }
 
     // Resolves star state from hydrated canonical ids to keep row rendering non-blocking.

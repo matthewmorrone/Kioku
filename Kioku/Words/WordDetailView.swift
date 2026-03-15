@@ -1,31 +1,32 @@
 import SwiftUI
 
 // Renders the full-screen word detail screen shown from Words list rows.
-// Major sections: title/header and list membership content.
+// Major sections: title/header, word list membership.
 struct WordDetailView: View {
     let word: SavedWord
-    let membershipTitles: [String]
+    let lists: [WordList]
+
+    // Resolves the names of lists this word belongs to for display.
+    private var membershipNames: [String] {
+        let memberLists = lists.filter { word.wordListIDs.contains($0.id) }
+        return memberLists.map(\.name).sorted()
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                /*
-                if membershipTitles.isEmpty {
-                    Section("Lists") {
+                Section("Lists") {
+                    if membershipNames.isEmpty {
                         Text("Unsorted")
                             .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Section("Lists") {
-                        ForEach(membershipTitles, id: \.self) { listTitle in
-                            Text(listTitle)
+                    } else {
+                        ForEach(membershipNames, id: \.self) { name in
+                            Text(name)
                         }
                     }
                 }
-                */
             }
             .navigationTitle(word.surface)
-            .navigationSubtitle(word.surface)
             .navigationBarTitleDisplayMode(.inline)
         }
     }
