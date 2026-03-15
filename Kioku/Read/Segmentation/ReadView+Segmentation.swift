@@ -330,14 +330,12 @@ extension ReadView {
                         continue
                     }
 
-                    candidateGlosses.append(
-                        (
-                            gloss: trimmedGloss,
-                            entryIndex: entryIndex,
-                            senseIndex: senseIndex,
-                            glossIndex: glossIndex
-                        )
-                    )
+                    candidateGlosses.append((
+                        gloss: trimmedGloss,
+                        entryIndex: entryIndex,
+                        senseIndex: senseIndex,
+                        glossIndex: glossIndex
+                    ))
                 }
             }
         }

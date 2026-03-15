@@ -248,7 +248,7 @@ final class Segmenter {
     // Determines how far an unknown segment should extend by grouping contiguous same-script runs.
     private func unknownFallbackRange(in text: String, startingAt index: String.Index) -> Range<String.Index> {
         let firstCharacter = text[index]
-        guard let group = unknownGrouping(for: firstCharacter) else {
+        guard let group = ScriptClassifier.unknownGrouping(for: firstCharacter) else {
             let nextIndex = text.index(after: index)
             return index..<nextIndex
         }
@@ -262,7 +262,7 @@ final class Segmenter {
                 break
             }
 
-            if unknownGrouping(for: character) != group {
+            if ScriptClassifier.unknownGrouping(for: character) != group {
                 break
             }
 
@@ -272,36 +272,6 @@ final class Segmenter {
 
         return index..<currentIndex
     }
-
-    // Classifies unknown-segment script groups used for simple fallback segment coalescing.
-    private func unknownGrouping(for character: Character) -> String? {
-        guard let scalar = character.unicodeScalars.first else {
-            return nil
-        }
-
-        let value = scalar.value
-        if (0x3040...0x309F).contains(value) {
-            return "hiragana"
-        }
-
-        if (0x30A0...0x30FF).contains(value) {
-            return "katakana"
-        }
-
-        if (0x0030...0x0039).contains(value) || (0xFF10...0xFF19).contains(value) {
-            return "number"
-        }
-
-        if (0x0041...0x005A).contains(value) ||
-           (0x0061...0x007A).contains(value) ||
-           (0xFF21...0xFF3A).contains(value) ||
-           (0xFF41...0xFF5A).contains(value) {
-            return "latin"
-        }
-
-        return nil
-    }
-
     // Applies unknown penalty to non-dictionary non-boundary edges so punctuation separators are not over-penalized.
     private func shouldApplyUnknownSegmentPenalty(_ edge: LatticeEdge) -> Bool {
         if isDictionaryEdge(edge) {

@@ -1,3 +1,12 @@
+
+× SegmentListView.swift:30-33
+× Lattice.swift: 182-219
+× ScriptClassifier.swift:206-254
+× Segmenter.swift:276-303
+× ReadView+Furigana.swift:444-453
+× ReadView+KunyomiHeuristics.swift:44-55
+× ReadView+KunyomiHeuristics.swift:78-87
+
 ---
 
 # 1) Top-Level Navigation

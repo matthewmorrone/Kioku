@@ -1,5 +1,24 @@
 import SwiftUI
 
+private let kunyomiOverridesBySurface: [String: String] = {
+    let bundle = Bundle.main
+    let resourceName = "kunyomi_overrides"
+    let fileExtension = "json"
+
+    guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
+        print("Missing kunyomi overrides file: \(resourceName).\(fileExtension)")
+        return [:]
+    }
+
+    do {
+        let data = try Data(contentsOf: fileURL)
+        return try JSONDecoder().decode([String: String].self, from: data)
+    } catch {
+        print("Failed to decode kunyomi overrides file: \(error)")
+        return [:]
+    }
+}()
+
 // Hosts temporary kunyomi preference heuristics used by read-mode furigana selection.
 extension ReadView {
     // Detects single-kanji segments where kunyomi should be preferred for reader-friendly isolation defaults.
@@ -42,19 +61,11 @@ extension ReadView {
 
     // Provides deterministic kunyomi picks for high-frequency single-kanji ambiguities.
     func preferredStandaloneKunyomiOverride(for surface: String) -> String? {
-        let overrides: [String: String] = [
-            "月": "つき",
-            "星": "ほし",
-            "日": "ひ",
-            "中": "なか",
-            "私": "わたし",
-            "一人": "ひとり",
-            "二人": "ふたり",
-        ]
-        return overrides[surface]
+        return kunyomiOverridesBySurface[surface]
     }
 
     // Scores readings so standalone-kanji segments can prefer kunyomi-like options.
+    #warning("Legacy kunyomiPreferenceScore heuristic must be removed or made data-driven before enabling Viterbi ranking.")
     func kunyomiPreferenceScore(_ reading: String) -> Int {
         let scalarValues = reading.unicodeScalars.map(\.value)
         let hasSmallKana = scalarValues.contains { value in

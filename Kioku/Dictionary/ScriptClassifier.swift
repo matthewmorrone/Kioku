@@ -1,6 +1,8 @@
 import Foundation
 
 enum ScriptClassifier {
+    private static let voicedKanaMap = loadVoicedKanaMap()
+
     // Determines whether text is composed only of kana code points and prolonged sound marks.
     static func isPureKana(_ text: String) -> Bool {
         guard !text.isEmpty else { return false }
@@ -130,6 +132,35 @@ enum ScriptClassifier {
         return false
     }
 
+    // Classifies a character into coarse script groups used for unknown-segment fallback coalescing.
+    static func unknownGrouping(for character: Character) -> String? {
+        guard let scalar = character.unicodeScalars.first else {
+            return nil
+        }
+
+        let value = scalar.value
+        if (0x3040...0x309F).contains(value) {
+            return "hiragana"
+        }
+
+        if (0x30A0...0x30FF).contains(value) {
+            return "katakana"
+        }
+
+        if (0x0030...0x0039).contains(value) || (0xFF10...0xFF19).contains(value) {
+            return "number"
+        }
+
+        if (0x0041...0x005A).contains(value) ||
+           (0x0061...0x007A).contains(value) ||
+           (0xFF21...0xFF3A).contains(value) ||
+           (0xFF41...0xFF5A).contains(value) {
+            return "latin"
+        }
+
+        return nil
+    }
+
     // Expands Japanese iteration-mark variants into concrete surfaces used by lookup and deinflection.
     static func iterationExpandedCandidates(for surface: String) -> Set<String> {
         guard surface.isEmpty == false else {
@@ -205,51 +236,46 @@ enum ScriptClassifier {
 
     // Maps one kana scalar to its dakuten counterpart where a voiced pair exists.
     private static func voicedKanaScalar(for scalar: UnicodeScalar) -> UnicodeScalar? {
-        switch scalar.value {
-        case 0x3046: return UnicodeScalar(0x3094) // う -> ゔ
-        case 0x304B: return UnicodeScalar(0x304C) // か -> が
-        case 0x304D: return UnicodeScalar(0x304E) // き -> ぎ
-        case 0x304F: return UnicodeScalar(0x3050) // く -> ぐ
-        case 0x3051: return UnicodeScalar(0x3052) // け -> げ
-        case 0x3053: return UnicodeScalar(0x3054) // こ -> ご
-        case 0x3055: return UnicodeScalar(0x3056) // さ -> ざ
-        case 0x3057: return UnicodeScalar(0x3058) // し -> じ
-        case 0x3059: return UnicodeScalar(0x305A) // す -> ず
-        case 0x305B: return UnicodeScalar(0x305C) // せ -> ぜ
-        case 0x305D: return UnicodeScalar(0x305E) // そ -> ぞ
-        case 0x305F: return UnicodeScalar(0x3060) // た -> だ
-        case 0x3061: return UnicodeScalar(0x3062) // ち -> ぢ
-        case 0x3064: return UnicodeScalar(0x3065) // つ -> づ
-        case 0x3066: return UnicodeScalar(0x3067) // て -> で
-        case 0x3068: return UnicodeScalar(0x3069) // と -> ど
-        case 0x306F: return UnicodeScalar(0x3070) // は -> ば
-        case 0x3072: return UnicodeScalar(0x3073) // ひ -> び
-        case 0x3075: return UnicodeScalar(0x3076) // ふ -> ぶ
-        case 0x3078: return UnicodeScalar(0x3079) // へ -> べ
-        case 0x307B: return UnicodeScalar(0x307C) // ほ -> ぼ
-        case 0x30A6: return UnicodeScalar(0x30F4) // ウ -> ヴ
-        case 0x30AB: return UnicodeScalar(0x30AC) // カ -> ガ
-        case 0x30AD: return UnicodeScalar(0x30AE) // キ -> ギ
-        case 0x30AF: return UnicodeScalar(0x30B0) // ク -> グ
-        case 0x30B1: return UnicodeScalar(0x30B2) // ケ -> ゲ
-        case 0x30B3: return UnicodeScalar(0x30B4) // コ -> ゴ
-        case 0x30B5: return UnicodeScalar(0x30B6) // サ -> ザ
-        case 0x30B7: return UnicodeScalar(0x30B8) // シ -> ジ
-        case 0x30B9: return UnicodeScalar(0x30BA) // ス -> ズ
-        case 0x30BB: return UnicodeScalar(0x30BC) // セ -> ゼ
-        case 0x30BD: return UnicodeScalar(0x30BE) // ソ -> ゾ
-        case 0x30BF: return UnicodeScalar(0x30C0) // タ -> ダ
-        case 0x30C1: return UnicodeScalar(0x30C2) // チ -> ヂ
-        case 0x30C4: return UnicodeScalar(0x30C5) // ツ -> ヅ
-        case 0x30C6: return UnicodeScalar(0x30C7) // テ -> デ
-        case 0x30C8: return UnicodeScalar(0x30C9) // ト -> ド
-        case 0x30CF: return UnicodeScalar(0x30D0) // ハ -> バ
-        case 0x30D2: return UnicodeScalar(0x30D3) // ヒ -> ビ
-        case 0x30D5: return UnicodeScalar(0x30D6) // フ -> ブ
-        case 0x30D8: return UnicodeScalar(0x30D9) // ヘ -> ベ
-        case 0x30DB: return UnicodeScalar(0x30DC) // ホ -> ボ
-        default:
+        guard let mappedValue = voicedKanaMap[scalar.value] else {
             return nil
+        }
+
+        return UnicodeScalar(mappedValue)
+    }
+
+    // Loads voiced kana scalar mappings from bundled JSON to keep iteration-mark expansion data-driven.
+    private static func loadVoicedKanaMap(
+        bundle: Bundle = .main,
+        resourceName: String = "voiced_kana_pairs",
+        fileExtension: String = "json"
+    ) -> [UInt32: UInt32] {
+        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
+            print("Missing voiced kana map file: \(resourceName).\(fileExtension)")
+            return [:]
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let charMap = try JSONDecoder().decode([String: String].self, from: data)
+            var scalarMap: [UInt32: UInt32] = [:]
+
+            for (source, target) in charMap {
+                guard
+                    source.unicodeScalars.count == 1,
+                    target.unicodeScalars.count == 1,
+                    let sourceScalar = source.unicodeScalars.first,
+                    let targetScalar = target.unicodeScalars.first
+                else {
+                    continue
+                }
+
+                scalarMap[sourceScalar.value] = targetScalar.value
+            }
+
+            return scalarMap
+        } catch {
+            print("Failed to decode voiced kana map file: \(error)")
+            return [:]
         }
     }
 }

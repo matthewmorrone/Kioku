@@ -182,27 +182,6 @@ final class LexiconTests: XCTestCase {
         XCTAssertTrue(characters.contains("食"))
     }
 
-    // Verifies lattice neighbor lookup returns nearby nodes after resolve populates an in-memory lattice.
-    func testLatticeNeighborsReturnsReachableNodes() throws {
-        let surface = try lexiconSurface()
-
-        _ = surface.resolve(surface: "食べた")
-        let neighbors = surface.latticeNeighbors(nodeId: 0, distance: 1)
-
-        XCTAssertFalse(neighbors.contains(0))
-    }
-
-    // Verifies node components include at least base lemma information for a resolved node.
-    func testNodeComponentsReturnsMorphologicalComponents() throws {
-        let surface = try lexiconSurface()
-
-        _ = surface.resolve(surface: "食べさせられた")
-        let components = surface.nodeComponents(nodeId: 0)
-
-        XCTAssertFalse(components.isEmpty)
-        XCTAssertFalse(components[0].lemma.isEmpty)
-    }
-
     // Verifies inflection expansion returns at least lemma and common past form for an ichidan verb.
     func testExpandInflectionReturnsGeneratedForms() throws {
         let surface = try lexiconSurface()
@@ -247,12 +226,13 @@ private enum SharedLexiconSurface {
         let baseResources = try TestReadResources.shared()
         let groupedRules = try TestReadResources.groupedDeinflectionRules()
         let readingBySurface = try baseResources.dictionaryStore.fetchPreferredReadingsBySurface()
+        let deinflector = Deinflector(groupedRules: groupedRules, trie: DictionaryTrie())
 
         let lexicalSurface = Lexicon(
             dictionaryStore: baseResources.dictionaryStore,
             segmenter: baseResources.segmenter,
-            readingBySurface: readingBySurface,
-            groupedRules: groupedRules
+            deinflector: deinflector,
+            readingBySurface: readingBySurface
         )
 
         cached = lexicalSurface

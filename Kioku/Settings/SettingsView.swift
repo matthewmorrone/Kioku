@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var isShowingExporter = false
     @State private var isShowingImporter = false
     @State private var isShowingImportModeMenu = false
+    @State private var pendingImportFileURL: URL?
     @State private var selectedImportMode: NotesImportMode = .replaceAll
     @State private var isShowingTransferAlert = false
     @State private var transferAlertTitle = ""
@@ -88,7 +89,7 @@ struct SettingsView: View {
                     }
                     // Imports a JSON export and replaces the current notes collection.
                     Button {
-                        isShowingImportModeMenu = true
+                        isShowingImporter = true
                     } label: {
                         Label("Import", systemImage: "square.and.arrow.down")
                     }
@@ -112,30 +113,41 @@ struct SettingsView: View {
         ) { result in
             handleImportResult(result)
         }
-        .confirmationDialog(
-            "Import Notes",
+        .sheet(
             isPresented: $isShowingImportModeMenu,
-            titleVisibility: .visible
+            onDismiss: {
+                pendingImportFileURL = nil
+            }
         ) {
-            Button(NotesImportMode.replaceAll.title) {
-                selectedImportMode = .replaceAll
-                isShowingImporter = true
+            NavigationStack {
+                List {
+                    ForEach(NotesImportMode.allCases, id: \.self) { mode in
+                        Button {
+                            selectedImportMode = mode
+                            importNotes(from: mode)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(mode.title)
+                                Text(mode.detail)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .navigationTitle("Import Notes")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Cancel") {
+                            pendingImportFileURL = nil
+                            isShowingImportModeMenu = false
+                        }
+                    }
+                }
             }
-            Button(NotesImportMode.overwriteByID.title) {
-                selectedImportMode = .overwriteByID
-                isShowingImporter = true
-            }
-            Button(NotesImportMode.overwriteByTitle.title) {
-                selectedImportMode = .overwriteByTitle
-                isShowingImporter = true
-            }
-            Button(NotesImportMode.append.title) {
-                selectedImportMode = .append
-                isShowingImporter = true
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Choose how imported notes should be merged with your existing notes.")
         }
         .alert(transferAlertTitle, isPresented: $isShowingTransferAlert) {
             Button("OK", role: .cancel) {}
@@ -169,14 +181,20 @@ struct SettingsView: View {
                 return
             }
 
-            importNotes(from: fileURL)
+            pendingImportFileURL = fileURL
+            isShowingImportModeMenu = true
         case .failure(let error):
             showTransferAlert(title: "Import Failed", message: error.localizedDescription)
         }
     }
 
-    // Reads an exported notes document and replaces the current notes store contents.
-    private func importNotes(from fileURL: URL) {
+    // Imports a previously selected file using one explicit merge mode from the import-mode menu.
+    private func importNotes(from mode: NotesImportMode) {
+        guard let fileURL = pendingImportFileURL else {
+            showTransferAlert(title: "Import Failed", message: "No file was selected.")
+            return
+        }
+
         let hasSecurityScope = fileURL.startAccessingSecurityScopedResource()
         defer {
             if hasSecurityScope {
@@ -186,12 +204,16 @@ struct SettingsView: View {
 
         do {
             let document = try NotesTransferDocument(contentsOf: fileURL)
-            notesStore.importTransferDocument(document, mode: selectedImportMode)
+            notesStore.importTransferDocument(document, mode: mode)
+            pendingImportFileURL = nil
+            isShowingImportModeMenu = false
             showTransferAlert(
                 title: "Import Complete",
-                message: "\(selectedImportMode.completionVerb) \(document.payload.notes.count) notes."
+                message: "\(mode.completionVerb) \(document.payload.notes.count) notes."
             )
         } catch {
+            pendingImportFileURL = nil
+            isShowingImportModeMenu = false
             showTransferAlert(title: "Import Failed", message: error.localizedDescription)
         }
     }

@@ -41,7 +41,7 @@ Example:
 
 ## resolve(surface)
 Description:
-Main reader lookup method. Converts surface form into lemma/reading candidates and returns ranked lexeme matches.
+Resolve one surface into lemma/reading candidates and return ranked lexeme matches.
 
 Example:
 - `resolve("食べた") -> [(lexeme: "食べる", score: 0.98)]`
@@ -109,20 +109,6 @@ Return unique kanji characters used across a lexeme's forms.
 Example:
 - `kanjiCharacters("lex_1376300") -> ["食"]`
 
-## latticeNeighbors(nodeId, distance)
-Description:
-Return lattice node ids reachable within N edges from the given node. Used to inspect nearby segmentation alternatives.
-
-Example:
-- `latticeNeighbors(nodeId: 42, distance: 1) -> [41, 43]`
-
-## nodeComponents(nodeId)
-Description:
-Return morphological components represented by a lattice node, including base lemma and auxiliaries.
-
-Example:
-- `nodeComponents(nodeId: 81) -> [(lemma: "食べる", role: "verb stem"), (lemma: "させる", role: "causative"), (lemma: "られる", role: "passive"), (lemma: "た", role: "past")]`
-
 ## expandInflection(lemma)
 Description:
 Generate valid inflected forms from a lemma using the same rule set as deinflection.
@@ -136,3 +122,8 @@ Return the grouped rule chain that derives lemma from surface, including compoun
 
 Example:
 - `inflectionChain("食べさせられた") -> ["causative", "passive", "past"]`
+
+## Removed APIs
+The following lattice-oriented methods were removed from `Lexicon` and are no longer part of this data surface:
+- `latticeNeighbors(nodeId, distance)`
+- `nodeComponents(nodeId)`
