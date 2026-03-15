@@ -11,6 +11,11 @@
 		E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE02F57BC070020F5C2 /* generate_db.py */; };
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
+		E4A100012F90000100AAA001 /* common_particles.json in Resources */ = {isa = PBXBuildFile; fileRef = E4A100112F90000100AAA001 /* common_particles.json */; };
+		E4A100022F90000100AAA001 /* lattice_auxiliary_lemmas.json in Resources */ = {isa = PBXBuildFile; fileRef = E4A100122F90000100AAA001 /* lattice_auxiliary_lemmas.json */; };
+		E4A100032F90000100AAA001 /* voiced_kana_pairs.json in Resources */ = {isa = PBXBuildFile; fileRef = E4A100132F90000100AAA001 /* voiced_kana_pairs.json */; };
+		E4A100042F90000100AAA001 /* kana_alignment_normalizations.json in Resources */ = {isa = PBXBuildFile; fileRef = E4A100142F90000100AAA001 /* kana_alignment_normalizations.json */; };
+		E4A100052F90000100AAA001 /* kunyomi_overrides.json in Resources */ = {isa = PBXBuildFile; fileRef = E4A100152F90000100AAA001 /* kunyomi_overrides.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,6 +43,11 @@
 		E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dictionary.sqlite; sourceTree = "<group>"; };
 		E32B0CE02F57BC070020F5C2 /* generate_db.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = generate_db.py; sourceTree = "<group>"; };
 		E32B0CE82F57BC070020F5C2 /* deinflection.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = deinflection.json; sourceTree = "<group>"; };
+		E4A100112F90000100AAA001 /* common_particles.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = common_particles.json; sourceTree = "<group>"; };
+		E4A100122F90000100AAA001 /* lattice_auxiliary_lemmas.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = lattice_auxiliary_lemmas.json; sourceTree = "<group>"; };
+		E4A100132F90000100AAA001 /* voiced_kana_pairs.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = voiced_kana_pairs.json; sourceTree = "<group>"; };
+		E4A100142F90000100AAA001 /* kana_alignment_normalizations.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = kana_alignment_normalizations.json; sourceTree = "<group>"; };
+		E4A100152F90000100AAA001 /* kunyomi_overrides.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = kunyomi_overrides.json; sourceTree = "<group>"; };
 		E32D09B42F638C1600788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -102,10 +112,15 @@
 		E32B0CE22F57BC070020F5C2 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				E4A100112F90000100AAA001 /* common_particles.json */,
 				E32B0CDE2F57BC070020F5C2 /* data_manifest.json */,
 				E32B0CE82F57BC070020F5C2 /* deinflection.json */,
 				E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */,
 				E32B0CE02F57BC070020F5C2 /* generate_db.py */,
+				E4A100142F90000100AAA001 /* kana_alignment_normalizations.json */,
+				E4A100152F90000100AAA001 /* kunyomi_overrides.json */,
+				E4A100122F90000100AAA001 /* lattice_auxiliary_lemmas.json */,
+				E4A100132F90000100AAA001 /* voiced_kana_pairs.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -242,10 +257,15 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E4A100012F90000100AAA001 /* common_particles.json in Resources */,
 				E32B0CE32F57BC070020F5C2 /* data_manifest.json in Resources */,
 				E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */,
 				E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */,
 				E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */,
+				E4A100042F90000100AAA001 /* kana_alignment_normalizations.json in Resources */,
+				E4A100052F90000100AAA001 /* kunyomi_overrides.json in Resources */,
+				E4A100022F90000100AAA001 /* lattice_auxiliary_lemmas.json in Resources */,
+				E4A100032F90000100AAA001 /* voiced_kana_pairs.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -27,10 +27,7 @@ struct SegmentListView: View {
     @State private var addAllFeedbackMessage: String?
     @State private var addAllFeedbackTask: Task<Void, Never>?
     private let savedWordsStorageKey = "kioku.words.v1"
-    private let commonParticles: Set<String> = [
-        "は", "が", "を", "に", "へ", "と", "で", "も", "の", "ね", "よ", "か", "な", "や", "ぞ", "さ", "わ",
-        "から", "まで", "より", "だけ", "ほど", "しか", "こそ", "でも", "なら", "ので", "のに", "し", "て", "って"
-    ]
+    private static let commonParticles = loadCommonParticles()
 
     var body: some View {
         NavigationStack {
@@ -310,7 +307,28 @@ struct SegmentListView: View {
     // Detects whether a segment surface is one of the common Japanese particles used for extraction filtering.
     private func isCommonParticle(_ surface: String) -> Bool {
         let normalizedSurface = normalizedSurfaceForFiltering(surface)
-        return commonParticles.contains(normalizedSurface)
+        return Self.commonParticles.contains(normalizedSurface)
+    }
+
+    // Loads common particle surfaces from bundled JSON so filtering rules stay data-driven.
+    private static func loadCommonParticles(
+        bundle: Bundle = .main,
+        resourceName: String = "common_particles",
+        fileExtension: String = "json"
+    ) -> Set<String> {
+        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
+            print("Missing common particles file: \(resourceName).\(fileExtension)")
+            return []
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let particles = try JSONDecoder().decode([String].self, from: data)
+            return Set(particles)
+        } catch {
+            print("Failed to decode common particles file: \(error)")
+            return []
+        }
     }
 
     // Normalizes a segment surface for stable duplicate and particle comparisons.

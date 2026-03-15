@@ -157,17 +157,15 @@ struct ContentView: View {
 
         let segmenter = Segmenter(trie: trie, deinflector: deinflector)
 
-        do {
-            lexiconDataSurface = try Lexicon(
+        if let deinflector {
+            lexiconDataSurface = Lexicon(
                 dictionaryStore: dictionaryStore,
                 segmenter: segmenter,
-                readingBySurface: readingBySurface,
-                bundle: .main,
-                resourceName: "deinflection",
-                fileExtension: "json"
+                deinflector: deinflector,
+                readingBySurface: readingBySurface
             )
-        } catch {
-            print("Lexicon data surface initialization failed: \(error)")
+        } else {
+            print("Lexicon data surface initialization failed: missing deinflector")
         }
 
         return (

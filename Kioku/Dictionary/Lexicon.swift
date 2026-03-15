@@ -4,55 +4,21 @@ import Foundation
 public final class Lexicon {
     private let dictionaryStore: DictionaryStore?
     private let segmenter: Segmenter
+    private let deinflector: Deinflector
     private let readingBySurface: [String: String]
-    private let groupedRules: [String: [DeinflectionRule]]
-    private let labeledRules: [(label: String, rule: DeinflectionRule)]
     private let maxDepth = 4
 
-    private var latticeNodesByID: [Int: (surface: String, lemma: String, startOffset: Int, endOffset: Int)] = [:]
-    private var latticeAdjacencyByNodeID: [Int: Set<Int>] = [:]
-
-    // Creates a lexical UI surface from already-initialized dictionary and segmentation dependencies.
+    // Creates a lexical UI surface from already-initialized dictionary, deinflection, and segmentation dependencies.
     init(
         dictionaryStore: DictionaryStore?,
         segmenter: Segmenter,
-        readingBySurface: [String: String],
-        groupedRules: [String: [DeinflectionRule]]
+        deinflector: Deinflector,
+        readingBySurface: [String: String]
     ) {
         self.dictionaryStore = dictionaryStore
         self.segmenter = segmenter
+        self.deinflector = deinflector
         self.readingBySurface = readingBySurface
-        self.groupedRules = groupedRules
-        self.labeledRules = groupedRules
-            .flatMap { label, rules in
-                rules.map { (label: label, rule: $0) }
-            }
-            .sorted { lhs, rhs in
-                lhs.rule.kanaIn.count > rhs.rule.kanaIn.count
-            }
-    }
-
-    // Creates a lexical UI surface by loading grouped deinflection rules from app resources.
-    convenience init(
-        dictionaryStore: DictionaryStore?,
-        segmenter: Segmenter,
-        readingBySurface: [String: String],
-        bundle: Bundle = .main,
-        resourceName: String = "deinflection",
-        fileExtension: String = "json"
-    ) throws {
-        let loadedRules = try Self.loadGroupedRules(
-            bundle: bundle,
-            resourceName: resourceName,
-            fileExtension: fileExtension
-        )
-
-        self.init(
-            dictionaryStore: dictionaryStore,
-            segmenter: segmenter,
-            readingBySurface: readingBySurface,
-            groupedRules: loadedRules
-        )
     }
 
     // Returns kana reading for one surface while preserving already-kana input unchanged.
@@ -92,7 +58,7 @@ public final class Lexicon {
             return []
         }
 
-        let pathsByLemma = deinflectionPaths(for: trimmedSurface)
+        let pathsByLemma = deinflector.deinflectionPaths(for: trimmedSurface)
         var admittedLemmas = pathsByLemma.keys.filter { candidate in
             segmenter.resolvesSurface(candidate)
         }
@@ -178,10 +144,8 @@ public final class Lexicon {
         return matchingEntries
     }
 
-    // Resolves one surface into ranked lexeme candidates and refreshes in-memory lattice node connectivity for UI inspection.
+    // Resolves one surface into ranked lexeme candidates.
     public func resolve(surface: String) -> [(lexeme: String, score: Double)] {
-        rebuildLatticeGraph(for: surface)
-
         let normalizedCandidates = normalize(surface: surface)
         var bestScoreByLexeme: [String: Double] = [:]
 
@@ -340,57 +304,6 @@ public final class Lexicon {
         return orderedCharacters
     }
 
-    // Returns lattice node IDs reachable within one undirected edge distance threshold from a seed node.
-    public func latticeNeighbors(nodeId: Int, distance: Int) -> [Int] {
-        guard distance > 0 else {
-            return []
-        }
-
-        guard latticeNodesByID[nodeId] != nil else {
-            return []
-        }
-
-        var visited = Set<Int>([nodeId])
-        var frontier: [Int] = [nodeId]
-
-        for _ in 0..<distance {
-            var nextFrontier: [Int] = []
-            for frontierNodeID in frontier {
-                let neighbors = latticeAdjacencyByNodeID[frontierNodeID] ?? []
-                for neighborID in neighbors where visited.contains(neighborID) == false {
-                    visited.insert(neighborID)
-                    nextFrontier.append(neighborID)
-                }
-            }
-            frontier = nextFrontier
-            if frontier.isEmpty {
-                break
-            }
-        }
-
-        visited.remove(nodeId)
-        return visited.sorted()
-    }
-
-    // Returns a lightweight morphological component list for one previously resolved lattice node.
-    public func nodeComponents(nodeId: Int) -> [(lemma: String, role: String)] {
-        guard let node = latticeNodesByID[nodeId] else {
-            return []
-        }
-
-        let chain = inflectionChain(surface: node.surface, targetLemma: node.lemma)
-        guard chain.isEmpty == false else {
-            return [(lemma: node.lemma, role: "base")]
-        }
-
-        var components: [(lemma: String, role: String)] = [(lemma: node.lemma, role: "verb stem")]
-        for chainItem in chain {
-            components.append((lemma: auxiliaryLemma(for: chainItem), role: chainItem))
-        }
-
-        return components
-    }
-
     // Expands one lemma into inflected forms by inverting grouped deinflection rules and validating results.
     public func expandInflection(_ lemma: String) -> [String] {
         let trimmedLemma = lemma.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -410,7 +323,7 @@ public final class Lexicon {
                 continue
             }
 
-            for labeledRule in labeledRules {
+            for labeledRule in deinflector.labeledRulesForExpansion() {
                 let rule = labeledRule.rule
                 guard item.surface.hasSuffix(rule.kanaOut) else {
                     continue
@@ -440,25 +353,7 @@ public final class Lexicon {
             return []
         }
 
-        return inflectionChain(surface: surface, targetLemma: bestLemma)
-    }
-
-    // Loads grouped deinflection rules from one resource file while preserving group names for chain reporting.
-    private static func loadGroupedRules(
-        bundle: Bundle,
-        resourceName: String,
-        fileExtension: String
-    ) throws -> [String: [DeinflectionRule]] {
-        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
-            throw NSError(
-                domain: "Lexicon",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Missing deinflection rules file: \(resourceName).\(fileExtension)"]
-            )
-        }
-
-        let fileData = try Data(contentsOf: fileURL)
-        return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: fileData)
+        return deinflector.inflectionChain(for: surface, targetLemma: bestLemma)
     }
 
     // Resolves dictionary entries for one surface using script-aware lookup mode selection.
@@ -515,76 +410,6 @@ public final class Lexicon {
         return currentReading
     }
 
-    // Builds all reachable deinflection traces so callers can derive both lemma candidates and rule chains.
-    private func deinflectionPaths(
-        for surface: String
-    ) -> [String: [(chain: [String], transitions: [(label: String, kanaIn: String, kanaOut: String)])]] {
-        var pathsBySurface: [String: [(chain: [String], transitions: [(label: String, kanaIn: String, kanaOut: String)])]] = [:]
-        var visited = Set<DeinflectionState>()
-        var queue: [(
-            surface: String,
-            grammar: String?,
-            depth: Int,
-            chain: [String],
-            transitions: [(label: String, kanaIn: String, kanaOut: String)]
-        )] = [
-            (surface: surface, grammar: nil, depth: 0, chain: [], transitions: [])
-        ]
-
-        var cursor = 0
-        while cursor < queue.count {
-            let item = queue[cursor]
-            cursor += 1
-
-            let state = DeinflectionState(surface: item.surface, grammar: item.grammar, depth: item.depth)
-            if visited.contains(state) {
-                continue
-            }
-
-            visited.insert(state)
-            pathsBySurface[item.surface, default: []].append((chain: item.chain, transitions: item.transitions))
-
-            if item.depth >= maxDepth {
-                continue
-            }
-
-            for labeledRule in labeledRules {
-                let rule = labeledRule.rule
-                if item.surface.hasSuffix(rule.kanaIn) == false {
-                    continue
-                }
-
-                if let currentGrammar = item.grammar,
-                   rule.rulesIn.contains(currentGrammar) == false {
-                    continue
-                }
-
-                let stem = item.surface.dropLast(rule.kanaIn.count)
-                let candidateSurface = String(stem) + rule.kanaOut
-                let chainItem = normalizedRuleLabel(labeledRule.label)
-
-                for nextGrammar in rule.rulesOut {
-                    let nextChain = item.chain + [chainItem]
-                    let nextTransitions = item.transitions + [
-                        (label: chainItem, kanaIn: rule.kanaIn, kanaOut: rule.kanaOut)
-                    ]
-
-                    queue.append(
-                        (
-                            surface: candidateSurface,
-                            grammar: nextGrammar,
-                            depth: item.depth + 1,
-                            chain: nextChain,
-                            transitions: nextTransitions
-                        )
-                    )
-                }
-            }
-        }
-
-        return pathsBySurface
-    }
-
     // Picks the shortest available deinflection depth for one candidate lemma.
     private func shortestDepth(
         for lemma: String,
@@ -602,25 +427,11 @@ public final class Lexicon {
         for surface: String,
         targetLemma: String
     ) -> [(label: String, kanaIn: String, kanaOut: String)]? {
-        let paths = deinflectionPaths(for: surface)[targetLemma] ?? []
-        guard paths.isEmpty == false else {
-            return nil
-        }
-
-        let bestPath = paths.min { lhs, rhs in
-            if lhs.chain.count != rhs.chain.count {
-                return lhs.chain.count < rhs.chain.count
-            }
-
-            return lhs.chain.joined(separator: ",") < rhs.chain.joined(separator: ",")
-        }
-
-        return bestPath?.transitions
+        deinflector.bestTransitions(for: surface, targetLemma: targetLemma)
     }
 
     // Returns the preferred chain for one optional target lemma using shortest-path tie breaking.
     private func inflectionChain(surface: String, targetLemma: String?) -> [String] {
-        let pathsByLemma = deinflectionPaths(for: surface)
         let selectedLemma: String
 
         if let targetLemma {
@@ -630,146 +441,7 @@ public final class Lexicon {
         } else {
             return []
         }
-
-        let paths = pathsByLemma[selectedLemma] ?? []
-        guard paths.isEmpty == false else {
-            return []
-        }
-
-        let bestPath = paths.min { lhs, rhs in
-            if lhs.chain.count != rhs.chain.count {
-                return lhs.chain.count < rhs.chain.count
-            }
-
-            return lhs.chain.joined(separator: ",") < rhs.chain.joined(separator: ",")
-        }
-
-        return bestPath?.chain ?? []
-    }
-
-    // Normalizes one grouped-rule label from JSON key format to displayable inflection term.
-    private func normalizedRuleLabel(_ label: String) -> String {
-        if label.hasSuffix("Forms") {
-            return splitCamelCase(String(label.dropLast(5))).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        return splitCamelCase(label).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // Splits camel-cased tokens into lowercase space-delimited words for human-readable chain labels.
-    private func splitCamelCase(_ text: String) -> String {
-        guard text.isEmpty == false else {
-            return text
-        }
-
-        var output = ""
-        for character in text {
-            if character.isUppercase {
-                output.append(" ")
-                output.append(character.lowercased())
-            } else {
-                output.append(character)
-            }
-        }
-
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // Builds in-memory lattice node IDs and adjacency so nearby alternatives can be inspected by UI code.
-    private func rebuildLatticeGraph(for text: String) {
-        let latticeEdges = segmenter.longestMatchResult(for: text).latticeEdges
-
-        let sortedEdges = latticeEdges.sorted { lhs, rhs in
-            let lhsRange = NSRange(lhs.start..<lhs.end, in: text)
-            let rhsRange = NSRange(rhs.start..<rhs.end, in: text)
-
-            if lhsRange.location != rhsRange.location {
-                return lhsRange.location < rhsRange.location
-            }
-
-            if lhsRange.length != rhsRange.length {
-                return lhsRange.length > rhsRange.length
-            }
-
-            if lhs.surface != rhs.surface {
-                return lhs.surface < rhs.surface
-            }
-
-            return lhs.lemma < rhs.lemma
-        }
-
-        var builtNodes: [Int: (surface: String, lemma: String, startOffset: Int, endOffset: Int)] = [:]
-        for (index, edge) in sortedEdges.enumerated() {
-            let range = NSRange(edge.start..<edge.end, in: text)
-            builtNodes[index] = (
-                surface: edge.surface,
-                lemma: edge.lemma,
-                startOffset: range.location,
-                endOffset: range.location + range.length
-            )
-        }
-
-        var adjacency: [Int: Set<Int>] = [:]
-        let nodeIDs = builtNodes.keys.sorted()
-
-        for lhsNodeID in nodeIDs {
-            guard let lhsNode = builtNodes[lhsNodeID] else {
-                continue
-            }
-
-            for rhsNodeID in nodeIDs where rhsNodeID != lhsNodeID {
-                guard let rhsNode = builtNodes[rhsNodeID] else {
-                    continue
-                }
-
-                let isAdjacent = lhsNode.endOffset == rhsNode.startOffset || rhsNode.endOffset == lhsNode.startOffset
-                if isAdjacent {
-                    adjacency[lhsNodeID, default: []].insert(rhsNodeID)
-                }
-            }
-        }
-
-        latticeNodesByID = builtNodes
-        latticeAdjacencyByNodeID = adjacency
-    }
-
-    // Maps one chain label to a canonical auxiliary lemma hint for node-component presentation.
-    private func auxiliaryLemma(for chainLabel: String) -> String {
-        let lowercaseLabel = chainLabel.lowercased()
-
-        if lowercaseLabel.contains("causative") {
-            return "させる"
-        }
-
-        if lowercaseLabel.contains("passive") || lowercaseLabel.contains("potential") {
-            return "られる"
-        }
-
-        if lowercaseLabel.contains("past") {
-            return "た"
-        }
-
-        if lowercaseLabel.contains("negative") {
-            return "ない"
-        }
-
-        if lowercaseLabel.contains("polite") {
-            return "ます"
-        }
-
-        if lowercaseLabel.contains("desire") {
-            return "たい"
-        }
-
-        if lowercaseLabel.contains("progressive") {
-            return "いる"
-        }
-
-        if lowercaseLabel.contains("te") {
-            return "て"
-        }
-
-        return chainLabel
+        return deinflector.inflectionChain(for: surface, targetLemma: selectedLemma)
     }
 
     // Parses stable lexeme ID text to numeric dictionary entry ID.

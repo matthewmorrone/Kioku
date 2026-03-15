@@ -287,6 +287,11 @@ extension ReadView {
                     continue
                 }
 
+                // Reject per-run fallback readings that do not align with mixed-surface kana affixes.
+                if firstKanjiRunReading(in: segmentSurface, using: runReading) == nil {
+                    continue
+                }
+
                 annotations.append((reading: runReading, localStartOffset: run.start, localLength: run.end - run.start))
             }
         }
@@ -436,17 +441,6 @@ extension ReadView {
         return trimmedReading
     }
 
-    // Allows furigana alignment to treat equivalent kana spellings like ず/づ and じ/ぢ as interchangeable.
-    func normalizedKanaForFuriganaAlignment(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "づ", with: "ず")
-            .replacingOccurrences(of: "ぢ", with: "じ")
-            .replacingOccurrences(of: "ゔ", with: "ぶ")
-            .replacingOccurrences(of: "ヅ", with: "ズ")
-            .replacingOccurrences(of: "ヂ", with: "ジ")
-            .replacingOccurrences(of: "ヴ", with: "ブ")
-    }
-
     // Checks a reading prefix against surface okurigana using phonetic-normalized kana matching.
     func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
         guard reading.count >= surfacePrefix.count else {
@@ -454,7 +448,7 @@ extension ReadView {
         }
 
         let readingPrefix = String(reading.prefix(surfacePrefix.count))
-        return normalizedKanaForFuriganaAlignment(readingPrefix) == normalizedKanaForFuriganaAlignment(surfacePrefix)
+        return KanaNormalizer.normalizeForFuriganaAlignment(readingPrefix) == KanaNormalizer.normalizeForFuriganaAlignment(surfacePrefix)
     }
 
     // Checks a reading suffix against surface okurigana using phonetic-normalized kana matching.
@@ -464,7 +458,7 @@ extension ReadView {
         }
 
         let readingSuffix = String(reading.suffix(surfaceSuffix.count))
-        return normalizedKanaForFuriganaAlignment(readingSuffix) == normalizedKanaForFuriganaAlignment(surfaceSuffix)
+        return KanaNormalizer.normalizeForFuriganaAlignment(readingSuffix) == KanaNormalizer.normalizeForFuriganaAlignment(surfaceSuffix)
     }
 
     // Looks up a segment reading and caches it for subsequent furigana rendering passes.

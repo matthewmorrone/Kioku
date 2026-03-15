@@ -4,6 +4,7 @@ import Foundation
 final class Deinflector {
 
     private let rules: [DeinflectionRule]
+    private let labeledRules: [(label: String, rule: DeinflectionRule)]
     private let trie: DictionaryTrie
     private let maxDepth = 4
 
@@ -12,15 +13,48 @@ final class Deinflector {
         self.rules = rules.sorted { lhs, rhs in
             lhs.kanaIn.count > rhs.kanaIn.count
         }
+        self.labeledRules = self.rules.map { rule in
+            (label: "rule", rule: rule)
+        }
         self.trie = trie
+    }
+
+    // Stores grouped deinflection rules while preserving group labels used for chain reporting.
+    init(groupedRules: [String: [DeinflectionRule]], trie: DictionaryTrie) {
+        let expandedLabeledRules = groupedRules
+            .flatMap { label, grouped in
+                grouped.map { rule in
+                    (label: label, rule: rule)
+                }
+            }
+            .sorted { lhs, rhs in
+                lhs.rule.kanaIn.count > rhs.rule.kanaIn.count
+            }
+
+        self.labeledRules = expandedLabeledRules
+        self.rules = expandedLabeledRules.map { labeledRule in
+            labeledRule.rule
+        }
+        self.trie = trie
+    }
+
+    // Loads grouped rules from JSON data while preserving rule-group labels.
+    static func loadGroupedRules(from data: Data) throws -> [String: [DeinflectionRule]] {
+        try JSONDecoder().decode([String: [DeinflectionRule]].self, from: data)
     }
 
     // Loads grouped rules from JSON data and flattens them into a linear rule list.
     static func loadRules(from data: Data) throws -> [DeinflectionRule] {
-        let groupedRules = try JSONDecoder().decode([String: [DeinflectionRule]].self, from: data)
+        let groupedRules = try loadGroupedRules(from: data)
         return groupedRules.values.flatMap { groupRules in
             groupRules
         }
+    }
+
+    // Loads grouped rules from a JSON file URL while preserving group labels.
+    static func loadGroupedRules(from fileURL: URL) throws -> [String: [DeinflectionRule]] {
+        let data = try Data(contentsOf: fileURL)
+        return try loadGroupedRules(from: data)
     }
 
     // Loads grouped rules from a JSON file URL and flattens them into a linear rule list.
@@ -46,10 +80,27 @@ final class Deinflector {
         return try loadRules(from: fileURL)
     }
 
+    // Loads grouped rules from a JSON file in the provided app bundle while preserving labels.
+    static func loadGroupedRules(
+        bundle: Bundle = .main,
+        resourceName: String = "deinflection",
+        fileExtension: String = "json"
+    ) throws -> [String: [DeinflectionRule]] {
+        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
+            throw NSError(
+                domain: "Deinflector",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Missing deinflection rules file: \(resourceName).\(fileExtension)"]
+            )
+        }
+
+        return try loadGroupedRules(from: fileURL)
+    }
+
     // Builds a deinflector directly from a grouped-rule JSON file.
     convenience init(jsonFileURL: URL, trie: DictionaryTrie) throws {
-        let rules = try Self.loadRules(from: jsonFileURL)
-        self.init(rules: rules, trie: trie)
+        let groupedRules = try Self.loadGroupedRules(from: jsonFileURL)
+        self.init(groupedRules: groupedRules, trie: trie)
     }
 
     // Builds a deinflector from grouped-rule JSON in the app bundle.
@@ -59,8 +110,122 @@ final class Deinflector {
         resourceName: String = "deinflection",
         fileExtension: String = "json"
     ) throws {
-        let rules = try Self.loadRules(bundle: bundle, resourceName: resourceName, fileExtension: fileExtension)
-        self.init(rules: rules, trie: trie)
+        let groupedRules = try Self.loadGroupedRules(bundle: bundle, resourceName: resourceName, fileExtension: fileExtension)
+        self.init(groupedRules: groupedRules, trie: trie)
+    }
+
+    // Returns ordered labeled rules so callers can perform inflection inversion without reloading rule resources.
+    func labeledRulesForExpansion() -> [(label: String, rule: DeinflectionRule)] {
+        labeledRules
+    }
+
+    // Builds all reachable deinflection traces so callers can derive both lemma candidates and grouped-rule chains.
+    func deinflectionPaths(
+        for surface: String
+    ) -> [String: [(chain: [String], transitions: [(label: String, kanaIn: String, kanaOut: String)])]] {
+        var pathsBySurface: [String: [(chain: [String], transitions: [(label: String, kanaIn: String, kanaOut: String)])]] = [:]
+        var visited = Set<DeinflectionState>()
+        var queue: [(
+            surface: String,
+            grammar: String?,
+            depth: Int,
+            chain: [String],
+            transitions: [(label: String, kanaIn: String, kanaOut: String)]
+        )] = [
+            (surface: surface, grammar: nil, depth: 0, chain: [], transitions: [])
+        ]
+
+        var cursor = 0
+        while cursor < queue.count {
+            let item = queue[cursor]
+            cursor += 1
+
+            let state = DeinflectionState(surface: item.surface, grammar: item.grammar, depth: item.depth)
+            if visited.contains(state) {
+                continue
+            }
+
+            visited.insert(state)
+            pathsBySurface[item.surface, default: []].append((chain: item.chain, transitions: item.transitions))
+
+            if item.depth >= maxDepth {
+                continue
+            }
+
+            for labeledRule in labeledRules {
+                let rule = labeledRule.rule
+                if item.surface.hasSuffix(rule.kanaIn) == false {
+                    continue
+                }
+
+                if let currentGrammar = item.grammar,
+                   rule.rulesIn.contains(currentGrammar) == false {
+                    continue
+                }
+
+                let stem = item.surface.dropLast(rule.kanaIn.count)
+                let candidateSurface = String(stem) + rule.kanaOut
+                let chainItem = normalizedRuleLabel(labeledRule.label)
+
+                for nextGrammar in rule.rulesOut {
+                    let nextChain = item.chain + [chainItem]
+                    let nextTransitions = item.transitions + [
+                        (label: chainItem, kanaIn: rule.kanaIn, kanaOut: rule.kanaOut)
+                    ]
+
+                    queue.append(
+                        (
+                            surface: candidateSurface,
+                            grammar: nextGrammar,
+                            depth: item.depth + 1,
+                            chain: nextChain,
+                            transitions: nextTransitions
+                        )
+                    )
+                }
+            }
+        }
+
+        return pathsBySurface
+    }
+
+    // Picks transitions for one surface-to-lemma path so reading projection can preserve inflection morphology.
+    func bestTransitions(
+        for surface: String,
+        targetLemma: String
+    ) -> [(label: String, kanaIn: String, kanaOut: String)]? {
+        let paths = deinflectionPaths(for: surface)[targetLemma] ?? []
+        guard paths.isEmpty == false else {
+            return nil
+        }
+
+        let bestPath = paths.min { lhs, rhs in
+            if lhs.chain.count != rhs.chain.count {
+                return lhs.chain.count < rhs.chain.count
+            }
+
+            return lhs.chain.joined(separator: ",") < rhs.chain.joined(separator: ",")
+        }
+
+        return bestPath?.transitions
+    }
+
+    // Picks grouped-rule labels for one surface-to-lemma path using shortest-path tie breaking.
+    func inflectionChain(for surface: String, targetLemma: String) -> [String] {
+        let paths = deinflectionPaths(for: surface)[targetLemma] ?? []
+        guard paths.isEmpty == false else {
+            return []
+        }
+
+        let bestPath = paths.min { lhs, rhs in
+            if lhs.chain.count != rhs.chain.count {
+                return lhs.chain.count < rhs.chain.count
+            }
+
+            return lhs.chain.joined(separator: ",") < rhs.chain.joined(separator: ",")
+        }
+
+        return bestPath?.chain ?? []
     }
 
     // Performs BFS over deinflection states to produce candidate dictionary surfaces.
@@ -195,5 +360,33 @@ final class Deinflector {
         }
 
         return String(String.UnicodeScalarView(convertedScalars))
+    }
+
+    // Normalizes one grouped-rule label from JSON key format to displayable inflection term.
+    private func normalizedRuleLabel(_ label: String) -> String {
+        if label.hasSuffix("Forms") {
+            return splitCamelCase(String(label.dropLast(5))).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return splitCamelCase(label).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Splits camel-cased tokens into lowercase space-delimited words for human-readable chain labels.
+    private func splitCamelCase(_ text: String) -> String {
+        guard text.isEmpty == false else {
+            return text
+        }
+
+        var output = ""
+        for character in text {
+            if character.isUppercase {
+                output.append(" ")
+                output.append(character.lowercased())
+            } else {
+                output.append(character)
+            }
+        }
+
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

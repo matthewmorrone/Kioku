@@ -16,43 +16,25 @@ extension ReadView {
             return
         }
 
-        let sectionEdges = segmentationLatticeEdges
-            .filter { edge in
-                edge.start >= selectedStart && edge.end <= selectedEnd
+        let sectionEdges = Lattice.sectionEdges(
+            from: segmentationLatticeEdges,
+            in: text,
+            selectedStart: selectedStart,
+            selectedEnd: selectedEnd
+        )
+
+        let debugLines = Lattice.debugSectionLines(
+            sectionEdges: sectionEdges,
+            in: text,
+            sectionRange: selectedRange,
+            sectionSurface: selectedSurface,
+            resolutionSummary: { surface, lemma in
+                segmenter.debugResolutionSummary(for: surface, lemma: lemma)
             }
-            .sorted { lhs, rhs in
-                let lhsRange = NSRange(lhs.start..<lhs.end, in: text)
-                let rhsRange = NSRange(rhs.start..<rhs.end, in: text)
+        )
 
-                if lhsRange.location != rhsRange.location {
-                    return lhsRange.location < rhsRange.location
-                }
-
-                if lhsRange.length != rhsRange.length {
-                    return lhsRange.length > rhsRange.length
-                }
-
-                if lhs.surface != rhs.surface {
-                    return lhs.surface < rhs.surface
-                }
-
-                return lhs.lemma < rhs.lemma
-            }
-
-        print("LATTICE SECTION \(selectedRange.location)->\(selectedRange.location + selectedRange.length) \(selectedSurface)")
-        if sectionEdges.isEmpty {
-            print("  (no retained lattice edges inside selection)")
-            return
-        }
-
-        for edge in sectionEdges {
-            let edgeRange = NSRange(edge.start..<edge.end, in: text)
-            guard edgeRange.location != NSNotFound, edgeRange.length > 0 else {
-                continue
-            }
-
-            let resolutionSummary = segmenter.debugResolutionSummary(for: edge.surface, lemma: edge.lemma)
-            print("  \(edgeRange.location)->\(edgeRange.location + edgeRange.length) \(edge.surface) [lemma: \(edge.lemma)] [\(resolutionSummary)]")
+        for line in debugLines {
+            print(line)
         }
     }
 }

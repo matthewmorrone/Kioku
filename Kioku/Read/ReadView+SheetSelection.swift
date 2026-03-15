@@ -220,27 +220,11 @@ extension ReadView {
         let selectedStart = segmentationEdges[selectedBounds.lowerBound].start
         let selectedEnd = segmentationEdges[selectedBounds.upperBound].end
 
-        return segmentationLatticeEdges
-            .filter { edge in
-                edge.start >= selectedStart && edge.end <= selectedEnd
-            }
-            .sorted { lhs, rhs in
-                let lhsRange = NSRange(lhs.start..<lhs.end, in: text)
-                let rhsRange = NSRange(rhs.start..<rhs.end, in: text)
-
-                if lhsRange.location != rhsRange.location {
-                    return lhsRange.location < rhsRange.location
-                }
-
-                if lhsRange.length != rhsRange.length {
-                    return lhsRange.length > rhsRange.length
-                }
-
-                if lhs.surface != rhs.surface {
-                    return lhs.surface < rhs.surface
-                }
-
-                return lhs.lemma < rhs.lemma
-            }
+        return Lattice.sectionEdges(
+            from: segmentationLatticeEdges,
+            in: text,
+            selectedStart: selectedStart,
+            selectedEnd: selectedEnd
+        )
     }
 }

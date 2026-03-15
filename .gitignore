@@ -1,6 +1,3 @@
-Resources/*
-!Resources/data_manifest.json
-!Resources/deinflection.json
-!Resources/extras.json
-!Resources/generate_db.py
-Kioku.xcodeproj/xcuserdata/matthewmorrone.xcuserdatad/xcdebugger/Breakpoints_v2.xcbkptlist
+__pycache__
+Resources/dictionary.sqlite
+Resources/jmdict-eng-3.6.2.json
