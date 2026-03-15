@@ -52,6 +52,7 @@ extension ReadView {
             pendingPersistenceTask = nil
             isLoadingSelectedNote = true
             activeNoteID = nil
+            loadAudioAttachmentIfNeeded(attachmentID: nil)
             customTitle = ""
             fallbackTitle = ""
             text = ""
@@ -77,6 +78,8 @@ extension ReadView {
         isLoadingSelectedNote = true
         activeNoteID = noteToLoad.id
         onActiveNoteChanged?(noteToLoad.id)
+        // Load or unload the audio attachment whenever the active note changes.
+        loadAudioAttachmentIfNeeded(attachmentID: noteToLoad.audioAttachmentID)
         customTitle = noteToLoad.title
         fallbackTitle = noteToLoad.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? firstLineTitle(from: noteToLoad.content)

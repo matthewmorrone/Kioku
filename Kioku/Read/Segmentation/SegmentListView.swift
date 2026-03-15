@@ -47,7 +47,7 @@ struct SegmentListView: View {
                             Spacer()
 
                             Button {
-                                toggleSavedWord(edge.surface)
+                                toggleSavedWord(edge.surface, lemma: edge.lemma)
                             } label: {
                                 let normalizedSurface = normalizedSurfaceForFiltering(edge.surface)
                                 let isSavedForCurrentNote = isSavedForCurrentNote(normalizedSurface: normalizedSurface)
@@ -359,7 +359,8 @@ struct SegmentListView: View {
     }
 
     // Toggles one segment surface in the saved-word list storage.
-    private func toggleSavedWord(_ surface: String) {
+    // lemma is the dictionary headword and is tried as a fallback when the surface has no direct dictionary entry.
+    private func toggleSavedWord(_ surface: String, lemma: String = "") {
         let normalizedSurface = normalizedSurfaceForFiltering(surface)
         let wasSaved = savedWordSurfaces.contains(normalizedSurface)
         let previousSavedWordSurfaces = savedWordSurfaces
@@ -396,7 +397,8 @@ struct SegmentListView: View {
             return
         }
 
-        hydrateCanonicalEntryIDs(for: [normalizedSurface]) { hydratedEntryIDs in
+        let normalizedLemma = normalizedSurfaceForFiltering(lemma)
+        hydrateCanonicalEntryIDs(for: [(surface: normalizedSurface, lemma: normalizedLemma)]) { hydratedEntryIDs in
             guard let canonicalEntryID = hydratedEntryIDs[normalizedSurface] else {
                 // Reverts optimistic UI state when no canonical entry is available for persistence.
                 savedWordSurfaces = previousSavedWordSurfaces
@@ -479,9 +481,14 @@ struct SegmentListView: View {
                     entryID = cached
                 } else if let store = dictionaryStore {
                     let surface = normalizedSurface
+                    let lemma = normalizedSurfaceForFiltering(row.edge.lemma)
+                    // Try the surface form first; fall back to the lemma so conjugated verbs resolve correctly.
                     guard let resolved = await withCheckedContinuation({ continuation in
                         DispatchQueue.global(qos: .userInitiated).async {
-                            let id = try? store.lookup(surface: surface, mode: .kanjiAndKana).first?.entryId
+                            let id = (try? store.lookup(surface: surface, mode: .kanjiAndKana).first?.entryId)
+                                ?? (lemma.isEmpty == false && lemma != surface
+                                    ? try? store.lookup(surface: lemma, mode: .kanjiAndKana).first?.entryId
+                                    : nil)
                             continuation.resume(returning: id)
                         }
                     }) else {
@@ -653,55 +660,55 @@ struct SegmentListView: View {
 
     // Schedules canonical-id hydration for visible rows so lookups never block sheet presentation.
     private func scheduleCanonicalEntryIDHydrationForVisibleRows() {
-        let surfaces = Set(displayRows.map { normalizedSurfaceForFiltering($0.edge.surface) })
+        var seenSurfaces = Set<String>()
+        var pairs: [(surface: String, lemma: String)] = []
 
-        let uncachedSurfaces = surfaces.filter { surface in
-            surface.isEmpty == false && canonicalEntryIDBySurface[surface] == nil
+        for row in displayRows {
+            let surface = normalizedSurfaceForFiltering(row.edge.surface)
+            guard surface.isEmpty == false,
+                  canonicalEntryIDBySurface[surface] == nil,
+                  seenSurfaces.contains(surface) == false else { continue }
+            seenSurfaces.insert(surface)
+            pairs.append((surface: surface, lemma: normalizedSurfaceForFiltering(row.edge.lemma)))
         }
 
-        guard uncachedSurfaces.isEmpty == false else {
-            return
-        }
+        guard pairs.isEmpty == false else { return }
 
         hydrationGeneration += 1
         let targetGeneration = hydrationGeneration
 
-        hydrateCanonicalEntryIDs(for: Array(uncachedSurfaces)) { hydratedEntryIDs in
-            guard targetGeneration == hydrationGeneration else {
-                return
-            }
-
-            canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in
-                current
-            }
+        hydrateCanonicalEntryIDs(for: pairs) { hydratedEntryIDs in
+            guard targetGeneration == hydrationGeneration else { return }
+            canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
         }
     }
 
-    // Resolves canonical dictionary ids in the background and returns only successful matches.
-    private func hydrateCanonicalEntryIDs(for normalizedSurfaces: [String], onComplete: @escaping ([String: Int64]) -> Void) {
-        guard normalizedSurfaces.isEmpty == false,
-              let dictionaryStore
-        else {
-            onComplete([:])
-            return
-        }
-
-        let surfaces = normalizedSurfaces
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.isEmpty == false }
-
-        guard surfaces.isEmpty == false else {
+    // Resolves canonical dictionary ids in the background and returns a surface-keyed map of successful matches.
+    // For each pair, tries the surface form first and falls back to the lemma so conjugated forms resolve correctly.
+    private func hydrateCanonicalEntryIDs(
+        for pairs: [(surface: String, lemma: String)],
+        onComplete: @escaping ([String: Int64]) -> Void
+    ) {
+        guard pairs.isEmpty == false, let dictionaryStore else {
             onComplete([:])
             return
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
             var resolvedEntryIDs: [String: Int64] = [:]
-            resolvedEntryIDs.reserveCapacity(surfaces.count)
+            resolvedEntryIDs.reserveCapacity(pairs.count)
 
-            for surface in surfaces {
-                if let firstMatch = try? dictionaryStore.lookup(surface: surface, mode: .kanjiAndKana).first {
-                    resolvedEntryIDs[surface] = firstMatch.entryId
+            for pair in pairs {
+                guard pair.surface.isEmpty == false else { continue }
+
+                if let match = try? dictionaryStore.lookup(surface: pair.surface, mode: .kanjiAndKana).first {
+                    // Surface form found directly in the dictionary.
+                    resolvedEntryIDs[pair.surface] = match.entryId
+                } else if pair.lemma.isEmpty == false,
+                          pair.lemma != pair.surface,
+                          let match = try? dictionaryStore.lookup(surface: pair.lemma, mode: .kanjiAndKana).first {
+                    // Conjugated surface not in dictionary — use the lemma (dictionary headword) instead.
+                    resolvedEntryIDs[pair.surface] = match.entryId
                 }
             }
 

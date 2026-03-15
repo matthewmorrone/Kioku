@@ -1,19 +1,25 @@
 import SwiftUI
 
 // Renders the saved-word list screen for the Words tab.
-// Major sections: filtered word list, toolbar (filter button), remove confirmation dialog.
+// Major sections: word rows, toolbar (select-all, delete, edit, filter).
 struct WordsView: View {
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var wordListsStore: WordListsStore
+    @EnvironmentObject private var notesStore: NotesStore
 
     @State private var selectedDetailWord: SavedWord?
     @State private var wordPendingRemoval: SavedWord?
+    @State private var activeFilterNoteIDs: Set<UUID> = []
     @State private var activeFilterListIDs: Set<UUID> = []
-    @State private var isFilterPopoverPresented = false
+    @State private var isFilterSheetPresented = false
+    @State private var editMode: EditMode = .inactive
+    @State private var selectedWordIDs: Set<Int64> = []
+    @State private var isBatchRemoveConfirmPresented = false
+    @State private var isBatchListSheetPresented = false
 
     var body: some View {
         NavigationStack {
-            List {
+            List(selection: $selectedWordIDs) {
                 if visibleWords.isEmpty {
                     Text("No saved words yet")
                         .foregroundStyle(.secondary)
@@ -22,30 +28,78 @@ struct WordsView: View {
                         WordRowView(
                             word: savedWord,
                             lists: wordListsStore.lists,
-                            onOpenDetails: { selectedDetailWord = savedWord },
-                            onToggleList: { listID in wordsStore.toggleListMembership(wordID: savedWord.canonicalEntryID, listID: listID) },
+                            onOpenDetails: {
+                                guard editMode == .inactive else { return }
+                                selectedDetailWord = savedWord
+                            },
+                            onToggleList: { listID in
+                                wordsStore.toggleListMembership(wordID: savedWord.canonicalEntryID, listID: listID)
+                            },
                             onRemove: { wordPendingRemoval = savedWord }
                         )
+                        .tag(savedWord.canonicalEntryID)
+                    }
+                    .onMove { fromOffsets, toOffset in
+                        wordsStore.move(fromOffsets: fromOffsets, toOffset: toOffset)
                     }
                 }
             }
+            .environment(\.editMode, $editMode)
             .toolbar {
-                // Opens the filter popover for multi-select list filtering and list CRUD.
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if editMode == .active {
+                        Button {
+                            isBatchRemoveConfirmPresented = true
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 16))
+                                .frame(width: 32, height: 32)
+                        }
+                        .disabled(selectedWordIDs.isEmpty)
+                        .accessibilityLabel("Delete Selected Words")
+
+                        Button {
+                            if selectedWordIDs.count == visibleWords.count {
+                                selectedWordIDs.removeAll()
+                            } else {
+                                selectedWordIDs = Set(visibleWords.map(\.canonicalEntryID))
+                            }
+                        } label: {
+                            let allSelected = selectedWordIDs.count == visibleWords.count
+                            Image(systemName: allSelected ? "minus.circle" : "circle.dashed.inset.filled")
+                                .font(.system(size: 16))
+                                .frame(width: 32, height: 32)
+                        }
+                        .accessibilityLabel(selectedWordIDs.count == visibleWords.count ? "Deselect All" : "Select All")
+                    }
+
                     Button {
-                        isFilterPopoverPresented = true
+                        editMode = editMode == .active ? .inactive : .active
+                        if editMode == .inactive {
+                            selectedWordIDs.removeAll()
+                        }
                     } label: {
-                        Image(systemName: activeFilterListIDs.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                        Image(systemName: editMode == .active ? "checkmark.circle" : "pencil")
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
                     }
-                    .popover(isPresented: $isFilterPopoverPresented) {
-                        WordListFilterView(activeFilterListIDs: $activeFilterListIDs)
-                            .environmentObject(wordListsStore)
-                            .environmentObject(wordsStore)
-                            .frame(minWidth: 300, minHeight: 400)
+                    .accessibilityLabel(editMode == .active ? "Done Editing" : "Edit Words")
+
+                    // In edit mode with a selection opens batch list assignment; otherwise opens the filter sheet.
+                    Button {
+                        if editMode == .active && !selectedWordIDs.isEmpty {
+                            isBatchListSheetPresented = true
+                        } else {
+                            isFilterSheetPresented = true
+                        }
+                    } label: {
+                        Image(systemName: isFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
                     }
+                    .accessibilityLabel(editMode == .active && !selectedWordIDs.isEmpty ? "Manage Lists for Selection" : "Filter by List")
                 }
             }
-            // Confirmation before removing a word so accidental swipes can be cancelled.
             .confirmationDialog(
                 "Remove \"\(wordPendingRemoval?.surface ?? "")\"?",
                 isPresented: Binding(
@@ -64,6 +118,20 @@ struct WordsView: View {
                     wordPendingRemoval = nil
                 }
             }
+            .confirmationDialog(
+                "Remove \(selectedWordIDs.count) word\(selectedWordIDs.count == 1 ? "" : "s")?",
+                isPresented: $isBatchRemoveConfirmPresented,
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    for id in selectedWordIDs {
+                        wordsStore.remove(id: id)
+                    }
+                    selectedWordIDs.removeAll()
+                    editMode = .inactive
+                }
+                Button("Cancel", role: .cancel) {}
+            }
         }
         .toolbar(.visible, for: .tabBar)
         .sheet(item: $selectedDetailWord) { selectedWord in
@@ -71,18 +139,37 @@ struct WordsView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $isFilterSheetPresented) {
+            WordsFilterView(activeFilterNoteIDs: $activeFilterNoteIDs, activeFilterListIDs: $activeFilterListIDs)
+                .environmentObject(wordListsStore)
+                .environmentObject(wordsStore)
+                .environmentObject(notesStore)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $isBatchListSheetPresented) {
+            WordsBatchListView(selectedWordIDs: selectedWordIDs)
+                .environmentObject(wordsStore)
+                .environmentObject(wordListsStore)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
-    // Applies the active list filter; shows all words when no filter is selected.
+    // True when any filter is active across notes or lists.
+    private var isFilterActive: Bool {
+        !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty
+    }
+
+    // Returns words in store order filtered by active note and/or list selection.
+    // When both note and list filters are active, a word must match at least one from each group.
     private var visibleWords: [SavedWord] {
-        let sorted = wordsStore.words.sorted { lhs, rhs in
-            lhs.surface.localizedCaseInsensitiveCompare(rhs.surface) == .orderedAscending
-        }
+        guard isFilterActive else { return wordsStore.words }
 
-        guard !activeFilterListIDs.isEmpty else { return sorted }
-
-        return sorted.filter { word in
-            activeFilterListIDs.contains { word.wordListIDs.contains($0) }
+        return wordsStore.words.filter { word in
+            let matchesNote = activeFilterNoteIDs.isEmpty || activeFilterNoteIDs.contains { word.sourceNoteIDs.contains($0) }
+            let matchesList = activeFilterListIDs.isEmpty || activeFilterListIDs.contains { word.wordListIDs.contains($0) }
+            return matchesNote && matchesList
         }
     }
 }

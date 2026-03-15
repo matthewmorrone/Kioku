@@ -13,6 +13,8 @@ struct NotesView: View {
     @State private var notePendingReset: Note?
     @State private var notePendingDelete: Note?
     @State private var renameDraft = ""
+    @State private var isShowingSubtitleImportSheet = false
+    @State private var subtitleImportError = ""
 
     var body: some View {
         NavigationStack {
@@ -51,7 +53,6 @@ struct NotesView: View {
                 .onMove(perform: store.moveNotes)
                 .onDelete(perform: store.deleteNotes)
             }
-            .listStyle(.plain)
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 store.reload()
@@ -98,7 +99,28 @@ struct NotesView: View {
             } message: {
                 Text("This permanently removes the note.")
             }
+            .sheet(isPresented: $isShowingSubtitleImportSheet) {
+                SubtitleImportSheet { cues, audioURL in
+                    handleSubtitleImport(cues: cues, audioURL: audioURL)
+                }
+            }
+            .alert("Subtitle Import Failed", isPresented: subtitleImportErrorBinding) {
+                Button("OK", role: .cancel) { subtitleImportError = "" }
+            } message: {
+                Text(subtitleImportError)
+            }
             .toolbar {
+                // Opens the subtitle import sheet so the user can create a note from subtitles.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isShowingSubtitleImportSheet = true
+                    } label: {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
+                    }
+                    .accessibilityLabel("Import Subtitles")
+                }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     // Shows bulk-delete action while edit mode is active.
                     if editMode == .active {
@@ -142,6 +164,46 @@ struct NotesView: View {
             .environment(\.editMode, $editMode)
         }
         .toolbar(.visible, for: .tabBar)
+    }
+
+    // Binds subtitle-import error alert to whether there is currently a failure message.
+    private var subtitleImportErrorBinding: Binding<Bool> {
+        Binding(
+            get: { subtitleImportError.isEmpty == false },
+            set: { isPresented in
+                if isPresented == false {
+                    subtitleImportError = ""
+                }
+            }
+        )
+    }
+
+    // Creates a note from parsed subtitle cues, optionally saving audio and cue timing data.
+    private func handleSubtitleImport(cues: [SubtitleCue], audioURL: URL?) {
+        let content = SubtitleParser.assembleNoteContent(from: cues)
+        let title = String(content.prefix(60)).components(separatedBy: "\n").first ?? ""
+
+        var attachmentID: UUID? = nil
+
+        if let audioURL {
+            let newID = UUID()
+            do {
+                _ = try NoteAudioStore.shared.saveAudio(from: audioURL, attachmentID: newID)
+                try NoteAudioStore.shared.saveCues(cues, attachmentID: newID)
+                attachmentID = newID
+            } catch {
+                subtitleImportError = error.localizedDescription
+                return
+            }
+        }
+
+        let newNote = Note(
+            title: title,
+            content: content,
+            audioAttachmentID: attachmentID
+        )
+        store.addNote(newNote)
+        onSelectNote?(newNote)
     }
 
     // Binds rename-alert presentation directly to the currently pending note.

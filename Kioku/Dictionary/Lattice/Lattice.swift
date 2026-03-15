@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // Encapsulates runtime lattice graph construction and lightweight neighborhood queries.
 final class Lattice {

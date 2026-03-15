@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // Represents one directed edge in a segmentation lattice over source text.
 struct LatticeEdge {
