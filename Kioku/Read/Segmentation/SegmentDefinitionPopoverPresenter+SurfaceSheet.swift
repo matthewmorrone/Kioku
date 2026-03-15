@@ -232,10 +232,12 @@ extension SegmentDefinitionPopoverPresenter {
                 isSplitEditorVisible: false
             )
 
+            // Returns the current split boundary as a UTF-16 offset derived from the left split value.
             func splitOffsetUTF16() -> Int {
                 leftSplitValue.utf16.count
             }
 
+            // Recalculates and applies the preferred sheet height for the current surface and split-editor visibility state.
             func updateSheetPreferredHeight(animated: Bool) {
                 _ = animated
                 currentSheetPreferredHeight = self.preferredSurfaceSheetHeight(
@@ -252,6 +254,7 @@ extension SegmentDefinitionPopoverPresenter {
                 }
             }
 
+            // Shows or hides the split editor panel and updates button tint and sheet height accordingly.
             func setSplitEditorVisible(_ visible: Bool) {
                 isSplitEditorVisible = visible
                 splitPanelContainer.isHidden = visible == false
@@ -259,6 +262,7 @@ extension SegmentDefinitionPopoverPresenter {
                 updateSheetPreferredHeight(animated: true)
             }
 
+            // Reflects current neighbor availability in merge button enabled state and opacity.
             func updateMergeButtonAvailability() {
                 mergeLeftButton.isEnabled = currentLeftNeighborSurface != nil
                 mergeLeftButton.alpha = currentLeftNeighborSurface == nil ? 0.45 : 1
@@ -266,6 +270,7 @@ extension SegmentDefinitionPopoverPresenter {
                 mergeRightButton.alpha = currentRightNeighborSurface == nil ? 0.45 : 1
             }
 
+            // Applies a merge or split outcome to local state and refreshes the surface label and button availability.
             func updateCurrentSurface(_ outcome: (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)) {
                 currentSurface = outcome.surface
                 currentLeftNeighborSurface = outcome.leftNeighborSurface
@@ -276,6 +281,7 @@ extension SegmentDefinitionPopoverPresenter {
                 updateMergeButtonAvailability()
             }
 
+            // Resets left and right split values to a midpoint split of the given surface so the editor starts in a sensible state.
             func resetSplitInputs(using outcomeSurface: String) {
                 let characters = Array(outcomeSurface)
                 if characters.count <= 1 {
