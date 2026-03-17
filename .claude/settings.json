@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/matthewmorrone/Projects/Kioku status)",
+      "Bash(sqlite3 /Users/matthewmorrone/Projects/Kioku/Resources/dictionary.sqlite \":*)"
+    ]
+  }
+}

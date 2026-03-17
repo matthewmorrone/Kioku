@@ -190,20 +190,27 @@ def normalize_extra_entry(entry, entry_index):
 
 
 def insert_entry(conn, entry_insert, kanji_insert, kana_insert, sense_insert, gloss_insert, entry, ent_seq):
+    # JMDict 3.x uses "tags" for priority strings; extras.json uses "priority".
+    # JMDict 3.x marks common words with "common": true on each kana/kanji form.
     priorities = []
+    any_common = False
     for k in entry.get("kanji", []):
         if isinstance(k, str):
             continue
-        for p in k.get("priority", []) or []:
+        if k.get("common"):
+            any_common = True
+        for p in (k.get("tags") or k.get("priority") or []):
             priorities.append(p)
     for r in entry.get("kana", []):
         if isinstance(r, str):
             continue
-        for p in r.get("priority", []) or []:
+        if r.get("common"):
+            any_common = True
+        for p in (r.get("tags") or r.get("priority") or []):
             priorities.append(p)
 
     priority_str = ",".join(sorted(set(priorities))) if priorities else None
-    is_common = 1 if any(
+    is_common = 1 if any_common or any(
         p.startswith(("news", "ichi", "spec", "custom"))
         for p in priorities
     ) else int(entry.get("is_common", 0))
@@ -232,7 +239,9 @@ def insert_entry(conn, entry_insert, kanji_insert, kana_insert, sense_insert, gl
         conn.execute(kana_insert, (r["text"], entry_id, r_priorities))
         conn.execute(surface_insert, (r["text"], entry_id))
 
-    for s_idx, sense in enumerate(entry.get("senses", [])):
+    # JMDict 3.x uses "sense" (singular); extras.json uses "senses" (plural).
+    senses = entry.get("sense") or entry.get("senses") or []
+    for s_idx, sense in enumerate(senses):
         pos = ",".join(sense.get("partOfSpeech", []) or []) if sense.get("partOfSpeech") else None
         misc = ",".join(sense.get("misc", []) or []) if sense.get("misc") else None
         field = ",".join(sense.get("field", []) or []) if sense.get("field") else None
