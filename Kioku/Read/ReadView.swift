@@ -39,9 +39,9 @@ struct ReadView: View {
     @State private var titleDraft = ""
     @State private var isShowingTitleAlert = false
     @State var text = ""
-    @State var segmentationLatticeEdges: [LatticeEdge] = []
-    @State var segmentationEdges: [LatticeEdge] = []
-    @State var segmentationRanges: [Range<String.Index>] = []
+    @State var segmentLatticeEdges: [LatticeEdge] = []
+    @State var segmentEdges: [LatticeEdge] = []
+    @State var segmentRanges: [Range<String.Index>] = []
     @State var unknownSegmentLocations: Set<Int> = []
     @State var selectedSegmentLocation: Int?
     @State var selectedHighlightRangeOverride: NSRange?
@@ -49,6 +49,7 @@ struct ReadView: View {
     @State var segments: [SegmentRange]?
     @State var furiganaBySegmentLocation: [Int: String] = [:]
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
+    @State var selectedReadingOverrideByLocation: [Int: String] = [:]
     @State var furiganaComputationTask: Task<Void, Never>?
     @State var pendingPersistenceTask: Task<Void, Never>?
     @State var activeNoteID: UUID?
@@ -68,8 +69,11 @@ struct ReadView: View {
     @State var audioTranscriptionErrorMessage = ""
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
-    @StateObject private var audioController = AudioPlaybackController()
-    @State private var audioAttachmentCues: [SubtitleCue] = []
+    @StateObject var audioController = AudioPlaybackController()
+    @State var audioAttachmentCues: [SubtitleCue] = []
+    @State var audioAttachmentHighlightRanges: [NSRange?] = []
+    @State var activeAudioAttachmentID: UUID? = nil
+    @State private var isShowingSubtitleEditor = false
 
     // Initializes the read screen with the active note selection and shared read resources.
     init(
@@ -107,8 +111,8 @@ struct ReadView: View {
                 if audioAttachmentCues.isEmpty == false {
                     AudioPlayerBar(
                         controller: audioController,
-                        cues: audioAttachmentCues,
-                        highlightRange: $selectedHighlightRangeOverride
+                        highlightRange: $selectedHighlightRangeOverride,
+                        onEditSubtitles: { isShowingSubtitleEditor = true }
                     )
                 }
                 toolbarButtons
@@ -120,10 +124,11 @@ struct ReadView: View {
         .sheet(isPresented: $isShowingSegmentList) {
             SegmentListView(
                 text: text,
-                edges: segmentationEdges,
-                latticeEdges: segmentationLatticeEdges,
+                edges: segmentEdges,
+                latticeEdges: segmentLatticeEdges,
                 dictionaryStore: dictionaryStore,
                 sourceNoteID: activeNoteID,
+                lemmaForSurface: { segmenter.preferredLemma(for: $0) },
                 onMergeLeft: { edgeIndex in
                     mergeSegmentFromSegmentList(at: edgeIndex, isMergingLeft: true)
                 },
@@ -134,7 +139,7 @@ struct ReadView: View {
                     splitSegmentFromSegmentList(at: edgeIndex, offsetUTF16: splitOffset)
                 },
                 onReset: {
-                    resetSegmentSegmentationToComputed()
+                    resetSegmentationToComputed()
                 }
             )
         }
@@ -166,18 +171,38 @@ struct ReadView: View {
             // Syncs editor state when Notes tab selects a different note.
             loadSelectedNoteIfNeeded()
         }
-        .onChange(of: text) { _, _ in
+        .onChange(of: audioController.activeCueIndex) { _, newIndex in
+            // Resolves the precomputed highlight range for the newly active cue.
+            guard let newIndex, newIndex < audioAttachmentHighlightRanges.count else {
+                selectedHighlightRangeOverride = nil
+                return
+            }
+            selectedHighlightRangeOverride = audioAttachmentHighlightRanges[newIndex]
+        }
+        .onChange(of: text) { oldText, newText in
             // Persists edits as content changes.
             scheduleCurrentNotePersistenceIfNeeded()
+            // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
+            // mapping is stable for in-line edits but shifts whenever lines are added or removed.
+            if audioAttachmentCues.isEmpty == false {
+                let oldLineCount = oldText.components(separatedBy: .newlines).count
+                let newLineCount = newText.components(separatedBy: .newlines).count
+                if oldLineCount != newLineCount {
+                    audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(
+                        for: audioAttachmentCues,
+                        in: newText
+                    )
+                }
+            }
             if isEditMode {
                 segments = nil
                 illegalMergeBoundaryLocation = nil
                 illegalMergeFlashTask?.cancel()
                 // Clears stale range state while editing so view-mode reactivation never reads mismatched ranges.
                 furiganaComputationTask?.cancel()
-                segmentationLatticeEdges = []
-                segmentationEdges = []
-                segmentationRanges = []
+                segmentLatticeEdges = []
+                segmentEdges = []
+                segmentRanges = []
                 selectedSegmentLocation = nil
                 selectedHighlightRangeOverride = nil
                 selectedMergedEdgeBounds = nil
@@ -197,9 +222,9 @@ struct ReadView: View {
                 illegalMergeBoundaryLocation = nil
                 illegalMergeFlashTask?.cancel()
                 furiganaComputationTask?.cancel()
-                segmentationLatticeEdges = []
-                segmentationEdges = []
-                segmentationRanges = []
+                segmentLatticeEdges = []
+                segmentEdges = []
+                segmentRanges = []
                 selectedSegmentLocation = nil
                 selectedHighlightRangeOverride = nil
                 selectedMergedEdgeBounds = nil
@@ -236,6 +261,20 @@ struct ReadView: View {
             }
         } message: {
             Text(ocrImportErrorMessage)
+        }
+        .sheet(isPresented: $isShowingSubtitleEditor) {
+            if let attachmentID = activeAudioAttachmentID {
+                SubtitleEditorSheet(
+                    attachmentID: attachmentID,
+                    initialCues: audioAttachmentCues
+                ) { newCues in
+                    // Reload the controller with updated cues so highlighting stays in sync.
+                    audioAttachmentCues = newCues
+                    if let url = NoteAudioStore.shared.audioURL(for: attachmentID) {
+                        try? audioController.load(audioURL: url, cues: newCues)
+                    }
+                }
+            }
         }
         .alert("Audio Transcription Failed", isPresented: audioTranscriptionErrorPresented) {
             Button("OK", role: .cancel) {
@@ -284,7 +323,7 @@ struct ReadView: View {
                     isOverlayFrozen: isSheetSwipeTransitionActive,
                     text: text,
                     isLineWrappingEnabled: isLineWrappingEnabled,
-                    segmentationRanges: readResourcesReady ? segmentationRanges : [],
+                    segmentationRanges: readResourcesReady ? segmentRanges : [],
                     selectedSegmentLocation: selectedSegmentLocation,
                     selectedHighlightRangeOverride: selectedHighlightRangeOverride,
                     illegalMergeBoundaryLocation: illegalMergeBoundaryLocation,
@@ -316,7 +355,7 @@ struct ReadView: View {
                 RichTextEditor(
                     text: $text,
                     isLineWrappingEnabled: isLineWrappingEnabled,
-                    segmentationRanges: readResourcesReady ? segmentationRanges : [],
+                    segmentationRanges: readResourcesReady ? segmentRanges : [],
                     furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
                     furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
                     isVisualEnhancementsEnabled: readResourcesReady,
@@ -369,7 +408,7 @@ struct ReadView: View {
     // Resets custom segment segmentation back to computed segmentation.
     private var resetButton: some View {
         Button {
-            resetSegmentSegmentationToComputed()
+            resetSegmentationToComputed()
         } label: {
             Image(systemName: "arrow.counterclockwise")
                 .font(.system(size: 16, weight: .semibold))

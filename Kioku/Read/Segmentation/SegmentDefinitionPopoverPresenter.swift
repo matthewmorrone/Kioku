@@ -7,12 +7,16 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
     private weak var presentedController: UIViewController?
     weak var presentedSheetController: UIViewController?
     var onDismiss: (() -> Void)?
+    var onReadingSelected: ((String) -> Void)?
     var onSheetSelectPrevious: (() -> Void)?
     var onSheetSelectNext: (() -> Void)?
     var sheetReadingsProvider: (() -> [String])?
     var sheetSublatticeProvider: (() -> [LatticeEdge])?
+    var segmentRangeProvider: (() -> NSRange?)?
+    var sheetLexiconDebugProvider: (() -> String)?
     var currentSheetUniqueReadings: [String] = []
     var currentSheetSublatticeEdges: [LatticeEdge] = []
+    var currentSheetLexiconDebugInfo: String = ""
     var updatePresentedSheetSelection: ((
         String,
         String?,
@@ -24,6 +28,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
         (() -> [String])?,
         (() -> [LatticeEdge])?,
+        (() -> NSRange?)?,
+        (() -> String)?,
         (() -> Void)?
     ) -> Void)?
 
@@ -91,8 +97,10 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                     onMergeLeft: onMergeLeft,
                     onMergeRight: onMergeRight,
                     onSplitApply: onSplitApply,
-                    sheetReadingsProvider: nil,
-                    sheetSublatticeProvider: nil,
+                    sheetReadingsProvider: sheetReadingsProvider,
+                    sheetSublatticeProvider: sheetSublatticeProvider,
+                    segmentRangeProvider: segmentRangeProvider,
+                    sheetLexiconDebugProvider: sheetLexiconDebugProvider,
                     onDismiss: onDismiss
                 )
             },
@@ -149,8 +157,13 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         onSplitApply: ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
         sheetReadingsProvider: (() -> [String])? = nil,
         sheetSublatticeProvider: (() -> [LatticeEdge])? = nil,
+        segmentRangeProvider: (() -> NSRange?)? = nil,
+        sheetLexiconDebugProvider: (() -> String)? = nil,
+        onReadingSelected: ((String) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
+        // Always update the reading callback so re-taps on a different segment get the right closure.
+        self.onReadingSelected = onReadingSelected
         if let updatePresentedSheetSelection {
             self.onDismiss = onDismiss
             updatePresentedSheetSelection(
@@ -164,6 +177,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
                 onSplitApply,
                 sheetReadingsProvider,
                 sheetSublatticeProvider,
+                segmentRangeProvider,
+                sheetLexiconDebugProvider,
                 onDismiss
             )
             return
@@ -181,6 +196,8 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
             onSplitApply: onSplitApply,
             sheetReadingsProvider: sheetReadingsProvider,
             sheetSublatticeProvider: sheetSublatticeProvider,
+            segmentRangeProvider: segmentRangeProvider,
+            sheetLexiconDebugProvider: sheetLexiconDebugProvider,
             onDismiss: onDismiss
         )
     }
@@ -216,10 +233,14 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         guard let presentedSheetController else {
             onSheetSelectPrevious = nil
             onSheetSelectNext = nil
+            onReadingSelected = nil
             sheetReadingsProvider = nil
             sheetSublatticeProvider = nil
+            segmentRangeProvider = nil
+            sheetLexiconDebugProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
+            currentSheetLexiconDebugInfo = ""
             updatePresentedSheetSelection = nil
             completion?()
             return
@@ -231,10 +252,14 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         self.presentedSheetController = nil
         onSheetSelectPrevious = nil
         onSheetSelectNext = nil
+        onReadingSelected = nil
         sheetReadingsProvider = nil
         sheetSublatticeProvider = nil
+        segmentRangeProvider = nil
+        sheetLexiconDebugProvider = nil
         currentSheetUniqueReadings = []
         currentSheetSublatticeEdges = []
+        currentSheetLexiconDebugInfo = ""
         updatePresentedSheetSelection = nil
     }
 
@@ -247,10 +272,14 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
 
         if presentedSheetController === presentationController.presentedViewController {
             presentedSheetController = nil
+            onReadingSelected = nil
             sheetReadingsProvider = nil
             sheetSublatticeProvider = nil
+            segmentRangeProvider = nil
+            sheetLexiconDebugProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
+            currentSheetLexiconDebugInfo = ""
             updatePresentedSheetSelection = nil
             fireOnDismissIfNeeded()
         }
@@ -299,23 +328,62 @@ final class SegmentDefinitionPopoverPresenter: NSObject, UIPopoverPresentationCo
         return CGSize(width: constrainedContentWidth, height: max(56, min(contentHeight, 260)))
     }
 
-    // Computes fitted sheet height for current visible content state.
-    func preferredSurfaceSheetHeight(for surface: String, isSplitEditorVisible: Bool) -> CGFloat {
-        let label = UILabel()
-        label.font = .systemFont(ofSize: 20, weight: .semibold)
-        label.numberOfLines = 0
-        label.text = surface
-
+    // Computes fitted sheet height for current visible content state, mirroring updateMiddleContent's exact section structure.
+    func preferredSurfaceSheetHeight(
+        for surface: String,
+        sublatticeEdges: [LatticeEdge],
+        readings: [String],
+        lexiconDebugInfo: String,
+        isSplitEditorVisible: Bool
+    ) -> CGFloat {
         let availableWidth = max(200, activeScreenBounds().width - 32)
-        let measured = label.sizeThatFits(
-            CGSize(width: availableWidth, height: CGFloat.greatestFiniteMagnitude)
-        )
+        let stackSpacing: CGFloat = 12
+        let headerFont = UIFont.systemFont(ofSize: 10, weight: .semibold)
+        let bodyFont = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
 
-        // Includes grabber/safe-area/top+bottom paddings and action row so title never clips.
-        let baseChrome: CGFloat = 176
+        // Measures a multi-line text block rendered with the given font.
+        func measuredHeight(text: String, font: UIFont) -> CGFloat {
+            let label = UILabel()
+            label.font = font
+            label.numberOfLines = 0
+            label.text = text
+            return ceil(label.sizeThatFits(CGSize(width: availableWidth, height: .greatestFiniteMagnitude)).height)
+        }
+
+        let surfaceHeight = measuredHeight(text: surface, font: .systemFont(ofSize: 20, weight: .semibold))
+
+        // Collect individual item heights exactly mirroring updateMiddleContent's section structure.
+        var itemHeights: [CGFloat] = []
+
+        if readings.isEmpty == false {
+            itemHeights.append(measuredHeight(text: "READINGS", font: headerFont))
+            itemHeights.append(measuredHeight(text: readings.joined(separator: "  "), font: bodyFont))
+        }
+
+        if sublatticeEdges.isEmpty == false {
+            let paths = sublatticeValidPaths(from: sublatticeEdges).reversed()
+            if paths.isEmpty == false {
+                let pathLines = paths.map { $0.joined(separator: " · ") }.joined(separator: "\n")
+                itemHeights.append(measuredHeight(text: "PATHS", font: headerFont))
+                itemHeights.append(measuredHeight(text: pathLines, font: bodyFont))
+            }
+        }
+
+        if lexiconDebugInfo.isEmpty == false {
+            itemHeights.append(measuredHeight(text: "LEXICON", font: headerFont))
+            itemHeights.append(measuredHeight(text: lexiconDebugInfo, font: bodyFont))
+        }
+
+        // UIStackView spacing is between items: (N-1) gaps for N items.
+        let middleHeight: CGFloat = itemHeights.isEmpty
+            ? 0
+            : itemHeights.reduce(0, +) + CGFloat(itemHeights.count - 1) * stackSpacing
+
+        // Grabber clearance + safe-area insets + padding + action bar + reading subtitle (~18pt line + 4+12 gaps).
+        let baseChrome: CGFloat = 210
         let splitEditorExtra: CGFloat = isSplitEditorVisible ? 128 : 0
-        let minimumCollapsedHeight: CGFloat = 260
-        return min(max(minimumCollapsedHeight, ceil(measured.height) + baseChrome + splitEditorExtra), 440)
+        // No hard cap here — the custom detent already clamps to context.maximumDetentValue.
+        return surfaceHeight + middleHeight + baseChrome + splitEditorExtra
     }
 
     // Resolves the active screen bounds without relying on deprecated global UIScreen access.

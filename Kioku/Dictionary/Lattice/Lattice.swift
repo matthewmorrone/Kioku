@@ -4,22 +4,19 @@ import Combine
 // Encapsulates runtime lattice graph construction and lightweight neighborhood queries.
 final class Lattice {
     private(set) var text: String = ""
-    private(set) var nodesByID: [Int: (surface: String, lemma: String, startOffset: Int, endOffset: Int)] = [:]
+    private(set) var nodesByID: [Int: (surface: String, startOffset: Int, endOffset: Int)] = [:]
     private(set) var adjacencyByNodeID: [Int: Set<Int>] = [:]
-    private static let auxiliaryLemmaRules = loadAuxiliaryLemmaRules()
-
     // Rebuilds node and adjacency maps from a retained lattice edge list so callers can query subsets quickly.
     func rebuild(text: String, edges: [LatticeEdge]) {
         self.text = text
 
         let sortedEdges = Self.sortedEdges(edges, in: text)
 
-        var builtNodes: [Int: (surface: String, lemma: String, startOffset: Int, endOffset: Int)] = [:]
+        var builtNodes: [Int: (surface: String, startOffset: Int, endOffset: Int)] = [:]
         for (index, edge) in sortedEdges.enumerated() {
             let range = NSRange(edge.start..<edge.end, in: text)
             builtNodes[index] = (
                 surface: edge.surface,
-                lemma: edge.lemma,
                 startOffset: range.location,
                 endOffset: range.location + range.length
             )
@@ -47,6 +44,14 @@ final class Lattice {
 
         nodesByID = builtNodes
         adjacencyByNodeID = adjacency
+
+        // Log the full lattice once per rebuild so the segmentation result is inspectable in the console.
+        let lines = nodeIDs.map { id -> String in
+            guard let node = builtNodes[id] else { return "\(id): <missing>" }
+            let neighbours = (adjacency[id] ?? []).sorted().map(String.init).joined(separator: ",")
+            return "  [\(id)] \(node.startOffset)..\(node.endOffset) \"\(node.surface)\"  adj:[\(neighbours)]"
+        }
+        print("[Lattice] rebuilt \(builtNodes.count) nodes for \"\(text)\"\n" + lines.joined(separator: "\n"))
     }
 
     // Returns lattice node IDs reachable within one undirected edge distance threshold from a seed node.
@@ -82,28 +87,6 @@ final class Lattice {
         return visited.sorted()
     }
 
-    // Returns a lightweight morphological component list for one node using a caller-provided inflection-chain source.
-    func nodeComponents(
-        nodeId: Int,
-        inflectionChain: (_ surface: String, _ lemma: String) -> [String]
-    ) -> [(lemma: String, role: String)] {
-        guard let node = nodesByID[nodeId] else {
-            return []
-        }
-
-        let chain = inflectionChain(node.surface, node.lemma)
-        guard chain.isEmpty == false else {
-            return [(lemma: node.lemma, role: "base")]
-        }
-
-        var components: [(lemma: String, role: String)] = [(lemma: node.lemma, role: "verb stem")]
-        for chainItem in chain {
-            components.append((lemma: auxiliaryLemma(for: chainItem), role: chainItem))
-        }
-
-        return components
-    }
-
     // Extracts and deterministically sorts edges that are fully enclosed by a selected source-text span.
     static func sectionEdges(
         from edges: [LatticeEdge],
@@ -129,7 +112,7 @@ final class Lattice {
         in text: String,
         sectionRange: NSRange,
         sectionSurface: String,
-        resolutionSummary: (_ surface: String, _ lemma: String) -> String
+        resolutionSummary: (_ surface: String) -> String
     ) -> [String] {
         guard sectionRange.location != NSNotFound, sectionRange.length > 0 else {
             return []
@@ -150,13 +133,30 @@ final class Lattice {
                 continue
             }
 
-            let summary = resolutionSummary(edge.surface, edge.lemma)
+            let summary = resolutionSummary(edge.surface)
             lines.append(
-                "  \(edgeRange.location)->\(edgeRange.location + edgeRange.length) \(edge.surface) [lemma: \(edge.lemma)] [\(summary)]"
+                "  \(edgeRange.location)->\(edgeRange.location + edgeRange.length) \(edge.surface) [\(summary)]"
             )
         }
 
         return lines
+    }
+
+    // Returns the subset of already-built node and adjacency maps whose offsets fall within the given NSRange,
+    // with no recomputation — purely filters the existing nodesByID and adjacencyByNodeID.
+    func slice(range: NSRange) -> (
+        nodesByID: [Int: (surface: String, startOffset: Int, endOffset: Int)],
+        adjacencyByNodeID: [Int: Set<Int>]
+    ) {
+        let rangeEnd = range.location + range.length
+        let slicedNodes = nodesByID.filter { _, node in
+            node.startOffset >= range.location && node.endOffset <= rangeEnd
+        }
+        let slicedNodeIDs = Set(slicedNodes.keys)
+        let slicedAdjacency = adjacencyByNodeID
+            .filter { slicedNodeIDs.contains($0.key) }
+            .mapValues { $0.intersection(slicedNodeIDs) }
+        return (nodesByID: slicedNodes, adjacencyByNodeID: slicedAdjacency)
     }
 
     // Sorts lattice edges for stable UI presentation and deterministic neighborhood construction.
@@ -173,49 +173,8 @@ final class Lattice {
                 return lhsRange.length > rhsRange.length
             }
 
-            if lhs.surface != rhs.surface {
-                return lhs.surface < rhs.surface
-            }
-
-            return lhs.lemma < rhs.lemma
+            return lhs.surface < rhs.surface
         }
     }
 
-    // Maps one chain label to a canonical auxiliary lemma hint for node-component presentation.
-    private func auxiliaryLemma(for chainLabel: String) -> String {
-        let lowercaseLabel = chainLabel.lowercased()
-
-        for rule in Self.auxiliaryLemmaRules where lowercaseLabel.contains(rule.keyword) {
-            return rule.lemma
-        }
-
-        return chainLabel
-    }
-
-    // Loads ordered keyword-to-auxiliary mappings from bundled JSON for data-driven component expansion.
-    private static func loadAuxiliaryLemmaRules(
-        bundle: Bundle = .main,
-        resourceName: String = "lattice_auxiliary_lemmas",
-        fileExtension: String = "json"
-    ) -> [(keyword: String, lemma: String)] {
-        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
-            print("Missing lattice auxiliary lemma file: \(resourceName).\(fileExtension)")
-            return []
-        }
-
-        do {
-            let data = try Data(contentsOf: fileURL)
-            let pairs = try JSONDecoder().decode([[String]].self, from: data)
-            return pairs.compactMap { pair in
-                guard pair.count == 2 else {
-                    return nil
-                }
-
-                return (keyword: pair[0].lowercased(), lemma: pair[1])
-            }
-        } catch {
-            print("Failed to decode lattice auxiliary lemma file: \(error)")
-            return []
-        }
-    }
 }

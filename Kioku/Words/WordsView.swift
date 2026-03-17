@@ -136,7 +136,7 @@ struct WordsView: View {
         .toolbar(.visible, for: .tabBar)
         .sheet(item: $selectedDetailWord) { selectedWord in
             WordDetailView(word: selectedWord, lists: wordListsStore.lists)
-                .presentationDetents([.large])
+                .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $isFilterSheetPresented) {

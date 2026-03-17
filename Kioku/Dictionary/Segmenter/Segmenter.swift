@@ -7,6 +7,10 @@ final class Segmenter {
     private let deinflector: Deinflector?
     private let config: SegmenterConfig
     private let scoring: SegmenterScoring
+    // Single-character kana that may appear as standalone lattice edges; all others are bound morphemes.
+    // Shares the same resource as the word-list particle filter so both behaviours stay in sync.
+    private static let standaloneKana: Set<String> = loadCommonParticles()
+
     private let boundaryCharacters: Set<Character> = [
         " ", "\t", "\n", "\r", "　",
         ".", ",", "!", "?", ";", ":",
@@ -44,8 +48,7 @@ final class Segmenter {
                     LatticeEdge(
                         start: index,
                         end: nextIndex,
-                        surface: boundarySurface,
-                        lemma: boundarySurface
+                        surface: boundarySurface
                     )
                 )
                 index = nextIndex
@@ -73,13 +76,16 @@ final class Segmenter {
                 let surface = String(text[surfaceRange])
                 let lemmas = resolvedTrieLemmas(for: surface)
 
-                for lemma in lemmas {
+                if lemmas.isEmpty == false {
+                    // Bound single-kana morphemes (た、ら、etc.) are excluded; only standalone-valid kana pass.
+                    if surface.count == 1, ScriptClassifier.isPureKana(surface), !Self.standaloneKana.contains(surface) {
+                        continue
+                    }
                     edges.append(
                         LatticeEdge(
                             start: surfaceRange.lowerBound,
                             end: surfaceRange.upperBound,
-                            surface: surface,
-                            lemma: lemma
+                            surface: surface
                         )
                     )
                     keptMatches += 1
@@ -94,8 +100,7 @@ final class Segmenter {
                     LatticeEdge(
                         start: fallbackRange.lowerBound,
                         end: fallbackRange.upperBound,
-                        surface: fallbackSurface,
-                        lemma: fallbackSurface
+                        surface: fallbackSurface
                     )
                 )
             }
@@ -182,6 +187,45 @@ final class Segmenter {
         }
     }
 
+    // Enumerates every valid segmentation path through the lattice DAG using memoized DFS.
+    // Each returned path is an ordered edge list that exactly covers the full input string.
+    // Complexity is bounded by the number of distinct paths, which can be exponential for long
+    // ambiguous text — callers should apply a result cap for UI usage.
+    func allSegmentationPaths(for text: String, limit: Int = 256) -> [[LatticeEdge]] {
+        let edges = buildLattice(for: text)
+
+        var edgesByStart: [String.Index: [LatticeEdge]] = [:]
+        for edge in edges {
+            edgesByStart[edge.start, default: []].append(edge)
+        }
+
+        var memo: [String.Index: [[LatticeEdge]]] = [:]
+
+        func paths(from index: String.Index) -> [[LatticeEdge]] {
+            if index == text.endIndex {
+                return [[]]
+            }
+            if let cached = memo[index] {
+                return cached
+            }
+            var result: [[LatticeEdge]] = []
+            for token in edgesByStart[index] ?? [] {
+                let suffixes = paths(from: token.end)
+                for suffix in suffixes {
+                    result.append([token] + suffix)
+                    if result.count >= limit {
+                        memo[index] = result
+                        return result
+                    }
+                }
+            }
+            memo[index] = result
+            return result
+        }
+
+        return paths(from: text.startIndex)
+    }
+
     // Produces both the full candidate lattice and the currently selected greedy path for one text snapshot.
     func longestMatchResult(for text: String) -> (latticeEdges: [LatticeEdge], selectedEdges: [LatticeEdge]) {
         let latticeEdges = buildLattice(for: text)
@@ -208,8 +252,7 @@ final class Segmenter {
                     LatticeEdge(
                         start: index,
                         end: nextIndex,
-                        surface: fallbackSurface,
-                        lemma: fallbackSurface
+                        surface: fallbackSurface
                     )
                 )
                 index = nextIndex
@@ -232,17 +275,19 @@ final class Segmenter {
             return lhsLength < rhsLength
         }
 
-        let lhsLemmaScore = preferredLemmaScore(for: lhs.lemma, sourceSurface: lhs.surface)
-        let rhsLemmaScore = preferredLemmaScore(for: rhs.lemma, sourceSurface: rhs.surface)
+        let lhsDerivedLemma = preferredLemma(for: lhs.surface) ?? lhs.surface
+        let rhsDerivedLemma = preferredLemma(for: rhs.surface) ?? rhs.surface
+        let lhsLemmaScore = preferredLemmaScore(for: lhsDerivedLemma, sourceSurface: lhs.surface)
+        let rhsLemmaScore = preferredLemmaScore(for: rhsDerivedLemma, sourceSurface: rhs.surface)
         if lhsLemmaScore != rhsLemmaScore {
             return lhsLemmaScore < rhsLemmaScore
         }
 
-        if lhs.lemma.count != rhs.lemma.count {
-            return lhs.lemma.count < rhs.lemma.count
+        if lhsDerivedLemma.count != rhsDerivedLemma.count {
+            return lhsDerivedLemma.count < rhsDerivedLemma.count
         }
 
-        return lhs.lemma > rhs.lemma
+        return lhsDerivedLemma > rhsDerivedLemma
     }
 
     // Determines how far an unknown segment should extend by grouping contiguous same-script runs.
@@ -289,7 +334,7 @@ final class Segmenter {
 
     // Determines whether an edge is dictionary-backed without database access.
     private func isDictionaryEdge(_ edge: LatticeEdge) -> Bool {
-        resolvesSurface(edge.surface) || resolvesSurface(edge.lemma)
+        resolvesSurface(edge.surface)
     }
 
     // Checks whether a surface string exists directly in the dictionary trie without deinflection.
@@ -453,6 +498,27 @@ final class Segmenter {
         }
 
         return false
+    }
+
+    // Loads the shared common-particles list from bundle; used as the single-character kana allowlist.
+    private static func loadCommonParticles(
+        bundle: Bundle = .main,
+        resourceName: String = "common_particles",
+        fileExtension: String = "json"
+    ) -> Set<String> {
+        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
+            print("Missing common particles file: \(resourceName).\(fileExtension)")
+            return []
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let particles = try JSONDecoder().decode([String].self, from: data)
+            return Set(particles)
+        } catch {
+            print("Failed to decode common particles file: \(error)")
+            return []
+        }
     }
 
     // Escapes control line-break characters for stable single-line debug output.

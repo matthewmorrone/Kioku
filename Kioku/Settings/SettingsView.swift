@@ -80,6 +80,15 @@ struct SettingsView: View {
                     Text("Typography")
                 }
 
+                // Links to the particle allowlist editor for segmentation path filtering.
+                Section {
+                    NavigationLink("Particles") {
+                        ParticleSettingsView()
+                    }
+                } header: {
+                    Text("Segmentation")
+                }
+
                 Section {
                     // Exports the current notes collection and saved segments to a JSON file.
                     Button {

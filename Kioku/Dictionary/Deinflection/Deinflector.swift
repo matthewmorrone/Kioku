@@ -1,5 +1,8 @@
 import Foundation
 
+// Shared type for pre-computed deinflection path results, passed between Deinflector and Lexicon to avoid re-traversal.
+typealias DeinflectionPathMap = [String: [(chain: [String], transitions: [(label: String, kanaIn: String, kanaOut: String)])]]
+
 // Generates deinflected dictionary candidate surfaces using rule-based state transitions.
 final class Deinflector {
 
@@ -194,7 +197,15 @@ final class Deinflector {
         for surface: String,
         targetLemma: String
     ) -> [(label: String, kanaIn: String, kanaOut: String)]? {
-        let paths = deinflectionPaths(for: surface)[targetLemma] ?? []
+        bestTransitions(from: deinflectionPaths(for: surface), targetLemma: targetLemma)
+    }
+
+    // Picks transitions from pre-computed paths, avoiding a redundant deinflection traversal.
+    func bestTransitions(
+        from pathsByLemma: DeinflectionPathMap,
+        targetLemma: String
+    ) -> [(label: String, kanaIn: String, kanaOut: String)]? {
+        let paths = pathsByLemma[targetLemma] ?? []
         guard paths.isEmpty == false else {
             return nil
         }
@@ -212,7 +223,12 @@ final class Deinflector {
 
     // Picks grouped-rule labels for one surface-to-lemma path using shortest-path tie breaking.
     func inflectionChain(for surface: String, targetLemma: String) -> [String] {
-        let paths = deinflectionPaths(for: surface)[targetLemma] ?? []
+        inflectionChain(from: deinflectionPaths(for: surface), targetLemma: targetLemma)
+    }
+
+    // Picks chain labels from pre-computed paths, avoiding a redundant deinflection traversal.
+    func inflectionChain(from pathsByLemma: DeinflectionPathMap, targetLemma: String) -> [String] {
+        let paths = pathsByLemma[targetLemma] ?? []
         guard paths.isEmpty == false else {
             return []
         }

@@ -13,18 +13,25 @@ extension SegmentDefinitionPopoverPresenter {
         onSplitApply: ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)?,
         sheetReadingsProvider: (() -> [String])?,
         sheetSublatticeProvider: (() -> [LatticeEdge])?,
+        segmentRangeProvider: (() -> NSRange?)?,
+        sheetLexiconDebugProvider: (() -> String)?,
         onDismiss: (() -> Void)?
     ) {
+        // Capture the reading callback before dismissPopover, since dismissSheet clears it.
+        let capturedOnReadingSelected = self.onReadingSelected
         dismissPopover(notifyDismissal: false) { [weak self] in
             guard let self, let presenter = self.topPresentingController() else {
                 return
             }
 
             self.onDismiss = onDismiss
+            self.onReadingSelected = capturedOnReadingSelected
             self.onSheetSelectPrevious = nil
             self.onSheetSelectNext = nil
             self.sheetReadingsProvider = sheetReadingsProvider
             self.sheetSublatticeProvider = sheetSublatticeProvider
+            self.segmentRangeProvider = segmentRangeProvider
+            self.sheetLexiconDebugProvider = sheetLexiconDebugProvider
             self.refreshSheetSupplementalData()
 
             var currentSurface = surface
@@ -42,11 +49,78 @@ extension SegmentDefinitionPopoverPresenter {
             surfaceLabel.numberOfLines = 0
             surfaceLabel.text = surface
 
+            let prevReadingButton = UIButton(type: .system)
+            prevReadingButton.translatesAutoresizingMaskIntoConstraints = false
+            prevReadingButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+            prevReadingButton.tintColor = .tertiaryLabel
+
+            let nextReadingButton = UIButton(type: .system)
+            nextReadingButton.translatesAutoresizingMaskIntoConstraints = false
+            nextReadingButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
+            nextReadingButton.tintColor = .tertiaryLabel
+
+            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, surfaceLabel, nextReadingButton])
+            readingNavRow.translatesAutoresizingMaskIntoConstraints = false
+            readingNavRow.axis = .horizontal
+            readingNavRow.alignment = .center
+            readingNavRow.spacing = 8
+
+            let readingSubtitleLabel = UILabel()
+            readingSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+            readingSubtitleLabel.textColor = .secondaryLabel
+            readingSubtitleLabel.font = .systemFont(ofSize: 14)
+            readingSubtitleLabel.textAlignment = .center
+            readingSubtitleLabel.numberOfLines = 1
+
+            var currentReadingIndex = 0
+            var currentReadings: [String] = self.currentSheetUniqueReadings
+
+            // Refreshes the subtitle and arrow visibility for the current readings list.
+            func updateReadingSubtitle() {
+                currentReadings = self.currentSheetUniqueReadings
+                currentReadingIndex = 0
+                readingSubtitleLabel.text = currentReadings.first ?? ""
+                let hasMultiple = currentReadings.count > 1
+                prevReadingButton.isHidden = !hasMultiple
+                nextReadingButton.isHidden = !hasMultiple
+            }
+
+            prevReadingButton.addAction(
+                UIAction { _ in
+                    guard currentReadings.count > 1 else { return }
+                    currentReadingIndex = (currentReadingIndex - 1 + currentReadings.count) % currentReadings.count
+                    readingSubtitleLabel.text = currentReadings[currentReadingIndex]
+                    self.onReadingSelected?(currentReadings[currentReadingIndex])
+                },
+                for: .touchUpInside
+            )
+
+            nextReadingButton.addAction(
+                UIAction { _ in
+                    guard currentReadings.count > 1 else { return }
+                    currentReadingIndex = (currentReadingIndex + 1) % currentReadings.count
+                    readingSubtitleLabel.text = currentReadings[currentReadingIndex]
+                    self.onReadingSelected?(currentReadings[currentReadingIndex])
+                },
+                for: .touchUpInside
+            )
+
+            NSLayoutConstraint.activate([
+                prevReadingButton.widthAnchor.constraint(equalToConstant: 32),
+                prevReadingButton.heightAnchor.constraint(equalToConstant: 32),
+                nextReadingButton.widthAnchor.constraint(equalToConstant: 32),
+                nextReadingButton.heightAnchor.constraint(equalToConstant: 32),
+            ])
+
             let splitPanelContainer = UIStackView()
             splitPanelContainer.translatesAutoresizingMaskIntoConstraints = false
             splitPanelContainer.axis = .vertical
             splitPanelContainer.spacing = 14
             splitPanelContainer.isHidden = true
+            // isHidden doesn't collapse Auto Layout frames — explicit zero height prevents the
+            // hidden split panel from pushing content out of the sheet's visible bounds.
+            let splitPanelCollapsedConstraint = splitPanelContainer.heightAnchor.constraint(equalToConstant: 0)
+            splitPanelCollapsedConstraint.isActive = true
 
             let splitInputsRow = UIStackView()
             splitInputsRow.axis = .horizontal
@@ -229,6 +303,9 @@ extension SegmentDefinitionPopoverPresenter {
             var isSplitEditorVisible = false
             var currentSheetPreferredHeight = self.preferredSurfaceSheetHeight(
                 for: currentSurface,
+                sublatticeEdges: self.currentSheetSublatticeEdges,
+                readings: self.currentSheetUniqueReadings,
+                lexiconDebugInfo: self.currentSheetLexiconDebugInfo,
                 isSplitEditorVisible: false
             )
 
@@ -242,6 +319,9 @@ extension SegmentDefinitionPopoverPresenter {
                 _ = animated
                 currentSheetPreferredHeight = self.preferredSurfaceSheetHeight(
                     for: currentSurface,
+                    sublatticeEdges: self.currentSheetSublatticeEdges,
+                    readings: self.currentSheetUniqueReadings,
+                    lexiconDebugInfo: self.currentSheetLexiconDebugInfo,
                     isSplitEditorVisible: isSplitEditorVisible
                 )
 
@@ -257,7 +337,8 @@ extension SegmentDefinitionPopoverPresenter {
             // Shows or hides the split editor panel and updates button tint and sheet height accordingly.
             func setSplitEditorVisible(_ visible: Bool) {
                 isSplitEditorVisible = visible
-                splitPanelContainer.isHidden = visible == false
+                splitPanelContainer.isHidden = !visible
+                splitPanelCollapsedConstraint.isActive = !visible
                 splitButton.tintColor = visible ? .label : .secondaryLabel
                 updateSheetPreferredHeight(animated: true)
             }
@@ -304,6 +385,68 @@ extension SegmentDefinitionPopoverPresenter {
                 rightInputTapButton.alpha = rightInputTapButton.isEnabled ? 1 : 0.45
             }
 
+            // Vertical stack between the surface title and the bottom action menu — add content here.
+            let middleContentStack = UIStackView()
+            middleContentStack.translatesAutoresizingMaskIntoConstraints = false
+            middleContentStack.axis = .vertical
+            middleContentStack.spacing = 12
+            middleContentStack.alignment = .fill
+
+            // Builds a small section header label.
+            func makeSectionHeader(_ text: String) -> UILabel {
+                let label = UILabel()
+                label.text = text.uppercased()
+                label.font = .systemFont(ofSize: 10, weight: .semibold)
+                label.textColor = .tertiaryLabel
+                return label
+            }
+
+            // Builds a body label for multi-line debug content.
+            func makeBodyLabel(_ text: String) -> UILabel {
+                let label = UILabel()
+                label.text = text
+                label.numberOfLines = 0
+                label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+                label.textColor = .secondaryLabel
+                return label
+            }
+
+            // Rebuilds middleContentStack with three debug sections: readings, sublattice+paths, lexicon dump.
+            func updateMiddleContent() {
+                for subview in middleContentStack.arrangedSubviews {
+                    middleContentStack.removeArrangedSubview(subview)
+                    subview.removeFromSuperview()
+                }
+
+                // Section 1: Readings
+                let readings = self.currentSheetUniqueReadings
+                if readings.isEmpty == false {
+                    middleContentStack.addArrangedSubview(makeSectionHeader("Readings"))
+                    middleContentStack.addArrangedSubview(makeBodyLabel(readings.joined(separator: "  ")))
+                }
+
+                // Section 2: Valid segmentation paths through the sublattice DAG
+                let sublatticeEdges = self.currentSheetSublatticeEdges
+                if sublatticeEdges.isEmpty == false {
+                    let paths = self.sublatticeValidPaths(from: sublatticeEdges).reversed()
+                    if paths.isEmpty == false {
+                        middleContentStack.addArrangedSubview(makeSectionHeader("Paths"))
+                        let pathLines = paths.map { $0.joined(separator: " · ") }.joined(separator: "\n")
+                        middleContentStack.addArrangedSubview(makeBodyLabel(pathLines))
+                    }
+                }
+
+                // Section 3: Lexicon method debug dump
+                let debugInfo = self.currentSheetLexiconDebugInfo
+                if debugInfo.isEmpty == false {
+                    middleContentStack.addArrangedSubview(makeSectionHeader("Lexicon"))
+                    middleContentStack.addArrangedSubview(makeBodyLabel(debugInfo))
+                }
+            }
+
+            // Populate initial content.
+            updateMiddleContent()
+
             self.onSheetSelectNext = {
                 guard isSplitEditorVisible == false, let outcome = currentOnSelectNext?() else {
                     return
@@ -313,6 +456,8 @@ extension SegmentDefinitionPopoverPresenter {
                 // Keeps underlying read-surface overlays stable while swiping between segments.
                 updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
+                updateMiddleContent()
+                updateReadingSubtitle()
             }
 
             self.onSheetSelectPrevious = {
@@ -324,6 +469,8 @@ extension SegmentDefinitionPopoverPresenter {
                 // Keeps underlying read-surface overlays stable while swiping between segments.
                 updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
+                updateMiddleContent()
+                updateReadingSubtitle()
             }
 
             self.updatePresentedSheetSelection = {
@@ -337,6 +484,8 @@ extension SegmentDefinitionPopoverPresenter {
                 updatedOnSplitApply,
                 updatedSheetReadingsProvider,
                 updatedSheetSublatticeProvider,
+                updatedSegmentRangeProvider,
+                updatedSheetLexiconDebugProvider,
                 updatedOnDismiss in
                 currentOnSelectPrevious = updatedOnSelectPrevious
                 currentOnSelectNext = updatedOnSelectNext
@@ -345,6 +494,8 @@ extension SegmentDefinitionPopoverPresenter {
                 currentOnSplitApply = updatedOnSplitApply
                 self.sheetReadingsProvider = updatedSheetReadingsProvider
                 self.sheetSublatticeProvider = updatedSheetSublatticeProvider
+                self.segmentRangeProvider = updatedSegmentRangeProvider
+                self.sheetLexiconDebugProvider = updatedSheetLexiconDebugProvider
                 self.onDismiss = updatedOnDismiss
 
                 if isSplitEditorVisible {
@@ -358,6 +509,8 @@ extension SegmentDefinitionPopoverPresenter {
                 ))
                 updateSheetPreferredHeight(animated: true)
                 self.refreshSheetSupplementalData()
+                updateMiddleContent()
+                updateReadingSubtitle()
             }
 
             let swipeLeftGesture = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
@@ -386,6 +539,9 @@ extension SegmentDefinitionPopoverPresenter {
                     if isSplitEditorVisible {
                         resetSplitInputs(using: currentSurface)
                     }
+                    self.refreshSheetSupplementalData()
+                    updateMiddleContent()
+                    updateReadingSubtitle()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -409,6 +565,9 @@ extension SegmentDefinitionPopoverPresenter {
                     if isSplitEditorVisible {
                         resetSplitInputs(using: currentSurface)
                     }
+                    self.refreshSheetSupplementalData()
+                    updateMiddleContent()
+                    updateReadingSubtitle()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -425,6 +584,10 @@ extension SegmentDefinitionPopoverPresenter {
                         let offset = String(characters[0]).utf16.count
                         if let splitResult = currentOnSplitApply?(offset) {
                             updateCurrentSurface(splitResult)
+                            self.refreshSheetSupplementalData()
+                            updateMiddleContent()
+                            updateReadingSubtitle()
+                            updateSheetPreferredHeight(animated: true)
                         }
                         return
                     }
@@ -512,6 +675,9 @@ extension SegmentDefinitionPopoverPresenter {
                     splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
                     updateMergeButtonAvailability()
                     setSplitEditorVisible(false)
+                    self.refreshSheetSupplementalData()
+                    updateMiddleContent()
+                    updateReadingSubtitle()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -522,25 +688,41 @@ extension SegmentDefinitionPopoverPresenter {
 
             updateMergeButtonAvailability()
 
-            sheetController.view.addSubview(surfaceLabel)
-            sheetController.view.addSubview(splitPanelContainer)
-            sheetController.view.addSubview(actionMenuContainer)
-            NSLayoutConstraint.activate([
-                surfaceLabel.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
-                surfaceLabel.centerXAnchor.constraint(equalTo: sheetController.view.centerXAnchor),
-                surfaceLabel.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
-                surfaceLabel.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
+            // segmentRangeProvider() returns the NSRange of the current segment within the note.
+            // Add content to middleContentStack here using that range as needed.
 
-                splitPanelContainer.topAnchor.constraint(equalTo: surfaceLabel.bottomAnchor, constant: 16),
+            sheetController.view.addSubview(readingNavRow)
+            sheetController.view.addSubview(readingSubtitleLabel)
+            sheetController.view.addSubview(splitPanelContainer)
+            sheetController.view.addSubview(middleContentStack)
+            sheetController.view.addSubview(actionMenuContainer)
+
+            updateReadingSubtitle()
+
+            NSLayoutConstraint.activate([
+                readingNavRow.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                readingNavRow.centerXAnchor.constraint(equalTo: sheetController.view.centerXAnchor),
+                readingNavRow.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
+                readingNavRow.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
+
+                readingSubtitleLabel.topAnchor.constraint(equalTo: readingNavRow.bottomAnchor, constant: 4),
+                readingSubtitleLabel.centerXAnchor.constraint(equalTo: sheetController.view.centerXAnchor),
+                readingSubtitleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
+                readingSubtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
+
+                splitPanelContainer.topAnchor.constraint(equalTo: readingSubtitleLabel.bottomAnchor, constant: 12),
                 splitPanelContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 splitPanelContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
+
+                middleContentStack.topAnchor.constraint(equalTo: splitPanelContainer.bottomAnchor, constant: 16),
+                middleContentStack.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
+                middleContentStack.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
+                middleContentStack.bottomAnchor.constraint(lessThanOrEqualTo: actionMenuContainer.topAnchor, constant: -12),
 
                 actionMenuContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 actionMenuContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
                 actionMenuContainer.bottomAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
                 actionMenuContainer.heightAnchor.constraint(equalToConstant: 46),
-
-                splitPanelContainer.bottomAnchor.constraint(lessThanOrEqualTo: actionMenuContainer.topAnchor, constant: -12),
             ])
 
             sheetController.modalPresentationStyle = .pageSheet
@@ -571,6 +753,7 @@ extension SegmentDefinitionPopoverPresenter {
     func refreshSheetSupplementalData() {
         currentSheetUniqueReadings = sheetReadingsProvider?() ?? []
         currentSheetSublatticeEdges = sheetSublatticeProvider?() ?? []
+        currentSheetLexiconDebugInfo = sheetLexiconDebugProvider?() ?? ""
     }
 
     // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.
@@ -589,12 +772,9 @@ extension SegmentDefinitionPopoverPresenter {
         CATransaction.setDisableActions(true)
         UIView.performWithoutAnimation {
             switch gestureRecognizer.direction {
-            case .left:
-                onSheetSelectNext?()
-            case .right:
-                onSheetSelectPrevious?()
-            default:
-                break
+                case .left: onSheetSelectNext?()
+                case .right: onSheetSelectPrevious?()
+                default: break
             }
         }
         CATransaction.commit()
@@ -625,6 +805,45 @@ extension SegmentDefinitionPopoverPresenter {
         }
 
         return surface.map { String($0) }
+    }
+
+    // Enumerates all complete paths through the sublattice edge DAG, capped to avoid combinatorial explosion.
+    // Paths containing single-kana segments not in the ParticleSettings allowlist are excluded.
+    func sublatticeValidPaths(from edges: [LatticeEdge]) -> [[String]] {
+        guard edges.isEmpty == false else { return [] }
+        guard let startIndex = edges.map({ $0.start }).min(),
+              let endIndex = edges.map({ $0.end }).max() else { return [] }
+
+        var edgesByStart: [String.Index: [LatticeEdge]] = [:]
+        for edge in edges {
+            edgesByStart[edge.start, default: []].append(edge)
+        }
+
+        let allowedKana = ParticleSettings.allowed()
+        var allPaths: [[String]] = []
+        let limit = 24
+
+        func dfs(current: String.Index, path: [String]) {
+            if current == endIndex {
+                allPaths.append(path)
+                return
+            }
+            if allPaths.count >= limit { return }
+            let next = (edgesByStart[current] ?? []).sorted { $0.surface < $1.surface }
+            for edge in next {
+                if allPaths.count >= limit { return }
+                // Reject edges that are single-kana bound morphemes not in the allowlist.
+                if edge.surface.count == 1,
+                   ScriptClassifier.isPureKana(edge.surface),
+                   allowedKana.contains(edge.surface) == false {
+                    continue
+                }
+                dfs(current: edge.end, path: path + [edge.surface])
+            }
+        }
+
+        dfs(current: startIndex, path: [])
+        return allPaths
     }
 
     // Rebuilds one segment row with tappable chip buttons that transfer segments across split inputs.

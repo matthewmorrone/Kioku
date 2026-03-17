@@ -13,7 +13,7 @@ extension ReadView {
     // Resolves segment surface text for a selected location without dictionary lookup overhead.
     func surfaceForSegment(at selectedLocation: Int) -> String? {
         guard
-            let tappedSegmentRange = segmentationRanges.first(where: { segmentRange in
+            let tappedSegmentRange = segmentRanges.first(where: { segmentRange in
                 let nsRange = NSRange(segmentRange, in: text)
                 return nsRange.location == selectedLocation && nsRange.length > 0
             })
@@ -94,8 +94,8 @@ extension ReadView {
         let step = isMovingForward ? 1 : -1
         var candidateIndex = isMovingForward ? currentBounds.upperBound + 1 : currentBounds.lowerBound - 1
 
-        while candidateIndex >= 0 && candidateIndex < segmentationEdges.count {
-            let candidateEdge = segmentationEdges[candidateIndex]
+        while candidateIndex >= 0 && candidateIndex < segmentEdges.count {
+            let candidateEdge = segmentEdges[candidateIndex]
             if shouldIgnoreSegmentForDefinitionLookup(candidateEdge.surface) == false {
                 let candidateRange = NSRange(candidateEdge.start..<candidateEdge.end, in: text)
                 guard candidateRange.location != NSNotFound, candidateRange.length > 0 else {
@@ -107,9 +107,9 @@ extension ReadView {
                 selectedHighlightRangeOverride = candidateRange
                 // debugPrintLatticeSectionForCurrentSelection(at: candidateRange.location)
 
-                let leftNeighborSurface = candidateIndex > 0 ? segmentationEdges[candidateIndex - 1].surface : nil
+                let leftNeighborSurface = candidateIndex > 0 ? segmentEdges[candidateIndex - 1].surface : nil
                 let rightNeighborIndex = candidateIndex + 1
-                let rightNeighborSurface = rightNeighborIndex < segmentationEdges.count ? segmentationEdges[rightNeighborIndex].surface : nil
+                let rightNeighborSurface = rightNeighborIndex < segmentEdges.count ? segmentEdges[rightNeighborIndex].surface : nil
                 return (
                     surface: candidateEdge.surface,
                     leftNeighborSurface: leftNeighborSurface,
@@ -126,7 +126,7 @@ extension ReadView {
     // Resolves the selected segment rect in text-view coordinates so sheet-visibility scroll checks can re-run after swipe navigation.
     func selectedSegmentRectInTextView(sourceView: UITextView, selectedLocation: Int) -> CGRect? {
         guard
-            let tappedSegmentRange = segmentationRanges.first(where: { segmentRange in
+            let tappedSegmentRange = segmentRanges.first(where: { segmentRange in
                 let nsRange = NSRange(segmentRange, in: text)
                 return nsRange.location == selectedLocation && nsRange.length > 0
             })
@@ -153,19 +153,20 @@ extension ReadView {
         return selectedRect
     }
 
-    // Builds unique reading candidates for the currently selected kanji-containing segment(s) for future sheet UI usage.
+    // Builds unique reading candidates for the currently selected segment(s), leading with the lexicon reading so it matches the LEXICON section.
     func uniqueReadingsForCurrentSelectedKanjiSegment() -> [String] {
         guard let selectedBounds = selectedMergedEdgeBounds else {
             return []
         }
 
-        let selectedEdges = Array(segmentationEdges[selectedBounds])
-        let containsKanji = selectedEdges.contains { edge in
-            ScriptClassifier.containsKanji(edge.surface)
-        }
-        guard containsKanji else {
+        let selectedEdges = Array(segmentEdges[selectedBounds])
+        guard let selectedStart = selectedEdges.first?.start,
+              let selectedEnd = selectedEdges.last?.end,
+              selectedStart < selectedEnd else {
             return []
         }
+
+        let mergedSurface = String(text[selectedStart..<selectedEnd])
 
         var readingCandidates: [String] = []
         var seenReadings = Set<String>()
@@ -180,29 +181,27 @@ extension ReadView {
             readingCandidates.append(reading)
         }
 
-        let selectedStart = selectedEdges.first?.start
-        let selectedEnd = selectedEdges.last?.end
-        if let selectedStart, let selectedEnd, selectedStart < selectedEnd {
-            let mergedSurface = String(text[selectedStart..<selectedEnd])
-            appendReading(readingBySurface[mergedSurface])
-            if let mergedReadingCandidates = readingCandidatesBySurface[mergedSurface] {
-                for reading in mergedReadingCandidates {
-                    appendReading(reading)
-                }
+        // Lead with the lexicon reading for the merged surface so this matches the LEXICON section's "reading:" line.
+        if let lexicon = lexiconDataSurface {
+            appendReading(lexicon.reading(surface: mergedSurface))
+        }
+
+        // Additional candidates for the merged surface only — no lemma forms.
+        appendReading(readingBySurface[mergedSurface])
+        if let mergedReadingCandidates = readingCandidatesBySurface[mergedSurface] {
+            for reading in mergedReadingCandidates {
+                appendReading(reading)
             }
         }
 
-        for edge in selectedEdges {
+        // For multi-edge merges, include per-edge surface readings (not lemma readings).
+        for edge in selectedEdges where edge.surface != mergedSurface {
+            if let lexicon = lexiconDataSurface {
+                appendReading(lexicon.reading(surface: edge.surface))
+            }
             appendReading(readingBySurface[edge.surface])
             if let surfaceReadingCandidates = readingCandidatesBySurface[edge.surface] {
                 for reading in surfaceReadingCandidates {
-                    appendReading(reading)
-                }
-            }
-
-            appendReading(readingBySurface[edge.lemma])
-            if let lemmaReadingCandidates = readingCandidatesBySurface[edge.lemma] {
-                for reading in lemmaReadingCandidates {
                     appendReading(reading)
                 }
             }
@@ -211,17 +210,61 @@ extension ReadView {
         return readingCandidates
     }
 
+    // Builds a formatted debug string showing key Lexicon method outputs for the currently selected surface.
+    func lexiconDebugInfoForCurrentSelectedSegment() -> String {
+        guard let selectedBounds = selectedMergedEdgeBounds else {
+            return ""
+        }
+
+        guard let lexicon = lexiconDataSurface else {
+            return "(Lexicon unavailable)"
+        }
+
+        let selectedEdges = Array(segmentEdges[selectedBounds])
+        guard let startIndex = selectedEdges.first?.start, let endIndex = selectedEdges.last?.end else {
+            return ""
+        }
+
+        let surface = String(text[startIndex..<endIndex])
+        var lines: [String] = []
+
+        lines.append("reading: \(lexicon.reading(surface: surface))")
+
+        let lemmas = lexicon.lemma(surface: surface)
+        lines.append("lemma: [\(lemmas.joined(separator: ", "))]")
+
+        let normalized = lexicon.normalize(surface: surface)
+        let normalizedStr = normalized.map { "\($0.lemma)(\($0.reading))" }.joined(separator: ", ")
+        lines.append("normalize: [\(normalizedStr)]")
+
+        if let (inflLemma, inflChain) = lexicon.inflectionInfo(surface: surface) {
+            let chainStr = inflChain.isEmpty ? "—" : inflChain.joined(separator: " → ")
+            lines.append("inflectionInfo: \(inflLemma) via \(chainStr)")
+        } else {
+            lines.append("inflectionInfo: nil")
+        }
+
+        let chain = lexicon.inflectionChain(surface: surface)
+        lines.append("inflectionChain: [\(chain.joined(separator: " → "))]")
+
+        let resolved = lexicon.resolve(surface: surface)
+        let resolvedStr = resolved.prefix(5).map { "\($0.lexeme)(\(String(format: "%.2f", $0.score)))" }.joined(separator: ", ")
+        lines.append("resolve(top 5): [\(resolvedStr)]")
+
+        return lines.joined(separator: "\n")
+    }
+
     // Captures lattice edges enclosed by the currently selected merged segment span for future sheet UI usage.
     func sublatticeEdgesForCurrentSelectedSegment() -> [LatticeEdge] {
         guard let selectedBounds = selectedMergedEdgeBounds else {
             return []
         }
 
-        let selectedStart = segmentationEdges[selectedBounds.lowerBound].start
-        let selectedEnd = segmentationEdges[selectedBounds.upperBound].end
+        let selectedStart = segmentEdges[selectedBounds.lowerBound].start
+        let selectedEnd = segmentEdges[selectedBounds.upperBound].end
 
         return Lattice.sectionEdges(
-            from: segmentationLatticeEdges,
+            from: segmentLatticeEdges,
             in: text,
             selectedStart: selectedStart,
             selectedEnd: selectedEnd

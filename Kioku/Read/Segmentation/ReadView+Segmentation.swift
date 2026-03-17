@@ -3,9 +3,45 @@ import UIKit
 
 // Hosts segmentation and segment action helpers for the read screen.
 extension ReadView {
+    // Applies a user-chosen reading override for the currently selected segment and persists it across furigana recomputation.
+    func applyReadingOverride(reading: String) {
+        guard let location = selectedSegmentLocation else { return }
+
+        // Derive the surface text length from the merged edge bounds so the furigana rect covers
+        // the correct source characters, not the reading's kana length.
+        let surfaceLength: Int
+        if let bounds = selectedMergedEdgeBounds,
+           bounds.lowerBound < segmentEdges.count,
+           bounds.upperBound < segmentEdges.count {
+            let start = segmentEdges[bounds.lowerBound].start
+            let end = segmentEdges[bounds.upperBound].end
+            surfaceLength = NSRange(start..<end, in: text).length
+        } else {
+            // Fall back to the existing computed length for this location.
+            surfaceLength = furiganaLengthBySegmentLocation[location] ?? 0
+        }
+        guard surfaceLength > 0 else { return }
+
+        // Remove all existing per-kanji-run furigana within the segment range so the single
+        // override entry is the only annotation shown for this segment.
+        let segmentNSRange = NSRange(location: location, length: surfaceLength)
+        let priorLengths = furiganaLengthBySegmentLocation
+        let staleLocations = Set(furiganaBySegmentLocation.keys.filter { loc in
+            let len = priorLengths[loc] ?? 0
+            return NSIntersectionRange(NSRange(location: loc, length: len), segmentNSRange).length > 0
+        })
+        furiganaBySegmentLocation = furiganaBySegmentLocation.filter { !staleLocations.contains($0.key) }
+        furiganaLengthBySegmentLocation = furiganaLengthBySegmentLocation.filter { !staleLocations.contains($0.key) }
+
+        selectedReadingOverrideByLocation[location] = reading
+        furiganaBySegmentLocation[location] = reading
+        furiganaLengthBySegmentLocation[location] = surfaceLength
+    }
+
     // Clears note-backed segment range overrides and restores computed segmentation from the segmenter.
-    func resetSegmentSegmentationToComputed() {
+    func resetSegmentationToComputed() {
         segments = nil
+        selectedReadingOverrideByLocation = [:]
         illegalMergeBoundaryLocation = nil
         illegalMergeFlashTask?.cancel()
         selectedSegmentLocation = nil
@@ -16,9 +52,9 @@ extension ReadView {
         if readResourcesReady && isEditMode == false {
             refreshSegmentationRanges()
         } else {
-            segmentationLatticeEdges = []
-            segmentationEdges = []
-            segmentationRanges = []
+            segmentLatticeEdges = []
+            segmentEdges = []
+            segmentRanges = []
             unknownSegmentLocations = []
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
@@ -33,9 +69,9 @@ extension ReadView {
             illegalMergeBoundaryLocation = nil
             illegalMergeFlashTask?.cancel()
             furiganaComputationTask?.cancel()
-            segmentationLatticeEdges = []
-            segmentationEdges = []
-            segmentationRanges = []
+            segmentLatticeEdges = []
+            segmentEdges = []
+            segmentRanges = []
             unknownSegmentLocations = []
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
@@ -47,7 +83,7 @@ extension ReadView {
         }
 
         let segmentationResult = segmenter.longestMatchResult(for: text)
-        segmentationLatticeEdges = segmentationResult.latticeEdges
+        segmentLatticeEdges = segmentationResult.latticeEdges
         // segmenter.debugPrintLattice(for: text)
         let baseEdges = segmentationResult.selectedEdges
         let refreshedEdges: [LatticeEdge]
@@ -68,8 +104,8 @@ extension ReadView {
             refreshedEdges = baseEdges
         }
 
-        segmentationEdges = refreshedEdges
-        segmentationRanges = refreshedEdges.map { edge in
+        segmentEdges = refreshedEdges
+        segmentRanges = refreshedEdges.map { edge in
             edge.start..<edge.end
         }
         unknownSegmentLocations = unknownSegmentLocations(for: refreshedEdges)
@@ -77,7 +113,7 @@ extension ReadView {
 
         // Clears stale selection if the tapped segment no longer exists after recomputing ranges.
         if let selectedSegmentLocation {
-            let hasSelectedSegment = segmentationRanges.contains { segmentRange in
+            let hasSelectedSegment = segmentRanges.contains { segmentRange in
                 let nsRange = NSRange(segmentRange, in: text)
                 return nsRange.location == selectedSegmentLocation && nsRange.length > 0
             }
@@ -161,7 +197,7 @@ extension ReadView {
                     Task { @MainActor in
                         await Task.yield()
                         isSheetSwipeTransitionActive = false
-                        scheduleFuriganaGeneration(for: text, edges: segmentationEdges)
+                        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
                     }
 
                     return outcome
@@ -178,7 +214,7 @@ extension ReadView {
                     Task { @MainActor in
                         await Task.yield()
                         isSheetSwipeTransitionActive = false
-                        scheduleFuriganaGeneration(for: text, edges: segmentationEdges)
+                        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
                     }
 
                     return outcome
@@ -197,6 +233,15 @@ extension ReadView {
                 },
                 sheetSublatticeProvider: {
                     sublatticeEdgesForCurrentSelectedSegment()
+                },
+                segmentRangeProvider: {
+                    currentMergedSelectionNSRange()
+                },
+                sheetLexiconDebugProvider: {
+                    lexiconDebugInfoForCurrentSelectedSegment()
+                },
+                onReadingSelected: { reading in
+                    applyReadingOverride(reading: reading)
                 },
                 onDismiss: {
                     isSheetSwipeTransitionActive = false
@@ -242,7 +287,7 @@ extension ReadView {
     // Resolves the tapped segment surface and the best-ordered gloss from dictionary results.
     func definitionPayloadForSelectedSegment(at selectedLocation: Int) -> (surface: String, definition: String)? {
         guard
-            let tappedSegmentRange = segmentationRanges.first(where: { segmentRange in
+            let tappedSegmentRange = segmentRanges.first(where: { segmentRange in
                 let nsRange = NSRange(segmentRange, in: text)
                 return nsRange.location == selectedLocation && nsRange.length > 0
             })
@@ -255,12 +300,12 @@ extension ReadView {
             return nil
         }
 
-        let matchingEdge = segmentationEdges.first { edge in
+        let matchingEdge = segmentEdges.first { edge in
             let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
             return edgeNSRange.location == selectedLocation && edgeNSRange.length > 0
         }
 
-        let lookupCandidates = orderedLookupCandidates(surface: tappedSurface, lemma: matchingEdge?.lemma)
+        let lookupCandidates = orderedLookupCandidates(surface: tappedSurface, lemma: segmenter.preferredLemma(for: tappedSurface))
         for lookupCandidate in lookupCandidates {
             let lookupMode: LookupMode = ScriptClassifier.containsKanji(lookupCandidate) ? .kanjiAndKana : .kanaOnly
             do {
@@ -365,7 +410,7 @@ extension ReadView {
 
     // Resolves the initial merged edge bounds for the currently selected segment location.
     func initialMergedEdgeBounds(for selectedLocation: Int) -> ClosedRange<Int>? {
-        guard let selectedIndex = segmentationEdges.firstIndex(where: { edge in
+        guard let selectedIndex = segmentEdges.firstIndex(where: { edge in
             let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
             return edgeNSRange.location == selectedLocation && edgeNSRange.length > 0
         }) else {
@@ -382,9 +427,9 @@ extension ReadView {
             return (left: nil, right: nil)
         }
 
-        let leftSurface = activeBounds.lowerBound > 0 ? segmentationEdges[activeBounds.lowerBound - 1].surface : nil
+        let leftSurface = activeBounds.lowerBound > 0 ? segmentEdges[activeBounds.lowerBound - 1].surface : nil
         let rightIndex = activeBounds.upperBound + 1
-        let rightSurface = rightIndex < segmentationEdges.count ? segmentationEdges[rightIndex].surface : nil
+        let rightSurface = rightIndex < segmentEdges.count ? segmentEdges[rightIndex].surface : nil
         return (left: leftSurface, right: rightSurface)
     }
 
@@ -401,19 +446,19 @@ extension ReadView {
             guard currentBounds.lowerBound > 0 else {
                 return nil
             }
-            let leftEdge = segmentationEdges[currentBounds.lowerBound - 1]
-            let rightEdge = segmentationEdges[currentBounds.lowerBound]
+            let leftEdge = segmentEdges[currentBounds.lowerBound - 1]
+            let rightEdge = segmentEdges[currentBounds.lowerBound]
             guard isMergeAllowed(between: leftEdge, and: rightEdge) else {
                 flashIllegalMergeBoundary(between: leftEdge, and: rightEdge)
                 return nil
             }
             nextBounds = (currentBounds.lowerBound - 1)...currentBounds.upperBound
         } else {
-            guard currentBounds.upperBound + 1 < segmentationEdges.count else {
+            guard currentBounds.upperBound + 1 < segmentEdges.count else {
                 return nil
             }
-            let leftEdge = segmentationEdges[currentBounds.upperBound]
-            let rightEdge = segmentationEdges[currentBounds.upperBound + 1]
+            let leftEdge = segmentEdges[currentBounds.upperBound]
+            let rightEdge = segmentEdges[currentBounds.upperBound + 1]
             guard isMergeAllowed(between: leftEdge, and: rightEdge) else {
                 flashIllegalMergeBoundary(between: leftEdge, and: rightEdge)
                 return nil
@@ -421,14 +466,14 @@ extension ReadView {
             nextBounds = currentBounds.lowerBound...(currentBounds.upperBound + 1)
         }
 
-        let mergedStart = segmentationEdges[nextBounds.lowerBound].start
-        let mergedEnd = segmentationEdges[nextBounds.upperBound].end
+        let mergedStart = segmentEdges[nextBounds.lowerBound].start
+        let mergedEnd = segmentEdges[nextBounds.upperBound].end
         let mergedSurface = String(text[mergedStart..<mergedEnd])
-        let mergedEdge = LatticeEdge(start: mergedStart, end: mergedEnd, surface: mergedSurface, lemma: mergedSurface)
-        let sourceLeftSurface = segmentationEdges[nextBounds.lowerBound].surface
-        let sourceRightSurface = segmentationEdges[nextBounds.upperBound].surface
+        let mergedEdge = LatticeEdge(start: mergedStart, end: mergedEnd, surface: mergedSurface)
+        let sourceLeftSurface = segmentEdges[nextBounds.lowerBound].surface
+        let sourceRightSurface = segmentEdges[nextBounds.upperBound].surface
 
-        var updatedEdges = segmentationEdges
+        var updatedEdges = segmentEdges
         if shouldApplyChangesGlobally {
             var globallyMergedEdges: [LatticeEdge] = []
             var edgeIndex = 0
@@ -446,8 +491,7 @@ extension ReadView {
                             LatticeEdge(
                                 start: leftEdge.start,
                                 end: rightEdge.end,
-                                surface: globalMergedSurface,
-                                lemma: globalMergedSurface
+                                surface: globalMergedSurface
                             )
                         )
                         edgeIndex += 2
@@ -464,7 +508,7 @@ extension ReadView {
             updatedEdges.replaceSubrange(nextBounds, with: [mergedEdge])
         }
 
-        applySegmentationEdges(updatedEdges, persistOverride: true)
+        applySegmentEdges(updatedEdges, persistOverride: true)
 
         guard let mergedIndex = updatedEdges.firstIndex(where: { edge in
             let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
@@ -503,7 +547,7 @@ extension ReadView {
             return nil
         }
 
-        guard let mergedEdgeIndex = segmentationEdges.firstIndex(where: { edge in
+        guard let mergedEdgeIndex = segmentEdges.firstIndex(where: { edge in
             let edgeRange = NSRange(edge.start..<edge.end, in: text)
             return edgeRange.location == mergedRange.location && edgeRange.length == mergedRange.length
         }) else {
@@ -520,17 +564,15 @@ extension ReadView {
         let leftEdge = LatticeEdge(
             start: leftStringRange.lowerBound,
             end: leftStringRange.upperBound,
-            surface: leftSurface,
-            lemma: leftSurface
+            surface: leftSurface
         )
         let rightEdge = LatticeEdge(
             start: rightStringRange.lowerBound,
             end: rightStringRange.upperBound,
-            surface: rightSurface,
-            lemma: rightSurface
+            surface: rightSurface
         )
 
-        var updatedEdges = segmentationEdges
+        var updatedEdges = segmentEdges
         let sourceSurface = String(text[leftStringRange.lowerBound..<rightStringRange.upperBound])
         if shouldApplyChangesGlobally {
             var globallySplitEdges: [LatticeEdge] = []
@@ -551,16 +593,14 @@ extension ReadView {
                                 LatticeEdge(
                                     start: edgeLeftStringRange.lowerBound,
                                     end: edgeLeftStringRange.upperBound,
-                                    surface: edgeLeftSurface,
-                                    lemma: edgeLeftSurface
+                                    surface: edgeLeftSurface
                                 )
                             )
                             globallySplitEdges.append(
                                 LatticeEdge(
                                     start: edgeRightStringRange.lowerBound,
                                     end: edgeRightStringRange.upperBound,
-                                    surface: edgeRightSurface,
-                                    lemma: edgeRightSurface
+                                    surface: edgeRightSurface
                                 )
                             )
                             continue
@@ -576,7 +616,7 @@ extension ReadView {
             updatedEdges.replaceSubrange(mergedEdgeIndex...mergedEdgeIndex, with: [leftEdge, rightEdge])
         }
 
-        applySegmentationEdges(updatedEdges, persistOverride: true)
+        applySegmentEdges(updatedEdges, persistOverride: true)
 
         guard let selectedLeftEdgeIndex = updatedEdges.firstIndex(where: { edge in
             let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
@@ -602,8 +642,8 @@ extension ReadView {
         }
 
         if let mergedBounds = selectedMergedEdgeBounds {
-            let mergedStart = segmentationEdges[mergedBounds.lowerBound].start
-            let mergedEnd = segmentationEdges[mergedBounds.upperBound].end
+            let mergedStart = segmentEdges[mergedBounds.lowerBound].start
+            let mergedEnd = segmentEdges[mergedBounds.upperBound].end
             let mergedNSRange = NSRange(mergedStart..<mergedEnd, in: text)
             if mergedNSRange.location != NSNotFound, mergedNSRange.length > 0 {
                 return mergedNSRange
@@ -614,7 +654,7 @@ extension ReadView {
             return nil
         }
 
-        return segmentationRanges.compactMap { segmentRange in
+        return segmentRanges.compactMap { segmentRange in
             let nsRange = NSRange(segmentRange, in: text)
             return nsRange.location == selectedSegmentLocation && nsRange.length > 0 ? nsRange : nil
         }.first
@@ -634,9 +674,9 @@ extension ReadView {
     }
 
     // Applies active segmentation edges to UI state and refreshes furigana using those exact segment boundaries.
-    func applySegmentationEdges(_ edges: [LatticeEdge], persistOverride: Bool) {
-        segmentationEdges = edges
-        segmentationRanges = edges.map { edge in
+    func applySegmentEdges(_ edges: [LatticeEdge], persistOverride: Bool) {
+        segmentEdges = edges
+        segmentRanges = edges.map { edge in
             edge.start..<edge.end
         }
         unknownSegmentLocations = unknownSegmentLocations(for: edges)
@@ -661,7 +701,7 @@ extension ReadView {
                 continue
             }
 
-            if segmenter.resolvesSurface(edge.surface) == false && segmenter.resolvesSurface(edge.lemma) == false {
+            if segmenter.resolvesSurface(edge.surface) == false {
                 unknownLocations.insert(nsRange.location)
             }
         }
@@ -669,7 +709,7 @@ extension ReadView {
         return unknownLocations
     }
 
-    // Converts segmentation edges to explicit UTF-16 segment ranges for note persistence.
+    // Converts segment edges to explicit UTF-16 segment ranges for note persistence.
     func buildSegmentRanges(from edges: [LatticeEdge]) -> [SegmentRange] {
         edges.compactMap { edge in
             let nsRange = NSRange(edge.start..<edge.end, in: text)
@@ -710,8 +750,7 @@ extension ReadView {
                 LatticeEdge(
                     start: startIndex,
                     end: endIndex,
-                    surface: surface,
-                    lemma: surface
+                    surface: surface
                 )
             )
         }

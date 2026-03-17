@@ -40,12 +40,12 @@ struct ContentView: View {
                 lastActiveNoteID = note.id.uuidString
                 selectedTab = .read
             }, onCreateNote: {
-                notesStore.addNote()
-                guard let note = notesStore.notes.first else { return }
-
+                // Pass a fresh note directly without adding it to the store so that the note
+                // is only persisted once the user types content into the editor.
+                let newNote = Note()
                 shouldActivateReadEditMode = true
-                selectedReadNote = note
-                lastActiveNoteID = note.id.uuidString
+                selectedReadNote = newNote
+                lastActiveNoteID = newNote.id.uuidString
                 selectedTab = .read
             }, onUpdateSelectedNote: { updatedNote in
                 if let currentSelectedReadNote = selectedReadNote, let updatedNote, updatedNote.id == currentSelectedReadNote.id {

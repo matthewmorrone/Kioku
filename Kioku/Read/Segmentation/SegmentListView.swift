@@ -11,6 +11,7 @@ struct SegmentListView: View {
     let latticeEdges: [LatticeEdge]
     let dictionaryStore: DictionaryStore?
     let sourceNoteID: UUID?
+    let lemmaForSurface: (String) -> String?
     let onMergeLeft: (Int) -> Void
     let onMergeRight: (Int) -> Void
     let onSplit: (Int, Int) -> Void
@@ -47,7 +48,7 @@ struct SegmentListView: View {
                             Spacer()
 
                             Button {
-                                toggleSavedWord(edge.surface, lemma: edge.lemma)
+                                toggleSavedWord(edge.surface, lemma: lemmaForSurface(edge.surface) ?? "")
                             } label: {
                                 let normalizedSurface = normalizedSurfaceForFiltering(edge.surface)
                                 let isSavedForCurrentNote = isSavedForCurrentNote(normalizedSurface: normalizedSurface)
@@ -481,7 +482,7 @@ struct SegmentListView: View {
                     entryID = cached
                 } else if let store = dictionaryStore {
                     let surface = normalizedSurface
-                    let lemma = normalizedSurfaceForFiltering(row.edge.lemma)
+                    let lemma = normalizedSurfaceForFiltering(lemmaForSurface(row.edge.surface) ?? "")
                     // Try the surface form first; fall back to the lemma so conjugated verbs resolve correctly.
                     guard let resolved = await withCheckedContinuation({ continuation in
                         DispatchQueue.global(qos: .userInitiated).async {
@@ -669,7 +670,7 @@ struct SegmentListView: View {
                   canonicalEntryIDBySurface[surface] == nil,
                   seenSurfaces.contains(surface) == false else { continue }
             seenSurfaces.insert(surface)
-            pairs.append((surface: surface, lemma: normalizedSurfaceForFiltering(row.edge.lemma)))
+            pairs.append((surface: surface, lemma: normalizedSurfaceForFiltering(lemmaForSurface(row.edge.surface) ?? "")))
         }
 
         guard pairs.isEmpty == false else { return }

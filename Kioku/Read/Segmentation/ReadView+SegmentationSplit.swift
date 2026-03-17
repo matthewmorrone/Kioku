@@ -4,11 +4,11 @@ import UIKit
 extension ReadView {
     // Splits one segment at a UTF-16 boundary selected from the segment list screen.
     func splitSegmentFromSegmentList(at edgeIndex: Int, offsetUTF16: Int) {
-        guard segmentationEdges.indices.contains(edgeIndex) else {
+        guard segmentEdges.indices.contains(edgeIndex) else {
             return
         }
 
-        let edge = segmentationEdges[edgeIndex]
+        let edge = segmentEdges[edgeIndex]
         let sourceSurface = edge.surface
         let mergedRange = NSRange(edge.start..<edge.end, in: text)
         guard offsetUTF16 > 0, offsetUTF16 < mergedRange.length else {
@@ -31,7 +31,7 @@ extension ReadView {
             return
         }
 
-        var updatedEdges = segmentationEdges
+        var updatedEdges = segmentEdges
 
         // Applies split globally to all matching segments when enabled.
         if shouldApplyChangesGlobally {
@@ -52,14 +52,12 @@ extension ReadView {
                             let leftEdge = LatticeEdge(
                                 start: edgeLeftStringRange.lowerBound,
                                 end: edgeLeftStringRange.upperBound,
-                                surface: edgeLeftSurface,
-                                lemma: edgeLeftSurface
+                                surface: edgeLeftSurface
                             )
                             let rightEdge = LatticeEdge(
                                 start: edgeRightStringRange.lowerBound,
                                 end: edgeRightStringRange.upperBound,
-                                surface: edgeRightSurface,
-                                lemma: edgeRightSurface
+                                surface: edgeRightSurface
                             )
                             newEdges.append(leftEdge)
                             newEdges.append(rightEdge)
@@ -75,19 +73,17 @@ extension ReadView {
             let leftEdge = LatticeEdge(
                 start: leftStringRange.lowerBound,
                 end: leftStringRange.upperBound,
-                surface: leftSurface,
-                lemma: leftSurface
+                surface: leftSurface
             )
             let rightEdge = LatticeEdge(
                 start: rightStringRange.lowerBound,
                 end: rightStringRange.upperBound,
-                surface: rightSurface,
-                lemma: rightSurface
+                surface: rightSurface
             )
             updatedEdges.replaceSubrange(edgeIndex...edgeIndex, with: [leftEdge, rightEdge])
         }
 
-        applySegmentationEdges(updatedEdges, persistOverride: true)
+        applySegmentEdges(updatedEdges, persistOverride: true)
 
         if !shouldApplyChangesGlobally {
             selectedMergedEdgeBounds = edgeIndex...edgeIndex
