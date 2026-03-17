@@ -2,12 +2,12 @@ import Foundation
 
 // Parses SRT subtitle file content into an ordered list of SubtitleCues and assembles note content.
 enum SubtitleParser {
-    // Parses an SRT string and returns cues with UTF-16 offsets computed from the joined note text.
+    // Parses an SRT string into cues. Offsets into note content are not stored here;
+    // call resolveHighlightRanges(for:in:) separately at playback time.
     static func parse(_ srtContent: String) -> [SubtitleCue] {
         // Split on blank lines that separate cue blocks.
         let blocks = srtContent.components(separatedBy: "\n\n")
         var cues: [SubtitleCue] = []
-        var noteContent = ""
 
         for block in blocks {
             let trimmedBlock = block.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -22,20 +22,7 @@ enum SubtitleParser {
             let text = lines[2...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
             guard text.isEmpty == false else { continue }
 
-            // Accumulate note text with a newline separator between cues.
-            let separator = noteContent.isEmpty ? "" : "\n"
-            let utf16Start = (noteContent + separator).utf16.count
-            noteContent += separator + text
-            let utf16End = noteContent.utf16.count
-
-            cues.append(SubtitleCue(
-                index: index,
-                startMs: startMs,
-                endMs: endMs,
-                text: text,
-                utf16Start: utf16Start,
-                utf16End: utf16End
-            ))
+            cues.append(SubtitleCue(index: index, startMs: startMs, endMs: endMs, text: text))
         }
 
         return cues
@@ -44,6 +31,37 @@ enum SubtitleParser {
     // Joins all cue texts with newlines to form the note body.
     static func assembleNoteContent(from cues: [SubtitleCue]) -> String {
         cues.map(\.text).joined(separator: "\n")
+    }
+
+    // Resolves each cue's text to an NSRange within noteText by searching sequentially.
+    // Sequential search means duplicate cue texts are matched in order, not always to the first
+    // occurrence, so a cue that reuses an earlier line highlights the correct second instance.
+    // Returns nil for any cue whose text cannot be found (e.g. after the note was heavily edited).
+    static func resolveHighlightRanges(for cues: [SubtitleCue], in noteText: String) -> [NSRange?] {
+        var searchStart = noteText.startIndex
+        return cues.map { cue in
+            guard let range = noteText.range(of: cue.text, range: searchStart..<noteText.endIndex) else {
+                return nil
+            }
+            searchStart = range.upperBound
+            return NSRange(range, in: noteText)
+        }
+    }
+
+    // Reconstructs a well-formed SRT string from a cue list so the user can edit and re-import it.
+    static func formatSRT(from cues: [SubtitleCue]) -> String {
+        cues.map { cue in
+            "\(cue.index)\n\(formatTimecode(cue.startMs)) --> \(formatTimecode(cue.endMs))\n\(cue.text)"
+        }.joined(separator: "\n\n")
+    }
+
+    // Formats a millisecond offset as the SRT "HH:MM:SS,mmm" timecode string.
+    private static func formatTimecode(_ ms: Int) -> String {
+        let hours = ms / 3_600_000
+        let minutes = (ms % 3_600_000) / 60_000
+        let seconds = (ms % 60_000) / 1_000
+        let millis = ms % 1_000
+        return String(format: "%02d:%02d:%02d,%03d", hours, minutes, seconds, millis)
     }
 
     // Parses "HH:MM:SS,mmm --> HH:MM:SS,mmm" into a (startMs, endMs) tuple.

@@ -1,77 +1,96 @@
 import SwiftUI
 
-// Renders the audio playback controls shown below the editor when the active note has an audio
-// attachment. Updates highlightRange whenever the active cue changes so FuriganaTextRenderer
-// can visually track the currently spoken subtitle.
+// Renders a compact play/pause button for notes with an audio attachment.
+// Long-pressing the button reveals a bottom sheet with the scrubber, restart,
+// and subtitle-edit actions.
 struct AudioPlayerBar: View {
     @ObservedObject var controller: AudioPlaybackController
-    // Cues loaded for the current note's audio attachment.
-    var cues: [SubtitleCue]
     // Writes the NSRange of the active cue back to ReadView for text highlighting.
     @Binding var highlightRange: NSRange?
+    // Called when the user requests to edit the subtitle file.
+    var onEditSubtitles: () -> Void
+
+    @State private var isShowingControls = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Play / pause toggle.
-            Button {
-                if controller.isPlaying {
-                    controller.pause()
-                } else {
-                    controller.play()
-                }
-            } label: {
-                Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(Color(.tertiarySystemFill)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
-
-            // Scrubber bar that reflects playback progress and accepts taps to seek.
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color(.systemFill))
-                        .frame(height: 4)
-                    Capsule()
-                        .fill(Color.accentColor)
-                        .frame(width: proxy.size.width * playbackFraction, height: 4)
-                }
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .onTapGesture { location in
-                    let fraction = location.x / max(proxy.size.width, 1)
-                    let ms = Int(fraction * controller.duration * 1000)
-                    controller.seek(toMs: ms)
-                }
-            }
-            .frame(height: 34)
-
-            // Current playback position displayed as M:SS.
-            Text(formattedTime)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.secondary)
+        ZStack {
+            Circle()
+                .fill(Color(.tertiarySystemFill))
+            Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 16, weight: .semibold))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.secondarySystemBackground))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
-                )
-        )
-        .padding(.horizontal, 8)
-        // Propagate active cue changes to ReadView's highlight binding.
-        .onChange(of: controller.activeCueIndex) { _, newIndex in
-            applyHighlight(for: newIndex)
+        .frame(width: 36, height: 36)
+        .contentShape(Circle())
+        .onTapGesture {
+            if controller.isPlaying { controller.pause() } else { controller.play() }
+        }
+        .onLongPressGesture(minimumDuration: 0.4) {
+            isShowingControls = true
+        }
+        .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
+        .sheet(isPresented: $isShowingControls) {
+            expandedControls
+                .presentationDetents([.height(160)])
+                .presentationDragIndicator(.visible)
         }
         .onDisappear {
             // Clear highlight so it doesn't linger when the bar is hidden.
             highlightRange = nil
         }
+    }
+
+    // Bottom sheet content: scrubber, time, restart, and edit-subtitles actions.
+    @ViewBuilder
+    private var expandedControls: some View {
+        VStack(spacing: 20) {
+            // Tappable scrubber with elapsed time label.
+            HStack(spacing: 12) {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color(.systemFill))
+                            .frame(height: 4)
+                        Capsule()
+                            .fill(Color.accentColor)
+                            .frame(width: proxy.size.width * playbackFraction, height: 4)
+                    }
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture { location in
+                        let ms = Int((location.x / max(proxy.size.width, 1)) * controller.duration * 1000)
+                        controller.seek(toMs: ms)
+                    }
+                }
+                .frame(height: 36)
+
+                Text(formattedTime)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 36, alignment: .trailing)
+            }
+
+            // Secondary actions: restart playback and open subtitle editor.
+            HStack {
+                Button {
+                    controller.seek(toMs: 0)
+                } label: {
+                    Label("Restart", systemImage: "arrow.counterclockwise")
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Button {
+                    isShowingControls = false
+                    onEditSubtitles()
+                } label: {
+                    Label("Edit Subtitles", systemImage: "pencil")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
     }
 
     // Fraction of total duration elapsed; clamped to [0, 1].
@@ -83,18 +102,6 @@ struct AudioPlayerBar: View {
     // Converts milliseconds to a M:SS string for the elapsed time label.
     private var formattedTime: String {
         let totalSeconds = controller.currentTimeMs / 1000
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    // Resolves the NSRange of the cue at the given index and writes it to the binding.
-    private func applyHighlight(for index: Int?) {
-        guard let index, index < cues.count else {
-            highlightRange = nil
-            return
-        }
-        let cue = cues[index]
-        highlightRange = NSRange(location: cue.utf16Start, length: cue.utf16End - cue.utf16Start)
+        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 }

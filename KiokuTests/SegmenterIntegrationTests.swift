@@ -36,17 +36,14 @@ final class SegmenterIntegrationTests: XCTestCase {
                     return lhsEnd < rhsEnd
                 }
 
-                if lhs.surface != rhs.surface {
-                    return lhs.surface < rhs.surface
-                }
-
-                return lhs.lemma < rhs.lemma
+                return lhs.surface < rhs.surface
             }
             .map { edge in
                 let startOffset = text.distance(from: text.startIndex, to: edge.start)
                 let endOffset = text.distance(from: text.startIndex, to: edge.end)
-                let summary = resources.segmenter.debugResolutionSummary(for: edge.surface, lemma: edge.lemma)
-                return "\(startOffset)->\(endOffset) \(edge.surface) [lemma: \(edge.lemma)] [\(summary)]"
+                let derivedLemma = resources.segmenter.preferredLemma(for: edge.surface) ?? edge.surface
+                let summary = resources.segmenter.debugResolutionSummary(for: edge.surface, lemma: derivedLemma)
+                return "\(startOffset)->\(endOffset) \(edge.surface) [lemma: \(derivedLemma)] [\(summary)]"
             }
     }
 
@@ -63,31 +60,33 @@ final class SegmenterIntegrationTests: XCTestCase {
         let latticeEdges = try buildLattice(for: "には")
 
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "には" && edge.lemma == "には"
+            edge.surface == "には"
         })
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "に" && edge.lemma == "に"
+            edge.surface == "に"
         })
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "は" && edge.lemma == "は"
+            edge.surface == "は"
         })
     }
 
     // Verifies katakana normalization can admit a surface through the real deinflector pipeline.
     func testBuildLatticeUsesKatakanaNormalizationCandidate() throws {
-        let latticeEdges = try buildLattice(for: "スマイ")
+        let resources = try sharedResources()
+        let latticeEdges = try resources.segmenter.buildLattice(for: "スマイ")
 
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "スマイ" && edge.lemma == "すまい"
+            edge.surface == "スマイ" && resources.segmenter.preferredLemma(for: edge.surface) == "すまい"
         })
     }
 
     // Verifies compound-verb recovery still contributes alternate lemmas through the shared deinflector path.
     func testBuildLatticeUsesCompoundVerbRecoveryCandidate() throws {
-        let latticeEdges = try buildLattice(for: "さがしつづける")
+        let resources = try sharedResources()
+        let latticeEdges = try resources.segmenter.buildLattice(for: "さがしつづける")
 
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "さがしつづける" && edge.lemma == "さがす"
+            edge.surface == "さがしつづける" && resources.segmenter.preferredLemma(for: edge.surface) == "さがす"
         })
     }
 
@@ -100,10 +99,11 @@ final class SegmenterIntegrationTests: XCTestCase {
 
     // Verifies the lattice admits the full passive stem span once the recovery candidate is available.
     func testBuildLatticeUsesPassiveStemRecoveryCandidate() throws {
-        let latticeEdges = try buildLattice(for: "導かれ")
+        let resources = try sharedResources()
+        let latticeEdges = try resources.segmenter.buildLattice(for: "導かれ")
 
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "導かれ" && edge.lemma == "導く"
+            edge.surface == "導かれ" && resources.segmenter.preferredLemma(for: edge.surface) == "導く"
         })
     }
 
@@ -116,10 +116,11 @@ final class SegmenterIntegrationTests: XCTestCase {
 
     // Verifies the lattice keeps the full desiderative-negative span once the verb lemma is reachable.
     func testBuildLatticeUsesDesiderativeRecoveryCandidate() throws {
-        let latticeEdges = try buildLattice(for: "言いたくない")
+        let resources = try sharedResources()
+        let latticeEdges = try resources.segmenter.buildLattice(for: "言いたくない")
 
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "言いたくない" && edge.lemma == "言う"
+            edge.surface == "言いたくない" && resources.segmenter.preferredLemma(for: edge.surface) == "言う"
         })
     }
 
@@ -139,19 +140,21 @@ final class SegmenterIntegrationTests: XCTestCase {
 
     // Verifies the lattice keeps the full ichidan-negative span when lemma recovery succeeds.
     func testBuildLatticeUsesIchidanNegativeRecoveryCandidate() throws {
-        let latticeEdges = try buildLattice(for: "忘れない")
+        let resources = try sharedResources()
+        let latticeEdges = try resources.segmenter.buildLattice(for: "忘れない")
 
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "忘れない" && edge.lemma == "忘れる"
+            edge.surface == "忘れない" && resources.segmenter.preferredLemma(for: edge.surface) == "忘れる"
         })
     }
 
     // Verifies the lattice keeps the full potential-negative span when lemma recovery succeeds.
     func testBuildLatticeUsesPotentialNegativeRecoveryCandidate() throws {
-        let latticeEdges = try buildLattice(for: "できない")
+        let resources = try sharedResources()
+        let latticeEdges = try resources.segmenter.buildLattice(for: "できない")
 
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "できない" && edge.lemma == "できる"
+            edge.surface == "できない" && resources.segmenter.preferredLemma(for: edge.surface) == "できる"
         })
     }
 
@@ -164,10 +167,11 @@ final class SegmenterIntegrationTests: XCTestCase {
 
     // Verifies the lattice keeps the full te-form span when 出逢って resolves through 出逢う.
     func testBuildLatticeUsesGodanTeFormRecoveryCandidateForDeatte() throws {
-        let latticeEdges = try buildLattice(for: "出逢って")
+        let resources = try sharedResources()
+        let latticeEdges = try resources.segmenter.buildLattice(for: "出逢って")
 
         XCTAssertTrue(latticeEdges.contains { edge in
-            edge.surface == "出逢って" && edge.lemma == "出逢う"
+            edge.surface == "出逢って" && resources.segmenter.preferredLemma(for: edge.surface) == "出逢う"
         })
     }
 

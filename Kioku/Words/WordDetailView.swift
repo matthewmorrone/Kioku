@@ -13,7 +13,13 @@ struct WordDetailView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(word.surface)
+                .font(.title2.weight(.semibold))
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                .padding(.bottom, 16)
+
             List {
                 Section("Lists") {
                     if membershipNames.isEmpty {
@@ -26,8 +32,7 @@ struct WordDetailView: View {
                     }
                 }
             }
-            .navigationTitle(word.surface)
-            .navigationBarTitleDisplayMode(.inline)
+            .listStyle(.insetGrouped)
         }
     }
 }

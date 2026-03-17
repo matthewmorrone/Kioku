@@ -4,7 +4,7 @@ import UIKit
 extension ReadView {
     // Merges one segment with its immediate neighbor from the segment list screen.
     func mergeSegmentFromSegmentList(at edgeIndex: Int, isMergingLeft: Bool) {
-        guard segmentationEdges.indices.contains(edgeIndex) else {
+        guard segmentEdges.indices.contains(edgeIndex) else {
             return
         }
 
@@ -16,8 +16,8 @@ extension ReadView {
             guard edgeIndex > 0 else {
                 return
             }
-            let leftEdge = segmentationEdges[edgeIndex - 1]
-            let rightEdge = segmentationEdges[edgeIndex]
+            let leftEdge = segmentEdges[edgeIndex - 1]
+            let rightEdge = segmentEdges[edgeIndex]
             guard isMergeAllowed(between: leftEdge, and: rightEdge) else {
                 flashIllegalMergeBoundary(between: leftEdge, and: rightEdge)
                 return
@@ -26,11 +26,11 @@ extension ReadView {
             sourceLeftSurface = leftEdge.surface
             sourceRightSurface = rightEdge.surface
         } else {
-            guard edgeIndex + 1 < segmentationEdges.count else {
+            guard edgeIndex + 1 < segmentEdges.count else {
                 return
             }
-            let leftEdge = segmentationEdges[edgeIndex]
-            let rightEdge = segmentationEdges[edgeIndex + 1]
+            let leftEdge = segmentEdges[edgeIndex]
+            let rightEdge = segmentEdges[edgeIndex + 1]
             guard isMergeAllowed(between: leftEdge, and: rightEdge) else {
                 flashIllegalMergeBoundary(between: leftEdge, and: rightEdge)
                 return
@@ -40,7 +40,7 @@ extension ReadView {
             sourceRightSurface = rightEdge.surface
         }
 
-        var updatedEdges = segmentationEdges
+        var updatedEdges = segmentEdges
 
         // Applies merge globally to all matching segment pairs when enabled.
         if shouldApplyChangesGlobally {
@@ -57,7 +57,7 @@ extension ReadView {
                         let mergedStart = leftEdge.start
                         let mergedEnd = rightEdge.end
                         let mergedSurface = String(text[mergedStart..<mergedEnd])
-                        let mergedEdge = LatticeEdge(start: mergedStart, end: mergedEnd, surface: mergedSurface, lemma: mergedSurface)
+                        let mergedEdge = LatticeEdge(start: mergedStart, end: mergedEnd, surface: mergedSurface)
                         newEdges.append(mergedEdge)
                         indicesToRemove.insert(i)
                         indicesToRemove.insert(i + 1)
@@ -74,19 +74,19 @@ extension ReadView {
 
             updatedEdges = newEdges
         } else {
-            let mergedStart = segmentationEdges[mergeBounds.lowerBound].start
-            let mergedEnd = segmentationEdges[mergeBounds.upperBound].end
+            let mergedStart = segmentEdges[mergeBounds.lowerBound].start
+            let mergedEnd = segmentEdges[mergeBounds.upperBound].end
             let mergedSurface = String(text[mergedStart..<mergedEnd])
-            let mergedEdge = LatticeEdge(start: mergedStart, end: mergedEnd, surface: mergedSurface, lemma: mergedSurface)
+            let mergedEdge = LatticeEdge(start: mergedStart, end: mergedEnd, surface: mergedSurface)
             updatedEdges.replaceSubrange(mergeBounds, with: [mergedEdge])
         }
 
-        applySegmentationEdges(updatedEdges, persistOverride: true)
+        applySegmentEdges(updatedEdges, persistOverride: true)
 
         if !shouldApplyChangesGlobally {
             let mergedIndex = mergeBounds.lowerBound
-            let mergedStart = segmentationEdges[mergeBounds.lowerBound].start
-            let mergedEnd = segmentationEdges[mergeBounds.upperBound].end
+            let mergedStart = segmentEdges[mergeBounds.lowerBound].start
+            let mergedEnd = segmentEdges[mergeBounds.upperBound].end
             selectedMergedEdgeBounds = mergedIndex...mergedIndex
             let mergedNSRange = NSRange(mergedStart..<mergedEnd, in: text)
             selectedSegmentLocation = mergedNSRange.location

@@ -26,7 +26,18 @@ final class CopyableLabel: UILabel, UIContextMenuInteractionDelegate {
         UIPasteboard.general.string = text
     }
 
-    // Provides a copy-only long-press menu so the label stays visually quiet.
+    // Presents a share sheet for the label text via the nearest view controller.
+    private func shareText() {
+        guard let text, text.isEmpty == false else { return }
+        let activityVC = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        // On iPad, anchor the popover to this view to avoid a crash.
+        activityVC.popoverPresentationController?.sourceView = self
+        activityVC.popoverPresentationController?.sourceRect = bounds
+        guard let root = window?.rootViewController else { return }
+        root.topmostPresentedViewController.present(activityVC, animated: true)
+    }
+
+    // Provides copy and share actions on long press so the label stays visually quiet.
     func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,
         configurationForMenuAtLocation location: CGPoint
@@ -39,8 +50,18 @@ final class CopyableLabel: UILabel, UIContextMenuInteractionDelegate {
             let copyAction = UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in
                 self?.copyText()
             }
+            let shareAction = UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                self?.shareText()
+            }
 
-            return UIMenu(title: "", children: [copyAction])
+            return UIMenu(title: "", children: [copyAction, shareAction])
         }
+    }
+}
+
+// Walks the presented-VC chain to find the topmost controller for sheet presentation.
+private extension UIViewController {
+    var topmostPresentedViewController: UIViewController {
+        presentedViewController?.topmostPresentedViewController ?? self
     }
 }

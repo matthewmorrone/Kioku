@@ -27,24 +27,25 @@ public final class Lexicon {
             return surface
         }
 
-        let lookupReading = readingBySurface[surface]
-        if let lookupReading {
+        if let lookupReading = readingBySurface[surface] {
             return lookupReading
         }
 
-        let candidateLemmas = lemma(surface: surface)
+        // Compute paths once so bestTransitions does not re-traverse below.
+        let (candidateLemmas, pathsByLemma) = admittedLemmasAndPaths(for: surface)
         for candidateLemma in candidateLemmas {
-            let lemmaReading = readingForLemma(candidateLemma)
-            if let lemmaReading {
-                if surface == candidateLemma {
-                    return lemmaReading
-                }
+            guard let lemmaReading = readingForLemma(candidateLemma) else {
+                continue
+            }
 
-                let transitions = bestTransitions(for: surface, targetLemma: candidateLemma)
-                if let transitions,
-                   let inflectedReading = applySurfaceTransitions(to: lemmaReading, transitions: transitions) {
-                    return inflectedReading
-                }
+            if surface == candidateLemma {
+                return lemmaReading
+            }
+
+            let transitions = deinflector.bestTransitions(from: pathsByLemma, targetLemma: candidateLemma)
+            if let transitions,
+               let inflectedReading = applySurfaceTransitions(to: lemmaReading, transitions: transitions) {
+                return inflectedReading
             }
         }
 
@@ -53,44 +54,7 @@ public final class Lexicon {
 
     // Returns possible lemma candidates for one surface using grouped deinflection rules and dictionary admission.
     public func lemma(surface: String) -> [String] {
-        let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedSurface.isEmpty == false else {
-            return []
-        }
-
-        let pathsByLemma = deinflector.deinflectionPaths(for: trimmedSurface)
-        var admittedLemmas = pathsByLemma.keys.filter { candidate in
-            segmenter.resolvesSurface(candidate)
-        }
-
-        if admittedLemmas.isEmpty && segmenter.resolvesSurface(trimmedSurface) {
-            admittedLemmas = [trimmedSurface]
-        }
-
-        let preferredLemma = segmenter.preferredLemma(for: trimmedSurface)
-        admittedLemmas.sort { lhs, rhs in
-            if preferredLemma == lhs && preferredLemma != rhs {
-                return true
-            }
-
-            if preferredLemma == rhs && preferredLemma != lhs {
-                return false
-            }
-
-            let lhsDepth = shortestDepth(for: lhs, in: pathsByLemma)
-            let rhsDepth = shortestDepth(for: rhs, in: pathsByLemma)
-            if lhsDepth != rhsDepth {
-                return lhsDepth < rhsDepth
-            }
-
-            if lhs.count != rhs.count {
-                return lhs.count > rhs.count
-            }
-
-            return lhs < rhs
-        }
-
-        return admittedLemmas
+        admittedLemmasAndPaths(for: surface).lemmas
     }
 
     // Returns normalized lookup candidates by combining each admitted lemma with its preferred reading.
@@ -109,12 +73,13 @@ public final class Lexicon {
 
     // Returns best lemma plus grouped-rule chain that explains how the surface deinflects.
     public func inflectionInfo(surface: String) -> (lemma: String, chain: [String])? {
-        let lemmas = lemma(surface: surface)
+        // Compute paths once; extract the chain from them rather than re-traversing via deinflector.inflectionChain.
+        let (lemmas, pathsByLemma) = admittedLemmasAndPaths(for: surface)
         guard let bestLemma = lemmas.first else {
             return nil
         }
 
-        let chain = inflectionChain(surface: surface, targetLemma: bestLemma)
+        let chain = deinflector.inflectionChain(from: pathsByLemma, targetLemma: bestLemma)
         return (lemma: bestLemma, chain: chain)
     }
 
@@ -144,18 +109,23 @@ public final class Lexicon {
         return matchingEntries
     }
 
-    // Resolves one surface into ranked lexeme candidates.
+    // Resolves one surface into ranked lexeme candidates using a single deinflection traversal.
+    // Previously called normalize() then inflectionChain() per candidate, each triggering separate traversals.
     public func resolve(surface: String) -> [(lexeme: String, score: Double)] {
-        let normalizedCandidates = normalize(surface: surface)
+        let (admittedLemmas, pathsByLemma) = admittedLemmasAndPaths(for: surface)
         var bestScoreByLexeme: [String: Double] = [:]
 
-        for candidate in normalizedCandidates {
-            let matchingLexemes = lookupLexeme(candidate.lemma, candidate.reading)
-            let chain = inflectionChain(surface: surface, targetLemma: candidate.lemma)
+        for candidateLemma in admittedLemmas {
+            guard let lemmaReading = readingForLemma(candidateLemma) else {
+                continue
+            }
+
+            let matchingLexemes = lookupLexeme(candidateLemma, lemmaReading)
+            let chain = deinflector.inflectionChain(from: pathsByLemma, targetLemma: candidateLemma)
             let baseScore = chain.isEmpty ? 1.0 : 0.98
 
             for entry in matchingLexemes {
-                let lexemeName = entry.kanjiForms.first ?? entry.kanaForms.first ?? candidate.lemma
+                let lexemeName = entry.kanjiForms.first ?? entry.kanaForms.first ?? candidateLemma
                 if let existing = bestScoreByLexeme[lexemeName] {
                     bestScoreByLexeme[lexemeName] = max(existing, baseScore)
                 } else {
@@ -256,22 +226,25 @@ public final class Lexicon {
     }
 
     // Returns the lexeme form that best matches one tapped surface.
+    // Inlines the displayForm fallback to reuse the already-fetched form list and avoid a second DB lookup.
     public func matchedForm(surface: String, lexemeId: String) -> (spelling: String, reading: String)? {
         let allForms = forms(lexemeId)
-        if let exactMatch = allForms.first(where: { form in
-            form.spelling == surface
-        }) {
+
+        if let exactMatch = allForms.first(where: { $0.spelling == surface }) {
             return exactMatch
         }
 
         let lemmaCandidates = lemma(surface: surface)
-        if let lemmaMatch = allForms.first(where: { form in
-            lemmaCandidates.contains(form.spelling)
-        }) {
+        if let lemmaMatch = allForms.first(where: { lemmaCandidates.contains($0.spelling) }) {
             return lemmaMatch
         }
 
-        return displayForm(lexemeId)
+        // Inline displayForm preference so we don't re-fetch the entry.
+        for form in allForms where ScriptClassifier.containsKanji(form.spelling) {
+            return form
+        }
+
+        return allForms.first
     }
 
     // Returns whether one text contains any kanji scalar.
@@ -305,6 +278,8 @@ public final class Lexicon {
     }
 
     // Expands one lemma into inflected forms by inverting grouped deinflection rules and validating results.
+    // Uses deinflectionPaths directly instead of lemma(surface:) to skip the segmenter admission checks —
+    // the target lemma is already known valid, so we only need to confirm the reverse path exists.
     public func expandInflection(_ lemma: String) -> [String] {
         let trimmedLemma = lemma.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedLemma.isEmpty == false else {
@@ -335,8 +310,8 @@ public final class Lexicon {
                     continue
                 }
 
-                let inflectedLemmas = self.lemma(surface: inflectedSurface)
-                if inflectedLemmas.contains(trimmedLemma) {
+                let paths = deinflector.deinflectionPaths(for: inflectedSurface)
+                if paths[trimmedLemma] != nil {
                     visited.insert(inflectedSurface)
                     queue.append((surface: inflectedSurface, depth: item.depth + 1))
                 }
@@ -348,12 +323,13 @@ public final class Lexicon {
 
     // Returns grouped-rule labels describing the preferred deinflection chain for one surface.
     public func inflectionChain(surface: String) -> [String] {
-        let lemmas = lemma(surface: surface)
+        // Compute paths once; extract chain without a second traversal inside deinflector.inflectionChain.
+        let (lemmas, pathsByLemma) = admittedLemmasAndPaths(for: surface)
         guard let bestLemma = lemmas.first else {
             return []
         }
 
-        return deinflector.inflectionChain(for: surface, targetLemma: bestLemma)
+        return deinflector.inflectionChain(from: pathsByLemma, targetLemma: bestLemma)
     }
 
     // Resolves dictionary entries for one surface using script-aware lookup mode selection.
@@ -410,38 +386,62 @@ public final class Lexicon {
         return currentReading
     }
 
+    // Computes deinflection paths once and returns admitted, sorted lemmas alongside the paths.
+    // Callers that also need chain or transition data extract it from the returned paths without re-traversal.
+    private func admittedLemmasAndPaths(for surface: String) -> (lemmas: [String], paths: DeinflectionPathMap) {
+        let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedSurface.isEmpty == false else {
+            return ([], [:])
+        }
+
+        let pathsByLemma = deinflector.deinflectionPaths(for: trimmedSurface)
+        var admittedLemmas = pathsByLemma.keys.filter { candidate in
+            segmenter.resolvesSurface(candidate)
+        }
+
+        if admittedLemmas.isEmpty && segmenter.resolvesSurface(trimmedSurface) {
+            admittedLemmas = [trimmedSurface]
+        }
+
+        // When deinflected candidates exist the surface is an inflected form, not a lemma — remove it.
+        let hasDeinflectedCandidates = admittedLemmas.contains { shortestDepth(for: $0, in: pathsByLemma) > 0 }
+        if hasDeinflectedCandidates {
+            admittedLemmas.removeAll { $0 == trimmedSurface }
+        }
+
+        let preferredLemma = segmenter.preferredLemma(for: trimmedSurface)
+        admittedLemmas.sort { lhs, rhs in
+            if preferredLemma == lhs && preferredLemma != rhs {
+                return true
+            }
+
+            if preferredLemma == rhs && preferredLemma != lhs {
+                return false
+            }
+
+            let lhsDepth = shortestDepth(for: lhs, in: pathsByLemma)
+            let rhsDepth = shortestDepth(for: rhs, in: pathsByLemma)
+            if lhsDepth != rhsDepth {
+                return lhsDepth < rhsDepth
+            }
+
+            if lhs.count != rhs.count {
+                return lhs.count > rhs.count
+            }
+
+            return lhs < rhs
+        }
+
+        return (admittedLemmas, pathsByLemma)
+    }
+
     // Picks the shortest available deinflection depth for one candidate lemma.
-    private func shortestDepth(
-        for lemma: String,
-        in pathsByLemma: [String: [(chain: [String], transitions: [(label: String, kanaIn: String, kanaOut: String)])]]
-    ) -> Int {
+    private func shortestDepth(for lemma: String, in pathsByLemma: DeinflectionPathMap) -> Int {
         guard let paths = pathsByLemma[lemma], paths.isEmpty == false else {
             return Int.max
         }
 
         return paths.map { $0.chain.count }.min() ?? Int.max
-    }
-
-    // Picks transitions for one surface-to-lemma path so reading projection can preserve inflection morphology.
-    private func bestTransitions(
-        for surface: String,
-        targetLemma: String
-    ) -> [(label: String, kanaIn: String, kanaOut: String)]? {
-        deinflector.bestTransitions(for: surface, targetLemma: targetLemma)
-    }
-
-    // Returns the preferred chain for one optional target lemma using shortest-path tie breaking.
-    private func inflectionChain(surface: String, targetLemma: String?) -> [String] {
-        let selectedLemma: String
-
-        if let targetLemma {
-            selectedLemma = targetLemma
-        } else if let firstLemma = lemma(surface: surface).first {
-            selectedLemma = firstLemma
-        } else {
-            return []
-        }
-        return deinflector.inflectionChain(for: surface, targetLemma: selectedLemma)
     }
 
     // Parses stable lexeme ID text to numeric dictionary entry ID.

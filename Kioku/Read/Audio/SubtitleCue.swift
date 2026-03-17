@@ -1,7 +1,9 @@
 import Foundation
 
-// Represents one subtitle cue from an SRT file, including its millisecond timing and
-// the UTF-16 byte range it occupies in the assembled note content.
+// Represents one subtitle cue from an SRT file with millisecond timing.
+// UTF-16 offsets into note content are intentionally not stored here — they are
+// resolved dynamically from the live note text at playback time so that any edits
+// to the note content never silently break highlighting.
 struct SubtitleCue: Codable, Equatable {
     // Sequential index as written in the SRT file.
     var index: Int
@@ -11,8 +13,4 @@ struct SubtitleCue: Codable, Equatable {
     var endMs: Int
     // Raw subtitle text for this cue.
     var text: String
-    // UTF-16 start offset of this cue's text within the assembled note content.
-    var utf16Start: Int
-    // UTF-16 end offset (exclusive) of this cue's text within the assembled note content.
-    var utf16End: Int
 }

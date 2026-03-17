@@ -1,7 +1,8 @@
 import SwiftUI
 
 // Sheet for filtering the words list by source note and/or list membership, with inline list CRUD.
-// Major sections: All toggle, Notes filter section, Lists filter section with CRUD.
+// Major sections: Notes filter section, Lists filter section with CRUD.
+// When nothing is selected all words are shown.
 struct WordsFilterView: View {
     @EnvironmentObject private var wordListsStore: WordListsStore
     @EnvironmentObject private var wordsStore: WordsStore
@@ -19,22 +20,6 @@ struct WordsFilterView: View {
     var body: some View {
         NavigationStack {
             List {
-                // Clears all active filters across both notes and lists.
-                Button {
-                    activeFilterNoteIDs.removeAll()
-                    activeFilterListIDs.removeAll()
-                } label: {
-                    HStack {
-                        Text("All").foregroundStyle(.primary)
-                        Spacer()
-                        if activeFilterNoteIDs.isEmpty && activeFilterListIDs.isEmpty {
-                            Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
                 // Notes that have at least one saved word, so the list stays relevant.
                 if notesWithSavedWords.isEmpty == false {
                     Section("Notes") {
@@ -84,11 +69,13 @@ struct WordsFilterView: View {
         return notesStore.notes.filter { noteIDsWithWords.contains($0.id) }
     }
 
-    // Builds a note filter row with a checkmark toggle.
+    // Builds a note filter row that applies the filter and dismisses the sheet immediately.
     @ViewBuilder
     private func noteFilterRow(_ note: Note) -> some View {
         Button {
-            toggleNoteFilter(note.id)
+            activeFilterNoteIDs = [note.id]
+            activeFilterListIDs.removeAll()
+            dismiss()
         } label: {
             HStack {
                 Text(resolvedTitle(for: note)).foregroundStyle(.primary)

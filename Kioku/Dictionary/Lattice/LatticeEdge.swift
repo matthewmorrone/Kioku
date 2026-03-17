@@ -6,5 +6,4 @@ struct LatticeEdge {
     let start: String.Index
     let end: String.Index
     let surface: String
-    let lemma: String
 }

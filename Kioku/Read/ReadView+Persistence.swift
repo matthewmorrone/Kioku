@@ -57,9 +57,9 @@ extension ReadView {
             fallbackTitle = ""
             text = ""
             segments = nil
-            segmentationLatticeEdges = []
-            segmentationEdges = []
-            segmentationRanges = []
+            segmentLatticeEdges = []
+            segmentEdges = []
+            segmentRanges = []
             unknownSegmentLocations = []
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
@@ -103,9 +103,13 @@ extension ReadView {
         guard !isLoadingSelectedNote else { return }
 
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Avoid creating an empty note when the editor has no active note yet.
-        if trimmedText.isEmpty && activeNoteID == nil {
-            return
+        let trimmedTitle = customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Don't create a note when both content and title are blank.
+        // For a brand-new note not yet in the store this avoids persisting a completely empty entry.
+        // For an existing saved note, allow blank saves so the user can intentionally clear content.
+        if trimmedText.isEmpty && trimmedTitle.isEmpty {
+            if activeNoteID == nil { return }
+            if notesStore.note(withID: activeNoteID!) == nil { return }
         }
 
         // Prefer explicit titles; otherwise derive one from first content line.

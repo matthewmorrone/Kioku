@@ -39,6 +39,30 @@ extension ReadView {
 
                 furiganaBySegmentLocation = furiganaResult.furiganaByLocation
                 furiganaLengthBySegmentLocation = furiganaResult.lengthByLocation
+
+                // User-selected reading overrides take precedence over computed furigana.
+                // Use the edge's surface length so the furigana rect covers the correct source
+                // characters; also clear any stale per-kanji-run entries for the segment range.
+                for (location, reading) in selectedReadingOverrideByLocation {
+                    let surfaceLength: Int
+                    if let matchingEdge = edges.first(where: {
+                        NSRange($0.start..<$0.end, in: sourceText).location == location
+                    }) {
+                        surfaceLength = NSRange(matchingEdge.start..<matchingEdge.end, in: sourceText).length
+                    } else {
+                        surfaceLength = reading.utf16.count
+                    }
+                    let segNSRange = NSRange(location: location, length: surfaceLength)
+                    for loc in furiganaBySegmentLocation.keys where loc != location {
+                        let len = furiganaLengthBySegmentLocation[loc] ?? 0
+                        if NSIntersectionRange(NSRange(location: loc, length: len), segNSRange).length > 0 {
+                            furiganaBySegmentLocation.removeValue(forKey: loc)
+                            furiganaLengthBySegmentLocation.removeValue(forKey: loc)
+                        }
+                    }
+                    furiganaBySegmentLocation[location] = reading
+                    furiganaLengthBySegmentLocation[location] = surfaceLength
+                }
             }
         }
     }
@@ -65,7 +89,7 @@ extension ReadView {
                 for: segmentSurface,
                 segmentRange: segmentRange,
                 sourceText: sourceText,
-                lemmaReference: edge.lemma,
+                lemmaReference: segmenter.preferredLemma(for: segmentSurface) ?? segmentSurface,
                 readingBySurface: readingBySurface,
                 readingCandidatesBySurface: readingCandidatesBySurface
             )
@@ -154,7 +178,7 @@ extension ReadView {
         )
         let preferredLemmaReference = preferredFuriganaLemmaReference(
             for: edge.surface,
-            lemmaReference: edge.lemma
+            lemmaReference: segmenter.preferredLemma(for: edge.surface) ?? edge.surface
         )
 
         if let surfaceReading = readingForSegment(

@@ -8,8 +8,8 @@ extension ReadView {
             return
         }
 
-        let selectedStart = segmentationEdges[selectedBounds.lowerBound].start
-        let selectedEnd = segmentationEdges[selectedBounds.upperBound].end
+        let selectedStart = segmentEdges[selectedBounds.lowerBound].start
+        let selectedEnd = segmentEdges[selectedBounds.upperBound].end
         let selectedSurface = String(text[selectedStart..<selectedEnd])
         let selectedRange = NSRange(selectedStart..<selectedEnd, in: text)
         guard selectedRange.location != NSNotFound, selectedRange.length > 0 else {
@@ -17,7 +17,7 @@ extension ReadView {
         }
 
         let sectionEdges = Lattice.sectionEdges(
-            from: segmentationLatticeEdges,
+            from: segmentLatticeEdges,
             in: text,
             selectedStart: selectedStart,
             selectedEnd: selectedEnd
@@ -28,8 +28,9 @@ extension ReadView {
             in: text,
             sectionRange: selectedRange,
             sectionSurface: selectedSurface,
-            resolutionSummary: { surface, lemma in
-                segmenter.debugResolutionSummary(for: surface, lemma: lemma)
+            resolutionSummary: { surface in
+                let derivedLemma = segmenter.preferredLemma(for: surface) ?? surface
+                return segmenter.debugResolutionSummary(for: surface, lemma: derivedLemma)
             }
         )
 
