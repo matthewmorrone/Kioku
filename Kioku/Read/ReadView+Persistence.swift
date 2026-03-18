@@ -67,7 +67,7 @@ extension ReadView {
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
             illegalMergeBoundaryLocation = nil
-            SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+            SegmentLookupSheet.shared.dismissPopover()
             isLoadingSelectedNote = false
             return
         }

@@ -9,7 +9,7 @@ struct Note: Identifiable, Codable, Equatable {
     var createdAt: Date
     var modifiedAt: Date
     // Non-nil when the note was created from a subtitle import with audio; references
-    // files managed by NoteAudioStore.
+    // files managed by NotesAudioStore.
     var audioAttachmentID: UUID?
 
     // Creates a note value with optional defaults for new-note workflows.

@@ -206,7 +206,7 @@ struct ReadView: View {
                 selectedSegmentLocation = nil
                 selectedHighlightRangeOverride = nil
                 selectedMergedEdgeBounds = nil
-                SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+                SegmentLookupSheet.shared.dismissPopover()
                 furiganaBySegmentLocation = [:]
                 furiganaLengthBySegmentLocation = [:]
                 return
@@ -228,7 +228,7 @@ struct ReadView: View {
                 selectedSegmentLocation = nil
                 selectedHighlightRangeOverride = nil
                 selectedMergedEdgeBounds = nil
-                SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+                SegmentLookupSheet.shared.dismissPopover()
                 furiganaBySegmentLocation = [:]
                 furiganaLengthBySegmentLocation = [:]
             } else if readResourcesReady {
@@ -270,7 +270,7 @@ struct ReadView: View {
                 ) { newCues in
                     // Reload the controller with updated cues so highlighting stays in sync.
                     audioAttachmentCues = newCues
-                    if let url = NoteAudioStore.shared.audioURL(for: attachmentID) {
+                    if let url = NotesAudioStore.shared.audioURL(for: attachmentID) {
                         try? audioController.load(audioURL: url, cues: newCues)
                     }
                 }

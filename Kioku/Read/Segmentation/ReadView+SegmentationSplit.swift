@@ -90,6 +90,6 @@ extension ReadView {
             selectedSegmentLocation = leftRange.location
             selectedHighlightRangeOverride = leftRange
         }
-        SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+        SegmentLookupSheet.shared.dismissPopover()
     }
 }

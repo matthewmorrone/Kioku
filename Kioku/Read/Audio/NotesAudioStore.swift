@@ -2,9 +2,9 @@ import Foundation
 
 // Manages audio files and subtitle cue data on disk under the app's Documents/audio directory.
 // Each attachment is keyed by a UUID shared between the Note model and the stored files.
-final class NoteAudioStore {
+final class NotesAudioStore {
     // Shared instance so both NotesView (import) and ReadView (playback) access the same storage.
-    static let shared = NoteAudioStore()
+    static let shared = NotesAudioStore()
 
     private let audioDirectory: URL
 

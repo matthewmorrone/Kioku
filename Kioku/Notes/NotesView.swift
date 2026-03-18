@@ -188,8 +188,8 @@ struct NotesView: View {
         if let audioURL {
             let newID = UUID()
             do {
-                _ = try NoteAudioStore.shared.saveAudio(from: audioURL, attachmentID: newID)
-                try NoteAudioStore.shared.saveCues(cues, attachmentID: newID)
+                _ = try NotesAudioStore.shared.saveAudio(from: audioURL, attachmentID: newID)
+                try NotesAudioStore.shared.saveCues(cues, attachmentID: newID)
                 attachmentID = newID
             } catch {
                 subtitleImportError = error.localizedDescription

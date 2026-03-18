@@ -1,6 +1,6 @@
 import UIKit
 
-extension SegmentDefinitionPopoverPresenter {
+extension SegmentLookupSheet {
     // Presents a bottom sheet that starts at a fitted small detent and can expand to medium.
     func presentSurfaceSheet(
         surface: String,
@@ -75,11 +75,13 @@ extension SegmentDefinitionPopoverPresenter {
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
 
-            // Refreshes the subtitle and arrow visibility for the current readings list.
+            // Refreshes the subtitle, arrow visibility, and surface label furigana for the current readings list.
             func updateReadingSubtitle() {
                 currentReadings = self.currentSheetUniqueReadings
                 currentReadingIndex = 0
-                readingSubtitleLabel.text = currentReadings.first ?? ""
+                let firstReading = currentReadings.first
+                readingSubtitleLabel.text = firstReading ?? ""
+                surfaceLabel.applyFurigana(surface: currentSurface, reading: firstReading)
                 let hasMultiple = currentReadings.count > 1
                 prevReadingButton.isHidden = !hasMultiple
                 nextReadingButton.isHidden = !hasMultiple
@@ -89,8 +91,10 @@ extension SegmentDefinitionPopoverPresenter {
                 UIAction { _ in
                     guard currentReadings.count > 1 else { return }
                     currentReadingIndex = (currentReadingIndex - 1 + currentReadings.count) % currentReadings.count
-                    readingSubtitleLabel.text = currentReadings[currentReadingIndex]
-                    self.onReadingSelected?(currentReadings[currentReadingIndex])
+                    let reading = currentReadings[currentReadingIndex]
+                    readingSubtitleLabel.text = reading
+                    surfaceLabel.applyFurigana(surface: currentSurface, reading: reading)
+                    self.onReadingSelected?(reading)
                 },
                 for: .touchUpInside
             )
@@ -99,8 +103,10 @@ extension SegmentDefinitionPopoverPresenter {
                 UIAction { _ in
                     guard currentReadings.count > 1 else { return }
                     currentReadingIndex = (currentReadingIndex + 1) % currentReadings.count
-                    readingSubtitleLabel.text = currentReadings[currentReadingIndex]
-                    self.onReadingSelected?(currentReadings[currentReadingIndex])
+                    let reading = currentReadings[currentReadingIndex]
+                    readingSubtitleLabel.text = reading
+                    surfaceLabel.applyFurigana(surface: currentSurface, reading: reading)
+                    self.onReadingSelected?(reading)
                 },
                 for: .touchUpInside
             )
