@@ -11,6 +11,9 @@ struct SettingsView: View {
     private var lineSpacing = TypographySettings.defaultLineSpacing
     @AppStorage(TypographySettings.kerningKey)
     private var kerning = TypographySettings.defaultKerning
+    @AppStorage(ParticleSettings.storageKey)
+    private var particlesRaw: String = ParticleSettings.defaultRawValue
+
     @State private var exportDocument = NotesTransferDocument(notes: [])
     @State private var isShowingExporter = false
     @State private var isShowingImporter = false
@@ -80,13 +83,13 @@ struct SettingsView: View {
                     Text("Typography")
                 }
 
-                // Links to the particle allowlist editor for segmentation path filtering.
+                // Inline chip editor for the single-kana allowlist used during lattice path filtering.
                 Section {
-                    NavigationLink("Particles") {
-                        ParticleSettingsView()
-                    }
+                    ParticleTagEditor(tags: particlesBinding)
                 } header: {
-                    Text("Segmentation")
+                    Text("Particles")
+                } footer: {
+                    Text("Single-kana segments not listed here are treated as bound morphemes and excluded from segmentation paths.")
                 }
 
                 Section {
@@ -232,6 +235,84 @@ struct SettingsView: View {
         transferAlertTitle = title
         transferAlertMessage = message
         isShowingTransferAlert = true
+    }
+
+    // Bridges AppStorage raw string to the sorted particle list expected by ParticleTagEditor.
+    private var particlesBinding: Binding<[String]> {
+        Binding(
+            get: { ParticleSettings.decodeList(from: particlesRaw) },
+            set: { particlesRaw = ParticleSettings.encodeList($0) }
+        )
+    }
+}
+
+// Chip grid for adding and removing individual kana from the particle allowlist.
+private struct ParticleTagEditor: View {
+    @Binding var tags: [String]
+    @State private var draft: String = ""
+
+    private let columns: [GridItem] = [GridItem(.adaptive(minimum: 56), spacing: 8)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if tags.isEmpty {
+                Text("No particles configured. Add kana to allow them as standalone segments.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    ForEach(tags, id: \.self) { tag in
+                        tagChip(for: tag)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField("Add kana", text: $draft)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .onSubmit { commitDraft() }
+
+                Button("Add") { commitDraft() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            Button("Reset to Defaults") {
+                ParticleSettings.reset()
+                tags = ParticleSettings.decodeList(from: ParticleSettings.defaultRawValue)
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func tagChip(for tag: String) -> some View {
+        HStack(spacing: 4) {
+            Text(tag)
+                .font(.subheadline)
+            Button(role: .destructive) {
+                tags.removeAll { $0 == tag }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Color(.secondarySystemBackground)))
+        .overlay(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: 1))
+    }
+
+    private func commitDraft() {
+        let normalized = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.isEmpty == false else { return }
+        if tags.contains(normalized) == false {
+            tags.append(normalized)
+            tags.sort()
+        }
+        draft = ""
     }
 }
 

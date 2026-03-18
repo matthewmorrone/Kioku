@@ -7,10 +7,6 @@ final class Segmenter {
     private let deinflector: Deinflector?
     private let config: SegmenterConfig
     private let scoring: SegmenterScoring
-    // Single-character kana that may appear as standalone lattice edges; all others are bound morphemes.
-    // Shares the same resource as the word-list particle filter so both behaviours stay in sync.
-    private static let standaloneKana: Set<String> = loadCommonParticles()
-
     private let boundaryCharacters: Set<Character> = [
         " ", "\t", "\n", "\r", "　",
         ".", ",", "!", "?", ";", ":",
@@ -78,7 +74,7 @@ final class Segmenter {
 
                 if lemmas.isEmpty == false {
                     // Bound single-kana morphemes (た、ら、etc.) are excluded; only standalone-valid kana pass.
-                    if surface.count == 1, ScriptClassifier.isPureKana(surface), !Self.standaloneKana.contains(surface) {
+                    if surface.count == 1, ScriptClassifier.isPureKana(surface), !config.standaloneKana.contains(surface) {
                         continue
                     }
                     edges.append(
@@ -93,14 +89,15 @@ final class Segmenter {
             }
 
             // Ensures every character position has at least one outgoing edge.
+            // Single-character fallback so the greedy walk lands on every position,
+            // allowing dictionary words that start mid-unknown-run to be reached.
             if keptMatches == 0 {
-                let fallbackRange = unknownFallbackRange(in: text, startingAt: index)
-                let fallbackSurface = String(text[fallbackRange])
+                let nextIndex = text.index(after: index)
                 edges.append(
                     LatticeEdge(
-                        start: fallbackRange.lowerBound,
-                        end: fallbackRange.upperBound,
-                        surface: fallbackSurface
+                        start: index,
+                        end: nextIndex,
+                        surface: String(text[index..<nextIndex])
                     )
                 )
             }
@@ -498,27 +495,6 @@ final class Segmenter {
         }
 
         return false
-    }
-
-    // Loads the shared common-particles list from bundle; used as the single-character kana allowlist.
-    private static func loadCommonParticles(
-        bundle: Bundle = .main,
-        resourceName: String = "common_particles",
-        fileExtension: String = "json"
-    ) -> Set<String> {
-        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
-            print("Missing common particles file: \(resourceName).\(fileExtension)")
-            return []
-        }
-
-        do {
-            let data = try Data(contentsOf: fileURL)
-            let particles = try JSONDecoder().decode([String].self, from: data)
-            return Set(particles)
-        } catch {
-            print("Failed to decode common particles file: \(error)")
-            return []
-        }
     }
 
     // Escapes control line-break characters for stable single-line debug output.

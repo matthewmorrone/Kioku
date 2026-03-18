@@ -2,7 +2,10 @@ import Foundation
 
 public struct DictionaryEntry: Equatable {
     public let entryId: Int64
-    public let isCommon: Bool
+    // Best JPDB frequency rank for the matched (kanji, kana) pair. Lower = more frequent. Nil if not in JPDB.
+    public let jpdbRank: Int?
+    // Zipf frequency score from wordfreq for the matched surface. Nil if unscored.
+    public let wordfreqZipf: Double?
     public let matchedSurface: String
     public let kanjiForms: [String]
     public let kanaForms: [String]
@@ -10,7 +13,8 @@ public struct DictionaryEntry: Equatable {
 
     public init(
         entryId: Int64,
-        isCommon: Bool,
+        jpdbRank: Int?,
+        wordfreqZipf: Double?,
         matchedSurface: String,
         kanjiForms: [String],
         kanaForms: [String],
@@ -18,7 +22,8 @@ public struct DictionaryEntry: Equatable {
     ) {
         // Captures a fully materialized entry snapshot returned by dictionary lookup.
         self.entryId = entryId
-        self.isCommon = isCommon
+        self.jpdbRank = jpdbRank
+        self.wordfreqZipf = wordfreqZipf
         self.matchedSurface = matchedSurface
         self.kanjiForms = kanjiForms
         self.kanaForms = kanaForms

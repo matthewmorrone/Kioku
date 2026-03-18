@@ -1,43 +1,35 @@
 import Foundation
 
 // Manages the persistent set of single-kana morphemes permitted as standalone segments in lattice paths.
-// Uses the same common_particles.json resource as Segmenter and SegmentListView so defaults stay in sync.
+// Uses comma-joined AppStorage so the SettingsView can bind directly without custom encoding.
 enum ParticleSettings {
     static let storageKey = "kioku.particles.allowed"
 
-    // Loads the default particle list from the bundled resource.
-    static let defaults: [String] = {
-        guard
-            let url = Bundle.main.url(forResource: "common_particles", withExtension: "json"),
-            let data = try? Data(contentsOf: url),
-            let particles = try? JSONDecoder().decode([String].self, from: data)
-        else {
-            return []
-        }
-        return particles.sorted()
-    }()
+    static let defaults: [String] = KanaData.defaultParticles.sorted()
+
+    static let defaultRawValue: String = defaults.joined(separator: ",")
 
     // Returns the currently saved allowlist, falling back to defaults when the user has not customized it.
     static func allowed() -> Set<String> {
-        guard
-            let raw = UserDefaults.standard.string(forKey: storageKey),
-            let data = raw.data(using: .utf8),
-            let particles = try? JSONDecoder().decode([String].self, from: data)
-        else {
-            return Set(defaults)
-        }
-        return Set(particles)
+        let raw = UserDefaults.standard.string(forKey: storageKey) ?? ""
+        return Set(decodeList(from: raw))
     }
 
-    // Persists the particle allowlist to UserDefaults.
-    static func save(_ particles: Set<String>) {
-        guard
-            let data = try? JSONEncoder().encode(particles.sorted()),
-            let raw = String(data: data, encoding: .utf8)
-        else {
-            return
-        }
-        UserDefaults.standard.set(raw, forKey: storageKey)
+    // Decodes a comma-joined raw string into a sorted particle list.
+    static func decodeList(from rawValue: String) -> [String] {
+        let source = rawValue.isEmpty ? defaultRawValue : rawValue
+        return source
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+    }
+
+    // Encodes a particle list into a comma-joined raw string for AppStorage.
+    static func encodeList(_ list: [String]) -> String {
+        list
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+            .joined(separator: ",")
     }
 
     // Removes persisted customization so allowed() returns defaults again.

@@ -80,7 +80,8 @@ public final class DictionaryStore {
 
             return DictionaryEntry(
                 entryId: header.entryID,
-                isCommon: header.isCommon,
+                jpdbRank: header.jpdbRank,
+                wordfreqZipf: header.wordfreqZipf,
                 matchedSurface: matchedSurface,
                 kanjiForms: kanjiForms,
                 kanaForms: kanaForms,
@@ -89,13 +90,76 @@ public final class DictionaryStore {
         }
     }
 
-    // Fetches all unique dictionary surfaces from kana and kanji tables.
+    // Builds a surface→FrequencyData map covering both JPDB rank and wordfreq Zipf score for fast in-memory lookups.
+    // Surfaces absent from both datasets are excluded; surfaces with only one score carry a partial FrequencyData.
+    public func fetchFrequencyDataBySurface() throws -> [String: FrequencyData] {
+        try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT text, MIN(jpdb_rank), MAX(wordfreq_zipf) FROM (
+                SELECT k.text, MIN(kkl.jpdb_rank) AS jpdb_rank, MAX(k.wordfreq_zipf) AS wordfreq_zipf
+                FROM kanji k
+                LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = k.id
+                GROUP BY k.text
+                UNION ALL
+                SELECT kf.text, NULL AS jpdb_rank, MAX(kf.wordfreq_zipf) AS wordfreq_zipf
+                FROM kana_forms kf
+                WHERE kf.entry_id NOT IN (SELECT entry_id FROM kanji)
+                GROUP BY kf.text
+            )
+            GROUP BY text
+            """
+
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+
+            try prepare(sql: sql, statement: &statement)
+
+            var dataByS: [String: FrequencyData] = [:]
+            var stepCode = sqlite3_step(statement)
+
+            while stepCode == SQLITE_ROW {
+                guard let surfacePointer = sqlite3_column_text(statement, 0) else {
+                    stepCode = sqlite3_step(statement)
+                    continue
+                }
+                let surface = String(cString: surfacePointer)
+
+                // Column 1: jpdb_rank (nullable int)
+                let jpdbRank: Int? = sqlite3_column_type(statement, 1) == SQLITE_NULL
+                    ? nil
+                    : Int(sqlite3_column_int(statement, 1))
+
+                // Column 2: wordfreq_zipf (nullable double)
+                let wordfreqZipf: Double? = sqlite3_column_type(statement, 2) == SQLITE_NULL
+                    ? nil
+                    : sqlite3_column_double(statement, 2)
+
+                // Only include entries where at least one frequency signal is present.
+                guard jpdbRank != nil || wordfreqZipf != nil else {
+                    stepCode = sqlite3_step(statement)
+                    continue
+                }
+
+                dataByS[surface] = FrequencyData(jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
+                stepCode = sqlite3_step(statement)
+            }
+
+            guard stepCode == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage())
+            }
+
+            return dataByS
+        }
+    }
+
+    // Fetches all unique dictionary surfaces from kanji and kana_forms tables.
     public func fetchAllSurfaces() throws -> [String] {
         try withSerializedDatabaseAccess {
             let sql = """
-            SELECT DISTINCT surface
-            FROM surface_lookup
-            ORDER BY surface ASC
+            SELECT DISTINCT text FROM kanji
+            UNION
+            SELECT DISTINCT text FROM kana_forms
+            ORDER BY text ASC
             """
 
             var statement: OpaquePointer?
@@ -122,14 +186,17 @@ public final class DictionaryStore {
     }
 
     // Builds a preferred surface-to-reading map for fast in-memory furigana lookups.
+    // Orderd by best JPDB rank so the most common reading is picked first.
     public func fetchPreferredReadingsBySurface() throws -> [String: String] {
         try withSerializedDatabaseAccess {
             let sql = """
-            SELECT kj.text AS surface, kf.text AS reading, e.is_common
+            SELECT kj.text AS surface, kf.text AS reading,
+                   MIN(COALESCE(kkl.jpdb_rank, 9999999)) AS best_rank
             FROM kanji kj
-            JOIN entries e ON e.id = kj.entry_id
-            JOIN kana_forms kf ON kf.entry_id = e.id
-            ORDER BY kj.text ASC, e.is_common DESC, kf.text ASC
+            JOIN kana_forms kf ON kf.entry_id = kj.entry_id
+            LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
+            GROUP BY kj.text, kf.text
+            ORDER BY kj.text ASC, best_rank ASC, kf.text ASC
             """
 
             var statement: OpaquePointer?
@@ -152,7 +219,7 @@ public final class DictionaryStore {
                 let surface = String(cString: surfacePointer)
                 let reading = String(cString: readingPointer)
 
-                // Keep first-seen reading because SQL ordering already prioritizes common entries.
+                // Keep first-seen reading because SQL ordering already prioritizes by frequency.
                 if readingsBySurface[surface] == nil {
                     readingsBySurface[surface] = reading
                 }
@@ -172,11 +239,13 @@ public final class DictionaryStore {
     public func fetchReadingCandidatesBySurface(maxReadingsPerSurface: Int = 8) throws -> [String: [String]] {
         try withSerializedDatabaseAccess {
             let sql = """
-            SELECT kj.text AS surface, kf.text AS reading, e.is_common
+            SELECT kj.text AS surface, kf.text AS reading,
+                   MIN(COALESCE(kkl.jpdb_rank, 9999999)) AS best_rank
             FROM kanji kj
-            JOIN entries e ON e.id = kj.entry_id
-            JOIN kana_forms kf ON kf.entry_id = e.id
-            ORDER BY kj.text ASC, e.is_common DESC, kf.text ASC
+            JOIN kana_forms kf ON kf.entry_id = kj.entry_id
+            LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
+            GROUP BY kj.text, kf.text
+            ORDER BY kj.text ASC, best_rank ASC, kf.text ASC
             """
 
             var statement: OpaquePointer?
@@ -229,31 +298,31 @@ public final class DictionaryStore {
             return []
         }
 
-        var matchedEntriesByID: [Int64: (isCommon: Bool, matchedSurface: String)] = [:]
+        var matchedEntriesByID: [Int64: (jpdbRank: Int?, wordfreqZipf: Double?, matchedSurface: String)] = [:]
 
         for surface in surfaces {
             let matchedEntries = try fetchMatchedEntries(surface: surface, matchKana: matchKana, matchKanji: matchKanji)
             for header in matchedEntries {
                 if matchedEntriesByID[header.entryID] == nil {
-                    matchedEntriesByID[header.entryID] = (isCommon: header.isCommon, matchedSurface: surface)
+                    matchedEntriesByID[header.entryID] = (
+                        jpdbRank: header.jpdbRank,
+                        wordfreqZipf: header.wordfreqZipf,
+                        matchedSurface: surface
+                    )
                 }
             }
         }
 
+        // Sort by JPDB rank ascending (lower = more frequent), then entry insertion order.
         let matchedEntries = matchedEntriesByID
             .map { key, value in
-                (entryID: key, isCommon: value.isCommon, matchedSurface: value.matchedSurface)
+                (entryID: key, jpdbRank: value.jpdbRank, wordfreqZipf: value.wordfreqZipf, matchedSurface: value.matchedSurface)
             }
             .sorted { lhs, rhs in
-                if lhs.isCommon != rhs.isCommon {
-                    return lhs.isCommon && !rhs.isCommon
-                }
-
-                if lhs.entryID != rhs.entryID {
-                    return lhs.entryID < rhs.entryID
-                }
-
-                return lhs.matchedSurface < rhs.matchedSurface
+                let lRank = lhs.jpdbRank ?? Int.max
+                let rRank = rhs.jpdbRank ?? Int.max
+                if lRank != rRank { return lRank < rRank }
+                return lhs.entryID < rhs.entryID
             }
 
         var results: [DictionaryEntry] = []
@@ -267,7 +336,8 @@ public final class DictionaryStore {
             results.append(
                 DictionaryEntry(
                     entryId: header.entryID,
-                    isCommon: header.isCommon,
+                    jpdbRank: header.jpdbRank,
+                    wordfreqZipf: header.wordfreqZipf,
                     matchedSurface: header.matchedSurface,
                     kanjiForms: kanjiForms,
                     kanaForms: kanaForms,
@@ -295,56 +365,39 @@ public final class DictionaryStore {
         return orderedSurfaces
     }
 
-    // Fetches distinct entry headers with deterministic ordering by commonness then sense order.
-    private func fetchMatchedEntries(surface: String, matchKana: Bool, matchKanji: Bool) throws -> [(entryID: Int64, isCommon: Bool)] {
+    // Fetches entry headers with frequency data, ordered by JPDB rank then sense order.
+    private func fetchMatchedEntries(surface: String, matchKana: Bool, matchKanji: Bool) throws -> [(entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?)] {
         guard matchKana || matchKanji else {
             return []
         }
 
-        let sql: String
+        let whereClause: String
         if matchKana && matchKanji {
-            sql = """
-            SELECT e.id, e.is_common
-            FROM entries e
-            LEFT JOIN senses s ON s.entry_id = e.id
-            WHERE EXISTS (
-                SELECT 1
-                FROM surface_lookup sl
-                WHERE sl.entry_id = e.id
-                  AND sl.surface = ?1
+            whereClause = """
+            EXISTS (
+                SELECT 1 FROM kanji kj WHERE kj.entry_id = e.id AND kj.text = ?1
+                UNION ALL
+                SELECT 1 FROM kana_forms kf WHERE kf.entry_id = e.id AND kf.text = ?1
             )
-            GROUP BY e.id, e.is_common
-            ORDER BY e.is_common DESC, COALESCE(MIN(s.order_index), 2147483647) ASC, e.id ASC
             """
         } else if matchKana {
-            sql = """
-            SELECT e.id, e.is_common
-            FROM entries e
-            LEFT JOIN senses s ON s.entry_id = e.id
-            WHERE EXISTS (
-                SELECT 1
-                FROM kana_forms kf
-                WHERE kf.entry_id = e.id
-                  AND kf.text = ?1
-            )
-            GROUP BY e.id, e.is_common
-            ORDER BY e.is_common DESC, COALESCE(MIN(s.order_index), 2147483647) ASC, e.id ASC
-            """
+            whereClause = "EXISTS (SELECT 1 FROM kana_forms kf WHERE kf.entry_id = e.id AND kf.text = ?1)"
         } else {
-            sql = """
-            SELECT e.id, e.is_common
-            FROM entries e
-            LEFT JOIN senses s ON s.entry_id = e.id
-            WHERE EXISTS (
-                SELECT 1
-                FROM kanji kj
-                WHERE kj.entry_id = e.id
-                  AND kj.text = ?1
-            )
-            GROUP BY e.id, e.is_common
-            ORDER BY e.is_common DESC, COALESCE(MIN(s.order_index), 2147483647) ASC, e.id ASC
-            """
+            whereClause = "EXISTS (SELECT 1 FROM kanji kj WHERE kj.entry_id = e.id AND kj.text = ?1)"
         }
+
+        let sql = """
+        SELECT e.id,
+               MIN(wf.jpdb_rank) AS best_jpdb,
+               MAX(wf.wordfreq_zipf) AS best_zipf,
+               COALESCE(MIN(s.order_index), 2147483647) AS min_sense
+        FROM entries e
+        LEFT JOIN word_frequency wf ON wf.entry_id = e.id
+        LEFT JOIN senses s ON s.entry_id = e.id
+        WHERE \(whereClause)
+        GROUP BY e.id
+        ORDER BY MIN(COALESCE(wf.jpdb_rank, 9999999)) ASC, min_sense ASC, e.id ASC
+        """
 
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -352,15 +405,18 @@ public final class DictionaryStore {
         try prepare(sql: sql, statement: &statement)
         try bindText(surface, index: 1, statement: statement)
 
-        var items: [(entryID: Int64, isCommon: Bool)] = []
+        var items: [(entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?)] = []
 
         var stepCode = sqlite3_step(statement)
         while stepCode == SQLITE_ROW {
-
-            // Read entry metadata in the same column order as the SELECT clause.
             let entryID = sqlite3_column_int64(statement, 0)
-            let isCommon = sqlite3_column_int(statement, 1) != 0
-            items.append((entryID: entryID, isCommon: isCommon))
+            let jpdbRank = sqlite3_column_type(statement, 1) != SQLITE_NULL
+                ? Int(sqlite3_column_int(statement, 1))
+                : nil
+            let wordfreqZipf = sqlite3_column_type(statement, 2) != SQLITE_NULL
+                ? sqlite3_column_double(statement, 2)
+                : nil
+            items.append((entryID: entryID, jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf))
 
             stepCode = sqlite3_step(statement)
         }
@@ -373,11 +429,13 @@ public final class DictionaryStore {
     }
 
     // Fetches one entry header by ID so callers can rebuild full entry payloads deterministically.
-    private func fetchEntryHeader(entryID: Int64) throws -> (entryID: Int64, isCommon: Bool)? {
+    private func fetchEntryHeader(entryID: Int64) throws -> (entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?)? {
         let sql = """
-        SELECT e.id, e.is_common
+        SELECT e.id, MIN(wf.jpdb_rank), MAX(wf.wordfreq_zipf)
         FROM entries e
+        LEFT JOIN word_frequency wf ON wf.entry_id = e.id
         WHERE e.id = ?1
+        GROUP BY e.id
         LIMIT 1
         """
 
@@ -397,14 +455,19 @@ public final class DictionaryStore {
         }
 
         let resolvedEntryID = sqlite3_column_int64(statement, 0)
-        let isCommon = sqlite3_column_int(statement, 1) != 0
+        let jpdbRank = sqlite3_column_type(statement, 1) != SQLITE_NULL
+            ? Int(sqlite3_column_int(statement, 1))
+            : nil
+        let wordfreqZipf = sqlite3_column_type(statement, 2) != SQLITE_NULL
+            ? sqlite3_column_double(statement, 2)
+            : nil
 
         let completionCode = sqlite3_step(statement)
         guard completionCode == SQLITE_DONE else {
             throw DictionarySQLiteError.step(message: errorMessage())
         }
 
-        return (entryID: resolvedEntryID, isCommon: isCommon)
+        return (entryID: resolvedEntryID, jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
     }
 
     // Fetches ordered kanji forms for one entry.
@@ -465,10 +528,9 @@ public final class DictionaryStore {
     // Fetches senses and ordered glosses for one entry from the normalized tables.
     private func fetchSenses(entryID: Int64) throws -> [DictionaryEntrySense] {
         let sql = """
-                SELECT s.id, s.pos, g.gloss
+        SELECT s.id, s.pos, g.gloss
         FROM senses s
-        LEFT JOIN glosses g
-                    ON g.sense_id = s.id
+        LEFT JOIN glosses g ON g.sense_id = s.id
         WHERE s.entry_id = ?1
         ORDER BY s.order_index ASC, g.order_index ASC, g.id ASC
         """
@@ -531,14 +593,6 @@ public final class DictionaryStore {
     // Binds a text parameter to a prepared statement index.
     private func bindText(_ text: String, index: Int32, statement: OpaquePointer?) throws {
         let code = sqlite3_bind_text(statement, index, text, -1, sqliteTransient)
-        guard code == SQLITE_OK else {
-            throw DictionarySQLiteError.bindParameter(message: errorMessage())
-        }
-    }
-
-    // Binds a 32-bit integer parameter to a prepared statement index.
-    private func bindInt(_ value: Int32, index: Int32, statement: OpaquePointer?) throws {
-        let code = sqlite3_bind_int(statement, index, value)
         guard code == SQLITE_OK else {
             throw DictionarySQLiteError.bindParameter(message: errorMessage())
         }
