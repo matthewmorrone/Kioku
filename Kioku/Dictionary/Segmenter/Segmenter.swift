@@ -269,9 +269,10 @@ final class Segmenter {
         let lhsLength = text.distance(from: lhs.start, to: lhs.end)
         let rhsLength = text.distance(from: rhs.start, to: rhs.end)
 
-        // Give pure-kana exact matches a bonus of 2 so short deinflection-only kana edges can't
-        // beat them unless the deinflected form is substantially longer.
-        let kanaExactBonus = 2
+        // Give pure-kana exact matches a small bonus so short deinflection-only kana edges can't
+        // beat them by a single character, while still allowing genuinely longer deinflected forms
+        // (e.g. つないだ→つなぐ over つな, まけない→まける over まけ) to win on raw length.
+        let kanaExactBonus = 1
         let lhsAdjustedLength = lhsLength + (ScriptClassifier.isPureKana(lhs.surface) && trie.contains(lhs.surface) ? kanaExactBonus : 0)
         let rhsAdjustedLength = rhsLength + (ScriptClassifier.isPureKana(rhs.surface) && trie.contains(rhs.surface) ? kanaExactBonus : 0)
         if lhsAdjustedLength != rhsAdjustedLength {

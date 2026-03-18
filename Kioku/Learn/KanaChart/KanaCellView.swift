@@ -34,6 +34,6 @@ struct KanaCellView: View {
                     .foregroundStyle(.primary)
             }
         }
-        .frame(height: 44)
+        .frame(height: 36)
     }
 }

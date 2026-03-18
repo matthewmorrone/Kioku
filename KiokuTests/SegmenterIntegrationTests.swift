@@ -203,6 +203,29 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertTrue(candidates.contains("愛しい"))
     }
 
+    // Verifies v5 す-verb benefactive (てくれる) chains recover their dictionary lemma in one step.
+    func testDeinflectorRecoversBenefactiveVerbLemmaForSuVerb() throws {
+        let candidates = try deinflectionCandidates(for: "消してくれる")
+
+        XCTAssertTrue(candidates.contains("消す"))
+    }
+
+    // Verifies the lattice keeps the full benefactive span when the su-verb lemma is reachable.
+    func testBuildLatticeUsesBenefactiveFormCandidateForSuVerb() throws {
+        let resources = try sharedResources()
+        let latticeEdges = try resources.segmenter.buildLattice(for: "消してくれる")
+
+        let hasEdge = latticeEdges.contains { edge in
+            edge.surface == "消してくれる"
+        }
+        XCTAssertTrue(hasEdge, "Lattice should contain an edge spanning 消してくれる")
+
+        if hasEdge {
+            let lemma = resources.segmenter.preferredLemma(for: "消してくれる")
+            XCTAssertEqual(lemma, "消す", "preferredLemma for 消してくれる should be 消す, got \(lemma ?? "nil")")
+        }
+    }
+
     // Prints and verifies the real inclusion results for the katakana-heavy surface we have been inspecting.
     func testReportLatticeInclusionResultsForExaminedSurface() throws {
         let examinedText = "かなしみがいまセーラースマイル"
@@ -213,17 +236,12 @@ final class SegmenterIntegrationTests: XCTestCase {
             print(line)
         }
 
-        XCTAssertTrue(lines.contains { line in
-            line.contains("ス [lemma: す]")
-        })
+        // Single katakana characters (ス, ル) are filtered by the standalone-kana gate and do not appear in the lattice.
         XCTAssertTrue(lines.contains { line in
             line.contains("スマイ [lemma: すまい]")
         })
         XCTAssertTrue(lines.contains { line in
             line.contains("イル [lemma: いる]")
-        })
-        XCTAssertTrue(lines.contains { line in
-            line.contains("ル [lemma: る]")
         })
     }
 }

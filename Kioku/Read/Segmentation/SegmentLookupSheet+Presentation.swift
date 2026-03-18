@@ -51,12 +51,13 @@ extension SegmentLookupSheet {
             surfaceLabel.numberOfLines = 0
             surfaceLabel.text = surface
 
-            let readingSubtitleLabel = UILabel()
+            // Using UIButton instead of UILabel so the custom-reading slot is directly tappable.
+            let readingSubtitleLabel = UIButton(type: .system)
             readingSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-            readingSubtitleLabel.textColor = .secondaryLabel
-            readingSubtitleLabel.font = .systemFont(ofSize: 13, weight: .regular)
-            readingSubtitleLabel.textAlignment = .center
-            readingSubtitleLabel.numberOfLines = 1
+            readingSubtitleLabel.setTitleColor(.secondaryLabel, for: .normal)
+            readingSubtitleLabel.titleLabel?.font = .systemFont(ofSize: 13, weight: .regular)
+            readingSubtitleLabel.contentHorizontalAlignment = .center
+            readingSubtitleLabel.isUserInteractionEnabled = false
 
             let surfaceStack = UIStackView(arrangedSubviews: [surfaceLabel, readingSubtitleLabel])
             surfaceStack.translatesAutoresizingMaskIntoConstraints = false
@@ -82,16 +83,46 @@ extension SegmentLookupSheet {
 
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
+            var customReading: String? = nil
+
+            // True when the current index points to the custom-entry slot (always the last slot).
+            func isOnCustomSlot() -> Bool {
+                currentReadingIndex == currentReadings.count
+            }
+
+            // Total navigable slots: all dictionary readings plus one custom slot.
+            func totalSlots() -> Int {
+                currentReadings.count + 1
+            }
+
+            // Updates the subtitle button text, color, and tappability to match the current index.
+            func syncSubtitleToCurrentIndex() {
+                if isOnCustomSlot() {
+                    let title = customReading ?? "Custom…"
+                    let color: UIColor = customReading != nil ? .secondaryLabel : .tertiaryLabel
+                    readingSubtitleLabel.setTitle(title, for: .normal)
+                    readingSubtitleLabel.setTitleColor(color, for: .normal)
+                    readingSubtitleLabel.isHidden = false
+                    readingSubtitleLabel.isUserInteractionEnabled = true
+                } else {
+                    let reading = currentReadings[currentReadingIndex]
+                    readingSubtitleLabel.setTitle(reading.isEmpty ? nil : reading, for: .normal)
+                    readingSubtitleLabel.setTitleColor(.secondaryLabel, for: .normal)
+                    readingSubtitleLabel.isHidden = reading.isEmpty
+                    readingSubtitleLabel.isUserInteractionEnabled = false
+                }
+            }
 
             // Refreshes arrow visibility and reading subtitle for the current readings list.
             func updateReadingFurigana() {
                 currentReadings = self.currentSheetUniqueReadings
                 currentReadingIndex = 0
+                customReading = nil
                 let reading = currentReadings.first
-                readingSubtitleLabel.text = reading
-                readingSubtitleLabel.isHidden = reading == nil || reading?.isEmpty == true
                 print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) reading=\(reading ?? "nil")")
-                let hasMultiple = currentReadings.count > 1
+                syncSubtitleToCurrentIndex()
+                // Show arrows whenever there is more than one slot total (dictionary + custom).
+                let hasMultiple = totalSlots() > 1
                 prevReadingButton.isHidden = !hasMultiple
                 nextReadingButton.isHidden = !hasMultiple
             }
@@ -452,13 +483,17 @@ extension SegmentLookupSheet {
             // Register reading navigation actions here so updateMiddleContent is already in scope.
             prevReadingButton.addAction(
                 UIAction { _ in
-                    print("[SegmentLookupSheet] prevReadingButton tapped: count=\(currentReadings.count) index=\(currentReadingIndex)")
-                    guard currentReadings.count > 1 else { return }
-                    currentReadingIndex = (currentReadingIndex - 1 + currentReadings.count) % currentReadings.count
-                    let reading = currentReadings[currentReadingIndex]
-                    readingSubtitleLabel.text = reading
-                    print("[SegmentLookupSheet] prev: now showing reading=\(reading) at index=\(currentReadingIndex)")
-                    self.onReadingSelected?(reading)
+                    let total = totalSlots()
+                    print("[SegmentLookupSheet] prevReadingButton tapped: total=\(total) index=\(currentReadingIndex)")
+                    guard total > 1 else { return }
+                    currentReadingIndex = (currentReadingIndex - 1 + total) % total
+                    syncSubtitleToCurrentIndex()
+                    if isOnCustomSlot() {
+                        if let reading = customReading { self.onReadingSelected?(reading) }
+                    } else {
+                        self.onReadingSelected?(currentReadings[currentReadingIndex])
+                    }
+                    print("[SegmentLookupSheet] prev: now at index=\(currentReadingIndex) onCustom=\(isOnCustomSlot())")
                     updateMiddleContent()
                 },
                 for: .touchUpInside
@@ -466,17 +501,42 @@ extension SegmentLookupSheet {
 
             nextReadingButton.addAction(
                 UIAction { _ in
-                    print("[SegmentLookupSheet] nextReadingButton tapped: count=\(currentReadings.count) index=\(currentReadingIndex)")
-                    guard currentReadings.count > 1 else { return }
-                    currentReadingIndex = (currentReadingIndex + 1) % currentReadings.count
-                    let reading = currentReadings[currentReadingIndex]
-                    readingSubtitleLabel.text = reading
-                    print("[SegmentLookupSheet] next: now showing reading=\(reading) at index=\(currentReadingIndex)")
-                    self.onReadingSelected?(reading)
+                    let total = totalSlots()
+                    print("[SegmentLookupSheet] nextReadingButton tapped: total=\(total) index=\(currentReadingIndex)")
+                    guard total > 1 else { return }
+                    currentReadingIndex = (currentReadingIndex + 1) % total
+                    syncSubtitleToCurrentIndex()
+                    if isOnCustomSlot() {
+                        if let reading = customReading { self.onReadingSelected?(reading) }
+                    } else {
+                        self.onReadingSelected?(currentReadings[currentReadingIndex])
+                    }
+                    print("[SegmentLookupSheet] next: now at index=\(currentReadingIndex) onCustom=\(isOnCustomSlot())")
                     updateMiddleContent()
                 },
                 for: .touchUpInside
             )
+
+            // Tap on the subtitle button while on the custom slot opens a text-entry alert.
+            readingSubtitleLabel.addAction(UIAction { [weak sheetController] _ in
+                guard let vc = sheetController else { return }
+                let alert = UIAlertController(title: "Custom Reading", message: nil, preferredStyle: .alert)
+                alert.addTextField { field in
+                    field.text = customReading
+                    field.placeholder = "e.g. よむ"
+                    field.clearButtonMode = .whileEditing
+                }
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                alert.addAction(UIAlertAction(title: "Set", style: .default) { _ in
+                    let entered = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    guard entered.isEmpty == false else { return }
+                    customReading = entered
+                    syncSubtitleToCurrentIndex()
+                    self.onReadingSelected?(entered)
+                    print("[SegmentLookupSheet] custom reading set: \(entered)")
+                })
+                vc.present(alert, animated: true)
+            }, for: .touchUpInside)
 
             // Populate initial content.
             updateMiddleContent()

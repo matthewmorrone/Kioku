@@ -13,10 +13,11 @@ struct SubtitleImportSheet: View {
 
     @State private var audioURL: URL? = nil
     @State private var subtitleURL: URL? = nil
-    @State private var modelURL: URL? = nil
+    @State private var modelSource: WhisperModelSource? = nil
 
     @State private var activePicker: ImportPickerTarget? = nil
     @State private var isPickerPresented = false
+    @State private var isDownloadSheetPresented = false
 
     @State private var audioError = ""
     @State private var subtitleError = ""
@@ -25,6 +26,9 @@ struct SubtitleImportSheet: View {
     @State private var transcriptionError = ""
 
     @State private var isTranscribing = false
+    @State private var transcriptionProgress: Double = 0
+    @State private var liveSegments: [String] = []
+    @State private var modelManager = WhisperModelManager()
 
     // True when audio is present but no subtitle is selected — triggers the Whisper transcription path.
     private var needsTranscription: Bool {
@@ -32,7 +36,9 @@ struct SubtitleImportSheet: View {
     }
 
     private var canImport: Bool {
-        (audioURL != nil || subtitleURL != nil) && isTranscribing == false
+        guard isTranscribing == false else { return false }
+        if needsTranscription { return audioURL != nil && modelSource != nil }
+        return audioURL != nil || subtitleURL != nil
     }
 
     var body: some View {
@@ -72,7 +78,7 @@ struct SubtitleImportSheet: View {
                         isPickerPresented = true
                     } label: {
                         HStack {
-                            Label("Subtitle File (optional)", systemImage: "doc.text")
+                            Label("Subtitle File", systemImage: "doc.text")
                             Spacer()
                             Text(subtitleURL?.lastPathComponent ?? "None")
                                 .foregroundStyle(.secondary)
@@ -100,39 +106,103 @@ struct SubtitleImportSheet: View {
                     }
                 }
 
-                // Whisper model picker — only shown when transcription is required.
+                // Whisper model selection — only shown when transcription is required.
+                // Offers the bundled tiny model, downloaded models, internet download, or a file picker.
                 if needsTranscription {
                     Section {
+                        // Bundled tiny model — always available when the binary is in the app bundle.
+                        if modelManager.hasBundledTiny {
+                            Button {
+                                modelSource = .bundled
+                                modelError = ""
+                            } label: {
+                                HStack {
+                                    Label("Tiny (Built-in)", systemImage: "brain")
+                                    Spacer()
+                                    if modelSource == .bundled {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(Color.accentColor)
+                                    }
+                                }
+                                .foregroundStyle(.primary)
+                            }
+                        }
+
+                        // Download a model or use the bundled tiny.
+                        Button {
+                            isDownloadSheetPresented = true
+                        } label: {
+                            HStack {
+                                Label("Download Model…", systemImage: "arrow.down.circle")
+                                Spacer()
+                                if case .downloaded(let name) = modelSource {
+                                    Text(name)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .foregroundStyle(.primary)
+                        }
+
+                        // Choose a local .bin file via the file picker.
                         Button {
                             activePicker = .model
                             isPickerPresented = true
                         } label: {
                             HStack {
-                                Label("Whisper Model", systemImage: "brain")
+                                Label("Choose File…", systemImage: "doc")
                                 Spacer()
-                                Text(modelURL?.lastPathComponent ?? "Choose…")
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+                                if case .userFile(let url) = modelSource {
+                                    Text(url.lastPathComponent)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
                             }
                             .foregroundStyle(.primary)
                         }
+                    } header: {
+                        Text("Whisper Model")
                     } footer: {
                         if modelError.isEmpty == false {
                             Text(modelError).foregroundStyle(.red)
+                        } else {
+                            Text("Tiny is included. Download larger models for better accuracy.")
+                                .foregroundStyle(.secondary)
                         }
-                        Text("Select a Whisper GGML .bin model file (e.g. ggml-base.bin).")
-                            .foregroundStyle(.secondary)
                     }
                 }
 
-                // Transcription in-progress indicator.
-                if isTranscribing {
+                // Live transcription feed — shows segments as Whisper emits them.
+                if isTranscribing || liveSegments.isEmpty == false {
                     Section {
-                        HStack(spacing: 12) {
-                            ProgressView()
-                            Text("Transcribing…")
-                                .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                if isTranscribing { ProgressView() }
+                                Text(isTranscribing ? "Transcribing…" : "Done")
+                                    .foregroundStyle(.secondary)
+                                    .font(.subheadline)
+                            }
+
+                            ScrollViewReader { proxy in
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        ForEach(Array(liveSegments.enumerated()), id: \.offset) { _, text in
+                                            Text(text)
+                                                .font(.body)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        // Invisible anchor for auto-scroll.
+                                        Color.clear.frame(height: 1).id("bottom")
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+                                .frame(maxHeight: 200)
+                                .onChange(of: liveSegments.count) {
+                                    withAnimation { proxy.scrollTo("bottom") }
+                                }
+                            }
                         }
+                        .padding(.vertical, 4)
                     }
                 }
 
@@ -165,8 +235,17 @@ struct SubtitleImportSheet: View {
                 activePicker = nil
                 handlePickerResult(result, target: target)
             }
+            .sheet(isPresented: $isDownloadSheetPresented) {
+                WhisperDownloadSheet(manager: modelManager) { source in
+                    modelSource = source
+                    modelError = ""
+                }
+            }
             .onAppear {
-                restoreModelURLFromBookmark()
+                // Pre-select bundled tiny if no other source has been chosen.
+                if modelSource == nil && modelManager.hasBundledTiny {
+                    modelSource = .bundled
+                }
             }
         }
     }
@@ -208,25 +287,47 @@ struct SubtitleImportSheet: View {
     // Converts the audio file to 16 kHz mono PCM, runs Whisper inference, then hands cues to the caller.
     private func transcribeAndImport() async {
         guard let audioURL else { return }
-        guard let modelURL else {
-            transcriptionError = "Select a Whisper model file before importing."
+        guard let source = modelSource, let modelURL = modelManager.resolvedURL(for: source) else {
+            transcriptionError = "Select a Whisper model before importing."
             return
         }
 
         isTranscribing = true
+        transcriptionProgress = 0
+        liveSegments = []
         transcriptionError = ""
         defer { isTranscribing = false }
 
         let didStartAudio = audioURL.startAccessingSecurityScopedResource()
-        let didStartModel = modelURL.startAccessingSecurityScopedResource()
+        // Only user-picked files need security-scoped access; bundled and downloaded URLs do not.
+        let didStartModel = (source == .bundled) ? false : modelURL.startAccessingSecurityScopedResource()
         defer {
             if didStartAudio { audioURL.stopAccessingSecurityScopedResource() }
             if didStartModel { modelURL.stopAccessingSecurityScopedResource() }
         }
 
+        print("[Whisper] loading model from \(modelURL.path)")
         do {
             let audioFrames = try await convertAudioTo16kHzMono(url: audioURL)
-            let whisper = Whisper(fromFileURL: modelURL)
+            print("[Whisper] audio converted: \(audioFrames.count) frames at 16 kHz")
+
+            var params = WhisperParams.default
+            params.language = .japanese
+            print("[Whisper] starting transcription (language: ja)")
+
+            let whisper = Whisper(fromFileURL: modelURL, withParams: params)
+            let delegate = WhisperTranscriptionDelegate()
+            delegate.onProgress = { progress in
+                Task { @MainActor in self.transcriptionProgress = progress }
+            }
+            delegate.onNewSegments = { segments in
+                let texts = segments
+                    .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { $0.isEmpty == false }
+                Task { @MainActor in self.liveSegments.append(contentsOf: texts) }
+            }
+            whisper.delegate = delegate
+
             let segments = try await whisper.transcribe(audioFrames: audioFrames)
 
             var cues: [SubtitleCue] = []
@@ -319,9 +420,8 @@ struct SubtitleImportSheet: View {
                 subtitleError = ""
                 parseError = ""
             case .model:
-                modelURL = url
+                modelSource = .userFile(url)
                 modelError = ""
-                saveModelBookmark(url: url)
             case nil:
                 break
             }
@@ -358,30 +458,6 @@ struct SubtitleImportSheet: View {
         }
     }
 
-    // Persists a bookmark for the model URL so the path survives app restarts.
-    private func saveModelBookmark(url: URL) {
-        guard let bookmarkData = try? url.bookmarkData() else { return }
-        UserDefaults.standard.set(bookmarkData, forKey: "whisperModelBookmarkData")
-    }
-
-    // Restores the previously chosen model URL from a persisted bookmark.
-    private func restoreModelURLFromBookmark() {
-        guard let bookmarkData = UserDefaults.standard.data(forKey: "whisperModelBookmarkData") else { return }
-        var isStale = false
-        guard let resolvedURL = try? URL(
-            resolvingBookmarkData: bookmarkData,
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        ) else { return }
-
-        if isStale {
-            // Bookmark is stale — clear it and let the user re-select.
-            UserDefaults.standard.removeObject(forKey: "whisperModelBookmarkData")
-            return
-        }
-
-        modelURL = resolvedURL
-    }
 }
 
 // Identifies which file picker is currently active in SubtitleImportSheet.
