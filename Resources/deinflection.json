@@ -379,7 +379,20 @@
 
     "benefactiveForms": [
         {"kanaIn": "てくれる", "kanaOut": "て", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-        {"kanaIn": "でくれる", "kanaOut": "で", "rulesIn": ["v5"], "rulesOut": ["v5"]}
+        {"kanaIn": "でくれる", "kanaOut": "で", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+
+        {"kanaIn": "てくれる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
+        {"kanaIn": "いてくれる", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "いでくれる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "してくれる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "ってくれる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "ってくれる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "ってくれる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "んでくれる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "んでくれる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "んでくれる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "してくれる", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
+        {"kanaIn": "きてくれる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
     ],
 
     "auxiliaryForms": [

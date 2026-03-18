@@ -58,7 +58,9 @@ extension ReadView {
             minOffsetY,
             sourceView.contentSize.height - sourceView.bounds.height + sourceView.adjustedContentInset.bottom
         )
-        let overscrollAllowance: CGFloat = expectedCoveredHeight * 0.5
+        // Overscroll must cover the full expected sheet height so short-content notes can still
+        // push a bottom segment above the sheet edge even when normal scroll range is exhausted.
+        let overscrollAllowance: CGFloat = max(expectedCoveredHeight, requestedOffsetY - maxContentOffsetY)
         let clampedOffsetY = min(max(requestedOffsetY, minOffsetY), maxContentOffsetY + overscrollAllowance)
 
         sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: clampedOffsetY), animated: animated)

@@ -35,8 +35,7 @@ final class ReadViewFuriganaTests: XCTestCase {
         let edge = LatticeEdge(
             start: sourceText.startIndex,
             end: sourceText.endIndex,
-            surface: sourceText,
-            lemma: "近づく"
+            surface: sourceText
         )
 
         let furigana = readView.buildFuriganaBySegmentLocation(
@@ -66,8 +65,7 @@ final class ReadViewFuriganaTests: XCTestCase {
         let edge = LatticeEdge(
             start: sourceText.startIndex,
             end: sourceText.endIndex,
-            surface: sourceText,
-            lemma: "私"
+            surface: sourceText
         )
 
         let furigana = readView.buildFuriganaBySegmentLocation(

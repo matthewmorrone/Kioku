@@ -9,7 +9,7 @@ final class Deinflector {
     private let rules: [DeinflectionRule]
     private let labeledRules: [(label: String, rule: DeinflectionRule)]
     private let trie: DictionaryTrie
-    private let maxDepth = 4
+    private let maxDepth = 4 // TODO: this is arbitrary
 
     // Stores deinflection rules used by candidate generation.
     init(rules: [DeinflectionRule], trie: DictionaryTrie) {

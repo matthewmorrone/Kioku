@@ -15,18 +15,16 @@ struct KanaChartView: View {
         VStack(spacing: 0) {
             representationPicker
                 .padding(.horizontal)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    chartSection(title: nil, rows: KanaData.gojuuon)
-                    chartSection(title: "Voiced", rows: KanaData.dakuten)
-                    chartSection(title: "Semi-voiced", rows: KanaData.handakuten)
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 16)
+            VStack(alignment: .leading, spacing: 8) {
+                chartSection(title: nil, rows: KanaData.gojuuon)
+                chartSection(title: "Voiced", rows: KanaData.dakuten)
+                chartSection(title: "Semi-voiced", rows: KanaData.handakuten)
             }
+            .padding(.horizontal)
+            .padding(.bottom, 8)
         }
         // Swipe up advances to the next representation; swipe down goes back.
         .gesture(
@@ -59,17 +57,17 @@ struct KanaChartView: View {
     // Builds a labelled section containing all kana rows; the ∅ row acts as the column header.
     @ViewBuilder
     private func chartSection(title: String?, rows: [KanaRow]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             if let title {
                 Text(title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.top, 4)
+                    .padding(.top, 2)
             }
 
             // One grid row per kana row.
             ForEach(rows, id: \.consonant) { row in
-                LazyVGrid(columns: columns, spacing: 4) {
+                LazyVGrid(columns: columns, spacing: 2) {
                     // Consonant label on the left.
                     Text(row.consonant)
                         .font(.caption2)
