@@ -17,11 +17,11 @@ extension ReadView {
         }
 
         activeAudioAttachmentID = attachmentID
-        let cues = NoteAudioStore.shared.loadCues(for: attachmentID)
+        let cues = NotesAudioStore.shared.loadCues(for: attachmentID)
         audioAttachmentCues = cues
         audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cues, in: text)
 
-        guard let audioURL = NoteAudioStore.shared.audioURL(for: attachmentID) else {
+        guard let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else {
             // Cues were found but audio file is missing — show subtitle highlights only.
             return
         }

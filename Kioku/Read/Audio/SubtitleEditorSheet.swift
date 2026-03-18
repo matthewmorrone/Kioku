@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Presents a raw SRT text editor for the subtitle cues attached to a note.
-// On save the text is re-parsed and the updated cues are persisted via NoteAudioStore.
+// On save the text is re-parsed and the updated cues are persisted via NotesAudioStore.
 struct SubtitleEditorSheet: View {
     var attachmentID: UUID
     var initialCues: [SubtitleCue]
@@ -57,7 +57,7 @@ struct SubtitleEditorSheet: View {
         }
 
         do {
-            try NoteAudioStore.shared.saveCues(newCues, attachmentID: attachmentID)
+            try NotesAudioStore.shared.saveCues(newCues, attachmentID: attachmentID)
             onSave(newCues)
             dismiss()
         } catch {

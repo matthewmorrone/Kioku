@@ -47,7 +47,7 @@ extension ReadView {
         selectedSegmentLocation = nil
         selectedHighlightRangeOverride = nil
         selectedMergedEdgeBounds = nil
-        SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+        SegmentLookupSheet.shared.dismissPopover()
 
         if readResourcesReady && isEditMode == false {
             refreshSegmentationRanges()
@@ -76,7 +76,7 @@ extension ReadView {
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
             selectedMergedEdgeBounds = nil
-            SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+            SegmentLookupSheet.shared.dismissPopover()
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
             return
@@ -121,7 +121,7 @@ extension ReadView {
                 self.selectedSegmentLocation = nil
                 selectedHighlightRangeOverride = nil
                 selectedMergedEdgeBounds = nil
-                SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+                SegmentLookupSheet.shared.dismissPopover()
             }
         }
 
@@ -155,7 +155,7 @@ extension ReadView {
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
             selectedMergedEdgeBounds = nil
-            SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+            SegmentLookupSheet.shared.dismissPopover()
             return
         }
 
@@ -163,7 +163,7 @@ extension ReadView {
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
             selectedMergedEdgeBounds = nil
-            SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+            SegmentLookupSheet.shared.dismissPopover()
             return
         }
 
@@ -176,12 +176,12 @@ extension ReadView {
 
         if prefersSheetDirectSegmentActions {
             guard let segmentSurface = surfaceForSegment(at: tappedSegmentLocation) else {
-                SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+                SegmentLookupSheet.shared.dismissPopover()
                 return
             }
 
             preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: tappedSegmentRect)
-            SegmentDefinitionPopoverPresenter.shared.presentSheet(
+            SegmentLookupSheet.shared.presentSheet(
                 surface: segmentSurface,
                 leftNeighborSurface: adjacentSurfaces.left,
                 rightNeighborSurface: adjacentSurfaces.right,
@@ -253,16 +253,16 @@ extension ReadView {
         }
 
         guard let definitionPayload = definitionPayloadForSelectedSegment(at: tappedSegmentLocation) else {
-            SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+            SegmentLookupSheet.shared.dismissPopover()
             return
         }
 
         guard let sourceView, let tappedSegmentRect else {
-            SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+            SegmentLookupSheet.shared.dismissPopover()
             return
         }
 
-        SegmentDefinitionPopoverPresenter.shared.presentPopover(
+        SegmentLookupSheet.shared.presentPopover(
             definition: definitionPayload.definition,
             surface: definitionPayload.surface,
             leftNeighborSurface: adjacentSurfaces.left,

@@ -92,6 +92,6 @@ extension ReadView {
             selectedSegmentLocation = mergedNSRange.location
             selectedHighlightRangeOverride = mergedNSRange
         }
-        SegmentDefinitionPopoverPresenter.shared.dismissPopover()
+        SegmentLookupSheet.shared.dismissPopover()
     }
 }

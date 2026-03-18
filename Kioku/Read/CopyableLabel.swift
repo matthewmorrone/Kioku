@@ -1,4 +1,5 @@
 import UIKit
+import CoreText
 
 // Renders label-style text that supports long-press copy without text-selection UI.
 final class CopyableLabel: UILabel, UIContextMenuInteractionDelegate {
@@ -19,6 +20,33 @@ final class CopyableLabel: UILabel, UIContextMenuInteractionDelegate {
         isUserInteractionEnabled = true
         let contextMenuInteraction = UIContextMenuInteraction(delegate: self)
         addInteraction(contextMenuInteraction)
+    }
+
+    // Applies a kana reading as a ruby annotation above the surface text using Core Text.
+    // Falls back to plain text when reading is nil, empty, or the surface contains no kanji.
+    func applyFurigana(surface: String, reading: String?) {
+        guard let reading, reading.isEmpty == false else {
+            attributedText = nil
+            text = surface
+            return
+        }
+
+        let rubyAnnotation = CTRubyAnnotationCreateWithAttributes(
+            .auto, .auto, .before,
+            reading as CFString,
+            [kCTRubyAnnotationSizeFactorAttributeName: 0.5] as CFDictionary
+        )
+
+        let currentFont = font ?? UIFont.systemFont(ofSize: UIFont.labelFontSize)
+        let attrString = NSMutableAttributedString(
+            string: surface,
+            attributes: [
+                .font: currentFont,
+                .foregroundColor: textColor ?? UIColor.label,
+                NSAttributedString.Key(kCTRubyAnnotationAttributeName as String): rubyAnnotation
+            ]
+        )
+        attributedText = attrString
     }
 
     // Copies the label text to the shared pasteboard.
