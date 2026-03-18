@@ -244,39 +244,18 @@ enum ScriptClassifier {
         return UnicodeScalar(mappedValue)
     }
 
-    // Loads voiced kana scalar mappings from bundled JSON to keep iteration-mark expansion data-driven.
-    private static func loadVoicedKanaMap(
-        bundle: Bundle = .main,
-        resourceName: String = "voiced_kana_pairs",
-        fileExtension: String = "json"
-    ) -> [UInt32: UInt32] {
-        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
-            print("Missing voiced kana map file: \(resourceName).\(fileExtension)")
-            return [:]
-        }
-
-        do {
-            let data = try Data(contentsOf: fileURL)
-            let charMap = try JSONDecoder().decode([String: String].self, from: data)
-            var scalarMap: [UInt32: UInt32] = [:]
-
-            for (source, target) in charMap {
-                guard
-                    source.unicodeScalars.count == 1,
-                    target.unicodeScalars.count == 1,
-                    let sourceScalar = source.unicodeScalars.first,
-                    let targetScalar = target.unicodeScalars.first
-                else {
-                    continue
-                }
-
-                scalarMap[sourceScalar.value] = targetScalar.value
+    // Builds the voiced kana scalar map from KanaData so iteration-mark expansion stays data-driven.
+    private static func loadVoicedKanaMap() -> [UInt32: UInt32] {
+        var scalarMap: [UInt32: UInt32] = [:]
+        for (source, target) in KanaData.voicedKanaPairs {
+            guard
+                let sourceScalar = source.unicodeScalars.first,
+                let targetScalar = target.unicodeScalars.first
+            else {
+                continue
             }
-
-            return scalarMap
-        } catch {
-            print("Failed to decode voiced kana map file: \(error)")
-            return [:]
+            scalarMap[sourceScalar.value] = targetScalar.value
         }
+        return scalarMap
     }
 }

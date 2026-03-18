@@ -240,6 +240,9 @@ extension ReadView {
                 sheetLexiconDebugProvider: {
                     lexiconDebugInfoForCurrentSelectedSegment()
                 },
+                sheetFrequencyProvider: {
+                    frequencyRankForCurrentSelectedSegment()
+                },
                 onReadingSelected: { reading in
                     applyReadingOverride(reading: reading)
                 },

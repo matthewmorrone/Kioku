@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var lexiconDataSurface: Lexicon?
     @State private var readingBySurface: [String: String] = [:]
     @State private var readingCandidatesBySurface: [String: [String]] = [:]
+    @State private var frequencyDataBySurface: [String: FrequencyData] = [:]
     @State private var readResourcesReady = false
     @State private var segmenterRevision = 0
     @State private var hasLoadedReadResources = false
@@ -26,7 +27,7 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: segmenter, dictionaryStore: dictionaryStore, lexiconDataSurface: lexiconDataSurface, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
+            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: segmenter, dictionaryStore: dictionaryStore, lexiconDataSurface: lexiconDataSurface, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface, frequencyDataBySurface: frequencyDataBySurface, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
             })
             .tag(ContentTab.read)
@@ -123,31 +124,42 @@ struct ContentView: View {
             lexiconDataSurface = readResources.lexiconDataSurface
             readingBySurface = readResources.readingBySurface
             readingCandidatesBySurface = readResources.readingCandidatesBySurface
+            frequencyDataBySurface = readResources.frequencyDataBySurface
             readResourcesReady = true
             segmenterRevision += 1
         }
     }
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
-    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, lexiconDataSurface: Lexicon?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]]) {
+    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, lexiconDataSurface: Lexicon?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]], frequencyDataBySurface: [String: FrequencyData]) {
         let trie = DictionaryTrie()
         var dictionaryStore: DictionaryStore?
         var lexiconDataSurface: Lexicon?
         var readingBySurface: [String: String] = [:]
         var readingCandidatesBySurface: [String: [String]] = [:]
+        var frequencyDataBySurface: [String: FrequencyData] = [:]
         var deinflector: Deinflector?
 
         do {
             let store = try DictionaryStore()
             dictionaryStore = store
-            readingBySurface = try store.fetchPreferredReadingsBySurface()
-            readingCandidatesBySurface = try store.fetchReadingCandidatesBySurface()
-            let surfaces = try store.fetchAllSurfaces()
-            for surface in surfaces {
-                trie.insert(surface)
-            }
+
+            do { readingBySurface = try store.fetchPreferredReadingsBySurface() }
+            catch { print("fetchPreferredReadingsBySurface failed: \(error)") }
+
+            do { readingCandidatesBySurface = try store.fetchReadingCandidatesBySurface() }
+            catch { print("fetchReadingCandidatesBySurface failed: \(error)") }
+
+            do { frequencyDataBySurface = try store.fetchFrequencyDataBySurface() }
+            catch { print("fetchFrequencyDataBySurface failed: \(error)") }
+
+            do {
+                let surfaces = try store.fetchAllSurfaces()
+                for surface in surfaces { trie.insert(surface) }
+            } catch { print("fetchAllSurfaces failed: \(error)") }
+
         } catch {
-            print("Segmenter initialization failed: \(error)")
+            print("DictionaryStore initialization failed: \(error)")
         }
 
         do {
@@ -179,7 +191,8 @@ struct ContentView: View {
             dictionaryStore: dictionaryStore,
             lexiconDataSurface: lexiconDataSurface,
             readingBySurface: readingBySurface,
-            readingCandidatesBySurface: readingCandidatesBySurface
+            readingCandidatesBySurface: readingCandidatesBySurface,
+            frequencyDataBySurface: frequencyDataBySurface
         )
     }
 }

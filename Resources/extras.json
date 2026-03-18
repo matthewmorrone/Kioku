@@ -7,11 +7,10 @@
 		"kana": [
 			"ピッ"
 		],
-		"is_common": 1,
-		"priority": [
+		"tags": [
 			"custom"
 		],
-		"senses": [
+		"sense": [
 			{
 				"partOfSpeech": [
 					"adverb (fukushi)"

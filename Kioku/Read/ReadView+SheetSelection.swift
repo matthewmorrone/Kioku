@@ -254,6 +254,18 @@ extension ReadView {
         return lines.joined(separator: "\n")
     }
 
+    // Returns the FrequencyData for the currently selected segment surface, or nil if no frequency data is available.
+    func frequencyRankForCurrentSelectedSegment() -> FrequencyData? {
+        guard let selectedBounds = selectedMergedEdgeBounds else {
+            return nil
+        }
+
+        let startIndex = segmentEdges[selectedBounds.lowerBound].start
+        let endIndex = segmentEdges[selectedBounds.upperBound].end
+        let surface = String(text[startIndex..<endIndex])
+        return frequencyDataBySurface[surface]
+    }
+
     // Captures lattice edges enclosed by the currently selected merged segment span for future sheet UI usage.
     func sublatticeEdgesForCurrentSelectedSegment() -> [LatticeEdge] {
         guard let selectedBounds = selectedMergedEdgeBounds else {

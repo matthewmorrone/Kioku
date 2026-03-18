@@ -15,6 +15,7 @@ extension SegmentLookupSheet {
         sheetSublatticeProvider: (() -> [LatticeEdge])?,
         segmentRangeProvider: (() -> NSRange?)?,
         sheetLexiconDebugProvider: (() -> String)?,
+        sheetFrequencyProvider: (() -> FrequencyData?)? = nil,
         onDismiss: (() -> Void)?
     ) {
         // Capture the reading callback before dismissPopover, since dismissSheet clears it.
@@ -32,6 +33,7 @@ extension SegmentLookupSheet {
             self.sheetSublatticeProvider = sheetSublatticeProvider
             self.segmentRangeProvider = segmentRangeProvider
             self.sheetLexiconDebugProvider = sheetLexiconDebugProvider
+            self.sheetFrequencyProvider = sheetFrequencyProvider
             self.refreshSheetSupplementalData()
 
             var currentSurface = surface
@@ -65,23 +67,14 @@ extension SegmentLookupSheet {
             readingNavRow.alignment = .center
             readingNavRow.spacing = 8
 
-            let readingSubtitleLabel = UILabel()
-            readingSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-            readingSubtitleLabel.textColor = .secondaryLabel
-            readingSubtitleLabel.font = .systemFont(ofSize: 14)
-            readingSubtitleLabel.textAlignment = .center
-            readingSubtitleLabel.numberOfLines = 1
-
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
 
-            // Refreshes the subtitle, arrow visibility, and surface label furigana for the current readings list.
-            func updateReadingSubtitle() {
+            // Refreshes arrow visibility and surface label furigana for the current readings list.
+            func updateReadingFurigana() {
                 currentReadings = self.currentSheetUniqueReadings
                 currentReadingIndex = 0
-                let firstReading = currentReadings.first
-                readingSubtitleLabel.text = firstReading ?? ""
-                surfaceLabel.applyFurigana(surface: currentSurface, reading: firstReading)
+                surfaceLabel.applyFurigana(surface: currentSurface, reading: currentReadings.first)
                 let hasMultiple = currentReadings.count > 1
                 prevReadingButton.isHidden = !hasMultiple
                 nextReadingButton.isHidden = !hasMultiple
@@ -92,7 +85,6 @@ extension SegmentLookupSheet {
                     guard currentReadings.count > 1 else { return }
                     currentReadingIndex = (currentReadingIndex - 1 + currentReadings.count) % currentReadings.count
                     let reading = currentReadings[currentReadingIndex]
-                    readingSubtitleLabel.text = reading
                     surfaceLabel.applyFurigana(surface: currentSurface, reading: reading)
                     self.onReadingSelected?(reading)
                 },
@@ -104,7 +96,6 @@ extension SegmentLookupSheet {
                     guard currentReadings.count > 1 else { return }
                     currentReadingIndex = (currentReadingIndex + 1) % currentReadings.count
                     let reading = currentReadings[currentReadingIndex]
-                    readingSubtitleLabel.text = reading
                     surfaceLabel.applyFurigana(surface: currentSurface, reading: reading)
                     self.onReadingSelected?(reading)
                 },
@@ -307,29 +298,36 @@ extension SegmentLookupSheet {
             var splitEntryLeftValue = ""
             var splitEntryRightValue = ""
             var isSplitEditorVisible = false
-            var currentSheetPreferredHeight = self.preferredSurfaceSheetHeight(
-                for: currentSurface,
-                sublatticeEdges: self.currentSheetSublatticeEdges,
-                readings: self.currentSheetUniqueReadings,
-                lexiconDebugInfo: self.currentSheetLexiconDebugInfo,
-                isSplitEditorVisible: false
-            )
+            var currentSheetPreferredHeight: CGFloat = 0
 
             // Returns the current split boundary as a UTF-16 offset derived from the left split value.
             func splitOffsetUTF16() -> Int {
                 leftSplitValue.utf16.count
             }
 
+            // Measures actual rendered component sizes to derive the ideal sheet height without mirroring section logic.
+            func computePreferredSheetHeight() -> CGFloat {
+                let contentWidth = max(200, self.activeScreenBounds().width) - 32
+                let middleHeight = ceil(middleContentStack.systemLayoutSizeFitting(
+                    CGSize(width: contentWidth, height: UIView.layoutFittingCompressedSize.height),
+                    withHorizontalFittingPriority: .required,
+                    verticalFittingPriority: .fittingSizeLevel
+                ).height)
+                // splitPanelContainer uses a height == 0 constraint when collapsed, so its fitted height is 0 when hidden.
+                let splitHeight = ceil(splitPanelContainer.systemLayoutSizeFitting(
+                    CGSize(width: contentWidth, height: UIView.layoutFittingCompressedSize.height),
+                    withHorizontalFittingPriority: .required,
+                    verticalFittingPriority: .fittingSizeLevel
+                ).height)
+                // Chrome covers grabber, top safe-area inset, nav row, subtitle, all fixed spacings, action bar, bottom safe area.
+                let baseChrome: CGFloat = 210
+                return baseChrome + middleHeight + splitHeight
+            }
+
             // Recalculates and applies the preferred sheet height for the current surface and split-editor visibility state.
             func updateSheetPreferredHeight(animated: Bool) {
                 _ = animated
-                currentSheetPreferredHeight = self.preferredSurfaceSheetHeight(
-                    for: currentSurface,
-                    sublatticeEdges: self.currentSheetSublatticeEdges,
-                    readings: self.currentSheetUniqueReadings,
-                    lexiconDebugInfo: self.currentSheetLexiconDebugInfo,
-                    isSplitEditorVisible: isSplitEditorVisible
-                )
+                currentSheetPreferredHeight = computePreferredSheetHeight()
 
                 guard let sheetPresentationController = sheetController.sheetPresentationController else {
                     return
@@ -417,21 +415,32 @@ extension SegmentLookupSheet {
                 return label
             }
 
-            // Rebuilds middleContentStack with three debug sections: readings, sublattice+paths, lexicon dump.
+            // Rebuilds middleContentStack with four sections: frequency, readings, sublattice+paths, lexicon dump.
             func updateMiddleContent() {
                 for subview in middleContentStack.arrangedSubviews {
                     middleContentStack.removeArrangedSubview(subview)
                     subview.removeFromSuperview()
                 }
 
-                // Section 1: Readings
+                // Section 1: Frequency data (JPDB rank and/or wordfreq Zipf). Absent when neither source has data.
+                if let data = self.currentSheetFrequencyData {
+                    middleContentStack.addArrangedSubview(makeSectionHeader("Frequency"))
+                    var parts: [String] = []
+                    if let rank = data.jpdbRank { parts.append("JPDB #\(rank)") }
+                    if let zipf = data.wordfreqZipf { parts.append(String(format: "Zipf %.2f", zipf)) }
+                    if !parts.isEmpty {
+                        middleContentStack.addArrangedSubview(makeBodyLabel(parts.joined(separator: "  ·  ")))
+                    }
+                }
+
+                // Section 2: Readings
                 let readings = self.currentSheetUniqueReadings
                 if readings.isEmpty == false {
                     middleContentStack.addArrangedSubview(makeSectionHeader("Readings"))
                     middleContentStack.addArrangedSubview(makeBodyLabel(readings.joined(separator: "  ")))
                 }
 
-                // Section 2: Valid segmentation paths through the sublattice DAG
+                // Section 3: Valid segmentation paths through the sublattice DAG
                 let sublatticeEdges = self.currentSheetSublatticeEdges
                 if sublatticeEdges.isEmpty == false {
                     let paths = self.sublatticeValidPaths(from: sublatticeEdges).reversed()
@@ -442,7 +451,7 @@ extension SegmentLookupSheet {
                     }
                 }
 
-                // Section 3: Lexicon method debug dump
+                // Section 4: Lexicon method debug dump
                 let debugInfo = self.currentSheetLexiconDebugInfo
                 if debugInfo.isEmpty == false {
                     middleContentStack.addArrangedSubview(makeSectionHeader("Lexicon"))
@@ -463,7 +472,7 @@ extension SegmentLookupSheet {
                 updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
                 updateMiddleContent()
-                updateReadingSubtitle()
+                updateReadingFurigana()
             }
 
             self.onSheetSelectPrevious = {
@@ -476,7 +485,7 @@ extension SegmentLookupSheet {
                 updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
                 updateMiddleContent()
-                updateReadingSubtitle()
+                updateReadingFurigana()
             }
 
             self.updatePresentedSheetSelection = {
@@ -492,6 +501,7 @@ extension SegmentLookupSheet {
                 updatedSheetSublatticeProvider,
                 updatedSegmentRangeProvider,
                 updatedSheetLexiconDebugProvider,
+                updatedSheetFrequencyProvider,
                 updatedOnDismiss in
                 currentOnSelectPrevious = updatedOnSelectPrevious
                 currentOnSelectNext = updatedOnSelectNext
@@ -502,6 +512,7 @@ extension SegmentLookupSheet {
                 self.sheetSublatticeProvider = updatedSheetSublatticeProvider
                 self.segmentRangeProvider = updatedSegmentRangeProvider
                 self.sheetLexiconDebugProvider = updatedSheetLexiconDebugProvider
+                self.sheetFrequencyProvider = updatedSheetFrequencyProvider
                 self.onDismiss = updatedOnDismiss
 
                 if isSplitEditorVisible {
@@ -516,7 +527,7 @@ extension SegmentLookupSheet {
                 updateSheetPreferredHeight(animated: true)
                 self.refreshSheetSupplementalData()
                 updateMiddleContent()
-                updateReadingSubtitle()
+                updateReadingFurigana()
             }
 
             let swipeLeftGesture = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
@@ -547,7 +558,7 @@ extension SegmentLookupSheet {
                     }
                     self.refreshSheetSupplementalData()
                     updateMiddleContent()
-                    updateReadingSubtitle()
+                    updateReadingFurigana()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -573,7 +584,7 @@ extension SegmentLookupSheet {
                     }
                     self.refreshSheetSupplementalData()
                     updateMiddleContent()
-                    updateReadingSubtitle()
+                    updateReadingFurigana()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -592,7 +603,7 @@ extension SegmentLookupSheet {
                             updateCurrentSurface(splitResult)
                             self.refreshSheetSupplementalData()
                             updateMiddleContent()
-                            updateReadingSubtitle()
+                            updateReadingFurigana()
                             updateSheetPreferredHeight(animated: true)
                         }
                         return
@@ -683,7 +694,7 @@ extension SegmentLookupSheet {
                     setSplitEditorVisible(false)
                     self.refreshSheetSupplementalData()
                     updateMiddleContent()
-                    updateReadingSubtitle()
+                    updateReadingFurigana()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -698,12 +709,11 @@ extension SegmentLookupSheet {
             // Add content to middleContentStack here using that range as needed.
 
             sheetController.view.addSubview(readingNavRow)
-            sheetController.view.addSubview(readingSubtitleLabel)
             sheetController.view.addSubview(splitPanelContainer)
             sheetController.view.addSubview(middleContentStack)
             sheetController.view.addSubview(actionMenuContainer)
 
-            updateReadingSubtitle()
+            updateReadingFurigana()
 
             NSLayoutConstraint.activate([
                 readingNavRow.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
@@ -711,12 +721,7 @@ extension SegmentLookupSheet {
                 readingNavRow.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
                 readingNavRow.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
 
-                readingSubtitleLabel.topAnchor.constraint(equalTo: readingNavRow.bottomAnchor, constant: 4),
-                readingSubtitleLabel.centerXAnchor.constraint(equalTo: sheetController.view.centerXAnchor),
-                readingSubtitleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
-                readingSubtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
-
-                splitPanelContainer.topAnchor.constraint(equalTo: readingSubtitleLabel.bottomAnchor, constant: 12),
+                splitPanelContainer.topAnchor.constraint(equalTo: readingNavRow.bottomAnchor, constant: 12),
                 splitPanelContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 splitPanelContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
 
@@ -730,6 +735,9 @@ extension SegmentLookupSheet {
                 actionMenuContainer.bottomAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
                 actionMenuContainer.heightAnchor.constraint(equalToConstant: 46),
             ])
+
+            // Measure initial height from actual content now that constraints and content are established.
+            currentSheetPreferredHeight = computePreferredSheetHeight()
 
             sheetController.modalPresentationStyle = .pageSheet
             sheetController.presentationController?.delegate = self
@@ -760,6 +768,7 @@ extension SegmentLookupSheet {
         currentSheetUniqueReadings = sheetReadingsProvider?() ?? []
         currentSheetSublatticeEdges = sheetSublatticeProvider?() ?? []
         currentSheetLexiconDebugInfo = sheetLexiconDebugProvider?() ?? ""
+        currentSheetFrequencyData = sheetFrequencyProvider?()
     }
 
     // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.

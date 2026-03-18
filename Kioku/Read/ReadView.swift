@@ -13,6 +13,7 @@ struct ReadView: View {
     let lexiconDataSurface: Lexicon?
     let readingBySurface: [String: String]
     let readingCandidatesBySurface: [String: [String]]
+    let frequencyDataBySurface: [String: FrequencyData]
     let segmenterRevision: Int
     let readResourcesReady: Bool
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
@@ -84,6 +85,7 @@ struct ReadView: View {
         lexiconDataSurface: Lexicon? = nil,
         readingBySurface: [String: String],
         readingCandidatesBySurface: [String: [String]],
+        frequencyDataBySurface: [String: FrequencyData] = [:],
         segmenterRevision: Int,
         readResourcesReady: Bool,
         onActiveNoteChanged: ((UUID) -> Void)? = nil
@@ -95,6 +97,7 @@ struct ReadView: View {
         self.lexiconDataSurface = lexiconDataSurface
         self.readingBySurface = readingBySurface
         self.readingCandidatesBySurface = readingCandidatesBySurface
+        self.frequencyDataBySurface = frequencyDataBySurface
         self.segmenterRevision = segmenterRevision
         self.readResourcesReady = readResourcesReady
         self.onActiveNoteChanged = onActiveNoteChanged
