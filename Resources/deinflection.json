@@ -116,11 +116,16 @@
         {"kanaIn": "りたかった", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
 
         {"kanaIn": "がず", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "わなかった", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "わず", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "さなかった", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "さず", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "たなかった", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "さない", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "ない", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
+        {"kanaIn": "わない", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "かない", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
+        {"kanaIn": "がない", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "たない", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "たず", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
         {"kanaIn": "なない", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
@@ -370,6 +375,11 @@
 
         {"kanaIn": "てゆく", "kanaOut": "て", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
         {"kanaIn": "でゆく", "kanaOut": "で", "rulesIn": ["v5"], "rulesOut": ["v5"]}
+    ],
+
+    "benefactiveForms": [
+        {"kanaIn": "てくれる", "kanaOut": "て", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
+        {"kanaIn": "でくれる", "kanaOut": "で", "rulesIn": ["v5"], "rulesOut": ["v5"]}
     ],
 
     "auxiliaryForms": [

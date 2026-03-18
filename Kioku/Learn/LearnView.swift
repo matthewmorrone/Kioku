@@ -1,11 +1,12 @@
 import SwiftUI
 import Combine
 
-// Reserves the learning tab container for study-related features.
+// Hosts the learning tab. Currently shows the interactive kana chart.
+// Major sections: NavigationStack shell, KanaChartView content.
 struct LearnView: View {
     var body: some View {
         NavigationStack {
-            
+            KanaChartView()
         }
         .toolbar(.visible, for: .tabBar)
     }

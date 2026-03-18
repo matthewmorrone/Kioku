@@ -108,7 +108,6 @@ final class Segmenter {
         return edges
     }
 
-    /*
     // Prints lattice edges with integer offsets and matched text for segmenter debugging.
     func debugPrintLattice(for text: String) {
         var index = text.startIndex
@@ -175,7 +174,6 @@ final class Segmenter {
             index = text.index(after: index)
         }
     }
-    */
 
     // Builds a greedy segmentation by selecting the farthest-reaching edge at each text index.
     func longestMatchSegments(for text: String) -> [Range<String.Index>] {
@@ -265,11 +263,19 @@ final class Segmenter {
     }
 
     // Breaks longest-match ties by preferring higher-quality lemma resolution for the same span.
+    // Pure-kana exact trie matches receive a length bonus so deinflection-only noise candidates
+    // (e.g. もき → もく) don't block adjacent real words (e.g. きっと) by winning on raw length.
     private func compareEdgePriority(_ lhs: LatticeEdge, _ rhs: LatticeEdge, in text: String) -> Bool {
         let lhsLength = text.distance(from: lhs.start, to: lhs.end)
         let rhsLength = text.distance(from: rhs.start, to: rhs.end)
-        if lhsLength != rhsLength {
-            return lhsLength < rhsLength
+
+        // Give pure-kana exact matches a bonus of 2 so short deinflection-only kana edges can't
+        // beat them unless the deinflected form is substantially longer.
+        let kanaExactBonus = 2
+        let lhsAdjustedLength = lhsLength + (ScriptClassifier.isPureKana(lhs.surface) && trie.contains(lhs.surface) ? kanaExactBonus : 0)
+        let rhsAdjustedLength = rhsLength + (ScriptClassifier.isPureKana(rhs.surface) && trie.contains(rhs.surface) ? kanaExactBonus : 0)
+        if lhsAdjustedLength != rhsAdjustedLength {
+            return lhsAdjustedLength < rhsAdjustedLength
         }
 
         let lhsDerivedLemma = preferredLemma(for: lhs.surface) ?? lhs.surface
@@ -410,6 +416,14 @@ final class Segmenter {
 
         if matchingAlternateCandidates.isEmpty == false {
             parts.append("via: \(matchingAlternateCandidates.joined(separator: ", "))")
+        }
+
+        if let deinflector, lemma != surface {
+            let transitions = deinflector.bestTransitions(for: surface, targetLemma: lemma) ?? []
+            if transitions.isEmpty == false {
+                let transStr = transitions.map { "\($0.kanaIn)→\($0.kanaOut)" }.joined(separator: ", ")
+                parts.append("path: \(transStr)")
+            }
         }
 
         return parts.joined(separator: "; ")

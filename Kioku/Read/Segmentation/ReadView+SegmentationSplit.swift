@@ -86,7 +86,7 @@ extension ReadView {
         applySegmentEdges(updatedEdges, persistOverride: true)
 
         if !shouldApplyChangesGlobally {
-            selectedMergedEdgeBounds = edgeIndex...edgeIndex
+            selectedBounds = edgeIndex...edgeIndex
             selectedSegmentLocation = leftRange.location
             selectedHighlightRangeOverride = leftRange
         }

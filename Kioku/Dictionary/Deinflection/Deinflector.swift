@@ -244,50 +244,14 @@ final class Deinflector {
         return bestPath?.chain ?? []
     }
 
-    // Performs BFS over deinflection states to produce candidate dictionary surfaces.
+    // Produces candidate dictionary surfaces by delegating to deinflectionPaths and adding alternate surface forms.
+    // deinflectionPaths is the canonical traversal; this adds kana normalization and iteration-mark expansions on top.
     func generateCandidates(for surface: String) -> Set<String> {
-
-        var results: Set<String> = [surface]
-        results.formUnion(alternateSurfaceCandidates(for: surface))
-        var visited: Set<DeinflectionState> = []
-        var queue: [DeinflectionState] = [DeinflectionState(surface: surface, grammar: nil, depth: 0)]
-
-        while !queue.isEmpty {
-
-            let state = queue.removeFirst()
-
-            if visited.contains(state) { continue }
-            visited.insert(state)
-
-            if state.depth >= maxDepth {
-                continue
-            }
-
-            for rule in rules {
-
-                if !state.surface.hasSuffix(rule.kanaIn) { continue }
-
-                if let grammar = state.grammar,
-                   !rule.rulesIn.contains(grammar) {
-                    continue
-                }
-
-                let stem = state.surface.dropLast(rule.kanaIn.count)
-                let candidate = String(stem) + rule.kanaOut
-
-                for nextGrammar in rule.rulesOut {
-
-                    let newState = DeinflectionState(surface: candidate, grammar: nextGrammar, depth: state.depth + 1)
-
-                    if !visited.contains(newState) {
-                        queue.append(newState)
-                        results.insert(candidate)
-                        results.formUnion(alternateSurfaceCandidates(for: candidate))
-                    }
-                }
-            }
+        let paths = deinflectionPaths(for: surface)
+        var results = Set(paths.keys)
+        for candidate in paths.keys {
+            results.formUnion(alternateSurfaceCandidates(for: candidate))
         }
-
         return results
     }
 

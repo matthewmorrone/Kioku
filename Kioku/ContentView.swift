@@ -10,10 +10,10 @@ struct ContentView: View {
     @State private var shouldActivateReadEditMode = false
     @State private var segmenter = Segmenter(trie: DictionaryTrie())
     @State private var dictionaryStore: DictionaryStore?
-    @State private var lexiconDataSurface: Lexicon?
+    @State private var lexicon: Lexicon?
     @State private var readingBySurface: [String: String] = [:]
     @State private var readingCandidatesBySurface: [String: [String]] = [:]
-    @State private var frequencyDataBySurface: [String: FrequencyData] = [:]
+    @State private var frequencyDataBySurface: [String: [String: FrequencyData]] = [:]
     @State private var readResourcesReady = false
     @State private var segmenterRevision = 0
     @State private var hasLoadedReadResources = false
@@ -27,7 +27,7 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: segmenter, dictionaryStore: dictionaryStore, lexiconDataSurface: lexiconDataSurface, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface, frequencyDataBySurface: frequencyDataBySurface, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
+            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: segmenter, dictionaryStore: dictionaryStore, lexicon: lexicon, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface, frequencyDataBySurface: frequencyDataBySurface, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
             })
             .tag(ContentTab.read)
@@ -121,7 +121,7 @@ struct ContentView: View {
             let readResources = Self.makeReadResources()
             segmenter = readResources.segmenter
             dictionaryStore = readResources.dictionaryStore
-            lexiconDataSurface = readResources.lexiconDataSurface
+            lexicon = readResources.lexicon
             readingBySurface = readResources.readingBySurface
             readingCandidatesBySurface = readResources.readingCandidatesBySurface
             frequencyDataBySurface = readResources.frequencyDataBySurface
@@ -131,13 +131,13 @@ struct ContentView: View {
     }
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
-    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, lexiconDataSurface: Lexicon?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]], frequencyDataBySurface: [String: FrequencyData]) {
+    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]], frequencyDataBySurface: [String: [String: FrequencyData]]) {
         let trie = DictionaryTrie()
         var dictionaryStore: DictionaryStore?
-        var lexiconDataSurface: Lexicon?
+        var lexicon: Lexicon?
         var readingBySurface: [String: String] = [:]
         var readingCandidatesBySurface: [String: [String]] = [:]
-        var frequencyDataBySurface: [String: FrequencyData] = [:]
+        var frequencyDataBySurface: [String: [String: FrequencyData]] = [:]
         var deinflector: Deinflector?
 
         do {
@@ -176,7 +176,7 @@ struct ContentView: View {
         let segmenter = Segmenter(trie: trie, deinflector: deinflector)
 
         if let deinflector {
-            lexiconDataSurface = Lexicon(
+            lexicon = Lexicon(
                 dictionaryStore: dictionaryStore,
                 segmenter: segmenter,
                 deinflector: deinflector,
@@ -189,7 +189,7 @@ struct ContentView: View {
         return (
             segmenter: segmenter,
             dictionaryStore: dictionaryStore,
-            lexiconDataSurface: lexiconDataSurface,
+            lexicon: lexicon,
             readingBySurface: readingBySurface,
             readingCandidatesBySurface: readingCandidatesBySurface,
             frequencyDataBySurface: frequencyDataBySurface

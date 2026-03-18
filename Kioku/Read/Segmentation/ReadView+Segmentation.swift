@@ -10,7 +10,7 @@ extension ReadView {
         // Derive the surface text length from the merged edge bounds so the furigana rect covers
         // the correct source characters, not the reading's kana length.
         let surfaceLength: Int
-        if let bounds = selectedMergedEdgeBounds,
+        if let bounds = selectedBounds,
            bounds.lowerBound < segmentEdges.count,
            bounds.upperBound < segmentEdges.count {
             let start = segmentEdges[bounds.lowerBound].start
@@ -46,7 +46,7 @@ extension ReadView {
         illegalMergeFlashTask?.cancel()
         selectedSegmentLocation = nil
         selectedHighlightRangeOverride = nil
-        selectedMergedEdgeBounds = nil
+        selectedBounds = nil
         SegmentLookupSheet.shared.dismissPopover()
 
         if readResourcesReady && isEditMode == false {
@@ -75,7 +75,7 @@ extension ReadView {
             unknownSegmentLocations = []
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
-            selectedMergedEdgeBounds = nil
+            selectedBounds = nil
             SegmentLookupSheet.shared.dismissPopover()
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
@@ -120,7 +120,7 @@ extension ReadView {
             if hasSelectedSegment == false {
                 self.selectedSegmentLocation = nil
                 selectedHighlightRangeOverride = nil
-                selectedMergedEdgeBounds = nil
+                selectedBounds = nil
                 SegmentLookupSheet.shared.dismissPopover()
             }
         }
@@ -154,7 +154,7 @@ extension ReadView {
         guard let tappedSegmentLocation else {
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
-            selectedMergedEdgeBounds = nil
+            selectedBounds = nil
             SegmentLookupSheet.shared.dismissPopover()
             return
         }
@@ -162,14 +162,14 @@ extension ReadView {
         if selectedSegmentLocation == tappedSegmentLocation {
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
-            selectedMergedEdgeBounds = nil
+            selectedBounds = nil
             SegmentLookupSheet.shared.dismissPopover()
             return
         }
 
         selectedSegmentLocation = tappedSegmentLocation
         selectedHighlightRangeOverride = nil
-        selectedMergedEdgeBounds = initialMergedEdgeBounds(for: tappedSegmentLocation)
+        selectedBounds = initialMergedEdgeBounds(for: tappedSegmentLocation)
         // debugPrintLatticeSectionForCurrentSelection(at: tappedSegmentLocation)
 
         let adjacentSurfaces = adjacentSegmentSurfaces(for: tappedSegmentLocation)
@@ -425,7 +425,7 @@ extension ReadView {
 
     // Resolves immediate left and right segment surfaces around the active merged edge bounds.
     func adjacentSegmentSurfaces(for selectedLocation: Int) -> (left: String?, right: String?) {
-        let activeBounds = selectedMergedEdgeBounds ?? initialMergedEdgeBounds(for: selectedLocation)
+        let activeBounds = selectedBounds ?? initialMergedEdgeBounds(for: selectedLocation)
         guard let activeBounds else {
             return (left: nil, right: nil)
         }
@@ -438,7 +438,7 @@ extension ReadView {
 
     // Applies a merge against the current merged bounds and returns updated popover payload fields.
     func mergeAdjacentSegment(isMergingLeft: Bool) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)? {
-        guard let currentBounds = selectedMergedEdgeBounds ?? selectedSegmentLocation.flatMap({ location in
+        guard let currentBounds = selectedBounds ?? selectedSegmentLocation.flatMap({ location in
             initialMergedEdgeBounds(for: location)
         }) else {
             return nil
@@ -520,7 +520,7 @@ extension ReadView {
             return nil
         }
 
-        selectedMergedEdgeBounds = mergedIndex...mergedIndex
+        selectedBounds = mergedIndex...mergedIndex
         let mergedNSRange = NSRange(updatedEdges[mergedIndex].start..<updatedEdges[mergedIndex].end, in: text)
         selectedSegmentLocation = mergedNSRange.location
         selectedHighlightRangeOverride = mergedNSRange
@@ -628,7 +628,7 @@ extension ReadView {
             return nil
         }
 
-        selectedMergedEdgeBounds = selectedLeftEdgeIndex...selectedLeftEdgeIndex
+        selectedBounds = selectedLeftEdgeIndex...selectedLeftEdgeIndex
         selectedSegmentLocation = leftRange.location
         selectedHighlightRangeOverride = leftRange
 
@@ -644,7 +644,7 @@ extension ReadView {
             return selectedHighlightRangeOverride
         }
 
-        if let mergedBounds = selectedMergedEdgeBounds {
+        if let mergedBounds = selectedBounds {
             let mergedStart = segmentEdges[mergedBounds.lowerBound].start
             let mergedEnd = segmentEdges[mergedBounds.upperBound].end
             let mergedNSRange = NSRange(mergedStart..<mergedEnd, in: text)

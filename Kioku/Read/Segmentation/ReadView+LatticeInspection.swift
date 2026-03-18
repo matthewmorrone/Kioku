@@ -4,7 +4,7 @@ import SwiftUI
 extension ReadView {
     // Prints the retained lattice section for the current selected segment so the selected span's edges are visible in logs.
     func inspectLattice(at selectedLocation: Int) {
-        guard let selectedBounds = selectedMergedEdgeBounds ?? initialMergedEdgeBounds(for: selectedLocation) else {
+        guard let selectedBounds = selectedBounds ?? initialMergedEdgeBounds(for: selectedLocation) else {
             return
         }
 

@@ -10,7 +10,7 @@ For SQLite stepping use `while stepCode == SQLITE_ROW` and explicitly handle `SQ
 Empty `catch` blocks are not allowed. A catch must either handle the error meaningfully or rethrow it.
 
 ### 3. Type Organization
-Each type (struct, enum, class, actor, protocol) must live in its own file named after the type. Nested type declarations are not allowed.
+Any type (struct, enum, class, actor, protocol) that contains methods, computed properties, or other logic must live in its own file named after the type. Pure data types — structs with only stored properties, enums with only cases — may be grouped with related types in the same file. Nested type declarations are not allowed.
 
 ### 4. File Size Guardrail
 - Under 800 lines preferred

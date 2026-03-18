@@ -14,11 +14,11 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var sheetSublatticeProvider: (() -> [LatticeEdge])?
     var segmentRangeProvider: (() -> NSRange?)?
     var sheetLexiconDebugProvider: (() -> String)?
-    var sheetFrequencyProvider: (() -> FrequencyData?)?
+    var sheetFrequencyProvider: (() -> [String: FrequencyData]?)?
     var currentSheetUniqueReadings: [String] = []
     var currentSheetSublatticeEdges: [LatticeEdge] = []
     var currentSheetLexiconDebugInfo: String = ""
-    var currentSheetFrequencyData: FrequencyData? = nil
+    var currentSheetFrequencyByReading: [String: FrequencyData]? = nil
     var updatePresentedSheetSelection: ((
         String,
         String?,
@@ -32,7 +32,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         (() -> [LatticeEdge])?,
         (() -> NSRange?)?,
         (() -> String)?,
-        (() -> FrequencyData?)?,
+        (() -> [String: FrequencyData]?)?,
         (() -> Void)?
     ) -> Void)?
 
@@ -162,7 +162,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetSublatticeProvider: (() -> [LatticeEdge])? = nil,
         segmentRangeProvider: (() -> NSRange?)? = nil,
         sheetLexiconDebugProvider: (() -> String)? = nil,
-        sheetFrequencyProvider: (() -> FrequencyData?)? = nil,
+        sheetFrequencyProvider: (() -> [String: FrequencyData]?)? = nil,
         onReadingSelected: ((String) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
@@ -248,7 +248,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""
-            currentSheetFrequencyData = nil
+            currentSheetFrequencyByReading = nil
             updatePresentedSheetSelection = nil
             completion?()
             return
@@ -269,7 +269,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         currentSheetUniqueReadings = []
         currentSheetSublatticeEdges = []
         currentSheetLexiconDebugInfo = ""
-        currentSheetFrequencyData = nil
+        currentSheetFrequencyByReading = nil
         updatePresentedSheetSelection = nil
     }
 
@@ -291,7 +291,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""
-            currentSheetFrequencyData = nil
+            currentSheetFrequencyByReading = nil
             updatePresentedSheetSelection = nil
             fireOnDismissIfNeeded()
         }

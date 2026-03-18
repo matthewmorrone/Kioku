@@ -7,7 +7,7 @@ extension ReadView {
     func clearSelectedSegmentStateAfterPopoverDismissal() {
         selectedSegmentLocation = nil
         selectedHighlightRangeOverride = nil
-        selectedMergedEdgeBounds = nil
+        selectedBounds = nil
     }
 
     // Resolves segment surface text for a selected location without dictionary lookup overhead.
@@ -85,7 +85,7 @@ extension ReadView {
 
     // Moves sheet selection to the previous or next selectable segment and returns refreshed sheet payload.
     func moveSelectedSegmentSelection(isMovingForward: Bool) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)? {
-        guard let currentBounds = selectedMergedEdgeBounds ?? selectedSegmentLocation.flatMap({ location in
+        guard let currentBounds = selectedBounds ?? selectedSegmentLocation.flatMap({ location in
             initialMergedEdgeBounds(for: location)
         }) else {
             return nil
@@ -102,7 +102,7 @@ extension ReadView {
                     return nil
                 }
 
-                selectedMergedEdgeBounds = candidateIndex...candidateIndex
+                selectedBounds = candidateIndex...candidateIndex
                 selectedSegmentLocation = candidateRange.location
                 selectedHighlightRangeOverride = candidateRange
                 // debugPrintLatticeSectionForCurrentSelection(at: candidateRange.location)
@@ -155,7 +155,7 @@ extension ReadView {
 
     // Builds unique reading candidates for the currently selected segment(s), leading with the lexicon reading so it matches the LEXICON section.
     func uniqueReadingsForCurrentSelectedKanjiSegment() -> [String] {
-        guard let selectedBounds = selectedMergedEdgeBounds else {
+        guard let selectedBounds else {
             return []
         }
 
@@ -182,7 +182,7 @@ extension ReadView {
         }
 
         // Lead with the lexicon reading for the merged surface so this matches the LEXICON section's "reading:" line.
-        if let lexicon = lexiconDataSurface {
+        if let lexicon {
             appendReading(lexicon.reading(surface: mergedSurface))
         }
 
@@ -196,7 +196,7 @@ extension ReadView {
 
         // For multi-edge merges, include per-edge surface readings (not lemma readings).
         for edge in selectedEdges where edge.surface != mergedSurface {
-            if let lexicon = lexiconDataSurface {
+            if let lexicon {
                 appendReading(lexicon.reading(surface: edge.surface))
             }
             appendReading(readingBySurface[edge.surface])
@@ -212,11 +212,11 @@ extension ReadView {
 
     // Builds a formatted debug string showing key Lexicon method outputs for the currently selected surface.
     func lexiconDebugInfoForCurrentSelectedSegment() -> String {
-        guard let selectedBounds = selectedMergedEdgeBounds else {
+        guard let selectedBounds else {
             return ""
         }
 
-        guard let lexicon = lexiconDataSurface else {
+        guard let lexicon else {
             return "(Lexicon unavailable)"
         }
 
@@ -244,6 +244,11 @@ extension ReadView {
             lines.append("inflectionInfo: nil")
         }
 
+        if let transitions = lexicon.inflectionTransitions(surface: surface), transitions.isEmpty == false {
+            let transStr = transitions.map { "\($0.kanaIn)→\($0.kanaOut)" }.joined(separator: ", ")
+            lines.append("transitions: \(transStr)")
+        }
+
         let chain = lexicon.inflectionChain(surface: surface)
         lines.append("inflectionChain: [\(chain.joined(separator: " → "))]")
 
@@ -254,21 +259,41 @@ extension ReadView {
         return lines.joined(separator: "\n")
     }
 
-    // Returns the FrequencyData for the currently selected segment surface, or nil if no frequency data is available.
-    func frequencyRankForCurrentSelectedSegment() -> FrequencyData? {
-        guard let selectedBounds = selectedMergedEdgeBounds else {
+    // Returns the reading→FrequencyData map for the currently selected segment surface,
+    // or nil if no frequency data is available. The inner dict is keyed by reading (kana text)
+    // so callers can look up frequency for whichever reading is currently displayed.
+    // Falls back to deinflected lemma forms when the surface has no direct frequency entry.
+    func frequencyRankForCurrentSelectedSegment() -> [String: FrequencyData]? {
+        guard let selectedBounds else {
             return nil
         }
 
         let startIndex = segmentEdges[selectedBounds.lowerBound].start
         let endIndex = segmentEdges[selectedBounds.upperBound].end
         let surface = String(text[startIndex..<endIndex])
-        return frequencyDataBySurface[surface]
+
+        if let data = frequencyDataBySurface[surface] {
+            return data
+        }
+
+        // Inflected surfaces (e.g. 話していた) won't appear in the frequency map, which is
+        // keyed by dictionary forms. lemma() returns only max-depth candidates (true base forms).
+        guard let lexicon else {
+            return nil
+        }
+
+        for lemma in lexicon.lemma(surface: surface) {
+            if let data = frequencyDataBySurface[lemma] {
+                return data
+            }
+        }
+
+        return nil
     }
 
     // Captures lattice edges enclosed by the currently selected merged segment span for future sheet UI usage.
     func sublatticeEdgesForCurrentSelectedSegment() -> [LatticeEdge] {
-        guard let selectedBounds = selectedMergedEdgeBounds else {
+        guard let selectedBounds else {
             return []
         }
 

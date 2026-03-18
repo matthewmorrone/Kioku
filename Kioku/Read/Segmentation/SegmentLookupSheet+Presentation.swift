@@ -15,7 +15,7 @@ extension SegmentLookupSheet {
         sheetSublatticeProvider: (() -> [LatticeEdge])?,
         segmentRangeProvider: (() -> NSRange?)?,
         sheetLexiconDebugProvider: (() -> String)?,
-        sheetFrequencyProvider: (() -> FrequencyData?)? = nil,
+        sheetFrequencyProvider: (() -> [String: FrequencyData]?)? = nil,
         onDismiss: (() -> Void)?
     ) {
         // Capture the reading callback before dismissPopover, since dismissSheet clears it.
@@ -51,6 +51,19 @@ extension SegmentLookupSheet {
             surfaceLabel.numberOfLines = 0
             surfaceLabel.text = surface
 
+            let readingSubtitleLabel = UILabel()
+            readingSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+            readingSubtitleLabel.textColor = .secondaryLabel
+            readingSubtitleLabel.font = .systemFont(ofSize: 13, weight: .regular)
+            readingSubtitleLabel.textAlignment = .center
+            readingSubtitleLabel.numberOfLines = 1
+
+            let surfaceStack = UIStackView(arrangedSubviews: [surfaceLabel, readingSubtitleLabel])
+            surfaceStack.translatesAutoresizingMaskIntoConstraints = false
+            surfaceStack.axis = .vertical
+            surfaceStack.alignment = .center
+            surfaceStack.spacing = 2
+
             let prevReadingButton = UIButton(type: .system)
             prevReadingButton.translatesAutoresizingMaskIntoConstraints = false
             prevReadingButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
@@ -61,7 +74,7 @@ extension SegmentLookupSheet {
             nextReadingButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
             nextReadingButton.tintColor = .tertiaryLabel
 
-            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, surfaceLabel, nextReadingButton])
+            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, surfaceStack, nextReadingButton])
             readingNavRow.translatesAutoresizingMaskIntoConstraints = false
             readingNavRow.axis = .horizontal
             readingNavRow.alignment = .center
@@ -70,37 +83,18 @@ extension SegmentLookupSheet {
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
 
-            // Refreshes arrow visibility and surface label furigana for the current readings list.
+            // Refreshes arrow visibility and reading subtitle for the current readings list.
             func updateReadingFurigana() {
                 currentReadings = self.currentSheetUniqueReadings
                 currentReadingIndex = 0
-                surfaceLabel.applyFurigana(surface: currentSurface, reading: currentReadings.first)
+                let reading = currentReadings.first
+                readingSubtitleLabel.text = reading
+                readingSubtitleLabel.isHidden = reading == nil || reading?.isEmpty == true
+                print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) reading=\(reading ?? "nil")")
                 let hasMultiple = currentReadings.count > 1
                 prevReadingButton.isHidden = !hasMultiple
                 nextReadingButton.isHidden = !hasMultiple
             }
-
-            prevReadingButton.addAction(
-                UIAction { _ in
-                    guard currentReadings.count > 1 else { return }
-                    currentReadingIndex = (currentReadingIndex - 1 + currentReadings.count) % currentReadings.count
-                    let reading = currentReadings[currentReadingIndex]
-                    surfaceLabel.applyFurigana(surface: currentSurface, reading: reading)
-                    self.onReadingSelected?(reading)
-                },
-                for: .touchUpInside
-            )
-
-            nextReadingButton.addAction(
-                UIAction { _ in
-                    guard currentReadings.count > 1 else { return }
-                    currentReadingIndex = (currentReadingIndex + 1) % currentReadings.count
-                    let reading = currentReadings[currentReadingIndex]
-                    surfaceLabel.applyFurigana(surface: currentSurface, reading: reading)
-                    self.onReadingSelected?(reading)
-                },
-                for: .touchUpInside
-            )
 
             NSLayoutConstraint.activate([
                 prevReadingButton.widthAnchor.constraint(equalToConstant: 32),
@@ -422,22 +416,18 @@ extension SegmentLookupSheet {
                     subview.removeFromSuperview()
                 }
 
-                // Section 1: Frequency data (JPDB rank and/or wordfreq Zipf). Absent when neither source has data.
-                if let data = self.currentSheetFrequencyData {
-                    middleContentStack.addArrangedSubview(makeSectionHeader("Frequency"))
-                    var parts: [String] = []
-                    if let rank = data.jpdbRank { parts.append("JPDB #\(rank)") }
-                    if let zipf = data.wordfreqZipf { parts.append(String(format: "Zipf %.2f", zipf)) }
-                    if !parts.isEmpty {
-                        middleContentStack.addArrangedSubview(makeBodyLabel(parts.joined(separator: "  ·  ")))
-                    }
-                }
-
-                // Section 2: Readings
+                // Section 1: Readings annotated with per-reading frequency data.
                 let readings = self.currentSheetUniqueReadings
                 if readings.isEmpty == false {
                     middleContentStack.addArrangedSubview(makeSectionHeader("Readings"))
-                    middleContentStack.addArrangedSubview(makeBodyLabel(readings.joined(separator: "  ")))
+                    let frequencyByReading = self.currentSheetFrequencyByReading
+                    let annotatedReadings = readings.map { reading -> String in
+                        let data = frequencyByReading?[reading]
+                        let rank = data?.jpdbRank.map { "#\($0)" } ?? "—"
+                        let zipf = data?.wordfreqZipf.map { String(format: "%.2f", $0) } ?? "—"
+                        return "\(reading)  \(rank)  \(zipf)"
+                    }
+                    middleContentStack.addArrangedSubview(makeBodyLabel(annotatedReadings.joined(separator: "\n")))
                 }
 
                 // Section 3: Valid segmentation paths through the sublattice DAG
@@ -459,6 +449,35 @@ extension SegmentLookupSheet {
                 }
             }
 
+            // Register reading navigation actions here so updateMiddleContent is already in scope.
+            prevReadingButton.addAction(
+                UIAction { _ in
+                    print("[SegmentLookupSheet] prevReadingButton tapped: count=\(currentReadings.count) index=\(currentReadingIndex)")
+                    guard currentReadings.count > 1 else { return }
+                    currentReadingIndex = (currentReadingIndex - 1 + currentReadings.count) % currentReadings.count
+                    let reading = currentReadings[currentReadingIndex]
+                    readingSubtitleLabel.text = reading
+                    print("[SegmentLookupSheet] prev: now showing reading=\(reading) at index=\(currentReadingIndex)")
+                    self.onReadingSelected?(reading)
+                    updateMiddleContent()
+                },
+                for: .touchUpInside
+            )
+
+            nextReadingButton.addAction(
+                UIAction { _ in
+                    print("[SegmentLookupSheet] nextReadingButton tapped: count=\(currentReadings.count) index=\(currentReadingIndex)")
+                    guard currentReadings.count > 1 else { return }
+                    currentReadingIndex = (currentReadingIndex + 1) % currentReadings.count
+                    let reading = currentReadings[currentReadingIndex]
+                    readingSubtitleLabel.text = reading
+                    print("[SegmentLookupSheet] next: now showing reading=\(reading) at index=\(currentReadingIndex)")
+                    self.onReadingSelected?(reading)
+                    updateMiddleContent()
+                },
+                for: .touchUpInside
+            )
+
             // Populate initial content.
             updateMiddleContent()
 
@@ -471,8 +490,8 @@ extension SegmentLookupSheet {
                 // Keeps underlying read-surface overlays stable while swiping between segments.
                 updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
-                updateMiddleContent()
                 updateReadingFurigana()
+                updateMiddleContent()
             }
 
             self.onSheetSelectPrevious = {
@@ -484,8 +503,8 @@ extension SegmentLookupSheet {
                 // Keeps underlying read-surface overlays stable while swiping between segments.
                 updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
-                updateMiddleContent()
                 updateReadingFurigana()
+                updateMiddleContent()
             }
 
             self.updatePresentedSheetSelection = {
@@ -526,8 +545,8 @@ extension SegmentLookupSheet {
                 ))
                 updateSheetPreferredHeight(animated: true)
                 self.refreshSheetSupplementalData()
-                updateMiddleContent()
                 updateReadingFurigana()
+                updateMiddleContent()
             }
 
             let swipeLeftGesture = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
@@ -557,8 +576,8 @@ extension SegmentLookupSheet {
                         resetSplitInputs(using: currentSurface)
                     }
                     self.refreshSheetSupplementalData()
-                    updateMiddleContent()
                     updateReadingFurigana()
+                    updateMiddleContent()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -583,8 +602,8 @@ extension SegmentLookupSheet {
                         resetSplitInputs(using: currentSurface)
                     }
                     self.refreshSheetSupplementalData()
-                    updateMiddleContent()
                     updateReadingFurigana()
+                    updateMiddleContent()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -693,8 +712,8 @@ extension SegmentLookupSheet {
                     updateMergeButtonAvailability()
                     setSplitEditorVisible(false)
                     self.refreshSheetSupplementalData()
-                    updateMiddleContent()
                     updateReadingFurigana()
+                    updateMiddleContent()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -768,7 +787,7 @@ extension SegmentLookupSheet {
         currentSheetUniqueReadings = sheetReadingsProvider?() ?? []
         currentSheetSublatticeEdges = sheetSublatticeProvider?() ?? []
         currentSheetLexiconDebugInfo = sheetLexiconDebugProvider?() ?? ""
-        currentSheetFrequencyData = sheetFrequencyProvider?()
+        currentSheetFrequencyByReading = sheetFrequencyProvider?()
     }
 
     // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.

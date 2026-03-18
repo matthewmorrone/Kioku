@@ -10,10 +10,10 @@ struct ReadView: View {
     @EnvironmentObject var notesStore: NotesStore
     let segmenter: Segmenter
     let dictionaryStore: DictionaryStore?
-    let lexiconDataSurface: Lexicon?
+    let lexicon: Lexicon?
     let readingBySurface: [String: String]
     let readingCandidatesBySurface: [String: [String]]
-    let frequencyDataBySurface: [String: FrequencyData]
+    let frequencyDataBySurface: [String: [String: FrequencyData]]
     let segmenterRevision: Int
     let readResourcesReady: Bool
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
@@ -46,7 +46,7 @@ struct ReadView: View {
     @State var unknownSegmentLocations: Set<Int> = []
     @State var selectedSegmentLocation: Int?
     @State var selectedHighlightRangeOverride: NSRange?
-    @State var selectedMergedEdgeBounds: ClosedRange<Int>?
+    @State var selectedBounds: ClosedRange<Int>?
     @State var segments: [SegmentRange]?
     @State var furiganaBySegmentLocation: [Int: String] = [:]
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
@@ -82,10 +82,10 @@ struct ReadView: View {
         shouldActivateEditModeOnLoad: Binding<Bool> = .constant(false),
         segmenter: Segmenter,
         dictionaryStore: DictionaryStore?,
-        lexiconDataSurface: Lexicon? = nil,
+        lexicon: Lexicon? = nil,
         readingBySurface: [String: String],
         readingCandidatesBySurface: [String: [String]],
-        frequencyDataBySurface: [String: FrequencyData] = [:],
+        frequencyDataBySurface: [String: [String: FrequencyData]] = [:],
         segmenterRevision: Int,
         readResourcesReady: Bool,
         onActiveNoteChanged: ((UUID) -> Void)? = nil
@@ -94,7 +94,7 @@ struct ReadView: View {
         _shouldActivateEditModeOnLoad = shouldActivateEditModeOnLoad
         self.segmenter = segmenter
         self.dictionaryStore = dictionaryStore
-        self.lexiconDataSurface = lexiconDataSurface
+        self.lexicon = lexicon
         self.readingBySurface = readingBySurface
         self.readingCandidatesBySurface = readingCandidatesBySurface
         self.frequencyDataBySurface = frequencyDataBySurface
@@ -208,7 +208,7 @@ struct ReadView: View {
                 segmentRanges = []
                 selectedSegmentLocation = nil
                 selectedHighlightRangeOverride = nil
-                selectedMergedEdgeBounds = nil
+                selectedBounds = nil
                 SegmentLookupSheet.shared.dismissPopover()
                 furiganaBySegmentLocation = [:]
                 furiganaLengthBySegmentLocation = [:]
@@ -230,7 +230,7 @@ struct ReadView: View {
                 segmentRanges = []
                 selectedSegmentLocation = nil
                 selectedHighlightRangeOverride = nil
-                selectedMergedEdgeBounds = nil
+                selectedBounds = nil
                 SegmentLookupSheet.shared.dismissPopover()
                 furiganaBySegmentLocation = [:]
                 furiganaLengthBySegmentLocation = [:]
