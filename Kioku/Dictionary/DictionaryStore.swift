@@ -90,23 +90,24 @@ public final class DictionaryStore {
         }
     }
 
-    // Builds a surface→FrequencyData map covering both JPDB rank and wordfreq Zipf score for fast in-memory lookups.
-    // Surfaces absent from both datasets are excluded; surfaces with only one score carry a partial FrequencyData.
-    public func fetchFrequencyDataBySurface() throws -> [String: FrequencyData] {
+    // Builds a surface→reading→FrequencyData nested map for per-reading frequency lookups.
+    // The outer key is the surface text (kanji or kana); the inner key is the reading (kana text).
+    // For kanji surfaces the reading comes from kanji_kana_links; for kana-only entries the reading equals the surface.
+    // Entries absent from both JPDB and wordfreq datasets are excluded.
+    public func fetchFrequencyDataBySurface() throws -> [String: [String: FrequencyData]] {
         try withSerializedDatabaseAccess {
             let sql = """
-            SELECT text, MIN(jpdb_rank), MAX(wordfreq_zipf) FROM (
-                SELECT k.text, MIN(kkl.jpdb_rank) AS jpdb_rank, MAX(k.wordfreq_zipf) AS wordfreq_zipf
-                FROM kanji k
-                LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = k.id
-                GROUP BY k.text
+            SELECT surface, reading, MIN(jpdb_rank), MAX(wordfreq_zipf) FROM (
+                SELECT k.text AS surface, kf.text AS reading, kkl.jpdb_rank, k.wordfreq_zipf
+                FROM kanji_kana_links kkl
+                JOIN kanji k ON k.id = kkl.kanji_id
+                JOIN kana_forms kf ON kf.id = kkl.kana_id
                 UNION ALL
-                SELECT kf.text, NULL AS jpdb_rank, MAX(kf.wordfreq_zipf) AS wordfreq_zipf
+                SELECT kf.text, kf.text, NULL, kf.wordfreq_zipf
                 FROM kana_forms kf
                 WHERE kf.entry_id NOT IN (SELECT entry_id FROM kanji)
-                GROUP BY kf.text
             )
-            GROUP BY text
+            GROUP BY surface, reading
             """
 
             var statement: OpaquePointer?
@@ -114,7 +115,7 @@ public final class DictionaryStore {
 
             try prepare(sql: sql, statement: &statement)
 
-            var dataByS: [String: FrequencyData] = [:]
+            var dataByS: [String: [String: FrequencyData]] = [:]
             var stepCode = sqlite3_step(statement)
 
             while stepCode == SQLITE_ROW {
@@ -124,15 +125,21 @@ public final class DictionaryStore {
                 }
                 let surface = String(cString: surfacePointer)
 
-                // Column 1: jpdb_rank (nullable int)
-                let jpdbRank: Int? = sqlite3_column_type(statement, 1) == SQLITE_NULL
-                    ? nil
-                    : Int(sqlite3_column_int(statement, 1))
+                guard let readingPointer = sqlite3_column_text(statement, 1) else {
+                    stepCode = sqlite3_step(statement)
+                    continue
+                }
+                let reading = String(cString: readingPointer)
 
-                // Column 2: wordfreq_zipf (nullable double)
-                let wordfreqZipf: Double? = sqlite3_column_type(statement, 2) == SQLITE_NULL
+                // Column 2: jpdb_rank (nullable int)
+                let jpdbRank: Int? = sqlite3_column_type(statement, 2) == SQLITE_NULL
                     ? nil
-                    : sqlite3_column_double(statement, 2)
+                    : Int(sqlite3_column_int(statement, 2))
+
+                // Column 3: wordfreq_zipf (nullable double)
+                let wordfreqZipf: Double? = sqlite3_column_type(statement, 3) == SQLITE_NULL
+                    ? nil
+                    : sqlite3_column_double(statement, 3)
 
                 // Only include entries where at least one frequency signal is present.
                 guard jpdbRank != nil || wordfreqZipf != nil else {
@@ -140,7 +147,7 @@ public final class DictionaryStore {
                     continue
                 }
 
-                dataByS[surface] = FrequencyData(jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
+                dataByS[surface, default: [:]][reading] = FrequencyData(jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
                 stepCode = sqlite3_step(statement)
             }
 

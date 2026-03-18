@@ -11,7 +11,6 @@
 		E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE02F57BC070020F5C2 /* generate_db.py */; };
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
-		E4A100052F90000100AAA001 /* kunyomi_overrides.json in Resources */ = {isa = PBXBuildFile; fileRef = E4A100152F90000100AAA001 /* kunyomi_overrides.json */; };
 		E4CC00012F90000100EEE001 /* SwiftLCS in Frameworks */ = {isa = PBXBuildFile; productRef = E4CC00022F90000100EEE001 /* SwiftLCS */; };
 		E4D1A0012F90000100FFF001 /* SubtitleKit in Frameworks */ = {isa = PBXBuildFile; productRef = E4D1A0022F90000100FFF001 /* SubtitleKit */; };
 		E4D2A0012F90000100FFF001 /* SwiftSubtitles in Frameworks */ = {isa = PBXBuildFile; productRef = E4D2A0022F90000100FFF001 /* SwiftSubtitles */; };
@@ -50,7 +49,6 @@
 		E32B0CE82F57BC070020F5C2 /* deinflection.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = deinflection.json; sourceTree = "<group>"; };
 		E32D09B42F638C1600788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 		E32D0BBB2F668D7400788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
-		E4A100152F90000100AAA001 /* kunyomi_overrides.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = kunyomi_overrides.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -127,7 +125,6 @@
 				E32B0CE82F57BC070020F5C2 /* deinflection.json */,
 				E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */,
 				E32B0CE02F57BC070020F5C2 /* generate_db.py */,
-				E4A100152F90000100AAA001 /* kunyomi_overrides.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -299,7 +296,6 @@
 				E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */,
 				E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */,
 				E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */,
-				E4A100052F90000100AAA001 /* kunyomi_overrides.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

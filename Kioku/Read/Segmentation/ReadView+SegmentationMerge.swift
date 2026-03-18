@@ -87,7 +87,7 @@ extension ReadView {
             let mergedIndex = mergeBounds.lowerBound
             let mergedStart = segmentEdges[mergeBounds.lowerBound].start
             let mergedEnd = segmentEdges[mergeBounds.upperBound].end
-            selectedMergedEdgeBounds = mergedIndex...mergedIndex
+            selectedBounds = mergedIndex...mergedIndex
             let mergedNSRange = NSRange(mergedStart..<mergedEnd, in: text)
             selectedSegmentLocation = mergedNSRange.location
             selectedHighlightRangeOverride = mergedNSRange

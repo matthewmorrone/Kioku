@@ -171,11 +171,6 @@ extension ReadView {
         sourceText: String
     ) -> String? {
         let segmentRange = edge.start..<edge.end
-        let preferKunyomiForContext = shouldPreferKunyomiForSingleKanji(
-            surface: edge.surface,
-            in: sourceText,
-            segmentRange: segmentRange
-        )
         let preferredLemmaReference = preferredFuriganaLemmaReference(
             for: edge.surface,
             lemmaReference: segmenter.preferredLemma(for: edge.surface) ?? edge.surface
@@ -184,8 +179,7 @@ extension ReadView {
         if let surfaceReading = readingForSegment(
             edge.surface,
             readingBySurface: readingBySurface,
-            readingCandidatesBySurface: readingCandidatesBySurface,
-            preferKunyomiForStandaloneKanji: preferKunyomiForContext
+            readingCandidatesBySurface: readingCandidatesBySurface
         ), surfaceReading != edge.surface {
             return surfaceReading
         }
@@ -193,8 +187,7 @@ extension ReadView {
         if let lemmaReading = readingForSegment(
             preferredLemmaReference,
             readingBySurface: readingBySurface,
-            readingCandidatesBySurface: readingCandidatesBySurface,
-            preferKunyomiForStandaloneKanji: preferKunyomiForContext
+            readingCandidatesBySurface: readingCandidatesBySurface
         ), lemmaReading != edge.surface, lemmaReading != preferredLemmaReference {
             let isLemmaReadingCompatibleWithSurface = firstKanjiRunReading(in: edge.surface, using: lemmaReading) != nil
             if isLemmaReadingCompatibleWithSurface == false {
@@ -221,11 +214,6 @@ extension ReadView {
             return []
         }
 
-        let preferKunyomiForContext = shouldPreferKunyomiForSingleKanji(
-            surface: segmentSurface,
-            in: sourceText,
-            segmentRange: segmentRange
-        )
         let furiganaLemmaReference = preferredFuriganaLemmaReference(
             for: segmentSurface,
             lemmaReference: lemmaReference
@@ -235,8 +223,7 @@ extension ReadView {
               let lemmaReading = readingForSegment(
                      furiganaLemmaReference,
                      readingBySurface: readingBySurface,
-                     readingCandidatesBySurface: readingCandidatesBySurface,
-                preferKunyomiForStandaloneKanji: preferKunyomiForContext
+                     readingCandidatesBySurface: readingCandidatesBySurface
               ),
            let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: lemmaReading) {
             let lemmaSurfaceRuns = kanjiRuns(in: furiganaLemmaReference)
@@ -271,8 +258,7 @@ extension ReadView {
         if let lemmaReading = readingForSegment(
             furiganaLemmaReference,
             readingBySurface: readingBySurface,
-            readingCandidatesBySurface: readingCandidatesBySurface,
-            preferKunyomiForStandaloneKanji: preferKunyomiForContext
+            readingCandidatesBySurface: readingCandidatesBySurface
         ), lemmaRuns.count == runs.count {
             projectedReadings = projectRunReadings(surface: furiganaLemmaReference, reading: lemmaReading)
         }
@@ -281,8 +267,7 @@ extension ReadView {
            let surfaceReading = readingForSegment(
                 segmentSurface,
                 readingBySurface: readingBySurface,
-                readingCandidatesBySurface: readingCandidatesBySurface,
-                preferKunyomiForStandaloneKanji: preferKunyomiForContext
+                readingCandidatesBySurface: readingCandidatesBySurface
            ) {
             projectedReadings = projectRunReadings(surface: segmentSurface, reading: surfaceReading)
         }
@@ -305,8 +290,7 @@ extension ReadView {
                 guard let runReading = readingForSegment(
                     runSurface,
                     readingBySurface: readingBySurface,
-                    readingCandidatesBySurface: readingCandidatesBySurface,
-                    preferKunyomiForStandaloneKanji: false
+                    readingCandidatesBySurface: readingCandidatesBySurface
                 ), runReading != runSurface else {
                     continue
                 }
@@ -485,26 +469,14 @@ extension ReadView {
         return KanaNormalizer.normalizeForFuriganaAlignment(readingSuffix) == KanaNormalizer.normalizeForFuriganaAlignment(surfaceSuffix)
     }
 
-    // Looks up a segment reading and caches it for subsequent furigana rendering passes.
+    // Looks up the preferred reading for a segment surface from candidates or the surface reading map.
     func readingForSegment(
         _ segmentSurface: String,
         readingBySurface: [String: String],
-        readingCandidatesBySurface: [String: [String]],
-        preferKunyomiForStandaloneKanji: Bool
+        readingCandidatesBySurface: [String: [String]]
     ) -> String? {
         guard let candidates = readingCandidatesBySurface[segmentSurface], candidates.isEmpty == false else {
             return readingBySurface[segmentSurface]
-        }
-
-        if preferKunyomiForStandaloneKanji {
-            if let overrideReading = preferredStandaloneKunyomiOverride(for: segmentSurface),
-               candidates.contains(overrideReading) {
-                return overrideReading
-            }
-
-            if let preferred = preferredKunyomiCandidate(from: candidates) {
-                return preferred
-            }
         }
 
         return candidates.first ?? readingBySurface[segmentSurface]

@@ -63,7 +63,7 @@ extension ReadView {
             unknownSegmentLocations = []
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
-            selectedMergedEdgeBounds = nil
+            selectedBounds = nil
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
             illegalMergeBoundaryLocation = nil
