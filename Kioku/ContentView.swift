@@ -55,6 +55,13 @@ struct ContentView: View {
                     return
                 }
 
+                // When the updated note is the currently active note in the read view (selectedReadNote
+                // is nil after initial load), re-set it to trigger a reload so in-memory state stays in sync.
+                if let updatedNote, let activeNoteID = UUID(uuidString: lastActiveNoteID), updatedNote.id == activeNoteID {
+                    selectedReadNote = updatedNote
+                    return
+                }
+
                 if updatedNote == nil {
                     if let currentSelectedReadNote = selectedReadNote, notesStore.note(withID: currentSelectedReadNote.id) == nil {
                         selectedReadNote = nil

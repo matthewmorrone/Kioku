@@ -13,15 +13,18 @@ struct KanaChartView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            /*
             representationPicker
                 .padding(.horizontal)
                 .padding(.top, 4)
                 .padding(.bottom, 2)
+            */
 
             VStack(alignment: .leading, spacing: 8) {
                 chartSection(title: nil, rows: KanaData.gojuuon)
-                chartSection(title: "Voiced", rows: KanaData.dakuten)
-                chartSection(title: "Semi-voiced", rows: KanaData.handakuten)
+                chartSection(title: nil, rows: KanaData.gojuuon)
+                chartSection(title: nil, rows: KanaData.dakuten)
+                chartSection(title: nil, rows: KanaData.handakuten)
             }
             .padding(.horizontal)
             .padding(.bottom, 8)
@@ -63,6 +66,18 @@ struct KanaChartView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 2)
+            }
+
+            // Vowel header row matching the six-column grid layout.
+            LazyVGrid(columns: columns, spacing: 2) {
+                Text("")
+                    .frame(maxWidth: .infinity)
+                ForEach(["a", "i", "u", "e", "o"], id: \.self) { vowel in
+                    Text(vowel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                }
             }
 
             // One grid row per kana row.

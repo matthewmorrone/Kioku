@@ -226,6 +226,24 @@ final class SegmenterIntegrationTests: XCTestCase {
         }
     }
 
+    // Verifies ichidan te-forms recover their dictionary lemma so かなえて is not split into かなえ|て.
+    func testDeinflectorRecoversIchidanLemmaFromTeFormForKanaete() throws {
+        let candidates = try deinflectionCandidates(for: "かなえて")
+
+        XCTAssertTrue(candidates.contains("かなえる"))
+    }
+
+    // Verifies the greedy walk selects かなえて as a single edge rather than splitting into かなえ|て.
+    // Regression: the kanaExactBonus previously applied to multi-char kana stems, causing かなえ
+    // (direct trie match) to tie with かなえて (deinflection match) and win via lemma scoring.
+    func testGreedySelectionPrefersIchidanTeFormOverShorterStem() throws {
+        let resources = try sharedResources()
+        let result = resources.segmenter.longestMatchResult(for: "かなえて")
+
+        let selectedSurfaces = result.selectedEdges.map { $0.surface }
+        XCTAssertEqual(selectedSurfaces, ["かなえて"], "Expected [\"かなえて\"] but got \(selectedSurfaces)")
+    }
+
     // Prints and verifies the real inclusion results for the katakana-heavy surface we have been inspecting.
     func testReportLatticeInclusionResultsForExaminedSurface() throws {
         let examinedText = "かなしみがいまセーラースマイル"

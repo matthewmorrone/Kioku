@@ -4,38 +4,60 @@ import UIKit
 // Hosts segmentation and segment action helpers for the read screen.
 extension ReadView {
     // Applies a user-chosen reading override for the currently selected segment and persists it across furigana recomputation.
+    // When shouldApplyChangesGlobally is active, the override is also applied to all other segment edges with the same surface.
     func applyReadingOverride(reading: String) {
         guard let location = selectedSegmentLocation else { return }
 
-        // Derive the surface text length from the merged edge bounds so the furigana rect covers
+        // Derive the surface text and length from the merged edge bounds so the furigana rect covers
         // the correct source characters, not the reading's kana length.
         let surfaceLength: Int
+        let selectedSurface: String?
         if let bounds = selectedBounds,
            bounds.lowerBound < segmentEdges.count,
            bounds.upperBound < segmentEdges.count {
             let start = segmentEdges[bounds.lowerBound].start
             let end = segmentEdges[bounds.upperBound].end
             surfaceLength = NSRange(start..<end, in: text).length
+            selectedSurface = surfaceLength > 0 ? String(text[start..<end]) : nil
         } else {
             // Fall back to the existing computed length for this location.
             surfaceLength = furiganaLengthBySegmentLocation[location] ?? 0
+            if surfaceLength > 0, let range = Range(NSRange(location: location, length: surfaceLength), in: text) {
+                selectedSurface = String(text[range])
+            } else {
+                selectedSurface = nil
+            }
         }
         guard surfaceLength > 0 else { return }
 
-        // Remove all existing per-kanji-run furigana within the segment range so the single
-        // override entry is the only annotation shown for this segment.
-        let segmentNSRange = NSRange(location: location, length: surfaceLength)
-        let priorLengths = furiganaLengthBySegmentLocation
-        let staleLocations = Set(furiganaBySegmentLocation.keys.filter { loc in
-            let len = priorLengths[loc] ?? 0
-            return NSIntersectionRange(NSRange(location: loc, length: len), segmentNSRange).length > 0
-        })
-        furiganaBySegmentLocation = furiganaBySegmentLocation.filter { !staleLocations.contains($0.key) }
-        furiganaLengthBySegmentLocation = furiganaLengthBySegmentLocation.filter { !staleLocations.contains($0.key) }
+        // Build target list: always include the current selection; when applying globally, add all
+        // other edges that share the same surface text so the override is consistent across the note.
+        var targets: [(location: Int, length: Int)] = [(location, surfaceLength)]
+        if shouldApplyChangesGlobally, let surface = selectedSurface {
+            for edge in segmentEdges {
+                let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
+                guard edgeNSRange.location != NSNotFound,
+                      edgeNSRange.length > 0,
+                      edgeNSRange.location != location,
+                      edge.surface == surface else { continue }
+                targets.append((edgeNSRange.location, edgeNSRange.length))
+            }
+        }
 
-        selectedReadingOverrideByLocation[location] = reading
-        furiganaBySegmentLocation[location] = reading
-        furiganaLengthBySegmentLocation[location] = surfaceLength
+        // Apply the override to each target, removing stale per-kanji-run furigana within the range
+        // so the single override entry is the only annotation shown for each matching segment.
+        for (targetLocation, targetLength) in targets {
+            let segmentNSRange = NSRange(location: targetLocation, length: targetLength)
+            let staleLocations = Set(furiganaBySegmentLocation.keys.filter { loc in
+                let len = furiganaLengthBySegmentLocation[loc] ?? 0
+                return NSIntersectionRange(NSRange(location: loc, length: len), segmentNSRange).length > 0
+            })
+            furiganaBySegmentLocation = furiganaBySegmentLocation.filter { !staleLocations.contains($0.key) }
+            furiganaLengthBySegmentLocation = furiganaLengthBySegmentLocation.filter { !staleLocations.contains($0.key) }
+            selectedReadingOverrideByLocation[targetLocation] = reading
+            furiganaBySegmentLocation[targetLocation] = reading
+            furiganaLengthBySegmentLocation[targetLocation] = targetLength
+        }
     }
 
     // Removes the persisted reading override for the currently selected segment and re-runs furigana computation.
@@ -262,6 +284,9 @@ extension ReadView {
                 activeReadingOverrideProvider: {
                     guard let location = selectedSegmentLocation else { return nil }
                     return selectedReadingOverrideByLocation[location]
+                },
+                pathSegmentFrequencyProvider: { surface in
+                    frequencyDataBySurface[surface]
                 },
                 onDismiss: {
                     isSheetSwipeTransitionActive = false

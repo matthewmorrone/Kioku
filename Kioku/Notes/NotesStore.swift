@@ -72,15 +72,14 @@ final class NotesStore: ObservableObject {
         notes[index].modifiedAt = Date()
     }
 
-    // Resets one note back to a blank title, blank content, and no stored segment overrides.
+    // Clears stored segmentation and reading overrides so the segmenter recomputes from scratch on next load.
     func resetNote(id: UUID) {
         guard let index = notes.firstIndex(where: { $0.id == id }) else {
             return
         }
 
-        notes[index].title = ""
-        notes[index].content = ""
         notes[index].segments = nil
+        notes[index].readingOverrides = nil
         notes[index].modifiedAt = Date()
     }
 
