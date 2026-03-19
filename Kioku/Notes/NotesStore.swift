@@ -93,7 +93,8 @@ final class NotesStore: ObservableObject {
         let duplicatedNote = Note(
             title: sourceNote.title,
             content: sourceNote.content,
-            segments: sourceNote.segments
+            segments: sourceNote.segments,
+            readingOverrides: sourceNote.readingOverrides
         )
         notes.insert(duplicatedNote, at: 0)
         return duplicatedNote
@@ -208,23 +209,24 @@ final class NotesStore: ObservableObject {
     }
 
     // Inserts or updates one note in memory so editing does not re-read the full store.
-    func upsertNote(id: UUID?, title: String, content: String, segments: [SegmentRange]?) -> UUID {
+    func upsertNote(id: UUID?, title: String, content: String, segments: [SegmentRange]?, readingOverrides: [Int: String]? = nil) -> UUID {
         let now = Date()
         if let id, let index = notes.firstIndex(where: { $0.id == id }) {
             notes[index].title = title
             notes[index].content = content
             notes[index].segments = segments
+            notes[index].readingOverrides = readingOverrides
             notes[index].modifiedAt = now
             return id
         }
 
-        let newNote = Note(title: title, content: content, segments: segments, createdAt: now, modifiedAt: now)
+        let newNote = Note(title: title, content: content, segments: segments, createdAt: now, modifiedAt: now, readingOverrides: readingOverrides)
         notes.insert(newNote, at: 0)
         return newNote.id
     }
 
     // Schedules a read-screen edit to persist directly to storage without publishing every intermediate change.
-    func scheduleReadEditorPersist(id: UUID?, title: String, content: String, segments: [SegmentRange]?) -> UUID {
+    func scheduleReadEditorPersist(id: UUID?, title: String, content: String, segments: [SegmentRange]?, readingOverrides: [Int: String]? = nil) -> UUID {
         let resolvedID = id ?? UUID()
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let now = Date()
@@ -235,7 +237,8 @@ final class NotesStore: ObservableObject {
             content: content,
             segments: segments,
             createdAt: existingCreatedAt,
-            modifiedAt: now
+            modifiedAt: now,
+            readingOverrides: readingOverrides
         )
 
         pendingReadEditorPersistWorkItem?.cancel()

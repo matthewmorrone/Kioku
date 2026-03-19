@@ -12,6 +12,7 @@ extension ReadView {
         let snapshotTitle = customTitle
         let snapshotSegmentRanges = segments
         let snapshotActiveNoteID = activeNoteID
+        let snapshotReadingOverrides = selectedReadingOverrideByLocation
 
         pendingPersistenceTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
@@ -22,7 +23,8 @@ extension ReadView {
                     text == snapshotText,
                     customTitle == snapshotTitle,
                     segments == snapshotSegmentRanges,
-                    activeNoteID == snapshotActiveNoteID
+                    activeNoteID == snapshotActiveNoteID,
+                    selectedReadingOverrideByLocation == snapshotReadingOverrides
                 else {
                     return
                 }
@@ -66,6 +68,7 @@ extension ReadView {
             selectedBounds = nil
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
+            selectedReadingOverrideByLocation = [:]
             illegalMergeBoundaryLocation = nil
             SegmentLookupSheet.shared.dismissPopover()
             isLoadingSelectedNote = false
@@ -89,6 +92,7 @@ extension ReadView {
             noteToLoad.segments,
             for: noteToLoad.content
         )
+        selectedReadingOverrideByLocation = noteToLoad.readingOverrides ?? [:]
         if shouldActivateEditModeOnLoad {
             isEditMode = true
             shouldActivateEditModeOnLoad = false
@@ -122,7 +126,8 @@ extension ReadView {
             id: activeNoteID,
             title: titleToSave,
             content: text,
-            segments: segments
+            segments: segments,
+            readingOverrides: selectedReadingOverrideByLocation.isEmpty ? nil : selectedReadingOverrideByLocation
         )
         activeNoteID = savedNoteID
         onActiveNoteChanged?(savedNoteID)

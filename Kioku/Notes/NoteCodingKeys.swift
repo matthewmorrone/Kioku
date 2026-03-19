@@ -9,4 +9,5 @@ enum NoteCodingKeys: String, CodingKey {
     case createdAt
     case modifiedAt
     case audioAttachmentID
+    case readingOverrides
 }

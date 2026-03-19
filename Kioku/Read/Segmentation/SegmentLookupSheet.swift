@@ -8,6 +8,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     weak var presentedSheetController: UIViewController?
     var onDismiss: (() -> Void)?
     var onReadingSelected: ((String) -> Void)?
+    // Called when the user taps the reset button to clear the current reading override.
+    var onReadingReset: (() -> Void)?
     var onSheetSelectPrevious: (() -> Void)?
     var onSheetSelectNext: (() -> Void)?
     var sheetReadingsProvider: (() -> [String])?
@@ -15,6 +17,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var segmentRangeProvider: (() -> NSRange?)?
     var sheetLexiconDebugProvider: (() -> String)?
     var sheetFrequencyProvider: (() -> [String: FrequencyData]?)?
+    // Returns the currently persisted reading override for the selected segment, if any.
+    var activeReadingOverrideProvider: (() -> String?)?
     var currentSheetUniqueReadings: [String] = []
     var currentSheetSublatticeEdges: [LatticeEdge] = []
     var currentSheetLexiconDebugInfo: String = ""
@@ -164,10 +168,14 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetLexiconDebugProvider: (() -> String)? = nil,
         sheetFrequencyProvider: (() -> [String: FrequencyData]?)? = nil,
         onReadingSelected: ((String) -> Void)? = nil,
+        onReadingReset: (() -> Void)? = nil,
+        activeReadingOverrideProvider: (() -> String?)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
-        // Always update the reading callback so re-taps on a different segment get the right closure.
+        // Always update the reading callbacks so re-taps on a different segment get the right closures.
         self.onReadingSelected = onReadingSelected
+        self.onReadingReset = onReadingReset
+        self.activeReadingOverrideProvider = activeReadingOverrideProvider
         if let updatePresentedSheetSelection {
             self.onDismiss = onDismiss
             updatePresentedSheetSelection(
@@ -240,11 +248,13 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             onSheetSelectPrevious = nil
             onSheetSelectNext = nil
             onReadingSelected = nil
+            onReadingReset = nil
             sheetReadingsProvider = nil
             sheetSublatticeProvider = nil
             segmentRangeProvider = nil
             sheetLexiconDebugProvider = nil
             sheetFrequencyProvider = nil
+            activeReadingOverrideProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""
@@ -261,11 +271,13 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         onSheetSelectPrevious = nil
         onSheetSelectNext = nil
         onReadingSelected = nil
+        onReadingReset = nil
         sheetReadingsProvider = nil
         sheetSublatticeProvider = nil
         segmentRangeProvider = nil
         sheetLexiconDebugProvider = nil
         sheetFrequencyProvider = nil
+        activeReadingOverrideProvider = nil
         currentSheetUniqueReadings = []
         currentSheetSublatticeEdges = []
         currentSheetLexiconDebugInfo = ""
@@ -283,11 +295,13 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         if presentedSheetController === presentationController.presentedViewController {
             presentedSheetController = nil
             onReadingSelected = nil
+            onReadingReset = nil
             sheetReadingsProvider = nil
             sheetSublatticeProvider = nil
             segmentRangeProvider = nil
             sheetLexiconDebugProvider = nil
             sheetFrequencyProvider = nil
+            activeReadingOverrideProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""
