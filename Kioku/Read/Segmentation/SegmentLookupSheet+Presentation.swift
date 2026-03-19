@@ -91,15 +91,17 @@ extension SegmentLookupSheet {
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
             var customReading: String? = nil
+            // Custom slot and navigation arrows are only relevant for kanji-bearing segments.
+            var showCustomSlot = ScriptClassifier.containsKanji(surface)
 
             // True when the current index points to the custom-entry slot (always the last slot).
             func isOnCustomSlot() -> Bool {
-                currentReadingIndex == currentReadings.count
+                showCustomSlot && currentReadingIndex == currentReadings.count
             }
 
-            // Total navigable slots: all dictionary readings plus one custom slot.
+            // Total navigable slots: dictionary readings plus the custom slot when applicable.
             func totalSlots() -> Int {
-                currentReadings.count + 1
+                showCustomSlot ? currentReadings.count + 1 : currentReadings.count
             }
 
             // Updates the subtitle button text, color, tappability, and reset button visibility for the current index.
@@ -116,33 +118,44 @@ extension SegmentLookupSheet {
                     readingSubtitleLabel.setTitle(reading.isEmpty ? nil : reading, for: .normal)
                     readingSubtitleLabel.setTitleColor(.secondaryLabel, for: .normal)
                     readingSubtitleLabel.isHidden = reading.isEmpty
-                    readingSubtitleLabel.isUserInteractionEnabled = false
+                    // Kanji segments with a single reading have no navigation arrows, so make the
+                    // subtitle tappable directly to allow setting a custom reading.
+                    let isSingleReadingKanji = showCustomSlot && currentReadings.count <= 1
+                    readingSubtitleLabel.isUserInteractionEnabled = isSingleReadingKanji
                 }
                 // Show reset only when the user has moved away from the default reading or set a custom one.
                 let hasNonDefaultReading = currentReadingIndex != 0 || customReading != nil
                 resetReadingButton.isHidden = !hasNonDefaultReading
             }
 
-            // Refreshes arrow visibility and reading subtitle for the current readings list.
+            // Refreshes arrow/custom visibility and reading subtitle for the current segment surface.
             // Initializes the selected index from any persisted override so the UI reflects prior choices.
             func updateReadingFurigana() {
                 currentReadings = self.currentSheetUniqueReadings
+                showCustomSlot = ScriptClassifier.containsKanji(currentSurface)
+
                 let activeOverride = self.activeReadingOverrideProvider?()
                 if let override = activeOverride, let idx = currentReadings.firstIndex(of: override) {
                     currentReadingIndex = idx
                     customReading = nil
-                } else if let override = activeOverride, currentReadings.contains(override) == false {
+                } else if showCustomSlot, let override = activeOverride, currentReadings.contains(override) == false {
                     currentReadingIndex = currentReadings.count // custom slot
                     customReading = override
                 } else {
                     currentReadingIndex = 0
                     customReading = nil
                 }
+                // Clamp index in case segment changed and custom slot is no longer available.
+                if currentReadingIndex >= totalSlots() {
+                    currentReadingIndex = 0
+                    customReading = nil
+                }
+
                 let reading = currentReadings.first
                 print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) reading=\(reading ?? "nil")")
                 syncSubtitleToCurrentIndex()
-                // Show arrows whenever there is more than one slot total (dictionary + custom).
-                let hasMultiple = totalSlots() > 1
+                // Show arrows only for kanji segments with more than one reading candidate.
+                let hasMultiple = showCustomSlot && currentReadings.count > 1
                 prevReadingButton.isHidden = !hasMultiple
                 nextReadingButton.isHidden = !hasMultiple
             }
@@ -483,13 +496,38 @@ extension SegmentLookupSheet {
                     middleContentStack.addArrangedSubview(makeBodyLabel(annotatedReadings.joined(separator: "\n")))
                 }
 
-                // Section 3: Valid segmentation paths through the sublattice DAG
+                // Section 3: Valid segmentation paths through the sublattice DAG, with per-segment frequency.
                 let sublatticeEdges = self.currentSheetSublatticeEdges
                 if sublatticeEdges.isEmpty == false {
                     let paths = self.sublatticeValidPaths(from: sublatticeEdges).reversed()
                     if paths.isEmpty == false {
                         middleContentStack.addArrangedSubview(makeSectionHeader("Paths"))
-                        let pathLines = paths.map { $0.joined(separator: " · ") }.joined(separator: "\n")
+
+                        // Converts frequency data to a unified Zipf-equivalent score (higher = more frequent).
+                        // jpdbRank is preferred; wordfreqZipf used as fallback. Both land on a ~0–7 scale.
+                        func normalizedScore(_ data: [String: FrequencyData]) -> Double? {
+                            if let rank = data.values.compactMap({ $0.jpdbRank }).min() {
+                                return max(0.0, 7.0 - log10(Double(rank)))
+                            }
+                            return data.values.compactMap({ $0.wordfreqZipf }).max()
+                        }
+
+                        let pathLines = paths.map { path -> String in
+                            var segmentScores: [Double] = []
+                            let annotated = path.map { segment -> String in
+                                guard let freq = self.pathSegmentFrequencyProvider?(segment),
+                                      let score = normalizedScore(freq) else {
+                                    return segment
+                                }
+                                segmentScores.append(score)
+                                return "\(segment)(\(String(format: "%.1f", score)))"
+                            }.joined(separator: " · ")
+
+                            guard segmentScores.isEmpty == false else { return annotated }
+                            let avg = segmentScores.reduce(0, +) / Double(segmentScores.count)
+                            return "\(annotated)  [\(String(format: "%.1f", avg))]"
+                        }.joined(separator: "\n")
+
                         middleContentStack.addArrangedSubview(makeBodyLabel(pathLines))
                     }
                 }
@@ -503,6 +541,20 @@ extension SegmentLookupSheet {
             }
 
             // Register reading navigation actions here so updateMiddleContent is already in scope.
+            // Applies the reading at the current index, or clears the override when landing on an empty custom slot.
+            func applyCurrentReadingSelection() {
+                if isOnCustomSlot() {
+                    if let reading = customReading {
+                        self.onReadingSelected?(reading)
+                    } else {
+                        // Custom slot with no entry: remove furigana rather than leaving a stale override.
+                        self.onReadingReset?()
+                    }
+                } else {
+                    self.onReadingSelected?(currentReadings[currentReadingIndex])
+                }
+            }
+
             prevReadingButton.addAction(
                 UIAction { _ in
                     let total = totalSlots()
@@ -510,11 +562,7 @@ extension SegmentLookupSheet {
                     guard total > 1 else { return }
                     currentReadingIndex = (currentReadingIndex - 1 + total) % total
                     syncSubtitleToCurrentIndex()
-                    if isOnCustomSlot() {
-                        if let reading = customReading { self.onReadingSelected?(reading) }
-                    } else {
-                        self.onReadingSelected?(currentReadings[currentReadingIndex])
-                    }
+                    applyCurrentReadingSelection()
                     print("[SegmentLookupSheet] prev: now at index=\(currentReadingIndex) onCustom=\(isOnCustomSlot())")
                     updateMiddleContent()
                 },
@@ -528,11 +576,7 @@ extension SegmentLookupSheet {
                     guard total > 1 else { return }
                     currentReadingIndex = (currentReadingIndex + 1) % total
                     syncSubtitleToCurrentIndex()
-                    if isOnCustomSlot() {
-                        if let reading = customReading { self.onReadingSelected?(reading) }
-                    } else {
-                        self.onReadingSelected?(currentReadings[currentReadingIndex])
-                    }
+                    applyCurrentReadingSelection()
                     print("[SegmentLookupSheet] next: now at index=\(currentReadingIndex) onCustom=\(isOnCustomSlot())")
                     updateMiddleContent()
                 },
@@ -553,6 +597,8 @@ extension SegmentLookupSheet {
                     let entered = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     guard entered.isEmpty == false else { return }
                     customReading = entered
+                    // Ensure we are on the custom slot so syncSubtitleToCurrentIndex shows the custom reading.
+                    currentReadingIndex = currentReadings.count
                     syncSubtitleToCurrentIndex()
                     self.onReadingSelected?(entered)
                     print("[SegmentLookupSheet] custom reading set: \(entered)")

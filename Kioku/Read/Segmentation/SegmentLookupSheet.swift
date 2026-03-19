@@ -19,6 +19,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var sheetFrequencyProvider: (() -> [String: FrequencyData]?)?
     // Returns the currently persisted reading override for the selected segment, if any.
     var activeReadingOverrideProvider: (() -> String?)?
+    // Looks up frequency data for any surface in the note — used to annotate sublattice paths.
+    var pathSegmentFrequencyProvider: ((String) -> [String: FrequencyData]?)?
     var currentSheetUniqueReadings: [String] = []
     var currentSheetSublatticeEdges: [LatticeEdge] = []
     var currentSheetLexiconDebugInfo: String = ""
@@ -170,12 +172,14 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         onReadingSelected: ((String) -> Void)? = nil,
         onReadingReset: (() -> Void)? = nil,
         activeReadingOverrideProvider: (() -> String?)? = nil,
+        pathSegmentFrequencyProvider: ((String) -> [String: FrequencyData]?)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
         // Always update the reading callbacks so re-taps on a different segment get the right closures.
         self.onReadingSelected = onReadingSelected
         self.onReadingReset = onReadingReset
         self.activeReadingOverrideProvider = activeReadingOverrideProvider
+        self.pathSegmentFrequencyProvider = pathSegmentFrequencyProvider
         if let updatePresentedSheetSelection {
             self.onDismiss = onDismiss
             updatePresentedSheetSelection(
@@ -255,6 +259,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             sheetLexiconDebugProvider = nil
             sheetFrequencyProvider = nil
             activeReadingOverrideProvider = nil
+            pathSegmentFrequencyProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""
@@ -302,6 +307,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             sheetLexiconDebugProvider = nil
             sheetFrequencyProvider = nil
             activeReadingOverrideProvider = nil
+            pathSegmentFrequencyProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""

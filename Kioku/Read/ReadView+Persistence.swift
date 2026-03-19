@@ -80,6 +80,7 @@ extension ReadView {
         let noteToLoad = notesStore.note(withID: selectedNote.id) ?? selectedNote
         isLoadingSelectedNote = true
         activeNoteID = noteToLoad.id
+        sharedScrollOffsetY = 0
         onActiveNoteChanged?(noteToLoad.id)
         // Load or unload the audio attachment whenever the active note changes.
         loadAudioAttachmentIfNeeded(attachmentID: noteToLoad.audioAttachmentID)
