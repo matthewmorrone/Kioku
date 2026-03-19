@@ -75,7 +75,14 @@ extension SegmentLookupSheet {
             nextReadingButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
             nextReadingButton.tintColor = .tertiaryLabel
 
-            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, surfaceStack, nextReadingButton])
+            // Visible only when a non-default or custom reading is active; clears the override.
+            let resetReadingButton = UIButton(type: .system)
+            resetReadingButton.translatesAutoresizingMaskIntoConstraints = false
+            resetReadingButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+            resetReadingButton.tintColor = .tertiaryLabel
+            resetReadingButton.isHidden = true
+
+            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, surfaceStack, nextReadingButton, resetReadingButton])
             readingNavRow.translatesAutoresizingMaskIntoConstraints = false
             readingNavRow.axis = .horizontal
             readingNavRow.alignment = .center
@@ -95,7 +102,7 @@ extension SegmentLookupSheet {
                 currentReadings.count + 1
             }
 
-            // Updates the subtitle button text, color, and tappability to match the current index.
+            // Updates the subtitle button text, color, tappability, and reset button visibility for the current index.
             func syncSubtitleToCurrentIndex() {
                 if isOnCustomSlot() {
                     let title = customReading ?? "Custom…"
@@ -111,13 +118,26 @@ extension SegmentLookupSheet {
                     readingSubtitleLabel.isHidden = reading.isEmpty
                     readingSubtitleLabel.isUserInteractionEnabled = false
                 }
+                // Show reset only when the user has moved away from the default reading or set a custom one.
+                let hasNonDefaultReading = currentReadingIndex != 0 || customReading != nil
+                resetReadingButton.isHidden = !hasNonDefaultReading
             }
 
             // Refreshes arrow visibility and reading subtitle for the current readings list.
+            // Initializes the selected index from any persisted override so the UI reflects prior choices.
             func updateReadingFurigana() {
                 currentReadings = self.currentSheetUniqueReadings
-                currentReadingIndex = 0
-                customReading = nil
+                let activeOverride = self.activeReadingOverrideProvider?()
+                if let override = activeOverride, let idx = currentReadings.firstIndex(of: override) {
+                    currentReadingIndex = idx
+                    customReading = nil
+                } else if let override = activeOverride, currentReadings.contains(override) == false {
+                    currentReadingIndex = currentReadings.count // custom slot
+                    customReading = override
+                } else {
+                    currentReadingIndex = 0
+                    customReading = nil
+                }
                 let reading = currentReadings.first
                 print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) reading=\(reading ?? "nil")")
                 syncSubtitleToCurrentIndex()
@@ -132,6 +152,8 @@ extension SegmentLookupSheet {
                 prevReadingButton.heightAnchor.constraint(equalToConstant: 32),
                 nextReadingButton.widthAnchor.constraint(equalToConstant: 32),
                 nextReadingButton.heightAnchor.constraint(equalToConstant: 32),
+                resetReadingButton.widthAnchor.constraint(equalToConstant: 28),
+                resetReadingButton.heightAnchor.constraint(equalToConstant: 28),
             ])
 
             let splitPanelContainer = UIStackView()
@@ -536,6 +558,15 @@ extension SegmentLookupSheet {
                     print("[SegmentLookupSheet] custom reading set: \(entered)")
                 })
                 vc.present(alert, animated: true)
+            }, for: .touchUpInside)
+
+            // Resets the reading override for the current segment back to the computed default.
+            resetReadingButton.addAction(UIAction { _ in
+                currentReadingIndex = 0
+                customReading = nil
+                syncSubtitleToCurrentIndex()
+                self.onReadingReset?()
+                updateMiddleContent()
             }, for: .touchUpInside)
 
             // Populate initial content.

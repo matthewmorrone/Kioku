@@ -38,6 +38,16 @@ extension ReadView {
         furiganaLengthBySegmentLocation[location] = surfaceLength
     }
 
+    // Removes the persisted reading override for the currently selected segment and re-runs furigana computation.
+    func clearReadingOverrideForCurrentSegment() {
+        guard let location = selectedSegmentLocation else { return }
+        selectedReadingOverrideByLocation.removeValue(forKey: location)
+        furiganaBySegmentLocation.removeValue(forKey: location)
+        furiganaLengthBySegmentLocation.removeValue(forKey: location)
+        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+        scheduleCurrentNotePersistenceIfNeeded()
+    }
+
     // Clears note-backed segment range overrides and restores computed segmentation from the segmenter.
     func resetSegmentationToComputed() {
         segments = nil
@@ -245,6 +255,13 @@ extension ReadView {
                 },
                 onReadingSelected: { reading in
                     applyReadingOverride(reading: reading)
+                },
+                onReadingReset: {
+                    clearReadingOverrideForCurrentSegment()
+                },
+                activeReadingOverrideProvider: {
+                    guard let location = selectedSegmentLocation else { return nil }
+                    return selectedReadingOverrideByLocation[location]
                 },
                 onDismiss: {
                     isSheetSwipeTransitionActive = false
