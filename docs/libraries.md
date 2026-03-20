@@ -4,18 +4,63 @@ Libraries evaluated but not yet installed. Revisit when the relevant feature are
 
 ---
 
+## Installed Libraries
+
+Currently linked via SPM.
+
+### SwiftWhisper (exPHAT) ✅
+- **Repo:** https://github.com/exPHAT/SwiftWhisper
+- **SPM:** `https://github.com/exPHAT/SwiftWhisper.git`
+- **Why installed:** On-device Whisper transcription. Bundles whisper.cpp with no transitive dependencies, avoiding the swift-transformers ↔ swift-tokenizers conflict that WhisperKit caused with AzooKeyKanaKanjiConverter.
+
+### AzooKeyKanaKanjiConverter ✅
+- **Repo:** https://github.com/azooKey/AzooKeyKanaKanjiConverter
+- **SPM:** `https://github.com/azooKey/AzooKeyKanaKanjiConverter.git`
+- **Why installed:** Japanese kana-to-kanji lattice segmentation — the core of the segmentation pipeline.
+
+### USearch (unum-cloud) ✅
+- **Repo:** https://github.com/unum-cloud/USearch
+- **SPM:** `https://github.com/unum-cloud/USearch.git`
+- **Why installed:** Vector similarity search over word embeddings. Powers semantic lookup and smart review ranking.
+
+### SwiftLCS (Frugghi) ✅
+- **Repo:** https://github.com/Frugghi/SwiftLCS
+- **SPM:** `https://github.com/Frugghi/SwiftLCS.git`
+- **Why installed:** Longest Common Subsequence diff algorithm. Used to reconcile LLM correction output against the original text.
+
+### swift-subtitle-kit (dioKaratzas) ✅
+- **Repo:** https://github.com/dioKaratzas/swift-subtitle-kit
+- **SPM:** `https://github.com/dioKaratzas/swift-subtitle-kit.git`
+- **Why installed:** SRT/subtitle parsing and resync — in-process subtitle handling for the read screen.
+
+### SwiftSubtitles (dagronf) ✅
+- **Repo:** https://github.com/dagronf/SwiftSubtitles
+- **SPM:** `https://github.com/dagronf/SwiftSubtitles.git`
+- **Why installed:** Broader subtitle format support (SRT, VTT, SBV, etc.) complementing swift-subtitle-kit.
+
+### CodableCSV (dehesa) ✅
+- **Repo:** https://github.com/dehesa/CodableCSV
+- **SPM:** `https://github.com/dehesa/CodableCSV.git`
+- **Why installed:** Codable-compatible CSV encoding/decoding. Used for importing/exporting word lists or frequency data.
+
+### swift-audio-marker (atelier-socle) ✅
+- **Repo:** https://github.com/atelier-socle/swift-audio-marker
+- **SPM:** `https://github.com/atelier-socle/swift-audio-marker.git`
+- **Why installed:** Audio timing marker model — represents and manipulates per-word timestamps from Whisper output.
+
+### TextFormation (ChimeHQ) ✅
+- **Repo:** https://github.com/ChimeHQ/TextFormation
+- **SPM:** `https://github.com/ChimeHQ/TextFormation.git`
+- **Why installed:** Text editing helpers — indentation, bracket completion, whitespace handling. Used in the note editor.
+
+---
+
 ## Audio & Speech
 
 ### FluidAudio
 - **Repo:** https://github.com/FluidInference/FluidAudio
 - **Why interesting:** Real-time streaming ASR, speaker diarization, VAD — all offloaded to Apple Neural Engine. Strong audio infrastructure.
 - **Blocker:** Japanese model coverage unconfirmed. Revisit when FluidInference ships a Japanese Parakeet variant or when diarization is needed for multi-speaker audio.
-
-### SwiftWhisper (exPHAT) ✅ installed
-- **Repo:** https://github.com/exPHAT/SwiftWhisper
-- **SPM:** `https://github.com/exPHAT/SwiftWhisper.git`
-- **Why installed:** Bundles whisper.cpp directly with no transitive dependencies, avoiding the `swift-transformers` ↔ `swift-tokenizers` target name conflict that WhisperKit caused with AzooKeyKanaKanjiConverter.
-- **Note:** WhisperKit is temporarily removed. Re-evaluate once the upstream conflict between argmaxinc/WhisperKit and azooKey/AzooKeyKanaKanjiConverter is resolved.
 
 ### mlx-audio (Blaizzy)
 - **Repo:** https://github.com/Blaizzy/mlx-audio

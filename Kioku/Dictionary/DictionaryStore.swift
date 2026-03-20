@@ -356,7 +356,8 @@ public final class DictionaryStore {
         return results
     }
 
-    // Builds ordered lookup surfaces so iteration-mark expansions can resolve through standard dictionary queries.
+    // Builds ordered lookup surfaces so iteration-mark expansions and kyujitai forms
+    // can resolve through standard dictionary queries.
     private func lookupSurfaces(for surface: String) -> [String] {
         let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedSurface.isEmpty == false else {
@@ -367,6 +368,13 @@ public final class DictionaryStore {
         let expandedSurfaces = ScriptClassifier.iterationExpandedCandidates(for: trimmedSurface).sorted()
         for expandedSurface in expandedSurfaces where expandedSurface != trimmedSurface {
             orderedSurfaces.append(expandedSurface)
+        }
+
+        // Append shinjitai-normalized form as a final fallback so classical text
+        // written in kyujitai resolves to JMdict entries that only list the modern form.
+        if let normalized = KyujitaiNormalizer.normalize(trimmedSurface),
+           orderedSurfaces.contains(normalized) == false {
+            orderedSurfaces.append(normalized)
         }
 
         return orderedSurfaces
@@ -587,6 +595,115 @@ public final class DictionaryStore {
         }
 
         return senses
+    }
+
+    // Fetches KANJIDIC2 metadata for one kanji literal — grade, strokes, JLPT level, on/kun readings, and English meanings.
+    // Returns nil when the character is absent from the kanji_characters table.
+    func fetchKanjiInfo(for literal: String) throws -> KanjiInfo? {
+        try withSerializedDatabaseAccess {
+            let charSQL = """
+            SELECT grade, stroke_count, jlpt_level
+            FROM kanji_characters
+            WHERE literal = ?1
+            LIMIT 1
+            """
+
+            var charStatement: OpaquePointer?
+            defer { sqlite3_finalize(charStatement) }
+            try prepare(sql: charSQL, statement: &charStatement)
+            try bindText(literal, index: 1, statement: charStatement)
+
+            let charStep = sqlite3_step(charStatement)
+            guard charStep == SQLITE_ROW else {
+                return nil
+            }
+
+            let grade = sqlite3_column_type(charStatement, 0) != SQLITE_NULL
+                ? Int(sqlite3_column_int(charStatement, 0)) : nil
+            let strokeCount = sqlite3_column_type(charStatement, 1) != SQLITE_NULL
+                ? Int(sqlite3_column_int(charStatement, 1)) : nil
+            let jlptLevel = sqlite3_column_type(charStatement, 2) != SQLITE_NULL
+                ? Int(sqlite3_column_int(charStatement, 2)) : nil
+
+            let readingsSQL = """
+            SELECT kr.reading, kr.type
+            FROM kanji_readings kr
+            JOIN kanji_characters kc ON kc.id = kr.kanji_id
+            WHERE kc.literal = ?1 AND kr.type IN ('on', 'kun')
+            ORDER BY kr.type DESC, kr.id ASC
+            """
+
+            var readingsStatement: OpaquePointer?
+            defer { sqlite3_finalize(readingsStatement) }
+            try prepare(sql: readingsSQL, statement: &readingsStatement)
+            try bindText(literal, index: 1, statement: readingsStatement)
+
+            var onReadings: [String] = []
+            var kunReadings: [String] = []
+            var readingsStep = sqlite3_step(readingsStatement)
+
+            while readingsStep == SQLITE_ROW {
+                guard
+                    let readingPointer = sqlite3_column_text(readingsStatement, 0),
+                    let typePointer = sqlite3_column_text(readingsStatement, 1)
+                else {
+                    readingsStep = sqlite3_step(readingsStatement)
+                    continue
+                }
+
+                let reading = String(cString: readingPointer)
+                let type = String(cString: typePointer)
+
+                if type == "on" {
+                    onReadings.append(reading)
+                } else {
+                    kunReadings.append(reading)
+                }
+
+                readingsStep = sqlite3_step(readingsStatement)
+            }
+
+            guard readingsStep == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage())
+            }
+
+            let meaningsSQL = """
+            SELECT km.meaning
+            FROM kanji_meanings km
+            JOIN kanji_characters kc ON kc.id = km.kanji_id
+            WHERE kc.literal = ?1 AND km.lang = 'en'
+            ORDER BY km.id ASC
+            """
+
+            var meaningsStatement: OpaquePointer?
+            defer { sqlite3_finalize(meaningsStatement) }
+            try prepare(sql: meaningsSQL, statement: &meaningsStatement)
+            try bindText(literal, index: 1, statement: meaningsStatement)
+
+            var meanings: [String] = []
+            var meaningsStep = sqlite3_step(meaningsStatement)
+
+            while meaningsStep == SQLITE_ROW {
+                if let meaningPointer = sqlite3_column_text(meaningsStatement, 0) {
+                    meanings.append(String(cString: meaningPointer))
+                }
+                meaningsStep = sqlite3_step(meaningsStatement)
+            }
+
+            guard meaningsStep == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage())
+            }
+
+            return KanjiInfo(
+                literal: literal,
+                grade: grade,
+                strokeCount: strokeCount,
+                jlptLevel: jlptLevel,
+                onReadings: onReadings,
+                kunReadings: kunReadings,
+                meanings: meanings
+            )
+        }
     }
 
     // Compiles SQL into a prepared statement bound to the active connection.

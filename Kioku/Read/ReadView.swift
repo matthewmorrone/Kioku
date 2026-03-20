@@ -8,6 +8,7 @@ struct ReadView: View {
     @Binding var selectedNote: Note?
     @Binding var shouldActivateEditModeOnLoad: Bool
     @EnvironmentObject var notesStore: NotesStore
+    @EnvironmentObject var historyStore: HistoryStore
     let segmenter: Segmenter
     let dictionaryStore: DictionaryStore?
     let lexicon: Lexicon?
@@ -75,6 +76,10 @@ struct ReadView: View {
     @State var audioAttachmentHighlightRanges: [NSRange?] = []
     @State var activeAudioAttachmentID: UUID? = nil
     @State private var isShowingSubtitleEditor = false
+    @State var isRequestingLLMCorrection = false
+    @State var isShowingLLMCorrectionError = false
+    @State var llmCorrectionErrorMessage = ""
+    @State var llmCorrectionTask: Task<Void, Never>?
 
     // Initializes the read screen with the active note selection and shared read resources.
     init(
@@ -286,6 +291,13 @@ struct ReadView: View {
         } message: {
             Text(audioTranscriptionErrorMessage)
         }
+        .alert("AI Correction", isPresented: $isShowingLLMCorrectionError) {
+            Button("OK", role: .cancel) {
+                llmCorrectionErrorMessage = ""
+            }
+        } message: {
+            Text(llmCorrectionErrorMessage)
+        }
     }
 
     // Displays the editable note title at the top of the reading screen.
@@ -400,12 +412,47 @@ struct ReadView: View {
     private var toolbarButtons: some View {
         HStack {
             Spacer()
+            llmCorrectionButton
             resetButton
             segmentListButton
             furiganaButton
             editModeButton
         }
         // .padding(.horizontal, 8)
+    }
+
+    // Triggers an LLM correction request for the current note's segmentation and readings.
+    // Only enabled when a provider key is configured in Settings and the note is in read mode.
+    private var llmCorrectionButton: some View {
+        Button {
+            if isRequestingLLMCorrection {
+                cancelLLMCorrection()
+            } else {
+                requestLLMCorrection()
+            }
+        } label: {
+            Group {
+                if isRequestingLLMCorrection {
+                    ZStack {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .scaleEffect(0.7)
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 7, weight: .semibold))
+                    }
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+            }
+            .foregroundStyle(LLMSettings.isConfigured() ? Color.accentColor : Color.secondary.opacity(0.4))
+            .frame(width: 36, height: 36)
+            .background(Circle().fill(Color(.tertiarySystemFill)))
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(isEditMode || LLMSettings.isConfigured() == false)
+        .opacity(isEditMode || LLMSettings.isConfigured() == false ? 0.5 : 1.0)
+        .accessibilityLabel(isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction")
     }
 
     // Resets custom segment segmentation back to computed segmentation.

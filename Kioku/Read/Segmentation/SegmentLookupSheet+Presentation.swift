@@ -18,8 +18,9 @@ extension SegmentLookupSheet {
         sheetFrequencyProvider: (() -> [String: FrequencyData]?)? = nil,
         onDismiss: (() -> Void)?
     ) {
-        // Capture the reading callback before dismissPopover, since dismissSheet clears it.
+        // Capture callbacks before dismissPopover, since dismissSheet clears them.
         let capturedOnReadingSelected = self.onReadingSelected
+        let capturedPathSegmentFrequencyProvider = self.pathSegmentFrequencyProvider
         dismissPopover(notifyDismissal: false) { [weak self] in
             guard let self, let presenter = self.topPresentingController() else {
                 return
@@ -27,6 +28,7 @@ extension SegmentLookupSheet {
 
             self.onDismiss = onDismiss
             self.onReadingSelected = capturedOnReadingSelected
+            self.pathSegmentFrequencyProvider = capturedPathSegmentFrequencyProvider
             self.onSheetSelectPrevious = nil
             self.onSheetSelectNext = nil
             self.sheetReadingsProvider = sheetReadingsProvider
@@ -75,14 +77,7 @@ extension SegmentLookupSheet {
             nextReadingButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
             nextReadingButton.tintColor = .tertiaryLabel
 
-            // Visible only when a non-default or custom reading is active; clears the override.
-            let resetReadingButton = UIButton(type: .system)
-            resetReadingButton.translatesAutoresizingMaskIntoConstraints = false
-            resetReadingButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-            resetReadingButton.tintColor = .tertiaryLabel
-            resetReadingButton.isHidden = true
-
-            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, surfaceStack, nextReadingButton, resetReadingButton])
+            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, surfaceStack, nextReadingButton])
             readingNavRow.translatesAutoresizingMaskIntoConstraints = false
             readingNavRow.axis = .horizontal
             readingNavRow.alignment = .center
@@ -117,15 +112,12 @@ extension SegmentLookupSheet {
                     let reading = currentReadings[currentReadingIndex]
                     readingSubtitleLabel.setTitle(reading.isEmpty ? nil : reading, for: .normal)
                     readingSubtitleLabel.setTitleColor(.secondaryLabel, for: .normal)
-                    readingSubtitleLabel.isHidden = reading.isEmpty
+                    readingSubtitleLabel.isHidden = false
                     // Kanji segments with a single reading have no navigation arrows, so make the
                     // subtitle tappable directly to allow setting a custom reading.
                     let isSingleReadingKanji = showCustomSlot && currentReadings.count <= 1
                     readingSubtitleLabel.isUserInteractionEnabled = isSingleReadingKanji
                 }
-                // Show reset only when the user has moved away from the default reading or set a custom one.
-                let hasNonDefaultReading = currentReadingIndex != 0 || customReading != nil
-                resetReadingButton.isHidden = !hasNonDefaultReading
             }
 
             // Refreshes arrow/custom visibility and reading subtitle for the current segment surface.
@@ -165,8 +157,6 @@ extension SegmentLookupSheet {
                 prevReadingButton.heightAnchor.constraint(equalToConstant: 32),
                 nextReadingButton.widthAnchor.constraint(equalToConstant: 32),
                 nextReadingButton.heightAnchor.constraint(equalToConstant: 32),
-                resetReadingButton.widthAnchor.constraint(equalToConstant: 28),
-                resetReadingButton.heightAnchor.constraint(equalToConstant: 28),
             ])
 
             let splitPanelContainer = UIStackView()
@@ -426,16 +416,40 @@ extension SegmentLookupSheet {
                 updateMergeButtonAvailability()
             }
 
-            // Resets left and right split values to a midpoint split of the given surface so the editor starts in a sensible state.
+            // Converts frequency data to a unified Zipf-equivalent score (higher = more frequent).
+            // jpdbRank is preferred; wordfreqZipf used as fallback. Both land on a ~0–7 scale.
+            func normalizedScore(_ data: [String: FrequencyData]) -> Double? {
+                if let rank = data.values.compactMap({ $0.jpdbRank }).min() {
+                    return max(0.0, 7.0 - log10(Double(rank)))
+                }
+                return data.values.compactMap({ $0.wordfreqZipf }).max()
+            }
+
+            // Resets left and right split values using the highest-scoring two-segment sublattice path,
+            // falling back to a midpoint split when no two-segment path exists.
             func resetSplitInputs(using outcomeSurface: String) {
-                let characters = Array(outcomeSurface)
-                if characters.count <= 1 {
-                    leftSplitValue = outcomeSurface
-                    rightSplitValue = ""
+                func segmentScore(_ segment: String) -> Double {
+                    self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) } ?? 0
+                }
+
+                let twoPaths = self.sublatticeValidPaths(from: self.currentSheetSublatticeEdges)
+                    .filter { $0.count == 2 }
+
+                if let best = twoPaths.max(by: {
+                    ($0.map(segmentScore).reduce(0, +) / 2) < ($1.map(segmentScore).reduce(0, +) / 2)
+                }) {
+                    leftSplitValue = best[0]
+                    rightSplitValue = best[1]
                 } else {
-                    let midpoint = characters.count / 2
-                    leftSplitValue = String(characters[0..<midpoint])
-                    rightSplitValue = String(characters[midpoint..<characters.count])
+                    let characters = Array(outcomeSurface)
+                    if characters.count <= 1 {
+                        leftSplitValue = outcomeSurface
+                        rightSplitValue = ""
+                    } else {
+                        let midpoint = characters.count / 2
+                        leftSplitValue = String(characters[0..<midpoint])
+                        rightSplitValue = String(characters[midpoint..<characters.count])
+                    }
                 }
 
                 leftInput.text = leftSplitValue
@@ -503,28 +517,20 @@ extension SegmentLookupSheet {
                     if paths.isEmpty == false {
                         middleContentStack.addArrangedSubview(makeSectionHeader("Paths"))
 
-                        // Converts frequency data to a unified Zipf-equivalent score (higher = more frequent).
-                        // jpdbRank is preferred; wordfreqZipf used as fallback. Both land on a ~0–7 scale.
-                        func normalizedScore(_ data: [String: FrequencyData]) -> Double? {
-                            if let rank = data.values.compactMap({ $0.jpdbRank }).min() {
-                                return max(0.0, 7.0 - log10(Double(rank)))
-                            }
-                            return data.values.compactMap({ $0.wordfreqZipf }).max()
-                        }
-
                         let pathLines = paths.map { path -> String in
                             var segmentScores: [Double] = []
                             let annotated = path.map { segment -> String in
-                                guard let freq = self.pathSegmentFrequencyProvider?(segment),
-                                      let score = normalizedScore(freq) else {
-                                    return segment
+                                let score: Double? = self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) }
+                                if let score {
+                                    segmentScores.append(score)
+                                    return "\(segment) (\(String(format: "%.1f", score)))"
+                                } else {
+                                    return "\(segment) (-)"
                                 }
-                                segmentScores.append(score)
-                                return "\(segment)(\(String(format: "%.1f", score)))"
                             }.joined(separator: " · ")
 
-                            guard segmentScores.isEmpty == false else { return annotated }
-                            let avg = segmentScores.reduce(0, +) / Double(segmentScores.count)
+                            // Divide by total segment count so unscored segments pull the average down.
+                            let avg = segmentScores.reduce(0, +) / Double(path.count)
                             return "\(annotated)  [\(String(format: "%.1f", avg))]"
                         }.joined(separator: "\n")
 
@@ -591,6 +597,9 @@ extension SegmentLookupSheet {
                     field.text = customReading
                     field.placeholder = "e.g. よむ"
                     field.clearButtonMode = .whileEditing
+                    field.keyboardType = .default
+                    field.autocorrectionType = .no
+                    field.spellCheckingType = .no
                 }
                 alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
                 alert.addAction(UIAlertAction(title: "Set", style: .default) { _ in
@@ -604,15 +613,6 @@ extension SegmentLookupSheet {
                     print("[SegmentLookupSheet] custom reading set: \(entered)")
                 })
                 vc.present(alert, animated: true)
-            }, for: .touchUpInside)
-
-            // Resets the reading override for the current segment back to the computed default.
-            resetReadingButton.addAction(UIAction { _ in
-                currentReadingIndex = 0
-                customReading = nil
-                syncSubtitleToCurrentIndex()
-                self.onReadingReset?()
-                updateMiddleContent()
             }, for: .touchUpInside)
 
             // Populate initial content.

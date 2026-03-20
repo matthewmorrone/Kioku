@@ -10,6 +10,9 @@ RESOURCES_DIR = PROJECT_ROOT / "Resources"
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
 JPDB_PATH = RESOURCES_DIR / "JPDB_v2.2_Frequency_Kana.json"
+KANJIDIC2_PATH = RESOURCES_DIR / "kanjidic2-all.json"
+PITCH_ACCENT_PATH = RESOURCES_DIR / "pitch-accent.tsv"
+SENTENCE_PAIRS_PATH = RESOURCES_DIR / "sentence-pairs.tsv"
 OUTPUT_DB = RESOURCES_DIR / "dictionary.sqlite"
 
 
@@ -59,6 +62,9 @@ def create_schema(conn):
             kanji_id INTEGER NOT NULL,
             kana_id INTEGER NOT NULL,
             jpdb_rank INTEGER,
+            -- on/kun classification for this (kanji surface, kana reading) pair.
+            -- 'on' | 'kun' | 'mixed' | 'unknown'. Populated after KANJIDIC2 import.
+            reading_type TEXT,
             PRIMARY KEY (kanji_id, kana_id),
             FOREIGN KEY(kanji_id) REFERENCES kanji(id),
             FOREIGN KEY(kana_id) REFERENCES kana_forms(id)
@@ -103,6 +109,86 @@ def create_schema(conn):
         CREATE INDEX idx_senses_entry_id ON senses(entry_id);
         CREATE INDEX idx_glosses_sense_id ON glosses(sense_id);
         CREATE INDEX idx_kkl_kana ON kanji_kana_links(kana_id);
+
+        -- Per-character kanji data from KANJIDIC2.
+        -- grade: 1–6 = kyōiku (elementary), 8 = jōyō (secondary), 9–10 = jinmeiyō.
+        -- freq_mainichi: newspaper frequency rank (1–2501, lower = more common).
+        -- radical: Kangxi radical number (1–214).
+        -- jlpt_level: old 4-level JLPT (1 = most advanced, 4 = most elementary); many nulls.
+        CREATE TABLE kanji_characters (
+            id INTEGER PRIMARY KEY,
+            literal TEXT NOT NULL UNIQUE,
+            grade INTEGER,
+            stroke_count INTEGER,
+            freq_mainichi INTEGER,
+            radical INTEGER,
+            jlpt_level INTEGER
+        );
+
+        -- On'yomi, kun'yomi, and nanori readings for each kanji character.
+        -- type: 'on' | 'kun' | 'nanori'
+        -- on_type: sub-classification of onyomi origin: 'kan' | 'go' | 'tou' | 'kan'you'; null for non-on readings.
+        -- Kun'yomi readings use a dot to separate the okurigana stem, e.g. 'た.べる'.
+        CREATE TABLE kanji_readings (
+            id INTEGER PRIMARY KEY,
+            kanji_id INTEGER NOT NULL,
+            reading TEXT NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('on', 'kun', 'nanori')),
+            on_type TEXT,
+            FOREIGN KEY(kanji_id) REFERENCES kanji_characters(id)
+        );
+
+        -- Character-level meanings from KANJIDIC2 (distinct from word glosses in JMdict).
+        -- Multiple languages available: 'en', 'fr', 'es', 'pt'.
+        CREATE TABLE kanji_meanings (
+            id INTEGER PRIMARY KEY,
+            kanji_id INTEGER NOT NULL,
+            lang TEXT NOT NULL,
+            meaning TEXT NOT NULL,
+            FOREIGN KEY(kanji_id) REFERENCES kanji_characters(id)
+        );
+
+        -- Alternate forms of the same character (異体字, 旧字体, etc.) from KANJIDIC2.
+        -- type: encoding scheme of the value, e.g. 'jis208', 'ucs' (hex codepoint), 'nelson_c'.
+        CREATE TABLE kanji_variants (
+            id INTEGER PRIMARY KEY,
+            kanji_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            value TEXT NOT NULL,
+            FOREIGN KEY(kanji_id) REFERENCES kanji_characters(id)
+        );
+
+        CREATE INDEX idx_kanji_char_literal ON kanji_characters(literal);
+        CREATE INDEX idx_kanji_readings_kanji_id ON kanji_readings(kanji_id);
+        CREATE INDEX idx_kanji_readings_reading ON kanji_readings(reading);
+        CREATE INDEX idx_kanji_meanings_kanji_id ON kanji_meanings(kanji_id);
+        CREATE INDEX idx_kanji_variants_kanji_id ON kanji_variants(kanji_id);
+
+        -- Pitch accent entries from UniDic. word/kana may match multiple entries (different kinds).
+        -- accent: downstep position (0 = flat/heiban). morae: mora count of the kana form.
+        CREATE TABLE pitch_accent (
+            id INTEGER PRIMARY KEY,
+            word TEXT NOT NULL,
+            kana TEXT NOT NULL,
+            kind TEXT,
+            accent INTEGER NOT NULL,
+            morae INTEGER NOT NULL
+        );
+
+        CREATE INDEX idx_pitch_accent_word ON pitch_accent(word);
+        CREATE INDEX idx_pitch_accent_kana ON pitch_accent(kana);
+
+        -- Japanese-English sentence pairs from Tatoeba.
+        -- ja_id/en_id are Tatoeba sentence IDs. One ja_id may map to multiple en_id translations.
+        CREATE TABLE sentence_pairs (
+            ja_id INTEGER NOT NULL,
+            japanese TEXT NOT NULL,
+            en_id INTEGER NOT NULL,
+            english TEXT NOT NULL,
+            PRIMARY KEY (ja_id, en_id)
+        );
+
+        CREATE INDEX idx_sentence_pairs_ja_id ON sentence_pairs(ja_id);
         """
     )
 
@@ -379,6 +465,241 @@ def import_jpdb(conn):
     print(f"  Done: {updated} kanji_kana_links updated with JPDB rank")
 
 
+def import_kanjidic2(conn):
+    # Populates kanji_characters and kanji_readings from the scriptin/jmdict-simplified
+    # kanjidic2-all JSON. Readings are nested under readingMeaning.groups[].readings[].
+    # File must be downloaded separately; see data_manifest.json.
+    if not KANJIDIC2_PATH.exists():
+        print(f"  KANJIDIC2 file not found at {KANJIDIC2_PATH} — skipping")
+        return
+
+    print(f"  Importing KANJIDIC2 from {KANJIDIC2_PATH.name}...")
+
+    with open(KANJIDIC2_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    characters = data.get("characters", [])
+    count = 0
+
+    for char in characters:
+        literal = char.get("literal")
+        if not literal:
+            continue
+
+        misc = char.get("misc", {})
+        grade = misc.get("grade")
+        stroke_counts = misc.get("strokeCounts", [])
+        stroke_count = stroke_counts[0] if stroke_counts else None
+        freq_mainichi = misc.get("frequency")
+        jlpt_level = misc.get("jlptLevel")
+
+        # Kangxi radical: radicals is an array of {type, value} objects.
+        radical = None
+        for rad in char.get("radicals", []):
+            if rad.get("type") == "classical":
+                radical = rad.get("value")
+                break
+
+        cur = conn.execute(
+            "INSERT INTO kanji_characters (literal, grade, stroke_count, freq_mainichi, radical, jlpt_level)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (literal, grade, stroke_count, freq_mainichi, radical, jlpt_level),
+        )
+        kanji_char_id = cur.lastrowid
+
+        # Readings: ja_on and ja_kun are in readingMeaning.groups[].readings[].
+        # Nanori are a separate flat array at readingMeaning.nanori[].
+        reading_meaning = char.get("readingMeaning") or {}
+        for group in reading_meaning.get("groups", []):
+            for r in group.get("readings", []):
+                r_type = r.get("type")
+                value = r.get("value")
+                if not value or r_type not in ("ja_on", "ja_kun"):
+                    continue
+                db_type = "on" if r_type == "ja_on" else "kun"
+                on_type = r.get("onType") if r_type == "ja_on" else None
+                conn.execute(
+                    "INSERT INTO kanji_readings (kanji_id, reading, type, on_type) VALUES (?, ?, ?, ?)",
+                    (kanji_char_id, value, db_type, on_type),
+                )
+            for m in group.get("meanings", []):
+                lang = m.get("lang")
+                meaning = m.get("value")
+                if lang and meaning:
+                    conn.execute(
+                        "INSERT INTO kanji_meanings (kanji_id, lang, meaning) VALUES (?, ?, ?)",
+                        (kanji_char_id, lang, meaning),
+                    )
+
+        for nanori in reading_meaning.get("nanori", []):
+            if nanori:
+                conn.execute(
+                    "INSERT INTO kanji_readings (kanji_id, reading, type, on_type) VALUES (?, ?, 'nanori', NULL)",
+                    (kanji_char_id, nanori),
+                )
+
+        for variant in misc.get("variants", []):
+            v_type = variant.get("type")
+            v_value = variant.get("value")
+            if v_type and v_value:
+                conn.execute(
+                    "INSERT INTO kanji_variants (kanji_id, type, value) VALUES (?, ?, ?)",
+                    (kanji_char_id, v_type, v_value),
+                )
+
+        count += 1
+
+    print(f"  Done: {count} kanji characters imported")
+
+
+def import_pitch_accent(conn):
+    # Populates pitch_accent from pitch-accent.tsv (UniDic-derived).
+    # Columns: id, word, kana, kind, accent, morae.
+    if not PITCH_ACCENT_PATH.exists():
+        print(f"  Pitch accent file not found at {PITCH_ACCENT_PATH} — skipping")
+        return
+
+    print(f"  Importing pitch accent from {PITCH_ACCENT_PATH.name}...")
+
+    import csv
+    count = 0
+    with open(PITCH_ACCENT_PATH, encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            conn.execute(
+                "INSERT INTO pitch_accent (id, word, kana, kind, accent, morae) VALUES (?, ?, ?, ?, ?, ?)",
+                (int(row["id"]), row["word"], row["kana"], row["kind"] or None,
+                 int(row["accent"]), int(row["morae"])),
+            )
+            count += 1
+
+    print(f"  Done: {count} pitch accent entries imported")
+
+
+def import_sentence_pairs(conn):
+    # Populates sentence_pairs from sentence-pairs.tsv (Tatoeba-derived).
+    # Columns (no header): ja_id, japanese, en_id, english.
+    if not SENTENCE_PAIRS_PATH.exists():
+        print(f"  Sentence pairs file not found at {SENTENCE_PAIRS_PATH} — skipping")
+        return
+
+    print(f"  Importing sentence pairs from {SENTENCE_PAIRS_PATH.name}...")
+
+    import csv
+    count = 0
+    with open(SENTENCE_PAIRS_PATH, encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f, delimiter="\t")
+        for row in reader:
+            if len(row) != 4:
+                continue
+            ja_id, japanese, en_id, english = row
+            conn.execute(
+                "INSERT OR IGNORE INTO sentence_pairs (ja_id, japanese, en_id, english) VALUES (?, ?, ?, ?)",
+                (int(ja_id), japanese, int(en_id), english),
+            )
+            count += 1
+
+    print(f"  Done: {count} sentence pairs imported")
+
+
+def katakana_to_hiragana(text):
+    # Converts full-width katakana to hiragana (subtract 96 from each katakana codepoint).
+    return "".join(chr(ord(ch) - 96) if 0x30A1 <= ord(ch) <= 0x30F6 else ch for ch in text)
+
+
+def is_kanji(ch):
+    # Returns True for CJK Unified Ideographs (main block + extension A).
+    cp = ord(ch)
+    return (0x4E00 <= cp <= 0x9FFF) or (0x3400 <= cp <= 0x4DBF)
+
+
+def classify_reading_type(kanji_surface, kana_reading, readings_map):
+    # Classifies a (kanji surface, kana reading) pair as 'on', 'kun', 'mixed', or 'unknown'.
+    # Greedy left-to-right: for each kanji in the surface, match the longest on or kun
+    # prefix in the remaining kana. On-readings are stored as hiragana; kun stems are before '.'.
+    kanji_chars = [c for c in kanji_surface if is_kanji(c)]
+    if not kanji_chars:
+        return "kun"
+
+    remaining = katakana_to_hiragana(kana_reading)
+    types = []
+
+    for char in kanji_chars:
+        char_data = readings_map.get(char)
+        if not char_data:
+            types.append("unknown")
+            continue
+
+        best_type = None
+        best_len = 0
+
+        for r in char_data.get("on", []):
+            if remaining.startswith(r) and len(r) > best_len:
+                best_type = "on"
+                best_len = len(r)
+
+        for r in char_data.get("kun", []):
+            if remaining.startswith(r) and len(r) > best_len:
+                best_type = "kun"
+                best_len = len(r)
+
+        types.append(best_type or "unknown")
+        if best_len > 0:
+            remaining = remaining[best_len:]
+
+    known = [t for t in types if t != "unknown"]
+    if not known:
+        return "unknown"
+    unique = set(known)
+    return unique.pop() if len(unique) == 1 else "mixed"
+
+
+def classify_reading_types(conn):
+    # Populates reading_type on kanji_kana_links by decomposing each kana reading
+    # against per-character on/kun readings from KANJIDIC2.
+    # Must run after import_kanjidic2. Skips gracefully if kanji_characters is empty.
+    cur = conn.execute("SELECT COUNT(*) FROM kanji_characters")
+    if cur.fetchone()[0] == 0:
+        print("  KANJIDIC2 data absent — skipping reading type classification")
+        return
+
+    print("  Classifying reading types (on/kun)...")
+
+    # Build lookup: literal -> {on: [hiragana_readings], kun: [hiragana_stems]}
+    cur = conn.execute(
+        "SELECT kc.literal, kr.type, kr.reading"
+        " FROM kanji_characters kc JOIN kanji_readings kr ON kr.kanji_id = kc.id"
+        " WHERE kr.type IN ('on', 'kun')"
+    )
+    readings_map = {}
+    for literal, r_type, reading in cur.fetchall():
+        if literal not in readings_map:
+            readings_map[literal] = {"on": [], "kun": []}
+        if r_type == "on":
+            readings_map[literal]["on"].append(katakana_to_hiragana(reading))
+        else:
+            stem = reading.split(".")[0]
+            if stem:
+                readings_map[literal]["kun"].append(stem)
+
+    cur = conn.execute(
+        "SELECT kkl.kanji_id, kkl.kana_id, k.text, kf.text"
+        " FROM kanji_kana_links kkl"
+        " JOIN kanji k ON k.id = kkl.kanji_id"
+        " JOIN kana_forms kf ON kf.id = kkl.kana_id"
+    )
+    links = cur.fetchall()
+
+    for kanji_id, kana_id, kanji_text, kana_text in links:
+        r_type = classify_reading_type(kanji_text, kana_text, readings_map)
+        conn.execute(
+            "UPDATE kanji_kana_links SET reading_type = ? WHERE kanji_id = ? AND kana_id = ?",
+            (r_type, kanji_id, kana_id),
+        )
+
+    print(f"  Done: {len(links)} links classified")
+
+
 def build_database():
     if OUTPUT_DB.exists():
         OUTPUT_DB.unlink()
@@ -409,6 +730,16 @@ def build_database():
     print("Importing frequency data...")
     import_wordfreq(conn)
     import_jpdb(conn)
+
+    print("Importing KANJIDIC2 data...")
+    import_kanjidic2(conn)
+    classify_reading_types(conn)
+
+    print("Importing pitch accent data...")
+    import_pitch_accent(conn)
+
+    print("Importing sentence pairs...")
+    import_sentence_pairs(conn)
 
     conn.commit()
     conn.execute("PRAGMA optimize")
