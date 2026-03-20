@@ -347,6 +347,9 @@
 				$SRCROOT/Resources/generate_db.py,
 				$SRCROOT/Resources/extras.json,
 				"$SRCROOT/Resources/jmdict-eng-3.6.2.json",
+				"$SRCROOT/Resources/kanjidic2-all.json",
+				"$SRCROOT/Resources/pitch-accent.tsv",
+				"$SRCROOT/Resources/sentence-pairs.tsv",
 			);
 			name = "Rebuild Dictionary SQLite";
 			outputFileListPaths = (
@@ -356,7 +359,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ ! -f \"$SRCROOT/Resources/jmdict-eng-3.6.2.json\" ]; then\n  echo \"warning: Skipping dictionary rebuild; missing Resources/jmdict-eng-3.6.2.json\"\n  exit 0\nfi\n/usr/bin/python3 \"$SRCROOT/Resources/generate_db.py\"\n";
+			shellScript = "if [ ! -f \"$SRCROOT/Resources/jmdict-eng-3.6.2.json\" ]; then\n  echo \"warning: Skipping dictionary rebuild; missing Resources/jmdict-eng-3.6.2.json\"\n  exit 0\nfi\nif [ -f \"$SRCROOT/.venv/bin/python3\" ]; then\n  PYTHON=\"$SRCROOT/.venv/bin/python3\"\nelif [ -f /opt/homebrew/bin/python3 ]; then\n  PYTHON=/opt/homebrew/bin/python3\nelse\n  PYTHON=/usr/bin/python3\nfi\n\"$PYTHON\" \"$SRCROOT/Resources/generate_db.py\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

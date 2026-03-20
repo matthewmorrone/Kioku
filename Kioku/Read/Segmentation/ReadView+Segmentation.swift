@@ -212,6 +212,8 @@ extension ReadView {
                 return
             }
 
+            recordLookupHistory(surface: segmentSurface)
+
             preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: tappedSegmentRect)
             SegmentLookupSheet.shared.presentSheet(
                 surface: segmentSurface,
@@ -286,7 +288,13 @@ extension ReadView {
                     return selectedReadingOverrideByLocation[location]
                 },
                 pathSegmentFrequencyProvider: { surface in
-                    frequencyDataBySurface[surface]
+                    if let data = frequencyDataBySurface[surface] { return data }
+                    // Inflected surfaces won't appear in the frequency map; fall back through lemmas.
+                    guard let lexicon else { return nil }
+                    for lemma in lexicon.lemma(surface: surface) {
+                        if let data = frequencyDataBySurface[lemma] { return data }
+                    }
+                    return nil
                 },
                 onDismiss: {
                     isSheetSwipeTransitionActive = false
@@ -801,6 +809,29 @@ extension ReadView {
         }
 
         return rebuiltEdges.isEmpty ? nil : rebuiltEdges
+    }
+
+    // Resolves the canonical dictionary entry for the given surface in the background and records it in history.
+    // Skips surfaces that are boundary characters, whitespace, or single-character kana-only tokens.
+    func recordLookupHistory(surface: String) {
+        let trimmed = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return }
+        guard ScriptClassifier.containsKanji(trimmed) || (ScriptClassifier.isPureKana(trimmed) && trimmed.count > 1) else { return }
+
+        let candidates = orderedLookupCandidates(surface: trimmed, lemma: segmenter.preferredLemma(for: trimmed))
+        let store = dictionaryStore
+
+        Task.detached(priority: .background) {
+            for candidate in candidates {
+                let mode: LookupMode = ScriptClassifier.containsKanji(candidate) ? .kanjiAndKana : .kanaOnly
+                if let entry = try? store?.lookup(surface: candidate, mode: mode).first {
+                    await MainActor.run {
+                        historyStore.record(canonicalEntryID: entry.entryId, surface: trimmed)
+                    }
+                    return
+                }
+            }
+        }
     }
 
     // Normalizes persisted segment ranges from a note so only valid ranges are applied.

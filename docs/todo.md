@@ -1,7 +1,6 @@
 todo list:
 plumbing for learn tab
 learn tab
-examine branches in codex
 kanjidic2 for onyomi and kunyomi
 LLM correction of segmentation/readings
 Add in debug controls like highlighting lines and envelopes
@@ -57,3 +56,4 @@ Prevented from scrolling all the way down in view mode
 - [ ] pitch accent
 - [ ] embedding refinements
 - [ ] kanji metadata
+- [ ] Halfwidth katakana normalization in lookup (ｱｲｳｴｵ → アイウエオ etc.) — no current handling in KanaNormalizer or DictionaryStore

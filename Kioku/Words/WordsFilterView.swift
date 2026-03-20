@@ -69,13 +69,11 @@ struct WordsFilterView: View {
         return notesStore.notes.filter { noteIDsWithWords.contains($0.id) }
     }
 
-    // Builds a note filter row that applies the filter and dismisses the sheet immediately.
+    // Builds a note filter row that toggles the note filter on/off.
     @ViewBuilder
     private func noteFilterRow(_ note: Note) -> some View {
         Button {
-            activeFilterNoteIDs = [note.id]
-            activeFilterListIDs.removeAll()
-            dismiss()
+            toggleNoteFilter(note.id)
         } label: {
             HStack {
                 Text(resolvedTitle(for: note)).foregroundStyle(.primary)

@@ -14,6 +14,13 @@ struct SettingsView: View {
     @AppStorage(ParticleSettings.storageKey)
     private var particlesRaw: String = ParticleSettings.defaultRawValue
 
+    @AppStorage(LLMSettings.providerKey)
+    private var llmProviderRaw: String = LLMSettings.defaultProvider
+    @AppStorage(LLMSettings.openAIKeyStorageKey)
+    private var openAIKey: String = ""
+    @AppStorage(LLMSettings.claudeKeyStorageKey)
+    private var claudeKey: String = ""
+
     @State private var exportDocument = NotesTransferDocument(notes: [])
     @State private var isShowingExporter = false
     @State private var isShowingImporter = false
@@ -90,6 +97,31 @@ struct SettingsView: View {
                     Text("Particles")
                 } footer: {
                     Text("Single-kana segments not listed here are treated as bound morphemes and excluded from segmentation paths.")
+                }
+
+                // Configures the LLM provider and API keys used by the segmentation correction feature.
+                Section {
+                    // Picker selects which provider's key is active. Shown as a menu on iOS.
+                    Picker("Provider", selection: $llmProviderRaw) {
+                        ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
+                            Text(provider.displayName).tag(provider.rawValue)
+                        }
+                    }
+
+                    // Key entry rows are always visible so both keys can be saved independently.
+                    // SecureField hides the entry but does not prevent UserDefaults storage.
+                    SecureField("OpenAI API Key", text: $openAIKey)
+                        .textContentType(.password)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    SecureField("Claude API Key", text: $claudeKey)
+                        .textContentType(.password)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("AI Correction")
+                } footer: {
+                    Text("Select a provider and enter its key to enable the segmentation correction button in the reader.")
                 }
 
                 Section {

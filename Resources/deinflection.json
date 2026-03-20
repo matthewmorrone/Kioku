@@ -1,690 +1,6198 @@
 {
-    "teForms": [
-        {"kanaIn": "て", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-
-        {"kanaIn": "って", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "って", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "って", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んで", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んで", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んで", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでた", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでた", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでた", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いて", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いで", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "して", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "して", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きて", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-    "pastForms": [
-        {"kanaIn": "た", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-
-        {"kanaIn": "った", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "った", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "った", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んだ", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んだ", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んだ", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いた", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いだ", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "した", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "した", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きた", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-    "progressiveForms": [
-        {"kanaIn": "ている", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        
-        {"kanaIn": "っている", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "っている", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "っている", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでいる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでいる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでいる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いている", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いでいる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "している", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "している", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きている", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-
-        {"kanaIn": "てる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-
-        {"kanaIn": "ってる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ってる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "ってる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たかった", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-
-        {"kanaIn": "いたい", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いたく", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いたくて", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いたかった", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "いでる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "してる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "きてる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-
-        {"kanaIn": "きたい", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "きたく", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "きたくて", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "きたかった", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-
-
-        {"kanaIn": "ぎたく", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎたくて", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎたかった", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "っていた", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "っていた", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "したくて", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "したかった", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "したい", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "したく", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "したくて", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "したかった", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-
-        {"kanaIn": "ちたい", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでいた", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちたくて", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちたかった", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "にたい", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでいた", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "えなく", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にたかった", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "かなかった", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びたく", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びたくて", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びたかった", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "かず", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みたく", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みたくて", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みたかった", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "がなかった", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りたく", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りたくて", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りたかった", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "がず", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "わなかった", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "わず", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "さなかった", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "さず", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たなかった", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "さない", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ない", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "わない", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "かない", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "がない", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たない", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たず", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "なない", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ばない", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ばなかった", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ばず", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "まない", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "まなかった", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "まず", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "らない", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "らなかった", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "らず", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しない", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "せず", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "こない", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "こず", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-
-        {"kanaIn": "ないで", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "わないで", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "かないで", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "がないで", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "さないで", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たないで", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "なないで", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ばないで", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "まないで", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "らないで", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しないで", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "こないで", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-    "desireForms": [
-        {"kanaIn": "たい", "kanaOut": "い", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たく", "kanaOut": "い", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たくて", "kanaOut": "い", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たかった", "kanaOut": "い", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "たい", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "たく", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "たくて", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "たかった", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-
-        {"kanaIn": "いたい", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いたく", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いたくて", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いたかった", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "きたい", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きたく", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きたくて", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きたかった", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "きたい", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "きたく", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "きたくて", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "きたかった", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-
-        {"kanaIn": "ぎたい", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎたく", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎたくて", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎたかった", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "したく", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "したい", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "したくて", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "したかった", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "したい", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "したく", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "したくて", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "したかった", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-
-        {"kanaIn": "ちたい", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちたく", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちたくて", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちたかった", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "にたい", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にたく", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にたくて", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にたかった", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "びたい", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びたく", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びたくて", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びたかった", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "みたい", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みたく", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みたくて", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みたかった", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "りたい", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りたく", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りたくて", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りたかった", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "われたい", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "かれたい", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "がれたい", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "されたい", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たれたい", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "なれたい", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ばれたい", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "まれたい", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "られたい", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]}
-    ],
-    "politeForms": [
-        {"kanaIn": "ます", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "ました", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "ましょう", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "ましょ", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "ません", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "ませんでした", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "います", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いましょう", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いましょ", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きます", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きましょう", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きましょ", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎます", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎましょう", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎましょ", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "します", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しましょう", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しましょ", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちます", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちましょう", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちましょ", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にます", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にましょう", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にましょ", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びます", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びましょう", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びましょ", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みます", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みましょう", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みましょ", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ります", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りましょう", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りましょ", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しました", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "しましょう", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "しましょ", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きました", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "きましょう", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "きましょ", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-    "passivePotentialForms": [
-        {"kanaIn": "られる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "られる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "われる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "かれる", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "がれる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "される", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たれる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "なれる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ばれる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "まれる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "こられる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "される", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]}
-    ],
-    "potentialForms": [
-        {"kanaIn": "える", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ける", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "げる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "せる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "てる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ねる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "べる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "める", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "れる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]}
-    ],
-    "imperativeForms": [
-        {"kanaIn": "え", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "け", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "げ", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "せ", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "て", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ね", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "べ", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "め", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "れ", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ろ", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "しろ", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "せよ", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "こい", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-    "irregularForms": [
-        {"kanaIn": "する", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "して", "kanaOut": "する", "rulesIn": ["iru"], "rulesOut": ["vs"]},
-        {"kanaIn": "くる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-    "adjectiveForms": [
-        {"kanaIn": "く", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
-        {"kanaIn": "くで", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
-        {"kanaIn": "さ", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
-        {"kanaIn": "かった", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
-        {"kanaIn": "くない", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
-        {"kanaIn": "くなくて", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
-        {"kanaIn": "くて", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
-        {"kanaIn": "くした", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]},
-        {"kanaIn": "くする", "kanaOut": "い", "rulesIn": ["adj-i"], "rulesOut": ["adj-i"]}
-    ],
-
-    "conditionalForms": [
-        {"kanaIn": "れば", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "れば", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たら", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-
-        {"kanaIn": "えば", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "けば", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "げば", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "せば", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "てば", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ねば", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "べば", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "めば", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "ったら", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ったら", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ったら", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いたら", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いだら", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "したら", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んだら", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んだら", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んだら", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "したら", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きたら", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-
-    "contractionForms": [
-        {"kanaIn": "ちゃう", "kanaOut": "てしまう", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-        {"kanaIn": "じゃう", "kanaOut": "でしまう", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-
-        {"kanaIn": "ちゃった", "kanaOut": "てしまった", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-        {"kanaIn": "じゃった", "kanaOut": "でしまった", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-
-        {"kanaIn": "とく", "kanaOut": "ておく", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-        {"kanaIn": "どく", "kanaOut": "でおく", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-
-        {"kanaIn": "てく", "kanaOut": "ていく", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-        {"kanaIn": "でく", "kanaOut": "でいく", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-
-        {"kanaIn": "てく", "kanaOut": "て", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-        {"kanaIn": "でく", "kanaOut": "で", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "てゆく", "kanaOut": "て", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-        {"kanaIn": "でゆく", "kanaOut": "で", "rulesIn": ["v5"], "rulesOut": ["v5"]}
-    ],
-
-    "benefactiveForms": [
-        {"kanaIn": "てくれる", "kanaOut": "て", "rulesIn": ["v1","v5","vs","vk"], "rulesOut": ["v1","v5","vs","vk"]},
-        {"kanaIn": "でくれる", "kanaOut": "で", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "てくれる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いてくれる", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "いでくれる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "してくれる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ってくれる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ってくれる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ってくれる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでくれる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでくれる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "んでくれる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "してくれる", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きてくれる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-
-    "auxiliaryForms": [
-        {"kanaIn": "すぎる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "すぎる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "そう", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "そう", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "させる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "させる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "させて", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "わせて", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "かせて", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "がせて", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "させて", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たせて", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "なせて", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ばせて", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ませて", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "らせて", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "らせる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "よう", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "おう", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "こう", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "そう", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]}
-    ],
-
-    "nounSuffixForms": [
-        {"kanaIn": "たち", "kanaOut": "", "rulesIn": ["n"], "rulesOut": ["n"]}
-    ],
-
-    "stemRecoveryForms": [
-        {"kanaIn": "い", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "き", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎ", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ち", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "に", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "び", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "み", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "り", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-
-        {"kanaIn": "ち", "kanaOut": "ちる", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "き", "kanaOut": "きる", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "び", "kanaOut": "びる", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "み", "kanaOut": "みる", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "に", "kanaOut": "にる", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "し", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "き", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "来", "kanaOut": "来る", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "来", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-
-    "passiveStemRecoveryForms": [
-        {"kanaIn": "かれ", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "がれ", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "され", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たれ", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "なれ", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ばれ", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "まれ", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "られ", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "われ", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]}
-    ],
-
-    "desireNegativeRecoveryForms": [
-        {"kanaIn": "たくない", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いたくない", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きたくない", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎたくない", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "したくない", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちたくない", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にたくない", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びたくない", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みたくない", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りたくない", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "したくない", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]}
-    ],
-
-    "compoundVerbRecoveryForms": [
-        {"kanaIn": "つづける", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いつづける", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きつづける", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎつづける", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しつづける", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちつづける", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "につづける", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びつづける", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みつづける", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りつづける", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しつづける", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きつづける", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "続ける", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "い続ける", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "き続ける", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎ続ける", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し続ける", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ち続ける", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "に続ける", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "び続ける", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "み続ける", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "り続ける", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し続ける", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "き続ける", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "はじめる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いはじめる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きはじめる", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎはじめる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しはじめる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちはじめる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にはじめる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びはじめる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みはじめる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りはじめる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しはじめる", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きはじめる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "始める", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "い始める", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "き始める", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎ始める", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し始める", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ち始める", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "に始める", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "び始める", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "み始める", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "り始める", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し始める", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "き始める", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "おわる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いおわる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きおわる", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎおわる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しおわる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちおわる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "におわる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びおわる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みおわる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りおわる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しおわる", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きおわる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "終わる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "い終わる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "き終わる", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎ終わる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し終わる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ち終わる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "に終わる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "び終わる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "み終わる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "り終わる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し終わる", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "き終わる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        
-        {"kanaIn": "だす", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いだす", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きだす", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎだす", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しだす", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちだす", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にだす", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びだす", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みだす", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りだす", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しだす", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きだす", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-
-        {"kanaIn": "出す", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "い出す", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "き出す", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎ出す", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し出す", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ち出す", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "に出す", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "び出す", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "み出す", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "り出す", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し出す", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "き出す", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-
-        {"kanaIn": "すぎる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いすぎる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きすぎる", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎすぎる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しすぎる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちすぎる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にすぎる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びすぎる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みすぎる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りすぎる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しすぎる", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きすぎる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-
-        {"kanaIn": "過ぎる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "い過ぎる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "き過ぎる", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎ過ぎる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し過ぎる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ち過ぎる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "に過ぎる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "び過ぎる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "み過ぎる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "り過ぎる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し過ぎる", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "き過ぎる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "なおす", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いなおす", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きなおす", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎなおす", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しなおす", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちなおす", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "になおす", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びなおす", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みなおす", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りなおす", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しなおす", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きなおす", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "直す", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "い直す", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "き直す", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎ直す", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し直す", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ち直す", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "に直す", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "び直す", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "み直す", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "り直す", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し直す", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "き直す", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "きる", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いきる", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ききる", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎきる", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しきる", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちきる", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にきる", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びきる", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みきる", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りきる", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しきる", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "ききる", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "切る", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "い切る", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "き切る", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎ切る", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し切る", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ち切る", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "に切る", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "び切る", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "み切る", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "り切る", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し切る", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "き切る", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "かける", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "いかける", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "きかける", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎかける", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しかける", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ちかける", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "にかける", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "びかける", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "みかける", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "りかける", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "しかける", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "きかける", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "掛ける", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "い掛ける", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "き掛ける", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ぎ掛ける", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し掛ける", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ち掛ける", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "に掛ける", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "び掛ける", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "み掛ける", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "り掛ける", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "し掛ける", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]},
-        {"kanaIn": "き掛ける", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]}
-    ],
-
-    "passiveNegativeForms": [
-        {"kanaIn": "られない", "kanaOut": "る", "rulesIn": ["v1"], "rulesOut": ["v1"]},
-        {"kanaIn": "われない", "kanaOut": "う", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "かれない", "kanaOut": "く", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "がれない", "kanaOut": "ぐ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "されない", "kanaOut": "す", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "たれない", "kanaOut": "つ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "なれない", "kanaOut": "ぬ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "ばれない", "kanaOut": "ぶ", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "まれない", "kanaOut": "む", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "られない", "kanaOut": "る", "rulesIn": ["v5"], "rulesOut": ["v5"]},
-        {"kanaIn": "こられない", "kanaOut": "くる", "rulesIn": ["vk"], "rulesOut": ["vk"]},
-        {"kanaIn": "されない", "kanaOut": "する", "rulesIn": ["vs"], "rulesOut": ["vs"]}
-    ]
+  "teForms": [
+    {
+      "kanaIn": "て",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "って",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "って",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "って",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んで",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んで",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んで",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでた",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでた",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでた",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いて",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いで",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "して",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "して",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きて",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "pastForms": [
+    {
+      "kanaIn": "た",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "った",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "った",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "った",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んだ",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んだ",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んだ",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いた",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いだ",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "した",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "した",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きた",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "progressiveForms": [
+    {
+      "kanaIn": "ている",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "っている",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "っている",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "っている",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでいる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでいる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでいる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いている",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いでいる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "している",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "している",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きている",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "てる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ってる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ってる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ってる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たかった",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いたい",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いたく",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いたくて",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いたかった",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いでる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "してる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きてる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きたい",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きたく",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きたくて",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きたかった",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "ぎたく",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎたくて",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎたかった",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "っていた",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "っていた",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したくて",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したかった",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したい",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "したく",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "したくて",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "したかった",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "ちたい",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでいた",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちたくて",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちたかった",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にたい",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでいた",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "えなく",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にたかった",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "かなかった",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びたく",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びたくて",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びたかった",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "かず",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みたく",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みたくて",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みたかった",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "がなかった",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りたく",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りたくて",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りたかった",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "がず",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "わなかった",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "わず",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "さなかった",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "さず",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たなかった",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "さない",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ない",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "わない",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "かない",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "がない",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たない",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たず",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "なない",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ばない",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ばなかった",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ばず",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "まない",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "まなかった",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "まず",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "らない",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "らなかった",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "らず",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しない",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "せず",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "こない",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "こず",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "ないで",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "わないで",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "かないで",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "がないで",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "さないで",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たないで",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "なないで",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ばないで",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "まないで",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "らないで",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しないで",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "こないで",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "desireForms": [
+    {
+      "kanaIn": "たい",
+      "kanaOut": "い",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たく",
+      "kanaOut": "い",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たくて",
+      "kanaOut": "い",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たかった",
+      "kanaOut": "い",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たい",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "たく",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "たくて",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "たかった",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いたい",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いたく",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いたくて",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いたかった",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きたい",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きたく",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きたくて",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きたかった",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きたい",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きたく",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きたくて",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きたかった",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "ぎたい",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎたく",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎたくて",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎたかった",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したく",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したい",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したくて",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したかった",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したい",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "したく",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "したくて",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "したかった",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "ちたい",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちたく",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちたくて",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちたかった",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にたい",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にたく",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にたくて",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にたかった",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びたい",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びたく",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びたくて",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びたかった",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みたい",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みたく",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みたくて",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みたかった",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りたい",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りたく",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りたくて",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りたかった",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "われたい",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "かれたい",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "がれたい",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "されたい",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たれたい",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "なれたい",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ばれたい",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "まれたい",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "られたい",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    }
+  ],
+  "politeForms": [
+    {
+      "kanaIn": "ます",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ました",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ましょう",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ましょ",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ません",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ませんでした",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "います",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いましょう",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いましょ",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きます",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きましょう",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きましょ",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎます",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎましょう",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎましょ",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "します",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しましょう",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しましょ",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちます",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちましょう",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちましょ",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にます",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にましょう",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にましょ",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びます",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びましょう",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びましょ",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みます",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みましょう",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みましょ",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ります",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りましょう",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りましょ",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しました",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "しましょう",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "しましょ",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きました",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きましょう",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きましょ",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "passivePotentialForms": [
+    {
+      "kanaIn": "られる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "られる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "われる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "かれる",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "がれる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "される",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たれる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "なれる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ばれる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "まれる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "こられる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "される",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    }
+  ],
+  "potentialForms": [
+    {
+      "kanaIn": "える",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ける",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "げる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "せる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "てる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ねる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "べる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "める",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "れる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    }
+  ],
+  "imperativeForms": [
+    {
+      "kanaIn": "え",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "け",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "げ",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "せ",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "て",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ね",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "べ",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "め",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "れ",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ろ",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "しろ",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "せよ",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "こい",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "irregularForms": [
+    {
+      "kanaIn": "する",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "して",
+      "kanaOut": "する",
+      "rulesIn": [
+        "iru"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "くる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "adjectiveForms": [
+    {
+      "kanaIn": "く",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "くで",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "さ",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "かった",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "くない",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "くなくて",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "くて",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "くした",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
+      "kanaIn": "くする",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    }
+  ],
+  "conditionalForms": [
+    {
+      "kanaIn": "れば",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "れば",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たら",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "えば",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "けば",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "げば",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "せば",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "てば",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ねば",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "べば",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "めば",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ったら",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ったら",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ったら",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いたら",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いだら",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したら",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んだら",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んだら",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んだら",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したら",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きたら",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "contractionForms": [
+    {
+      "kanaIn": "ちゃう",
+      "kanaOut": "てしまう",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "じゃう",
+      "kanaOut": "でしまう",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "ちゃった",
+      "kanaOut": "てしまった",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "じゃった",
+      "kanaOut": "でしまった",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "とく",
+      "kanaOut": "ておく",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "どく",
+      "kanaOut": "でおく",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "てく",
+      "kanaOut": "ていく",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "でく",
+      "kanaOut": "でいく",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "てく",
+      "kanaOut": "て",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "でく",
+      "kanaOut": "で",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "てゆく",
+      "kanaOut": "て",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "でゆく",
+      "kanaOut": "で",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちゃう",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "ちゃうんだ",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "っちゃう",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "っちゃう",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "っちゃう",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "っちゃうんだ",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "っちゃうんだ",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "っちゃうんだ",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いちゃう",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いちゃうんだ",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いじゃう",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いじゃうんだ",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しちゃう",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しちゃうんだ",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んじゃう",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んじゃう",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んじゃう",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んじゃうんだ",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んじゃうんだ",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んじゃうんだ",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きちゃう",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きちゃうんだ",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "しちゃう",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "しちゃうんだ",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    }
+  ],
+  "benefactiveForms": [
+    {
+      "kanaIn": "てくれる",
+      "kanaOut": "て",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "でくれる",
+      "kanaOut": "で",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "てくれる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いてくれる",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いでくれる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "してくれる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ってくれる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ってくれる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ってくれる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでくれる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでくれる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "んでくれる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "してくれる",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きてくれる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "auxiliaryForms": [
+    {
+      "kanaIn": "すぎる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "すぎる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "そう",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "そう",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "させる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "させる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "させて",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "わせて",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "かせて",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "がせて",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "させて",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たせて",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "なせて",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ばせて",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ませて",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "らせて",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "らせる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "よう",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "おう",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "こう",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "そう",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    }
+  ],
+  "nounSuffixForms": [
+    {
+      "kanaIn": "たち",
+      "kanaOut": "",
+      "rulesIn": [
+        "n"
+      ],
+      "rulesOut": [
+        "n"
+      ]
+    }
+  ],
+  "stemRecoveryForms": [
+    {
+      "kanaIn": "い",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "き",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎ",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "に",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "び",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "み",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "り",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち",
+      "kanaOut": "ちる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "き",
+      "kanaOut": "きる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "び",
+      "kanaOut": "びる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "み",
+      "kanaOut": "みる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "に",
+      "kanaOut": "にる",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "し",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "き",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "来",
+      "kanaOut": "来る",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "来",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "passiveStemRecoveryForms": [
+    {
+      "kanaIn": "かれ",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "がれ",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "され",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たれ",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "なれ",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ばれ",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "まれ",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "られ",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "われ",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    }
+  ],
+  "desireNegativeRecoveryForms": [
+    {
+      "kanaIn": "たくない",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いたくない",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きたくない",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎたくない",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したくない",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちたくない",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にたくない",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びたくない",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みたくない",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りたくない",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "したくない",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    }
+  ],
+  "compoundVerbRecoveryForms": [
+    {
+      "kanaIn": "つづける",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いつづける",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きつづける",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎつづける",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しつづける",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちつづける",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "につづける",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びつづける",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みつづける",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りつづける",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しつづける",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きつづける",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "続ける",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "い続ける",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "き続ける",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎ続ける",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し続ける",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち続ける",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "に続ける",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "び続ける",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "み続ける",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "り続ける",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し続ける",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "き続ける",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "はじめる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いはじめる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きはじめる",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎはじめる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しはじめる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちはじめる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にはじめる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びはじめる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みはじめる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りはじめる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しはじめる",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きはじめる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "始める",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "い始める",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "き始める",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎ始める",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し始める",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち始める",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "に始める",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "び始める",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "み始める",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "り始める",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し始める",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "き始める",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "おわる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いおわる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きおわる",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎおわる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しおわる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちおわる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "におわる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びおわる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みおわる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りおわる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しおわる",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きおわる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "終わる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "い終わる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "き終わる",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎ終わる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し終わる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち終わる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "に終わる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "び終わる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "み終わる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "り終わる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し終わる",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "き終わる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "だす",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いだす",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きだす",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎだす",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しだす",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちだす",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にだす",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びだす",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みだす",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りだす",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しだす",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きだす",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "出す",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "い出す",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "き出す",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎ出す",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し出す",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち出す",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "に出す",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "び出す",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "み出す",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "り出す",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し出す",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "き出す",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "すぎる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いすぎる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きすぎる",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎすぎる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しすぎる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちすぎる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にすぎる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びすぎる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みすぎる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りすぎる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しすぎる",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きすぎる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "過ぎる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "い過ぎる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "き過ぎる",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎ過ぎる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し過ぎる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち過ぎる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "に過ぎる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "び過ぎる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "み過ぎる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "り過ぎる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し過ぎる",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "き過ぎる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "なおす",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いなおす",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きなおす",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎなおす",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しなおす",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちなおす",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "になおす",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びなおす",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みなおす",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りなおす",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しなおす",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きなおす",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "直す",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "い直す",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "き直す",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎ直す",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し直す",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち直す",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "に直す",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "び直す",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "み直す",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "り直す",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し直す",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "き直す",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "きる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いきる",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ききる",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎきる",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しきる",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちきる",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にきる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びきる",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みきる",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りきる",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しきる",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "ききる",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "切る",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "い切る",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "き切る",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎ切る",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し切る",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち切る",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "に切る",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "び切る",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "み切る",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "り切る",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し切る",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "き切る",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "かける",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "いかける",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "きかける",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎかける",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しかける",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ちかける",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "にかける",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "びかける",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "みかける",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "りかける",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "しかける",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "きかける",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "掛ける",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "い掛ける",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "き掛ける",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ぎ掛ける",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し掛ける",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ち掛ける",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "に掛ける",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "び掛ける",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "み掛ける",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "り掛ける",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "し掛ける",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    },
+    {
+      "kanaIn": "き掛ける",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    }
+  ],
+  "passiveNegativeForms": [
+    {
+      "kanaIn": "られない",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v1"
+      ],
+      "rulesOut": [
+        "v1"
+      ]
+    },
+    {
+      "kanaIn": "われない",
+      "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "かれない",
+      "kanaOut": "く",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "がれない",
+      "kanaOut": "ぐ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "されない",
+      "kanaOut": "す",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "たれない",
+      "kanaOut": "つ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "なれない",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "ばれない",
+      "kanaOut": "ぶ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "まれない",
+      "kanaOut": "む",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "られない",
+      "kanaOut": "る",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "こられない",
+      "kanaOut": "くる",
+      "rulesIn": [
+        "vk"
+      ],
+      "rulesOut": [
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "されない",
+      "kanaOut": "する",
+      "rulesIn": [
+        "vs"
+      ],
+      "rulesOut": [
+        "vs"
+      ]
+    }
+  ]
 }

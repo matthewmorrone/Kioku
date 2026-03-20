@@ -41,27 +41,50 @@ extension ReadView {
                 furiganaLengthBySegmentLocation = furiganaResult.lengthByLocation
 
                 // User-selected reading overrides take precedence over computed furigana.
-                // Use the edge's surface length so the furigana rect covers the correct source
-                // characters; also clear any stale per-kanji-run entries for the segment range.
+                // Use projectRunReadings + kanjiRuns so the reading is split per kanji run,
+                // correctly handling internal okurigana (e.g. 生き方 → い over 生, かた over 方).
                 for (location, reading) in selectedReadingOverrideByLocation {
-                    let surfaceLength: Int
-                    if let matchingEdge = edges.first(where: {
+                    guard let matchingEdge = edges.first(where: {
                         NSRange($0.start..<$0.end, in: sourceText).location == location
-                    }) {
-                        surfaceLength = NSRange(matchingEdge.start..<matchingEdge.end, in: sourceText).length
-                    } else {
-                        surfaceLength = reading.utf16.count
+                    }) else {
+                        furiganaBySegmentLocation[location] = reading
+                        furiganaLengthBySegmentLocation[location] = reading.utf16.count
+                        continue
                     }
-                    let segNSRange = NSRange(location: location, length: surfaceLength)
-                    for loc in furiganaBySegmentLocation.keys where loc != location {
+
+                    let edgeNSRange = NSRange(matchingEdge.start..<matchingEdge.end, in: sourceText)
+                    let surface = matchingEdge.surface
+                    let surfaceChars = Array(surface)
+                    let runs = kanjiRuns(in: surface)
+
+                    // Clear all stale furigana within this segment before writing new entries.
+                    for loc in Array(furiganaBySegmentLocation.keys) {
                         let len = furiganaLengthBySegmentLocation[loc] ?? 0
-                        if NSIntersectionRange(NSRange(location: loc, length: len), segNSRange).length > 0 {
+                        if NSIntersectionRange(NSRange(location: loc, length: len), edgeNSRange).length > 0 {
                             furiganaBySegmentLocation.removeValue(forKey: loc)
                             furiganaLengthBySegmentLocation.removeValue(forKey: loc)
                         }
                     }
-                    furiganaBySegmentLocation[location] = reading
-                    furiganaLengthBySegmentLocation[location] = surfaceLength
+
+                    guard runs.isEmpty == false else { continue }
+
+                    if let runReadings = projectRunReadings(surface: surface, reading: reading),
+                       runReadings.count == runs.count {
+                        // Store one furigana entry per kanji run at its precise UTF-16 offset.
+                        for (run, runReading) in zip(runs, runReadings) {
+                            guard runReading.isEmpty == false else { continue }
+                            let runSurface = String(surfaceChars[run.start..<run.end])
+                            guard runReading != runSurface else { continue }
+                            let prefixUTF16 = String(surfaceChars[..<run.start]).utf16.count
+                            let runUTF16 = String(surfaceChars[run.start..<run.end]).utf16.count
+                            furiganaBySegmentLocation[location + prefixUTF16] = runReading
+                            furiganaLengthBySegmentLocation[location + prefixUTF16] = runUTF16
+                        }
+                    } else {
+                        // Fall back to segment-level entry when run projection fails.
+                        furiganaBySegmentLocation[location] = reading
+                        furiganaLengthBySegmentLocation[location] = edgeNSRange.length
+                    }
                 }
             }
         }
@@ -350,6 +373,18 @@ extension ReadView {
             if separatorAfterRun.isEmpty {
                 let remaining = String(reading[readingCursor...])
                 runReadings.append(remaining)
+                readingCursor = reading.endIndex
+                continue
+            }
+
+            // For the last run, trailing okurigana must match the end of the reading.
+            // Searching forward risks matching separator characters that appear inside
+            // the kanji reading itself (e.g. 占う: "う" in "うらなう" must be the last one).
+            if runIndex == runs.count - 1 {
+                guard String(reading[readingCursor...]).hasSuffix(separatorAfterRun) else { return nil }
+                let tail = reading[readingCursor...]
+                let endOffset = tail.index(tail.endIndex, offsetBy: -separatorAfterRun.count)
+                runReadings.append(String(tail[tail.startIndex..<endOffset]))
                 readingCursor = reading.endIndex
                 continue
             }
