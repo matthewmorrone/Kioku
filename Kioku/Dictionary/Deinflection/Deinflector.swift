@@ -9,7 +9,7 @@ final class Deinflector {
     private let rules: [DeinflectionRule]
     private let labeledRules: [(label: String, rule: DeinflectionRule)]
     private let trie: DictionaryTrie
-    private let maxDepth = 4 // TODO: this is arbitrary
+    private let maxDepth: Int
 
     // Stores deinflection rules used by candidate generation.
     init(rules: [DeinflectionRule], trie: DictionaryTrie) {
@@ -20,6 +20,7 @@ final class Deinflector {
             (label: "rule", rule: rule)
         }
         self.trie = trie
+        self.maxDepth = Self.computeMaxDepth(from: rules)
     }
 
     // Stores grouped deinflection rules while preserving group labels used for chain reporting.
@@ -39,6 +40,7 @@ final class Deinflector {
             labeledRule.rule
         }
         self.trie = trie
+        self.maxDepth = Self.computeMaxDepth(from: self.rules)
     }
 
     // Loads grouped rules from JSON data while preserving rule-group labels.
@@ -428,6 +430,23 @@ final class Deinflector {
             // No expansion rule (e.g. ん); keep the prolonged sound mark as-is.
             return UnicodeScalar(0x30FC)!
         }
+    }
+
+    // Derives the BFS depth cap from the rule graph: counts grammar categories that participate
+    // in at least one non-self-loop transition, since a valid chain can visit each such category
+    // at most once before cycling. Self-looping categories (e.g. adj-i, n) do not extend the
+    // non-redundant path length and are excluded.
+    private static func computeMaxDepth(from rules: [DeinflectionRule]) -> Int {
+        var chainableGrammars = Set<String>()
+        for rule in rules {
+            for rIn in rule.rulesIn {
+                for rOut in rule.rulesOut where rOut != rIn {
+                    chainableGrammars.insert(rIn)
+                    chainableGrammars.insert(rOut)
+                }
+            }
+        }
+        return max(chainableGrammars.count, 1)
     }
 
     // Normalizes one grouped-rule label from JSON key format to displayable inflection term.
