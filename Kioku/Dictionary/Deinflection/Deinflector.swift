@@ -9,7 +9,6 @@ final class Deinflector {
     private let rules: [DeinflectionRule]
     private let labeledRules: [(label: String, rule: DeinflectionRule)]
     private let trie: DictionaryTrie
-    private let maxDepth: Int
 
     // Stores deinflection rules used by candidate generation.
     init(rules: [DeinflectionRule], trie: DictionaryTrie) {
@@ -20,7 +19,6 @@ final class Deinflector {
             (label: "rule", rule: rule)
         }
         self.trie = trie
-        self.maxDepth = Self.computeMaxDepth(from: rules)
     }
 
     // Stores grouped deinflection rules while preserving group labels used for chain reporting.
@@ -40,7 +38,6 @@ final class Deinflector {
             labeledRule.rule
         }
         self.trie = trie
-        self.maxDepth = Self.computeMaxDepth(from: self.rules)
     }
 
     // Loads grouped rules from JSON data while preserving rule-group labels.
@@ -125,6 +122,8 @@ final class Deinflector {
     }
 
     // Builds all reachable deinflection traces so callers can derive both lemma candidates and grouped-rule chains.
+    // Termination is guaranteed by the visited set: once a (surface, grammar) pair is processed,
+    // it is never re-enqueued regardless of path length, so the BFS exhausts a finite state space.
     func deinflectionPaths(
         for surface: String
     ) -> [String: [(chain: [String], transitions: [(label: String, kanaIn: String, kanaOut: String)])]] {
@@ -133,11 +132,10 @@ final class Deinflector {
         var queue: [(
             surface: String,
             grammar: String?,
-            depth: Int,
             chain: [String],
             transitions: [(label: String, kanaIn: String, kanaOut: String)]
         )] = [
-            (surface: surface, grammar: nil, depth: 0, chain: [], transitions: [])
+            (surface: surface, grammar: nil, chain: [], transitions: [])
         ]
 
         var cursor = 0
@@ -145,17 +143,13 @@ final class Deinflector {
             let item = queue[cursor]
             cursor += 1
 
-            let state = DeinflectionState(surface: item.surface, grammar: item.grammar, depth: item.depth)
+            let state = DeinflectionState(surface: item.surface, grammar: item.grammar)
             if visited.contains(state) {
                 continue
             }
 
             visited.insert(state)
             pathsBySurface[item.surface, default: []].append((chain: item.chain, transitions: item.transitions))
-
-            if item.depth >= maxDepth {
-                continue
-            }
 
             for labeledRule in labeledRules {
                 let rule = labeledRule.rule
@@ -182,7 +176,6 @@ final class Deinflector {
                         (
                             surface: candidateSurface,
                             grammar: nextGrammar,
-                            depth: item.depth + 1,
                             chain: nextChain,
                             transitions: nextTransitions
                         )
@@ -430,23 +423,6 @@ final class Deinflector {
             // No expansion rule (e.g. ん); keep the prolonged sound mark as-is.
             return UnicodeScalar(0x30FC)!
         }
-    }
-
-    // Derives the BFS depth cap from the rule graph: counts grammar categories that participate
-    // in at least one non-self-loop transition, since a valid chain can visit each such category
-    // at most once before cycling. Self-looping categories (e.g. adj-i, n) do not extend the
-    // non-redundant path length and are excluded.
-    private static func computeMaxDepth(from rules: [DeinflectionRule]) -> Int {
-        var chainableGrammars = Set<String>()
-        for rule in rules {
-            for rIn in rule.rulesIn {
-                for rOut in rule.rulesOut where rOut != rIn {
-                    chainableGrammars.insert(rIn)
-                    chainableGrammars.insert(rOut)
-                }
-            }
-        }
-        return max(chainableGrammars.count, 1)
     }
 
     // Normalizes one grouped-rule label from JSON key format to displayable inflection term.
