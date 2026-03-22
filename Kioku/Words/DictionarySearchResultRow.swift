@@ -8,13 +8,13 @@ struct DictionarySearchResultRow: View {
 
     // Picks the best display surface: first kanji form if present, else first kana form.
     private var displaySurface: String {
-        entry.kanjiForms.first ?? entry.kanaForms.first ?? entry.matchedSurface
+        entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? entry.matchedSurface
     }
 
     // Returns the primary kana reading, omitted when the surface is already pure kana.
     private var reading: String? {
         guard entry.kanjiForms.isEmpty == false else { return nil }
-        return entry.kanaForms.first
+        return entry.kanaForms.first?.text
     }
 
     // Builds a compact POS + gloss label from the first available sense.

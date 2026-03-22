@@ -312,7 +312,7 @@ struct WordsView: View {
 
     // Saves or removes an entry from search results.
     private func toggleSave(_ entry: DictionaryEntry) {
-        let surface = entry.kanjiForms.first ?? entry.kanaForms.first ?? entry.matchedSurface
+        let surface = entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? entry.matchedSurface
         if isSaved(entry) {
             wordsStore.remove(id: entry.entryId)
         } else {
