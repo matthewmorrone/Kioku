@@ -123,6 +123,7 @@ struct WordsFilterView: View {
         }
     }
 
+    // Adds or removes a note ID from the active filter set.
     private func toggleNoteFilter(_ noteID: UUID) {
         if activeFilterNoteIDs.contains(noteID) {
             activeFilterNoteIDs.remove(noteID)
@@ -131,6 +132,7 @@ struct WordsFilterView: View {
         }
     }
 
+    // Adds or removes a word list ID from the active filter set.
     private func toggleListFilter(_ listID: UUID) {
         if activeFilterListIDs.contains(listID) {
             activeFilterListIDs.remove(listID)
@@ -139,17 +141,20 @@ struct WordsFilterView: View {
         }
     }
 
+    // Removes list membership from all words and deletes the list from the store.
     private func deleteList(_ listID: UUID) {
         activeFilterListIDs.remove(listID)
         wordListsStore.delete(id: listID)
         wordsStore.removeListMembership(listID: listID)
     }
 
+    // Populates the rename text field and marks the given list as being renamed.
     private func beginRename(_ list: WordList) {
         renamingListID = list.id
         renameText = list.name
     }
 
+    // Persists the trimmed rename text and clears rename state.
     private func commitRename(_ listID: UUID) {
         let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
@@ -159,6 +164,7 @@ struct WordsFilterView: View {
         renameText = ""
     }
 
+    // Creates a new word list from the trimmed name input and clears the field.
     private func commitNewList() {
         let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
