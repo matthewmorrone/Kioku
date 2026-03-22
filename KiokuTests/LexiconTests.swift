@@ -59,7 +59,8 @@ final class LexiconTests: XCTestCase {
         let entries = surface.lookupLexeme("食べる", "たべる")
         XCTAssertFalse(entries.isEmpty)
         XCTAssertTrue(entries.contains(where: { entry in
-            entry.kanjiForms.contains("食べる") && entry.kanaForms.contains("たべる")
+            entry.kanjiForms.contains(where: { $0.text == "食べる" })
+                && entry.kanaForms.contains(where: { $0.text == "たべる" })
         }))
     }
 
@@ -72,7 +73,7 @@ final class LexiconTests: XCTestCase {
 
         let expectedLexemes = Set(
             surface.lookupLexeme("食べる", "たべる").map { entry in
-                entry.kanjiForms.first ?? entry.kanaForms.first ?? ""
+                entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? ""
             }
         )
         XCTAssertTrue(resolved.contains(where: { candidate in

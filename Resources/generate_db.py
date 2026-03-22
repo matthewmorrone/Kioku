@@ -44,7 +44,10 @@ def create_schema(conn):
             id INTEGER PRIMARY KEY,
             text TEXT NOT NULL,
             entry_id INTEGER NOT NULL,
+            -- ke_pri priority tags only (ichi1, news1, spec1, gai1, nf01–nf48), comma-joined.
             priority TEXT,
+            -- ke_inf information tags only (ateji, io, iK, oK, rK, sK), comma-joined.
+            info TEXT,
             wordfreq_zipf REAL,
             FOREIGN KEY(entry_id) REFERENCES entries(id)
         );
@@ -53,7 +56,12 @@ def create_schema(conn):
             id INTEGER PRIMARY KEY,
             text TEXT NOT NULL,
             entry_id INTEGER NOT NULL,
+            -- re_pri priority tags only (ichi1, news1, spec1, gai1, nf01–nf48), comma-joined.
             priority TEXT,
+            -- re_inf information tags only (gikun, ik, ok, uK, sk), comma-joined.
+            info TEXT,
+            -- 1 when the re_nokanji flag is set (reading does not apply to any kanji form).
+            re_nokanji INTEGER NOT NULL DEFAULT 0,
             wordfreq_zipf REAL,
             FOREIGN KEY(entry_id) REFERENCES entries(id)
         );
@@ -101,6 +109,39 @@ def create_schema(conn):
             FROM kana_forms kf
             WHERE kf.entry_id NOT IN (SELECT entry_id FROM kanji);
 
+        -- Sense-level application restrictions (stagk / stagr).
+        -- type: 'stagk' restricts to a specific kanji form; 'stagr' restricts to a specific kana form.
+        CREATE TABLE sense_restrictions (
+            id INTEGER PRIMARY KEY,
+            sense_id INTEGER NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('stagk', 'stagr')),
+            value TEXT NOT NULL,
+            FOREIGN KEY(sense_id) REFERENCES senses(id)
+        );
+
+        -- Sense-level cross-references and antonyms (xref / ant).
+        -- target may be a bare word, "word・reading", or "word・reading・senseNum".
+        CREATE TABLE sense_references (
+            id INTEGER PRIMARY KEY,
+            sense_id INTEGER NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('xref', 'ant')),
+            target TEXT NOT NULL,
+            FOREIGN KEY(sense_id) REFERENCES senses(id)
+        );
+
+        -- Loanword source information (lsource element).
+        -- ls_wasei: 1 when wasei-eigo (Japanese-coined pseudo-loanword).
+        -- ls_type: 'full' when entire word derives from source; 'part' for partial borrowings.
+        CREATE TABLE lsource (
+            id INTEGER PRIMARY KEY,
+            sense_id INTEGER NOT NULL,
+            lang TEXT NOT NULL,
+            ls_wasei INTEGER NOT NULL DEFAULT 0,
+            ls_type TEXT NOT NULL DEFAULT 'part',
+            content TEXT,
+            FOREIGN KEY(sense_id) REFERENCES senses(id)
+        );
+
         CREATE INDEX idx_kanji_text ON kanji(text);
         CREATE INDEX idx_kana_text ON kana_forms(text);
         CREATE INDEX idx_entries_ent_seq ON entries(ent_seq);
@@ -109,6 +150,9 @@ def create_schema(conn):
         CREATE INDEX idx_senses_entry_id ON senses(entry_id);
         CREATE INDEX idx_glosses_sense_id ON glosses(sense_id);
         CREATE INDEX idx_kkl_kana ON kanji_kana_links(kana_id);
+        CREATE INDEX idx_sense_restrictions_sense_id ON sense_restrictions(sense_id);
+        CREATE INDEX idx_sense_references_sense_id ON sense_references(sense_id);
+        CREATE INDEX idx_lsource_sense_id ON lsource(sense_id);
 
         -- Per-character kanji data from KANJIDIC2.
         -- grade: 1–6 = kyōiku (elementary), 8 = jōyō (secondary), 9–10 = jinmeiyō.
@@ -191,6 +235,13 @@ def create_schema(conn):
         CREATE INDEX idx_sentence_pairs_ja_id ON sentence_pairs(ja_id);
         """
     )
+
+
+# ke_inf tags that carry orthographic information (distinct from ke_pri frequency/priority tags).
+KE_INF_TAGS = {"ateji", "io", "iK", "oK", "rK", "sK"}
+
+# re_inf tags that carry reading information (distinct from re_pri frequency/priority tags).
+RE_INF_TAGS = {"gikun", "ik", "ok", "uK", "sk"}
 
 
 def load_jmdict_entries():
@@ -286,16 +337,20 @@ def insert_entry(conn, entry, ent_seq):
     for k in entry.get("kanji", []):
         if isinstance(k, str):
             cur = conn.execute(
-                "INSERT INTO kanji (text, entry_id, priority) VALUES (?, ?, ?)",
-                (k, entry_id, None),
+                "INSERT INTO kanji (text, entry_id, priority, info) VALUES (?, ?, ?, ?)",
+                (k, entry_id, None, None),
             )
             kanji_rows.append((cur.lastrowid, k))
         else:
             tags = k.get("tags") or []
-            priority_str = ",".join(sorted(set(tags))) if tags else None
+            # Separate ke_pri frequency/priority tags from ke_inf orthographic-info tags.
+            pri_tags = [t for t in tags if t not in KE_INF_TAGS]
+            inf_tags = [t for t in tags if t in KE_INF_TAGS]
+            priority_str = ",".join(sorted(set(pri_tags))) if pri_tags else None
+            info_str = ",".join(sorted(set(inf_tags))) if inf_tags else None
             cur = conn.execute(
-                "INSERT INTO kanji (text, entry_id, priority) VALUES (?, ?, ?)",
-                (k["text"], entry_id, priority_str),
+                "INSERT INTO kanji (text, entry_id, priority, info) VALUES (?, ?, ?, ?)",
+                (k["text"], entry_id, priority_str, info_str),
             )
             kanji_rows.append((cur.lastrowid, k["text"]))
 
@@ -303,16 +358,21 @@ def insert_entry(conn, entry, ent_seq):
     for r in entry.get("kana", []):
         if isinstance(r, str):
             cur = conn.execute(
-                "INSERT INTO kana_forms (text, entry_id, priority) VALUES (?, ?, ?)",
-                (r, entry_id, None),
+                "INSERT INTO kana_forms (text, entry_id, priority, info, re_nokanji) VALUES (?, ?, ?, ?, ?)",
+                (r, entry_id, None, None, 0),
             )
             kana_rows.append((cur.lastrowid, r, frozenset()))
         else:
             tags = r.get("tags") or []
-            priority_str = ",".join(sorted(set(tags))) if tags else None
+            # Separate re_pri frequency/priority tags from re_inf reading-info tags.
+            pri_tags = [t for t in tags if t not in RE_INF_TAGS]
+            inf_tags = [t for t in tags if t in RE_INF_TAGS]
+            priority_str = ",".join(sorted(set(pri_tags))) if pri_tags else None
+            info_str = ",".join(sorted(set(inf_tags))) if inf_tags else None
+            nokanji = 1 if r.get("nokanji") else 0
             cur = conn.execute(
-                "INSERT INTO kana_forms (text, entry_id, priority) VALUES (?, ?, ?)",
-                (r["text"], entry_id, priority_str),
+                "INSERT INTO kana_forms (text, entry_id, priority, info, re_nokanji) VALUES (?, ?, ?, ?, ?)",
+                (r["text"], entry_id, priority_str, info_str, nokanji),
             )
             applies = r.get("appliesToKanji") or ["*"]
             re_restr = frozenset() if applies == ["*"] else frozenset(applies)
@@ -356,6 +416,47 @@ def insert_entry(conn, entry, ent_seq):
             conn.execute(
                 "INSERT INTO glosses (sense_id, order_index, gloss) VALUES (?, ?, ?)",
                 (sense_id, g_idx, text),
+            )
+
+        # stagk restrictions: sense applies only to specific kanji forms.
+        for k_text in (sense.get("appliesToKanji") or []):
+            if k_text != "*":
+                conn.execute(
+                    "INSERT INTO sense_restrictions (sense_id, type, value) VALUES (?, 'stagk', ?)",
+                    (sense_id, k_text),
+                )
+
+        # stagr restrictions: sense applies only to specific kana forms.
+        for k_text in (sense.get("appliesToKana") or []):
+            if k_text != "*":
+                conn.execute(
+                    "INSERT INTO sense_restrictions (sense_id, type, value) VALUES (?, 'stagr', ?)",
+                    (sense_id, k_text),
+                )
+
+        # xref cross-references to related entries.
+        for xref in (sense.get("xref") or []):
+            conn.execute(
+                "INSERT INTO sense_references (sense_id, type, target) VALUES (?, 'xref', ?)",
+                (sense_id, xref),
+            )
+
+        # ant antonyms.
+        for ant in (sense.get("ant") or []):
+            conn.execute(
+                "INSERT INTO sense_references (sense_id, type, target) VALUES (?, 'ant', ?)",
+                (sense_id, ant),
+            )
+
+        # lsource loanword origin records.
+        for ls in (sense.get("languageSource") or []):
+            lang = ls.get("lang") or ""
+            wasei = 1 if ls.get("wasei") else 0
+            ls_type = "full" if ls.get("full") else "part"
+            content = ls.get("value")
+            conn.execute(
+                "INSERT INTO lsource (sense_id, lang, ls_wasei, ls_type, content) VALUES (?, ?, ?, ?, ?)",
+                (sense_id, lang, wasei, ls_type, content),
             )
 
 

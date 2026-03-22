@@ -112,13 +112,14 @@ public final class Lexicon {
         let trimmedReading = reading?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let matchingEntries = entries.filter { entry in
-            let matchesLemma = entry.kanjiForms.contains(trimmedLemma) || entry.kanaForms.contains(trimmedLemma)
+            let matchesLemma = entry.kanjiForms.contains(where: { $0.text == trimmedLemma })
+                || entry.kanaForms.contains(where: { $0.text == trimmedLemma })
             guard matchesLemma else {
                 return false
             }
 
             if let trimmedReading, trimmedReading.isEmpty == false {
-                return entry.kanaForms.contains(trimmedReading)
+                return entry.kanaForms.contains(where: { $0.text == trimmedReading })
             }
 
             return true
@@ -144,7 +145,7 @@ public final class Lexicon {
             let baseScore = chain.isEmpty ? 1.0 : 0.98
 
             for entry in matchingLexemes {
-                let lexemeName = entry.kanjiForms.first ?? entry.kanaForms.first ?? candidateLemma
+                let lexemeName = entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? candidateLemma
                 if let existing = bestScoreByLexeme[lexemeName] {
                     bestScoreByLexeme[lexemeName] = max(existing, baseScore)
                 } else {
@@ -188,15 +189,15 @@ public final class Lexicon {
             return []
         }
 
-        let fallbackReading = entry.kanaForms.first ?? ""
+        let fallbackReading = entry.kanaForms.first?.text ?? ""
         var builtForms: [(spelling: String, reading: String)] = []
 
         for kanjiForm in entry.kanjiForms {
-            builtForms.append((spelling: kanjiForm, reading: fallbackReading))
+            builtForms.append((spelling: kanjiForm.text, reading: fallbackReading))
         }
 
         for kanaForm in entry.kanaForms {
-            builtForms.append((spelling: kanaForm, reading: kanaForm))
+            builtForms.append((spelling: kanaForm.text, reading: kanaForm.text))
         }
 
         return uniqueForms(builtForms)
@@ -227,7 +228,7 @@ public final class Lexicon {
             return nil
         }
 
-        return entry.kanaForms.first
+        return entry.kanaForms.first?.text
     }
 
     // Returns preferred headword display form for one lexeme.
@@ -378,7 +379,7 @@ public final class Lexicon {
 
         let entries = lookupLexeme(lemma, nil)
         for entry in entries {
-            if let firstReading = entry.kanaForms.first {
+            if let firstReading = entry.kanaForms.first?.text {
                 return firstReading
             }
         }
