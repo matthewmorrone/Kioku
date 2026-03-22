@@ -21,6 +21,7 @@ struct WordsView: View {
     @State private var selectedWordIDs: Set<Int64> = []
     @State private var isBatchRemoveConfirmPresented = false
     @State private var isBatchListSheetPresented = false
+    @State private var isCSVImportPresented = false
     @State private var activeTab: WordsTab = .saved
     @State private var searchText = ""
     @State private var searchResults: [DictionaryEntry] = []
@@ -89,6 +90,13 @@ struct WordsView: View {
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $isCSVImportPresented) {
+            CSVImportView(dictionaryStore: dictionaryStore)
+                .environmentObject(wordsStore)
+                .environmentObject(wordListsStore)
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .onChange(of: activeTab) { _, _ in
@@ -180,17 +188,12 @@ struct WordsView: View {
         }
     }
 
-    // Renders one history entry row — surface, relative timestamp, and save toggle.
+    // Renders one history entry row with swipe-to-delete and a context menu matching the saved-words CRUD pattern.
     @ViewBuilder
     private func historyRow(_ entry: HistoryEntry) -> some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entry.surface)
-                    .font(.headline)
-                Text(entry.lookedUpAt, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
+            Text(entry.surface)
+                .font(.headline)
 
             Spacer(minLength: 0)
 
@@ -203,12 +206,53 @@ struct WordsView: View {
                     .font(.system(size: 16, weight: .semibold))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isSavedByID(entry.canonicalEntryID) ? "Unsave Word" : "Save Word")
+            .accessibilityLabel(isSavedByID(entry.canonicalEntryID) ? "Unsave" : "Save")
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture {
             selectedDetailWord = wordForHistory(entry)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                historyStore.remove(id: entry.canonicalEntryID)
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = entry.surface
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+
+            Button {
+                selectedDetailWord = wordForHistory(entry)
+            } label: {
+                Label("Look Up", systemImage: "magnifyingglass")
+            }
+
+            Button {
+                selectedDetailWord = wordForHistory(entry)
+            } label: {
+                Label("Open Details", systemImage: "info.circle")
+            }
+
+            Divider()
+
+            let saved = isSavedByID(entry.canonicalEntryID)
+            Button {
+                toggleSaveHistory(entry)
+            } label: {
+                Label(saved ? "Unsave" : "Save", systemImage: saved ? "star.slash" : "star")
+            }
+
+            Button(role: .destructive) {
+                historyStore.remove(id: entry.canonicalEntryID)
+            } label: {
+                Label("Remove from History", systemImage: "trash")
+            }
         }
     }
 
@@ -268,6 +312,17 @@ struct WordsView: View {
                         .frame(width: 32, height: 32)
                 }
                 .accessibilityLabel(editMode == .active && !selectedWordIDs.isEmpty ? "Manage Lists for Selection" : "Filter by List")
+
+                if editMode == .inactive {
+                    Button {
+                        isCSVImportPresented = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
+                    }
+                    .accessibilityLabel("Import CSV")
+                }
             }
 
             if activeTab == .history && searchText.isEmpty && historyStore.entries.isEmpty == false {

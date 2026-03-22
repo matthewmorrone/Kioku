@@ -261,6 +261,17 @@ extension ReadView {
         return lines.joined(separator: "\n")
     }
 
+    // Returns the base lemma and inflection chain for the current selection when it is a conjugated/inflected form.
+    // Returns nil when the surface matches its own lemma (i.e. no inflection occurred).
+    func lemmaInfoForCurrentSelectedSegment() -> (lemma: String, chain: [String])? {
+        guard let selectedBounds, let lexicon else { return nil }
+        let selectedEdges = Array(segmentEdges[selectedBounds])
+        guard let start = selectedEdges.first?.start, let end = selectedEdges.last?.end else { return nil }
+        let surface = String(text[start..<end])
+        guard let info = lexicon.inflectionInfo(surface: surface), info.lemma != surface else { return nil }
+        return (lemma: info.lemma, chain: info.chain)
+    }
+
     // Returns the reading→FrequencyData map for the currently selected segment surface,
     // or nil if no frequency data is available. The inner dict is keyed by reading (kana text)
     // so callers can look up frequency for whichever reading is currently displayed.

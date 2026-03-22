@@ -277,6 +277,9 @@ extension ReadView {
                 sheetFrequencyProvider: {
                     frequencyRankForCurrentSelectedSegment()
                 },
+                sheetLemmaInfoProvider: {
+                    lemmaInfoForCurrentSelectedSegment()
+                },
                 onReadingSelected: { reading in
                     applyReadingOverride(reading: reading)
                 },
