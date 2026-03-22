@@ -428,6 +428,7 @@ extension SegmentLookupSheet {
             // Resets left and right split values using the highest-scoring two-segment sublattice path,
             // falling back to a midpoint split when no two-segment path exists.
             func resetSplitInputs(using outcomeSurface: String) {
+                // Returns a normalized frequency score for one segment, defaulting to 0 when unscored.
                 func segmentScore(_ segment: String) -> Double {
                     self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) } ?? 0
                 }
@@ -994,6 +995,7 @@ extension SegmentLookupSheet {
         var allPaths: [[String]] = []
         let limit = 24
 
+        // Depth-first traversal collecting all valid segmentation paths up to the limit.
         func dfs(current: String.Index, path: [String]) {
             if current == endIndex {
                 allPaths.append(path)

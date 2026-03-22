@@ -169,6 +169,7 @@ private final class WhisperDownloadProgressDelegate: NSObject, URLSessionDownloa
         self.onProgress = onProgress
     }
 
+    // Forwards download progress to the onProgress closure as a 0–1 fraction.
     func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
@@ -185,6 +186,7 @@ private final class WhisperDownloadProgressDelegate: NSObject, URLSessionDownloa
         onProgress(progress)
     }
 
+    // Called when the download completes; actual file handling is done by the async continuation.
     func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
@@ -194,6 +196,7 @@ private final class WhisperDownloadProgressDelegate: NSObject, URLSessionDownloa
         print("[Whisper] delegate didFinishDownloadingTo: \(location.path)")
     }
 
+    // Logs task-level errors from the URLSession delegate so failures are visible in the console.
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error {
             print("[Whisper] delegate didCompleteWithError: \(error)")

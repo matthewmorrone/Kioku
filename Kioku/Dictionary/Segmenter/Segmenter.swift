@@ -196,6 +196,7 @@ final class Segmenter {
 
         var memo: [String.Index: [[LatticeEdge]]] = [:]
 
+        // Recursively enumerates all edge paths from the given index to the end of the text.
         func paths(from index: String.Index) -> [[LatticeEdge]] {
             if index == text.endIndex {
                 return [[]]
