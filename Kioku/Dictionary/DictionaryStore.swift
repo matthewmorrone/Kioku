@@ -443,6 +443,24 @@ public final class DictionaryStore {
         return senses
     }
 
+    // Drives a prepared statement to completion, calling readRow for each SQLITE_ROW result.
+    // Returning nil from readRow skips a malformed row; throwing aborts and propagates the error.
+    // Internal so extension files can reuse the same step/collect loop without repeating it.
+    func stepRows<T>(statement: OpaquePointer?, _ readRow: (OpaquePointer) throws -> T?) throws -> [T] {
+        var results: [T] = []
+        var stepCode = sqlite3_step(statement)
+        while stepCode == SQLITE_ROW {
+            if let stmt = statement, let value = try readRow(stmt) {
+                results.append(value)
+            }
+            stepCode = sqlite3_step(statement)
+        }
+        guard stepCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage())
+        }
+        return results
+    }
+
     // Compiles SQL into a prepared statement bound to the active connection.
     // Internal so extension files can prepare their own queries through the same connection.
     func prepare(sql: String, statement: inout OpaquePointer?) throws {
