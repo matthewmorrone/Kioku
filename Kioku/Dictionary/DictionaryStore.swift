@@ -3,7 +3,8 @@ import SQLite3
 
 public final class DictionaryStore {
     private var db: OpaquePointer?
-    private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    // Sentinel destructor value that tells SQLite to copy the string immediately.
+    let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private let accessQueue = DispatchQueue(label: "Kioku.DictionaryStore.sqlite.access")
 
     // Resolves and opens the bundled dictionary database by resource name.
@@ -39,7 +40,8 @@ public final class DictionaryStore {
     }
 
     // Serializes sqlite access so one DictionaryStore connection is never used from multiple threads at once.
-    private func withSerializedDatabaseAccess<T>(_ operation: () throws -> T) rethrows -> T {
+    // Internal so extension files in other sources can wrap their queries in the same serial queue.
+    func withSerializedDatabaseAccess<T>(_ operation: () throws -> T) rethrows -> T {
         try accessQueue.sync {
             try operation()
         }
@@ -76,7 +78,7 @@ public final class DictionaryStore {
             let kanjiForms = try fetchKanjiForms(entryID: header.entryID)
             let kanaForms = try fetchKanaForms(entryID: header.entryID)
             let senses = try fetchSenses(entryID: header.entryID)
-            let matchedSurface = kanjiForms.first ?? kanaForms.first ?? ""
+            let matchedSurface = kanjiForms.first?.text ?? kanaForms.first?.text ?? ""
 
             return DictionaryEntry(
                 entryId: header.entryID,
@@ -87,215 +89,6 @@ public final class DictionaryStore {
                 kanaForms: kanaForms,
                 senses: senses
             )
-        }
-    }
-
-    // Builds a surface→reading→FrequencyData nested map for per-reading frequency lookups.
-    // The outer key is the surface text (kanji or kana); the inner key is the reading (kana text).
-    // For kanji surfaces the reading comes from kanji_kana_links; for kana-only entries the reading equals the surface.
-    // Entries absent from both JPDB and wordfreq datasets are excluded.
-    public func fetchFrequencyDataBySurface() throws -> [String: [String: FrequencyData]] {
-        try withSerializedDatabaseAccess {
-            let sql = """
-            SELECT surface, reading, MIN(jpdb_rank), MAX(wordfreq_zipf) FROM (
-                SELECT k.text AS surface, kf.text AS reading, kkl.jpdb_rank, k.wordfreq_zipf
-                FROM kanji_kana_links kkl
-                JOIN kanji k ON k.id = kkl.kanji_id
-                JOIN kana_forms kf ON kf.id = kkl.kana_id
-                UNION ALL
-                SELECT kf.text, kf.text, NULL, kf.wordfreq_zipf
-                FROM kana_forms kf
-                WHERE kf.entry_id NOT IN (SELECT entry_id FROM kanji)
-            )
-            GROUP BY surface, reading
-            """
-
-            var statement: OpaquePointer?
-            defer { sqlite3_finalize(statement) }
-
-            try prepare(sql: sql, statement: &statement)
-
-            var dataByS: [String: [String: FrequencyData]] = [:]
-            var stepCode = sqlite3_step(statement)
-
-            while stepCode == SQLITE_ROW {
-                guard let surfacePointer = sqlite3_column_text(statement, 0) else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
-                let surface = String(cString: surfacePointer)
-
-                guard let readingPointer = sqlite3_column_text(statement, 1) else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
-                let reading = String(cString: readingPointer)
-
-                // Column 2: jpdb_rank (nullable int)
-                let jpdbRank: Int? = sqlite3_column_type(statement, 2) == SQLITE_NULL
-                    ? nil
-                    : Int(sqlite3_column_int(statement, 2))
-
-                // Column 3: wordfreq_zipf (nullable double)
-                let wordfreqZipf: Double? = sqlite3_column_type(statement, 3) == SQLITE_NULL
-                    ? nil
-                    : sqlite3_column_double(statement, 3)
-
-                // Only include entries where at least one frequency signal is present.
-                guard jpdbRank != nil || wordfreqZipf != nil else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
-
-                dataByS[surface, default: [:]][reading] = FrequencyData(jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
-                stepCode = sqlite3_step(statement)
-            }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return dataByS
-        }
-    }
-
-    // Fetches all unique dictionary surfaces from kanji and kana_forms tables.
-    public func fetchAllSurfaces() throws -> [String] {
-        try withSerializedDatabaseAccess {
-            let sql = """
-            SELECT DISTINCT text FROM kanji
-            UNION
-            SELECT DISTINCT text FROM kana_forms
-            ORDER BY text ASC
-            """
-
-            var statement: OpaquePointer?
-            defer { sqlite3_finalize(statement) }
-
-            try prepare(sql: sql, statement: &statement)
-
-            var surfaces: [String] = []
-            var stepCode = sqlite3_step(statement)
-
-            while stepCode == SQLITE_ROW {
-                if let textPointer = sqlite3_column_text(statement, 0) {
-                    surfaces.append(String(cString: textPointer))
-                }
-                stepCode = sqlite3_step(statement)
-            }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return surfaces
-        }
-    }
-
-    // Builds a preferred surface-to-reading map for fast in-memory furigana lookups.
-    // Orderd by best JPDB rank so the most common reading is picked first.
-    public func fetchPreferredReadingsBySurface() throws -> [String: String] {
-        try withSerializedDatabaseAccess {
-            let sql = """
-            SELECT kj.text AS surface, kf.text AS reading,
-                   MIN(COALESCE(kkl.jpdb_rank, 9999999)) AS best_rank
-            FROM kanji kj
-            JOIN kana_forms kf ON kf.entry_id = kj.entry_id
-            LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
-            GROUP BY kj.text, kf.text
-            ORDER BY kj.text ASC, best_rank ASC, kf.text ASC
-            """
-
-            var statement: OpaquePointer?
-            defer { sqlite3_finalize(statement) }
-
-            try prepare(sql: sql, statement: &statement)
-
-            var readingsBySurface: [String: String] = [:]
-            var stepCode = sqlite3_step(statement)
-
-            while stepCode == SQLITE_ROW {
-                guard
-                    let surfacePointer = sqlite3_column_text(statement, 0),
-                    let readingPointer = sqlite3_column_text(statement, 1)
-                else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
-
-                let surface = String(cString: surfacePointer)
-                let reading = String(cString: readingPointer)
-
-                // Keep first-seen reading because SQL ordering already prioritizes by frequency.
-                if readingsBySurface[surface] == nil {
-                    readingsBySurface[surface] = reading
-                }
-
-                stepCode = sqlite3_step(statement)
-            }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return readingsBySurface
-        }
-    }
-
-    // Builds bounded per-surface reading candidates for lightweight disambiguation heuristics.
-    public func fetchReadingCandidatesBySurface(maxReadingsPerSurface: Int = 8) throws -> [String: [String]] {
-        try withSerializedDatabaseAccess {
-            let sql = """
-            SELECT kj.text AS surface, kf.text AS reading,
-                   MIN(COALESCE(kkl.jpdb_rank, 9999999)) AS best_rank
-            FROM kanji kj
-            JOIN kana_forms kf ON kf.entry_id = kj.entry_id
-            LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
-            GROUP BY kj.text, kf.text
-            ORDER BY kj.text ASC, best_rank ASC, kf.text ASC
-            """
-
-            var statement: OpaquePointer?
-            defer { sqlite3_finalize(statement) }
-
-            try prepare(sql: sql, statement: &statement)
-
-            var candidatesBySurface: [String: [String]] = [:]
-            var seenBySurface: [String: Set<String>] = [:]
-
-            var stepCode = sqlite3_step(statement)
-            while stepCode == SQLITE_ROW {
-                guard
-                    let surfacePointer = sqlite3_column_text(statement, 0),
-                    let readingPointer = sqlite3_column_text(statement, 1)
-                else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
-
-                let surface = String(cString: surfacePointer)
-                let reading = String(cString: readingPointer)
-
-                var seenReadings = seenBySurface[surface, default: Set<String>()]
-                if !seenReadings.contains(reading) {
-                    seenReadings.insert(reading)
-                    seenBySurface[surface] = seenReadings
-
-                    var candidates = candidatesBySurface[surface, default: []]
-                    if candidates.count < maxReadingsPerSurface {
-                        candidates.append(reading)
-                        candidatesBySurface[surface] = candidates
-                    }
-                }
-
-                stepCode = sqlite3_step(statement)
-            }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return candidatesBySurface
         }
     }
 
@@ -485,49 +278,37 @@ public final class DictionaryStore {
         return (entryID: resolvedEntryID, jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
     }
 
-    // Fetches ordered kanji forms for one entry.
-    private func fetchKanjiForms(entryID: Int64) throws -> [String] {
+    // Fetches ordered kanji forms with priority and ke_inf info tags for one entry.
+    private func fetchKanjiForms(entryID: Int64) throws -> [KanjiForm] {
         let sql = """
-        SELECT text
+        SELECT text, priority, info
         FROM kanji
         WHERE entry_id = ?1
         ORDER BY text ASC
         """
 
-        return try fetchOrderedStrings(sql: sql, entryID: entryID)
-    }
-
-    // Fetches ordered kana forms for one entry.
-    private func fetchKanaForms(entryID: Int64) throws -> [String] {
-        let sql = """
-        SELECT text
-        FROM kana_forms
-        WHERE entry_id = ?1
-        ORDER BY text ASC
-        """
-
-        return try fetchOrderedStrings(sql: sql, entryID: entryID)
-    }
-
-    // Executes a single-column ordered text query and removes duplicates while preserving order.
-    private func fetchOrderedStrings(sql: String, entryID: Int64) throws -> [String] {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
 
         try prepare(sql: sql, statement: &statement)
         try bindInt64(entryID, index: 1, statement: statement)
 
-        var items: [String] = []
-        var seen = Set<String>()
+        var items: [KanjiForm] = []
+        var seenTexts = Set<String>()
 
         var stepCode = sqlite3_step(statement)
         while stepCode == SQLITE_ROW {
-            if let textPointer = sqlite3_column_text(statement, 0) {
-                let value = String(cString: textPointer)
-                // Keep first-seen order to mirror SQL ordering while avoiding duplicates.
-                if seen.insert(value).inserted {
-                    items.append(value)
-                }
+            guard let textPointer = sqlite3_column_text(statement, 0) else {
+                stepCode = sqlite3_step(statement)
+                continue
+            }
+
+            let text = String(cString: textPointer)
+            // Keep first-seen order to mirror SQL ordering while avoiding duplicates.
+            if seenTexts.insert(text).inserted {
+                let priority = sqlite3_column_text(statement, 1).map { String(cString: $0) }
+                let info = sqlite3_column_text(statement, 2).map { String(cString: $0) }
+                items.append(KanjiForm(text: text, priority: priority, info: info))
             }
 
             stepCode = sqlite3_step(statement)
@@ -540,10 +321,54 @@ public final class DictionaryStore {
         return items
     }
 
-    // Fetches senses and ordered glosses for one entry from the normalized tables.
+    // Fetches ordered kana forms with priority, re_inf info tags, and nokanji flag for one entry.
+    private func fetchKanaForms(entryID: Int64) throws -> [KanaForm] {
+        let sql = """
+        SELECT text, priority, info, re_nokanji
+        FROM kana_forms
+        WHERE entry_id = ?1
+        ORDER BY text ASC
+        """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        try prepare(sql: sql, statement: &statement)
+        try bindInt64(entryID, index: 1, statement: statement)
+
+        var items: [KanaForm] = []
+        var seenTexts = Set<String>()
+
+        var stepCode = sqlite3_step(statement)
+        while stepCode == SQLITE_ROW {
+            guard let textPointer = sqlite3_column_text(statement, 0) else {
+                stepCode = sqlite3_step(statement)
+                continue
+            }
+
+            let text = String(cString: textPointer)
+            // Keep first-seen order to mirror SQL ordering while avoiding duplicates.
+            if seenTexts.insert(text).inserted {
+                let priority = sqlite3_column_text(statement, 1).map { String(cString: $0) }
+                let info = sqlite3_column_text(statement, 2).map { String(cString: $0) }
+                let nokanji = sqlite3_column_int(statement, 3) != 0
+                items.append(KanaForm(text: text, priority: priority, info: info, nokanji: nokanji))
+            }
+
+            stepCode = sqlite3_step(statement)
+        }
+
+        guard stepCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage())
+        }
+
+        return items
+    }
+
+    // Fetches senses and ordered glosses for one entry, including misc, field, and dialect tags.
     private func fetchSenses(entryID: Int64) throws -> [DictionaryEntrySense] {
         let sql = """
-        SELECT s.id, s.pos, g.gloss
+        SELECT s.id, s.pos, s.misc, s.field, s.dialect, g.gloss
         FROM senses s
         LEFT JOIN glosses g ON g.sense_id = s.id
         WHERE s.entry_id = ?1
@@ -559,6 +384,9 @@ public final class DictionaryStore {
         var senses: [DictionaryEntrySense] = []
         var currentSenseID: Int64?
         var currentPOS: String?
+        var currentMisc: String?
+        var currentField: String?
+        var currentDialect: String?
         var currentGlosses: [String] = []
 
         var stepCode = sqlite3_step(statement)
@@ -566,15 +394,27 @@ public final class DictionaryStore {
 
             let senseID = sqlite3_column_int64(statement, 0)
             let pos = sqlite3_column_text(statement, 1).map { String(cString: $0) }
-            let gloss = sqlite3_column_text(statement, 2).map { String(cString: $0) }
+            let misc = sqlite3_column_text(statement, 2).map { String(cString: $0) }
+            let field = sqlite3_column_text(statement, 3).map { String(cString: $0) }
+            let dialect = sqlite3_column_text(statement, 4).map { String(cString: $0) }
+            let gloss = sqlite3_column_text(statement, 5).map { String(cString: $0) }
 
             if currentSenseID != senseID {
                 // Flush the previous sense before starting the next grouped row set.
                 if currentSenseID != nil {
-                    senses.append(DictionaryEntrySense(pos: currentPOS, glosses: currentGlosses))
+                    senses.append(DictionaryEntrySense(
+                        pos: currentPOS,
+                        misc: currentMisc,
+                        field: currentField,
+                        dialect: currentDialect,
+                        glosses: currentGlosses
+                    ))
                 }
                 currentSenseID = senseID
                 currentPOS = pos
+                currentMisc = misc
+                currentField = field
+                currentDialect = dialect
                 currentGlosses = []
             }
 
@@ -591,123 +431,39 @@ public final class DictionaryStore {
 
         // Flush the final grouped sense after stepping completes.
         if currentSenseID != nil {
-            senses.append(DictionaryEntrySense(pos: currentPOS, glosses: currentGlosses))
+            senses.append(DictionaryEntrySense(
+                pos: currentPOS,
+                misc: currentMisc,
+                field: currentField,
+                dialect: currentDialect,
+                glosses: currentGlosses
+            ))
         }
 
         return senses
     }
 
-    // Fetches KANJIDIC2 metadata for one kanji literal — grade, strokes, JLPT level, on/kun readings, and English meanings.
-    // Returns nil when the character is absent from the kanji_characters table.
-    func fetchKanjiInfo(for literal: String) throws -> KanjiInfo? {
-        try withSerializedDatabaseAccess {
-            let charSQL = """
-            SELECT grade, stroke_count, jlpt_level
-            FROM kanji_characters
-            WHERE literal = ?1
-            LIMIT 1
-            """
-
-            var charStatement: OpaquePointer?
-            defer { sqlite3_finalize(charStatement) }
-            try prepare(sql: charSQL, statement: &charStatement)
-            try bindText(literal, index: 1, statement: charStatement)
-
-            let charStep = sqlite3_step(charStatement)
-            guard charStep == SQLITE_ROW else {
-                return nil
+    // Drives a prepared statement to completion, calling readRow for each SQLITE_ROW result.
+    // Returning nil from readRow skips a malformed row; throwing aborts and propagates the error.
+    // Internal so extension files can reuse the same step/collect loop without repeating it.
+    func stepRows<T>(statement: OpaquePointer?, _ readRow: (OpaquePointer) throws -> T?) throws -> [T] {
+        var results: [T] = []
+        var stepCode = sqlite3_step(statement)
+        while stepCode == SQLITE_ROW {
+            if let stmt = statement, let value = try readRow(stmt) {
+                results.append(value)
             }
-
-            let grade = sqlite3_column_type(charStatement, 0) != SQLITE_NULL
-                ? Int(sqlite3_column_int(charStatement, 0)) : nil
-            let strokeCount = sqlite3_column_type(charStatement, 1) != SQLITE_NULL
-                ? Int(sqlite3_column_int(charStatement, 1)) : nil
-            let jlptLevel = sqlite3_column_type(charStatement, 2) != SQLITE_NULL
-                ? Int(sqlite3_column_int(charStatement, 2)) : nil
-
-            let readingsSQL = """
-            SELECT kr.reading, kr.type
-            FROM kanji_readings kr
-            JOIN kanji_characters kc ON kc.id = kr.kanji_id
-            WHERE kc.literal = ?1 AND kr.type IN ('on', 'kun')
-            ORDER BY kr.type DESC, kr.id ASC
-            """
-
-            var readingsStatement: OpaquePointer?
-            defer { sqlite3_finalize(readingsStatement) }
-            try prepare(sql: readingsSQL, statement: &readingsStatement)
-            try bindText(literal, index: 1, statement: readingsStatement)
-
-            var onReadings: [String] = []
-            var kunReadings: [String] = []
-            var readingsStep = sqlite3_step(readingsStatement)
-
-            while readingsStep == SQLITE_ROW {
-                guard
-                    let readingPointer = sqlite3_column_text(readingsStatement, 0),
-                    let typePointer = sqlite3_column_text(readingsStatement, 1)
-                else {
-                    readingsStep = sqlite3_step(readingsStatement)
-                    continue
-                }
-
-                let reading = String(cString: readingPointer)
-                let type = String(cString: typePointer)
-
-                if type == "on" {
-                    onReadings.append(reading)
-                } else {
-                    kunReadings.append(reading)
-                }
-
-                readingsStep = sqlite3_step(readingsStatement)
-            }
-
-            guard readingsStep == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            let meaningsSQL = """
-            SELECT km.meaning
-            FROM kanji_meanings km
-            JOIN kanji_characters kc ON kc.id = km.kanji_id
-            WHERE kc.literal = ?1 AND km.lang = 'en'
-            ORDER BY km.id ASC
-            """
-
-            var meaningsStatement: OpaquePointer?
-            defer { sqlite3_finalize(meaningsStatement) }
-            try prepare(sql: meaningsSQL, statement: &meaningsStatement)
-            try bindText(literal, index: 1, statement: meaningsStatement)
-
-            var meanings: [String] = []
-            var meaningsStep = sqlite3_step(meaningsStatement)
-
-            while meaningsStep == SQLITE_ROW {
-                if let meaningPointer = sqlite3_column_text(meaningsStatement, 0) {
-                    meanings.append(String(cString: meaningPointer))
-                }
-                meaningsStep = sqlite3_step(meaningsStatement)
-            }
-
-            guard meaningsStep == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return KanjiInfo(
-                literal: literal,
-                grade: grade,
-                strokeCount: strokeCount,
-                jlptLevel: jlptLevel,
-                onReadings: onReadings,
-                kunReadings: kunReadings,
-                meanings: meanings
-            )
+            stepCode = sqlite3_step(statement)
         }
+        guard stepCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage())
+        }
+        return results
     }
 
     // Compiles SQL into a prepared statement bound to the active connection.
-    private func prepare(sql: String, statement: inout OpaquePointer?) throws {
+    // Internal so extension files can prepare their own queries through the same connection.
+    func prepare(sql: String, statement: inout OpaquePointer?) throws {
         let code = sqlite3_prepare_v2(db, sql, -1, &statement, nil)
         guard code == SQLITE_OK else {
             throw DictionarySQLiteError.prepareStatement(sql: sql, message: errorMessage())
@@ -715,7 +471,8 @@ public final class DictionaryStore {
     }
 
     // Binds a text parameter to a prepared statement index.
-    private func bindText(_ text: String, index: Int32, statement: OpaquePointer?) throws {
+    // Internal so extension files can bind parameters for their own queries.
+    func bindText(_ text: String, index: Int32, statement: OpaquePointer?) throws {
         let code = sqlite3_bind_text(statement, index, text, -1, sqliteTransient)
         guard code == SQLITE_OK else {
             throw DictionarySQLiteError.bindParameter(message: errorMessage())
@@ -723,7 +480,8 @@ public final class DictionaryStore {
     }
 
     // Binds a 64-bit integer parameter to a prepared statement index.
-    private func bindInt64(_ value: Int64, index: Int32, statement: OpaquePointer?) throws {
+    // Internal so extension files can bind parameters for their own queries.
+    func bindInt64(_ value: Int64, index: Int32, statement: OpaquePointer?) throws {
         let code = sqlite3_bind_int64(statement, index, value)
         guard code == SQLITE_OK else {
             throw DictionarySQLiteError.bindParameter(message: errorMessage())
@@ -731,7 +489,8 @@ public final class DictionaryStore {
     }
 
     // Reads the most recent sqlite error message from the active connection.
-    private func errorMessage() -> String {
+    // Internal so extension files can surface errors from their own queries.
+    func errorMessage() -> String {
         guard let db else { return "Database is not available" }
         return String(cString: sqlite3_errmsg(db))
     }
