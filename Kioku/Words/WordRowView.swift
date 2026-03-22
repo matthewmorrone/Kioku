@@ -11,11 +11,21 @@ struct WordRowView: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Text(word.surface)
                 .font(.headline)
 
-            Spacer()
+            Spacer(minLength: 0)
+
+            Button {
+                onRemove()
+            } label: {
+                Image(systemName: "star.fill")
+                    .foregroundStyle(Color.yellow)
+                    .font(.system(size: 16, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Unsave")
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

@@ -100,7 +100,13 @@ extension SegmentLookupSheet {
             }
 
             // Updates the subtitle button text, color, tappability, and reset button visibility for the current index.
+            // Pure-kana surfaces have no distinct reading to display; hide the subtitle entirely for them.
             func syncSubtitleToCurrentIndex() {
+                guard showCustomSlot || isOnCustomSlot() else {
+                    readingSubtitleLabel.isHidden = true
+                    readingSubtitleLabel.isUserInteractionEnabled = false
+                    return
+                }
                 if isOnCustomSlot() {
                     let title = customReading ?? "Custom…"
                     let color: UIColor = customReading != nil ? .secondaryLabel : .tertiaryLabel
@@ -497,9 +503,24 @@ extension SegmentLookupSheet {
                     subview.removeFromSuperview()
                 }
 
+                // Section: Lemma — shown only when the surface is an inflected form with a distinct base.
+                let lemmaInfo = self.currentSheetLemmaInfo
+                if let lemmaInfo {
+                    middleContentStack.addArrangedSubview(makeSectionHeader("Lemma"))
+                    let lemmaLabel = UILabel()
+                    lemmaLabel.text = lemmaInfo.lemma
+                    lemmaLabel.font = .systemFont(ofSize: 16, weight: .medium)
+                    lemmaLabel.textColor = .label
+                    middleContentStack.addArrangedSubview(lemmaLabel)
+                    if lemmaInfo.chain.isEmpty == false {
+                        middleContentStack.addArrangedSubview(makeBodyLabel(lemmaInfo.chain.joined(separator: " → ")))
+                    }
+                }
+
                 // Section 1: Readings annotated with per-reading frequency data.
+                // Hidden when there is only one candidate — no choice to present.
                 let readings = self.currentSheetUniqueReadings
-                if readings.isEmpty == false {
+                if readings.count > 1 {
                     middleContentStack.addArrangedSubview(makeSectionHeader("Readings"))
                     let frequencyByReading = self.currentSheetFrequencyByReading
                     let annotatedReadings = readings.map { reading -> String in
@@ -512,9 +533,10 @@ extension SegmentLookupSheet {
                 }
 
                 // Section 3: Valid segmentation paths through the sublattice DAG, with per-segment frequency.
+                // The single-segment (unsplit) path is excluded — it adds no split information.
                 let sublatticeEdges = self.currentSheetSublatticeEdges
                 if sublatticeEdges.isEmpty == false {
-                    let paths = self.sublatticeValidPaths(from: sublatticeEdges).reversed()
+                    let paths = self.sublatticeValidPaths(from: sublatticeEdges).reversed().filter { $0.count > 1 }
                     if paths.isEmpty == false {
                         middleContentStack.addArrangedSubview(makeSectionHeader("Paths"))
 
@@ -539,12 +561,7 @@ extension SegmentLookupSheet {
                     }
                 }
 
-                // Section 4: Lexicon method debug dump
-                let debugInfo = self.currentSheetLexiconDebugInfo
-                if debugInfo.isEmpty == false {
-                    middleContentStack.addArrangedSubview(makeSectionHeader("Lexicon"))
-                    middleContentStack.addArrangedSubview(makeBodyLabel(debugInfo))
-                }
+
             }
 
             // Register reading navigation actions here so updateMiddleContent is already in scope.
@@ -904,9 +921,9 @@ extension SegmentLookupSheet {
                     let fittedDetent = UISheetPresentationController.Detent.custom(identifier: fittedDetentIdentifier) { context in
                         min(currentSheetPreferredHeight, context.maximumDetentValue)
                     }
-                    sheetPresentationController.detents = [fittedDetent]
+                    sheetPresentationController.detents = [fittedDetent, .large()]
                     sheetPresentationController.selectedDetentIdentifier = fittedDetentIdentifier
-                    sheetPresentationController.largestUndimmedDetentIdentifier = fittedDetentIdentifier
+                    sheetPresentationController.largestUndimmedDetentIdentifier = .large
                 } else {
                     sheetPresentationController.detents = [.medium()]
                     sheetPresentationController.largestUndimmedDetentIdentifier = .medium
@@ -926,6 +943,7 @@ extension SegmentLookupSheet {
         currentSheetSublatticeEdges = sheetSublatticeProvider?() ?? []
         currentSheetLexiconDebugInfo = sheetLexiconDebugProvider?() ?? ""
         currentSheetFrequencyByReading = sheetFrequencyProvider?()
+        currentSheetLemmaInfo = sheetLemmaInfoProvider?()
     }
 
     // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.

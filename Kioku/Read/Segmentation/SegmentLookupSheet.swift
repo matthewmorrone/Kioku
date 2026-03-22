@@ -17,6 +17,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var segmentRangeProvider: (() -> NSRange?)?
     var sheetLexiconDebugProvider: (() -> String)?
     var sheetFrequencyProvider: (() -> [String: FrequencyData]?)?
+    // Provides lemma and inflection chain when the current surface is an inflected form distinct from its base.
+    var sheetLemmaInfoProvider: (() -> (lemma: String, chain: [String])?)?
     // Returns the currently persisted reading override for the selected segment, if any.
     var activeReadingOverrideProvider: (() -> String?)?
     // Looks up frequency data for any surface in the note — used to annotate sublattice paths.
@@ -25,6 +27,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var currentSheetSublatticeEdges: [LatticeEdge] = []
     var currentSheetLexiconDebugInfo: String = ""
     var currentSheetFrequencyByReading: [String: FrequencyData]? = nil
+    var currentSheetLemmaInfo: (lemma: String, chain: [String])? = nil
     var updatePresentedSheetSelection: ((
         String,
         String?,
@@ -169,6 +172,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         segmentRangeProvider: (() -> NSRange?)? = nil,
         sheetLexiconDebugProvider: (() -> String)? = nil,
         sheetFrequencyProvider: (() -> [String: FrequencyData]?)? = nil,
+        sheetLemmaInfoProvider: (() -> (lemma: String, chain: [String])?)? = nil,
         onReadingSelected: ((String) -> Void)? = nil,
         onReadingReset: (() -> Void)? = nil,
         activeReadingOverrideProvider: (() -> String?)? = nil,
@@ -180,6 +184,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.onReadingReset = onReadingReset
         self.activeReadingOverrideProvider = activeReadingOverrideProvider
         self.pathSegmentFrequencyProvider = pathSegmentFrequencyProvider
+        self.sheetLemmaInfoProvider = sheetLemmaInfoProvider
         if let updatePresentedSheetSelection {
             self.onDismiss = onDismiss
             updatePresentedSheetSelection(
@@ -258,12 +263,14 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             segmentRangeProvider = nil
             sheetLexiconDebugProvider = nil
             sheetFrequencyProvider = nil
+            sheetLemmaInfoProvider = nil
             activeReadingOverrideProvider = nil
             pathSegmentFrequencyProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""
             currentSheetFrequencyByReading = nil
+            currentSheetLemmaInfo = nil
             updatePresentedSheetSelection = nil
             completion?()
             return
@@ -282,11 +289,13 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         segmentRangeProvider = nil
         sheetLexiconDebugProvider = nil
         sheetFrequencyProvider = nil
+        sheetLemmaInfoProvider = nil
         activeReadingOverrideProvider = nil
         currentSheetUniqueReadings = []
         currentSheetSublatticeEdges = []
         currentSheetLexiconDebugInfo = ""
         currentSheetFrequencyByReading = nil
+        currentSheetLemmaInfo = nil
         updatePresentedSheetSelection = nil
     }
 
@@ -306,12 +315,14 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             segmentRangeProvider = nil
             sheetLexiconDebugProvider = nil
             sheetFrequencyProvider = nil
+            sheetLemmaInfoProvider = nil
             activeReadingOverrideProvider = nil
             pathSegmentFrequencyProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""
             currentSheetFrequencyByReading = nil
+            currentSheetLemmaInfo = nil
             updatePresentedSheetSelection = nil
             fireOnDismissIfNeeded()
         }

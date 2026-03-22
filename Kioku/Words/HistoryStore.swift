@@ -28,6 +28,12 @@ final class HistoryStore: ObservableObject {
         persist()
     }
 
+    // Removes one entry by canonical entry ID.
+    func remove(id: Int64) {
+        entries.removeAll { $0.canonicalEntryID == id }
+        persist()
+    }
+
     // Removes all history entries.
     func clear() {
         entries = []
