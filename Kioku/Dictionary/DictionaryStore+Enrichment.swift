@@ -21,38 +21,30 @@ extension DictionaryStore {
             try bindText(word, index: 1, statement: statement)
             try bindText(kana, index: 2, statement: statement)
 
-            var results: [PitchAccent] = []
-            var stepCode = sqlite3_step(statement)
-
-            while stepCode == SQLITE_ROW {
+            return try stepRows(statement: statement) { stmt in
                 guard
-                    let wordPointer = sqlite3_column_text(statement, 0),
-                    let kanaPointer = sqlite3_column_text(statement, 1)
+                    let wordPointer = sqlite3_column_text(stmt, 0),
+                    let kanaPointer = sqlite3_column_text(stmt, 1)
+                else { return nil }
+
+                // accent and morae are NOT NULL in the schema; treat a NULL as data corruption.
+                guard
+                    sqlite3_column_type(stmt, 3) != SQLITE_NULL,
+                    sqlite3_column_type(stmt, 4) != SQLITE_NULL
                 else {
-                    stepCode = sqlite3_step(statement)
-                    continue
+                    throw DictionarySQLiteError.corruptRow(
+                        message: "NULL accent or morae in pitch_accent for word=\(word), kana=\(kana)"
+                    )
                 }
 
-                let kind = sqlite3_column_text(statement, 2).map { String(cString: $0) }
-                let accent = Int(sqlite3_column_int(statement, 3))
-                let morae = Int(sqlite3_column_int(statement, 4))
-
-                results.append(PitchAccent(
+                return PitchAccent(
                     word: String(cString: wordPointer),
                     kana: String(cString: kanaPointer),
-                    kind: kind,
-                    accent: accent,
-                    morae: morae
-                ))
-
-                stepCode = sqlite3_step(statement)
+                    kind: sqlite3_column_text(stmt, 2).map { String(cString: $0) },
+                    accent: Int(sqlite3_column_int(stmt, 3)),
+                    morae: Int(sqlite3_column_int(stmt, 4))
+                )
             }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return results
         }
     }
 
@@ -74,31 +66,17 @@ extension DictionaryStore {
             try prepare(sql: sql, statement: &statement)
             try bindText("%\(surface)%", index: 1, statement: statement)
 
-            var results: [SentencePair] = []
-            var stepCode = sqlite3_step(statement)
-
-            while stepCode == SQLITE_ROW {
+            return try stepRows(statement: statement) { stmt in
                 guard
-                    let japanesePointer = sqlite3_column_text(statement, 0),
-                    let englishPointer = sqlite3_column_text(statement, 1)
-                else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
+                    let japanesePointer = sqlite3_column_text(stmt, 0),
+                    let englishPointer = sqlite3_column_text(stmt, 1)
+                else { return nil }
 
-                results.append(SentencePair(
+                return SentencePair(
                     japanese: String(cString: japanesePointer),
                     english: String(cString: englishPointer)
-                ))
-
-                stepCode = sqlite3_step(statement)
+                )
             }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return results
         }
     }
 
@@ -120,33 +98,20 @@ extension DictionaryStore {
             try prepare(sql: sql, statement: &statement)
             try bindInt64(entryID, index: 1, statement: statement)
 
-            var results: [SenseRestriction] = []
-            var stepCode = sqlite3_step(statement)
-
-            while stepCode == SQLITE_ROW {
-                let senseOrderIndex = Int(sqlite3_column_int(statement, 0))
+            return try stepRows(statement: statement) { stmt in
+                let senseOrderIndex = Int(sqlite3_column_int(stmt, 0))
                 guard
-                    let typePointer = sqlite3_column_text(statement, 1),
-                    let valuePointer = sqlite3_column_text(statement, 2)
-                else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
+                    let typeStr = sqlite3_column_text(stmt, 1).map({ String(cString: $0) }),
+                    let type = SenseRestrictionKind(rawValue: typeStr),
+                    let valuePointer = sqlite3_column_text(stmt, 2)
+                else { return nil }
 
-                results.append(SenseRestriction(
+                return SenseRestriction(
                     senseOrderIndex: senseOrderIndex,
-                    type: String(cString: typePointer),
+                    type: type,
                     value: String(cString: valuePointer)
-                ))
-
-                stepCode = sqlite3_step(statement)
+                )
             }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return results
         }
     }
 
@@ -167,33 +132,20 @@ extension DictionaryStore {
             try prepare(sql: sql, statement: &statement)
             try bindInt64(entryID, index: 1, statement: statement)
 
-            var results: [SenseReference] = []
-            var stepCode = sqlite3_step(statement)
-
-            while stepCode == SQLITE_ROW {
-                let senseOrderIndex = Int(sqlite3_column_int(statement, 0))
+            return try stepRows(statement: statement) { stmt in
+                let senseOrderIndex = Int(sqlite3_column_int(stmt, 0))
                 guard
-                    let typePointer = sqlite3_column_text(statement, 1),
-                    let targetPointer = sqlite3_column_text(statement, 2)
-                else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
+                    let typeStr = sqlite3_column_text(stmt, 1).map({ String(cString: $0) }),
+                    let type = SenseReferenceKind(rawValue: typeStr),
+                    let targetPointer = sqlite3_column_text(stmt, 2)
+                else { return nil }
 
-                results.append(SenseReference(
+                return SenseReference(
                     senseOrderIndex: senseOrderIndex,
-                    type: String(cString: typePointer),
+                    type: type,
                     target: String(cString: targetPointer)
-                ))
-
-                stepCode = sqlite3_step(statement)
+                )
             }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return results
         }
     }
 
@@ -214,36 +166,24 @@ extension DictionaryStore {
             try prepare(sql: sql, statement: &statement)
             try bindInt64(entryID, index: 1, statement: statement)
 
-            var results: [LoanwordSource] = []
-            var stepCode = sqlite3_step(statement)
+            return try stepRows(statement: statement) { stmt in
+                let senseOrderIndex = Int(sqlite3_column_int(stmt, 0))
+                guard let langPointer = sqlite3_column_text(stmt, 1) else { return nil }
 
-            while stepCode == SQLITE_ROW {
-                let senseOrderIndex = Int(sqlite3_column_int(statement, 0))
-                guard let langPointer = sqlite3_column_text(statement, 1) else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
+                let wasei = sqlite3_column_int(stmt, 2) != 0
+                // Fall back to .part when the column is NULL or contains an unrecognised value.
+                let lsTypeStr = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? "part"
+                let lsType = LoanwordSourceType(rawValue: lsTypeStr) ?? .part
+                let content = sqlite3_column_text(stmt, 4).map { String(cString: $0) }
 
-                let wasei = sqlite3_column_int(statement, 2) != 0
-                let lsType = sqlite3_column_text(statement, 3).map { String(cString: $0) } ?? "part"
-                let content = sqlite3_column_text(statement, 4).map { String(cString: $0) }
-
-                results.append(LoanwordSource(
+                return LoanwordSource(
                     senseOrderIndex: senseOrderIndex,
                     lang: String(cString: langPointer),
                     wasei: wasei,
                     lsType: lsType,
                     content: content
-                ))
-
-                stepCode = sqlite3_step(statement)
+                )
             }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return results
         }
     }
 
@@ -288,33 +228,18 @@ extension DictionaryStore {
             try prepare(sql: readingsSQL, statement: &readingsStatement)
             try bindText(literal, index: 1, statement: readingsStatement)
 
-            var onReadings: [String] = []
-            var kunReadings: [String] = []
-            var readingsStep = sqlite3_step(readingsStatement)
-
-            while readingsStep == SQLITE_ROW {
+            let readingPairs = try stepRows(statement: readingsStatement) { stmt -> (String, String)? in
                 guard
-                    let readingPointer = sqlite3_column_text(readingsStatement, 0),
-                    let typePointer = sqlite3_column_text(readingsStatement, 1)
-                else {
-                    readingsStep = sqlite3_step(readingsStatement)
-                    continue
-                }
-
-                let reading = String(cString: readingPointer)
-                let type = String(cString: typePointer)
-
-                if type == "on" {
-                    onReadings.append(reading)
-                } else {
-                    kunReadings.append(reading)
-                }
-
-                readingsStep = sqlite3_step(readingsStatement)
+                    let readingPointer = sqlite3_column_text(stmt, 0),
+                    let typePointer = sqlite3_column_text(stmt, 1)
+                else { return nil }
+                return (String(cString: readingPointer), String(cString: typePointer))
             }
 
-            guard readingsStep == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+            var onReadings: [String] = []
+            var kunReadings: [String] = []
+            for (reading, type) in readingPairs {
+                if type == "on" { onReadings.append(reading) } else { kunReadings.append(reading) }
             }
 
             let meaningsSQL = """
@@ -330,18 +255,8 @@ extension DictionaryStore {
             try prepare(sql: meaningsSQL, statement: &meaningsStatement)
             try bindText(literal, index: 1, statement: meaningsStatement)
 
-            var meanings: [String] = []
-            var meaningsStep = sqlite3_step(meaningsStatement)
-
-            while meaningsStep == SQLITE_ROW {
-                if let meaningPointer = sqlite3_column_text(meaningsStatement, 0) {
-                    meanings.append(String(cString: meaningPointer))
-                }
-                meaningsStep = sqlite3_step(meaningsStatement)
-            }
-
-            guard meaningsStep == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
+            let meanings = try stepRows(statement: meaningsStatement) { stmt -> String? in
+                sqlite3_column_text(stmt, 0).map { String(cString: $0) }
             }
 
             return KanjiInfo(
