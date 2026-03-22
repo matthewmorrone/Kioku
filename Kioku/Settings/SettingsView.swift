@@ -319,6 +319,7 @@ private struct ParticleTagEditor: View {
         }
     }
 
+    // Renders a single tag pill with a destructive remove button.
     private func tagChip(for tag: String) -> some View {
         HStack(spacing: 4) {
             Text(tag)
@@ -337,6 +338,7 @@ private struct ParticleTagEditor: View {
         .overlay(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: 1))
     }
 
+    // Trims and appends the draft tag to the list, then clears the draft field.
     private func commitDraft() {
         let normalized = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalized.isEmpty == false else { return }

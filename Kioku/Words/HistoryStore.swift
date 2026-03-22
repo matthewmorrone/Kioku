@@ -34,6 +34,7 @@ final class HistoryStore: ObservableObject {
         persist()
     }
 
+    // Decodes persisted history entries from UserDefaults on first access.
     private func load() {
         guard
             let data = UserDefaults.standard.data(forKey: storageKey),
@@ -42,6 +43,7 @@ final class HistoryStore: ObservableObject {
         entries = decoded
     }
 
+    // Encodes the current entries array and writes it to UserDefaults.
     private func persist() {
         guard let data = try? JSONEncoder().encode(entries) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)

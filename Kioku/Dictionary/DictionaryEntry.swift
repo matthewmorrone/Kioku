@@ -7,8 +7,8 @@ public struct DictionaryEntry: Equatable {
     // Zipf frequency score from wordfreq for the matched surface. Nil if unscored.
     public let wordfreqZipf: Double?
     public let matchedSurface: String
-    public let kanjiForms: [String]
-    public let kanaForms: [String]
+    public let kanjiForms: [KanjiForm]
+    public let kanaForms: [KanaForm]
     public let senses: [DictionaryEntrySense]
 
     public init(
@@ -16,8 +16,8 @@ public struct DictionaryEntry: Equatable {
         jpdbRank: Int?,
         wordfreqZipf: Double?,
         matchedSurface: String,
-        kanjiForms: [String],
-        kanaForms: [String],
+        kanjiForms: [KanjiForm],
+        kanaForms: [KanaForm],
         senses: [DictionaryEntrySense]
     ) {
         // Captures a fully materialized entry snapshot returned by dictionary lookup.

@@ -63,6 +63,7 @@ struct WordsBatchListView: View {
     // Returns whether all, some, or none of the selected words are in this list.
     private enum MembershipState { case all, some, none }
 
+    // Returns whether all, some, or none of the currently selected words belong to the given list.
     private func membershipState(for listID: UUID) -> MembershipState {
         let selectedWords = wordsStore.words.filter { selectedWordIDs.contains($0.canonicalEntryID) }
         let memberCount = selectedWords.filter { $0.wordListIDs.contains(listID) }.count
