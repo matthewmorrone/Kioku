@@ -1,5 +1,9 @@
 # Kioku — Claude Code Instructions
 
+## Workflow Constraints
+
+- Never create git worktrees. Work directly on the current branch.
+
 ## Coding Invariants
 
 ### 1. Loop Safety
