@@ -944,6 +944,8 @@ extension SegmentLookupSheet {
         currentSheetLexiconDebugInfo = sheetLexiconDebugProvider?() ?? ""
         currentSheetFrequencyByReading = sheetFrequencyProvider?()
         currentSheetLemmaInfo = sheetLemmaInfoProvider?()
+        currentSheetWordDisplayData = sheetWordDisplayDataProvider?()
+        currentSheetWordComponents = sheetWordComponentsProvider?() ?? []
     }
 
     // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.

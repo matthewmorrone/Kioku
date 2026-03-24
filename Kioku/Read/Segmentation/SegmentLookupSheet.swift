@@ -23,6 +23,16 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var activeReadingOverrideProvider: (() -> String?)?
     // Looks up frequency data for any surface in the note — used to annotate sublattice paths.
     var pathSegmentFrequencyProvider: ((String) -> [String: FrequencyData]?)?
+    // Provides bundled display data (entry + pitch accents + sentences) for the current segment.
+    var sheetWordDisplayDataProvider: (() -> WordDisplayData?)?
+    var currentSheetWordDisplayData: WordDisplayData? = nil
+    // Returns true when the current segment's resolved lemma is already saved.
+    var sheetIsSavedProvider: (() -> Bool)?
+    // Toggles the saved state for the current segment's resolved lemma.
+    var sheetSaveToggle: (() -> Void)?
+    // Provides tappable word components: (surface, first gloss) pairs.
+    var sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)?
+    var currentSheetWordComponents: [(surface: String, gloss: String?)] = []
     var currentSheetUniqueReadings: [String] = []
     var currentSheetSublatticeEdges: [LatticeEdge] = []
     var currentSheetLexiconDebugInfo: String = ""
@@ -177,6 +187,10 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         onReadingReset: (() -> Void)? = nil,
         activeReadingOverrideProvider: (() -> String?)? = nil,
         pathSegmentFrequencyProvider: ((String) -> [String: FrequencyData]?)? = nil,
+        sheetWordDisplayDataProvider: (() -> WordDisplayData?)? = nil,
+        sheetIsSavedProvider: (() -> Bool)? = nil,
+        sheetSaveToggle: (() -> Void)? = nil,
+        sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
         // Always update the reading callbacks so re-taps on a different segment get the right closures.
@@ -185,6 +199,10 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.activeReadingOverrideProvider = activeReadingOverrideProvider
         self.pathSegmentFrequencyProvider = pathSegmentFrequencyProvider
         self.sheetLemmaInfoProvider = sheetLemmaInfoProvider
+        self.sheetWordDisplayDataProvider = sheetWordDisplayDataProvider
+        self.sheetIsSavedProvider = sheetIsSavedProvider
+        self.sheetSaveToggle = sheetSaveToggle
+        self.sheetWordComponentsProvider = sheetWordComponentsProvider
         if let updatePresentedSheetSelection {
             self.onDismiss = onDismiss
             updatePresentedSheetSelection(
@@ -266,11 +284,17 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             sheetLemmaInfoProvider = nil
             activeReadingOverrideProvider = nil
             pathSegmentFrequencyProvider = nil
+            sheetWordDisplayDataProvider = nil
+            sheetIsSavedProvider = nil
+            sheetSaveToggle = nil
+            sheetWordComponentsProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""
             currentSheetFrequencyByReading = nil
             currentSheetLemmaInfo = nil
+            currentSheetWordDisplayData = nil
+            currentSheetWordComponents = []
             updatePresentedSheetSelection = nil
             completion?()
             return
@@ -291,11 +315,17 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetFrequencyProvider = nil
         sheetLemmaInfoProvider = nil
         activeReadingOverrideProvider = nil
+        sheetWordDisplayDataProvider = nil
+        sheetIsSavedProvider = nil
+        sheetSaveToggle = nil
+        sheetWordComponentsProvider = nil
         currentSheetUniqueReadings = []
         currentSheetSublatticeEdges = []
         currentSheetLexiconDebugInfo = ""
         currentSheetFrequencyByReading = nil
         currentSheetLemmaInfo = nil
+        currentSheetWordDisplayData = nil
+        currentSheetWordComponents = []
         updatePresentedSheetSelection = nil
     }
 
@@ -318,11 +348,17 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             sheetLemmaInfoProvider = nil
             activeReadingOverrideProvider = nil
             pathSegmentFrequencyProvider = nil
+            sheetWordDisplayDataProvider = nil
+            sheetIsSavedProvider = nil
+            sheetSaveToggle = nil
+            sheetWordComponentsProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
             currentSheetLexiconDebugInfo = ""
             currentSheetFrequencyByReading = nil
             currentSheetLemmaInfo = nil
+            currentSheetWordDisplayData = nil
+            currentSheetWordComponents = []
             updatePresentedSheetSelection = nil
             fireOnDismissIfNeeded()
         }
@@ -396,5 +432,13 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         }
 
         return topController
+    }
+
+    // Formats one dictionary sense as "pos — gloss1; gloss2" for compact inline display.
+    func formatSense(_ sense: DictionaryEntrySense) -> String {
+        var parts: [String] = []
+        if let pos = sense.pos, pos.isEmpty == false { parts.append(pos) }
+        parts.append(sense.glosses.joined(separator: "; "))
+        return parts.joined(separator: " — ")
     }
 }
