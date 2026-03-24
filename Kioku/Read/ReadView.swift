@@ -9,6 +9,7 @@ struct ReadView: View {
     @Binding var shouldActivateEditModeOnLoad: Bool
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
+    @EnvironmentObject var wordsStore: WordsStore
     let segmenter: Segmenter
     let dictionaryStore: DictionaryStore?
     let lexicon: Lexicon?
@@ -80,6 +81,22 @@ struct ReadView: View {
     @State var isShowingLLMCorrectionError = false
     @State var llmCorrectionErrorMessage = ""
     @State var llmCorrectionTask: Task<Void, Never>?
+    @State var pendingLLMChangedLocations: Set<Int> = []
+    // Subset of pendingLLMChangedLocations where only the furigana reading changed (surface unchanged).
+    @State var pendingLLMChangedReadingLocations: Set<Int> = []
+    @State var pendingLLMChangesByLocation: [Int: String] = [:]
+    // Full segment snapshot captured just before applying an LLM result, used to revert individual changes.
+    @State var preLLMSegmentEntries: [LLMSegmentEntry] = []
+    @State var hasPendingLLMChanges = false
+    @State var llmChangePopoverText: String = ""
+    @State var llmChangePopoverLocation: Int? = nil
+    @State var isShowingLLMChangePopover = false
+    @State var isShowingLLMRerunConfirm = false
+    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false
+    @AppStorage(LLMSettings.stubResponseKey) private var llmStubResponse = ""
+    @AppStorage(LLMSettings.openAIKeyStorageKey) private var llmOpenAIKey = ""
+    @AppStorage(LLMSettings.claudeKeyStorageKey) private var llmClaudeKey = ""
+    @Environment(\.scenePhase) private var scenePhase
 
     // Initializes the read screen with the active note selection and shared read resources.
     init(
@@ -109,6 +126,16 @@ struct ReadView: View {
     }
 
     let prefersSheetDirectSegmentActions = true
+
+    // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM setting changes.
+    private var isLLMConfigured: Bool {
+        if llmUseLLM {
+            let key = llmOpenAIKey.isEmpty == false ? llmOpenAIKey : llmClaudeKey
+            return key.isEmpty == false
+        } else {
+            return llmStubResponse.isEmpty == false
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -263,6 +290,13 @@ struct ReadView: View {
             // Flushes any pending edit persistence before leaving the read screen.
             flushPendingNotePersistenceIfNeeded()
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Flushes pending edits when the app moves to background so in-flight debounce tasks
+            // are not lost when the process is killed (e.g. during a Xcode rebuild).
+            if newPhase == .background {
+                flushPendingNotePersistenceIfNeeded()
+            }
+        }
         .alert("OCR Import Failed", isPresented: ocrImportErrorPresented) {
             Button("OK", role: .cancel) {
                 ocrImportErrorMessage = ""
@@ -297,6 +331,29 @@ struct ReadView: View {
             }
         } message: {
             Text(llmCorrectionErrorMessage)
+        }
+        .alert("", isPresented: $isShowingLLMChangePopover) {
+            Button("Confirm") {
+                if let loc = llmChangePopoverLocation {
+                    confirmLLMChange(at: loc)
+                }
+            }
+            Button("Undo", role: .destructive) {
+                if let loc = llmChangePopoverLocation {
+                    rejectLLMChange(at: loc)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(llmChangePopoverText)
+        }
+        .alert("Re-run AI Correction?", isPresented: $isShowingLLMRerunConfirm) {
+            Button("Re-run", role: .destructive) {
+                requestLLMCorrection()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This note already has corrections applied. Re-running will replace them.")
         }
     }
 
@@ -348,6 +405,8 @@ struct ReadView: View {
                     isColorAlternationEnabled: isColorAlternationEnabled,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                     unknownSegmentLocations: unknownSegmentLocations,
+                    changedSegmentLocations: pendingLLMChangedLocations,
+                    changedReadingLocations: pendingLLMChangedReadingLocations,
                     segmenter: segmenter,
                     externalContentOffsetY: sharedScrollOffsetY,
                     onScrollOffsetYChanged: { newOffsetY in
@@ -422,11 +481,18 @@ struct ReadView: View {
     }
 
     // Triggers an LLM correction request for the current note's segmentation and readings.
+    // While changes are pending, acts as a confirm button (sparkles + checkmark overlay).
     // Only enabled when a provider key is configured in Settings and the note is in read mode.
     private var llmCorrectionButton: some View {
         Button {
             if isRequestingLLMCorrection {
                 cancelLLMCorrection()
+            } else if hasPendingLLMChanges {
+                // Sparkle+checkmark = confirm all pending changes.
+                confirmLLMChanges()
+            } else if segments != nil {
+                // Note already has corrections applied — confirm before re-running.
+                isShowingLLMRerunConfirm = true
             } else {
                 requestLLMCorrection()
             }
@@ -440,39 +506,59 @@ struct ReadView: View {
                         Image(systemName: "stop.fill")
                             .font(.system(size: 7, weight: .semibold))
                     }
+                } else if hasPendingLLMChanges {
+                    // Sparkles with a checkmark badge signals "confirm these AI changes".
+                    ZStack(alignment: .bottomTrailing) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 16, weight: .semibold))
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .offset(x: 4, y: 4)
+                    }
                 } else {
                     Image(systemName: "sparkles")
                         .font(.system(size: 16, weight: .semibold))
                 }
             }
-            .foregroundStyle(LLMSettings.isConfigured() ? Color.accentColor : Color.secondary.opacity(0.4))
+            .foregroundStyle(hasPendingLLMChanges ? Color.green : Color.accentColor)
             .frame(width: 36, height: 36)
-            .background(Circle().fill(Color(.tertiarySystemFill)))
+            .background(Circle().fill(hasPendingLLMChanges ? Color.green.opacity(0.15) : Color(.tertiarySystemFill)))
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(isEditMode || LLMSettings.isConfigured() == false)
-        .opacity(isEditMode || LLMSettings.isConfigured() == false ? 0.5 : 1.0)
-        .accessibilityLabel(isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction")
+        .disabled(isEditMode)
+        .opacity(isEditMode ? 0.5 : 1.0)
+        .accessibilityLabel(hasPendingLLMChanges ? "Confirm AI Changes" : (isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
     }
 
     // Resets custom segment segmentation back to computed segmentation.
+    // While LLM changes are pending, shows a red X badge to signal "reject all AI changes".
     private var resetButton: some View {
         Button {
             resetSegmentationToComputed()
         } label: {
-            Image(systemName: "arrow.counterclockwise")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(segments == nil ? Color.secondary.opacity(0.5) : Color.secondary)
-                .frame(width: 36, height: 36)
-                .background(
-                    Circle()
-                        .fill(Color(.tertiarySystemFill))
-                )
+            Group {
+                if hasPendingLLMChanges {
+                    ZStack(alignment: .bottomTrailing) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 16, weight: .semibold))
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .offset(x: 4, y: 4)
+                    }
+                    .foregroundStyle(Color.red)
+                } else {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(segments == nil ? Color.secondary.opacity(0.5) : Color.secondary)
+                }
+            }
+            .frame(width: 36, height: 36)
+            .background(Circle().fill(hasPendingLLMChanges ? Color.red.opacity(0.15) : Color(.tertiarySystemFill)))
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(segments == nil || isEditMode)
-        .opacity(segments == nil || isEditMode ? 0.5 : 0.7)
-        .accessibilityLabel("Reset Segment Segmentation")
+        .disabled((segments == nil && hasPendingLLMChanges == false) || isEditMode)
+        .opacity((segments == nil && hasPendingLLMChanges == false) || isEditMode ? 0.5 : 0.7)
+        .accessibilityLabel(hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
     }
 
     // Opens the segment list screen for split/merge actions synced to the paste area.
