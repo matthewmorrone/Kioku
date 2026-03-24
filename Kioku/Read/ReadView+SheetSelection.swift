@@ -320,4 +320,15 @@ extension ReadView {
             selectedEnd: selectedEnd
         )
     }
+
+    // Returns the merged surface text for the currently selected segment bounds, or nil when nothing is selected.
+    func currentSelectedSurface() -> String? {
+        guard let bounds = selectedBounds,
+              bounds.lowerBound < segmentEdges.count,
+              bounds.upperBound < segmentEdges.count else { return nil }
+        let start = segmentEdges[bounds.lowerBound].start
+        let end = segmentEdges[bounds.upperBound].end
+        let surface = String(text[start..<end])
+        return surface.isEmpty ? nil : surface
+    }
 }
