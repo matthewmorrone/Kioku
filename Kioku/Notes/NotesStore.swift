@@ -4,16 +4,10 @@ import Combine
 @MainActor
 final class NotesStore: ObservableObject {
     @Published var notes: [Note] {
-        didSet {
-            clearPendingReadEditorPersistState()
-            save()
-        }
+        didSet { save() }
     }
 
     private let storageKey = "kioku.notes.v1"
-    private let persistenceQueue = DispatchQueue(label: "Kioku.NotesStore.persistence", qos: .utility)
-    private var pendingReadEditorPersistWorkItem: DispatchWorkItem?
-    private var pendingReadEditorPersistNote: Note?
     private var runtimeSegmentationByNoteID: [UUID: NotesRuntimeSegmentationSnapshot] = [:]
 
     // Loads persisted notes so the in-memory store starts from disk state.
@@ -99,25 +93,9 @@ final class NotesStore: ObservableObject {
         return duplicatedNote
     }
 
-    // Returns the freshest note snapshot for a known identifier, preferring pending writes and newer persisted data.
+    // Returns the note for a known identifier from the in-memory store.
     func note(withID id: UUID) -> Note? {
-        if let pendingReadEditorPersistNote, pendingReadEditorPersistNote.id == id {
-            return pendingReadEditorPersistNote
-        }
-
-        let inMemoryNote = notes.first(where: { $0.id == id })
-        let persistedNote = Self.readNotes(for: storageKey).first(where: { $0.id == id })
-
-        switch (inMemoryNote, persistedNote) {
-        case let (inMemory?, persisted?):
-            return persisted.modifiedAt >= inMemory.modifiedAt ? persisted : inMemory
-        case let (inMemory?, nil):
-            return inMemory
-        case let (nil, persisted?):
-            return persisted
-        case (nil, nil):
-            return nil
-        }
+        notes.first(where: { $0.id == id })
     }
 
     // Records the latest runtime segmentation for a note so export can reuse live read-view state.
@@ -127,9 +105,7 @@ final class NotesStore: ObservableObject {
 
     // Packages the current notes array into an export document using existing runtime or persisted segmentation ranges.
     func makeTransferDocument() -> NotesTransferDocument {
-        let flushedNotes = flushPendingReadEditorPersistIfNeeded()
-        let baseNotes = flushedNotes ?? NotesStore.readNotes(for: storageKey)
-        let exportNotes = baseNotes.map { note in
+        let exportNotes = notes.map { note in
             var noteForExport = note
             noteForExport.segments = exportSegmentRanges(for: note)
             return noteForExport
@@ -139,8 +115,6 @@ final class NotesStore: ObservableObject {
 
     // Imports notes using the selected merge strategy and persists the resulting collection.
     func importTransferDocument(_ document: NotesTransferDocument, mode: NotesImportMode) {
-        clearPendingReadEditorPersistState()
-
         let importedNotes = document.payload.notes
         switch mode {
         case .replaceAll:
@@ -224,78 +198,11 @@ final class NotesStore: ObservableObject {
         return newNote.id
     }
 
-    // Schedules a read-screen edit to persist directly to storage without publishing every intermediate change.
+    // Persists a read-screen edit by upserting into the in-memory store and writing to disk immediately.
+    // Uses upsertNote so writes are synchronous and there is no window where data can be lost on process kill.
+    @discardableResult
     func scheduleReadEditorPersist(id: UUID?, title: String, content: String, segments: [SegmentRange]?, readingOverrides: [Int: String]? = nil) -> UUID {
-        let resolvedID = id ?? UUID()
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let now = Date()
-        let existingCreatedAt = notes.first(where: { $0.id == resolvedID })?.createdAt ?? now
-        let noteToPersist = Note(
-            id: resolvedID,
-            title: trimmedTitle,
-            content: content,
-            segments: segments,
-            createdAt: existingCreatedAt,
-            modifiedAt: now,
-            readingOverrides: readingOverrides
-        )
-
-        pendingReadEditorPersistWorkItem?.cancel()
-        pendingReadEditorPersistNote = noteToPersist
-
-        let storageKey = storageKey
-        let workItem = DispatchWorkItem {
-            var notes = Self.readNotes(for: storageKey)
-            if let index = notes.firstIndex(where: { $0.id == resolvedID }) {
-                notes[index] = noteToPersist
-            } else {
-                notes.insert(noteToPersist, at: 0)
-            }
-
-            guard let encoded = try? JSONEncoder().encode(notes) else { return }
-            UserDefaults.standard.set(encoded, forKey: storageKey)
-
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if self.pendingReadEditorPersistNote == noteToPersist {
-                    self.clearPendingReadEditorPersistState()
-                }
-            }
-        }
-
-        pendingReadEditorPersistWorkItem = workItem
-        persistenceQueue.asyncAfter(deadline: .now() + 0.2, execute: workItem)
-        return resolvedID
-    }
-
-    // Flushes any pending read-editor write so exports include the latest debounced note content and segment ranges.
-    private func flushPendingReadEditorPersistIfNeeded() -> [Note]? {
-        guard let noteToPersist = pendingReadEditorPersistNote else {
-            return nil
-        }
-
-        clearPendingReadEditorPersistState()
-
-        var latestNotes = Self.readNotes(for: storageKey)
-        if let index = latestNotes.firstIndex(where: { $0.id == noteToPersist.id }) {
-            latestNotes[index] = noteToPersist
-        } else {
-            latestNotes.insert(noteToPersist, at: 0)
-        }
-
-        guard let encoded = try? JSONEncoder().encode(latestNotes) else {
-            return latestNotes
-        }
-
-        UserDefaults.standard.set(encoded, forKey: storageKey)
-        return latestNotes
-    }
-
-    // Clears pending debounced read-editor persistence bookkeeping.
-    private func clearPendingReadEditorPersistState() {
-        pendingReadEditorPersistWorkItem?.cancel()
-        pendingReadEditorPersistWorkItem = nil
-        pendingReadEditorPersistNote = nil
+        upsertNote(id: id, title: title, content: content, segments: segments, readingOverrides: readingOverrides)
     }
 
     // Produces export segment ranges from existing runtime or persisted state without recomputing segmentation.

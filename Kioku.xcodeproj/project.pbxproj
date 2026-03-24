@@ -11,14 +11,6 @@
 		E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE02F57BC070020F5C2 /* generate_db.py */; };
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
-		E4CC00012F90000100EEE001 /* SwiftLCS in Frameworks */ = {isa = PBXBuildFile; productRef = E4CC00022F90000100EEE001 /* SwiftLCS */; };
-		E4D1A0012F90000100FFF001 /* SubtitleKit in Frameworks */ = {isa = PBXBuildFile; productRef = E4D1A0022F90000100FFF001 /* SubtitleKit */; };
-		E4D2A0012F90000100FFF001 /* SwiftSubtitles in Frameworks */ = {isa = PBXBuildFile; productRef = E4D2A0022F90000100FFF001 /* SwiftSubtitles */; };
-		E4D3A0012F90000100FFF001 /* CodableCSV in Frameworks */ = {isa = PBXBuildFile; productRef = E4D3A0022F90000100FFF001 /* CodableCSV */; };
-		E4D4A0012F90000100FFF001 /* AudioMarker in Frameworks */ = {isa = PBXBuildFile; productRef = E4D4A0022F90000100FFF001 /* AudioMarker */; };
-		E4D5A0012F90000100FFF001 /* KanaKanjiConverterModuleWithDefaultDictionary in Frameworks */ = {isa = PBXBuildFile; productRef = E4D5A0022F90000100FFF001 /* KanaKanjiConverterModuleWithDefaultDictionary */; };
-		E4D6A0012F90000100FFF001 /* USearch in Frameworks */ = {isa = PBXBuildFile; productRef = E4D6A0022F90000100FFF001 /* USearch */; };
-		E4D7A0012F90000100FFF001 /* TextFormation in Frameworks */ = {isa = PBXBuildFile; productRef = E4D7A0022F90000100FFF001 /* TextFormation */; };
 		E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = E4E800022F90000100FFF001 /* SwiftWhisper */; };
 /* End PBXBuildFile section */
 
@@ -70,14 +62,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */,
-				E4CC00012F90000100EEE001 /* SwiftLCS in Frameworks */,
-				E4D1A0012F90000100FFF001 /* SubtitleKit in Frameworks */,
-				E4D2A0012F90000100FFF001 /* SwiftSubtitles in Frameworks */,
-				E4D3A0012F90000100FFF001 /* CodableCSV in Frameworks */,
-				E4D4A0012F90000100FFF001 /* AudioMarker in Frameworks */,
-				E4D5A0012F90000100FFF001 /* KanaKanjiConverterModuleWithDefaultDictionary in Frameworks */,
-				E4D6A0012F90000100FFF001 /* USearch in Frameworks */,
-				E4D7A0012F90000100FFF001 /* TextFormation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -166,14 +150,6 @@
 			name = Kioku;
 			packageProductDependencies = (
 				E4E800022F90000100FFF001 /* SwiftWhisper */,
-				E4CC00022F90000100EEE001 /* SwiftLCS */,
-				E4D1A0022F90000100FFF001 /* SubtitleKit */,
-				E4D2A0022F90000100FFF001 /* SwiftSubtitles */,
-				E4D3A0022F90000100FFF001 /* CodableCSV */,
-				E4D4A0022F90000100FFF001 /* AudioMarker */,
-				E4D5A0022F90000100FFF001 /* KanaKanjiConverterModuleWithDefaultDictionary */,
-				E4D6A0022F90000100FFF001 /* USearch */,
-				E4D7A0022F90000100FFF001 /* TextFormation */,
 			);
 			productName = Kioku;
 			productReference = E3070AE82F4DFDB6005FD323 /* Kioku.app */;
@@ -256,14 +232,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */,
-				E4CC00032F90000100EEE001 /* XCRemoteSwiftPackageReference "SwiftLCS" */,
-				E4D1A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "swift-subtitle-kit" */,
-				E4D2A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftSubtitles" */,
-				E4D3A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "CodableCSV" */,
-				E4D4A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "swift-audio-marker" */,
-				E4D5A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "AzooKeyKanaKanjiConverter" */,
-				E4D6A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "USearch" */,
-				E4D7A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "TextFormation" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E3070AE92F4DFDB6005FD323 /* Products */;
@@ -318,7 +286,6 @@
 /* Begin PBXShellScriptBuildPhase section */
 		F5A9C1D92F90000100ABCDEF /* Validate Copilot Invariants */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -337,7 +304,6 @@
 		};
 		F5A9C1DB2F90000300ABCDEF /* Rebuild Dictionary SQLite */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -727,70 +693,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		E4CC00032F90000100EEE001 /* XCRemoteSwiftPackageReference "SwiftLCS" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Frugghi/SwiftLCS.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.3.5;
-			};
-		};
-		E4D1A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "swift-subtitle-kit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/dioKaratzas/swift-subtitle-kit.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.3;
-			};
-		};
-		E4D2A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftSubtitles" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/dagronf/SwiftSubtitles.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.2.0;
-			};
-		};
-		E4D3A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "CodableCSV" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/dehesa/CodableCSV.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.6.7;
-			};
-		};
-		E4D4A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "swift-audio-marker" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/atelier-socle/swift-audio-marker.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.1.0;
-			};
-		};
-		E4D5A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "AzooKeyKanaKanjiConverter" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/azooKey/AzooKeyKanaKanjiConverter.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		E4D6A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "USearch" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/unum-cloud/USearch.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.24.0;
-			};
-		};
-		E4D7A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "TextFormation" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ChimeHQ/TextFormation.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.9.0;
-			};
-		};
 		E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/exPHAT/SwiftWhisper.git";
@@ -802,46 +704,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		E4CC00022F90000100EEE001 /* SwiftLCS */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E4CC00032F90000100EEE001 /* XCRemoteSwiftPackageReference "SwiftLCS" */;
-			productName = SwiftLCS;
-		};
-		E4D1A0022F90000100FFF001 /* SubtitleKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E4D1A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "swift-subtitle-kit" */;
-			productName = SubtitleKit;
-		};
-		E4D2A0022F90000100FFF001 /* SwiftSubtitles */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E4D2A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftSubtitles" */;
-			productName = SwiftSubtitles;
-		};
-		E4D3A0022F90000100FFF001 /* CodableCSV */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E4D3A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "CodableCSV" */;
-			productName = CodableCSV;
-		};
-		E4D4A0022F90000100FFF001 /* AudioMarker */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E4D4A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "swift-audio-marker" */;
-			productName = AudioMarker;
-		};
-		E4D5A0022F90000100FFF001 /* KanaKanjiConverterModuleWithDefaultDictionary */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E4D5A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "AzooKeyKanaKanjiConverter" */;
-			productName = KanaKanjiConverterModuleWithDefaultDictionary;
-		};
-		E4D6A0022F90000100FFF001 /* USearch */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E4D6A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "USearch" */;
-			productName = USearch;
-		};
-		E4D7A0022F90000100FFF001 /* TextFormation */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E4D7A0032F90000100FFF001 /* XCRemoteSwiftPackageReference "TextFormation" */;
-			productName = TextFormation;
-		};
 		E4E800022F90000100FFF001 /* SwiftWhisper */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */;

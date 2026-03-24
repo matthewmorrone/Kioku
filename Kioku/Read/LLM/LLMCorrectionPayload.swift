@@ -18,9 +18,12 @@ struct LLMCorrectionResponse: Codable {
 // Describes the outcome of applying an LLM correction to the view state.
 enum LLMCorrectionResult {
     // Corrections applied; human-readable diff lines describing what changed.
-    case applied(diff: [String])
+    // changedLocations: all modified UTF-16 segment start locations (for UI highlighting).
+    // changedReadingLocations: subset where only the furigana reading changed (surface unchanged).
+    // changesByLocation: human-readable description of each change, keyed by location.
+    case applied(diff: [String], changedLocations: Set<Int>, changedReadingLocations: Set<Int>, changesByLocation: [Int: String])
     // The LLM response surfaces did not concatenate to the original text.
-    case surfaceMismatch
+    case surfaceMismatch(String)
     // Network or JSON parsing error from the API call.
     case networkError(String)
     // The LLM returned a response body that could not be decoded as the expected schema.

@@ -65,7 +65,7 @@ extension SegmentLookupSheet {
             surfaceStack.translatesAutoresizingMaskIntoConstraints = false
             surfaceStack.axis = .vertical
             surfaceStack.alignment = .center
-            surfaceStack.spacing = 2
+            surfaceStack.spacing = 3
 
             let prevReadingButton = UIButton(type: .system)
             prevReadingButton.translatesAutoresizingMaskIntoConstraints = false
@@ -82,6 +82,15 @@ extension SegmentLookupSheet {
             readingNavRow.axis = .horizontal
             readingNavRow.alignment = .center
             readingNavRow.spacing = 8
+
+            // Shows the inflection chain — 食べた → 食べる — between the header and the split panel.
+            let lemmaChainLabel = UILabel()
+            lemmaChainLabel.translatesAutoresizingMaskIntoConstraints = false
+            lemmaChainLabel.font = .systemFont(ofSize: 13)
+            lemmaChainLabel.textColor = .secondaryLabel
+            lemmaChainLabel.textAlignment = .center
+            lemmaChainLabel.numberOfLines = 1
+            lemmaChainLabel.isHidden = true
 
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
@@ -165,16 +174,7 @@ extension SegmentLookupSheet {
                 nextReadingButton.heightAnchor.constraint(equalToConstant: 32),
             ])
 
-            // Shows the inflection path horizontally: 食べた → 食べる, hidden for uninflected forms.
-            let lemmaChainLabel = UILabel()
-            lemmaChainLabel.translatesAutoresizingMaskIntoConstraints = false
-            lemmaChainLabel.font = .systemFont(ofSize: 12)
-            lemmaChainLabel.textColor = .secondaryLabel
-            lemmaChainLabel.textAlignment = .center
-            lemmaChainLabel.numberOfLines = 1
-            lemmaChainLabel.isHidden = true
-
-            // Updates the horizontal lemma chain label for the current surface and lemma info.
+            // Updates the lemma chain label shown between the header and the split panel.
             func updateLemmaChain() {
                 if let info = self.currentSheetLemmaInfo, info.lemma != currentSurface {
                     let parts = [currentSurface] + info.chain + [info.lemma]
@@ -606,32 +606,32 @@ extension SegmentLookupSheet {
                     middleContentStack.addArrangedSubview(makeBodyLabel(annotatedReadings.joined(separator: "\n")))
                 }
 
-                // Section 3: Valid segmentation paths through the sublattice DAG, with per-segment frequency.
-                // The single-segment (unsplit) path is excluded — it adds no split information.
+                // Section: Best segmentation path — shows only the highest-scoring multi-segment split.
                 let sublatticeEdges = self.currentSheetSublatticeEdges
                 if sublatticeEdges.isEmpty == false {
-                    let paths = self.sublatticeValidPaths(from: sublatticeEdges).reversed().filter { $0.count > 1 }
-                    if paths.isEmpty == false {
-                        middleContentStack.addArrangedSubview(makeSectionHeader("Paths"))
-
-                        let pathLines = paths.map { path -> String in
-                            var segmentScores: [Double] = []
-                            let annotated = path.map { segment -> String in
-                                let score: Double? = self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) }
-                                if let score {
-                                    segmentScores.append(score)
-                                    return "\(segment) (\(String(format: "%.1f", score)))"
-                                } else {
-                                    return "\(segment) (-)"
-                                }
-                            }.joined(separator: " · ")
-
-                            // Divide by total segment count so unscored segments pull the average down.
-                            let avg = segmentScores.reduce(0, +) / Double(path.count)
-                            return "\(annotated)  [\(String(format: "%.1f", avg))]"
-                        }.joined(separator: "\n")
-
-                        middleContentStack.addArrangedSubview(makeBodyLabel(pathLines))
+                    let paths = self.sublatticeValidPaths(from: sublatticeEdges).filter { $0.count > 1 }
+                    // Score each path as the average per-segment frequency; pick the best one.
+                    let best = paths.max { lhs, rhs in
+                        func avgScore(_ path: [String]) -> Double {
+                            let scores = path.compactMap { self.pathSegmentFrequencyProvider?($0).flatMap { normalizedScore($0) } }
+                            return scores.isEmpty ? 0 : scores.reduce(0, +) / Double(path.count)
+                        }
+                        return avgScore(lhs) < avgScore(rhs)
+                    }
+                    if let best {
+                        middleContentStack.addArrangedSubview(makeSectionHeader("Best Split"))
+                        var segmentScores: [Double] = []
+                        let annotated = best.map { segment -> String in
+                            let score: Double? = self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) }
+                            if let score {
+                                segmentScores.append(score)
+                                return "\(segment) (\(String(format: "%.1f", score)))"
+                            } else {
+                                return "\(segment) (-)"
+                            }
+                        }.joined(separator: " · ")
+                        let avg = segmentScores.reduce(0, +) / Double(best.count)
+                        middleContentStack.addArrangedSubview(makeBodyLabel("\(annotated)  [\(String(format: "%.1f", avg))]"))
                     }
                 }
 
@@ -1034,145 +1034,4 @@ extension SegmentLookupSheet {
     }
 
     // Refreshes hidden per-selection sheet metadata for future UI usage.
-    func refreshSheetSupplementalData() {
-        currentSheetUniqueReadings = sheetReadingsProvider?() ?? []
-        currentSheetSublatticeEdges = sheetSublatticeProvider?() ?? []
-        currentSheetLexiconDebugInfo = sheetLexiconDebugProvider?() ?? ""
-        currentSheetFrequencyByReading = sheetFrequencyProvider?()
-        currentSheetLemmaInfo = sheetLemmaInfoProvider?()
-        currentSheetWordDisplayData = sheetWordDisplayDataProvider?()
-        currentSheetWordComponents = sheetWordComponentsProvider?() ?? []
-    }
-
-    // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.
-    func fireOnDismissIfNeeded() {
-        guard let onDismiss else {
-            return
-        }
-
-        self.onDismiss = nil
-        onDismiss()
-    }
-
-    // Routes horizontal sheet swipe gestures to the current selection-navigation callbacks.
-    @objc func handleSheetSwipe(_ gestureRecognizer: UISwipeGestureRecognizer) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        UIView.performWithoutAnimation {
-            switch gestureRecognizer.direction {
-                case .left: onSheetSelectNext?()
-                case .right: onSheetSelectPrevious?()
-                default: break
-            }
-        }
-        CATransaction.commit()
-    }
-
-    // Generates initial left and right segment groups for split mode from the tapped surface text.
-    func initialSplitSegments(for surface: String) -> (left: [String], right: [String]) {
-        let allSegments = segmentizeSurface(surface)
-        if allSegments.isEmpty {
-            return (left: [surface], right: [])
-        }
-
-        if allSegments.count == 1 {
-            return (left: [allSegments[0]], right: [])
-        }
-
-        return (left: [allSegments[0]], right: Array(allSegments.dropFirst()))
-    }
-
-    // Splits surface text into segment units for transfer between split inputs.
-    func segmentizeSurface(_ surface: String) -> [String] {
-        let whitespaceSegments = surface
-            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
-            .map(String.init)
-
-        if whitespaceSegments.isEmpty == false {
-            return whitespaceSegments
-        }
-
-        return surface.map { String($0) }
-    }
-
-    // Enumerates all complete paths through the sublattice edge DAG, capped to avoid combinatorial explosion.
-    // Paths containing single-kana segments not in the ParticleSettings allowlist are excluded.
-    func sublatticeValidPaths(from edges: [LatticeEdge]) -> [[String]] {
-        guard edges.isEmpty == false else { return [] }
-        guard let startIndex = edges.map({ $0.start }).min(),
-              let endIndex = edges.map({ $0.end }).max() else { return [] }
-
-        var edgesByStart: [String.Index: [LatticeEdge]] = [:]
-        for edge in edges {
-            edgesByStart[edge.start, default: []].append(edge)
-        }
-
-        let allowedKana = ParticleSettings.allowed()
-        var allPaths: [[String]] = []
-        let limit = 24
-
-        // Depth-first traversal collecting all valid segmentation paths up to the limit.
-        func dfs(current: String.Index, path: [String]) {
-            if current == endIndex {
-                allPaths.append(path)
-                return
-            }
-            if allPaths.count >= limit { return }
-            let next = (edgesByStart[current] ?? []).sorted { $0.surface < $1.surface }
-            for edge in next {
-                if allPaths.count >= limit { return }
-                // Reject edges that are single-kana bound morphemes not in the allowlist.
-                if edge.surface.count == 1,
-                   ScriptClassifier.isPureKana(edge.surface),
-                   allowedKana.contains(edge.surface) == false {
-                    continue
-                }
-                dfs(current: edge.end, path: path + [edge.surface])
-            }
-        }
-
-        dfs(current: startIndex, path: [])
-        return allPaths
-    }
-
-    // Rebuilds one segment row with tappable chip buttons that transfer segments across split inputs.
-    func rebuildSegmentRow(
-        _ row: UIStackView,
-        segments: [String],
-        onSegmentPressed: @escaping (String) -> Void
-    ) {
-        row.arrangedSubviews.forEach { arrangedSubview in
-            row.removeArrangedSubview(arrangedSubview)
-            arrangedSubview.removeFromSuperview()
-        }
-
-        if segments.isEmpty {
-            let placeholder = UILabel()
-            placeholder.text = "—"
-            placeholder.textColor = .tertiaryLabel
-            placeholder.font = .systemFont(ofSize: 13)
-            row.addArrangedSubview(placeholder)
-            return
-        }
-
-        for segment in segments {
-            let segmentButton = UIButton(type: .system)
-            segmentButton.setTitle(segment, for: .normal)
-            segmentButton.setTitleColor(.label, for: .normal)
-            segmentButton.titleLabel?.font = .systemFont(ofSize: 13)
-            var configuration = UIButton.Configuration.plain()
-            configuration.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
-            segmentButton.configuration = configuration
-            segmentButton.backgroundColor = UIColor.secondarySystemFill
-            segmentButton.layer.cornerRadius = 8
-            segmentButton.addAction(
-                UIAction { _ in
-                    onSegmentPressed(segment)
-                },
-                for: .touchUpInside
-            )
-            row.addArrangedSubview(segmentButton)
-        }
-    }
-
 }

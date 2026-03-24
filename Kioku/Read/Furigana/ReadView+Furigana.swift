@@ -86,6 +86,12 @@ extension ReadView {
                         furiganaLengthBySegmentLocation[location] = edgeNSRange.length
                     }
                 }
+
+                // Print compact format once after furigana settles so it can be pasted as a stub.
+                let entries = buildLLMSegmentEntries()
+                if entries.isEmpty == false {
+                    print("[LLM] Compact format:\n\(buildCompactFormat(from: entries))")
+                }
             }
         }
     }
@@ -193,7 +199,6 @@ extension ReadView {
         readingCandidatesBySurface: [String: [String]],
         sourceText: String
     ) -> String? {
-        let segmentRange = edge.start..<edge.end
         let preferredLemmaReference = preferredFuriganaLemmaReference(
             for: edge.surface,
             lemmaReference: segmenter.preferredLemma(for: edge.surface) ?? edge.surface

@@ -22,7 +22,7 @@ struct DictionarySearchResultRow: View {
         guard let sense = entry.senses.first else { return "" }
         var parts: [String] = []
         if let pos = sense.pos, pos.isEmpty == false {
-            parts.append("[\(pos)]")
+            parts.append("[\(JMdictTagExpander.expand(pos))]")
         }
         if let gloss = sense.glosses.first {
             parts.append(gloss)
