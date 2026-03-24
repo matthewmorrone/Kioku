@@ -58,6 +58,8 @@ extension ReadView {
             furiganaBySegmentLocation[targetLocation] = reading
             furiganaLengthBySegmentLocation[targetLocation] = targetLength
         }
+        // Persist immediately — reading overrides are discrete user actions, not keystrokes.
+        persistCurrentNoteIfNeeded()
     }
 
     // Removes the persisted reading override for the currently selected segment and re-runs furigana computation.
@@ -67,7 +69,7 @@ extension ReadView {
         furiganaBySegmentLocation.removeValue(forKey: location)
         furiganaLengthBySegmentLocation.removeValue(forKey: location)
         scheduleFuriganaGeneration(for: text, edges: segmentEdges)
-        scheduleCurrentNotePersistenceIfNeeded()
+        persistCurrentNoteIfNeeded()
     }
 
     // Clears note-backed segment range overrides and restores computed segmentation from the segmenter.
@@ -79,6 +81,11 @@ extension ReadView {
         selectedSegmentLocation = nil
         selectedHighlightRangeOverride = nil
         selectedBounds = nil
+        pendingLLMChangedLocations = []
+        pendingLLMChangedReadingLocations = []
+        pendingLLMChangesByLocation = [:]
+        preLLMSegmentEntries = []
+        hasPendingLLMChanges = false
         SegmentLookupSheet.shared.dismissPopover()
 
         if readResourcesReady && isEditMode == false {
@@ -183,6 +190,15 @@ extension ReadView {
 
     // Updates selection state and shows a UIKit popover with the highest-priority dictionary definition for the tapped segment.
     func handleReadModeSegmentTap(_ tappedSegmentLocation: Int?, tappedSegmentRect: CGRect?, sourceView: UITextView?) {
+        // If the tapped segment has a pending LLM change, show what changed instead of the lookup sheet.
+        if let tappedSegmentLocation,
+           let changeDescription = pendingLLMChangesByLocation[tappedSegmentLocation] {
+            llmChangePopoverText = changeDescription
+            llmChangePopoverLocation = tappedSegmentLocation
+            isShowingLLMChangePopover = true
+            return
+        }
+
         guard let tappedSegmentLocation else {
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
@@ -299,6 +315,42 @@ extension ReadView {
                     }
                     return nil
                 },
+                sheetWordDisplayDataProvider: {
+                    // Use the lemma form when the surface is inflected so we fetch the base dictionary entry.
+                    guard let surface = currentSelectedSurface(),
+                          let store = dictionaryStore else { return nil }
+                    let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
+                    guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return nil }
+                    return try? store.fetchWordDisplayData(entryID: entry.entryId, surface: lookupSurface)
+                },
+                sheetIsSavedProvider: {
+                    guard let surface = currentSelectedSurface(),
+                          let store = dictionaryStore else { return false }
+                    let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
+                    guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return false }
+                    return wordsStore.words.contains { $0.canonicalEntryID == entry.entryId }
+                },
+                sheetSaveToggle: {
+                    guard let surface = currentSelectedSurface(),
+                          let store = dictionaryStore else { return }
+                    let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
+                    guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return }
+                    if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) {
+                        wordsStore.remove(id: entry.entryId)
+                    } else {
+                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: lookupSurface))
+                    }
+                },
+                sheetWordComponentsProvider: {
+                    guard let surface = currentSelectedSurface() else { return nil }
+                    let edges = segmenter.longestMatchEdges(for: surface)
+                    guard edges.count > 1 else { return nil }
+                    return edges.compactMap { edge -> (String, String?)? in
+                        let entries = try? dictionaryStore?.lookup(surface: edge.surface, mode: .kanjiAndKana)
+                        let gloss = entries?.first?.senses.first?.glosses.first
+                        return (edge.surface, gloss)
+                    }
+                },
                 onDismiss: {
                     isSheetSwipeTransitionActive = false
                     clearSelectedSegmentStateAfterPopoverDismissal()
@@ -354,11 +406,6 @@ extension ReadView {
         let tappedSurface = String(text[tappedSegmentRange])
         if shouldIgnoreSegmentForDefinitionLookup(tappedSurface) {
             return nil
-        }
-
-        let matchingEdge = segmentEdges.first { edge in
-            let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
-            return edgeNSRange.location == selectedLocation && edgeNSRange.length > 0
         }
 
         let lookupCandidates = orderedLookupCandidates(surface: tappedSurface, lemma: segmenter.preferredLemma(for: tappedSurface))
@@ -738,6 +785,19 @@ extension ReadView {
         unknownSegmentLocations = unknownSegmentLocations(for: edges)
         recordRuntimeSegmentationSnapshot(for: edges)
 
+        // Remove reading overrides whose location no longer aligns with a segment start.
+        // Stale overrides arise when a segment is split or merged — the old override location
+        // becomes invalid and, if kept, attaches the wrong full reading to the new smaller segment.
+        let validLocations = Set(edges.compactMap { edge -> Int? in
+            let r = NSRange(edge.start..<edge.end, in: text)
+            return r.location != NSNotFound ? r.location : nil
+        })
+        for location in Array(selectedReadingOverrideByLocation.keys) {
+            if validLocations.contains(location) == false {
+                selectedReadingOverrideByLocation.removeValue(forKey: location)
+            }
+        }
+
         if persistOverride {
             let segments = buildSegmentRanges(from: edges)
             self.segments = segments
@@ -823,11 +883,14 @@ extension ReadView {
 
         let candidates = orderedLookupCandidates(surface: trimmed, lemma: segmenter.preferredLemma(for: trimmed))
         let store = dictionaryStore
+        // Pre-compute modes on the main actor before entering the detached task.
+        let candidateModes: [(String, LookupMode)] = candidates.map {
+            ($0, ScriptClassifier.containsKanji($0) ? .kanjiAndKana : .kanaOnly)
+        }
 
         Task.detached(priority: .background) {
-            for candidate in candidates {
-                let mode: LookupMode = ScriptClassifier.containsKanji(candidate) ? .kanjiAndKana : .kanaOnly
-                if let entry = try? store?.lookup(surface: candidate, mode: mode).first {
+            for (candidate, mode) in candidateModes {
+                if let entry = try? await MainActor.run(body: { try store?.lookup(surface: candidate, mode: mode) })?.first {
                     await MainActor.run {
                         historyStore.record(canonicalEntryID: entry.entryId, surface: trimmed)
                     }
