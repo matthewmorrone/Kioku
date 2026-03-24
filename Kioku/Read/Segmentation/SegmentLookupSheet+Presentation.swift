@@ -165,6 +165,26 @@ extension SegmentLookupSheet {
                 nextReadingButton.heightAnchor.constraint(equalToConstant: 32),
             ])
 
+            // Shows the inflection path horizontally: 食べた → 食べる, hidden for uninflected forms.
+            let lemmaChainLabel = UILabel()
+            lemmaChainLabel.translatesAutoresizingMaskIntoConstraints = false
+            lemmaChainLabel.font = .systemFont(ofSize: 12)
+            lemmaChainLabel.textColor = .secondaryLabel
+            lemmaChainLabel.textAlignment = .center
+            lemmaChainLabel.numberOfLines = 1
+            lemmaChainLabel.isHidden = true
+
+            // Updates the horizontal lemma chain label for the current surface and lemma info.
+            func updateLemmaChain() {
+                if let info = self.currentSheetLemmaInfo, info.lemma != currentSurface {
+                    let parts = [currentSurface] + info.chain + [info.lemma]
+                    lemmaChainLabel.text = parts.joined(separator: " → ")
+                    lemmaChainLabel.isHidden = false
+                } else {
+                    lemmaChainLabel.isHidden = true
+                }
+            }
+
             let splitPanelContainer = UIStackView()
             splitPanelContainer.translatesAutoresizingMaskIntoConstraints = false
             splitPanelContainer.axis = .vertical
@@ -330,6 +350,24 @@ extension SegmentLookupSheet {
             mergeRightButton.backgroundColor = .tertiarySystemFill
             mergeRightButton.layer.cornerRadius = 8
 
+            let saveButton = UIButton(type: .system)
+            saveButton.translatesAutoresizingMaskIntoConstraints = false
+            saveButton.backgroundColor = .tertiarySystemFill
+            saveButton.layer.cornerRadius = 8
+
+            // Syncs bookmark icon and tint with current saved state.
+            func updateSaveButton() {
+                let isSaved = self.sheetIsSavedProvider?() ?? false
+                saveButton.setImage(UIImage(systemName: isSaved ? "bookmark.fill" : "bookmark"), for: .normal)
+                saveButton.tintColor = isSaved ? .systemBlue : .secondaryLabel
+            }
+
+            saveButton.addAction(UIAction { [weak self] _ in
+                self?.sheetSaveToggle?()
+                updateSaveButton()
+            }, for: .touchUpInside)
+
+            actionMenuStack.addArrangedSubview(saveButton)
             actionMenuStack.addArrangedSubview(mergeLeftButton)
             actionMenuStack.addArrangedSubview(splitButton)
             actionMenuStack.addArrangedSubview(mergeRightButton)
@@ -354,6 +392,7 @@ extension SegmentLookupSheet {
             var splitEntryLeftValue = ""
             var splitEntryRightValue = ""
             var isSplitEditorVisible = false
+            var definitionsExpanded = false
             var currentSheetPreferredHeight: CGFloat = 0
 
             // Returns the current split boundary as a UTF-16 offset derived from the left split value.
@@ -503,18 +542,53 @@ extension SegmentLookupSheet {
                     subview.removeFromSuperview()
                 }
 
-                // Section: Lemma — shown only when the surface is an inflected form with a distinct base.
-                let lemmaInfo = self.currentSheetLemmaInfo
-                if let lemmaInfo {
-                    middleContentStack.addArrangedSubview(makeSectionHeader("Lemma"))
-                    let lemmaLabel = UILabel()
-                    lemmaLabel.text = lemmaInfo.lemma
-                    lemmaLabel.font = .systemFont(ofSize: 16, weight: .medium)
-                    lemmaLabel.textColor = .label
-                    middleContentStack.addArrangedSubview(lemmaLabel)
-                    if lemmaInfo.chain.isEmpty == false {
-                        middleContentStack.addArrangedSubview(makeBodyLabel(lemmaInfo.chain.joined(separator: " → ")))
+                // Section: Definitions — first sense shown by default, rest expandable.
+                if let entry = self.currentSheetWordDisplayData?.entry, entry.senses.isEmpty == false {
+                    middleContentStack.addArrangedSubview(makeSectionHeader("Definition"))
+                    let shown = definitionsExpanded ? entry.senses : Array(entry.senses.prefix(1))
+                    for (idx, sense) in shown.enumerated() {
+                        middleContentStack.addArrangedSubview(makeBodyLabel("\(idx + 1). \(self.formatSense(sense))"))
                     }
+                    if entry.senses.count > 1 {
+                        let toggleBtn = UIButton(type: .system)
+                        toggleBtn.titleLabel?.font = .systemFont(ofSize: 12)
+                        let remaining = entry.senses.count - 1
+                        toggleBtn.setTitle(definitionsExpanded ? "Show fewer" : "Show \(remaining) more…", for: .normal)
+                        toggleBtn.addAction(UIAction { _ in
+                            definitionsExpanded.toggle()
+                            updateMiddleContent()
+                            updateSheetPreferredHeight(animated: true)
+                        }, for: .touchUpInside)
+                        middleContentStack.addArrangedSubview(toggleBtn)
+                    }
+                }
+
+                // Section: Components — shown when the surface decomposes into 2+ sub-words.
+                let components = self.currentSheetWordComponents
+                if components.isEmpty == false {
+                    middleContentStack.addArrangedSubview(makeSectionHeader("Components"))
+                    let chipRow = UIStackView()
+                    chipRow.axis = .horizontal
+                    chipRow.spacing = 8
+                    chipRow.alignment = .center
+                    for component in components {
+                        let chip = UIButton(type: .system)
+                        var config = UIButton.Configuration.filled()
+                        config.title = component.surface
+                        config.baseBackgroundColor = UIColor.tertiarySystemFill
+                        config.baseForegroundColor = .label
+                        config.cornerStyle = .medium
+                        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
+                        chip.configuration = config
+                        let componentSurface = component.surface
+                        let componentGloss = component.gloss
+                        chip.addAction(UIAction { [weak self, weak sheetController] _ in
+                            guard let self, let parentVC = sheetController else { return }
+                            self.presentComponentSheet(surface: componentSurface, gloss: componentGloss, from: parentVC)
+                        }, for: .touchUpInside)
+                        chipRow.addArrangedSubview(chip)
+                    }
+                    middleContentStack.addArrangedSubview(chipRow)
                 }
 
                 // Section 1: Readings annotated with per-reading frequency data.
@@ -646,6 +720,8 @@ extension SegmentLookupSheet {
                 updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
                 updateReadingFurigana()
+                updateLemmaChain()
+                updateSaveButton()
                 updateMiddleContent()
             }
 
@@ -659,6 +735,8 @@ extension SegmentLookupSheet {
                 updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
                 updateReadingFurigana()
+                updateLemmaChain()
+                updateSaveButton()
                 updateMiddleContent()
             }
 
@@ -701,6 +779,8 @@ extension SegmentLookupSheet {
                 updateSheetPreferredHeight(animated: true)
                 self.refreshSheetSupplementalData()
                 updateReadingFurigana()
+                updateLemmaChain()
+                updateSaveButton()
                 updateMiddleContent()
             }
 
@@ -732,6 +812,8 @@ extension SegmentLookupSheet {
                     }
                     self.refreshSheetSupplementalData()
                     updateReadingFurigana()
+                    updateLemmaChain()
+                    updateSaveButton()
                     updateMiddleContent()
                     updateSheetPreferredHeight(animated: true)
                 },
@@ -758,6 +840,8 @@ extension SegmentLookupSheet {
                     }
                     self.refreshSheetSupplementalData()
                     updateReadingFurigana()
+                    updateLemmaChain()
+                    updateSaveButton()
                     updateMiddleContent()
                     updateSheetPreferredHeight(animated: true)
                 },
@@ -776,8 +860,10 @@ extension SegmentLookupSheet {
                         if let splitResult = currentOnSplitApply?(offset) {
                             updateCurrentSurface(splitResult)
                             self.refreshSheetSupplementalData()
-                            updateMiddleContent()
                             updateReadingFurigana()
+                            updateLemmaChain()
+                            updateSaveButton()
+                            updateMiddleContent()
                             updateSheetPreferredHeight(animated: true)
                         }
                         return
@@ -868,6 +954,8 @@ extension SegmentLookupSheet {
                     setSplitEditorVisible(false)
                     self.refreshSheetSupplementalData()
                     updateReadingFurigana()
+                    updateLemmaChain()
+                    updateSaveButton()
                     updateMiddleContent()
                     updateSheetPreferredHeight(animated: true)
                 },
@@ -883,11 +971,14 @@ extension SegmentLookupSheet {
             // Add content to middleContentStack here using that range as needed.
 
             sheetController.view.addSubview(readingNavRow)
+            sheetController.view.addSubview(lemmaChainLabel)
             sheetController.view.addSubview(splitPanelContainer)
             sheetController.view.addSubview(middleContentStack)
             sheetController.view.addSubview(actionMenuContainer)
 
             updateReadingFurigana()
+            updateLemmaChain()
+            updateSaveButton()
 
             NSLayoutConstraint.activate([
                 readingNavRow.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
@@ -895,7 +986,12 @@ extension SegmentLookupSheet {
                 readingNavRow.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
                 readingNavRow.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
 
-                splitPanelContainer.topAnchor.constraint(equalTo: readingNavRow.bottomAnchor, constant: 12),
+                lemmaChainLabel.topAnchor.constraint(equalTo: readingNavRow.bottomAnchor, constant: 4),
+                lemmaChainLabel.centerXAnchor.constraint(equalTo: sheetController.view.centerXAnchor),
+                lemmaChainLabel.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
+                lemmaChainLabel.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
+
+                splitPanelContainer.topAnchor.constraint(equalTo: lemmaChainLabel.bottomAnchor, constant: 8),
                 splitPanelContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 splitPanelContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
 
@@ -1078,4 +1174,5 @@ extension SegmentLookupSheet {
             row.addArrangedSubview(segmentButton)
         }
     }
+
 }
