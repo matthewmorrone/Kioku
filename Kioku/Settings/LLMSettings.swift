@@ -23,6 +23,13 @@ enum LLMSettings {
     static let providerKey = "kioku.llm.provider"
     static let openAIKeyStorageKey = "kioku.llm.openaiKey"
     static let claudeKeyStorageKey = "kioku.llm.claudeKey"
+    // When false (default), the stub response is used instead of a real API call.
+    static let useLLMKey = "kioku.llm.useLLM"
+    // Compact-format stub used when useLLM is false. Parsed by the same pipeline as real responses.
+    static let stubResponseKey = "kioku.llm.stubResponse"
+    // Sampling temperature sent to the LLM. Lower = more deterministic; range 0.0–1.0.
+    static let temperatureKey = "kioku.llm.temperature"
+    static let defaultTemperature: Double = 0.4
 
     static let defaultProvider = LLMProvider.none.rawValue
 
@@ -46,9 +53,13 @@ enum LLMSettings {
         }
     }
 
-    // Returns true when a provider is selected and its key is non-empty.
-    // Used to show or enable the correction button in ReadView.
+    // Returns true when useLLM is on and an API key is set, or when useLLM is off and a stub is set.
     static func isConfigured() -> Bool {
-        activeAPIKey() != nil
+        if UserDefaults.standard.bool(forKey: useLLMKey) {
+            return activeAPIKey() != nil
+        } else {
+            let stub = UserDefaults.standard.string(forKey: stubResponseKey) ?? ""
+            return stub.isEmpty == false
+        }
     }
 }

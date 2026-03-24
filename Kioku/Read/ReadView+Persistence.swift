@@ -36,6 +36,7 @@ extension ReadView {
     }
 
     // Flushes any pending persistence work immediately when the screen changes mode or disappears.
+    // Cancels any in-flight text-change debounce and writes the current state to disk now.
     func flushPendingNotePersistenceIfNeeded() {
         pendingPersistenceTask?.cancel()
         pendingPersistenceTask = nil
@@ -70,6 +71,10 @@ extension ReadView {
             furiganaLengthBySegmentLocation = [:]
             selectedReadingOverrideByLocation = [:]
             illegalMergeBoundaryLocation = nil
+            pendingLLMChangedLocations = []
+            pendingLLMChangedReadingLocations = []
+            preLLMSegmentEntries = []
+            hasPendingLLMChanges = false
             SegmentLookupSheet.shared.dismissPopover()
             isLoadingSelectedNote = false
             return
@@ -77,6 +82,10 @@ extension ReadView {
 
         pendingPersistenceTask?.cancel()
         pendingPersistenceTask = nil
+        pendingLLMChangedLocations = []
+        pendingLLMChangedReadingLocations = []
+        preLLMSegmentEntries = []
+        hasPendingLLMChanges = false
         let noteToLoad = notesStore.note(withID: selectedNote.id) ?? selectedNote
         isLoadingSelectedNote = true
         activeNoteID = noteToLoad.id

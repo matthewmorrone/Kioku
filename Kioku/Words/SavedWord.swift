@@ -8,6 +8,8 @@ struct SavedWord: Codable, Hashable, Identifiable {
     let sourceNoteIDs: [UUID]
     // User-created word list memberships, keyed by WordList.id.
     var wordListIDs: [UUID]
+    // When the word was first saved — used for newest/oldest sort. Defaults to distantPast for migrated records.
+    let savedAt: Date
 
     var id: Int64 {
         canonicalEntryID
@@ -19,14 +21,16 @@ struct SavedWord: Codable, Hashable, Identifiable {
         case sourceNoteID
         case sourceNoteIDs
         case wordListIDs
+        case savedAt
     }
 
     // Creates a saved-word value with optional note-list and word-list memberships.
-    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = []) {
+    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], savedAt: Date = Date()) {
         self.canonicalEntryID = canonicalEntryID
         self.surface = surface
         self.sourceNoteIDs = sourceNoteIDs
         self.wordListIDs = wordListIDs
+        self.savedAt = savedAt
     }
 
     // Decodes both current many-to-many payloads and legacy single-note payloads. Defaults wordListIDs to [] when absent.
@@ -35,6 +39,7 @@ struct SavedWord: Codable, Hashable, Identifiable {
         canonicalEntryID = try container.decode(Int64.self, forKey: .canonicalEntryID)
         surface = try container.decode(String.self, forKey: .surface)
         wordListIDs = try container.decodeIfPresent([UUID].self, forKey: .wordListIDs) ?? []
+        savedAt = try container.decode(Date.self, forKey: .savedAt)
 
         if let decodedSourceNoteIDs = try container.decodeIfPresent([UUID].self, forKey: .sourceNoteIDs) {
             sourceNoteIDs = decodedSourceNoteIDs
@@ -56,6 +61,7 @@ struct SavedWord: Codable, Hashable, Identifiable {
         try container.encode(surface, forKey: .surface)
         try container.encode(sourceNoteIDs, forKey: .sourceNoteIDs)
         try container.encode(wordListIDs, forKey: .wordListIDs)
+        try container.encode(savedAt, forKey: .savedAt)
     }
 
     // Keeps saved-word identity stable across surface variants that map to the same dictionary entry.

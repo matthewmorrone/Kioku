@@ -10,7 +10,6 @@ struct NotesView: View {
     @State private var editMode: EditMode = .inactive
     @State private var selectedNoteIDs = Set<UUID>()
     @State private var notePendingRename: Note?
-    @State private var notePendingReset: Note?
     @State private var notePendingDelete: Note?
     @State private var renameDraft = ""
     @State private var isShowingSubtitleImportSheet = false
@@ -70,20 +69,6 @@ struct NotesView: View {
                 Button("Save") {
                     commitRename()
                 }
-            }
-            .confirmationDialog(
-                "Reset Note?",
-                isPresented: resetDialogPresented,
-                titleVisibility: .visible
-            ) {
-                Button("Reset", role: .destructive) {
-                    confirmReset()
-                }
-                Button("Cancel", role: .cancel) {
-                    notePendingReset = nil
-                }
-            } message: {
-                Text("This clears saved segmentation and reading overrides. Note content is preserved.")
             }
             .confirmationDialog(
                 "Delete Note?",
@@ -218,18 +203,6 @@ struct NotesView: View {
         )
     }
 
-    // Binds reset-dialog presentation directly to the currently pending note.
-    private var resetDialogPresented: Binding<Bool> {
-        Binding(
-            get: { notePendingReset != nil },
-            set: { isPresented in
-                if isPresented == false {
-                    notePendingReset = nil
-                }
-            }
-        )
-    }
-
     // Binds delete-dialog presentation directly to the currently pending note.
     private var deleteDialogPresented: Binding<Bool> {
         Binding(
@@ -267,7 +240,8 @@ struct NotesView: View {
         }
 
         Button {
-            notePendingReset = note
+            store.resetNote(id: note.id)
+            onUpdateSelectedNote?(store.note(withID: note.id))
         } label: {
             Label("Reset", systemImage: "arrow.counterclockwise")
         }
@@ -288,17 +262,6 @@ struct NotesView: View {
         store.renameNote(id: notePendingRename.id, title: renameDraft)
         onUpdateSelectedNote?(store.note(withID: notePendingRename.id))
         self.notePendingRename = nil
-    }
-
-    // Resets one note after confirmation and propagates the updated value to the read screen if needed.
-    private func confirmReset() {
-        guard let notePendingReset else {
-            return
-        }
-
-        store.resetNote(id: notePendingReset.id)
-        onUpdateSelectedNote?(store.note(withID: notePendingReset.id))
-        self.notePendingReset = nil
     }
 
     // Deletes one note after confirmation and clears the active read selection when that note was selected.

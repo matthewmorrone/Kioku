@@ -61,11 +61,11 @@ enum CSVImport {
         guard let entry = hit else { return }
 
         if surface == nil {
-            let proposed = entry.kanjiForms.first ?? entry.kanaForms.first ?? ""
+            let proposed = entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? ""
             if proposed.isEmpty == false { item.computedSurface = proposed }
         }
-        if kana == nil, let k = entry.kanaForms.first, k.isEmpty == false {
-            item.computedKana = k
+        if kana == nil, let k = entry.kanaForms.first, k.text.isEmpty == false {
+            item.computedKana = k.text
         }
         if meaning == nil {
             let gloss = firstGloss(entry)

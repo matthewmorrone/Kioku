@@ -3,14 +3,12 @@ import Observation
 
 // Represents the resolved URL for a Whisper model, regardless of its origin.
 enum WhisperModelSource: Equatable {
-    case bundled
     case downloaded(String) // filename in app support
     case userFile(URL)
 
     // Human-readable label shown in the UI.
     var displayName: String {
         switch self {
-            case .bundled: return "Tiny (Built-in)"
             case .downloaded(let name): return name
             case .userFile(let url): return url.lastPathComponent
         }
@@ -51,13 +49,6 @@ final class WhisperModelManager {
     // Per-model download error message keyed by filename.
     private(set) var downloadErrors: [String: String] = [:]
 
-    // True when the tiny model is bundled in the app bundle.
-    var hasBundledTiny: Bool {
-        let url = Bundle.main.url(forResource: "ggml-tiny", withExtension: "bin")
-        print("[Whisper] hasBundledTiny: \(url?.path ?? "NOT FOUND")")
-        return url != nil
-    }
-
     // Directory where downloaded models are stored.
     static var modelsDirectory: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -71,8 +62,6 @@ final class WhisperModelManager {
     // Returns the resolved file URL for a given source, or nil if unavailable.
     func resolvedURL(for source: WhisperModelSource) -> URL? {
         switch source {
-        case .bundled:
-            return Bundle.main.url(forResource: "ggml-tiny", withExtension: "bin")
         case .downloaded(let filename):
             let url = Self.modelsDirectory.appendingPathComponent(filename)
             return FileManager.default.fileExists(atPath: url.path) ? url : nil

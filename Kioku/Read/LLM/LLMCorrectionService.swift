@@ -4,11 +4,39 @@ import Foundation
 // Supports OpenAI chat completions and Anthropic Messages APIs with a compact human-readable format.
 final class LLMCorrectionService {
 
-    // Submits the note's current segmentation in compact format to the active LLM provider
-    // and returns a parsed correction response, or throws a descriptive error on failure.
+    // Submits the note's current segmentation in compact format to the active LLM provider,
+    // or parses the stub response directly when useLLM is off. Throws on misconfiguration.
     func requestCorrections(
         compactSegments: String
     ) async throws -> LLMCorrectionResponse {
+        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
+
+        // Stub mode: parse the hand-corrected compact response without any API call.
+        // Prefers the in-app text field; falls back to llm_stub.txt in the bundle.
+        if useLLM == false {
+            let userStub = UserDefaults.standard.string(forKey: LLMSettings.stubResponseKey) ?? ""
+            let stub: String
+            if userStub.isEmpty == false {
+                stub = userStub
+            } else if let url = Bundle.main.url(forResource: "llm_stub", withExtension: "txt"),
+                      let fileContents = try? String(contentsOf: url, encoding: .utf8) {
+                // Strip comment lines so the file can contain explanatory notes.
+                let stripped = fileContents
+                    .components(separatedBy: .newlines)
+                    .filter { !$0.hasPrefix("#") }
+                    .joined(separator: "\n")
+                stub = stripped
+            } else {
+                stub = ""
+            }
+            guard stub.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                throw LLMCorrectionError.noKeyConfigured
+            }
+            print("[LLM] Input:\n\(compactSegments)")
+            print("[LLM] Stub response:\n\(stub)")
+            return try parseCompactResponse(stub)
+        }
+
         let provider = LLMSettings.activeProvider()
         guard let apiKey = LLMSettings.activeAPIKey() else {
             throw LLMCorrectionError.noKeyConfigured
@@ -29,22 +57,25 @@ final class LLMCorrectionService {
         }
     }
 
-    // Compact format: segments separated by `|`, kanji runs annotated as `(kanji)[reading]`.
-    // Example: 食べる|は|(情報)[じょうほう]|(生)[い]き(方)[かた]
+    // Compact format: one line per source line, each line surrounded by `|` delimiters.
+    // Example: |(食)[た]べる|は|\n|(情報)[じょうほう]|(生)[い]き(方)[かた]|
     static let systemPrompt = """
         You are an expert Japanese linguist. \
         You will be given Japanese text and its current morphological segmentation with readings. \
         Correct any segmentation or reading errors so the result is optimal for a native Japanese reader.
 
         SEGMENT FORMAT:
-        - Segments are separated by |
+        - Each source line maps to one output line
+        - Each line is surrounded by | delimiters and segments within are separated by |
+        - Example line: |(食)[た]べる|は|
         - Kanji within a segment are annotated as (kanji)[reading] where reading is hiragana only
         - Okurigana (trailing/internal kana) are left outside the parentheses, e.g. 食べる → (食)[た]べる, 生き方 → (生)[い]き(方)[かた]
         - Pure kana, numbers, punctuation, and whitespace: no annotation, just the text
         - Whitespace characters, newlines, and punctuation must each be their own segment
 
         OUTPUT RULES:
-        - Return ONLY the corrected compact format string, nothing else — no explanation, no markdown
+        - Return ONLY the corrected compact format, nothing else — no explanation, no markdown
+        - Every line must begin and end with |
         - All segment surfaces must concatenate in order to reproduce the original text exactly, character-for-character
         - Never add, remove, or alter any character from the original text
         """
@@ -62,6 +93,8 @@ final class LLMCorrectionService {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
+            ?? LLMSettings.defaultTemperature
         let body: [String: Any] = [
             "model": "gpt-4o",
             "messages": [
@@ -69,7 +102,7 @@ final class LLMCorrectionService {
                 ["role": "user", "content": messages.user]
             ],
             "max_tokens": 4096,
-            "temperature": 0.2
+            "temperature": temperature
         ]
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
@@ -102,10 +135,12 @@ final class LLMCorrectionService {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
+            ?? LLMSettings.defaultTemperature
         let body: [String: Any] = [
             "model": "claude-opus-4-6",
             "max_tokens": 4096,
-            "temperature": 0.2,
+            "temperature": temperature,
             "system": messages.system,
             "messages": [
                 ["role": "user", "content": messages.user]
@@ -144,19 +179,36 @@ final class LLMCorrectionService {
     }
 
     // Parses the compact format string returned by the LLM into [LLMSegmentEntry].
-    // Format: segments separated by `|`, kanji annotated as `(kanji)[reading]`.
-    // Each segment surface is reconstructed by stripping the annotation brackets.
+    // Each content line `|seg1|seg2|` encodes segments followed by an implicit `\n`.
+    // A bare `|` line encodes an extra blank line (an additional `\n` beyond the implicit one).
+    // Example: `|A|\n|\n|B|` → [A, \n, \n, B, \n]
     func parseCompactResponse(_ compact: String) throws -> LLMCorrectionResponse {
-        // Trim whitespace/newlines the model may have added around the output.
-        let trimmed = compact.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rawSegments = trimmed.components(separatedBy: "|")
+        let lines = compact.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.isEmpty == false }
 
         var entries: [LLMSegmentEntry] = []
-        for raw in rawSegments {
-            // Skip empty strings produced by trailing `|` or double `||`.
-            guard raw.isEmpty == false else { continue }
-            let (surface, reading) = parseSegmentToken(raw)
-            entries.append(LLMSegmentEntry(surface: surface, reading: reading))
+        for (lineIndex, line) in lines.enumerated() {
+            guard line.hasPrefix("|") && line.hasSuffix("|") else {
+                throw LLMCorrectionError.decodingError(
+                    "Line \(lineIndex + 1) must begin and end with |: \"\(line.prefix(60))\""
+                )
+            }
+            let inner = String(line.dropFirst().dropLast())
+            if inner.isEmpty {
+                // Bare `|` encodes an extra blank line in addition to the implicit \n
+                // that follows the preceding content line.
+                entries.append(LLMSegmentEntry(surface: "\n", reading: ""))
+                continue
+            }
+            let rawSegments = inner.components(separatedBy: "|")
+            for raw in rawSegments {
+                guard raw.isEmpty == false else { continue }
+                let (surface, reading) = parseSegmentToken(raw)
+                entries.append(LLMSegmentEntry(surface: surface, reading: reading))
+            }
+            // Each content line encodes an implicit trailing newline.
+            entries.append(LLMSegmentEntry(surface: "\n", reading: ""))
         }
 
         guard entries.isEmpty == false else {
@@ -166,12 +218,16 @@ final class LLMCorrectionService {
         return LLMCorrectionResponse(segments: entries)
     }
 
-    // Parses one segment token like `(食)[た]べる|は|(情報)[じょうほう]` into (surface, reading).
-    // Surface: all characters outside and inside `()` brackets, no `[]` content.
-    // Reading: all `[...]` content concatenated in order.
+    // Parses one segment token like `(巡)[めぐ]り(会)[あ]う` into (surface, reading).
+    // Surface: kanji + kana exactly as they appear in the source text.
+    // Reading: full phonetic reading including kana between kanji runs, so that
+    //   projectRunReadings can re-split per run using the okurigana as delimiters.
+    // Example: `(巡)[めぐ]り(会)[あ]う` → surface="巡り会う", reading="めぐりあう"
+    // Pure-kana tokens (no `()` annotations) produce an empty reading.
     private func parseSegmentToken(_ token: String) -> (surface: String, reading: String) {
         var surface = ""
         var reading = ""
+        var hasAnnotation = false
         var i = token.startIndex
 
         while i < token.endIndex {
@@ -189,6 +245,7 @@ final class LLMCorrectionService {
                         if let closeBracket = token[afterBracket...].firstIndex(of: "]") {
                             reading += String(token[afterBracket..<closeBracket])
                             i = token.index(after: closeBracket)
+                            hasAnnotation = true
                         }
                     }
                 } else {
@@ -205,12 +262,19 @@ final class LLMCorrectionService {
                     i = token.index(after: i)
                 }
             } else {
+                // Literal kana (okurigana between or after kanji runs).
+                // Include in reading only when the token has annotations, so that
+                // projectRunReadings can use the kana as a split delimiter.
                 surface.append(ch)
+                if hasAnnotation {
+                    reading.append(ch)
+                }
                 i = token.index(after: i)
             }
         }
 
-        return (surface, reading)
+        // Pure-kana tokens have no annotation; their reading is left empty.
+        return (surface, hasAnnotation ? reading : "")
     }
 }
 

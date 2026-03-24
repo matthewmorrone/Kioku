@@ -20,6 +20,12 @@ struct SettingsView: View {
     private var openAIKey: String = ""
     @AppStorage(LLMSettings.claudeKeyStorageKey)
     private var claudeKey: String = ""
+    @AppStorage(LLMSettings.useLLMKey)
+    private var useLLM: Bool = false
+    @AppStorage(LLMSettings.stubResponseKey)
+    private var stubResponse: String = ""
+    @AppStorage(LLMSettings.temperatureKey)
+    private var temperature: Double = LLMSettings.defaultTemperature
 
     @State private var exportDocument = NotesTransferDocument(notes: [])
     @State private var isShowingExporter = false
@@ -101,27 +107,48 @@ struct SettingsView: View {
 
                 // Configures the LLM provider and API keys used by the segmentation correction feature.
                 Section {
-                    // Picker selects which provider's key is active. Shown as a menu on iOS.
-                    Picker("Provider", selection: $llmProviderRaw) {
-                        ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
-                            Text(provider.displayName).tag(provider.rawValue)
+                    Toggle("Use LLM API", isOn: $useLLM)
+
+                    if useLLM {
+                        // Picker selects which provider's key is active. Shown as a menu on iOS.
+                        Picker("Provider", selection: $llmProviderRaw) {
+                            ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
+                                Text(provider.displayName).tag(provider.rawValue)
+                            }
                         }
+
+                        // Key entry rows are always visible so both keys can be saved independently.
+                        // SecureField hides the entry but does not prevent UserDefaults storage.
+                        SecureField("OpenAI API Key", text: $openAIKey)
+                            .textContentType(.password)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        SecureField("Claude API Key", text: $claudeKey)
+                            .textContentType(.password)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
                     }
 
-                    // Key entry rows are always visible so both keys can be saved independently.
-                    // SecureField hides the entry but does not prevent UserDefaults storage.
-                    SecureField("OpenAI API Key", text: $openAIKey)
-                        .textContentType(.password)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    SecureField("Claude API Key", text: $claudeKey)
-                        .textContentType(.password)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
+                    // Lower temperature = more deterministic output; higher = more varied corrections.
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Temperature")
+                            Spacer()
+                            Text(String(format: "%.2f", temperature))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $temperature, in: 0.0...1.0, step: 0.05)
+                    }
                 } header: {
                     Text("AI Correction")
                 } footer: {
-                    Text("Select a provider and enter its key to enable the segmentation correction button in the reader.")
+                    if useLLM {
+                        Text("When enabled, the correction button calls the LLM API and costs tokens.")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("Using stub response. Enable \"Use LLM API\" to call the real API.")
+                    }
                 }
 
                 Section {
@@ -139,6 +166,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Settings")
         }
         .toolbar(.visible, for: .tabBar)

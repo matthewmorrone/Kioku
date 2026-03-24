@@ -239,6 +239,7 @@ struct CSVImportView: View {
                 rawText = decoded
                 errorText = nil
                 items = []
+                Task { await parse() }
             } catch {
                 errorText = error.localizedDescription
             }

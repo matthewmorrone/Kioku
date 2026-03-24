@@ -3,6 +3,14 @@ import SwiftUI
 // Tabs available in the Words screen.
 enum WordsTab { case saved, history }
 
+// Sort options for both saved words and history.
+enum WordsSortOrder: String {
+    case newestFirst
+    case oldestFirst
+    case aToZ
+    case zToA
+}
+
 // Renders the saved-word list screen for the Words tab.
 // Major sections: search bar, saved/history tab picker, word rows, toolbar.
 struct WordsView: View {
@@ -20,10 +28,17 @@ struct WordsView: View {
     @State private var editMode: EditMode = .inactive
     @State private var selectedWordIDs: Set<Int64> = []
     @State private var isBatchRemoveConfirmPresented = false
+    @State private var isBatchRemoveHistoryConfirmPresented = false
     @State private var isBatchListSheetPresented = false
     @State private var isCSVImportPresented = false
+    @State private var selectedHistoryIDs: Set<Int64> = []
     @State private var activeTab: WordsTab = .saved
+    @AppStorage("savedWordsSortOrder") private var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
+    @AppStorage("historySortOrder") private var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
     @State private var searchText = ""
+
+    private var savedSort: WordsSortOrder { WordsSortOrder(rawValue: savedSortOrder) ?? .newestFirst }
+    private var historySort: WordsSortOrder { WordsSortOrder(rawValue: historySortOrderRaw) ?? .newestFirst }
     @State private var searchResults: [DictionaryEntry] = []
     @State private var searchTask: Task<Void, Never>?
 
@@ -40,7 +55,7 @@ struct WordsView: View {
                     .padding(.vertical, 8)
                 }
 
-                List(selection: activeTab == .saved && searchText.isEmpty ? $selectedWordIDs : .constant(Set<Int64>())) {
+                List(selection: searchText.isEmpty ? (activeTab == .saved ? $selectedWordIDs : $selectedHistoryIDs) : .constant(Set<Int64>())) {
                     if searchText.isEmpty == false {
                         searchResultsContent
                     } else if activeTab == .saved {
@@ -49,7 +64,7 @@ struct WordsView: View {
                         historyContent
                     }
                 }
-                .environment(\.editMode, activeTab == .saved && searchText.isEmpty ? $editMode : .constant(.inactive))
+                .environment(\.editMode, searchText.isEmpty ? $editMode : .constant(.inactive))
                 .animation(.default, value: activeTab)
             }
             .searchable(text: $searchText, prompt: "Search dictionary…")
@@ -70,11 +85,25 @@ struct WordsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             }
+            .confirmationDialog(
+                "Remove \(selectedHistoryIDs.count) entr\(selectedHistoryIDs.count == 1 ? "y" : "ies") from history?",
+                isPresented: $isBatchRemoveHistoryConfirmPresented,
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    for id in selectedHistoryIDs {
+                        historyStore.remove(id: id)
+                    }
+                    selectedHistoryIDs.removeAll()
+                    editMode = .inactive
+                }
+                Button("Cancel", role: .cancel) {}
+            }
         }
         .toolbar(.visible, for: .tabBar)
         .sheet(item: $selectedDetailWord) { word in
-            WordDetailView(word: word, lists: wordListsStore.lists, dictionaryStore: dictionaryStore)
-                .presentationDetents([.medium, .large])
+            WordDetailView(word: word, dictionaryStore: dictionaryStore)
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $isFilterSheetPresented) {
@@ -98,10 +127,12 @@ struct WordsView: View {
                 .environmentObject(wordListsStore)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled()
         }
         .onChange(of: activeTab) { _, _ in
             editMode = .inactive
             selectedWordIDs.removeAll()
+            selectedHistoryIDs.removeAll()
         }
         .onChange(of: searchText) { _, newValue in
             searchTask?.cancel()
@@ -120,9 +151,9 @@ struct WordsView: View {
                 let results = await Task.detached(priority: .userInitiated) {
                     var entries: [DictionaryEntry] = []
                     if hasKanji {
-                        entries += (try? store.lookup(surface: query, mode: .kanjiAndKana)) ?? []
+                        entries += (try? await MainActor.run { try store.lookup(surface: query, mode: .kanjiAndKana) }) ?? []
                     }
-                    entries += (try? store.lookup(surface: query, mode: .kanaOnly)) ?? []
+                    entries += (try? await MainActor.run { try store.lookup(surface: query, mode: .kanaOnly) }) ?? []
                     var seen = Set<Int64>()
                     return entries.filter { seen.insert($0.entryId).inserted }
                 }.value
@@ -154,9 +185,6 @@ struct WordsView: View {
                 )
                 .tag(savedWord.canonicalEntryID)
             }
-            .onMove { fromOffsets, toOffset in
-                wordsStore.move(fromOffsets: fromOffsets, toOffset: toOffset)
-            }
         }
     }
 
@@ -166,8 +194,9 @@ struct WordsView: View {
             Text("No lookup history yet")
                 .foregroundStyle(.secondary)
         } else {
-            ForEach(historyStore.entries) { entry in
+            ForEach(sortedHistory) { entry in
                 historyRow(entry)
+                    .tag(entry.canonicalEntryID)
             }
         }
     }
@@ -260,80 +289,152 @@ struct WordsView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        // CSV import floats to the leading side, separate from CRUD controls.
+        if activeTab == .saved && editMode == .inactive && searchText.isEmpty {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isCSVImportPresented = true
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Import CSV")
+            }
+        }
+
         ToolbarItemGroup(placement: .topBarTrailing) {
-            if activeTab == .saved && searchText.isEmpty {
+            if searchText.isEmpty {
                 if editMode == .active {
+                    // Batch delete for whichever tab is active.
                     Button {
-                        isBatchRemoveConfirmPresented = true
+                        if activeTab == .saved {
+                            isBatchRemoveConfirmPresented = true
+                        } else {
+                            isBatchRemoveHistoryConfirmPresented = true
+                        }
                     } label: {
                         Image(systemName: "trash")
                             .font(.system(size: 16))
                             .frame(width: 32, height: 32)
                     }
-                    .disabled(selectedWordIDs.isEmpty)
-                    .accessibilityLabel("Delete Selected Words")
+                    .disabled(activeTab == .saved ? selectedWordIDs.isEmpty : selectedHistoryIDs.isEmpty)
+                    .accessibilityLabel("Delete Selected")
 
+                    // Select all / deselect all for whichever tab is active.
                     Button {
-                        if selectedWordIDs.count == visibleWords.count {
-                            selectedWordIDs.removeAll()
+                        if activeTab == .saved {
+                            if selectedWordIDs.count == visibleWords.count {
+                                selectedWordIDs.removeAll()
+                            } else {
+                                selectedWordIDs = Set(visibleWords.map(\.canonicalEntryID))
+                            }
                         } else {
-                            selectedWordIDs = Set(visibleWords.map(\.canonicalEntryID))
+                            if selectedHistoryIDs.count == historyStore.entries.count {
+                                selectedHistoryIDs.removeAll()
+                            } else {
+                                selectedHistoryIDs = Set(historyStore.entries.map(\.canonicalEntryID))
+                            }
                         }
                     } label: {
-                        let allSelected = selectedWordIDs.count == visibleWords.count
+                        let allSelected = activeTab == .saved
+                            ? selectedWordIDs.count == visibleWords.count
+                            : selectedHistoryIDs.count == historyStore.entries.count
                         Image(systemName: allSelected ? "minus.circle" : "circle.dashed.inset.filled")
                             .font(.system(size: 16))
                             .frame(width: 32, height: 32)
                     }
-                    .accessibilityLabel(selectedWordIDs.count == visibleWords.count ? "Deselect All" : "Select All")
+                    .accessibilityLabel(
+                        (activeTab == .saved
+                            ? selectedWordIDs.count == visibleWords.count
+                            : selectedHistoryIDs.count == historyStore.entries.count)
+                        ? "Deselect All" : "Select All"
+                    )
                 }
 
-                Button {
-                    editMode = editMode == .active ? .inactive : .active
-                    if editMode == .inactive {
-                        selectedWordIDs.removeAll()
-                    }
-                } label: {
-                    Image(systemName: editMode == .active ? "checkmark.circle" : "pencil")
-                        .font(.system(size: 16))
-                        .frame(width: 32, height: 32)
-                }
-                .accessibilityLabel(editMode == .active ? "Done Editing" : "Edit Words")
-
-                Button {
-                    if editMode == .active && !selectedWordIDs.isEmpty {
-                        isBatchListSheetPresented = true
-                    } else {
-                        isFilterSheetPresented = true
-                    }
-                } label: {
-                    Image(systemName: isFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                        .font(.system(size: 16))
-                        .frame(width: 32, height: 32)
-                }
-                .accessibilityLabel(editMode == .active && !selectedWordIDs.isEmpty ? "Manage Lists for Selection" : "Filter by List")
-
-                if editMode == .inactive {
+                // Edit mode toggle — shown for saved always, for history only when non-empty.
+                if activeTab == .saved || historyStore.entries.isEmpty == false {
                     Button {
-                        isCSVImportPresented = true
+                        editMode = editMode == .active ? .inactive : .active
+                        if editMode == .inactive {
+                            selectedWordIDs.removeAll()
+                            selectedHistoryIDs.removeAll()
+                        }
                     } label: {
-                        Image(systemName: "square.and.arrow.down")
+                        Image(systemName: editMode == .active ? "checkmark.circle" : "pencil")
                             .font(.system(size: 16))
                             .frame(width: 32, height: 32)
                     }
-                    .accessibilityLabel("Import CSV")
+                    .accessibilityLabel(editMode == .active ? "Done Editing" : "Edit")
                 }
-            }
 
-            if activeTab == .history && searchText.isEmpty && historyStore.entries.isEmpty == false {
-                Button {
-                    historyStore.clear()
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 16))
-                        .frame(width: 32, height: 32)
+                // Sort menu — available on both tabs when not in edit mode.
+                if editMode == .inactive {
+                    Menu {
+                        let currentSort = activeTab == .saved ? savedSort : historySort
+                        Button {
+                            if activeTab == .saved { savedSortOrder = WordsSortOrder.newestFirst.rawValue }
+                            else { historySortOrderRaw = WordsSortOrder.newestFirst.rawValue }
+                        } label: {
+                            if currentSort == .newestFirst {
+                                Label("Newest First", systemImage: "checkmark")
+                            } else {
+                                Text("Newest First")
+                            }
+                        }
+                        Button {
+                            if activeTab == .saved { savedSortOrder = WordsSortOrder.oldestFirst.rawValue }
+                            else { historySortOrderRaw = WordsSortOrder.oldestFirst.rawValue }
+                        } label: {
+                            if currentSort == .oldestFirst {
+                                Label("Oldest First", systemImage: "checkmark")
+                            } else {
+                                Text("Oldest First")
+                            }
+                        }
+                        Button {
+                            if activeTab == .saved { savedSortOrder = WordsSortOrder.aToZ.rawValue }
+                            else { historySortOrderRaw = WordsSortOrder.aToZ.rawValue }
+                        } label: {
+                            if currentSort == .aToZ {
+                                Label("A to Z", systemImage: "checkmark")
+                            } else {
+                                Text("A to Z")
+                            }
+                        }
+                        Button {
+                            if activeTab == .saved { savedSortOrder = WordsSortOrder.zToA.rawValue }
+                            else { historySortOrderRaw = WordsSortOrder.zToA.rawValue }
+                        } label: {
+                            if currentSort == .zToA {
+                                Label("Z to A", systemImage: "checkmark")
+                            } else {
+                                Text("Z to A")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
+                    }
+                    .accessibilityLabel("Sort")
                 }
-                .accessibilityLabel("Clear History")
+
+                // Filter / list management is saved-only.
+                if activeTab == .saved {
+                    Button {
+                        if editMode == .active && !selectedWordIDs.isEmpty {
+                            isBatchListSheetPresented = true
+                        } else {
+                            isFilterSheetPresented = true
+                        }
+                    } label: {
+                        Image(systemName: isFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
+                    }
+                    .accessibilityLabel(editMode == .active && !selectedWordIDs.isEmpty ? "Manage Lists for Selection" : "Filter by List")
+                }
             }
         }
     }
@@ -345,13 +446,38 @@ struct WordsView: View {
         !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty
     }
 
-    // Returns saved words filtered by active note and/or list selection.
+    // Returns saved words filtered by active note/list selection and sorted by the current saved sort order.
     private var visibleWords: [SavedWord] {
-        guard isFilterActive else { return wordsStore.words }
-        return wordsStore.words.filter { word in
-            let matchesNote = activeFilterNoteIDs.isEmpty || activeFilterNoteIDs.contains { word.sourceNoteIDs.contains($0) }
-            let matchesList = activeFilterListIDs.isEmpty || activeFilterListIDs.contains { word.wordListIDs.contains($0) }
-            return matchesNote && matchesList
+        let filtered: [SavedWord]
+        if isFilterActive {
+            filtered = wordsStore.words.filter { word in
+                let matchesNote = activeFilterNoteIDs.isEmpty || activeFilterNoteIDs.contains { word.sourceNoteIDs.contains($0) }
+                let matchesList = activeFilterListIDs.isEmpty || activeFilterListIDs.contains { word.wordListIDs.contains($0) }
+                return matchesNote && matchesList
+            }
+        } else {
+            filtered = wordsStore.words
+        }
+        return sorted(filtered, by: savedSort)
+    }
+
+    // Returns history entries sorted by the current history sort order.
+    private var sortedHistory: [HistoryEntry] {
+        switch historySort {
+        case .newestFirst: return historyStore.entries.sorted { $0.lookedUpAt > $1.lookedUpAt }
+        case .oldestFirst: return historyStore.entries.sorted { $0.lookedUpAt < $1.lookedUpAt }
+        case .aToZ:        return historyStore.entries.sorted { $0.surface < $1.surface }
+        case .zToA:        return historyStore.entries.sorted { $0.surface > $1.surface }
+        }
+    }
+
+    // Sorts a saved-word array by the given order.
+    private func sorted(_ words: [SavedWord], by order: WordsSortOrder) -> [SavedWord] {
+        switch order {
+        case .newestFirst: return words.sorted { $0.savedAt > $1.savedAt }
+        case .oldestFirst: return words.sorted { $0.savedAt < $1.savedAt }
+        case .aToZ:        return words.sorted { $0.surface < $1.surface }
+        case .zToA:        return words.sorted { $0.surface > $1.surface }
         }
     }
 

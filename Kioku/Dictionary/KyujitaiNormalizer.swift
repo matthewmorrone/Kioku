@@ -22,7 +22,7 @@ enum KyujitaiNormalizer {
     }
 
     // Scalar-keyed table for O(1) per-character lookup during normalization.
-    nonisolated(unsafe) private static let table: [Unicode.Scalar: Unicode.Scalar] = [
+    private static let table: [Unicode.Scalar: Unicode.Scalar] = [
         "舊": "旧", "體": "体", "國": "国", "圓": "円", "圖": "図", "學": "学", "實": "実", "寫": "写",
         "會": "会", "發": "発", "變": "変", "壓": "圧", "醫": "医", "區": "区", "賣": "売", "單": "単",
         "收": "収", "臺": "台", "榮": "栄", "營": "営", "衞": "衛", "驛": "駅", "緣": "縁", "艷": "艶",

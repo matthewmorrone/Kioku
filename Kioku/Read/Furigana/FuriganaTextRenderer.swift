@@ -17,6 +17,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let isColorAlternationEnabled: Bool
     let isHighlightUnknownEnabled: Bool
     let unknownSegmentLocations: Set<Int>
+    // UTF-16 segment start locations changed by the most recent LLM correction (pending confirmation).
+    let changedSegmentLocations: Set<Int>
+    // Subset of changedSegmentLocations where only the furigana reading changed (surface unchanged).
+    let changedReadingLocations: Set<Int>
     let segmenter: Segmenter
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void
@@ -104,7 +108,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             isVisualEnhancementsEnabled: isVisualEnhancementsEnabled,
             isColorAlternationEnabled: isColorAlternationEnabled,
             isHighlightUnknownEnabled: isHighlightUnknownEnabled,
-            unknownSegmentLocations: unknownSegmentLocations
+            unknownSegmentLocations: unknownSegmentLocations,
+            changedSegmentLocations: changedSegmentLocations,
+            changedReadingLocations: changedReadingLocations
         ).makePayload()
         if context.coordinator.shouldRenderText(for: baseTextRenderSignature) {
             // Use the external scroll target instead of the current UITextView offset so that
@@ -180,7 +186,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     continue
                 }
 
-                let furiganaWidth = max(measureTextWidth(furigana, font: furiganaFont, kerning: 0), segmentRect.width)
+                let furiganaWidth = measureTextWidth(furigana, font: furiganaFont, kerning: 0)
                 let furiganaX = segmentRect.midX - (furiganaWidth / 2)
                 furiganaStrings.append(furigana)
                 furiganaFrames.append(
@@ -353,6 +359,12 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         for location in unknownSegmentLocations.sorted() {
             hasher.combine(location)
         }
+        for location in changedSegmentLocations.sorted() {
+            hasher.combine(location)
+        }
+        for location in changedReadingLocations.sorted() {
+            hasher.combine(location)
+        }
         hasher.combine(textView.bounds.width)
         hasher.combine(textView.bounds.height)
         hasher.combine(textView.contentSize.width)
@@ -376,6 +388,12 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(isColorAlternationEnabled)
         hasher.combine(isHighlightUnknownEnabled)
         for location in unknownSegmentLocations.sorted() {
+            hasher.combine(location)
+        }
+        for location in changedSegmentLocations.sorted() {
+            hasher.combine(location)
+        }
+        for location in changedReadingLocations.sorted() {
             hasher.combine(location)
         }
         hasher.combine(textSize)

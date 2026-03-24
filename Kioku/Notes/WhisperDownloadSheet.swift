@@ -41,12 +41,10 @@ struct WhisperDownloadSheet: View {
     }
 
     // Row for a model that can be downloaded; shows progress or a download button.
-    // If the model is bundled in the app, it counts as already available without downloading.
     @ViewBuilder
     private func modelRow(for model: WhisperDownloadableModel) -> some View {
         let filename = model.filename
-        let isBundled = filename == "ggml-tiny.bin" && manager.hasBundledTiny
-        let isDownloaded = manager.downloadedModels.contains(filename) || isBundled
+        let isDownloaded = manager.downloadedModels.contains(filename)
         let progress = manager.downloadProgress[filename]
         let errorMessage = manager.downloadErrors[filename]
 
@@ -54,22 +52,16 @@ struct WhisperDownloadSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.displayName)
-                    if isBundled && !manager.downloadedModels.contains(filename) {
-                        Text("Built-in")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("~\(model.sizeMB) MB")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("~\(model.sizeMB) MB")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
                 if isDownloaded {
                     Button {
-                        onSelect(isBundled && !manager.downloadedModels.contains(filename) ? .bundled : .downloaded(filename))
+                        onSelect(.downloaded(filename))
                         dismiss()
                     } label: {
                         Label("Use", systemImage: "checkmark.circle.fill")

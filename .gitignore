@@ -6,3 +6,5 @@ Resources/ggml-tiny.bin
 Resources/kanjidic2-all.json
 Resources/pitch-accent.tsv
 Resources/sentence-pairs.tsv
+.swiftpm/checkouts
+.remember

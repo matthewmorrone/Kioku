@@ -107,28 +107,10 @@ struct SubtitleImportSheet: View {
                 }
 
                 // Whisper model selection — only shown when transcription is required.
-                // Offers the bundled tiny model, downloaded models, internet download, or a file picker.
+                // Offers downloaded models, internet download, or a file picker.
                 if needsTranscription {
                     Section {
-                        // Bundled tiny model — always available when the binary is in the app bundle.
-                        if modelManager.hasBundledTiny {
-                            Button {
-                                modelSource = .bundled
-                                modelError = ""
-                            } label: {
-                                HStack {
-                                    Label("Tiny (Built-in)", systemImage: "brain")
-                                    Spacer()
-                                    if modelSource == .bundled {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(Color.accentColor)
-                                    }
-                                }
-                                .foregroundStyle(.primary)
-                            }
-                        }
-
-                        // Download a model or use the bundled tiny.
+                        // Download a model.
                         Button {
                             isDownloadSheetPresented = true
                         } label: {
@@ -166,7 +148,7 @@ struct SubtitleImportSheet: View {
                         if modelError.isEmpty == false {
                             Text(modelError).foregroundStyle(.red)
                         } else {
-                            Text("Tiny is included. Download larger models for better accuracy.")
+                            Text("Download a model for transcription, or choose a local file.")
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -241,12 +223,6 @@ struct SubtitleImportSheet: View {
                     modelError = ""
                 }
             }
-            .onAppear {
-                // Pre-select bundled tiny if no other source has been chosen.
-                if modelSource == nil && modelManager.hasBundledTiny {
-                    modelSource = .bundled
-                }
-            }
         }
     }
 
@@ -268,8 +244,8 @@ struct SubtitleImportSheet: View {
             if didStartAccess { subtitleURL.stopAccessingSecurityScopedResource() }
         }
 
-        guard let rawContent = try? String(contentsOf: subtitleURL, encoding: .utf8)
-                ?? String(contentsOf: subtitleURL, encoding: .isoLatin1) else {
+        guard let rawContent = (try? String(contentsOf: subtitleURL, encoding: .utf8))
+                ?? (try? String(contentsOf: subtitleURL, encoding: .isoLatin1)) else {
             parseError = "Could not read the subtitle file."
             return
         }
@@ -299,8 +275,8 @@ struct SubtitleImportSheet: View {
         defer { isTranscribing = false }
 
         let didStartAudio = audioURL.startAccessingSecurityScopedResource()
-        // Only user-picked files need security-scoped access; bundled and downloaded URLs do not.
-        let didStartModel = (source == .bundled) ? false : modelURL.startAccessingSecurityScopedResource()
+        // Only user-picked files need security-scoped access; harmless to call on app-support URLs.
+        let didStartModel = modelURL.startAccessingSecurityScopedResource()
         defer {
             if didStartAudio { audioURL.stopAccessingSecurityScopedResource() }
             if didStartModel { modelURL.stopAccessingSecurityScopedResource() }
@@ -311,7 +287,7 @@ struct SubtitleImportSheet: View {
             let audioFrames = try await convertAudioTo16kHzMono(url: audioURL)
             print("[Whisper] audio converted: \(audioFrames.count) frames at 16 kHz")
 
-            var params = WhisperParams.default
+            let params = WhisperParams.default
             params.language = .japanese
             print("[Whisper] starting transcription (language: ja)")
 
