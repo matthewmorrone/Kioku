@@ -233,6 +233,15 @@ def create_schema(conn):
         );
 
         CREATE INDEX idx_sentence_pairs_ja_id ON sentence_pairs(ja_id);
+
+        -- FTS5 virtual table for fast substring search on Japanese sentence text.
+        -- Enables efficient LIKE-equivalent queries without full table scans.
+        CREATE VIRTUAL TABLE sentence_pairs_fts USING fts5(
+            japanese,
+            content=sentence_pairs,
+            content_rowid=rowid,
+            tokenize='unicode61'
+        );
         """
     )
 
@@ -841,6 +850,9 @@ def build_database():
 
     print("Importing sentence pairs...")
     import_sentence_pairs(conn)
+
+    print("Building sentence FTS index...")
+    conn.execute("INSERT INTO sentence_pairs_fts(sentence_pairs_fts) VALUES('rebuild')")
 
     conn.commit()
     conn.execute("PRAGMA optimize")

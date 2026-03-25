@@ -22,10 +22,12 @@ struct ReadView: View {
 
     @AppStorage(TypographySettings.textSizeKey)
     private var textSize = TypographySettings.defaultTextSize
-    @AppStorage(TypographySettings.lineSpacingKey) 
+    @AppStorage(TypographySettings.lineSpacingKey)
     private var lineSpacing = TypographySettings.defaultLineSpacing
-    @AppStorage(TypographySettings.kerningKey) 
+    @AppStorage(TypographySettings.kerningKey)
     private var kerning = TypographySettings.defaultKerning
+    @AppStorage(TypographySettings.furiganaGapKey)
+    private var furiganaGap = TypographySettings.defaultFuriganaGap
     @AppStorage("kioku.settings.showFurigana")
     private var isFuriganaVisible = true
     @AppStorage("kioku.settings.colorAlternation")
@@ -52,7 +54,6 @@ struct ReadView: View {
     @State var segments: [SegmentRange]?
     @State var furiganaBySegmentLocation: [Int: String] = [:]
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
-    @State var selectedReadingOverrideByLocation: [Int: String] = [:]
     @State var furiganaComputationTask: Task<Void, Never>?
     @State var pendingPersistenceTask: Task<Void, Never>?
     @State var activeNoteID: UUID?
@@ -61,6 +62,7 @@ struct ReadView: View {
     @State var isSheetSwipeTransitionActive = false
     @State var sharedScrollOffsetY: CGFloat = 0
     @State private var isShowingSegmentList = false
+    @State var wordDetailWord: SavedWord?
     @State private var isShowingDisplayOptions = false
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
@@ -156,6 +158,13 @@ struct ReadView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
         .toolbar(.visible, for: .tabBar)
+        .sheet(item: $wordDetailWord) { word in
+            // WordDetailView reads wordListsStore via @EnvironmentObject inherited from ContentView.
+            NavigationStack {
+                WordDetailView(word: word, dictionaryStore: dictionaryStore)
+                    .environmentObject(wordsStore)
+            }
+        }
         .sheet(isPresented: $isShowingSegmentList) {
             SegmentListView(
                 text: text,
@@ -273,8 +282,16 @@ struct ReadView: View {
             }
         }
         .onChange(of: segmenterRevision) { _, _ in
-            // Recomputes segmentation after background dictionary loading completes.
-            refreshSegmentationRanges()
+            // When segments are persisted and furigana is already loaded, nothing to do.
+            // When segments exist but furigana is missing, generate it now that readingBySurface is ready.
+            // Otherwise recompute full segmentation.
+            if segments != nil {
+                if furiganaBySegmentLocation.isEmpty {
+                    scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                }
+            } else {
+                refreshSegmentationRanges()
+            }
         }
         .onChange(of: selectedOCRImageItem) { _, newItem in
             guard let newItem else {
@@ -421,7 +438,8 @@ struct ReadView: View {
                     },
                     textSize: $textSize,
                     lineSpacing: lineSpacing,
-                    kerning: kerning
+                    kerning: kerning,
+                    furiganaGap: furiganaGap
                 )
                 .opacity(isEditMode ? 0 : 1)
                 .allowsHitTesting(isEditMode == false)

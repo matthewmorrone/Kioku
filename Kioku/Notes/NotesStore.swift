@@ -73,7 +73,6 @@ final class NotesStore: ObservableObject {
         }
 
         notes[index].segments = nil
-        notes[index].readingOverrides = nil
         notes[index].modifiedAt = Date()
     }
 
@@ -86,8 +85,7 @@ final class NotesStore: ObservableObject {
         let duplicatedNote = Note(
             title: sourceNote.title,
             content: sourceNote.content,
-            segments: sourceNote.segments,
-            readingOverrides: sourceNote.readingOverrides
+            segments: sourceNote.segments
         )
         notes.insert(duplicatedNote, at: 0)
         return duplicatedNote
@@ -182,18 +180,17 @@ final class NotesStore: ObservableObject {
     }
 
     // Inserts or updates one note in memory so editing does not re-read the full store.
-    func upsertNote(id: UUID?, title: String, content: String, segments: [SegmentRange]?, readingOverrides: [Int: String]? = nil) -> UUID {
+    func upsertNote(id: UUID?, title: String, content: String, segments: [SegmentRange]?) -> UUID {
         let now = Date()
         if let id, let index = notes.firstIndex(where: { $0.id == id }) {
             notes[index].title = title
             notes[index].content = content
             notes[index].segments = segments
-            notes[index].readingOverrides = readingOverrides
             notes[index].modifiedAt = now
             return id
         }
 
-        let newNote = Note(title: title, content: content, segments: segments, createdAt: now, modifiedAt: now, readingOverrides: readingOverrides)
+        let newNote = Note(title: title, content: content, segments: segments, createdAt: now, modifiedAt: now)
         notes.insert(newNote, at: 0)
         return newNote.id
     }
@@ -201,8 +198,8 @@ final class NotesStore: ObservableObject {
     // Persists a read-screen edit by upserting into the in-memory store and writing to disk immediately.
     // Uses upsertNote so writes are synchronous and there is no window where data can be lost on process kill.
     @discardableResult
-    func scheduleReadEditorPersist(id: UUID?, title: String, content: String, segments: [SegmentRange]?, readingOverrides: [Int: String]? = nil) -> UUID {
-        upsertNote(id: id, title: title, content: content, segments: segments, readingOverrides: readingOverrides)
+    func scheduleReadEditorPersist(id: UUID?, title: String, content: String, segments: [SegmentRange]?) -> UUID {
+        upsertNote(id: id, title: title, content: content, segments: segments)
     }
 
     // Produces export segment ranges from existing runtime or persisted state without recomputing segmentation.
@@ -223,7 +220,7 @@ final class NotesStore: ObservableObject {
         }
 
         // Guarantees at least one export segment for non-empty content even when no manual segmentation exists.
-        return [SegmentRange(start: 0, end: utf16Length)]
+        return [SegmentRange(start: 0, end: utf16Length, surface: note.content)]
     }
 
     // Persists the current notes array into user defaults immediately.

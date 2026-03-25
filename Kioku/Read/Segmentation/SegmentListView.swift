@@ -22,8 +22,8 @@ struct SegmentListView: View {
     @State private var savedWordSourceNoteIDsByEntryID: [Int64: Set<UUID>] = [:]
     @State private var savedWordSourceNoteIDsBySurface: [String: Set<UUID>] = [:]
     @State private var canonicalEntryIDBySurface: [String: Int64] = [:]
-    @State private var includesDuplicates = true
-    @State private var includesCommonParticles = true
+    @State private var includesDuplicates = false
+    @State private var includesCommonParticles = false
     @State private var hydrationGeneration: Int = 0
     @State private var orderedSplitOffsetsBySourceIndex: [Int: [Int]] = [:]
     @State private var latticeBackedSplitOffsetsBySourceIndex: [Int: Set<Int>] = [:]

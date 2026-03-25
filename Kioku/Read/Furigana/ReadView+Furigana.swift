@@ -40,58 +40,17 @@ extension ReadView {
                 furiganaBySegmentLocation = furiganaResult.furiganaByLocation
                 furiganaLengthBySegmentLocation = furiganaResult.lengthByLocation
 
-                // User-selected reading overrides take precedence over computed furigana.
-                // Use projectRunReadings + kanjiRuns so the reading is split per kanji run,
-                // correctly handling internal okurigana (e.g. 生き方 → い over 生, かた over 方).
-                for (location, reading) in selectedReadingOverrideByLocation {
-                    guard let matchingEdge = edges.first(where: {
-                        NSRange($0.start..<$0.end, in: sourceText).location == location
-                    }) else {
-                        furiganaBySegmentLocation[location] = reading
-                        furiganaLengthBySegmentLocation[location] = reading.utf16.count
-                        continue
-                    }
+                // Compact format logging disabled.
 
-                    let edgeNSRange = NSRange(matchingEdge.start..<matchingEdge.end, in: sourceText)
-                    let surface = matchingEdge.surface
-                    let surfaceChars = Array(surface)
-                    let runs = kanjiRuns(in: surface)
-
-                    // Clear all stale furigana within this segment before writing new entries.
-                    for loc in Array(furiganaBySegmentLocation.keys) {
-                        let len = furiganaLengthBySegmentLocation[loc] ?? 0
-                        if NSIntersectionRange(NSRange(location: loc, length: len), edgeNSRange).length > 0 {
-                            furiganaBySegmentLocation.removeValue(forKey: loc)
-                            furiganaLengthBySegmentLocation.removeValue(forKey: loc)
-                        }
-                    }
-
-                    guard runs.isEmpty == false else { continue }
-
-                    if let runReadings = projectRunReadings(surface: surface, reading: reading),
-                       runReadings.count == runs.count {
-                        // Store one furigana entry per kanji run at its precise UTF-16 offset.
-                        for (run, runReading) in zip(runs, runReadings) {
-                            guard runReading.isEmpty == false else { continue }
-                            let runSurface = String(surfaceChars[run.start..<run.end])
-                            guard runReading != runSurface else { continue }
-                            let prefixUTF16 = String(surfaceChars[..<run.start]).utf16.count
-                            let runUTF16 = String(surfaceChars[run.start..<run.end]).utf16.count
-                            furiganaBySegmentLocation[location + prefixUTF16] = runReading
-                            furiganaLengthBySegmentLocation[location + prefixUTF16] = runUTF16
-                        }
-                    } else {
-                        // Fall back to segment-level entry when run projection fails.
-                        furiganaBySegmentLocation[location] = reading
-                        furiganaLengthBySegmentLocation[location] = edgeNSRange.length
-                    }
-                }
-
-                // Print compact format once after furigana settles so it can be pasted as a stub.
-                let entries = buildLLMSegmentEntries()
-                if entries.isEmpty == false {
-                    print("[LLM] Compact format:\n\(buildCompactFormat(from: entries))")
-                }
+                // Persist segments with furigana now that readings are fully resolved.
+                // Assign back to self.segments so persistCurrentNoteIfNeeded writes the annotated data.
+                segments = buildSegmentRanges(
+                    from: segmentEdges,
+                    furiganaByLocation: furiganaBySegmentLocation,
+                    furiganaLengthByLocation: furiganaLengthBySegmentLocation
+                )
+                recordRuntimeSegmentationSnapshot(for: segmentEdges)
+                persistCurrentNoteIfNeeded()
             }
         }
     }

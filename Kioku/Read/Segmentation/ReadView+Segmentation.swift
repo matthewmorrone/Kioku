@@ -54,28 +54,30 @@ extension ReadView {
             })
             furiganaBySegmentLocation = furiganaBySegmentLocation.filter { !staleLocations.contains($0.key) }
             furiganaLengthBySegmentLocation = furiganaLengthBySegmentLocation.filter { !staleLocations.contains($0.key) }
-            selectedReadingOverrideByLocation[targetLocation] = reading
             furiganaBySegmentLocation[targetLocation] = reading
             furiganaLengthBySegmentLocation[targetLocation] = targetLength
         }
-        // Persist immediately — reading overrides are discrete user actions, not keystrokes.
+        // Rebuild segments with updated furigana then persist.
+        segments = buildSegmentRanges(
+            from: segmentEdges,
+            furiganaByLocation: furiganaBySegmentLocation,
+            furiganaLengthByLocation: furiganaLengthBySegmentLocation
+        )
         persistCurrentNoteIfNeeded()
     }
 
-    // Removes the persisted reading override for the currently selected segment and re-runs furigana computation.
+    // Removes the persisted reading for the currently selected segment and re-runs furigana computation.
     func clearReadingOverrideForCurrentSegment() {
         guard let location = selectedSegmentLocation else { return }
-        selectedReadingOverrideByLocation.removeValue(forKey: location)
         furiganaBySegmentLocation.removeValue(forKey: location)
         furiganaLengthBySegmentLocation.removeValue(forKey: location)
+        // scheduleFuriganaGeneration will rebuild segments and persist once it completes.
         scheduleFuriganaGeneration(for: text, edges: segmentEdges)
-        persistCurrentNoteIfNeeded()
     }
 
     // Clears note-backed segment range overrides and restores computed segmentation from the segmenter.
     func resetSegmentationToComputed() {
         segments = nil
-        selectedReadingOverrideByLocation = [:]
         illegalMergeBoundaryLocation = nil
         illegalMergeFlashTask?.cancel()
         selectedSegmentLocation = nil
@@ -103,7 +105,17 @@ extension ReadView {
     }
 
     // Rebuilds greedy segmentation ranges used by alternating segment colors in the editor.
+    // Skips recomputation when persisted segments already cover the text — trusts them as ground truth.
     func refreshSegmentationRanges() {
+        if let segments, let edges = edgesFromSegmentRanges(segments, in: text) {
+            segmentEdges = edges
+            segmentRanges = edges.map { $0.start..<$0.end }
+            unknownSegmentLocations = []
+            recordRuntimeSegmentationSnapshot(for: edges)
+            scheduleFuriganaGeneration(for: text, edges: edges)
+            return
+        }
+
         guard readResourcesReady else {
             illegalMergeBoundaryLocation = nil
             illegalMergeFlashTask?.cancel()
@@ -173,7 +185,11 @@ extension ReadView {
             return
         }
 
-        let segments = buildSegmentRanges(from: edges)
+        let segments = buildSegmentRanges(
+            from: edges,
+            furiganaByLocation: furiganaBySegmentLocation,
+            furiganaLengthByLocation: furiganaLengthBySegmentLocation
+        )
         notesStore.recordRuntimeSegmentation(
             noteID: activeNoteID,
             content: text,
@@ -303,8 +319,12 @@ extension ReadView {
                     clearReadingOverrideForCurrentSegment()
                 },
                 activeReadingOverrideProvider: {
-                    guard let location = selectedSegmentLocation else { return nil }
-                    return selectedReadingOverrideByLocation[location]
+                    guard let location = selectedSegmentLocation,
+                          let edge = segmentEdges.first(where: {
+                              NSRange($0.start..<$0.end, in: text).location == location
+                          }) else { return nil }
+                    let reading = reconstructedReading(for: edge.surface, at: location)
+                    return reading.isEmpty ? nil : reading
                 },
                 pathSegmentFrequencyProvider: { surface in
                     if let data = frequencyDataBySurface[surface] { return data }
@@ -333,13 +353,26 @@ extension ReadView {
                 sheetSaveToggle: {
                     guard let surface = currentSelectedSurface(),
                           let store = dictionaryStore else { return }
+                    // Look up via the lemma form to find the canonical dictionary entry,
+                    // but save with the original surface so WordDetailView can show the lemma below.
                     let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
                     guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return }
                     if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) {
                         wordsStore.remove(id: entry.entryId)
                     } else {
-                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: lookupSurface))
+                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface))
                     }
+                },
+                sheetOpenWordDetail: {
+                    guard let surface = currentSelectedSurface(),
+                          let store = dictionaryStore else { return }
+                    let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
+                    guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return }
+                    // Ensure word is saved before opening detail so WordDetailView has a valid record.
+                    if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) == false {
+                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface))
+                    }
+                    wordDetailWord = wordsStore.words.first { $0.canonicalEntryID == entry.entryId }
                 },
                 sheetWordComponentsProvider: {
                     guard let surface = currentSelectedSurface() else { return nil }
@@ -785,16 +818,16 @@ extension ReadView {
         unknownSegmentLocations = unknownSegmentLocations(for: edges)
         recordRuntimeSegmentationSnapshot(for: edges)
 
-        // Remove reading overrides whose location no longer aligns with a segment start.
-        // Stale overrides arise when a segment is split or merged — the old override location
-        // becomes invalid and, if kept, attaches the wrong full reading to the new smaller segment.
+        // Remove furigana entries whose location no longer aligns with a valid segment boundary.
+        // Stale entries arise when a segment is split or merged — the old location becomes invalid.
         let validLocations = Set(edges.compactMap { edge -> Int? in
             let r = NSRange(edge.start..<edge.end, in: text)
             return r.location != NSNotFound ? r.location : nil
         })
-        for location in Array(selectedReadingOverrideByLocation.keys) {
+        for location in Array(furiganaBySegmentLocation.keys) {
             if validLocations.contains(location) == false {
-                selectedReadingOverrideByLocation.removeValue(forKey: location)
+                furiganaBySegmentLocation.removeValue(forKey: location)
+                furiganaLengthBySegmentLocation.removeValue(forKey: location)
             }
         }
 
@@ -826,16 +859,32 @@ extension ReadView {
     }
 
     // Converts segment edges to explicit UTF-16 segment ranges for note persistence.
-    func buildSegmentRanges(from edges: [LatticeEdge]) -> [SegmentRange] {
+    // When furigana maps are provided, each segment is annotated with its resolved readings.
+    func buildSegmentRanges(
+        from edges: [LatticeEdge],
+        furiganaByLocation: [Int: String] = [:],
+        furiganaLengthByLocation: [Int: Int] = [:]
+    ) -> [SegmentRange] {
         edges.compactMap { edge in
             let nsRange = NSRange(edge.start..<edge.end, in: text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else {
                 return nil
             }
 
+            // Collect all furigana annotations whose range falls within this segment.
+            let segStart = nsRange.location
+            let segEnd = nsRange.location + nsRange.length
+            let annotations: [FuriganaAnnotation] = furiganaByLocation.compactMap { location, reading in
+                guard let length = furiganaLengthByLocation[location],
+                      location >= segStart, location + length <= segEnd else { return nil }
+                return FuriganaAnnotation(start: location, end: location + length, reading: reading)
+            }.sorted { $0.start < $1.start }
+
             return SegmentRange(
-                start: nsRange.location,
-                end: nsRange.location + nsRange.length
+                start: segStart,
+                end: segEnd,
+                surface: edge.surface,
+                furigana: annotations.isEmpty ? nil : annotations
             )
         }
     }
@@ -942,6 +991,20 @@ extension ReadView {
         }
 
         return normalizedRanges
+    }
+
+    // Extracts furigana annotation maps from persisted segment ranges for direct restoration on load.
+    func furiganaFromSegmentRanges(_ segments: [SegmentRange]) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
+        var byLocation: [Int: String] = [:]
+        var lengthByLocation: [Int: Int] = [:]
+        for segment in segments {
+            guard let annotations = segment.furigana else { continue }
+            for annotation in annotations {
+                byLocation[annotation.start] = annotation.reading
+                lengthByLocation[annotation.start] = annotation.end - annotation.start
+            }
+        }
+        return (byLocation: byLocation, lengthByLocation: lengthByLocation)
     }
 
 }
