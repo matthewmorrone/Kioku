@@ -1,4 +1,6 @@
 import UIKit
+import SwiftUI
+import AVFoundation
 
 extension SegmentLookupSheet {
     // Presents a bottom sheet that starts at a fitted small detent and can expand to medium.
@@ -21,6 +23,13 @@ extension SegmentLookupSheet {
         // Capture callbacks before dismissPopover, since dismissSheet clears them.
         let capturedOnReadingSelected = self.onReadingSelected
         let capturedPathSegmentFrequencyProvider = self.pathSegmentFrequencyProvider
+        let capturedSheetLemmaInfoProvider = self.sheetLemmaInfoProvider
+        let capturedSheetWordDisplayDataProvider = self.sheetWordDisplayDataProvider
+        let capturedSheetIsSavedProvider = self.sheetIsSavedProvider
+        let capturedSheetSaveToggle = self.sheetSaveToggle
+        let capturedSheetWordComponentsProvider = self.sheetWordComponentsProvider
+        let capturedActiveReadingOverrideProvider = self.activeReadingOverrideProvider
+        let capturedOnReadingReset = self.onReadingReset
         dismissPopover(notifyDismissal: false) { [weak self] in
             guard let self, let presenter = self.topPresentingController() else {
                 return
@@ -28,7 +37,14 @@ extension SegmentLookupSheet {
 
             self.onDismiss = onDismiss
             self.onReadingSelected = capturedOnReadingSelected
+            self.onReadingReset = capturedOnReadingReset
             self.pathSegmentFrequencyProvider = capturedPathSegmentFrequencyProvider
+            self.sheetLemmaInfoProvider = capturedSheetLemmaInfoProvider
+            self.sheetWordDisplayDataProvider = capturedSheetWordDisplayDataProvider
+            self.sheetIsSavedProvider = capturedSheetIsSavedProvider
+            self.sheetSaveToggle = capturedSheetSaveToggle
+            self.sheetWordComponentsProvider = capturedSheetWordComponentsProvider
+            self.activeReadingOverrideProvider = capturedActiveReadingOverrideProvider
             self.onSheetSelectPrevious = nil
             self.onSheetSelectNext = nil
             self.sheetReadingsProvider = sheetReadingsProvider
@@ -45,27 +61,18 @@ extension SegmentLookupSheet {
             // Keeps content clear of the grabber area so the title is never clipped.
             sheetController.additionalSafeAreaInsets.top = 20
 
-            let surfaceLabel = CopyableLabel()
-            surfaceLabel.translatesAutoresizingMaskIntoConstraints = false
-            surfaceLabel.textColor = .label
-            surfaceLabel.font = .systemFont(ofSize: 20, weight: .semibold)
-            surfaceLabel.textAlignment = .center
-            surfaceLabel.numberOfLines = 0
-            surfaceLabel.text = surface
-
-            // Using UIButton instead of UILabel so the custom-reading slot is directly tappable.
-            let readingSubtitleLabel = UIButton(type: .system)
-            readingSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-            readingSubtitleLabel.setTitleColor(.secondaryLabel, for: .normal)
-            readingSubtitleLabel.titleLabel?.font = .systemFont(ofSize: 13, weight: .regular)
-            readingSubtitleLabel.contentHorizontalAlignment = .center
-            readingSubtitleLabel.isUserInteractionEnabled = false
-
-            let surfaceStack = UIStackView(arrangedSubviews: [surfaceLabel, readingSubtitleLabel])
-            surfaceStack.translatesAutoresizingMaskIntoConstraints = false
-            surfaceStack.axis = .vertical
-            surfaceStack.alignment = .center
-            surfaceStack.spacing = 3
+            // SwiftUI header — mirrors WordDetailView header exactly.
+            var headerReading: String? = self.currentSheetUniqueReadings.first
+            var headerLemma: String? = self.currentSheetLemmaInfo.map { $0.lemma }
+            let headerView = SegmentLookupSheetHeader(surface: surface, reading: headerReading, lemma: headerLemma)
+            let headerHost = UIHostingController(rootView: headerView)
+            // sizingOptions must be set before the view is added to a parent so Auto Layout
+            // uses SwiftUI's ideal size — needed since FuriganaView computes height via CoreText.
+            if #available(iOS 16.0, *) {
+                headerHost.sizingOptions = .intrinsicContentSize
+            }
+            headerHost.view.translatesAutoresizingMaskIntoConstraints = false
+            headerHost.view.backgroundColor = .clear
 
             let prevReadingButton = UIButton(type: .system)
             prevReadingButton.translatesAutoresizingMaskIntoConstraints = false
@@ -77,20 +84,11 @@ extension SegmentLookupSheet {
             nextReadingButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
             nextReadingButton.tintColor = .tertiaryLabel
 
-            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, surfaceStack, nextReadingButton])
+            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, headerHost.view, nextReadingButton])
             readingNavRow.translatesAutoresizingMaskIntoConstraints = false
             readingNavRow.axis = .horizontal
             readingNavRow.alignment = .center
             readingNavRow.spacing = 8
-
-            // Shows the inflection chain — 食べた → 食べる — between the header and the split panel.
-            let lemmaChainLabel = UILabel()
-            lemmaChainLabel.translatesAutoresizingMaskIntoConstraints = false
-            lemmaChainLabel.font = .systemFont(ofSize: 13)
-            lemmaChainLabel.textColor = .secondaryLabel
-            lemmaChainLabel.textAlignment = .center
-            lemmaChainLabel.numberOfLines = 1
-            lemmaChainLabel.isHidden = true
 
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
@@ -108,34 +106,22 @@ extension SegmentLookupSheet {
                 showCustomSlot ? currentReadings.count + 1 : currentReadings.count
             }
 
-            // Updates the subtitle button text, color, tappability, and reset button visibility for the current index.
-            // Pure-kana surfaces have no distinct reading to display; hide the subtitle entirely for them.
-            func syncSubtitleToCurrentIndex() {
-                guard showCustomSlot || isOnCustomSlot() else {
-                    readingSubtitleLabel.isHidden = true
-                    readingSubtitleLabel.isUserInteractionEnabled = false
-                    return
-                }
+            // Updates the SwiftUI header to reflect the reading at the current index.
+            // When on the empty custom slot, shows "..." as a tap affordance.
+            func syncFuriganaToCurrentIndex() {
+                let reading: String?
                 if isOnCustomSlot() {
-                    let title = customReading ?? "Custom…"
-                    let color: UIColor = customReading != nil ? .secondaryLabel : .tertiaryLabel
-                    readingSubtitleLabel.setTitle(title, for: .normal)
-                    readingSubtitleLabel.setTitleColor(color, for: .normal)
-                    readingSubtitleLabel.isHidden = false
-                    readingSubtitleLabel.isUserInteractionEnabled = true
+                    reading = customReading ?? "..."
+                } else if currentReadings.indices.contains(currentReadingIndex) {
+                    reading = currentReadings[currentReadingIndex]
                 } else {
-                    let reading = currentReadings[currentReadingIndex]
-                    readingSubtitleLabel.setTitle(reading.isEmpty ? nil : reading, for: .normal)
-                    readingSubtitleLabel.setTitleColor(.secondaryLabel, for: .normal)
-                    readingSubtitleLabel.isHidden = false
-                    // Kanji segments with a single reading have no navigation arrows, so make the
-                    // subtitle tappable directly to allow setting a custom reading.
-                    let isSingleReadingKanji = showCustomSlot && currentReadings.count <= 1
-                    readingSubtitleLabel.isUserInteractionEnabled = isSingleReadingKanji
+                    reading = nil
                 }
+                let lemma = self.currentSheetLemmaInfo.map { $0.lemma }
+                headerHost.rootView = SegmentLookupSheetHeader(surface: currentSurface, reading: reading, lemma: lemma)
             }
 
-            // Refreshes arrow/custom visibility and reading subtitle for the current segment surface.
+            // Refreshes header for the current segment surface.
             // Initializes the selected index from any persisted override so the UI reflects prior choices.
             func updateReadingFurigana() {
                 currentReadings = self.currentSheetUniqueReadings
@@ -158,13 +144,12 @@ extension SegmentLookupSheet {
                     customReading = nil
                 }
 
-                let reading = currentReadings.first
-                print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) reading=\(reading ?? "nil")")
-                syncSubtitleToCurrentIndex()
-                // Show arrows only for kanji segments with more than one reading candidate.
-                let hasMultiple = showCustomSlot && currentReadings.count > 1
-                prevReadingButton.isHidden = !hasMultiple
-                nextReadingButton.isHidden = !hasMultiple
+                print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) index=\(currentReadingIndex)")
+
+                syncFuriganaToCurrentIndex()
+                // Show arrows for any kanji segment — custom reading entry is always available.
+                prevReadingButton.isHidden = !showCustomSlot
+                nextReadingButton.isHidden = !showCustomSlot
             }
 
             NSLayoutConstraint.activate([
@@ -174,15 +159,9 @@ extension SegmentLookupSheet {
                 nextReadingButton.heightAnchor.constraint(equalToConstant: 32),
             ])
 
-            // Updates the lemma chain label shown between the header and the split panel.
+            // Updates the lemma in the header.
             func updateLemmaChain() {
-                if let info = self.currentSheetLemmaInfo, info.lemma != currentSurface {
-                    let parts = [currentSurface] + info.chain + [info.lemma]
-                    lemmaChainLabel.text = parts.joined(separator: " → ")
-                    lemmaChainLabel.isHidden = false
-                } else {
-                    lemmaChainLabel.isHidden = true
-                }
+                syncFuriganaToCurrentIndex()
             }
 
             let splitPanelContainer = UIStackView()
@@ -322,6 +301,53 @@ extension SegmentLookupSheet {
             actionMenuContainer.backgroundColor = .secondarySystemBackground
             actionMenuContainer.layer.cornerRadius = 10
 
+            // Top row: word actions (speak, save, open in word detail).
+            let wordActionsStack = UIStackView()
+            wordActionsStack.translatesAutoresizingMaskIntoConstraints = false
+            wordActionsStack.axis = .horizontal
+            wordActionsStack.spacing = 8
+            wordActionsStack.alignment = .fill
+            wordActionsStack.distribution = .fillEqually
+
+            let speakButton = UIButton(type: .system)
+            speakButton.translatesAutoresizingMaskIntoConstraints = false
+            speakButton.setImage(UIImage(systemName: "speaker.wave.2"), for: .normal)
+            speakButton.tintColor = .secondaryLabel
+            speakButton.backgroundColor = .tertiarySystemFill
+            speakButton.layer.cornerRadius = 8
+            speakButton.accessibilityLabel = "Speak"
+
+            let saveButton = UIButton(type: .system)
+            saveButton.translatesAutoresizingMaskIntoConstraints = false
+            let isSavedInitially = self.sheetIsSavedProvider?() ?? false
+            saveButton.setImage(UIImage(systemName: isSavedInitially ? "star.fill" : "star"), for: .normal)
+            saveButton.tintColor = isSavedInitially ? .systemYellow : .secondaryLabel
+            saveButton.backgroundColor = .tertiarySystemFill
+            saveButton.layer.cornerRadius = 8
+            saveButton.accessibilityLabel = isSavedInitially ? "Unsave" : "Save"
+
+            let openDetailButton = UIButton(type: .system)
+            openDetailButton.translatesAutoresizingMaskIntoConstraints = false
+            openDetailButton.setImage(UIImage(systemName: "text.magnifyingglass"), for: .normal)
+            openDetailButton.tintColor = .secondaryLabel
+            openDetailButton.backgroundColor = .tertiarySystemFill
+            openDetailButton.layer.cornerRadius = 8
+            openDetailButton.accessibilityLabel = "Open Word Detail"
+
+            // Refreshes the save button icon and tint to reflect the current saved state.
+            func updateSaveButtonAppearance() {
+                let isSaved = self.sheetIsSavedProvider?() ?? false
+                let imageName = isSaved ? "star.fill" : "star"
+                saveButton.setImage(UIImage(systemName: imageName), for: .normal)
+                saveButton.tintColor = isSaved ? .systemYellow : .secondaryLabel
+                saveButton.accessibilityLabel = isSaved ? "Unsave" : "Save"
+            }
+
+            wordActionsStack.addArrangedSubview(speakButton)
+            wordActionsStack.addArrangedSubview(saveButton)
+            wordActionsStack.addArrangedSubview(openDetailButton)
+
+            // Bottom row: segmentation actions (merge-left, split, merge-right).
             let actionMenuStack = UIStackView()
             actionMenuStack.translatesAutoresizingMaskIntoConstraints = false
             actionMenuStack.axis = .horizontal
@@ -350,34 +376,24 @@ extension SegmentLookupSheet {
             mergeRightButton.backgroundColor = .tertiarySystemFill
             mergeRightButton.layer.cornerRadius = 8
 
-            let saveButton = UIButton(type: .system)
-            saveButton.translatesAutoresizingMaskIntoConstraints = false
-            saveButton.backgroundColor = .tertiarySystemFill
-            saveButton.layer.cornerRadius = 8
-
-            // Syncs bookmark icon and tint with current saved state.
-            func updateSaveButton() {
-                let isSaved = self.sheetIsSavedProvider?() ?? false
-                saveButton.setImage(UIImage(systemName: isSaved ? "bookmark.fill" : "bookmark"), for: .normal)
-                saveButton.tintColor = isSaved ? .systemBlue : .secondaryLabel
-            }
-
-            saveButton.addAction(UIAction { [weak self] _ in
-                self?.sheetSaveToggle?()
-                updateSaveButton()
-            }, for: .touchUpInside)
-
-            actionMenuStack.addArrangedSubview(saveButton)
             actionMenuStack.addArrangedSubview(mergeLeftButton)
             actionMenuStack.addArrangedSubview(splitButton)
             actionMenuStack.addArrangedSubview(mergeRightButton)
 
-            actionMenuContainer.addSubview(actionMenuStack)
+            let actionMenuOuterStack = UIStackView(arrangedSubviews: [wordActionsStack, actionMenuStack])
+            actionMenuOuterStack.translatesAutoresizingMaskIntoConstraints = false
+            actionMenuOuterStack.axis = .vertical
+            actionMenuOuterStack.spacing = 8
+            actionMenuOuterStack.alignment = .fill
+
+            actionMenuContainer.addSubview(actionMenuOuterStack)
             NSLayoutConstraint.activate([
-                actionMenuStack.topAnchor.constraint(equalTo: actionMenuContainer.topAnchor, constant: 6),
-                actionMenuStack.leadingAnchor.constraint(equalTo: actionMenuContainer.leadingAnchor, constant: 6),
-                actionMenuStack.trailingAnchor.constraint(equalTo: actionMenuContainer.trailingAnchor, constant: -6),
-                actionMenuStack.bottomAnchor.constraint(equalTo: actionMenuContainer.bottomAnchor, constant: -6),
+                actionMenuOuterStack.topAnchor.constraint(equalTo: actionMenuContainer.topAnchor, constant: 6),
+                actionMenuOuterStack.leadingAnchor.constraint(equalTo: actionMenuContainer.leadingAnchor, constant: 6),
+                actionMenuOuterStack.trailingAnchor.constraint(equalTo: actionMenuContainer.trailingAnchor, constant: -6),
+                actionMenuOuterStack.bottomAnchor.constraint(equalTo: actionMenuContainer.bottomAnchor, constant: -6),
+                wordActionsStack.heightAnchor.constraint(equalToConstant: 44),
+                actionMenuStack.heightAnchor.constraint(equalToConstant: 44),
             ])
 
             var currentLeftNeighborSurface = leftNeighborSurface
@@ -392,7 +408,6 @@ extension SegmentLookupSheet {
             var splitEntryLeftValue = ""
             var splitEntryRightValue = ""
             var isSplitEditorVisible = false
-            var definitionsExpanded = false
             var currentSheetPreferredHeight: CGFloat = 0
 
             // Returns the current split boundary as a UTF-16 offset derived from the left split value.
@@ -414,8 +429,11 @@ extension SegmentLookupSheet {
                     withHorizontalFittingPriority: .required,
                     verticalFittingPriority: .fittingSizeLevel
                 ).height)
-                // Chrome covers grabber, top safe-area inset, nav row, subtitle, all fixed spacings, action bar, bottom safe area.
-                let baseChrome: CGFloat = 210
+                // Chrome covers grabber (20), top safe-area (~59), nav row (~56), split gap (8+0),
+                // middle top spacing (16), action bar (two rows: 44+8+44+12=108 container + 12 margin),
+                // bottom safe-area (~34), plus margins.
+                let safeArea = self.topPresentingController().flatMap { $0.view.window?.safeAreaInsets } ?? .zero
+                let baseChrome: CGFloat = 20 + safeArea.top + 56 + 8 + 16 + 108 + 12 + safeArea.bottom + 16
                 return baseChrome + middleHeight + splitHeight
             }
 
@@ -455,7 +473,7 @@ extension SegmentLookupSheet {
                 currentSurface = outcome.surface
                 currentLeftNeighborSurface = outcome.leftNeighborSurface
                 currentRightNeighborSurface = outcome.rightNeighborSurface
-                surfaceLabel.text = currentSurface
+                syncFuriganaToCurrentIndex()
                 splitButton.isEnabled = currentSurface.count > 1
                 splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
                 updateMergeButtonAvailability()
@@ -535,110 +553,100 @@ extension SegmentLookupSheet {
                 return label
             }
 
-            // Rebuilds middleContentStack with four sections: frequency, readings, sublattice+paths, lexicon dump.
+            // Rebuilds middleContentStack — shows definitions from the first matching dictionary entry.
             func updateMiddleContent() {
                 for subview in middleContentStack.arrangedSubviews {
                     middleContentStack.removeArrangedSubview(subview)
                     subview.removeFromSuperview()
                 }
 
-                // Section: Definitions — first sense shown by default, rest expandable.
-                if let entry = self.currentSheetWordDisplayData?.entry, entry.senses.isEmpty == false {
-                    middleContentStack.addArrangedSubview(makeSectionHeader("Definition"))
-                    let shown = definitionsExpanded ? entry.senses : Array(entry.senses.prefix(1))
-                    for (idx, sense) in shown.enumerated() {
-                        middleContentStack.addArrangedSubview(makeBodyLabel("\(idx + 1). \(self.formatSense(sense))"))
-                    }
-                    if entry.senses.count > 1 {
-                        let toggleBtn = UIButton(type: .system)
-                        toggleBtn.titleLabel?.font = .systemFont(ofSize: 12)
-                        let remaining = entry.senses.count - 1
-                        toggleBtn.setTitle(definitionsExpanded ? "Show fewer" : "Show \(remaining) more…", for: .normal)
-                        toggleBtn.addAction(UIAction { _ in
-                            definitionsExpanded.toggle()
-                            updateMiddleContent()
-                            updateSheetPreferredHeight(animated: true)
-                        }, for: .touchUpInside)
-                        middleContentStack.addArrangedSubview(toggleBtn)
-                    }
+                guard let displayData = self.currentSheetWordDisplayData else { return }
+                let senses = displayData.entry.senses
+                guard senses.isEmpty == false else { return }
+
+                for (index, sense) in senses.enumerated() {
+                    let glossText = sense.glosses.joined(separator: "; ")
+                    guard glossText.isEmpty == false else { continue }
+
+                    let row = UIStackView()
+                    row.axis = .horizontal
+                    row.spacing = 8
+                    row.alignment = .firstBaseline
+
+                    let numberLabel = UILabel()
+                    numberLabel.text = "\(index + 1)."
+                    numberLabel.font = .systemFont(ofSize: 14, weight: .medium)
+                    numberLabel.textColor = .tertiaryLabel
+                    numberLabel.setContentHuggingPriority(.required, for: .horizontal)
+                    numberLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+                    let glossLabel = UILabel()
+                    glossLabel.text = glossText
+                    glossLabel.font = .systemFont(ofSize: 15)
+                    glossLabel.textColor = .label
+                    glossLabel.numberOfLines = 0
+
+                    row.addArrangedSubview(numberLabel)
+                    row.addArrangedSubview(glossLabel)
+                    middleContentStack.addArrangedSubview(row)
                 }
-
-                // Section: Components — shown when the surface decomposes into 2+ sub-words.
-                let components = self.currentSheetWordComponents
-                if components.isEmpty == false {
-                    middleContentStack.addArrangedSubview(makeSectionHeader("Components"))
-                    let chipRow = UIStackView()
-                    chipRow.axis = .horizontal
-                    chipRow.spacing = 8
-                    chipRow.alignment = .center
-                    for component in components {
-                        let chip = UIButton(type: .system)
-                        var config = UIButton.Configuration.filled()
-                        config.title = component.surface
-                        config.baseBackgroundColor = UIColor.tertiarySystemFill
-                        config.baseForegroundColor = .label
-                        config.cornerStyle = .medium
-                        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
-                        chip.configuration = config
-                        let componentSurface = component.surface
-                        let componentGloss = component.gloss
-                        chip.addAction(UIAction { [weak self, weak sheetController] _ in
-                            guard let self, let parentVC = sheetController else { return }
-                            self.presentComponentSheet(surface: componentSurface, gloss: componentGloss, from: parentVC)
-                        }, for: .touchUpInside)
-                        chipRow.addArrangedSubview(chip)
-                    }
-                    middleContentStack.addArrangedSubview(chipRow)
-                }
-
-                // Section 1: Readings annotated with per-reading frequency data.
-                // Hidden when there is only one candidate — no choice to present.
-                let readings = self.currentSheetUniqueReadings
-                if readings.count > 1 {
-                    middleContentStack.addArrangedSubview(makeSectionHeader("Readings"))
-                    let frequencyByReading = self.currentSheetFrequencyByReading
-                    let annotatedReadings = readings.map { reading -> String in
-                        let data = frequencyByReading?[reading]
-                        let rank = data?.jpdbRank.map { "#\($0)" } ?? "—"
-                        let zipf = data?.wordfreqZipf.map { String(format: "%.2f", $0) } ?? "—"
-                        return "\(reading)  \(rank)  \(zipf)"
-                    }
-                    middleContentStack.addArrangedSubview(makeBodyLabel(annotatedReadings.joined(separator: "\n")))
-                }
-
-                // Section: Best segmentation path — shows only the highest-scoring multi-segment split.
-                let sublatticeEdges = self.currentSheetSublatticeEdges
-                if sublatticeEdges.isEmpty == false {
-                    let paths = self.sublatticeValidPaths(from: sublatticeEdges).filter { $0.count > 1 }
-                    // Score each path as the average per-segment frequency; pick the best one.
-                    let best = paths.max { lhs, rhs in
-                        func avgScore(_ path: [String]) -> Double {
-                            let scores = path.compactMap { self.pathSegmentFrequencyProvider?($0).flatMap { normalizedScore($0) } }
-                            return scores.isEmpty ? 0 : scores.reduce(0, +) / Double(path.count)
-                        }
-                        return avgScore(lhs) < avgScore(rhs)
-                    }
-                    if let best {
-                        middleContentStack.addArrangedSubview(makeSectionHeader("Best Split"))
-                        var segmentScores: [Double] = []
-                        let annotated = best.map { segment -> String in
-                            let score: Double? = self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) }
-                            if let score {
-                                segmentScores.append(score)
-                                return "\(segment) (\(String(format: "%.1f", score)))"
-                            } else {
-                                return "\(segment) (-)"
-                            }
-                        }.joined(separator: " · ")
-                        let avg = segmentScores.reduce(0, +) / Double(best.count)
-                        middleContentStack.addArrangedSubview(makeBodyLabel("\(annotated)  [\(String(format: "%.1f", avg))]"))
-                    }
-                }
-
-
             }
 
+            // Speaks the current surface using the device TTS engine with a Japanese voice.
+            speakButton.addAction(
+                UIAction { [weak speakButton] _ in
+                    let synthesizer = AVSpeechSynthesizer()
+                    // Associate synthesizer lifetime with the button so it lives long enough to finish speaking.
+                    objc_setAssociatedObject(speakButton as Any, &SegmentLookupSheet.speechSynthesizerKey, synthesizer, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+                    let utterance = AVSpeechUtterance(string: currentSurface)
+                    utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+                    synthesizer.speak(utterance)
+                },
+                for: .touchUpInside
+            )
+
+            // Toggles saved state and refreshes the save button appearance.
+            saveButton.addAction(
+                UIAction { _ in
+                    self.sheetSaveToggle?()
+                    updateSaveButtonAppearance()
+                },
+                for: .touchUpInside
+            )
+
+            // Dismisses the sheet and opens WordDetailView for the current segment.
+            openDetailButton.addAction(
+                UIAction { _ in
+                    self.sheetOpenWordDetail?()
+                },
+                for: .touchUpInside
+            )
+
             // Register reading navigation actions here so updateMiddleContent is already in scope.
+            prevReadingButton.addAction(
+                UIAction { _ in
+                    let total = totalSlots()
+                    guard total > 1 else { return }
+                    currentReadingIndex = (currentReadingIndex - 1 + total) % total
+                    syncFuriganaToCurrentIndex()
+                    applyCurrentReadingSelection()
+                    updateMiddleContent()
+                },
+                for: .touchUpInside
+            )
+
+            nextReadingButton.addAction(
+                UIAction { _ in
+                    let total = totalSlots()
+                    guard total > 1 else { return }
+                    currentReadingIndex = (currentReadingIndex + 1) % total
+                    syncFuriganaToCurrentIndex()
+                    applyCurrentReadingSelection()
+                    updateMiddleContent()
+                },
+                for: .touchUpInside
+            )
+
             // Applies the reading at the current index, or clears the override when landing on an empty custom slot.
             func applyCurrentReadingSelection() {
                 if isOnCustomSlot() {
@@ -653,37 +661,9 @@ extension SegmentLookupSheet {
                 }
             }
 
-            prevReadingButton.addAction(
-                UIAction { _ in
-                    let total = totalSlots()
-                    print("[SegmentLookupSheet] prevReadingButton tapped: total=\(total) index=\(currentReadingIndex)")
-                    guard total > 1 else { return }
-                    currentReadingIndex = (currentReadingIndex - 1 + total) % total
-                    syncSubtitleToCurrentIndex()
-                    applyCurrentReadingSelection()
-                    print("[SegmentLookupSheet] prev: now at index=\(currentReadingIndex) onCustom=\(isOnCustomSlot())")
-                    updateMiddleContent()
-                },
-                for: .touchUpInside
-            )
-
-            nextReadingButton.addAction(
-                UIAction { _ in
-                    let total = totalSlots()
-                    print("[SegmentLookupSheet] nextReadingButton tapped: total=\(total) index=\(currentReadingIndex)")
-                    guard total > 1 else { return }
-                    currentReadingIndex = (currentReadingIndex + 1) % total
-                    syncSubtitleToCurrentIndex()
-                    applyCurrentReadingSelection()
-                    print("[SegmentLookupSheet] next: now at index=\(currentReadingIndex) onCustom=\(isOnCustomSlot())")
-                    updateMiddleContent()
-                },
-                for: .touchUpInside
-            )
-
-            // Tap on the subtitle button while on the custom slot opens a text-entry alert.
-            readingSubtitleLabel.addAction(UIAction { [weak sheetController] _ in
-                guard let vc = sheetController else { return }
+            // Tap on the header opens a text-entry alert to set a custom reading (kanji only).
+            let headerTapHandler = ClosureTarget { [weak sheetController] in
+                guard let vc = sheetController, showCustomSlot else { return }
                 let alert = UIAlertController(title: "Custom Reading", message: nil, preferredStyle: .alert)
                 alert.addTextField { field in
                     field.text = customReading
@@ -698,14 +678,17 @@ extension SegmentLookupSheet {
                     let entered = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     guard entered.isEmpty == false else { return }
                     customReading = entered
-                    // Ensure we are on the custom slot so syncSubtitleToCurrentIndex shows the custom reading.
                     currentReadingIndex = currentReadings.count
-                    syncSubtitleToCurrentIndex()
+                    syncFuriganaToCurrentIndex()
                     self.onReadingSelected?(entered)
                     print("[SegmentLookupSheet] custom reading set: \(entered)")
                 })
                 vc.present(alert, animated: true)
-            }, for: .touchUpInside)
+            }
+            let headerTapGesture = UITapGestureRecognizer(target: headerTapHandler, action: #selector(ClosureTarget.invoke))
+            headerHost.view.addGestureRecognizer(headerTapGesture)
+            // Retain the tap handler — UITapGestureRecognizer holds a weak reference to its target.
+            objc_setAssociatedObject(headerHost.view, &SegmentLookupSheet.tapHandlerKey, headerTapHandler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
             // Populate initial content.
             updateMiddleContent()
@@ -721,8 +704,8 @@ extension SegmentLookupSheet {
                 self.refreshSheetSupplementalData()
                 updateReadingFurigana()
                 updateLemmaChain()
-                updateSaveButton()
                 updateMiddleContent()
+                updateSaveButtonAppearance()
             }
 
             self.onSheetSelectPrevious = {
@@ -736,8 +719,8 @@ extension SegmentLookupSheet {
                 self.refreshSheetSupplementalData()
                 updateReadingFurigana()
                 updateLemmaChain()
-                updateSaveButton()
                 updateMiddleContent()
+                updateSaveButtonAppearance()
             }
 
             self.updatePresentedSheetSelection = {
@@ -780,8 +763,8 @@ extension SegmentLookupSheet {
                 self.refreshSheetSupplementalData()
                 updateReadingFurigana()
                 updateLemmaChain()
-                updateSaveButton()
                 updateMiddleContent()
+                updateSaveButtonAppearance()
             }
 
             let swipeLeftGesture = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
@@ -799,7 +782,7 @@ extension SegmentLookupSheet {
                     } else if let leftNeighbor = currentLeftNeighborSurface {
                         currentSurface = leftNeighbor + currentSurface
                         currentLeftNeighborSurface = nil
-                        surfaceLabel.text = currentSurface
+                        syncFuriganaToCurrentIndex()
                     } else {
                         return
                     }
@@ -813,7 +796,6 @@ extension SegmentLookupSheet {
                     self.refreshSheetSupplementalData()
                     updateReadingFurigana()
                     updateLemmaChain()
-                    updateSaveButton()
                     updateMiddleContent()
                     updateSheetPreferredHeight(animated: true)
                 },
@@ -827,7 +809,7 @@ extension SegmentLookupSheet {
                     } else if let rightNeighbor = currentRightNeighborSurface {
                         currentSurface = currentSurface + rightNeighbor
                         currentRightNeighborSurface = nil
-                        surfaceLabel.text = currentSurface
+                        syncFuriganaToCurrentIndex()
                     } else {
                         return
                     }
@@ -841,7 +823,6 @@ extension SegmentLookupSheet {
                     self.refreshSheetSupplementalData()
                     updateReadingFurigana()
                     updateLemmaChain()
-                    updateSaveButton()
                     updateMiddleContent()
                     updateSheetPreferredHeight(animated: true)
                 },
@@ -862,7 +843,6 @@ extension SegmentLookupSheet {
                             self.refreshSheetSupplementalData()
                             updateReadingFurigana()
                             updateLemmaChain()
-                            updateSaveButton()
                             updateMiddleContent()
                             updateSheetPreferredHeight(animated: true)
                         }
@@ -945,7 +925,7 @@ extension SegmentLookupSheet {
                         updateCurrentSurface(splitResult)
                     } else {
                         currentSurface = leftSplitValue + rightSplitValue
-                        surfaceLabel.text = currentSurface
+                        syncFuriganaToCurrentIndex()
                     }
 
                     splitButton.isEnabled = currentSurface.count > 1
@@ -955,7 +935,6 @@ extension SegmentLookupSheet {
                     self.refreshSheetSupplementalData()
                     updateReadingFurigana()
                     updateLemmaChain()
-                    updateSaveButton()
                     updateMiddleContent()
                     updateSheetPreferredHeight(animated: true)
                 },
@@ -970,15 +949,15 @@ extension SegmentLookupSheet {
             // segmentRangeProvider() returns the NSRange of the current segment within the note.
             // Add content to middleContentStack here using that range as needed.
 
+            sheetController.addChild(headerHost)
+            headerHost.didMove(toParent: sheetController)
             sheetController.view.addSubview(readingNavRow)
-            sheetController.view.addSubview(lemmaChainLabel)
             sheetController.view.addSubview(splitPanelContainer)
             sheetController.view.addSubview(middleContentStack)
             sheetController.view.addSubview(actionMenuContainer)
 
             updateReadingFurigana()
             updateLemmaChain()
-            updateSaveButton()
 
             NSLayoutConstraint.activate([
                 readingNavRow.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
@@ -986,12 +965,7 @@ extension SegmentLookupSheet {
                 readingNavRow.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
                 readingNavRow.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
 
-                lemmaChainLabel.topAnchor.constraint(equalTo: readingNavRow.bottomAnchor, constant: 4),
-                lemmaChainLabel.centerXAnchor.constraint(equalTo: sheetController.view.centerXAnchor),
-                lemmaChainLabel.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
-                lemmaChainLabel.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
-
-                splitPanelContainer.topAnchor.constraint(equalTo: lemmaChainLabel.bottomAnchor, constant: 8),
+                splitPanelContainer.topAnchor.constraint(equalTo: readingNavRow.bottomAnchor, constant: 8),
                 splitPanelContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 splitPanelContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
 
@@ -1003,7 +977,6 @@ extension SegmentLookupSheet {
                 actionMenuContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 actionMenuContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
                 actionMenuContainer.bottomAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
-                actionMenuContainer.heightAnchor.constraint(equalToConstant: 46),
             ])
 
             // Measure initial height from actual content now that constraints and content are established.
@@ -1015,9 +988,11 @@ extension SegmentLookupSheet {
                 if #available(iOS 16.0, *) {
                     let fittedDetentIdentifier = UISheetPresentationController.Detent.Identifier("surfaceFitted")
                     let fittedDetent = UISheetPresentationController.Detent.custom(identifier: fittedDetentIdentifier) { context in
-                        min(currentSheetPreferredHeight, context.maximumDetentValue)
+                        // Cap at half the available screen height so the sheet never dominates the reading surface.
+                        let halfScreen = context.maximumDetentValue * 0.5
+                        return min(currentSheetPreferredHeight, halfScreen)
                     }
-                    sheetPresentationController.detents = [fittedDetent, .large()]
+                    sheetPresentationController.detents = [fittedDetent, .medium(), .large()]
                     sheetPresentationController.selectedDetentIdentifier = fittedDetentIdentifier
                     sheetPresentationController.largestUndimmedDetentIdentifier = .large
                 } else {
@@ -1034,4 +1009,11 @@ extension SegmentLookupSheet {
     }
 
     // Refreshes hidden per-selection sheet metadata for future UI usage.
+}
+
+// Wraps a closure so it can be used as a UIGestureRecognizer target.
+private final class ClosureTarget: NSObject {
+    private let action: () -> Void
+    init(_ action: @escaping () -> Void) { self.action = action }
+    @objc func invoke() { action() }
 }

@@ -268,7 +268,9 @@ extension ReadView {
         let selectedEdges = Array(segmentEdges[selectedBounds])
         guard let start = selectedEdges.first?.start, let end = selectedEdges.last?.end else { return nil }
         let surface = String(text[start..<end])
-        guard let info = lexicon.inflectionInfo(surface: surface), info.lemma != surface else { return nil }
+        let info = lexicon.inflectionInfo(surface: surface)
+        print("[lemmaInfo] surface=\(surface) info=\(info.map { "\($0.lemma) chain=\($0.chain)" } ?? "nil")")
+        guard let info, info.lemma != surface else { return nil }
         return (lemma: info.lemma, chain: info.chain)
     }
 

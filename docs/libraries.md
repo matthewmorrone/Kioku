@@ -13,11 +13,6 @@ Currently linked via SPM.
 - **SPM:** `https://github.com/exPHAT/SwiftWhisper.git`
 - **Why installed:** On-device Whisper transcription. Bundles whisper.cpp with no transitive dependencies, avoiding the swift-transformers ↔ swift-tokenizers conflict that WhisperKit caused with AzooKeyKanaKanjiConverter.
 
-### AzooKeyKanaKanjiConverter ✅
-- **Repo:** https://github.com/azooKey/AzooKeyKanaKanjiConverter
-- **SPM:** `https://github.com/azooKey/AzooKeyKanaKanjiConverter.git`
-- **Why installed:** Japanese kana-to-kanji lattice segmentation — the core of the segmentation pipeline.
-
 ### USearch (unum-cloud) ✅
 - **Repo:** https://github.com/unum-cloud/USearch
 - **SPM:** `https://github.com/unum-cloud/USearch.git`

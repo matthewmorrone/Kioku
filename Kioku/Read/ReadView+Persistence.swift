@@ -12,7 +12,6 @@ extension ReadView {
         let snapshotTitle = customTitle
         let snapshotSegmentRanges = segments
         let snapshotActiveNoteID = activeNoteID
-        let snapshotReadingOverrides = selectedReadingOverrideByLocation
 
         pendingPersistenceTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
@@ -23,8 +22,7 @@ extension ReadView {
                     text == snapshotText,
                     customTitle == snapshotTitle,
                     segments == snapshotSegmentRanges,
-                    activeNoteID == snapshotActiveNoteID,
-                    selectedReadingOverrideByLocation == snapshotReadingOverrides
+                    activeNoteID == snapshotActiveNoteID
                 else {
                     return
                 }
@@ -69,7 +67,6 @@ extension ReadView {
             selectedBounds = nil
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
-            selectedReadingOverrideByLocation = [:]
             illegalMergeBoundaryLocation = nil
             pendingLLMChangedLocations = []
             pendingLLMChangedReadingLocations = []
@@ -98,16 +95,35 @@ extension ReadView {
             ? firstLineTitle(from: noteToLoad.content)
             : noteToLoad.title
         text = noteToLoad.content
-        segments = normalizedSegmentRanges(
+        let loadedSegments = normalizedSegmentRanges(
             noteToLoad.segments,
             for: noteToLoad.content
         )
-        selectedReadingOverrideByLocation = noteToLoad.readingOverrides ?? [:]
+        segments = loadedSegments
+        if let encoded = try? JSONEncoder().encode(noteToLoad), let json = String(data: encoded, encoding: .utf8) {
+            print("[NOTE LOAD] \(json)")
+        }
         if shouldActivateEditModeOnLoad {
             isEditMode = true
             shouldActivateEditModeOnLoad = false
         }
-        refreshSegmentationRanges()
+        // When segments are already persisted, apply them directly without running the segmenter.
+        // If furigana annotations are present on the segments, restore them directly too.
+        // The trie is still loaded in the background for lookup and new notes.
+        if let loadedSegments, let edges = edgesFromSegmentRanges(loadedSegments, in: text) {
+            segmentEdges = edges
+            segmentRanges = edges.map { $0.start..<$0.end }
+            unknownSegmentLocations = []
+            let restoredFurigana = furiganaFromSegmentRanges(loadedSegments)
+            if restoredFurigana.byLocation.isEmpty == false {
+                furiganaBySegmentLocation = restoredFurigana.byLocation
+                furiganaLengthBySegmentLocation = restoredFurigana.lengthByLocation
+            } else {
+                scheduleFuriganaGeneration(for: text, edges: edges)
+            }
+        } else {
+            refreshSegmentationRanges()
+        }
         self.selectedNote = nil
         isLoadingSelectedNote = false
     }
@@ -136,8 +152,7 @@ extension ReadView {
             id: activeNoteID,
             title: titleToSave,
             content: text,
-            segments: segments,
-            readingOverrides: selectedReadingOverrideByLocation.isEmpty ? nil : selectedReadingOverrideByLocation
+            segments: segments
         )
         activeNoteID = savedNoteID
         onActiveNoteChanged?(savedNoteID)

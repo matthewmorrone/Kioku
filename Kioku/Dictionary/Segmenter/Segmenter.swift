@@ -235,12 +235,32 @@ final class Segmenter {
         var index = text.startIndex
 
         while index < text.endIndex {
-            if let candidates = edgesByStart[index],
-               let longestEdge = candidates.max(by: { lhs, rhs in
-                   compareEdgePriority(lhs, rhs, in: text)
-               }) {
-                selectedEdges.append(longestEdge)
-                index = longestEdge.end
+            if let candidates = edgesByStart[index] {
+                // Sort candidates best-first so we can try alternates when the top choice strands a っ.
+                let sorted = candidates.sorted { lhs, rhs in
+                    compareEdgePriority(rhs, lhs, in: text)
+                }
+                // Pick the best candidate that does not leave a bare っ immediately after its end.
+                // A lone っ is never a valid morpheme; finding one means the edge over-consumed.
+                let chosen = sorted.first { edge in
+                    let nextPos = edge.end
+                    guard nextPos < text.endIndex else { return true }
+                    let nextChar = text[nextPos]
+                    // Reject if the character immediately following this edge is a small-tsu (っ/ッ)
+                    // that has no dictionary candidate starting at that position — it would be stranded.
+                    guard nextChar == "っ" || nextChar == "ッ" else { return true }
+                    let afterSmallTsu = text.index(after: nextPos)
+                    let hasCandidateAfter = edgesByStart[nextPos]?.contains { e in
+                        e.end > nextPos && e.end <= afterSmallTsu
+                    } == false
+                    // If there are multi-char candidates starting at っ (e.g. った, って) it's fine.
+                    let hasMultiCharCandidate = edgesByStart[nextPos]?.contains { e in
+                        text.distance(from: e.start, to: e.end) > 1
+                    } ?? false
+                    return hasMultiCharCandidate || !hasCandidateAfter
+                } ?? sorted[0]
+                selectedEdges.append(chosen)
+                index = chosen.end
             } else {
                 let nextIndex = text.index(after: index)
                 let fallbackSurface = String(text[index..<nextIndex])

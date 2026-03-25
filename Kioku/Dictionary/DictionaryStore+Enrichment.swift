@@ -48,25 +48,26 @@ extension DictionaryStore {
         }
     }
 
-    // Fetches example sentence pairs whose Japanese text contains the given surface string.
-    // Capped at 20 results to avoid large result sets for common words.
+    // Fetches all example sentence pairs whose Japanese text contains the given surface string.
+    // Uses FTS5 for fast substring search, deduplicates on Japanese text, sorted shortest first.
     public func fetchSentencePairs(surface: String) throws -> [SentencePair] {
         try withSerializedDatabaseAccess {
             let sql = """
-            SELECT japanese, english
-            FROM sentence_pairs
-            WHERE japanese LIKE ?1
-            ORDER BY ja_id ASC
-            LIMIT 20
+            SELECT sp.japanese, sp.english
+            FROM sentence_pairs sp
+            JOIN sentence_pairs_fts ON sentence_pairs_fts.rowid = sp.rowid
+            WHERE sentence_pairs_fts MATCH ?1
+            ORDER BY LENGTH(sp.japanese) ASC
             """
 
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
 
             try prepare(sql: sql, statement: &statement)
-            try bindText("%\(surface)%", index: 1, statement: statement)
+            // FTS5 phrase search wraps the term in quotes for exact substring matching.
+            try bindText("\"\(surface)\"", index: 1, statement: statement)
 
-            return try stepRows(statement: statement) { stmt in
+            let all = try stepRows(statement: statement) { stmt -> SentencePair? in
                 guard
                     let japanesePointer = sqlite3_column_text(stmt, 0),
                     let englishPointer = sqlite3_column_text(stmt, 1)
@@ -77,6 +78,10 @@ extension DictionaryStore {
                     english: String(cString: englishPointer)
                 )
             }
+
+            // Deduplicate on Japanese text, preserving shortest-first order.
+            var seen = Set<String>()
+            return all.filter { seen.insert($0.japanese).inserted }
         }
     }
 

@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Renders the full-screen word detail screen shown from Words list rows.
-// Major sections: title/header, definitions, alternate spellings, frequency, examples, components, kanji breakdown, word list membership.
+// Major sections: title/header, definitions (all matching entries), alternate spellings, examples, components, kanji breakdown, word list membership.
 struct WordDetailView: View {
     let word: SavedWord
     let dictionaryStore: DictionaryStore?
@@ -11,11 +11,16 @@ struct WordDetailView: View {
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var wordListsStore: WordListsStore
 
-    @State private var kanjiInfoByLiteral: [String: KanjiInfo] = [:]
-    @State private var displayData: WordDisplayData? = nil
+    @AppStorage(TypographySettings.furiganaGapKey)
+    private var furiganaGap = TypographySettings.defaultFuriganaGap
+
+    // All entries matching the saved surface; saved entry is first.
+    @State private var allDisplayData: [WordDisplayData] = []
     @State private var sentencesExpanded: Bool = false
     @State private var wordComponents: [(surface: String, gloss: String?)] = []
-    @State private var kanjiExpanded: Bool = false
+
+    // The saved entry is used for header, examples, alternates, and components.
+    private var savedDisplayData: WordDisplayData? { allDisplayData.first }
 
     // Uses live store data so list membership and list names always reflect the current state.
     private var membershipNames: [String] {
@@ -23,25 +28,12 @@ struct WordDetailView: View {
         return wordListsStore.lists.filter { liveIDs.contains($0.id) }.map(\.name).sorted()
     }
 
-    // Extracts unique kanji scalars from the surface in source order.
-    private var kanjiCharacters: [String] {
-        var seen = Set<String>()
-        return word.surface.unicodeScalars.compactMap { scalar in
-            let value = scalar.value
-            guard (0x4E00...0x9FFF).contains(value) || (0x3400...0x4DBF).contains(value) else {
-                return nil
-            }
-            let char = String(scalar)
-            guard seen.insert(char).inserted else { return nil }
-            return char
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 4) {
-                let lemmaReading = displayData?.entry.kanaForms.first?.text
-                let lemma = displayData?.entry.kanjiForms.first?.text
+            VStack(spacing: 0) {
+                let lemmaReading = savedDisplayData?.entry.kanaForms.first?.text
+                let lemma = savedDisplayData?.entry.kanjiForms.first?.text
                 // Derive the surface's reading from the lemma reading by swapping okurigana.
                 // e.g. surface=届けたい, lemma=届ける, lemmaReading=とどける → surfaceReading=とどけたい
                 let surfaceReading = deriveSurfaceReading(
@@ -58,8 +50,10 @@ struct WordDetailView: View {
                     FuriganaLabel(
                         surface: word.surface,
                         reading: surfaceReading,
-                        font: .systemFont(ofSize: 34, weight: .bold)
+                        font: .systemFont(ofSize: 34, weight: .bold),
+                        gap: furiganaGap
                     )
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
                 } else {
                     Text(word.surface)
@@ -71,6 +65,7 @@ struct WordDetailView: View {
                     Text(lemma)
                         .font(.title3)
                         .foregroundStyle(.secondary)
+                        .offset(y: hasFurigana ? -8 : 0)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -79,17 +74,39 @@ struct WordDetailView: View {
             .padding(.bottom, 16)
 
             List {
-                // Definitions section
-                if let entry = displayData?.entry, entry.senses.isEmpty == false {
+                // Single Definition section with all matching entries sorted most- to least-common.
+                // Each entry's senses are preceded by an entry label + frequency tier.
+                let sortedData = allDisplayData.sorted {
+                    let a = FrequencyData(jpdbRank: $0.entry.jpdbRank, wordfreqZipf: $0.entry.wordfreqZipf).normalizedScore ?? -1
+                    let b = FrequencyData(jpdbRank: $1.entry.jpdbRank, wordfreqZipf: $1.entry.wordfreqZipf).normalizedScore ?? -1
+                    return a > b
+                }
+                if sortedData.isEmpty == false {
                     Section("Definition") {
-                        ForEach(Array(entry.senses.enumerated()), id: \.offset) { idx, sense in
-                            senseRow(number: idx + 1, sense: sense)
+                        ForEach(sortedData, id: \.entry.entryId) { data in
+                            if data.entry.senses.isEmpty == false {
+                                definitionSectionHeader(for: data.entry)
+                                ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
+                                    senseRow(number: idx + 1, sense: sense)
+                                }
+                                // Frequency tag chip after this entry's senses.
+                                if let label = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel {
+                                    Text(label)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
+                                        .listRowSeparator(.hidden)
+                                        .padding(.bottom, 4)
+                                }
+                            }
                         }
                     }
                 }
 
-                // Alternate spellings
-                if let entry = displayData?.entry {
+                // Alternate spellings — driven by saved entry only.
+                if let entry = savedDisplayData?.entry {
                     let alternates = alternateSpellings(entry: entry)
                     if alternates.isEmpty == false {
                         Section("Also Written As") {
@@ -109,23 +126,8 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Frequency
-                if let entry = displayData?.entry,
-                   entry.jpdbRank != nil || entry.wordfreqZipf != nil {
-                    Section("Frequency") {
-                        if let rank = entry.jpdbRank {
-                            LabeledContent("JPDB Rank", value: "#\(rank)")
-                                .font(.subheadline)
-                        }
-                        if let zipf = entry.wordfreqZipf {
-                            LabeledContent("Zipf Score", value: String(format: "%.2f", zipf))
-                                .font(.subheadline)
-                        }
-                    }
-                }
-
-                // Examples
-                if let sentences = displayData?.sentences, sentences.isEmpty == false {
+                // Examples — driven by saved entry only.
+                if let sentences = savedDisplayData?.sentences, sentences.isEmpty == false {
                     Section("Examples") {
                         let shown = sentencesExpanded ? sentences : Array(sentences.prefix(1))
                         ForEach(shown, id: \.japanese) { pair in
@@ -167,23 +169,6 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Kanji breakdown — collapsed by default to keep definitions front and center.
-                if kanjiCharacters.isEmpty == false {
-                    Section {
-                        DisclosureGroup(isExpanded: $kanjiExpanded) {
-                            ForEach(kanjiCharacters, id: \.self) { char in
-                                if let info = kanjiInfoByLiteral[char] {
-                                    kanjiRow(info)
-                                }
-                            }
-                        } label: {
-                            Text("Kanji")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
                 Section("Lists") {
                     if membershipNames.isEmpty {
                         Text("Unsorted")
@@ -198,69 +183,21 @@ struct WordDetailView: View {
             .listStyle(.insetGrouped)
         }
         .task {
-            async let kanjiLoad: Void = loadKanjiInfo()
-            async let displayLoad: Void = loadDisplayData()
-            _ = await (kanjiLoad, displayLoad)
+            await loadDisplayData()
         }
     }
 
-    // Renders one kanji character with its on/kun readings, meanings, and learner metadata.
+    // Renders the entry label row showing the kanji form when it differs from the surface.
+    // Only rendered when there is a distinct title to show — e.g. 良い for the surface いい.
     @ViewBuilder
-    private func kanjiRow(_ info: KanjiInfo) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 14) {
-                Text(info.literal)
-                    .font(.system(size: 36, weight: .light))
-                    .frame(width: 44)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    if info.onReadings.isEmpty == false {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("音")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Text(info.onReadings.joined(separator: "・"))
-                                .font(.subheadline)
-                        }
-                    }
-
-                    if info.kunReadings.isEmpty == false {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("訓")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Text(info.kunReadings.joined(separator: "・"))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if info.meanings.isEmpty == false {
-                        Text(info.meanings.joined(separator: ", "))
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(2)
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                VStack(alignment: .trailing, spacing: 3) {
-                    if let strokes = info.strokeCount {
-                        Text("\(strokes) strokes")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-
-                    if let jlpt = info.jlptLevel {
-                        Text("N\(jlpt)")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
+    private func definitionSectionHeader(for entry: DictionaryEntry) -> some View {
+        let entryTitle = entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text
+        if let title = entryTitle, title != word.surface {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .listRowSeparator(.hidden)
+                .padding(.bottom, 2)
         }
-        .padding(.vertical, 4)
     }
 
     // Renders one numbered sense with POS label, gloss text, and subdued metadata tags.
@@ -270,14 +207,14 @@ struct WordDetailView: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(number).")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .frame(width: 18, alignment: .trailing)
 
                 VStack(alignment: .leading, spacing: 2) {
                     if let pos = sense.pos, pos.isEmpty == false {
-                        Text(JMdictTagExpander.expand(pos))
+                        Text(JMdictTagExpander.expandAll(pos))
                             .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary)
                     }
                     Text(sense.glosses.joined(separator: "; "))
                         .font(.subheadline)
@@ -367,40 +304,46 @@ struct WordDetailView: View {
         entry.senses.contains { ($0.misc ?? "").contains("uk") }
     }
 
-    // Loads KANJIDIC2 data for each kanji character in the surface off the main thread.
-    private func loadKanjiInfo() async {
-        guard let dictionaryStore, kanjiCharacters.isEmpty == false else { return }
-
-        let characters = kanjiCharacters
-        let result = await Task.detached(priority: .userInitiated) {
-            var loaded: [String: KanjiInfo] = [:]
-            for char in characters {
-                if let info = try? await MainActor.run(body: { try dictionaryStore.fetchKanjiInfo(for: char) }) {
-                    loaded[char] = info
-                }
-            }
-            return loaded
-        }.value
-
-        kanjiInfoByLiteral = result
-    }
-
-    // Fetches the full word display bundle and word components off the main thread.
+    // Fetches display data for all entries matching the saved surface, placing the saved entry first.
+    // This ensures all homophone entries are shown while keeping the saved entry's context primary.
     private func loadDisplayData() async {
         guard let dictionaryStore else { return }
         let surface = word.surface
-        let entryID = word.canonicalEntryID
+        let savedEntryID = word.canonicalEntryID
 
-        let result = await Task.detached(priority: .userInitiated) {
-            try? dictionaryStore.fetchWordDisplayData(entryID: entryID, surface: surface)
+        let results = await Task { @MainActor in
+            // Look up all entries matching the surface.
+            let lookupMode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
+            let entries = (try? dictionaryStore.lookup(surface: surface, mode: lookupMode)) ?? []
+
+            // Build display data for each entry, saved entry first.
+            var ordered: [WordDisplayData] = []
+            var rest: [WordDisplayData] = []
+            for entry in entries {
+                if let data = try? dictionaryStore.fetchWordDisplayData(entryID: entry.entryId, surface: surface) {
+                    if entry.entryId == savedEntryID {
+                        ordered.insert(data, at: 0)
+                    } else {
+                        rest.append(data)
+                    }
+                }
+            }
+            // If saved entry wasn't in the lookup results, fetch it directly.
+            if ordered.isEmpty {
+                if let data = try? dictionaryStore.fetchWordDisplayData(entryID: savedEntryID, surface: surface) {
+                    ordered.append(data)
+                }
+            }
+            return ordered + rest
         }.value
-        displayData = result
 
-        guard let segmenter, result != nil else { return }
+        allDisplayData = results
+
+        guard let segmenter, results.isEmpty == false else { return }
         let store = dictionaryStore
         let edges = segmenter.longestMatchEdges(for: surface)
         guard edges.count > 1 else { return }
-        let components = await Task.detached(priority: .userInitiated) {
+        let components = await Task { @MainActor in
             edges.compactMap { edge -> (String, String?)? in
                 let entries = try? store.lookup(surface: edge.surface, mode: .kanjiAndKana)
                 let gloss = entries?.first?.senses.first?.glosses.first

@@ -11,6 +11,8 @@ struct SettingsView: View {
     private var lineSpacing = TypographySettings.defaultLineSpacing
     @AppStorage(TypographySettings.kerningKey)
     private var kerning = TypographySettings.defaultKerning
+    @AppStorage(TypographySettings.furiganaGapKey)
+    private var furiganaGap = TypographySettings.defaultFuriganaGap
     @AppStorage(ParticleSettings.storageKey)
     private var particlesRaw: String = ParticleSettings.defaultRawValue
 
@@ -91,6 +93,17 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Slider(value: $kerning, in: TypographySettings.kerningRange, step: 1)
+                    }
+
+                    // Controls vertical gap between furigana text and the kanji below it.
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Furigana Spacing")
+                            Spacer()
+                            Text(String(format: "%.1f", furiganaGap))
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $furiganaGap, in: TypographySettings.furiganaGapRange, step: 0.5)
                     }
                 } header: {
                     Text("Typography")

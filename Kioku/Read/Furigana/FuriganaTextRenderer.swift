@@ -28,6 +28,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     @Binding var textSize: Double
     let lineSpacing: Double
     let kerning: Double
+    let furiganaGap: Double
 
     // Creates coordinator state used to skip redundant expensive furigana layout passes.
     func makeCoordinator() -> FuriganaTextRendererCoordinator {
@@ -192,7 +193,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 furiganaFrames.append(
                     CGRect(
                         x: furiganaX,
-                        y: max(segmentRect.minY - furiganaFont.lineHeight + 1, 0),
+                        y: max(segmentRect.minY - furiganaFont.lineHeight - furiganaGap, 0),
                         width: furiganaWidth,
                         height: furiganaFont.lineHeight
                     )
@@ -353,6 +354,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(textSize)
         hasher.combine(lineSpacing)
         hasher.combine(kerning)
+        hasher.combine(furiganaGap)
         hasher.combine(isActive)
         hasher.combine(isColorAlternationEnabled)
         hasher.combine(isHighlightUnknownEnabled)
@@ -399,6 +401,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(textSize)
         hasher.combine(lineSpacing)
         hasher.combine(kerning)
+        hasher.combine(furiganaGap)
         hasher.combine(isActive)
         hasher.combine(textView.bounds.width)
         hasher.combine(textView.bounds.height)

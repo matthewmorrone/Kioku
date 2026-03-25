@@ -57,27 +57,43 @@ final class LLMCorrectionService {
         }
     }
 
-    // Compact format: one line per source line, each line surrounded by `|` delimiters.
-    // Example: |(食)[た]べる|は|\n|(情報)[じょうほう]|(生)[い]き(方)[かた]|
+    // Compact format: one line per source line, prefixed with a 1-based line number.
+    // Example: 1|(食)[た]べる|は|\n2|(情報)[じょうほう]|(生)[い]き(方)[かた]|
     static let systemPrompt = """
         You are an expert Japanese linguist. \
-        You will be given Japanese text and its current morphological segmentation with readings. \
-        Correct any segmentation or reading errors so the result is optimal for a native Japanese reader.
+        You will be given Japanese text with a proposed morphological segmentation and readings. \
+        The proposed segmentation is produced by an automated tool and may contain errors — treat it as a rough draft, not ground truth. \
+        Re-segment the text from scratch using your full understanding of Japanese grammar and context. \
+        The goal is the segmentation a skilled native reader would consider correct.
+        - DO NOT HESITATE TO SPLIT OR MERGE SEGMENTS WHEN WRONG OR NOT QUITE RIGHT — BE AGGRESSIVE AND ERR ON THE SIDE OF MAKING CHANGES
 
         SEGMENT FORMAT:
-        - Each source line maps to one output line
-        - Each line is surrounded by | delimiters and segments within are separated by |
-        - Example line: |(食)[た]べる|は|
+        - Each source line maps to exactly one output line with the same line number
+        - Each line starts with its line number N followed by | then the segments: N|seg1|seg2|
+        - Example line: 3|(食)[た]べる|は|
+        - A blank source line is encoded as N| (line number followed by a bare |)
         - Kanji within a segment are annotated as (kanji)[reading] where reading is hiragana only
         - Okurigana (trailing/internal kana) are left outside the parentheses, e.g. 食べる → (食)[た]べる, 生き方 → (生)[い]き(方)[かた]
         - Pure kana, numbers, punctuation, and whitespace: no annotation, just the text
-        - Whitespace characters, newlines, and punctuation must each be their own segment
+        - Whitespace characters and punctuation must each be their own segment
+
+        SEGMENTATION GUIDELINES:
+        - Compound nouns that form a single lexical unit must stay together: 中学校, 高校生, 東京都, etc.
+        - Particles (は, が, を, に, で, も, と, から, まで, より, など, か, ね, よ, な, わ, ぞ, ぜ) must each be their own segment with no exceptions — には, では, とは, からは, etc. are always two separate segments, never one: 時には → (時)[とき]|に|は, 中では → (中)[なか]|で|は
+        - Numerals followed by counter words must stay together based on meaning in context: 中二人 → (中)[なか]|(二人)[ふたり] not |(中二)[ちゅうに]|(人)[ひと]|
+        - Verb stem and inflectional suffix must stay in one segment: 食べる not 食べ|る, 書いた not 書い|た
+        - Compound verbs (verb + verb, or verb + auxiliary) are one segment: 追いつづける, 飛び込む, 言い続ける, 走り出す — never split at the connective 〜い or 〜き form
+        - When a sequence can be read as a known verb, prefer that reading over splitting it into a suffix + another word: とじてたしかめて → とじて|たしかめて not とじてた|しかめて (たしかめる is the verb, not しかめる)
+        - DO NOT HESITATE TO SPLIT OR MERGE SEGMENTS WHEN WRONG OR NOT QUITE RIGHT — BE AGGRESSIVE AND ERR ON THE SIDE OF MAKING CHANGES
 
         OUTPUT RULES:
         - Return ONLY the corrected compact format, nothing else — no explanation, no markdown
-        - Every line must begin and end with |
-        - All segment surfaces must concatenate in order to reproduce the original text exactly, character-for-character
-        - Never add, remove, or alter any character from the original text
+        - Every output line must start with its line number N followed by | and end with |
+        - Output exactly one line per input line, with the same line number — do not merge or reorder lines
+        - Segments MUST NOT cross line boundaries — all segments on line N come only from source line N
+        - All segment surfaces within a line must concatenate in order to reproduce that source line exactly, character-for-character
+        - Never add, remove, or alter any character from the original text — do not convert kana to kanji or kanji to kana, do not normalize, do not substitute
+        - Do not insert spaces between segments or anywhere else — if the original has no space, the output must have no space
         """
 
     // Constructs system and user message content for the correction request.
@@ -179,9 +195,11 @@ final class LLMCorrectionService {
     }
 
     // Parses the compact format string returned by the LLM into [LLMSegmentEntry].
-    // Each content line `|seg1|seg2|` encodes segments followed by an implicit `\n`.
-    // A bare `|` line encodes an extra blank line (an additional `\n` beyond the implicit one).
-    // Example: `|A|\n|\n|B|` → [A, \n, \n, B, \n]
+    // Each content line `N|seg1|seg2|` encodes segments followed by an implicit `\n`.
+    // A bare `N|` line encodes an extra blank line (an additional `\n` beyond the implicit one).
+    // The leading `N|` line-number prefix is optional — lines without it are accepted for
+    // backward compat with stub responses that omit line numbers.
+    // Example: `1|A|\n2|B|\n3|\n4|C|` → [A, \n, B, \n, \n, C, \n]
     func parseCompactResponse(_ compact: String) throws -> LLMCorrectionResponse {
         let lines = compact.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -189,12 +207,27 @@ final class LLMCorrectionService {
 
         var entries: [LLMSegmentEntry] = []
         for (lineIndex, line) in lines.enumerated() {
-            guard line.hasPrefix("|") && line.hasSuffix("|") else {
+            // Strip optional leading line-number prefix: `N|rest` → `|rest` (or `N|` → `|`).
+            // A line-number prefix is a run of ASCII digits followed by `|` at the start.
+            let normalized: String
+            let digitPrefixCount = line.prefix(while: { $0.isNumber }).count
+            if digitPrefixCount > 0 {
+                let afterDigits = line.index(line.startIndex, offsetBy: digitPrefixCount)
+                if afterDigits < line.endIndex, line[afterDigits] == "|" {
+                    normalized = "|" + String(line[line.index(after: afterDigits)...])
+                } else {
+                    normalized = line
+                }
+            } else {
+                normalized = line
+            }
+
+            guard normalized.hasPrefix("|") && normalized.hasSuffix("|") else {
                 throw LLMCorrectionError.decodingError(
                     "Line \(lineIndex + 1) must begin and end with |: \"\(line.prefix(60))\""
                 )
             }
-            let inner = String(line.dropFirst().dropLast())
+            let inner = String(normalized.dropFirst().dropLast())
             if inner.isEmpty {
                 // Bare `|` encodes an extra blank line in addition to the implicit \n
                 // that follows the preceding content line.
@@ -203,6 +236,8 @@ final class LLMCorrectionService {
             }
             let rawSegments = inner.components(separatedBy: "|")
             for raw in rawSegments {
+                // Trim spaces the model may pad around segment delimiters.
+                let raw = raw.trimmingCharacters(in: .init(charactersIn: " "))
                 guard raw.isEmpty == false else { continue }
                 let (surface, reading) = parseSegmentToken(raw)
                 entries.append(LLMSegmentEntry(surface: surface, reading: reading))

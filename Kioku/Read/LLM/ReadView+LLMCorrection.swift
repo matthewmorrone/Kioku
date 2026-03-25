@@ -63,8 +63,8 @@ extension ReadView {
             let nsRange = NSRange(edge.start..<edge.end, in: text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { return nil }
 
-            // User overrides are stored at segment level and always take priority.
-            if let override = selectedReadingOverrideByLocation[nsRange.location] {
+            // Segment-level furigana takes priority over per-run reconstructed readings.
+            if let override = furiganaBySegmentLocation[nsRange.location] {
                 return LLMSegmentEntry(surface: edge.surface, reading: override)
             }
 
@@ -78,7 +78,7 @@ extension ReadView {
     // Walks the kanji runs in a segment surface and reassembles a full reading from per-run
     // furigana entries stored in furiganaBySegmentLocation, interleaving any kana between runs.
     // Returns empty string if any run has no furigana, since a partial reading is unusable.
-    private func reconstructedReading(for surface: String, at segmentLocation: Int) -> String {
+    func reconstructedReading(for surface: String, at segmentLocation: Int) -> String {
         let chars = Array(surface)
         let runs = kanjiRuns(in: surface)
         guard runs.isEmpty == false else { return "" }
@@ -118,7 +118,7 @@ extension ReadView {
         for entry in response.segments {
             let utf16Length = entry.surface.utf16.count
             guard utf16Length > 0 else { continue }
-            ranges.append(SegmentRange(start: utf16Cursor, end: utf16Cursor + utf16Length))
+            ranges.append(SegmentRange(start: utf16Cursor, end: utf16Cursor + utf16Length, surface: entry.surface))
             utf16Cursor += utf16Length
         }
 
@@ -214,13 +214,9 @@ extension ReadView {
             let length = nsRange.length
 
             if entry.reading.isEmpty {
-                selectedReadingOverrideByLocation.removeValue(forKey: location)
                 furiganaBySegmentLocation.removeValue(forKey: location)
                 furiganaLengthBySegmentLocation.removeValue(forKey: location)
             } else {
-                // Store the raw reading for override lookup (used by scheduleFuriganaGeneration).
-                selectedReadingOverrideByLocation[location] = entry.reading
-
                 // Write per-kanji-run furigana entries so the renderer centers over each run,
                 // not the full segment (which includes okurigana and shifts the furigana right).
                 let surfaceChars = Array(edge.surface)
@@ -353,12 +349,10 @@ extension ReadView {
             let r = NSRange(edge.start..<edge.end, in: text)
             guard r.location != NSNotFound, r.length > 0 else { continue }
             if r.location + r.length <= groupStart {
-                let reading = selectedReadingOverrideByLocation[r.location]
-                    ?? reconstructedReading(for: edge.surface, at: r.location)
+                let reading = reconstructedReading(for: edge.surface, at: r.location)
                 outsideBefore.append(LLMSegmentEntry(surface: edge.surface, reading: reading))
             } else if r.location >= groupEnd {
-                let reading = selectedReadingOverrideByLocation[r.location]
-                    ?? reconstructedReading(for: edge.surface, at: r.location)
+                let reading = reconstructedReading(for: edge.surface, at: r.location)
                 outsideAfter.append(LLMSegmentEntry(surface: edge.surface, reading: reading))
             }
         }
@@ -529,35 +523,39 @@ extension ReadView {
     }
 
     // Encodes [LLMSegmentEntry] to compact human-readable format for LLM I/O.
-    // Each content line is `|seg1|seg2|`; the line break itself encodes a single `\n`.
-    // A bare `|` line encodes an extra blank line (i.e. `\n\n` between surrounding content).
-    // Example: A\nB\n\nC\n → `|A|\n|B|\n|\n|C|`
+    // Each content line is `N|seg1|seg2|` where N is the 1-based source line number.
+    // The line break itself encodes a single `\n`.
+    // A bare `N|` line encodes an extra blank line (i.e. `\n\n` between surrounding content).
+    // Example: A\nB\n\nC\n → `1|A|\n2|B|\n3|\n4|C|`
     func buildCompactFormat(from entries: [LLMSegmentEntry]) -> String {
         var outputLines: [String] = []
         var currentTokens: [String] = []
-        // Tracks whether the last emitted line was a content line (vs a bare `|` or nothing).
+        // Tracks whether the last emitted line was a content line (vs a bare line-number marker).
         var lastWasContent = false
+        // 1-based source line counter — increments each time a \n segment is consumed.
+        var sourceLine = 1
 
         for entry in entries {
             if entry.surface == "\n" {
                 if currentTokens.isEmpty == false {
                     // Flush pending content; the line break encodes this \n implicitly.
-                    outputLines.append("|" + currentTokens.joined(separator: "|") + "|")
+                    outputLines.append("\(sourceLine)|" + currentTokens.joined(separator: "|") + "|")
                     currentTokens = []
                     lastWasContent = true
                 } else if lastWasContent {
-                    // Second consecutive \n (blank line) — emit a bare `|` marker.
-                    outputLines.append("|")
+                    // Second consecutive \n (blank line) — emit a bare line-number marker.
+                    outputLines.append("\(sourceLine)|")
                     lastWasContent = false
                 }
-                // A third+ consecutive \n would need additional bare `|` lines.
+                // A third+ consecutive \n would need additional bare markers.
                 // For now song/prose text only has at most double newlines.
+                sourceLine += 1
             } else {
                 currentTokens.append(compactToken(for: entry))
             }
         }
         if currentTokens.isEmpty == false {
-            outputLines.append("|" + currentTokens.joined(separator: "|") + "|")
+            outputLines.append("\(sourceLine)|" + currentTokens.joined(separator: "|") + "|")
         }
 
         return outputLines.joined(separator: "\n")

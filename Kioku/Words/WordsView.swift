@@ -103,6 +103,8 @@ struct WordsView: View {
         .toolbar(.visible, for: .tabBar)
         .sheet(item: $selectedDetailWord) { word in
             WordDetailView(word: word, dictionaryStore: dictionaryStore)
+                .environmentObject(wordsStore)
+                .environmentObject(wordListsStore)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -420,21 +422,19 @@ struct WordsView: View {
                     .accessibilityLabel("Sort")
                 }
 
-                // Filter / list management is saved-only.
-                if activeTab == .saved {
-                    Button {
-                        if editMode == .active && !selectedWordIDs.isEmpty {
-                            isBatchListSheetPresented = true
-                        } else {
-                            isFilterSheetPresented = true
-                        }
-                    } label: {
-                        Image(systemName: isFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                            .font(.system(size: 16))
-                            .frame(width: 32, height: 32)
+                // Filter / list management — only meaningful for saved words.
+                Button {
+                    if activeTab == .saved && editMode == .active && !selectedWordIDs.isEmpty {
+                        isBatchListSheetPresented = true
+                    } else {
+                        isFilterSheetPresented = true
                     }
-                    .accessibilityLabel(editMode == .active && !selectedWordIDs.isEmpty ? "Manage Lists for Selection" : "Filter by List")
+                } label: {
+                    Image(systemName: isFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
                 }
+                .accessibilityLabel(activeTab == .saved && editMode == .active && !selectedWordIDs.isEmpty ? "Manage Lists for Selection" : "Filter by List")
             }
         }
     }

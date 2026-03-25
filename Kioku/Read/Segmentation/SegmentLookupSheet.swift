@@ -3,6 +3,10 @@ import UIKit
 // Presents a native UIKit popover anchored to tapped segment rects in the read-mode text view.
 final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegate, UIAdaptivePresentationControllerDelegate {
     static let shared = SegmentLookupSheet()
+    // Key for retaining the tap handler via associated objects (gesture recognizer holds weak ref).
+    static var tapHandlerKey: UInt8 = 0
+    // Key for retaining the speech synthesizer so it lives long enough to finish speaking.
+    static var speechSynthesizerKey: UInt8 = 0
 
     private weak var presentedController: UIViewController?
     weak var presentedSheetController: UIViewController?
@@ -30,6 +34,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var sheetIsSavedProvider: (() -> Bool)?
     // Toggles the saved state for the current segment's resolved lemma.
     var sheetSaveToggle: (() -> Void)?
+    // Opens the word detail screen for the current segment's resolved lemma.
+    var sheetOpenWordDetail: (() -> Void)?
     // Provides tappable word components: (surface, first gloss) pairs.
     var sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)?
     var currentSheetWordComponents: [(surface: String, gloss: String?)] = []
@@ -190,6 +196,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetWordDisplayDataProvider: (() -> WordDisplayData?)? = nil,
         sheetIsSavedProvider: (() -> Bool)? = nil,
         sheetSaveToggle: (() -> Void)? = nil,
+        sheetOpenWordDetail: (() -> Void)? = nil,
         sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
@@ -202,6 +209,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.sheetWordDisplayDataProvider = sheetWordDisplayDataProvider
         self.sheetIsSavedProvider = sheetIsSavedProvider
         self.sheetSaveToggle = sheetSaveToggle
+        self.sheetOpenWordDetail = sheetOpenWordDetail
         self.sheetWordComponentsProvider = sheetWordComponentsProvider
         if let updatePresentedSheetSelection {
             self.onDismiss = onDismiss
@@ -287,6 +295,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             sheetWordDisplayDataProvider = nil
             sheetIsSavedProvider = nil
             sheetSaveToggle = nil
+            sheetOpenWordDetail = nil
             sheetWordComponentsProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
@@ -318,6 +327,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetWordDisplayDataProvider = nil
         sheetIsSavedProvider = nil
         sheetSaveToggle = nil
+        sheetOpenWordDetail = nil
         sheetWordComponentsProvider = nil
         currentSheetUniqueReadings = []
         currentSheetSublatticeEdges = []
@@ -351,6 +361,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             sheetWordDisplayDataProvider = nil
             sheetIsSavedProvider = nil
             sheetSaveToggle = nil
+            sheetOpenWordDetail = nil
             sheetWordComponentsProvider = nil
             currentSheetUniqueReadings = []
             currentSheetSublatticeEdges = []
