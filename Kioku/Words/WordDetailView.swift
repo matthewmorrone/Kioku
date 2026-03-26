@@ -391,18 +391,19 @@ struct WordDetailView: View {
         let surface = word.surface
         let entryID = word.canonicalEntryID
 
+        let store = dictionaryStore
         let result = await Task.detached(priority: .userInitiated) {
-            try? dictionaryStore.fetchWordDisplayData(entryID: entryID, surface: surface)
+            try? store.fetchWordDisplayData(entryID: entryID, surface: surface)
         }.value
         displayData = result
 
         guard let segmenter, result != nil else { return }
-        let store = dictionaryStore
+        let store2 = dictionaryStore
         let edges = segmenter.longestMatchEdges(for: surface)
         guard edges.count > 1 else { return }
         let components = await Task.detached(priority: .userInitiated) {
             edges.compactMap { edge -> (String, String?)? in
-                let entries = try? store.lookup(surface: edge.surface, mode: .kanjiAndKana)
+                let entries = try? store2.lookup(surface: edge.surface, mode: .kanjiAndKana)
                 let gloss = entries?.first?.senses.first?.glosses.first
                 return (edge.surface, gloss)
             }

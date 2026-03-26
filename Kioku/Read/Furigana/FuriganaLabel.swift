@@ -10,6 +10,7 @@ struct FuriganaLabel: UIViewRepresentable {
     let reading: String
     let font: UIFont
 
+    // Creates a plain UILabel; all styling is applied in updateUIView.
     func makeUIView(context: Context) -> UILabel {
         let label = UILabel()
         label.numberOfLines = 0
@@ -18,6 +19,7 @@ struct FuriganaLabel: UIViewRepresentable {
         return label
     }
 
+    // Rebuilds the attributed string whenever the surface, reading, or font changes.
     func updateUIView(_ label: UILabel, context: Context) {
         label.font = font
         label.attributedText = buildAttributedString()
@@ -26,7 +28,7 @@ struct FuriganaLabel: UIViewRepresentable {
     // Reports the label's natural size so SwiftUI can allocate the correct height.
     // Without this, fixedSize(vertical:) collapses UIViewRepresentable to zero height.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UILabel, context: Context) -> CGSize? {
-        let width = proposal.width ?? UIScreen.main.bounds.width
+        let width = proposal.width ?? uiView.window?.screen.bounds.width ?? 390
         return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
     }
 

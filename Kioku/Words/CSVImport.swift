@@ -95,6 +95,7 @@ enum CSVImport {
         return out
     }
 
+    // Parses tab- or comma-delimited text into import items, respecting a header row.
     private static func parseDelimited(_ text: String, delimiter: Character) -> [CSVImportItem] {
         var out: [CSVImportItem] = []
         var lineNo = 0
@@ -271,6 +272,7 @@ enum CSVImport {
         }
     }
 
+    // Returns true when the text consists entirely of kana with no kanji or Latin characters.
     private static func isKanaOnly(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return false }
@@ -287,6 +289,7 @@ enum CSVImport {
         return sawKana
     }
 
+    // Returns true when the text contains at least one hiragana, katakana, or kanji scalar.
     private static func containsJapaneseScript(_ text: String) -> Bool {
         text.unicodeScalars.contains {
             let v = $0.value
@@ -299,6 +302,7 @@ enum CSVImport {
         }
     }
 
+    // Returns true when the text has Latin letters but no Japanese script, used to skip gloss columns.
     private static func looksLikeEnglish(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false, containsJapaneseScript(trimmed) == false else { return false }
@@ -313,6 +317,7 @@ enum CSVImport {
         text.components(separatedBy: .newlines).first(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false })
     }
 
+    // Strips whitespace and returns nil for empty strings, used to normalize imported field values.
     static func trim(_ value: String?) -> String? {
         guard let value else { return nil }
         let t = value.trimmingCharacters(in: .whitespacesAndNewlines)

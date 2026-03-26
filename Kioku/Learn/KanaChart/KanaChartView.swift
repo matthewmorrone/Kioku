@@ -20,14 +20,15 @@ struct KanaChartView: View {
                 .padding(.bottom, 2)
             */
 
-            VStack(alignment: .leading, spacing: 8) {
-                chartSection(title: nil, rows: KanaData.gojuuon)
-                chartSection(title: nil, rows: KanaData.gojuuon)
-                chartSection(title: nil, rows: KanaData.dakuten)
-                chartSection(title: nil, rows: KanaData.handakuten)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    chartSection(title: nil, rows: KanaData.gojuuon)
+                    chartSection(title: nil, rows: KanaData.dakuten)
+                    chartSection(title: nil, rows: KanaData.handakuten)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal)
-            .padding(.bottom, 8)
         }
         // Swipe up advances to the next representation; swipe down goes back.
         .gesture(

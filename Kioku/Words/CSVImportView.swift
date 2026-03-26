@@ -246,6 +246,7 @@ struct CSVImportView: View {
         }
     }
 
+    // Runs the CSV parser and dictionary lookup off the main actor, then publishes results.
     @MainActor
     private func parse() async {
         isParsing = true
@@ -257,6 +258,7 @@ struct CSVImportView: View {
         items = parsed
     }
 
+    // Saves all importable items to the words store and resolves or creates any requested word lists.
     private func performImport() {
         let listIDs = resolveListIDsCreatingIfNeeded()
         for item in importableItems {
