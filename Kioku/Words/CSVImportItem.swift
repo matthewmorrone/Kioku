@@ -49,6 +49,7 @@ struct CSVImportItem: Identifiable, Hashable {
         self.providedNote = providedNote
     }
 
+    // Strips whitespace and returns nil for empty strings so display properties stay clean.
     private func trimmed(_ value: String?) -> String? {
         guard let value else { return nil }
         let t = value.trimmingCharacters(in: .whitespacesAndNewlines)

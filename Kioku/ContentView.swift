@@ -7,6 +7,7 @@ struct ContentView: View {
     @StateObject private var wordsStore = WordsStore()
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
+    @StateObject private var reviewStore = ReviewStore()
     @State private var selectedReadNote: Note?
     @State private var shouldActivateReadEditMode = false
     @State private var segmenter = Segmenter(trie: DictionaryTrie())
@@ -87,8 +88,8 @@ struct ContentView: View {
                 Label("Words", systemImage: "text.page.badge.magnifyingglass")
             }
 
-            // Renders the Learn tab entry point.
-            LearnView()
+            // Renders the Learn tab entry point, passing the dictionary store for flashcard lookups.
+            LearnView(dictionaryStore: dictionaryStore)
             .tag(ContentTab.learn)
             .tabItem {
                 Label("Learn", systemImage: "rectangle.on.rectangle.angled")
@@ -105,6 +106,7 @@ struct ContentView: View {
         .environmentObject(wordsStore)
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
+        .environmentObject(reviewStore)
         .onAppear {
             restoreLastActiveNote()
             loadReadResourcesIfNeeded()

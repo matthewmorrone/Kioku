@@ -1,5 +1,15 @@
 [
 	{
+		"kanji": "夕映",
+		"kana": "ゆうばえ",
+		"sense": [
+			{
+				"partOfSpeech": ["noun (common) (futsuumeishi)"],
+				"gloss": ["evening glow; afterglow of sunset"]
+			}
+		]
+	},
+	{
 		"kana": "スターズ",
 		"gloss": "stars"
 	},

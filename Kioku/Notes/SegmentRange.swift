@@ -1,6 +1,6 @@
 import Foundation
 
-struct SegmentRange: Codable, Equatable {
+struct SegmentRange: Codable, Equatable, Hashable {
     var start: Int
     var end: Int
     var surface: String
