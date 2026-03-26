@@ -1,14 +1,13 @@
 import SwiftUI
-import Combine
 
-// Hosts the learning tab. Currently shows the interactive kana chart.
-// Major sections: NavigationStack shell, KanaChartView content.
+// Hosts the learning tab: kana chart, flashcards, and cloze — all swipeable left/right.
+// Major sections: infinite-loop TabView across three modes, page-dot overlay.
 struct LearnView: View {
+    let dictionaryStore: DictionaryStore?
+
     var body: some View {
-        NavigationStack {
-            KanaChartView()
-        }
-        .toolbar(.visible, for: .tabBar)
+        LearnPagerView(dictionaryStore: dictionaryStore)
+            .toolbar(.visible, for: .tabBar)
     }
 }
 

@@ -169,6 +169,7 @@ extension ReadView {
             newSegs.append(NewSeg(location: r.location, end: r.location + r.length, surface: edge.surface))
         }
 
+        // Returns existing segments that spatially overlap a proposed new segment.
         func overlappingOld(for new: NewSeg) -> [OldSeg] {
             oldSegs.filter { $0.location < new.end && $0.end > new.location }
         }

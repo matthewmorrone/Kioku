@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-struct Note: Identifiable, Codable, Equatable {
+struct Note: Identifiable, Codable, Equatable, Hashable {
     var id: UUID
     var title: String
     var content: String
