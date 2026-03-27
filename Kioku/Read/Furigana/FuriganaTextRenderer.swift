@@ -219,30 +219,57 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         }
 
         // Collects per-line rects for headword and furigana band debug overlays.
-        // Both sets are derived from the same TextKit 2 fragment enumeration when both are enabled.
+        // Uses firstRect(for:) — the same coordinate pipeline as furigana frame computation — so
+        // the bands land in exactly the same space as all other overlay geometry.
         var debugHeadwordLineBandRects: [CGRect] = []
         var debugFuriganaLineBandRects: [CGRect] = []
         let needsLineBands = debugHeadwordLineBands || debugFuriganaLineBands
-        if needsLineBands, let tlm = textView.textLayoutManager {
-            let insetTop = textView.textContainerInset.top
+        if needsLineBands,
+           let tlm = textView.textLayoutManager,
+           let tcm = tlm.textContentManager {
+            let docStart = tcm.documentRange.location
+            let bodyFont = UIFont.systemFont(ofSize: textSize)
+            // Use the font's own lineHeight for band height so every line — including blank
+            // ones — is measured consistently. caretRect.height is unreliable on blank lines
+            // because UIKit falls back to an internal default rather than reading the attributed font.
+            let bandHeight = bodyFont.lineHeight
             let furiganaRowHeight = furiganaFont.lineHeight + CGFloat(furiganaGap)
             tlm.enumerateTextLayoutFragments(from: nil, options: []) { fragment in
+                // Convert the fragment's start to an integer UTF-16 offset in the document.
+                let fragmentOffset = tcm.offset(from: docStart, to: fragment.rangeInElement.location)
                 for lineFragment in fragment.textLineFragments {
-                    let bounds = lineFragment.typographicBounds
-                    let lineY = insetTop + fragment.layoutFragmentFrame.origin.y + bounds.minY
+                    let lineCharRange = lineFragment.characterRange
+                    let lineDocStart = fragmentOffset + lineCharRange.location
+                    guard let anchorPosition = textView.position(
+                        from: textView.beginningOfDocument,
+                        offset: lineDocStart
+                    ) else { continue }
+                    // caretRect is used only for the y position; height comes from font metrics.
+                    let caretR = textView.caretRect(for: anchorPosition)
+                    guard caretR.isNull == false,
+                          caretR.isInfinite == false,
+                          caretR.height > 0 else { continue }
+                    // Blank lines have no furigana, so their headword band is shifted up by
+                    // furiganaRowHeight to eliminate the empty furigana slot above them. This
+                    // produces 0 space above and 2× furiganaRowHeight below — matching the
+                    // user's description of the desired blank-line band layout.
+                    let textNS = textView.text as NSString
+                    let isBlankLine = lineDocStart < textNS.length
+                        ? textNS.character(at: lineDocStart) == 0x000A
+                        : true
                     if debugHeadwordLineBands {
+                        let bandY = isBlankLine ? caretR.minY + furiganaFont.lineHeight : caretR.minY
                         debugHeadwordLineBandRects.append(CGRect(
                             x: 0,
-                            y: lineY,
+                            y: bandY,
                             width: overlayFrame.width,
-                            height: bounds.height
+                            height: bandHeight
                         ))
                     }
-                    if debugFuriganaLineBands {
-                        // Furigana bands sit directly above the headword line in the furigana row.
+                    if debugFuriganaLineBands && !isBlankLine {
                         debugFuriganaLineBandRects.append(CGRect(
                             x: 0,
-                            y: lineY - furiganaRowHeight,
+                            y: caretR.minY - furiganaRowHeight,
                             width: overlayFrame.width,
                             height: furiganaRowHeight
                         ))

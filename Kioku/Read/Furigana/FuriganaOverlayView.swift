@@ -77,27 +77,19 @@ final class FuriganaOverlayView: UIView {
         UIGraphicsGetCurrentContext()?.clear(rect)
 
         // Headword line bands drawn first so all other overlays render on top.
-        // Alternates between orange and yellow tints to distinguish adjacent headword rows.
         if debugHeadwordLineBandsEnabled {
-            for (index, bandRect) in debugHeadwordLineBandRects.enumerated() {
+            UIColor.systemOrange.withAlphaComponent(0.08).setFill()
+            for bandRect in debugHeadwordLineBandRects {
                 guard bandRect.intersects(rect) else { continue }
-                let bandColor = index.isMultiple(of: 2)
-                    ? UIColor.systemOrange.withAlphaComponent(0.08)
-                    : UIColor.systemYellow.withAlphaComponent(0.08)
-                bandColor.setFill()
                 UIBezierPath(rect: bandRect).fill()
             }
         }
 
         // Furigana line bands sit directly above their corresponding headword rows.
-        // Alternates between blue and purple tints to pair visually with headword bands below.
         if debugFuriganaLineBandsEnabled {
-            for (index, bandRect) in debugFuriganaLineBandRects.enumerated() {
+            UIColor.systemBlue.withAlphaComponent(0.08).setFill()
+            for bandRect in debugFuriganaLineBandRects {
                 guard bandRect.intersects(rect) else { continue }
-                let bandColor = index.isMultiple(of: 2)
-                    ? UIColor.systemBlue.withAlphaComponent(0.08)
-                    : UIColor.systemPurple.withAlphaComponent(0.08)
-                bandColor.setFill()
                 UIBezierPath(rect: bandRect).fill()
             }
         }
