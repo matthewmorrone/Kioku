@@ -81,13 +81,17 @@ enum FuriganaAttributedString {
     }
 
     // Detects contiguous kanji runs and returns character-index ranges within the surface.
+    // Iteration marks (々) are treated as run continuations when they follow a kanji character.
     static func kanjiRuns(in text: String) -> [(start: Int, end: Int)] {
         let characters = Array(text)
         var runs: [(start: Int, end: Int)] = []
         var runStart: Int?
 
         for (index, character) in characters.enumerated() {
-            if ScriptClassifier.containsKanji(String(character)) {
+            let isKanji = ScriptClassifier.containsKanji(String(character))
+            let isIterationMark = character.unicodeScalars.first?.value == 0x3005 // 々
+            let continuesRun = isIterationMark && runStart != nil
+            if isKanji || continuesRun {
                 if runStart == nil { runStart = index }
             } else if let start = runStart {
                 runs.append((start: start, end: index))

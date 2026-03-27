@@ -28,6 +28,12 @@ struct ReadView: View {
     private var kerning = TypographySettings.defaultKerning
     @AppStorage(TypographySettings.furiganaGapKey)
     private var furiganaGap = TypographySettings.defaultFuriganaGap
+    @AppStorage(TokenColorSettings.enabledKey)
+    private var customTokenColorsEnabled: Bool = false
+    @AppStorage(TokenColorSettings.colorAKey)
+    private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
+    @AppStorage(TokenColorSettings.colorBKey)
+    private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
     @AppStorage("kioku.settings.showFurigana")
     private var isFuriganaVisible = true
     @AppStorage("kioku.settings.colorAlternation")
@@ -38,6 +44,16 @@ struct ReadView: View {
     var shouldApplyChangesGlobally = false
     @AppStorage("kioku.settings.lineWrapping")
     private var isLineWrappingEnabled = true
+    @AppStorage(DebugSettings.pixelRulerKey)
+    private var debugPixelRuler: Bool = false
+    @AppStorage(DebugSettings.furiganaRectsKey)
+    private var debugFuriganaRects: Bool = false
+    @AppStorage(DebugSettings.headwordRectsKey)
+    private var debugHeadwordRects: Bool = false
+    @AppStorage(DebugSettings.headwordLineBandsKey)
+    private var debugHeadwordLineBands: Bool = false
+    @AppStorage(DebugSettings.furiganaLineBandsKey)
+    private var debugFuriganaLineBands: Bool = false
 
     @State var customTitle = ""
     @State var fallbackTitle = ""
@@ -158,6 +174,12 @@ struct ReadView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
         .toolbar(.visible, for: .tabBar)
+        .overlay(alignment: .topLeading) {
+            // Pixel ruler is non-interactive and only drawn when its debug toggle is active.
+            if debugPixelRuler {
+                PixelRulerOverlayView()
+            }
+        }
         .sheet(item: $wordDetailWord) { word in
             // WordDetailView reads wordListsStore via @EnvironmentObject inherited from ContentView.
             NavigationStack {
@@ -425,6 +447,12 @@ struct ReadView: View {
                     changedSegmentLocations: pendingLLMChangedLocations,
                     changedReadingLocations: pendingLLMChangedReadingLocations,
                     segmenter: segmenter,
+                    customEvenSegmentColorHex: customTokenColorsEnabled ? tokenColorAHex : "",
+                    customOddSegmentColorHex: customTokenColorsEnabled ? tokenColorBHex : "",
+                    debugFuriganaRects: debugFuriganaRects,
+                    debugHeadwordRects: debugHeadwordRects,
+                    debugHeadwordLineBands: debugHeadwordLineBands,
+                    debugFuriganaLineBands: debugFuriganaLineBands,
                     externalContentOffsetY: sharedScrollOffsetY,
                     onScrollOffsetYChanged: { newOffsetY in
                         sharedScrollOffsetY = newOffsetY

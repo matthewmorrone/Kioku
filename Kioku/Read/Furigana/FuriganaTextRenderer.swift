@@ -22,6 +22,14 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     // Subset of changedSegmentLocations where only the furigana reading changed (surface unchanged).
     let changedReadingLocations: Set<Int>
     let segmenter: Segmenter
+    // Hex strings for user-configured segment alternation colors. Empty string = use system default.
+    let customEvenSegmentColorHex: String
+    let customOddSegmentColorHex: String
+    // Debug overlay flags — all false in production use.
+    let debugFuriganaRects: Bool
+    let debugHeadwordRects: Bool
+    let debugHeadwordLineBands: Bool
+    let debugFuriganaLineBands: Bool
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void
     let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
@@ -111,7 +119,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             isHighlightUnknownEnabled: isHighlightUnknownEnabled,
             unknownSegmentLocations: unknownSegmentLocations,
             changedSegmentLocations: changedSegmentLocations,
-            changedReadingLocations: changedReadingLocations
+            changedReadingLocations: changedReadingLocations,
+            customEvenSegmentColor: customEvenSegmentColorHex.isEmpty ? nil : UIColor(hexString: customEvenSegmentColorHex),
+            customOddSegmentColor: customOddSegmentColorHex.isEmpty ? nil : UIColor(hexString: customOddSegmentColorHex)
         ).makePayload()
         if context.coordinator.shouldRenderText(for: baseTextRenderSignature) {
             // Use the external scroll target instead of the current UITextView offset so that
@@ -169,6 +179,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         var furiganaStrings: [String] = []
         var furiganaFrames: [CGRect] = []
         var furiganaColors: [UIColor] = []
+        // Collects headword rects alongside furigana for debug overlay use.
+        var debugCollectedHeadwordRects: [CGRect] = []
 
         let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
         if isVisualEnhancementsEnabled {
@@ -187,6 +199,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     continue
                 }
 
+                if debugHeadwordRects {
+                    debugCollectedHeadwordRects.append(segmentRect)
+                }
+
                 let furiganaWidth = measureTextWidth(furigana, font: furiganaFont, kerning: 0)
                 let furiganaX = segmentRect.midX - (furiganaWidth / 2)
                 furiganaStrings.append(furigana)
@@ -202,6 +218,40 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             }
         }
 
+        // Collects per-line rects for headword and furigana band debug overlays.
+        // Both sets are derived from the same TextKit 2 fragment enumeration when both are enabled.
+        var debugHeadwordLineBandRects: [CGRect] = []
+        var debugFuriganaLineBandRects: [CGRect] = []
+        let needsLineBands = debugHeadwordLineBands || debugFuriganaLineBands
+        if needsLineBands, let tlm = textView.textLayoutManager {
+            let insetTop = textView.textContainerInset.top
+            let furiganaRowHeight = furiganaFont.lineHeight + CGFloat(furiganaGap)
+            tlm.enumerateTextLayoutFragments(from: nil, options: []) { fragment in
+                for lineFragment in fragment.textLineFragments {
+                    let bounds = lineFragment.typographicBounds
+                    let lineY = insetTop + fragment.layoutFragmentFrame.origin.y + bounds.minY
+                    if debugHeadwordLineBands {
+                        debugHeadwordLineBandRects.append(CGRect(
+                            x: 0,
+                            y: lineY,
+                            width: overlayFrame.width,
+                            height: bounds.height
+                        ))
+                    }
+                    if debugFuriganaLineBands {
+                        // Furigana bands sit directly above the headword line in the furigana row.
+                        debugFuriganaLineBandRects.append(CGRect(
+                            x: 0,
+                            y: lineY - furiganaRowHeight,
+                            width: overlayFrame.width,
+                            height: furiganaRowHeight
+                        ))
+                    }
+                }
+                return true
+            }
+        }
+
         overlayView.apply(
             overlayFrame: overlayFrame,
             selectedSegmentRect: selectedSegmentRect,
@@ -211,7 +261,14 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             furiganaStrings: furiganaStrings,
             furiganaFrames: furiganaFrames,
             furiganaColors: furiganaColors,
-            furiganaFont: furiganaFont
+            furiganaFont: furiganaFont,
+            debugFuriganaRectsEnabled: debugFuriganaRects,
+            debugHeadwordRectsEnabled: debugHeadwordRects,
+            debugHeadwordLineBandsEnabled: debugHeadwordLineBands,
+            debugFuriganaLineBandsEnabled: debugFuriganaLineBands,
+            debugHeadwordRects: debugCollectedHeadwordRects,
+            debugHeadwordLineBandRects: debugHeadwordLineBandRects,
+            debugFuriganaLineBandRects: debugFuriganaLineBandRects
         )
 
         guard isVisualEnhancementsEnabled || selectedSegmentRect != nil || illegalBoundaryRect != nil else {
@@ -373,6 +430,11 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(textView.contentSize.height)
         // Keeps furigana geometry checks in sync with fine-grained scroll movement.
         hasher.combine(Int((externalContentOffsetY * 10).rounded()))
+        // Debug flag changes must invalidate the overlay so toggling takes effect immediately.
+        hasher.combine(debugFuriganaRects)
+        hasher.combine(debugHeadwordRects)
+        hasher.combine(debugHeadwordLineBands)
+        hasher.combine(debugFuriganaLineBands)
         return hasher.finalize()
     }
 
@@ -403,6 +465,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(kerning)
         hasher.combine(furiganaGap)
         hasher.combine(isActive)
+        // Custom token color changes affect ReadTextStyleResolver output; include them in the text signature.
+        hasher.combine(customEvenSegmentColorHex)
+        hasher.combine(customOddSegmentColorHex)
         hasher.combine(textView.bounds.width)
         hasher.combine(textView.bounds.height)
         hasher.combine(textView.contentSize.width)

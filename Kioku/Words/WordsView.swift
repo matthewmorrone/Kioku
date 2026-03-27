@@ -15,6 +15,8 @@ enum WordsSortOrder: String {
 // Major sections: search bar, saved/history tab picker, word rows, toolbar.
 struct WordsView: View {
     let dictionaryStore: DictionaryStore?
+    // Receives a canonicalEntryID from a notification deep link; opens its word detail when set.
+    var deepLinkedEntryID: Binding<Int64?> = .constant(nil)
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var wordListsStore: WordListsStore
@@ -106,7 +108,15 @@ struct WordsView: View {
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+        }
+        // Opens the detail sheet for a word deep-linked from a Word of the Day notification.
+        .onChange(of: deepLinkedEntryID.wrappedValue) { _, entryID in
+            guard let entryID else { return }
+            if let word = wordsStore.words.first(where: { $0.canonicalEntryID == entryID }) {
+                activeTab = .saved
+                selectedDetailWord = word
+            }
+            deepLinkedEntryID.wrappedValue = nil
         }
         .sheet(isPresented: $isFilterSheetPresented) {
             WordsFilterView(activeFilterNoteIDs: $activeFilterNoteIDs, activeFilterListIDs: $activeFilterListIDs)

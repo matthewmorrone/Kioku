@@ -18,6 +18,9 @@ struct ReadTextStyleResolver {
     // Subset of changedSegmentLocations where only the furigana reading changed (surface unchanged).
     // These locations color only furigana; the segment text stays its normal color.
     let changedReadingLocations: Set<Int>
+    // User-configured colors for even/odd segment alternation. When nil, falls back to system defaults.
+    let customEvenSegmentColor: UIColor?
+    let customOddSegmentColor: UIColor?
 
     // Produces the read-mode attributed string and segment foreground map for one render pass.
     func makePayload() -> ReadTextStylePayload {
@@ -101,15 +104,19 @@ struct ReadTextStyleResolver {
     }
 
     // Returns the alternating foreground color for even-indexed visible segments.
+    // Uses the user-configured custom color when set; falls back to system orange/red.
     private var evenSegmentForegroundColor: UIColor {
-        UIColor { traitCollection in
+        if let customEvenSegmentColor { return customEvenSegmentColor }
+        return UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark ? .systemOrange : .systemRed
         }
     }
 
     // Returns the alternating foreground color for odd-indexed visible segments.
+    // Uses the user-configured custom color when set; falls back to system cyan/indigo.
     private var oddSegmentForegroundColor: UIColor {
-        UIColor { traitCollection in
+        if let customOddSegmentColor { return customOddSegmentColor }
+        return UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo
         }
     }

@@ -90,7 +90,17 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
 
     // Returns the natural size for the given bounding size, used by UIViewRepresentable.sizeThatFits.
     override func sizeThatFits(_ size: CGSize) -> CGSize {
-        let width = size.width > 0 ? size.width : UIScreen.main.bounds.width
+        // Prefer contextual screen width; fall back to trait/environment if needed.
+        let contextualScreenWidth: CGFloat = (
+            window?.windowScene?.screen.bounds.width
+        ) ?? (
+            // If no window yet (e.g., during offscreen layout), try the superview or view's bounds.
+            superview?.bounds.width
+        ) ?? (
+            // As a last resort, use the view's own bounds width.
+            bounds.width
+        )
+        let width = size.width > 0 ? size.width : contextualScreenWidth
         return CGSize(width: width, height: computeHeight(for: width))
     }
 
@@ -259,3 +269,4 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         }
     }
 }
+

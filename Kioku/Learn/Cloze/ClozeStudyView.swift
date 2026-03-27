@@ -4,7 +4,6 @@ import SwiftUI
 // and reveal/next controls. A settings sheet allows adjusting mode and blank count mid-session.
 // Major sections: toolbar, score header, sentence prompt, reveal/next controls.
 struct ClozeStudyView: View {
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var model: ClozeStudyViewModel
 
     @State private var showingSettings = false
@@ -50,9 +49,6 @@ struct ClozeStudyView: View {
                     .foregroundStyle(.primary)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(title)
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: {
