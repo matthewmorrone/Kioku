@@ -397,10 +397,17 @@ final class Segmenter {
         }
     }
 
-    // Resolves all trie-backed lemmas reachable from a surface, including alternate candidates from the deinflector.
+    // Resolves all trie-backed lemmas reachable from a surface, including alternate candidates from the deinflector
+    // and iteration mark expansion (々, ゝ, ヽ).
     private func resolvedTrieLemmas(for surface: String) -> Set<String> {
         var lemmas = matchedTrieLemmas(for: surface)
         let hasExactSurfaceMatch = trie.contains(surface)
+
+        // Expand iteration marks (e.g. 人々→人人) so reduplicated forms resolve through the trie.
+        let expandedCandidates = ScriptClassifier.iterationExpandedCandidates(for: surface)
+        for expanded in expandedCandidates where expanded != surface {
+            lemmas.formUnion(matchedTrieLemmas(for: expanded))
+        }
 
         if let deinflector {
             let candidates = deinflector.generateCandidates(for: surface)

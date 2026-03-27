@@ -372,6 +372,7 @@ extension ReadView {
     }
 
     // Detects contiguous kanji runs in a surface string and returns character-index ranges.
+    // Iteration marks (々) are treated as run continuations when they follow a kanji character.
     func kanjiRuns(in surface: String) -> [(start: Int, end: Int)] {
         let characters = Array(surface)
         var runs: [(start: Int, end: Int)] = []
@@ -379,7 +380,10 @@ extension ReadView {
 
         for (index, character) in characters.enumerated() {
             let isKanji = ScriptClassifier.containsKanji(String(character))
-            if isKanji {
+            let isIterationMark = character.unicodeScalars.first?.value == 0x3005 // 々
+            // Iteration marks extend an active kanji run but cannot start one.
+            let continuesRun = isIterationMark && runStart != nil
+            if isKanji || continuesRun {
                 if runStart == nil {
                     runStart = index
                 }

@@ -1,9 +1,13 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UserNotifications
 
-// Presents typography controls and a live preview for reading settings.
+// Presents typography controls, Word of the Day configuration, and a live preview for reading settings.
 struct SettingsView: View {
+    let dictionaryStore: DictionaryStore?
+
     @EnvironmentObject private var notesStore: NotesStore
+    @EnvironmentObject private var wordsStore: WordsStore
 
     @AppStorage(TypographySettings.textSizeKey)
     private var textSize = TypographySettings.defaultTextSize
@@ -29,6 +33,23 @@ struct SettingsView: View {
     @AppStorage(LLMSettings.temperatureKey)
     private var temperature: Double = LLMSettings.defaultTemperature
 
+    @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
+    @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
+    @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
+
+    @AppStorage(WordOfTheDayScheduler.enabledKey) private var wotdEnabled: Bool = false
+    @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
+    @AppStorage(WordOfTheDayScheduler.minuteKey) private var wotdMinute: Int = 0
+
+    @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
+    @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
+    @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
+    @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
+    @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
+
+    @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
+    @State private var wotdPendingCount: Int = 0
+
     @State private var exportDocument = NotesTransferDocument(notes: [])
     @State private var isShowingExporter = false
     @State private var isShowingImporter = false
@@ -44,6 +65,25 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Lets the user override the default system-color segment alternation palette.
+                Section {
+                    Toggle("Custom Token Colors", isOn: $customTokenColorsEnabled)
+                    if customTokenColorsEnabled {
+                        ColorPicker("Primary Color", selection: tokenColorABinding, supportsOpacity: false)
+                        ColorPicker("Secondary Color", selection: tokenColorBBinding, supportsOpacity: false)
+                        Button("Reset to Defaults") {
+                            tokenColorAHex = TokenColorSettings.defaultColorAHex
+                            tokenColorBHex = TokenColorSettings.defaultColorBHex
+                        }
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Token Colors")
+                } footer: {
+                    Text("Alternates between primary and secondary colors across adjacent segments in read mode.")
+                }
+
                 // Hosts typography sliders that update read and preview rendering.
                 Section {
                         // Shows live typography preview content.
@@ -162,6 +202,86 @@ struct SettingsView: View {
                     } else {
                         Text("Using stub response. Enable \"Use LLM API\" to call the real API.")
                     }
+                }
+
+                // Controls daily Word of the Day push notifications from the saved word list.
+                Section {
+                    Toggle("Enable Word of the Day", isOn: $wotdEnabled)
+                        .onChange(of: wotdEnabled) { _, _ in rescheduleWordOfTheDay() }
+
+                    if wotdEnabled {
+                        // Time picker binds to a synthetic Date so the system wheel renders correctly.
+                        DatePicker(
+                            "Notification Time",
+                            selection: wotdTimeDateBinding,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .onChange(of: wotdHour) { _, _ in rescheduleWordOfTheDay() }
+                        .onChange(of: wotdMinute) { _, _ in rescheduleWordOfTheDay() }
+
+                        // Authorization status row
+                        HStack {
+                            Text("Permission")
+                            Spacer()
+                            Text(wotdPermissionStatus.displayLabel)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if wotdPendingCount > 0 {
+                            HStack {
+                                Text("Scheduled")
+                                Spacer()
+                                Text("\(wotdPendingCount) notification\(wotdPendingCount == 1 ? "" : "s")")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        if wotdPermissionStatus == .notDetermined || wotdPermissionStatus == .denied {
+                            Button("Request Permission") {
+                                Task {
+                                    _ = await WordOfTheDayScheduler.requestAuthorization()
+                                    await refreshWotdStatus()
+                                }
+                            }
+                            .disabled(wotdPermissionStatus == .denied)
+                        }
+
+                        Button("Schedule Now") {
+                            rescheduleWordOfTheDay()
+                        }
+
+                        Button("Send Test Notification") {
+                            let word = wordsStore.words.randomElement()
+                            let store = dictionaryStore
+                            Task {
+                                await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
+                            }
+                        }
+                        .disabled(wordsStore.words.isEmpty)
+                    }
+                } header: {
+                    Text("Word of the Day")
+                } footer: {
+                    if wotdEnabled && wotdPermissionStatus == .denied {
+                        Text("Notifications are denied. Enable them in Settings → Notifications → Kioku.")
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .task {
+                    await refreshWotdStatus()
+                }
+
+                // Read-mode visual debugging aids — not for production use.
+                Section {
+                    Toggle("Pixel Ruler", isOn: $debugPixelRuler)
+                    Toggle("Furigana Rects", isOn: $debugFuriganaRects)
+                    Toggle("Headword Rects", isOn: $debugHeadwordRects)
+                    Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
+                    Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
+                } header: {
+                    Text("Debug Overlays")
+                } footer: {
+                    Text("Visual debugging aids for read-mode layout inspection.")
                 }
 
                 Section {
@@ -310,6 +430,69 @@ struct SettingsView: View {
         isShowingTransferAlert = true
     }
 
+    // Fetches the current notification authorization status and pending count.
+    private func refreshWotdStatus() async {
+        wotdPermissionStatus = await WordOfTheDayScheduler.authorizationStatus()
+        wotdPendingCount = await WordOfTheDayScheduler.pendingWordOfTheDayRequestCount()
+    }
+
+    // Triggers a background schedule refresh with the current words and settings.
+    private func rescheduleWordOfTheDay() {
+        let words = wordsStore.words
+        let store = dictionaryStore
+        let enabled = wotdEnabled
+        let hour = wotdHour
+        let minute = wotdMinute
+        Task.detached(priority: .utility) {
+            await WordOfTheDayScheduler.refreshScheduleIfEnabled(
+                words: words,
+                dictionaryStore: store,
+                hour: hour,
+                minute: minute,
+                enabled: enabled
+            )
+            let count = await WordOfTheDayScheduler.pendingWordOfTheDayRequestCount()
+            await MainActor.run { wotdPendingCount = count }
+        }
+    }
+
+    // Converts the hex string AppStorage value to/from a SwiftUI Color for use with ColorPicker.
+    private var tokenColorABinding: Binding<Color> {
+        Binding(
+            get: { Color(UIColor(hexString: tokenColorAHex) ?? UIColor(hexString: TokenColorSettings.defaultColorAHex)!) },
+            set: { color in
+                if let hex = UIColor(color).hexString { tokenColorAHex = hex }
+            }
+        )
+    }
+
+    // Converts the hex string AppStorage value to/from a SwiftUI Color for use with ColorPicker.
+    private var tokenColorBBinding: Binding<Color> {
+        Binding(
+            get: { Color(UIColor(hexString: tokenColorBHex) ?? UIColor(hexString: TokenColorSettings.defaultColorBHex)!) },
+            set: { color in
+                if let hex = UIColor(color).hexString { tokenColorBHex = hex }
+            }
+        )
+    }
+
+    // Converts hour/minute integer AppStorage values to/from a Date for use with DatePicker.
+    private var wotdTimeDateBinding: Binding<Date> {
+        Binding(
+            get: {
+                var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+                comps.hour = wotdHour
+                comps.minute = wotdMinute
+                return Calendar.current.date(from: comps) ?? Date()
+            },
+            set: { date in
+                let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+                wotdHour = comps.hour ?? 9
+                wotdMinute = comps.minute ?? 0
+            }
+        )
+    }
+
     // Bridges AppStorage raw string to the sorted particle list expected by ParticleTagEditor.
     private var particlesBinding: Binding<[String]> {
         Binding(
@@ -394,3 +577,4 @@ private struct ParticleTagEditor: View {
 #Preview {
     ContentView(selectedTab: .settings)
 }
+

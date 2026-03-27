@@ -397,7 +397,7 @@ struct FlashcardsView: View {
                 let entryID = word.canonicalEntryID
                 let surface = word.surface
                 let data = await Task.detached(priority: .utility) {
-                    try? store.fetchWordDisplayData(entryID: entryID, surface: surface)
+                    try? await store.fetchWordDisplayData(entryID: entryID, surface: surface)
                 }.value
                 guard let data else { continue }
 

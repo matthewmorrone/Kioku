@@ -171,7 +171,7 @@ final class ClozeStudyViewModel: ObservableObject {
         guard wordCount >= 2 else { return nil }
 
         let desiredBlanks = min(max(1, blanksPerSentence), max(1, wordCount - 1))
-        var indices = Array(0..<candidates.count).shuffled()
+        let indices = Array(0..<candidates.count).shuffled()
         let chosen = Array(indices.prefix(desiredBlanks)).sorted()
         guard chosen.isEmpty == false else { return nil }
 

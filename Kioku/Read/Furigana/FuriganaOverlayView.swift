@@ -10,6 +10,14 @@ final class FuriganaOverlayView: UIView {
     private var furiganaFrames: [CGRect] = []
     private var furiganaColors: [UIColor] = []
     private var furiganaFont: UIFont = .systemFont(ofSize: 12)
+    // Debug overlay data — empty/false when debug settings are off.
+    private var debugFuriganaRectsEnabled = false
+    private var debugHeadwordRectsEnabled = false
+    private var debugHeadwordLineBandsEnabled = false
+    private var debugFuriganaLineBandsEnabled = false
+    private var debugHeadwordRects: [CGRect] = []
+    private var debugHeadwordLineBandRects: [CGRect] = []
+    private var debugFuriganaLineBandRects: [CGRect] = []
 
     // Creates the overlay surface used by the read renderer.
     override init(frame: CGRect) {
@@ -35,7 +43,14 @@ final class FuriganaOverlayView: UIView {
         furiganaStrings: [String],
         furiganaFrames: [CGRect],
         furiganaColors: [UIColor],
-        furiganaFont: UIFont
+        furiganaFont: UIFont,
+        debugFuriganaRectsEnabled: Bool,
+        debugHeadwordRectsEnabled: Bool,
+        debugHeadwordLineBandsEnabled: Bool,
+        debugFuriganaLineBandsEnabled: Bool,
+        debugHeadwordRects: [CGRect],
+        debugHeadwordLineBandRects: [CGRect],
+        debugFuriganaLineBandRects: [CGRect]
     ) {
         frame = overlayFrame
         self.selectedSegmentRect = selectedSegmentRect
@@ -46,13 +61,46 @@ final class FuriganaOverlayView: UIView {
         self.furiganaFrames = furiganaFrames
         self.furiganaColors = furiganaColors
         self.furiganaFont = furiganaFont
+        self.debugFuriganaRectsEnabled = debugFuriganaRectsEnabled
+        self.debugHeadwordRectsEnabled = debugHeadwordRectsEnabled
+        self.debugHeadwordLineBandsEnabled = debugHeadwordLineBandsEnabled
+        self.debugFuriganaLineBandsEnabled = debugFuriganaLineBandsEnabled
+        self.debugHeadwordRects = debugHeadwordRects
+        self.debugHeadwordLineBandRects = debugHeadwordLineBandRects
+        self.debugFuriganaLineBandRects = debugFuriganaLineBandRects
         setNeedsDisplay()
     }
 
-    // Draws highlights, merge markers, and furigana labels in text-view coordinates so scrolling stays compositor-friendly.
+    // Draws highlights, merge markers, furigana labels, and optional debug overlays in text-view coordinates.
     override func draw(_ rect: CGRect) {
         // Clears stale overlay fragments from prior frames before redrawing the current dirty region.
         UIGraphicsGetCurrentContext()?.clear(rect)
+
+        // Headword line bands drawn first so all other overlays render on top.
+        // Alternates between orange and yellow tints to distinguish adjacent headword rows.
+        if debugHeadwordLineBandsEnabled {
+            for (index, bandRect) in debugHeadwordLineBandRects.enumerated() {
+                guard bandRect.intersects(rect) else { continue }
+                let bandColor = index.isMultiple(of: 2)
+                    ? UIColor.systemOrange.withAlphaComponent(0.08)
+                    : UIColor.systemYellow.withAlphaComponent(0.08)
+                bandColor.setFill()
+                UIBezierPath(rect: bandRect).fill()
+            }
+        }
+
+        // Furigana line bands sit directly above their corresponding headword rows.
+        // Alternates between blue and purple tints to pair visually with headword bands below.
+        if debugFuriganaLineBandsEnabled {
+            for (index, bandRect) in debugFuriganaLineBandRects.enumerated() {
+                guard bandRect.intersects(rect) else { continue }
+                let bandColor = index.isMultiple(of: 2)
+                    ? UIColor.systemBlue.withAlphaComponent(0.08)
+                    : UIColor.systemPurple.withAlphaComponent(0.08)
+                bandColor.setFill()
+                UIBezierPath(rect: bandRect).fill()
+            }
+        }
 
         if let selectedSegmentRect, let selectedSegmentColor, selectedSegmentRect.intersects(rect) {
             selectedSegmentColor.setFill()
@@ -80,6 +128,36 @@ final class FuriganaOverlayView: UIView {
                 .paragraphStyle: paragraphStyle,
             ]
             (furiganaStrings[index] as NSString).draw(in: furiganaFrame, withAttributes: attributes)
+        }
+
+        // Headword debug rects drawn as dashed outlines colored to match the segment's furigana color.
+        if debugHeadwordRectsEnabled {
+            for (index, headwordRect) in debugHeadwordRects.enumerated() {
+                guard headwordRect.intersects(rect) else { continue }
+                let color = index < furiganaColors.count
+                    ? furiganaColors[index].withAlphaComponent(0.7)
+                    : UIColor.systemOrange.withAlphaComponent(0.7)
+                color.setStroke()
+                let path = UIBezierPath(rect: headwordRect.insetBy(dx: 0.5, dy: 0.5))
+                path.setLineDash([3, 2], count: 2, phase: 0)
+                path.lineWidth = 1
+                path.stroke()
+            }
+        }
+
+        // Furigana debug rects drawn as dashed outlines using the same segment color.
+        if debugFuriganaRectsEnabled {
+            for (index, furiganaFrame) in furiganaFrames.enumerated() {
+                guard furiganaFrame.intersects(rect) else { continue }
+                let color = index < furiganaColors.count
+                    ? furiganaColors[index].withAlphaComponent(0.7)
+                    : UIColor.systemCyan.withAlphaComponent(0.7)
+                color.setStroke()
+                let path = UIBezierPath(rect: furiganaFrame.insetBy(dx: 0.5, dy: 0.5))
+                path.setLineDash([3, 2], count: 2, phase: 0)
+                path.lineWidth = 1
+                path.stroke()
+            }
         }
     }
 }

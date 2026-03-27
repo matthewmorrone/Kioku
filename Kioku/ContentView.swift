@@ -20,6 +20,11 @@ struct ContentView: View {
     @State private var segmenterRevision = 0
     @State private var hasLoadedReadResources = false
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
+    @StateObject private var wotdNavigation = WordOfTheDayNavigation()
+    // Retained for its delegate lifetime; nil until onAppear.
+    @State private var notificationHandler: NotificationDeepLinkHandler?
+    // Set by WordOfTheDayNavigation observer; consumed by WordsView to open a word detail.
+    @State private var pendingDeepLinkEntryID: Int64? = nil
 
     // Initializes the selected tab so previews and deep links can choose an initial section.
     init(selectedTab: ContentTab = .read) {
@@ -78,8 +83,8 @@ struct ContentView: View {
                 Label("Notes", systemImage: "text.line.magnify")
             }
 
-            // Renders the Words tab entry point.
-            WordsView(dictionaryStore: dictionaryStore)
+            // Renders the Words tab entry point; deepLinkedEntryID carries notification deep links.
+            WordsView(dictionaryStore: dictionaryStore, deepLinkedEntryID: $pendingDeepLinkEntryID)
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .environmentObject(historyStore)
@@ -96,7 +101,7 @@ struct ContentView: View {
             }
 
             // Renders the Settings tab entry point.
-            SettingsView()
+            SettingsView(dictionaryStore: dictionaryStore)
             .tag(ContentTab.settings)
             .tabItem {
                 Label("Settings", systemImage: "gear")
@@ -110,6 +115,35 @@ struct ContentView: View {
         .onAppear {
             restoreLastActiveNote()
             loadReadResourcesIfNeeded()
+            setupNotificationHandlerIfNeeded()
+        }
+        // Navigate to Words tab and open the word detail when a notification deep link arrives.
+        .onChange(of: wotdNavigation.pendingEntryID) { _, entryID in
+            guard let entryID else { return }
+            pendingDeepLinkEntryID = entryID
+            selectedTab = .words
+            wotdNavigation.pendingEntryID = nil
+        }
+        // Refresh the Word of the Day schedule once dictionary resources are ready.
+        .onChange(of: readResourcesReady) { _, ready in
+            guard ready else { return }
+            let words = wordsStore.words
+            let store = dictionaryStore
+            let enabled = UserDefaults.standard.bool(forKey: WordOfTheDayScheduler.enabledKey)
+            // Fall back to 9am when the key has never been written (object returns nil for missing keys).
+            let hour = UserDefaults.standard.object(forKey: WordOfTheDayScheduler.hourKey) != nil
+                ? UserDefaults.standard.integer(forKey: WordOfTheDayScheduler.hourKey)
+                : 9
+            let minute = UserDefaults.standard.integer(forKey: WordOfTheDayScheduler.minuteKey)
+            Task.detached(priority: .utility) {
+                await WordOfTheDayScheduler.refreshScheduleIfEnabled(
+                    words: words,
+                    dictionaryStore: store,
+                    hour: hour,
+                    minute: minute,
+                    enabled: enabled
+                )
+            }
         }
     }
 
@@ -122,6 +156,12 @@ struct ContentView: View {
 
         selectedReadNote = note
         selectedTab = .read
+    }
+
+    // Creates the notification handler once; subsequent onAppear calls are no-ops.
+    private func setupNotificationHandlerIfNeeded() {
+        guard notificationHandler == nil else { return }
+        notificationHandler = NotificationDeepLinkHandler(navigation: wotdNavigation)
     }
 
     // Loads heavy read resources asynchronously so initial app launch stays responsive.
