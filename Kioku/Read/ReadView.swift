@@ -489,7 +489,10 @@ struct ReadView: View {
                     },
                     textSize: $textSize,
                     lineSpacing: lineSpacing,
-                    kerning: kerning
+                    kerning: kerning,
+                    furiganaGap: furiganaGap,
+                    debugHeadwordLineBands: debugHeadwordLineBands,
+                    debugFuriganaLineBands: debugFuriganaLineBands
                 )
                 .opacity(isEditMode ? 1 : 0)
                 .allowsHitTesting(isEditMode)
