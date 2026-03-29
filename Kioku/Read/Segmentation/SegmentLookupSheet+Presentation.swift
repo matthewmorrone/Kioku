@@ -62,8 +62,8 @@ extension SegmentLookupSheet {
             sheetController.additionalSafeAreaInsets.top = 20
 
             // SwiftUI header — mirrors WordDetailView header exactly.
-            var headerReading: String? = self.currentSheetUniqueReadings.first
-            var headerLemma: String? = self.currentSheetLemmaInfo.map { $0.lemma }
+            let headerReading: String? = self.currentSheetUniqueReadings.first
+            let headerLemma: String? = self.currentSheetLemmaInfo.map { $0.lemma }
             let headerView = SegmentLookupSheetHeader(surface: surface, reading: headerReading, lemma: headerLemma)
             let headerHost = UIHostingController(rootView: headerView)
             // sizingOptions must be set before the view is added to a parent so Auto Layout
@@ -84,11 +84,9 @@ extension SegmentLookupSheet {
             nextReadingButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
             nextReadingButton.tintColor = .tertiaryLabel
 
-            let readingNavRow = UIStackView(arrangedSubviews: [prevReadingButton, headerHost.view, nextReadingButton])
-            readingNavRow.translatesAutoresizingMaskIntoConstraints = false
-            readingNavRow.axis = .horizontal
-            readingNavRow.alignment = .center
-            readingNavRow.spacing = 8
+            // Arrows are laid out independently so their centerY can be pinned to the headword text row,
+            // which sits below the furigana inset — stack alignment can't express this offset cleanly.
+            let furiganaInset: CGFloat = UIFont.systemFont(ofSize: 34 * 0.5).lineHeight + CGFloat(TypographySettings.defaultFuriganaGap)
 
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
@@ -151,13 +149,6 @@ extension SegmentLookupSheet {
                 prevReadingButton.isHidden = !showCustomSlot
                 nextReadingButton.isHidden = !showCustomSlot
             }
-
-            NSLayoutConstraint.activate([
-                prevReadingButton.widthAnchor.constraint(equalToConstant: 32),
-                prevReadingButton.heightAnchor.constraint(equalToConstant: 32),
-                nextReadingButton.widthAnchor.constraint(equalToConstant: 32),
-                nextReadingButton.heightAnchor.constraint(equalToConstant: 32),
-            ])
 
             // Updates the lemma in the header.
             func updateLemmaChain() {
@@ -496,12 +487,14 @@ extension SegmentLookupSheet {
                     self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) } ?? 0
                 }
 
+                func pathScore(_ path: [String]) -> Double {
+                    path.map(segmentScore).reduce(0, +) / max(1, Double(path.count))
+                }
+
                 let twoPaths = self.sublatticeValidPaths(from: self.currentSheetSublatticeEdges)
                     .filter { $0.count == 2 }
 
-                if let best = twoPaths.max(by: {
-                    ($0.map(segmentScore).reduce(0, +) / 2) < ($1.map(segmentScore).reduce(0, +) / 2)
-                }) {
+                if let best = twoPaths.max(by: { pathScore($0) < pathScore($1) }) {
                     leftSplitValue = best[0]
                     rightSplitValue = best[1]
                 } else {
@@ -553,11 +546,33 @@ extension SegmentLookupSheet {
                 return label
             }
 
-            // Rebuilds middleContentStack — shows definitions from the first matching dictionary entry.
+            // Rebuilds middleContentStack — shows sublattice paths with scores, then dictionary definitions.
             func updateMiddleContent() {
                 for subview in middleContentStack.arrangedSubviews {
                     middleContentStack.removeArrangedSubview(subview)
                     subview.removeFromSuperview()
+                }
+
+                // Sublattice paths with normalized frequency scores, sorted best-first.
+                let sublatticeEdges = self.currentSheetSublatticeEdges
+                if sublatticeEdges.isEmpty == false {
+                    func segmentScore(_ segment: String) -> Double {
+                        self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) } ?? 0
+                    }
+                    let paths = self.sublatticeValidPaths(from: sublatticeEdges)
+                        .sorted { lhs, rhs in
+                            let lScore = lhs.map(segmentScore).reduce(0, +) / max(1, Double(lhs.count))
+                            let rScore = rhs.map(segmentScore).reduce(0, +) / max(1, Double(rhs.count))
+                            return lScore > rScore
+                        }
+                    if paths.isEmpty == false {
+                        middleContentStack.addArrangedSubview(makeSectionHeader("Paths"))
+                        let pathLines = paths.map { path -> String in
+                            let score = path.map(segmentScore).reduce(0, +) / max(1, Double(path.count))
+                            return path.joined(separator: " · ") + "  [\(String(format: "%.2f", score))]"
+                        }.joined(separator: "\n")
+                        middleContentStack.addArrangedSubview(makeBodyLabel(pathLines))
+                    }
                 }
 
                 guard let displayData = self.currentSheetWordDisplayData else { return }
@@ -688,7 +703,7 @@ extension SegmentLookupSheet {
             let headerTapGesture = UITapGestureRecognizer(target: headerTapHandler, action: #selector(ClosureTarget.invoke))
             headerHost.view.addGestureRecognizer(headerTapGesture)
             // Retain the tap handler — UITapGestureRecognizer holds a weak reference to its target.
-            objc_setAssociatedObject(headerHost.view, &SegmentLookupSheet.tapHandlerKey, headerTapHandler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            objc_setAssociatedObject(headerHost.view!, &SegmentLookupSheet.tapHandlerKey, headerTapHandler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
             // Populate initial content.
             updateMiddleContent()
@@ -951,7 +966,9 @@ extension SegmentLookupSheet {
 
             sheetController.addChild(headerHost)
             headerHost.didMove(toParent: sheetController)
-            sheetController.view.addSubview(readingNavRow)
+            sheetController.view.addSubview(headerHost.view)
+            sheetController.view.addSubview(prevReadingButton)
+            sheetController.view.addSubview(nextReadingButton)
             sheetController.view.addSubview(splitPanelContainer)
             sheetController.view.addSubview(middleContentStack)
             sheetController.view.addSubview(actionMenuContainer)
@@ -960,12 +977,22 @@ extension SegmentLookupSheet {
             updateLemmaChain()
 
             NSLayoutConstraint.activate([
-                readingNavRow.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
-                readingNavRow.centerXAnchor.constraint(equalTo: sheetController.view.centerXAnchor),
-                readingNavRow.leadingAnchor.constraint(greaterThanOrEqualTo: sheetController.view.leadingAnchor, constant: 16),
-                readingNavRow.trailingAnchor.constraint(lessThanOrEqualTo: sheetController.view.trailingAnchor, constant: -16),
+                // Header spans full width; arrows float independently centered on the headword text row.
+                headerHost.view.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                headerHost.view.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
+                headerHost.view.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
 
-                splitPanelContainer.topAnchor.constraint(equalTo: readingNavRow.bottomAnchor, constant: 8),
+                prevReadingButton.widthAnchor.constraint(equalToConstant: 32),
+                prevReadingButton.heightAnchor.constraint(equalToConstant: 32),
+                prevReadingButton.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
+                prevReadingButton.centerYAnchor.constraint(equalTo: headerHost.view.topAnchor, constant: furiganaInset + UIFont.systemFont(ofSize: 34, weight: .bold).lineHeight / 2),
+
+                nextReadingButton.widthAnchor.constraint(equalToConstant: 32),
+                nextReadingButton.heightAnchor.constraint(equalToConstant: 32),
+                nextReadingButton.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
+                nextReadingButton.centerYAnchor.constraint(equalTo: prevReadingButton.centerYAnchor),
+
+                splitPanelContainer.topAnchor.constraint(equalTo: headerHost.view.bottomAnchor, constant: 8),
                 splitPanelContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 splitPanelContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
 

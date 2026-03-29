@@ -105,7 +105,7 @@ struct RichTextEditor: UIViewRepresentable {
         let bodyFont = UIFont.systemFont(ofSize: textSize)
         let bandHeight = bodyFont.lineHeight
         let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
-        let furiganaRowHeight = furiganaFont.lineHeight + CGFloat(furiganaGap)
+
         let docStart = tcm.documentRange.location
         var headwordRects: [CGRect] = []
         var furiganaRects: [CGRect] = []
@@ -127,15 +127,17 @@ struct RichTextEditor: UIViewRepresentable {
                     ? textNS.character(at: lineDocStart) == 0x000A
                     : true
                 if debugHeadwordLineBands {
-                    let bandY = isBlankLine ? caretR.minY + furiganaFont.lineHeight : caretR.minY
+                    let bandY = isBlankLine ? caretR.minY + furiganaFont.lineHeight + CGFloat(lineSpacing) : caretR.minY
                     headwordRects.append(CGRect(
                         x: 0, y: bandY, width: overlayFrame.width, height: bandHeight
                     ))
                 }
                 if debugFuriganaLineBands && !isBlankLine {
                     furiganaRects.append(CGRect(
-                        x: 0, y: caretR.minY - furiganaRowHeight,
-                        width: overlayFrame.width, height: furiganaRowHeight
+                        x: 0,
+                        y: caretR.minY - furiganaFont.lineHeight - CGFloat(furiganaGap),
+                        width: overlayFrame.width,
+                        height: furiganaFont.lineHeight
                     ))
                 }
             }
@@ -159,6 +161,11 @@ struct RichTextEditor: UIViewRepresentable {
     // Applies font, kerning, and paragraph spacing to both content and typing attributes.
     private func applyTypography(to textView: UITextView, text: String) {
         let font = UIFont.systemFont(ofSize: textSize)
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        textView.textContainerInset = UIEdgeInsets(
+            top: furiganaFont.lineHeight + CGFloat(furiganaGap) + 4,
+            left: 4, bottom: 8, right: 4
+        )
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing + (font.lineHeight * 0.5)
         paragraphStyle.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping

@@ -60,8 +60,6 @@ struct SettingsView: View {
     @State private var transferAlertTitle = ""
     @State private var transferAlertMessage = ""
 
-    private let previewText = "情報処理技術者試験対策資料を精読し、概念理解を深める。"
-
     var body: some View {
         NavigationStack {
             Form {
@@ -87,11 +85,13 @@ struct SettingsView: View {
                 // Hosts typography sliders that update read and preview rendering.
                 Section {
                         // Shows live typography preview content.
-                    RichTextPreview(
-                        text: previewText,
+                    SettingsPreviewRenderer(
                         textSize: textSize,
                         lineSpacing: lineSpacing,
-                        kerning: kerning
+                        kerning: kerning,
+                        furiganaGap: furiganaGap,
+                        debugHeadwordLineBands: debugHeadwordLineBands,
+                        debugFuriganaLineBands: debugFuriganaLineBands
                     )
                     .frame(minHeight: 96)
                     .frame(maxWidth: .infinity, alignment: .leading)

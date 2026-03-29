@@ -389,8 +389,9 @@ final class Segmenter {
                 return lhsScore < rhsScore
             }
 
+            // Prefer the shorter (more fully deinflected) lemma — e.g. する wins over しなう.
             if lhs.count != rhs.count {
-                return lhs.count < rhs.count
+                return lhs.count > rhs.count
             }
 
             return lhs > rhs

@@ -51,6 +51,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textView = TextViewFactory.makeTextView()
         textView.delegate = context.coordinator
+        textView.textLayoutManager?.delegate = context.coordinator
         textView.tag = 7_331
         textView.backgroundColor = .clear
         textView.isEditable = false
@@ -123,6 +124,14 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             customEvenSegmentColor: customEvenSegmentColorHex.isEmpty ? nil : UIColor(hexString: customEvenSegmentColorHex),
             customOddSegmentColor: customOddSegmentColorHex.isEmpty ? nil : UIColor(hexString: customOddSegmentColorHex)
         ).makePayload()
+        // Top inset must accommodate the furigana row above the first line so it matches
+        // the spacing above all other lines (which comes from paragraph lineSpacing).
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        textView.textContainerInset = UIEdgeInsets(
+            top: furiganaFont.lineHeight + CGFloat(furiganaGap) + 4,
+            left: 4, bottom: 8, right: 4
+        )
+
         if context.coordinator.shouldRenderText(for: baseTextRenderSignature) {
             // Use the external scroll target instead of the current UITextView offset so that
             // scroll-to-top on note switch (sharedScrollOffsetY = 0) takes effect when text changes.
@@ -179,10 +188,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         var furiganaStrings: [String] = []
         var furiganaFrames: [CGRect] = []
         var furiganaColors: [UIColor] = []
-        // Collects headword rects alongside furigana for debug overlay use.
-        var debugCollectedHeadwordRects: [CGRect] = []
 
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
         if isVisualEnhancementsEnabled {
             for location in furiganaBySegmentLocation.keys.sorted() {
                 guard
@@ -199,10 +205,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     continue
                 }
 
-                if debugHeadwordRects {
-                    debugCollectedHeadwordRects.append(segmentRect)
-                }
-
                 let furiganaWidth = measureTextWidth(furigana, font: furiganaFont, kerning: 0)
                 let furiganaX = segmentRect.midX - (furiganaWidth / 2)
                 furiganaStrings.append(furigana)
@@ -215,6 +217,25 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     )
                 )
                 furiganaColors.append(textStylePayload.segmentForegroundByLocation[location] ?? .secondaryLabel)
+            }
+        }
+
+        // Collects a rect for every non-whitespace segment for the headword debug overlay.
+        // Uses the full segment range so okurigana is included alongside the kanji run.
+        var debugCollectedHeadwordRects: [CGRect] = []
+        var debugCollectedHeadwordColors: [UIColor] = []
+        if debugHeadwordRects {
+            let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+            for segmentRange in segmentationRanges {
+                let segmentText = String(text[segmentRange])
+                guard !segmentText.unicodeScalars.allSatisfy({ ignoredScalars.contains($0) }) else { continue }
+                let nsRange = NSRange(segmentRange, in: text)
+                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+                guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
+                debugCollectedHeadwordRects.append(segmentRect)
+                debugCollectedHeadwordColors.append(
+                    textStylePayload.segmentForegroundByLocation[nsRange.location] ?? .label
+                )
             }
         }
 
@@ -258,7 +279,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                         ? textNS.character(at: lineDocStart) == 0x000A
                         : true
                     if debugHeadwordLineBands {
-                        let bandY = isBlankLine ? caretR.minY + furiganaFont.lineHeight : caretR.minY
+                        let bandY = isBlankLine ? caretR.minY + furiganaFont.lineHeight + CGFloat(lineSpacing) : caretR.minY
                         debugHeadwordLineBandRects.append(CGRect(
                             x: 0,
                             y: bandY,
@@ -269,9 +290,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     if debugFuriganaLineBands && !isBlankLine {
                         debugFuriganaLineBandRects.append(CGRect(
                             x: 0,
-                            y: caretR.minY - furiganaRowHeight,
+                            y: caretR.minY - furiganaFont.lineHeight - CGFloat(furiganaGap),
                             width: overlayFrame.width,
-                            height: furiganaRowHeight
+                            height: furiganaFont.lineHeight
                         ))
                     }
                 }
@@ -294,6 +315,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             debugHeadwordLineBandsEnabled: debugHeadwordLineBands,
             debugFuriganaLineBandsEnabled: debugFuriganaLineBands,
             debugHeadwordRects: debugCollectedHeadwordRects,
+            debugHeadwordColors: debugCollectedHeadwordColors,
             debugHeadwordLineBandRects: debugHeadwordLineBandRects,
             debugFuriganaLineBandRects: debugFuriganaLineBandRects
         )
@@ -462,6 +484,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(debugHeadwordRects)
         hasher.combine(debugHeadwordLineBands)
         hasher.combine(debugFuriganaLineBands)
+        hasher.combine(customEvenSegmentColorHex)
+        hasher.combine(customOddSegmentColorHex)
         return hasher.finalize()
     }
 

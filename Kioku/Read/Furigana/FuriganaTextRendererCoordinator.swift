@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 
 // Stores renderer state so expensive furigana layout only runs when inputs change.
-final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
+final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTextLayoutManagerDelegate {
 
     @Binding private var textSize: Double
     var onScrollOffsetYChanged: (CGFloat) -> Void
@@ -184,6 +184,27 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate {
         }
 
         onSegmentTapped(nil, nil, textView)
+    }
+
+    // Prevents line breaks from splitting a segment mid-character so the full headword
+    // (including okurigana) always wraps to the next line as an atomic unit.
+    func textLayoutManager(
+        _ textLayoutManager: NSTextLayoutManager,
+        shouldBreakLineBefore location: any NSTextLocation,
+        hyphenating: Bool
+    ) -> Bool {
+        guard let tcm = textLayoutManager.textContentManager else { return true }
+        let docStart = tcm.documentRange.location
+        let offset = tcm.offset(from: docStart, to: location)
+        guard offset != NSNotFound else { return true }
+        // Allow the break only if this offset is not in the interior of any segment.
+        // Interior means: offset > segment.location && offset < segment.location + segment.length.
+        for nsRange in segmentationNSRanges {
+            if offset > nsRange.location && offset < nsRange.location + nsRange.length {
+                return false
+            }
+        }
+        return true
     }
 
     // Resolves the segment range containing the tapped UTF-16 location.
