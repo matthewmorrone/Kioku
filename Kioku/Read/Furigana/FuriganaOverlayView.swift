@@ -16,6 +16,7 @@ final class FuriganaOverlayView: UIView {
     private var debugHeadwordLineBandsEnabled = false
     private var debugFuriganaLineBandsEnabled = false
     private var debugHeadwordRects: [CGRect] = []
+    private var debugHeadwordColors: [UIColor] = []
     private var debugHeadwordLineBandRects: [CGRect] = []
     private var debugFuriganaLineBandRects: [CGRect] = []
 
@@ -49,6 +50,7 @@ final class FuriganaOverlayView: UIView {
         debugHeadwordLineBandsEnabled: Bool,
         debugFuriganaLineBandsEnabled: Bool,
         debugHeadwordRects: [CGRect],
+        debugHeadwordColors: [UIColor],
         debugHeadwordLineBandRects: [CGRect],
         debugFuriganaLineBandRects: [CGRect]
     ) {
@@ -66,6 +68,7 @@ final class FuriganaOverlayView: UIView {
         self.debugHeadwordLineBandsEnabled = debugHeadwordLineBandsEnabled
         self.debugFuriganaLineBandsEnabled = debugFuriganaLineBandsEnabled
         self.debugHeadwordRects = debugHeadwordRects
+        self.debugHeadwordColors = debugHeadwordColors
         self.debugHeadwordLineBandRects = debugHeadwordLineBandRects
         self.debugFuriganaLineBandRects = debugFuriganaLineBandRects
         setNeedsDisplay()
@@ -122,13 +125,13 @@ final class FuriganaOverlayView: UIView {
             (furiganaStrings[index] as NSString).draw(in: furiganaFrame, withAttributes: attributes)
         }
 
-        // Headword debug rects drawn as dashed outlines colored to match the segment's furigana color.
+        // Headword debug rects drawn as dashed outlines colored to match the segment's text color.
         if debugHeadwordRectsEnabled {
             for (index, headwordRect) in debugHeadwordRects.enumerated() {
                 guard headwordRect.intersects(rect) else { continue }
-                let color = index < furiganaColors.count
-                    ? furiganaColors[index].withAlphaComponent(0.7)
-                    : UIColor.systemOrange.withAlphaComponent(0.7)
+                let color = index < debugHeadwordColors.count
+                    ? debugHeadwordColors[index].withAlphaComponent(0.7)
+                    : UIColor.label.withAlphaComponent(0.7)
                 color.setStroke()
                 let path = UIBezierPath(rect: headwordRect.insetBy(dx: 0.5, dy: 0.5))
                 path.setLineDash([3, 2], count: 2, phase: 0)

@@ -109,9 +109,13 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
 
         let baseAttrString = baseAttributedString()
         let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * 0.5)
-        // Reserve headroom at the top so the first line's furigana is never clipped.
         let topInset = furiganaFont.lineHeight + gap
-        let textRect = CGRect(x: rect.minX, y: rect.minY + topInset, width: rect.width, height: rect.height - topInset)
+
+        // Use the canonical computed height rather than bounds.height so the coordinate pipeline
+        // is stable even when Auto Layout hasn't yet propagated the correct frame to this view.
+        let drawWidth = bounds.width > 0 ? bounds.width : rect.width
+        let drawHeight = computeHeight(for: drawWidth)
+        let textRect = CGRect(x: 0, y: topInset, width: drawWidth, height: drawHeight - topInset)
 
         // Compute per-run readings for furigana placement.
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)
@@ -123,7 +127,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         // Draw base text via CoreText into the inset rect (no ruby annotations).
         context.saveGState()
         context.textMatrix = .identity
-        context.translateBy(x: 0, y: rect.height)
+        context.translateBy(x: 0, y: drawHeight)
         context.scaleBy(x: 1, y: -1)
         let framesetter = CTFramesetterCreateWithAttributedString(baseAttrString)
         let framePath = CGPath(rect: textRect, transform: nil)
