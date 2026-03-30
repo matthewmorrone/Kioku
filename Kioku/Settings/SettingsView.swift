@@ -41,6 +41,11 @@ struct SettingsView: View {
     @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
     @AppStorage(WordOfTheDayScheduler.minuteKey) private var wotdMinute: Int = 0
 
+    @AppStorage(SegmenterSettings.backendKey)
+    private var segmenterBackend: String = SegmenterSettings.defaultBackend
+    @AppStorage(SegmenterSettings.mecabDictionaryKey)
+    private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
+
     @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
     @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
@@ -156,6 +161,32 @@ struct SettingsView: View {
                     Text("Particles")
                 } footer: {
                     Text("Single-kana segments not listed here are treated as bound morphemes and excluded from segmentation paths.")
+                }
+
+                // Selects which segmentation engine to use and which MeCab dictionary to load.
+                Section {
+                    Picker("Engine", selection: $segmenterBackend) {
+                        ForEach(SegmenterBackend.allCases, id: \.rawValue) { backend in
+                            Text(backend.displayName).tag(backend.rawValue)
+                        }
+                    }
+
+                    if segmenterBackend == SegmenterBackend.mecab.rawValue {
+                        Picker("Dictionary", selection: $mecabDictionary) {
+                            ForEach(MeCabDictionary.allCases, id: \.rawValue) { dict in
+                                Text(dict.displayName).tag(dict.rawValue)
+                            }
+                        }
+                    }
+
+                } header: {
+                    Text("Segmentation")
+                } footer: {
+                    if segmenterBackend == SegmenterBackend.mecab.rawValue {
+                        Text("MeCab uses statistical morphological analysis. IPAdic is smaller; UniDic provides finer-grained segmentation.")
+                    } else {
+                        Text("Dictionary trie uses the built-in word list with deinflection rules.")
+                    }
                 }
 
                 // Configures the LLM provider and API keys used by the segmentation correction feature.

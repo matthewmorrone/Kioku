@@ -12,6 +12,8 @@
 		E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE02F57BC070020F5C2 /* generate_db.py */; };
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
 		E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = E4E800022F90000100FFF001 /* SwiftWhisper */; };
+		F5MECAB012FA0000100000001 /* mecab in Frameworks */ = {isa = PBXBuildFile; productRef = F5MECAB022FA0000100000001 /* mecab */; };
+		F5MECAB032FA0000100000002 /* MeCab in Resources */ = {isa = PBXBuildFile; fileRef = F5MECAB042FA0000100000002 /* MeCab */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -41,6 +43,7 @@
 		E32B0CE82F57BC070020F5C2 /* deinflection.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = deinflection.json; sourceTree = "<group>"; };
 		E32D09B42F638C1600788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 		E32D0BBB2F668D7400788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
+		F5MECAB042FA0000100000002 /* MeCab */ = {isa = PBXFileReference; lastKnownFileType = folder; path = MeCab; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -62,6 +65,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */,
+				F5MECAB012FA0000100000001 /* mecab in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -109,6 +113,7 @@
 				E32B0CE82F57BC070020F5C2 /* deinflection.json */,
 				E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */,
 				E32B0CE02F57BC070020F5C2 /* generate_db.py */,
+				F5MECAB042FA0000100000002 /* MeCab */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -150,6 +155,7 @@
 			name = Kioku;
 			packageProductDependencies = (
 				E4E800022F90000100FFF001 /* SwiftWhisper */,
+				F5MECAB022FA0000100000001 /* mecab */,
 			);
 			productName = Kioku;
 			productReference = E3070AE82F4DFDB6005FD323 /* Kioku.app */;
@@ -232,6 +238,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */,
+				F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E3070AE92F4DFDB6005FD323 /* Products */;
@@ -264,6 +271,7 @@
 				E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */,
 				E32B0CE42F57BC070020F5C2 /* dictionary.sqlite in Resources */,
 				E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */,
+				F5MECAB032FA0000100000002 /* MeCab in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -693,6 +701,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/matthewmorrone/mecab.git";
+			requirement = {
+				kind = branch;
+				branch = master;
+			};
+		};
 		E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/exPHAT/SwiftWhisper.git";
@@ -708,6 +724,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */;
 			productName = SwiftWhisper;
+		};
+		F5MECAB022FA0000100000001 /* mecab */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */;
+			productName = mecab;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

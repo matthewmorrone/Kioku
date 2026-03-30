@@ -138,6 +138,7 @@ extension ReadView {
         let segmentationResult = segmenter.longestMatchResult(for: text)
         segmentLatticeEdges = segmentationResult.latticeEdges
         // segmenter.debugPrintLattice(for: text)
+        SegmentationDiffPrinter.printDiffs(for: text, trieSegmenter: segmenter)
         let baseEdges = segmentationResult.selectedEdges
         let refreshedEdges: [LatticeEdge]
         if let segments,

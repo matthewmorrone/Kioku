@@ -11,7 +11,7 @@ struct RichTextEditor: UIViewRepresentable {
     let isVisualEnhancementsEnabled: Bool
     let isColorAlternationEnabled: Bool
     let isHighlightUnknownEnabled: Bool
-    let segmenter: Segmenter
+    let segmenter: any TextSegmenting
     let isEditMode: Bool
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void

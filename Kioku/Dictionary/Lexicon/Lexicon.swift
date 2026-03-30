@@ -3,7 +3,7 @@ import Foundation
 // Exposes UI-oriented lexical data methods by composing dictionary lookup, deinflection, and segmentation primitives.
 public final class Lexicon {
     private let dictionaryStore: DictionaryStore?
-    private let segmenter: Segmenter
+    private let segmenter: any TextSegmenting
     private let deinflector: Deinflector
     private let readingBySurface: [String: String]
     private let maxDepth = 4
@@ -11,7 +11,7 @@ public final class Lexicon {
     // Creates a lexical UI surface from already-initialized dictionary, deinflection, and segmentation dependencies.
     init(
         dictionaryStore: DictionaryStore?,
-        segmenter: Segmenter,
+        segmenter: any TextSegmenting,
         deinflector: Deinflector,
         readingBySurface: [String: String]
     ) {
