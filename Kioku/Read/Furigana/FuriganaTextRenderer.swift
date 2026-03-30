@@ -21,7 +21,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let changedSegmentLocations: Set<Int>
     // Subset of changedSegmentLocations where only the furigana reading changed (surface unchanged).
     let changedReadingLocations: Set<Int>
-    let segmenter: Segmenter
+    let segmenter: any TextSegmenting
     // Hex strings for user-configured segment alternation colors. Empty string = use system default.
     let customEvenSegmentColorHex: String
     let customOddSegmentColorHex: String

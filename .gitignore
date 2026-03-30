@@ -8,3 +8,6 @@ Resources/pitch-accent.tsv
 Resources/sentence-pairs.tsv
 .swiftpm/checkouts
 .remember
+Resources/MeCab/ipadic/
+Resources/MeCab/unidic/
+.build/

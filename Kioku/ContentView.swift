@@ -10,7 +10,7 @@ struct ContentView: View {
     @StateObject private var reviewStore = ReviewStore()
     @State private var selectedReadNote: Note?
     @State private var shouldActivateReadEditMode = false
-    @State private var segmenter = Segmenter(trie: DictionaryTrie())
+    @State private var segmenter: any TextSegmenting = Segmenter(trie: DictionaryTrie())
     @State private var dictionaryStore: DictionaryStore?
     @State private var lexicon: Lexicon?
     @State private var readingBySurface: [String: String] = [:]
@@ -20,6 +20,8 @@ struct ContentView: View {
     @State private var segmenterRevision = 0
     @State private var hasLoadedReadResources = false
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
+    @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
+    @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionarySetting = SegmenterSettings.defaultMeCabDictionary
     @StateObject private var wotdNavigation = WordOfTheDayNavigation()
     // Retained for its delegate lifetime; nil until onAppear.
     @State private var notificationHandler: NotificationDeepLinkHandler?
@@ -124,6 +126,13 @@ struct ContentView: View {
             selectedTab = .words
             wotdNavigation.pendingEntryID = nil
         }
+        // Rebuild the segmenter when the user switches backend or MeCab dictionary in Settings.
+        .onChange(of: segmenterBackendSetting) { _, _ in
+            rebuildReadResources()
+        }
+        .onChange(of: mecabDictionarySetting) { _, _ in
+            rebuildReadResources()
+        }
         // Refresh the Word of the Day schedule once dictionary resources are ready.
         .onChange(of: readResourcesReady) { _, ready in
             guard ready else { return }
@@ -168,9 +177,16 @@ struct ContentView: View {
     private func loadReadResourcesIfNeeded() {
         guard !hasLoadedReadResources else { return }
         hasLoadedReadResources = true
+        rebuildReadResources()
+    }
+
+    // Rebuilds the segmenter and related resources on a background thread using the current settings.
+    private func rebuildReadResources() {
+        let backend = UserDefaults.standard.string(forKey: SegmenterSettings.backendKey) ?? SegmenterSettings.defaultBackend
+        let mecabDict = UserDefaults.standard.string(forKey: SegmenterSettings.mecabDictionaryKey) ?? SegmenterSettings.defaultMeCabDictionary
 
         Task(priority: .utility) {
-            let readResources = Self.makeReadResources()
+            let readResources = Self.makeReadResources(backend: backend, mecabDictionary: mecabDict)
             segmenter = readResources.segmenter
             dictionaryStore = readResources.dictionaryStore
             lexicon = readResources.lexicon
@@ -183,7 +199,8 @@ struct ContentView: View {
     }
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
-    private static func makeReadResources() -> (segmenter: Segmenter, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]], frequencyDataBySurface: [String: [String: FrequencyData]]) {
+    // Uses the specified backend and MeCab dictionary when MeCab is selected.
+    private static func makeReadResources(backend: String, mecabDictionary: String) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]], frequencyDataBySurface: [String: [String: FrequencyData]]) {
         let trie = DictionaryTrie()
         var dictionaryStore: DictionaryStore?
         var lexicon: Lexicon?
@@ -225,7 +242,15 @@ struct ContentView: View {
             print("Deinflector initialization failed: \(error)")
         }
 
-        let segmenter = Segmenter(trie: trie, deinflector: deinflector)
+        // Choose segmenter based on the user's backend preference.
+        let segmenter: any TextSegmenting
+        if backend == SegmenterBackend.mecab.rawValue,
+           let dict = MeCabDictionary(rawValue: mecabDictionary),
+           let mecabSegmenter = MeCabSegmenter(dictionary: dict) {
+            segmenter = mecabSegmenter
+        } else {
+            segmenter = Segmenter(trie: trie, deinflector: deinflector)
+        }
 
         if let deinflector {
             lexicon = Lexicon(

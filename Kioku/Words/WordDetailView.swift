@@ -6,7 +6,7 @@ struct WordDetailView: View {
     let word: SavedWord
     let dictionaryStore: DictionaryStore?
     // Default nil so the existing call site in WordsView compiles without change.
-    let segmenter: Segmenter? = nil
+    let segmenter: (any TextSegmenting)? = nil
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var wordListsStore: WordListsStore

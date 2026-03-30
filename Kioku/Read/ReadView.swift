@@ -10,7 +10,7 @@ struct ReadView: View {
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var wordsStore: WordsStore
-    let segmenter: Segmenter
+    let segmenter: any TextSegmenting
     let dictionaryStore: DictionaryStore?
     let lexicon: Lexicon?
     let readingBySurface: [String: String]
@@ -120,7 +120,7 @@ struct ReadView: View {
     init(
         selectedNote: Binding<Note?>,
         shouldActivateEditModeOnLoad: Binding<Bool> = .constant(false),
-        segmenter: Segmenter,
+        segmenter: any TextSegmenting,
         dictionaryStore: DictionaryStore?,
         lexicon: Lexicon? = nil,
         readingBySurface: [String: String],
