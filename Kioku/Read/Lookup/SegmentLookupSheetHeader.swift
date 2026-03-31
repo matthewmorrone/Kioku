@@ -50,7 +50,7 @@ struct SegmentLookupSheetHeader: View {
                 Text(lemma)
                     .font(.title3)
                     .foregroundStyle(.secondary)
-                    .offset(y: hasFurigana ? -8 : 0)
+                    // .offset(y: hasFurigana ? -8 : 0)
             }
         }
         .padding(.horizontal, 20)

@@ -135,10 +135,10 @@ extension ReadView {
             return
         }
 
+        StartupTimer.mark("refreshSegmentationRanges: running segmenter")
         let segmentationResult = segmenter.longestMatchResult(for: text)
         segmentLatticeEdges = segmentationResult.latticeEdges
         // segmenter.debugPrintLattice(for: text)
-        SegmentationDiffPrinter.printDiffs(for: text, trieSegmenter: segmenter)
         let baseEdges = segmentationResult.selectedEdges
         let refreshedEdges: [LatticeEdge]
         if let segments,
@@ -330,11 +330,11 @@ extension ReadView {
                     return reading.isEmpty ? nil : reading
                 },
                 pathSegmentFrequencyProvider: { surface in
-                    if let data = frequencyDataBySurface[surface] { return data }
+                    if let data = surfaceReadingData[surface]?.frequencyByReading { return data }
                     // Inflected surfaces won't appear in the frequency map; fall back through lemmas.
                     guard let lexicon else { return nil }
                     for lemma in lexicon.lemma(surface: surface) {
-                        if let data = frequencyDataBySurface[lemma] { return data }
+                        if let data = surfaceReadingData[lemma]?.frequencyByReading { return data }
                     }
                     return nil
                 },

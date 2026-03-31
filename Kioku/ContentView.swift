@@ -1,5 +1,15 @@
 import SwiftUI
 
+// Bundles all heavy read-tab resources into one @State so SwiftUI sees a single atomic change.
+private struct ReadResources {
+    var segmenter: any TextSegmenting = Segmenter(trie: DictionaryTrie())
+    var dictionaryStore: DictionaryStore?
+    var lexicon: Lexicon?
+    var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
+    var ready: Bool = false
+    var segmenterRevision: Int = 0
+}
+
 // Hosts top-level tab navigation and shared app state wiring.
 struct ContentView: View {
     @State private var selectedTab: ContentTab
@@ -10,14 +20,7 @@ struct ContentView: View {
     @StateObject private var reviewStore = ReviewStore()
     @State private var selectedReadNote: Note?
     @State private var shouldActivateReadEditMode = false
-    @State private var segmenter: any TextSegmenting = Segmenter(trie: DictionaryTrie())
-    @State private var dictionaryStore: DictionaryStore?
-    @State private var lexicon: Lexicon?
-    @State private var readingBySurface: [String: String] = [:]
-    @State private var readingCandidatesBySurface: [String: [String]] = [:]
-    @State private var frequencyDataBySurface: [String: [String: FrequencyData]] = [:]
-    @State private var readResourcesReady = false
-    @State private var segmenterRevision = 0
+    @State private var readResources = ReadResources()
     @State private var hasLoadedReadResources = false
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
@@ -36,7 +39,7 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: segmenter, dictionaryStore: dictionaryStore, lexicon: lexicon, readingBySurface: readingBySurface, readingCandidatesBySurface: readingCandidatesBySurface, frequencyDataBySurface: frequencyDataBySurface, segmenterRevision: segmenterRevision, readResourcesReady: readResourcesReady, onActiveNoteChanged: { id in
+            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: readResources.segmenter, dictionaryStore: readResources.dictionaryStore, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, segmenterRevision: readResources.segmenterRevision, readResourcesReady: readResources.ready, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
             })
             .tag(ContentTab.read)
@@ -86,7 +89,7 @@ struct ContentView: View {
             }
 
             // Renders the Words tab entry point; deepLinkedEntryID carries notification deep links.
-            WordsView(dictionaryStore: dictionaryStore, deepLinkedEntryID: $pendingDeepLinkEntryID)
+            WordsView(dictionaryStore: readResources.dictionaryStore, deepLinkedEntryID: $pendingDeepLinkEntryID)
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .environmentObject(historyStore)
@@ -96,14 +99,14 @@ struct ContentView: View {
             }
 
             // Renders the Learn tab entry point, passing the dictionary store for flashcard lookups.
-            LearnView(dictionaryStore: dictionaryStore)
+            LearnView(dictionaryStore: readResources.dictionaryStore)
             .tag(ContentTab.learn)
             .tabItem {
                 Label("Learn", systemImage: "rectangle.on.rectangle.angled")
             }
 
             // Renders the Settings tab entry point.
-            SettingsView(dictionaryStore: dictionaryStore)
+            SettingsView(dictionaryStore: readResources.dictionaryStore)
             .tag(ContentTab.settings)
             .tabItem {
                 Label("Settings", systemImage: "gear")
@@ -115,6 +118,7 @@ struct ContentView: View {
         .environmentObject(historyStore)
         .environmentObject(reviewStore)
         .onAppear {
+            StartupTimer.mark("onAppear fired")
             restoreLastActiveNote()
             loadReadResourcesIfNeeded()
             setupNotificationHandlerIfNeeded()
@@ -134,10 +138,10 @@ struct ContentView: View {
             rebuildReadResources()
         }
         // Refresh the Word of the Day schedule once dictionary resources are ready.
-        .onChange(of: readResourcesReady) { _, ready in
+        .onChange(of: readResources.ready) { _, ready in
             guard ready else { return }
             let words = wordsStore.words
-            let store = dictionaryStore
+            let store = readResources.dictionaryStore
             let enabled = UserDefaults.standard.bool(forKey: WordOfTheDayScheduler.enabledKey)
             // Fall back to 9am when the key has never been written (object returns nil for missing keys).
             let hour = UserDefaults.standard.object(forKey: WordOfTheDayScheduler.hourKey) != nil
@@ -185,46 +189,54 @@ struct ContentView: View {
         let backend = UserDefaults.standard.string(forKey: SegmenterSettings.backendKey) ?? SegmenterSettings.defaultBackend
         let mecabDict = UserDefaults.standard.string(forKey: SegmenterSettings.mecabDictionaryKey) ?? SegmenterSettings.defaultMeCabDictionary
 
-        Task(priority: .utility) {
-            let readResources = Self.makeReadResources(backend: backend, mecabDictionary: mecabDict)
-            segmenter = readResources.segmenter
-            dictionaryStore = readResources.dictionaryStore
-            lexicon = readResources.lexicon
-            readingBySurface = readResources.readingBySurface
-            readingCandidatesBySurface = readResources.readingCandidatesBySurface
-            frequencyDataBySurface = readResources.frequencyDataBySurface
-            readResourcesReady = true
-            segmenterRevision += 1
+        // Task.detached runs the heavy dictionary/trie work off the main thread.
+        // A single ReadResources assignment triggers one SwiftUI body re-eval instead of six.
+        let currentRevision = readResources.segmenterRevision
+        Task.detached(priority: .utility) {
+            let result = Self.makeReadResources(backend: backend, mecabDictionary: mecabDict)
+            await MainActor.run {
+                readResources = ReadResources(
+                    segmenter: result.segmenter,
+                    dictionaryStore: result.dictionaryStore,
+                    lexicon: result.lexicon,
+                    surfaceReadingData: result.surfaceReadingData,
+                    ready: true,
+                    segmenterRevision: currentRevision + 1
+                )
+                StartupTimer.mark("readResourcesReady published to UI")
+            }
         }
     }
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
     // Uses the specified backend and MeCab dictionary when MeCab is selected.
-    private static func makeReadResources(backend: String, mecabDictionary: String) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, readingBySurface: [String: String], readingCandidatesBySurface: [String: [String]], frequencyDataBySurface: [String: [String: FrequencyData]]) {
+    private static func makeReadResources(backend: String, mecabDictionary: String) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap) {
+        StartupTimer.mark("makeReadResources started")
+        let overallStart = CFAbsoluteTimeGetCurrent()
+
         let trie = DictionaryTrie()
         var dictionaryStore: DictionaryStore?
         var lexicon: Lexicon?
-        var readingBySurface: [String: String] = [:]
-        var readingCandidatesBySurface: [String: [String]] = [:]
-        var frequencyDataBySurface: [String: [String: FrequencyData]] = [:]
+        var surfaceReadingData: [String: SurfaceReadingData] = [:]
         var deinflector: Deinflector?
 
         do {
-            let store = try DictionaryStore()
+            let store = try StartupTimer.measure("DictionaryStore.init") {
+                try DictionaryStore()
+            }
             dictionaryStore = store
 
-            do { readingBySurface = try store.fetchPreferredReadingsBySurface() }
-            catch { print("fetchPreferredReadingsBySurface failed: \(error)") }
-
-            do { readingCandidatesBySurface = try store.fetchReadingCandidatesBySurface() }
-            catch { print("fetchReadingCandidatesBySurface failed: \(error)") }
-
-            do { frequencyDataBySurface = try store.fetchFrequencyDataBySurface() }
-            catch { print("fetchFrequencyDataBySurface failed: \(error)") }
+            do { surfaceReadingData = try StartupTimer.measure("fetchSurfaceReadingData") {
+                try store.fetchSurfaceReadingData()
+            }} catch { print("fetchSurfaceReadingData failed: \(error)") }
 
             do {
-                let surfaces = try store.fetchAllSurfaces()
-                for surface in surfaces { trie.insert(surface) }
+                let surfaces = try StartupTimer.measure("fetchAllSurfaces") {
+                    try store.fetchAllSurfaces()
+                }
+                StartupTimer.measure("trie population (\(surfaces.count) surfaces)") {
+                    for surface in surfaces { trie.insert(surface) }
+                }
             } catch { print("fetchAllSurfaces failed: \(error)") }
 
         } catch {
@@ -232,44 +244,52 @@ struct ContentView: View {
         }
 
         do {
-            deinflector = try Deinflector(
-                trie: trie,
-                bundle: .main,
-                resourceName: "deinflection",
-                fileExtension: "json"
-            )
+            deinflector = try StartupTimer.measure("Deinflector.init") {
+                try Deinflector(
+                    trie: trie,
+                    bundle: .main,
+                    resourceName: "deinflection",
+                    fileExtension: "json"
+                )
+            }
         } catch {
             print("Deinflector initialization failed: \(error)")
         }
 
         // Choose segmenter based on the user's backend preference.
-        let segmenter: any TextSegmenting
-        if backend == SegmenterBackend.mecab.rawValue,
-           let dict = MeCabDictionary(rawValue: mecabDictionary),
-           let mecabSegmenter = MeCabSegmenter(dictionary: dict) {
-            segmenter = mecabSegmenter
-        } else {
-            segmenter = Segmenter(trie: trie, deinflector: deinflector)
+        let segmenter: any TextSegmenting = StartupTimer.measure("Segmenter.init (backend: \(backend))") {
+            if backend == SegmenterBackend.mecab.rawValue,
+               let dict = MeCabDictionary(rawValue: mecabDictionary),
+               let mecabSegmenter = MeCabSegmenter(dictionary: dict) {
+                return mecabSegmenter
+            } else if backend == SegmenterBackend.nlTokenizer.rawValue {
+                return NLTokenizerSegmenter()
+            } else {
+                return Segmenter(trie: trie, deinflector: deinflector)
+            }
         }
 
         if let deinflector {
-            lexicon = Lexicon(
-                dictionaryStore: dictionaryStore,
-                segmenter: segmenter,
-                deinflector: deinflector,
-                readingBySurface: readingBySurface
-            )
+            lexicon = StartupTimer.measure("Lexicon.init") {
+                Lexicon(
+                    dictionaryStore: dictionaryStore,
+                    segmenter: segmenter,
+                    deinflector: deinflector,
+                    surfaceReadingData: surfaceReadingData
+                )
+            }
         } else {
             print("Lexicon data surface initialization failed: missing deinflector")
         }
+
+        let overallElapsed = (CFAbsoluteTimeGetCurrent() - overallStart) * 1000
+        StartupTimer.mark("makeReadResources total: \(String(format: "%.1f", overallElapsed)) ms")
 
         return (
             segmenter: segmenter,
             dictionaryStore: dictionaryStore,
             lexicon: lexicon,
-            readingBySurface: readingBySurface,
-            readingCandidatesBySurface: readingCandidatesBySurface,
-            frequencyDataBySurface: frequencyDataBySurface
+            surfaceReadingData: SurfaceReadingDataMap(surfaceReadingData)
         )
     }
 }

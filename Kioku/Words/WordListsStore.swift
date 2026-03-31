@@ -9,7 +9,10 @@ final class WordListsStore: ObservableObject {
     private let storageKey = "kioku.wordlists.v1"
 
     init() {
-        lists = load()
+        lists = []
+        lists = StartupTimer.measure("WordListsStore.init") {
+            load()
+        }
     }
 
     // Creates a new word list with the given name and appends it to the published array.

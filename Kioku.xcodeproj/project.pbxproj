@@ -701,20 +701,20 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/matthewmorrone/mecab.git";
-			requirement = {
-				kind = branch;
-				branch = master;
-			};
-		};
 		E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/exPHAT/SwiftWhisper.git";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.2.0;
+			};
+		};
+		F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/matthewmorrone/mecab.git";
+			requirement = {
+				branch = master;
+				kind = branch;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

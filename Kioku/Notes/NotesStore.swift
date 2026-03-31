@@ -12,7 +12,10 @@ final class NotesStore: ObservableObject {
 
     // Loads persisted notes so the in-memory store starts from disk state.
     init() {
-        notes = NotesStore.readNotes(for: storageKey)
+        let key = storageKey
+        notes = StartupTimer.measure("NotesStore.init") {
+            NotesStore.readNotes(for: key)
+        }
     }
 
     // Reloads notes from storage to reflect external updates.

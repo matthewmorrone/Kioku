@@ -6,10 +6,17 @@ final class MeCabTokenizer {
     private var mecabPtr: OpaquePointer?
 
     // Initializes MeCab with the compiled dictionary at the given directory path.
+    // MeCab requires a mecabrc config file even when dictionary path is passed via -d.
     init?(dictionaryPath: String) {
-        let arg = "-d \(dictionaryPath)"
+        guard let rcPath = Bundle.main.path(forResource: "mecabrc", ofType: nil, inDirectory: "MeCab") else {
+            print("MeCabTokenizer: mecabrc not found in bundle")
+            return nil
+        }
+        let arg = "-r \(rcPath) -d \(dictionaryPath)"
         mecabPtr = mecab_new2(arg)
         guard mecabPtr != nil else {
+            let err = mecab_strerror(nil).map { String(cString: $0) } ?? "unknown error"
+            print("MeCabTokenizer: init failed for \(dictionaryPath) — \(err)")
             return nil
         }
     }

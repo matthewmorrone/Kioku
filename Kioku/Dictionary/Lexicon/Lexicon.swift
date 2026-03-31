@@ -5,7 +5,7 @@ public final class Lexicon {
     private let dictionaryStore: DictionaryStore?
     private let segmenter: any TextSegmenting
     private let deinflector: Deinflector
-    private let readingBySurface: [String: String]
+    private let surfaceReadingData: [String: SurfaceReadingData]
     private let maxDepth = 4
 
     // Creates a lexical UI surface from already-initialized dictionary, deinflection, and segmentation dependencies.
@@ -13,12 +13,12 @@ public final class Lexicon {
         dictionaryStore: DictionaryStore?,
         segmenter: any TextSegmenting,
         deinflector: Deinflector,
-        readingBySurface: [String: String]
+        surfaceReadingData: [String: SurfaceReadingData]
     ) {
         self.dictionaryStore = dictionaryStore
         self.segmenter = segmenter
         self.deinflector = deinflector
-        self.readingBySurface = readingBySurface
+        self.surfaceReadingData = surfaceReadingData
     }
 
     // Returns kana reading for one surface while preserving already-kana input unchanged.
@@ -27,7 +27,7 @@ public final class Lexicon {
             return surface
         }
 
-        if let lookupReading = readingBySurface[surface] {
+        if let lookupReading = surfaceReadingData[surface]?.readings.first {
             return lookupReading
         }
 
@@ -369,7 +369,7 @@ public final class Lexicon {
 
     // Resolves preferred reading for one lemma from the in-memory reading map or dictionary fallback.
     private func readingForLemma(_ lemma: String) -> String? {
-        if let mapReading = readingBySurface[lemma] {
+        if let mapReading = surfaceReadingData[lemma]?.readings.first {
             return mapReading
         }
 

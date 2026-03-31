@@ -184,6 +184,8 @@ struct SettingsView: View {
                 } footer: {
                     if segmenterBackend == SegmenterBackend.mecab.rawValue {
                         Text("MeCab uses statistical morphological analysis. IPAdic is smaller; UniDic provides finer-grained segmentation.")
+                    } else if segmenterBackend == SegmenterBackend.nlTokenizer.rawValue {
+                        Text("Apple's built-in ICU tokenizer. No external dictionary needed.")
                     } else {
                         Text("Dictionary trie uses the built-in word list with deinflection rules.")
                     }
