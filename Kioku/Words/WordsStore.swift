@@ -10,7 +10,10 @@ final class WordsStore: ObservableObject {
     private let storageKey = "kioku.words.v1"
 
     init() {
-        words = SavedWordStorageMigrator.loadSavedWords(storageKey: storageKey)
+        let key = storageKey
+        words = StartupTimer.measure("WordsStore.init") {
+            SavedWordStorageMigrator.loadSavedWords(storageKey: key)
+        }
     }
 
     // Adds a word or merges it with an existing entry if already saved.

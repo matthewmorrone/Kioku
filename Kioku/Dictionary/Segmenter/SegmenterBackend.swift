@@ -4,12 +4,14 @@ import Foundation
 enum SegmenterBackend: String, CaseIterable {
     case trie
     case mecab
+    case nlTokenizer
 
     // Returns a human-readable label for display in the settings picker.
     var displayName: String {
         switch self {
         case .trie: return "Dictionary (Trie)"
         case .mecab: return "MeCab"
+        case .nlTokenizer: return "NLTokenizer (Apple)"
         }
     }
 }

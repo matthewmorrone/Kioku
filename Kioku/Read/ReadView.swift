@@ -13,9 +13,7 @@ struct ReadView: View {
     let segmenter: any TextSegmenting
     let dictionaryStore: DictionaryStore?
     let lexicon: Lexicon?
-    let readingBySurface: [String: String]
-    let readingCandidatesBySurface: [String: [String]]
-    let frequencyDataBySurface: [String: [String: FrequencyData]]
+    let surfaceReadingData: SurfaceReadingDataMap
     let segmenterRevision: Int
     let readResourcesReady: Bool
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
@@ -123,9 +121,7 @@ struct ReadView: View {
         segmenter: any TextSegmenting,
         dictionaryStore: DictionaryStore?,
         lexicon: Lexicon? = nil,
-        readingBySurface: [String: String],
-        readingCandidatesBySurface: [String: [String]],
-        frequencyDataBySurface: [String: [String: FrequencyData]] = [:],
+        surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
         segmenterRevision: Int,
         readResourcesReady: Bool,
         onActiveNoteChanged: ((UUID) -> Void)? = nil
@@ -135,9 +131,7 @@ struct ReadView: View {
         self.segmenter = segmenter
         self.dictionaryStore = dictionaryStore
         self.lexicon = lexicon
-        self.readingBySurface = readingBySurface
-        self.readingCandidatesBySurface = readingCandidatesBySurface
-        self.frequencyDataBySurface = frequencyDataBySurface
+        self.surfaceReadingData = surfaceReadingData
         self.segmenterRevision = segmenterRevision
         self.readResourcesReady = readResourcesReady
         self.onActiveNoteChanged = onActiveNoteChanged
@@ -304,14 +298,26 @@ struct ReadView: View {
             }
         }
         .onChange(of: segmenterRevision) { _, _ in
+            StartupTimer.mark("segmenterRevision changed")
+            // Print segmentation diffs whenever the segmenter becomes ready, even for persisted segments.
+            if text.isEmpty == false {
+                StartupTimer.measure("SegmentationDiffPrinter.printDiffs") {
+                    SegmentationDiffPrinter.printDiffs(for: text, trieSegmenter: segmenter)
+                }
+            }
+
             // When segments are persisted and furigana is already loaded, nothing to do.
-            // When segments exist but furigana is missing, generate it now that readingBySurface is ready.
+            // When segments exist but furigana is missing, generate it now that surfaceReadingData is ready.
             // Otherwise recompute full segmentation.
             if segments != nil {
                 if furiganaBySegmentLocation.isEmpty {
+                    StartupTimer.mark("scheduling furigana for persisted segments (furigana missing)")
                     scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                } else {
+                    StartupTimer.mark("segments + furigana already loaded, skipping")
                 }
             } else {
+                StartupTimer.mark("no persisted segments, running full segmentation")
                 refreshSegmentationRanges()
             }
         }
@@ -800,6 +806,6 @@ struct ReadView: View {
 }
 
 #Preview {
-    ReadView(selectedNote: .constant(nil), shouldActivateEditModeOnLoad: .constant(false), segmenter: Segmenter(trie: DictionaryTrie()), dictionaryStore: nil, readingBySurface: [:], readingCandidatesBySurface: [:], segmenterRevision: 0, readResourcesReady: false)
+    ReadView(selectedNote: .constant(nil), shouldActivateEditModeOnLoad: .constant(false), segmenter: Segmenter(trie: DictionaryTrie()), dictionaryStore: nil, segmenterRevision: 0, readResourcesReady: false)
         .environmentObject(NotesStore())
 }

@@ -43,6 +43,7 @@ extension ReadView {
 
     // Loads the selected note into editor state when navigation targets change.
     func loadSelectedNoteIfNeeded() {
+        StartupTimer.mark("loadSelectedNoteIfNeeded called")
         guard let selectedNote else {
             // Clears stale read content only when the active note was deleted from storage.
             guard let currentActiveNoteID = activeNoteID, notesStore.note(withID: currentActiveNoteID) == nil else {
@@ -100,9 +101,9 @@ extension ReadView {
             for: noteToLoad.content
         )
         segments = loadedSegments
-        if let encoded = try? JSONEncoder().encode(noteToLoad), let json = String(data: encoded, encoding: .utf8) {
-            print("[NOTE LOAD] \(json)")
-        }
+        // if let encoded = try? JSONEncoder().encode(noteToLoad), let json = String(data: encoded, encoding: .utf8) {
+        //     print("[NOTE LOAD] \(json)")
+        // }
         if shouldActivateEditModeOnLoad {
             isEditMode = true
             shouldActivateEditModeOnLoad = false

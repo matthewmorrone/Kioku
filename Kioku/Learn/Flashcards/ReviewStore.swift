@@ -17,7 +17,13 @@ final class ReviewStore: ObservableObject {
     private let lifetimeAgainKey = "kioku.review.lifetimeAgain.v1"
 
     init() {
-        load()
+        stats = [:]
+        markedWrong = []
+        lifetimeCorrect = 0
+        lifetimeAgain = 0
+        StartupTimer.measure("ReviewStore.init") {
+            load()
+        }
     }
 
     // Records a correct answer: increments the per-word correct counter, clears the wrong

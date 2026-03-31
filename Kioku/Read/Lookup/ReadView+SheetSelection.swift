@@ -189,9 +189,8 @@ extension ReadView {
         }
 
         // Additional candidates for the merged surface only — no lemma forms.
-        appendReading(readingBySurface[mergedSurface])
-        if let mergedReadingCandidates = readingCandidatesBySurface[mergedSurface] {
-            for reading in mergedReadingCandidates {
+        if let mergedData = surfaceReadingData[mergedSurface] {
+            for reading in mergedData.readings {
                 appendReading(reading)
             }
         }
@@ -201,9 +200,8 @@ extension ReadView {
             if let lexicon {
                 appendReading(lexicon.reading(surface: edge.surface))
             }
-            appendReading(readingBySurface[edge.surface])
-            if let surfaceReadingCandidates = readingCandidatesBySurface[edge.surface] {
-                for reading in surfaceReadingCandidates {
+            if let edgeData = surfaceReadingData[edge.surface] {
+                for reading in edgeData.readings {
                     appendReading(reading)
                 }
             }
@@ -269,7 +267,7 @@ extension ReadView {
         guard let start = selectedEdges.first?.start, let end = selectedEdges.last?.end else { return nil }
         let surface = String(text[start..<end])
         let info = lexicon.inflectionInfo(surface: surface)
-        print("[lemmaInfo] surface=\(surface) info=\(info.map { "\($0.lemma) chain=\($0.chain)" } ?? "nil")")
+        // print("[lemmaInfo] surface=\(surface) info=\(info.map { "\($0.lemma) chain=\($0.chain)" } ?? "nil")")
         guard let info, info.lemma != surface else { return nil }
         return (lemma: info.lemma, chain: info.chain)
     }
@@ -287,7 +285,7 @@ extension ReadView {
         let endIndex = segmentEdges[selectedBounds.upperBound].end
         let surface = String(text[startIndex..<endIndex])
 
-        if let data = frequencyDataBySurface[surface] {
+        if let data = surfaceReadingData[surface]?.frequencyByReading {
             return data
         }
 
@@ -298,7 +296,7 @@ extension ReadView {
         }
 
         for lemma in lexicon.lemma(surface: surface) {
-            if let data = frequencyDataBySurface[lemma] {
+            if let data = surfaceReadingData[lemma]?.frequencyByReading {
                 return data
             }
         }

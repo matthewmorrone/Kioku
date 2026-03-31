@@ -5,9 +5,9 @@ import UIKit
 extension ReadView {
     // Computes furigana off-main and applies only the latest result for the current editor text.
     func scheduleFuriganaGeneration(for sourceText: String, edges: [LatticeEdge]) {
+        StartupTimer.mark("scheduleFuriganaGeneration called (\(edges.count) edges)")
         furiganaComputationTask?.cancel()
-        let currentReadingBySurface = readingBySurface
-        let currentReadingCandidatesBySurface = readingCandidatesBySurface
+        let currentSurfaceReadingData = surfaceReadingData
         let hasKanjiEdges = edges.contains { edge in
             ScriptClassifier.containsKanji(edge.surface)
         }
@@ -16,8 +16,7 @@ extension ReadView {
             let furiganaResult = buildFuriganaBySegmentLocation(
                 for: sourceText,
                 edges: edges,
-                readingBySurface: currentReadingBySurface,
-                readingCandidatesBySurface: currentReadingCandidatesBySurface
+                surfaceReadingData: currentSurfaceReadingData
             )
 
             guard !Task.isCancelled else {
@@ -59,8 +58,7 @@ extension ReadView {
     func buildFuriganaBySegmentLocation(
         for sourceText: String,
         edges: [LatticeEdge],
-        readingBySurface: [String: String],
-        readingCandidatesBySurface: [String: [String]]
+        surfaceReadingData: SurfaceReadingDataMap
     ) -> (furiganaByLocation: [Int: String], lengthByLocation: [Int: Int]) {
         var resolvedFurigana: [Int: String] = [:]
         var resolvedFuriganaLengths: [Int: Int] = [:]
@@ -78,8 +76,7 @@ extension ReadView {
                 segmentRange: segmentRange,
                 sourceText: sourceText,
                 lemmaReference: segmenter.preferredLemma(for: segmentSurface) ?? segmentSurface,
-                readingBySurface: readingBySurface,
-                readingCandidatesBySurface: readingCandidatesBySurface
+                surfaceReadingData: surfaceReadingData
             )
             if annotations.isEmpty {
                 continue
@@ -119,8 +116,7 @@ extension ReadView {
             ) == false,
                let fallbackReading = fallbackSegmentFuriganaReading(
                 for: edge,
-                readingBySurface: readingBySurface,
-                readingCandidatesBySurface: readingCandidatesBySurface,
+                surfaceReadingData: surfaceReadingData,
                 sourceText: sourceText
                ) {
                 resolvedFurigana[segmentNSRange.location] = fallbackReading
@@ -154,8 +150,7 @@ extension ReadView {
     // Synthesizes a segment-level reading when run-level furigana alignment fails for a kanji segment.
     func fallbackSegmentFuriganaReading(
         for edge: LatticeEdge,
-        readingBySurface: [String: String],
-        readingCandidatesBySurface: [String: [String]],
+        surfaceReadingData: SurfaceReadingDataMap,
         sourceText: String
     ) -> String? {
         let preferredLemmaReference = preferredFuriganaLemmaReference(
@@ -165,16 +160,14 @@ extension ReadView {
 
         if let surfaceReading = readingForSegment(
             edge.surface,
-            readingBySurface: readingBySurface,
-            readingCandidatesBySurface: readingCandidatesBySurface
+            surfaceReadingData: surfaceReadingData
         ), surfaceReading != edge.surface {
             return surfaceReading
         }
 
         if let lemmaReading = readingForSegment(
             preferredLemmaReference,
-            readingBySurface: readingBySurface,
-            readingCandidatesBySurface: readingCandidatesBySurface
+            surfaceReadingData: surfaceReadingData
         ), lemmaReading != edge.surface, lemmaReading != preferredLemmaReference {
             let isLemmaReadingCompatibleWithSurface = firstKanjiRunReading(in: edge.surface, using: lemmaReading) != nil
             if isLemmaReadingCompatibleWithSurface == false {
@@ -193,8 +186,7 @@ extension ReadView {
         segmentRange: Range<String.Index>,
         sourceText: String,
         lemmaReference: String,
-        readingBySurface: [String: String],
-        readingCandidatesBySurface: [String: [String]]
+        surfaceReadingData: SurfaceReadingDataMap
     ) -> [(reading: String, localStartOffset: Int, localLength: Int)] {
         let runs = kanjiRuns(in: segmentSurface)
         guard runs.isEmpty == false else {
@@ -209,8 +201,7 @@ extension ReadView {
         if runs.count == 1,
               let lemmaReading = readingForSegment(
                      furiganaLemmaReference,
-                     readingBySurface: readingBySurface,
-                     readingCandidatesBySurface: readingCandidatesBySurface
+                     surfaceReadingData: surfaceReadingData
               ),
            let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: lemmaReading) {
             let lemmaSurfaceRuns = kanjiRuns(in: furiganaLemmaReference)
@@ -244,8 +235,7 @@ extension ReadView {
         var projectedReadings: [String]?
         if let lemmaReading = readingForSegment(
             furiganaLemmaReference,
-            readingBySurface: readingBySurface,
-            readingCandidatesBySurface: readingCandidatesBySurface
+            surfaceReadingData: surfaceReadingData
         ), lemmaRuns.count == runs.count {
             projectedReadings = projectRunReadings(surface: furiganaLemmaReference, reading: lemmaReading)
         }
@@ -253,8 +243,7 @@ extension ReadView {
         if projectedReadings == nil,
            let surfaceReading = readingForSegment(
                 segmentSurface,
-                readingBySurface: readingBySurface,
-                readingCandidatesBySurface: readingCandidatesBySurface
+                surfaceReadingData: surfaceReadingData
            ) {
             projectedReadings = projectRunReadings(surface: segmentSurface, reading: surfaceReading)
         }
@@ -276,8 +265,7 @@ extension ReadView {
                 let runSurface = String(Array(segmentSurface)[run.start..<run.end])
                 guard let runReading = readingForSegment(
                     runSurface,
-                    readingBySurface: readingBySurface,
-                    readingCandidatesBySurface: readingCandidatesBySurface
+                    surfaceReadingData: surfaceReadingData
                 ), runReading != runSurface else {
                     continue
                 }
@@ -472,16 +460,11 @@ extension ReadView {
         return KanaNormalizer.normalizeForFuriganaAlignment(readingSuffix) == KanaNormalizer.normalizeForFuriganaAlignment(surfaceSuffix)
     }
 
-    // Looks up the preferred reading for a segment surface from candidates or the surface reading map.
+    // Looks up the preferred reading for a segment surface from the unified surface reading map.
     func readingForSegment(
         _ segmentSurface: String,
-        readingBySurface: [String: String],
-        readingCandidatesBySurface: [String: [String]]
+        surfaceReadingData: SurfaceReadingDataMap
     ) -> String? {
-        guard let candidates = readingCandidatesBySurface[segmentSurface], candidates.isEmpty == false else {
-            return readingBySurface[segmentSurface]
-        }
-
-        return candidates.first ?? readingBySurface[segmentSurface]
+        surfaceReadingData[segmentSurface]?.readings.first
     }
 }

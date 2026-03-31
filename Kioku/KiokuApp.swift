@@ -9,6 +9,11 @@ import SwiftUI
 
 @main
 struct KiokuApp: App {
+    // Fires once when SwiftUI first evaluates the app body to signal launch timing.
+    init() {
+        StartupTimer.mark("KiokuApp.init")
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

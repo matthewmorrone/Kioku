@@ -1,27 +1,20 @@
 import Foundation
 import SQLite3
 
-// Frequency query surface — builds maps and candidate lists used by segmentation and furigana pipelines.
+// Frequency query surface — builds the unified surface reading map used by segmentation, furigana, and frequency display.
 extension DictionaryStore {
 
-    // Builds a surface→reading→FrequencyData nested map for per-reading frequency lookups.
-    // The outer key is the surface text (kanji or kana); the inner key is the reading (kana text).
-    // For kanji surfaces the reading comes from kanji_kana_links; for kana-only entries the reading equals the surface.
-    // Entries absent from both JPDB and wordfreq datasets are excluded.
-    public func fetchFrequencyDataBySurface() throws -> [String: [String: FrequencyData]] {
+    // Builds the unified per-surface reading and frequency map from the materialized surface_readings table.
+    // Rows are pre-sorted by (surface ASC, best_rank ASC, reading ASC) at DB generation time,
+    // so a single sequential scan produces correctly-ordered readings without runtime sorting.
+    // Each surface retains up to maxReadingsPerSurface distinct readings; frequency data is populated
+    // for any reading that has at least one frequency signal (jpdb_rank or wordfreq_zipf).
+    func fetchSurfaceReadingData(maxReadingsPerSurface: Int = 8) throws -> [String: SurfaceReadingData] {
         try withSerializedDatabaseAccess {
             let sql = """
-            SELECT surface, reading, MIN(jpdb_rank), MAX(wordfreq_zipf) FROM (
-                SELECT k.text AS surface, kf.text AS reading, kkl.jpdb_rank, k.wordfreq_zipf
-                FROM kanji_kana_links kkl
-                JOIN kanji k ON k.id = kkl.kanji_id
-                JOIN kana_forms kf ON kf.id = kkl.kana_id
-                UNION ALL
-                SELECT kf.text, kf.text, NULL, kf.wordfreq_zipf
-                FROM kana_forms kf
-                WHERE kf.entry_id NOT IN (SELECT entry_id FROM kanji)
-            )
-            GROUP BY surface, reading
+            SELECT surface, reading, jpdb_rank, wordfreq_zipf
+            FROM surface_readings
+            ORDER BY surface, best_rank, reading
             """
 
             var statement: OpaquePointer?
@@ -29,21 +22,45 @@ extension DictionaryStore {
 
             try prepare(sql: sql, statement: &statement)
 
-            var dataByS: [String: [String: FrequencyData]] = [:]
+            var result: [String: SurfaceReadingData] = [:]
+            var currentSurface: String?
+            var currentReadings: [String] = []
+            var currentFrequency: [String: FrequencyData] = [:]
+            var seenReadings = Set<String>()
+
+            // Flushes the accumulated readings and frequency data for the current surface into the result map.
+            func flushSurface() {
+                guard let surface = currentSurface else { return }
+                result[surface] = SurfaceReadingData(
+                    readings: currentReadings,
+                    frequencyByReading: currentFrequency
+                )
+            }
+
             var stepCode = sqlite3_step(statement)
-
             while stepCode == SQLITE_ROW {
-                guard let surfacePointer = sqlite3_column_text(statement, 0) else {
+                guard let surfacePointer = sqlite3_column_text(statement, 0),
+                      let readingPointer = sqlite3_column_text(statement, 1) else {
                     stepCode = sqlite3_step(statement)
                     continue
                 }
-                let surface = String(cString: surfacePointer)
 
-                guard let readingPointer = sqlite3_column_text(statement, 1) else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
+                let surface = String(cString: surfacePointer)
                 let reading = String(cString: readingPointer)
+
+                // Detect surface boundary and flush the previous group.
+                if surface != currentSurface {
+                    flushSurface()
+                    currentSurface = surface
+                    currentReadings = []
+                    currentFrequency = [:]
+                    seenReadings = []
+                }
+
+                // Collect up to maxReadingsPerSurface distinct readings, ordered by frequency.
+                if seenReadings.insert(reading).inserted && currentReadings.count < maxReadingsPerSurface {
+                    currentReadings.append(reading)
+                }
 
                 // Column 2: jpdb_rank (nullable int)
                 let jpdbRank: Int? = sqlite3_column_type(statement, 2) == SQLITE_NULL
@@ -55,13 +72,11 @@ extension DictionaryStore {
                     ? nil
                     : sqlite3_column_double(statement, 3)
 
-                // Only include entries where at least one frequency signal is present.
-                guard jpdbRank != nil || wordfreqZipf != nil else {
-                    stepCode = sqlite3_step(statement)
-                    continue
+                // Only store frequency data when at least one signal is present.
+                if jpdbRank != nil || wordfreqZipf != nil {
+                    currentFrequency[reading] = FrequencyData(jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
                 }
 
-                dataByS[surface, default: [:]][reading] = FrequencyData(jpdbRank: jpdbRank, wordfreqZipf: wordfreqZipf)
                 stepCode = sqlite3_step(statement)
             }
 
@@ -69,7 +84,10 @@ extension DictionaryStore {
                 throw DictionarySQLiteError.step(message: errorMessage())
             }
 
-            return dataByS
+            // Flush the final surface group after the last row.
+            flushSurface()
+
+            return result
         }
     }
 
@@ -103,113 +121,6 @@ extension DictionaryStore {
             }
 
             return surfaces
-        }
-    }
-
-    // Builds a preferred surface-to-reading map for fast in-memory furigana lookups.
-    // Ordered by best JPDB rank so the most common reading is picked first.
-    public func fetchPreferredReadingsBySurface() throws -> [String: String] {
-        try withSerializedDatabaseAccess {
-            let sql = """
-            SELECT kj.text AS surface, kf.text AS reading,
-                   MIN(COALESCE(kkl.jpdb_rank, 9999999)) AS best_rank
-            FROM kanji kj
-            JOIN kana_forms kf ON kf.entry_id = kj.entry_id
-            LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
-            GROUP BY kj.text, kf.text
-            ORDER BY kj.text ASC, best_rank ASC, kf.text ASC
-            """
-
-            var statement: OpaquePointer?
-            defer { sqlite3_finalize(statement) }
-
-            try prepare(sql: sql, statement: &statement)
-
-            var readingsBySurface: [String: String] = [:]
-            var stepCode = sqlite3_step(statement)
-
-            while stepCode == SQLITE_ROW {
-                guard
-                    let surfacePointer = sqlite3_column_text(statement, 0),
-                    let readingPointer = sqlite3_column_text(statement, 1)
-                else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
-
-                let surface = String(cString: surfacePointer)
-                let reading = String(cString: readingPointer)
-
-                // Keep first-seen reading because SQL ordering already prioritizes by frequency.
-                if readingsBySurface[surface] == nil {
-                    readingsBySurface[surface] = reading
-                }
-
-                stepCode = sqlite3_step(statement)
-            }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return readingsBySurface
-        }
-    }
-
-    // Builds bounded per-surface reading candidates for lightweight disambiguation heuristics.
-    public func fetchReadingCandidatesBySurface(maxReadingsPerSurface: Int = 8) throws -> [String: [String]] {
-        try withSerializedDatabaseAccess {
-            let sql = """
-            SELECT kj.text AS surface, kf.text AS reading,
-                   MIN(COALESCE(kkl.jpdb_rank, 9999999)) AS best_rank
-            FROM kanji kj
-            JOIN kana_forms kf ON kf.entry_id = kj.entry_id
-            LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
-            GROUP BY kj.text, kf.text
-            ORDER BY kj.text ASC, best_rank ASC, kf.text ASC
-            """
-
-            var statement: OpaquePointer?
-            defer { sqlite3_finalize(statement) }
-
-            try prepare(sql: sql, statement: &statement)
-
-            var candidatesBySurface: [String: [String]] = [:]
-            var seenBySurface: [String: Set<String>] = [:]
-
-            var stepCode = sqlite3_step(statement)
-            while stepCode == SQLITE_ROW {
-                guard
-                    let surfacePointer = sqlite3_column_text(statement, 0),
-                    let readingPointer = sqlite3_column_text(statement, 1)
-                else {
-                    stepCode = sqlite3_step(statement)
-                    continue
-                }
-
-                let surface = String(cString: surfacePointer)
-                let reading = String(cString: readingPointer)
-
-                var seenReadings = seenBySurface[surface, default: Set<String>()]
-                if !seenReadings.contains(reading) {
-                    seenReadings.insert(reading)
-                    seenBySurface[surface] = seenReadings
-
-                    var candidates = candidatesBySurface[surface, default: []]
-                    if candidates.count < maxReadingsPerSurface {
-                        candidates.append(reading)
-                        candidatesBySurface[surface] = candidates
-                    }
-                }
-
-                stepCode = sqlite3_step(statement)
-            }
-
-            guard stepCode == SQLITE_DONE else {
-                throw DictionarySQLiteError.step(message: errorMessage())
-            }
-
-            return candidatesBySurface
         }
     }
 }

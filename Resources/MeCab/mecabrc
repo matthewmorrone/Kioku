@@ -1,0 +1,1 @@
+; Minimal mecabrc for iOS — dictionary path is set via -d flag at runtime.

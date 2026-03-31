@@ -854,6 +854,40 @@ def build_database():
     print("Building sentence FTS index...")
     conn.execute("INSERT INTO sentence_pairs_fts(sentence_pairs_fts) VALUES('rebuild')")
 
+    print("Materializing surface_readings lookup table...")
+    conn.executescript(
+        """
+        CREATE TABLE surface_readings (
+            surface TEXT NOT NULL,
+            reading TEXT NOT NULL,
+            best_rank INTEGER NOT NULL,
+            jpdb_rank INTEGER,
+            wordfreq_zipf REAL
+        );
+
+        INSERT INTO surface_readings (surface, reading, best_rank, jpdb_rank, wordfreq_zipf)
+        SELECT surface, reading, best_rank, jpdb_rank, wordfreq_zipf FROM (
+            SELECT kj.text AS surface, kf.text AS reading,
+                   MIN(COALESCE(kkl.jpdb_rank, 9999999)) AS best_rank,
+                   MIN(kkl.jpdb_rank) AS jpdb_rank,
+                   MAX(kj.wordfreq_zipf) AS wordfreq_zipf
+            FROM kanji kj
+            JOIN kana_forms kf ON kf.entry_id = kj.entry_id
+            LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
+            GROUP BY kj.text, kf.text
+            UNION ALL
+            SELECT kf.text, kf.text, 9999999, NULL, kf.wordfreq_zipf
+            FROM kana_forms kf
+            WHERE kf.entry_id NOT IN (SELECT entry_id FROM kanji)
+        )
+        ORDER BY surface ASC, best_rank ASC, reading ASC;
+
+        CREATE INDEX idx_surface_readings_surface ON surface_readings(surface);
+        """
+    )
+    surface_count = conn.execute("SELECT COUNT(*) FROM surface_readings").fetchone()[0]
+    print(f"  Done: {surface_count} surface_readings rows materialized")
+
     conn.commit()
     conn.execute("PRAGMA optimize")
     conn.close()

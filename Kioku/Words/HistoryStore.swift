@@ -11,7 +11,10 @@ final class HistoryStore: ObservableObject {
     private let maxEntries = 200
 
     init() {
-        load()
+        entries = []
+        StartupTimer.measure("HistoryStore.init") {
+            load()
+        }
     }
 
     // Records a lookup event, moving the entry to the front (most recent first).

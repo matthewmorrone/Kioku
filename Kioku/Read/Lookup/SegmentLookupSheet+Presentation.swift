@@ -74,6 +74,84 @@ extension SegmentLookupSheet {
             headerHost.view.translatesAutoresizingMaskIntoConstraints = false
             headerHost.view.backgroundColor = .clear
 
+            // Header with per-kanji-run furigana centered above each headword.
+            let headwordFont = UIFont.systemFont(ofSize: 34, weight: .bold)
+            let rubyFont = UIFont.systemFont(ofSize: 17)
+
+            // Builds the header as a horizontal stack of columns. Kanji runs get a small
+            // reading label centered above; kana runs sit at the baseline with an empty
+            // spacer above so all columns share the same top-to-baseline geometry.
+            func buildHeaderSubviews(surface: String, reading: String) -> [UIView] {
+                let chars = Array(surface)
+                let runs = FuriganaAttributedString.kanjiRuns(in: surface)
+                let readings = FuriganaAttributedString.projectRunReadings(surface: surface, reading: reading, runs: runs)
+
+                // Segments: alternating kana and kanji chunks with their per-run readings.
+                struct Segment {
+                    let text: String
+                    let ruby: String? // nil for kana-only segments
+                }
+
+                var segments: [Segment] = []
+                var cursor = 0
+                for (i, run) in runs.enumerated() {
+                    // Kana before this kanji run.
+                    if cursor < run.start {
+                        segments.append(Segment(text: String(chars[cursor..<run.start]), ruby: nil))
+                    }
+                    let kanjiText = String(chars[run.start..<run.end])
+                    let ruby = readings.flatMap { $0.indices.contains(i) ? $0[i] : nil }
+                    segments.append(Segment(text: kanjiText, ruby: (ruby != nil && ruby != kanjiText) ? ruby : nil))
+                    cursor = run.end
+                }
+                // Trailing kana after last kanji run.
+                if cursor < chars.count {
+                    segments.append(Segment(text: String(chars[cursor...]), ruby: nil))
+                }
+
+                // No kanji runs at all — single plain label.
+                if segments.isEmpty {
+                    let label = UILabel()
+                    label.font = headwordFont
+                    label.text = surface
+                    label.textAlignment = .center
+                    return [label]
+                }
+
+                return segments.map { segment in
+                    let headwordLabel = UILabel()
+                    headwordLabel.font = headwordFont
+                    headwordLabel.text = segment.text
+                    headwordLabel.textAlignment = .center
+
+                    let rubyLabel = UILabel()
+                    rubyLabel.font = rubyFont
+                    rubyLabel.textColor = .secondaryLabel
+                    rubyLabel.textAlignment = .center
+                    rubyLabel.text = segment.ruby
+                    // Invisible spacer when no ruby — preserves vertical alignment across columns.
+                    rubyLabel.alpha = segment.ruby != nil ? 1 : 0
+
+                    let column = UIStackView(arrangedSubviews: [rubyLabel, headwordLabel])
+                    column.axis = .vertical
+                    column.alignment = .center
+                    column.spacing = 2
+                    return column
+                }
+            }
+
+            let initialReading = self.currentSheetUniqueReadings.first ?? ""
+            let headerRow = UIStackView(arrangedSubviews: buildHeaderSubviews(surface: surface, reading: initialReading))
+            headerRow.axis = .horizontal
+            headerRow.alignment = .bottom
+            headerRow.spacing = 0
+
+            // Wrapper centers the row horizontally within the sheet.
+            let headerStack = UIStackView(arrangedSubviews: [headerRow])
+            headerStack.translatesAutoresizingMaskIntoConstraints = false
+            headerStack.axis = .vertical
+            headerStack.alignment = .center
+
             let prevReadingButton = UIButton(type: .system)
             prevReadingButton.translatesAutoresizingMaskIntoConstraints = false
             prevReadingButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
@@ -142,7 +220,7 @@ extension SegmentLookupSheet {
                     customReading = nil
                 }
 
-                print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) index=\(currentReadingIndex)")
+                // print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) index=\(currentReadingIndex)")
 
                 syncFuriganaToCurrentIndex()
                 // Show arrows for any kanji segment — custom reading entry is always available.
@@ -464,6 +542,12 @@ extension SegmentLookupSheet {
                 currentSurface = outcome.surface
                 currentLeftNeighborSurface = outcome.leftNeighborSurface
                 currentRightNeighborSurface = outcome.rightNeighborSurface
+                // Rebuild the header row with per-run furigana for the new surface.
+                let updatedReading = self.currentSheetUniqueReadings.first ?? ""
+                headerRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
+                for view in buildHeaderSubviews(surface: currentSurface, reading: updatedReading) {
+                    headerRow.addArrangedSubview(view)
+                }
                 syncFuriganaToCurrentIndex()
                 splitButton.isEnabled = currentSurface.count > 1
                 splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
@@ -696,14 +780,12 @@ extension SegmentLookupSheet {
                     currentReadingIndex = currentReadings.count
                     syncFuriganaToCurrentIndex()
                     self.onReadingSelected?(entered)
-                    print("[SegmentLookupSheet] custom reading set: \(entered)")
+                    // print("[SegmentLookupSheet] custom reading set: \(entered)")
                 })
                 vc.present(alert, animated: true)
             }
-            let headerTapGesture = UITapGestureRecognizer(target: headerTapHandler, action: #selector(ClosureTarget.invoke))
-            headerHost.view.addGestureRecognizer(headerTapGesture)
-            // Retain the tap handler — UITapGestureRecognizer holds a weak reference to its target.
-            objc_setAssociatedObject(headerHost.view!, &SegmentLookupSheet.tapHandlerKey, headerTapHandler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            // headerTapHandler is retained but not wired to a gesture — header is hidden.
+            _ = headerTapHandler
 
             // Populate initial content.
             updateMiddleContent()
@@ -964,11 +1046,7 @@ extension SegmentLookupSheet {
             // segmentRangeProvider() returns the NSRange of the current segment within the note.
             // Add content to middleContentStack here using that range as needed.
 
-            sheetController.addChild(headerHost)
-            headerHost.didMove(toParent: sheetController)
-            sheetController.view.addSubview(headerHost.view)
-            sheetController.view.addSubview(prevReadingButton)
-            sheetController.view.addSubview(nextReadingButton)
+            sheetController.view.addSubview(headerStack)
             sheetController.view.addSubview(splitPanelContainer)
             sheetController.view.addSubview(middleContentStack)
             sheetController.view.addSubview(actionMenuContainer)
@@ -977,22 +1055,13 @@ extension SegmentLookupSheet {
             updateLemmaChain()
 
             NSLayoutConstraint.activate([
-                // Header spans full width; arrows float independently centered on the headword text row.
-                headerHost.view.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
-                headerHost.view.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
-                headerHost.view.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
+                // Surface header with furigana at the top of the sheet.
+                headerStack.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                headerStack.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
+                headerStack.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
 
-                prevReadingButton.widthAnchor.constraint(equalToConstant: 32),
-                prevReadingButton.heightAnchor.constraint(equalToConstant: 32),
-                prevReadingButton.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
-                prevReadingButton.centerYAnchor.constraint(equalTo: headerHost.view.topAnchor, constant: furiganaInset + UIFont.systemFont(ofSize: 34, weight: .bold).lineHeight / 2),
 
-                nextReadingButton.widthAnchor.constraint(equalToConstant: 32),
-                nextReadingButton.heightAnchor.constraint(equalToConstant: 32),
-                nextReadingButton.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
-                nextReadingButton.centerYAnchor.constraint(equalTo: prevReadingButton.centerYAnchor),
-
-                splitPanelContainer.topAnchor.constraint(equalTo: headerHost.view.bottomAnchor, constant: 8),
+                splitPanelContainer.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 8),
                 splitPanelContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 splitPanelContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
 
