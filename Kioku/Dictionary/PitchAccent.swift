@@ -1,7 +1,7 @@
 import Foundation
 
 // Pitch accent record for a word+kana pair, sourced from UniDic data.
-public struct PitchAccent: Equatable {
+nonisolated public struct PitchAccent: Equatable {
     public let word: String
     public let kana: String
     // Part-of-speech kind annotation from UniDic, nil when not specified.

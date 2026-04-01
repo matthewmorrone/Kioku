@@ -2,7 +2,7 @@ import Foundation
 
 // Central reference store for Japanese script constants shared across segmentation,
 // normalization, and filtering subsystems.
-enum KanaData {
+nonisolated enum KanaData {
     // Single-kana and short multi-kana particles used as the default standalone-segment allowlist.
     static let defaultParticles: [String] = [
         "は", "が", "を", "に", "へ", "と", "で", "も", "の", "ね", "よ", "か", "な", "や",

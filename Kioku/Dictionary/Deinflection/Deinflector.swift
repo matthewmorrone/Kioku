@@ -4,7 +4,7 @@ import Foundation
 typealias DeinflectionPathMap = [String: [(chain: [String], transitions: [(label: String, kanaIn: String, kanaOut: String)])]]
 
 // Generates deinflected dictionary candidate surfaces using rule-based state transitions.
-final class Deinflector {
+nonisolated final class Deinflector {
 
     private let rules: [DeinflectionRule]
     private let labeledRules: [(label: String, rule: DeinflectionRule)]

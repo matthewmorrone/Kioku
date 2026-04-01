@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 
-public final class DictionaryStore {
+nonisolated public final class DictionaryStore: @unchecked Sendable {
     private var db: OpaquePointer?
     // Sentinel destructor value that tells SQLite to copy the string immediately.
     let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

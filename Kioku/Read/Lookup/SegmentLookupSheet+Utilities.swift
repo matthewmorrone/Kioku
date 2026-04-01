@@ -5,11 +5,11 @@ extension SegmentLookupSheet {
     func refreshSheetSupplementalData() {
         currentSheetUniqueReadings = sheetReadingsProvider?() ?? []
         currentSheetSublatticeEdges = sheetSublatticeProvider?() ?? []
-        currentSheetLexiconDebugInfo = sheetLexiconDebugProvider?() ?? ""
         currentSheetFrequencyByReading = sheetFrequencyProvider?()
         currentSheetLemmaInfo = sheetLemmaInfoProvider?()
-        currentSheetWordDisplayData = sheetWordDisplayDataProvider?()
-        currentSheetWordComponents = sheetWordComponentsProvider?() ?? []
+        currentSheetDictionaryEntry = sheetDictionaryEntryProvider?()
+        currentSheetLexiconDebugInfo = ""
+        currentSheetWordComponents = []
     }
 
     // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.

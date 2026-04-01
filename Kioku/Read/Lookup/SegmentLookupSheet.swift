@@ -27,9 +27,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var activeReadingOverrideProvider: (() -> String?)?
     // Looks up frequency data for any surface in the note — used to annotate sublattice paths.
     var pathSegmentFrequencyProvider: ((String) -> [String: FrequencyData]?)?
-    // Provides bundled display data (entry + pitch accents + sentences) for the current segment.
-    var sheetWordDisplayDataProvider: (() -> WordDisplayData?)?
-    var currentSheetWordDisplayData: WordDisplayData? = nil
+    // Provides the minimal dictionary entry needed to render visible senses for the current segment.
+    var sheetDictionaryEntryProvider: (() -> DictionaryEntry?)?
+    var currentSheetDictionaryEntry: DictionaryEntry? = nil
     // Returns true when the current segment's resolved lemma is already saved.
     var sheetIsSavedProvider: (() -> Bool)?
     // Toggles the saved state for the current segment's resolved lemma.
@@ -193,7 +193,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         onReadingReset: (() -> Void)? = nil,
         activeReadingOverrideProvider: (() -> String?)? = nil,
         pathSegmentFrequencyProvider: ((String) -> [String: FrequencyData]?)? = nil,
-        sheetWordDisplayDataProvider: (() -> WordDisplayData?)? = nil,
+        sheetDictionaryEntryProvider: (() -> DictionaryEntry?)? = nil,
         sheetIsSavedProvider: (() -> Bool)? = nil,
         sheetSaveToggle: (() -> Void)? = nil,
         sheetOpenWordDetail: (() -> Void)? = nil,
@@ -206,7 +206,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.activeReadingOverrideProvider = activeReadingOverrideProvider
         self.pathSegmentFrequencyProvider = pathSegmentFrequencyProvider
         self.sheetLemmaInfoProvider = sheetLemmaInfoProvider
-        self.sheetWordDisplayDataProvider = sheetWordDisplayDataProvider
+        self.sheetDictionaryEntryProvider = sheetDictionaryEntryProvider
         self.sheetIsSavedProvider = sheetIsSavedProvider
         self.sheetSaveToggle = sheetSaveToggle
         self.sheetOpenWordDetail = sheetOpenWordDetail
@@ -292,7 +292,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             sheetLemmaInfoProvider = nil
             activeReadingOverrideProvider = nil
             pathSegmentFrequencyProvider = nil
-            sheetWordDisplayDataProvider = nil
+            sheetDictionaryEntryProvider = nil
             sheetIsSavedProvider = nil
             sheetSaveToggle = nil
             sheetOpenWordDetail = nil
@@ -302,7 +302,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             currentSheetLexiconDebugInfo = ""
             currentSheetFrequencyByReading = nil
             currentSheetLemmaInfo = nil
-            currentSheetWordDisplayData = nil
+            currentSheetDictionaryEntry = nil
             currentSheetWordComponents = []
             updatePresentedSheetSelection = nil
             completion?()
@@ -324,7 +324,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetFrequencyProvider = nil
         sheetLemmaInfoProvider = nil
         activeReadingOverrideProvider = nil
-        sheetWordDisplayDataProvider = nil
+        sheetDictionaryEntryProvider = nil
         sheetIsSavedProvider = nil
         sheetSaveToggle = nil
         sheetOpenWordDetail = nil
@@ -334,7 +334,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         currentSheetLexiconDebugInfo = ""
         currentSheetFrequencyByReading = nil
         currentSheetLemmaInfo = nil
-        currentSheetWordDisplayData = nil
+        currentSheetDictionaryEntry = nil
         currentSheetWordComponents = []
         updatePresentedSheetSelection = nil
     }
@@ -358,7 +358,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             sheetLemmaInfoProvider = nil
             activeReadingOverrideProvider = nil
             pathSegmentFrequencyProvider = nil
-            sheetWordDisplayDataProvider = nil
+            sheetDictionaryEntryProvider = nil
             sheetIsSavedProvider = nil
             sheetSaveToggle = nil
             sheetOpenWordDetail = nil
@@ -368,7 +368,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             currentSheetLexiconDebugInfo = ""
             currentSheetFrequencyByReading = nil
             currentSheetLemmaInfo = nil
-            currentSheetWordDisplayData = nil
+            currentSheetDictionaryEntry = nil
             currentSheetWordComponents = []
             updatePresentedSheetSelection = nil
             fireOnDismissIfNeeded()

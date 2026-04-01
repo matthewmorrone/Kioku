@@ -1,7 +1,7 @@
 import Foundation
 
 // Represents which MeCab dictionary to load at runtime, each with a different morphological model.
-enum MeCabDictionary: String, CaseIterable {
+nonisolated enum MeCabDictionary: String, CaseIterable {
     case ipadic
     case unidic
 

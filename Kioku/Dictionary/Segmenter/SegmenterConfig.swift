@@ -1,7 +1,7 @@
 import Foundation
 
 // Configures lattice size limits and kana filtering for segmentation at each text position.
-struct SegmenterConfig {
+nonisolated struct SegmenterConfig {
     let maxMatchesPerPosition: Int
     let maxMatchLength: Int
     // Single-character kana allowed as standalone lattice edges; all others are treated as bound morphemes.

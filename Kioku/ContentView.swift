@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Bundles all heavy read-tab resources into one @State so SwiftUI sees a single atomic change.
-private struct ReadResources {
+nonisolated private struct ReadResources {
     var segmenter: any TextSegmenting = Segmenter(trie: DictionaryTrie())
     var dictionaryStore: DictionaryStore?
     var lexicon: Lexicon?
@@ -144,7 +144,6 @@ struct ContentView: View {
         // Validate WOTD scheduling after startup has settled rather than on the critical path.
         .onChange(of: readResources.ready) { _, ready in
             guard ready else { return }
-            StartupTimer.mark("readResources.ready onChange fired")
             scheduleWotdRefresh(reason: "startup validation", delayNanoseconds: 2_000_000_000, forceRefresh: false)
         }
         // Refresh WOTD when the underlying saved-word set changes.
@@ -202,7 +201,6 @@ struct ContentView: View {
             }
 
             guard Task.isCancelled == false else { return }
-            StartupTimer.mark("WordOfTheDayScheduler.refreshScheduleIfEnabled starting (\(reason))")
             await WordOfTheDayScheduler.refreshScheduleIfEnabled(
                 words: words,
                 dictionaryStore: store,
@@ -211,7 +209,6 @@ struct ContentView: View {
                 enabled: enabled,
                 forceRefresh: forceRefresh
             )
-            StartupTimer.mark("WordOfTheDayScheduler.refreshScheduleIfEnabled finished (\(reason))")
         }
     }
 

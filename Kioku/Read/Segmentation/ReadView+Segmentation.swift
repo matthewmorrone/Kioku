@@ -340,28 +340,21 @@ extension ReadView {
                     }
                     return nil
                 },
-                sheetWordDisplayDataProvider: {
-                    // Use the lemma form when the surface is inflected so we fetch the base dictionary entry.
+                sheetDictionaryEntryProvider: {
+                    // Use the lemma form when the surface is inflected so we fetch the base dictionary entry once.
                     guard let surface = currentSelectedSurface(),
                           let store = dictionaryStore else { return nil }
                     let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
-                    guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return nil }
-                    return try? store.fetchWordDisplayData(entryID: entry.entryId, surface: lookupSurface)
+                    return (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first
                 },
                 sheetIsSavedProvider: {
-                    guard let surface = currentSelectedSurface(),
-                          let store = dictionaryStore else { return false }
-                    let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
-                    guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return false }
+                    guard let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry else { return false }
                     return wordsStore.words.contains { $0.canonicalEntryID == entry.entryId }
                 },
                 sheetSaveToggle: {
                     guard let surface = currentSelectedSurface(),
-                          let store = dictionaryStore else { return }
-                    // Look up via the lemma form to find the canonical dictionary entry,
-                    // but save with the original surface so WordDetailView can show the lemma below.
-                    let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
-                    guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return }
+                          let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry else { return }
+                    // Save with the tapped surface so WordDetailView can still show the encountered form.
                     if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) {
                         wordsStore.remove(id: entry.entryId)
                     } else {
@@ -370,9 +363,7 @@ extension ReadView {
                 },
                 sheetOpenWordDetail: {
                     guard let surface = currentSelectedSurface(),
-                          let store = dictionaryStore else { return }
-                    let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
-                    guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return }
+                          let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry else { return }
                     // Ensure the word exists in the saved list before routing to the shared Words tab detail flow.
                     if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) == false {
                         wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface))

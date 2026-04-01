@@ -1,7 +1,7 @@
 import Foundation
 
 // Configures node-cost weighting for Viterbi path scoring.
-struct SegmenterScoring {
+nonisolated struct SegmenterScoring {
     let baseCost: Int
     let lengthReward: Int
     let singleCharacterPenalty: Int

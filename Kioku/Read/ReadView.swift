@@ -293,13 +293,10 @@ struct ReadView: View {
             }
         }
         .onChange(of: segmenterRevision) { _, _ in
-            StartupTimer.mark("segmenterRevision changed")
             if text.isEmpty == false, debugStartupSegmentationDiffs {
                 StartupTimer.measure("SegmentationDiffPrinter.printDiffs") {
                     SegmentationDiffPrinter.printDiffs(for: text, trieSegmenter: segmenter)
                 }
-            } else if text.isEmpty == false {
-                StartupTimer.mark("startup segmentation diffs disabled")
             }
 
             // When segments are persisted and furigana is already loaded, nothing to do.
@@ -309,8 +306,6 @@ struct ReadView: View {
                 if furiganaBySegmentLocation.isEmpty {
                     StartupTimer.mark("scheduling furigana for persisted segments (furigana missing)")
                     scheduleFuriganaGeneration(for: text, edges: segmentEdges)
-                } else {
-                    StartupTimer.mark("segments + furigana already loaded, skipping")
                 }
             } else {
                 StartupTimer.mark("no persisted segments, running full segmentation")

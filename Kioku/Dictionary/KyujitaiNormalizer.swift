@@ -3,7 +3,7 @@ import Foundation
 // Maps kyujitai (traditional/pre-reform) kanji to their shinjitai equivalents so lookup
 // succeeds when users paste classical text that JMdict only indexes under the modern form.
 // Applied as a fallback surface candidate — the original form is always tried first.
-enum KyujitaiNormalizer {
+nonisolated enum KyujitaiNormalizer {
 
     // Replaces each kyujitai scalar in the input with its shinjitai equivalent.
     // Returns nil when no substitution was made, so callers can skip the redundant query.

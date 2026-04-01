@@ -1,7 +1,7 @@
 import Foundation
 
 // A Japanese–English sentence pair sourced from the Tatoeba corpus.
-public struct SentencePair: Equatable {
+nonisolated public struct SentencePair: Equatable {
     public let japanese: String
     public let english: String
 

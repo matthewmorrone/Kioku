@@ -1,4 +1,4 @@
-public final class DictionaryTrie {
+nonisolated public final class DictionaryTrie {
     private let root = Node()
     public private(set) var surfaceCount: Int = 0
     public private(set) var maxSurfaceLength: Int = 0

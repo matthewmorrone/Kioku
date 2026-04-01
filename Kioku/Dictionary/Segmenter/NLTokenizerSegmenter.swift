@@ -3,7 +3,7 @@ import NaturalLanguage
 
 // Provides TextSegmenting conformance backed by Apple's NLTokenizer for Japanese word segmentation.
 // Uses the built-in ICU tokenizer with zero external dependencies.
-final class NLTokenizerSegmenter: TextSegmenting {
+nonisolated final class NLTokenizerSegmenter: TextSegmenting {
 
     // Tokenizes text using NLTokenizer at the word level with Japanese locale.
     // Returns identical lattice and selected edges since NLTokenizer produces a single segmentation.

@@ -2,7 +2,7 @@ import Foundation
 
 // Manages the persistent set of single-kana morphemes permitted as standalone segments in lattice paths.
 // Uses comma-joined AppStorage so the SettingsView can bind directly without custom encoding.
-enum ParticleSettings {
+nonisolated enum ParticleSettings {
     static let storageKey = "kioku.particles.allowed"
 
     static let defaults: [String] = KanaData.defaultParticles.sorted()

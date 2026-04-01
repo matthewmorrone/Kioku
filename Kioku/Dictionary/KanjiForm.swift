@@ -1,7 +1,7 @@
 import Foundation
 
 // Represents a single kanji writing form for a JMdict entry with priority and element info flags.
-public struct KanjiForm: Equatable {
+nonisolated public struct KanjiForm: Equatable {
     public let text: String
     // Comma-joined ke_pri priority tags (ichi1, news1, spec1, gai1, nf01–nf48, etc.), nil if none.
     public let priority: String?

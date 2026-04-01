@@ -1,7 +1,7 @@
 import Foundation
 
 // Represents a single kana reading form for a JMdict entry with priority, info flags, and nokanji marker.
-public struct KanaForm: Equatable {
+nonisolated public struct KanaForm: Equatable {
     public let text: String
     // Comma-joined re_pri priority tags (ichi1, news1, spec1, gai1, nf01–nf48, etc.), nil if none.
     public let priority: String?

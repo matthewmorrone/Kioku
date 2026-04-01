@@ -1,7 +1,7 @@
 import Foundation
 
 // Represents one morphological token produced by MeCab's analysis of input text.
-struct MeCabNode {
+nonisolated struct MeCabNode {
     // The surface form (text as it appears in the input).
     let surface: String
 

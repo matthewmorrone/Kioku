@@ -24,7 +24,7 @@ extension SegmentLookupSheet {
         let capturedOnReadingSelected = self.onReadingSelected
         let capturedPathSegmentFrequencyProvider = self.pathSegmentFrequencyProvider
         let capturedSheetLemmaInfoProvider = self.sheetLemmaInfoProvider
-        let capturedSheetWordDisplayDataProvider = self.sheetWordDisplayDataProvider
+        let capturedSheetDictionaryEntryProvider = self.sheetDictionaryEntryProvider
         let capturedSheetIsSavedProvider = self.sheetIsSavedProvider
         let capturedSheetSaveToggle = self.sheetSaveToggle
         let capturedSheetWordComponentsProvider = self.sheetWordComponentsProvider
@@ -40,7 +40,7 @@ extension SegmentLookupSheet {
             self.onReadingReset = capturedOnReadingReset
             self.pathSegmentFrequencyProvider = capturedPathSegmentFrequencyProvider
             self.sheetLemmaInfoProvider = capturedSheetLemmaInfoProvider
-            self.sheetWordDisplayDataProvider = capturedSheetWordDisplayDataProvider
+            self.sheetDictionaryEntryProvider = capturedSheetDictionaryEntryProvider
             self.sheetIsSavedProvider = capturedSheetIsSavedProvider
             self.sheetSaveToggle = capturedSheetSaveToggle
             self.sheetWordComponentsProvider = capturedSheetWordComponentsProvider
@@ -680,8 +680,8 @@ extension SegmentLookupSheet {
                     }
                 }
 
-                guard let displayData = self.currentSheetWordDisplayData else { return }
-                let senses = displayData.entry.senses
+                guard let entry = self.currentSheetDictionaryEntry else { return }
+                let senses = entry.senses
                 guard senses.isEmpty == false else { return }
 
                 for (index, sense) in senses.enumerated() {

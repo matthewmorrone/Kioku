@@ -1,6 +1,6 @@
 import Foundation
 
-public enum LookupMode {
+nonisolated public enum LookupMode {
     case kanaOnly
     case kanjiAndKana
 
