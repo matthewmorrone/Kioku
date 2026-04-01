@@ -61,9 +61,6 @@ extension SegmentLookupSheet {
             sheetController.view.backgroundColor = .systemBackground
             // Keeps content clear of the grabber area so the title is never clipped.
             sheetController.additionalSafeAreaInsets.top = 20
-            // Restrict interactive dismissal to our custom handle instead of allowing a drag anywhere on the sheet.
-            sheetController.isModalInPresentation = true
-            let dismissHandleButton = makeSheetDismissHandleButton()
             let headerComponents = makeSheetHeaderView(surface: surface, initialReading: self.currentSheetUniqueReadings.first)
             let headerStack = headerComponents.stack
             let headerRow = headerComponents.row
@@ -910,7 +907,6 @@ extension SegmentLookupSheet {
             // segmentRangeProvider() returns the NSRange of the current segment within the note.
             // Add content to middleContentStack here using that range as needed.
 
-            sheetController.view.addSubview(dismissHandleButton)
             sheetController.view.addSubview(headerStack)
             sheetController.view.addSubview(splitPanelContainer)
             sheetController.view.addSubview(middleContentStack)
@@ -920,13 +916,8 @@ extension SegmentLookupSheet {
             updateLemmaChain()
 
             NSLayoutConstraint.activate([
-                dismissHandleButton.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 8),
-                dismissHandleButton.centerXAnchor.constraint(equalTo: sheetController.view.centerXAnchor),
-                dismissHandleButton.widthAnchor.constraint(equalToConstant: 72),
-                dismissHandleButton.heightAnchor.constraint(equalToConstant: 28),
-
                 // Surface header with furigana at the top of the sheet.
-                headerStack.topAnchor.constraint(equalTo: dismissHandleButton.bottomAnchor, constant: 12),
+                headerStack.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
                 headerStack.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 headerStack.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
                 splitPanelContainer.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 8),
