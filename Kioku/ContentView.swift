@@ -117,6 +117,7 @@ struct ContentView: View {
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
         .environmentObject(reviewStore)
+        .environmentObject(wotdNavigation)
         .onAppear {
             StartupTimer.mark("onAppear fired")
             restoreLastActiveNote()
@@ -126,8 +127,10 @@ struct ContentView: View {
         // Navigate to Words tab and open the word detail when a notification deep link arrives.
         .onChange(of: wotdNavigation.pendingEntryID) { _, entryID in
             guard let entryID else { return }
-            pendingDeepLinkEntryID = entryID
             selectedTab = .words
+            DispatchQueue.main.async {
+                pendingDeepLinkEntryID = entryID
+            }
             wotdNavigation.pendingEntryID = nil
         }
         // Rebuild the segmenter when the user switches backend or MeCab dictionary in Settings.

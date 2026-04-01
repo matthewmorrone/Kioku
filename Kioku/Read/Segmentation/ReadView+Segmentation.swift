@@ -371,11 +371,11 @@ extension ReadView {
                           let store = dictionaryStore else { return }
                     let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
                     guard let entry = (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first else { return }
-                    // Ensure word is saved before opening detail so WordDetailView has a valid record.
+                    // Ensure the word exists in the saved list before routing to the shared Words tab detail flow.
                     if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) == false {
                         wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface))
                     }
-                    wordDetailWord = wordsStore.words.first { $0.canonicalEntryID == entry.entryId }
+                    wotdNavigation.pendingEntryID = entry.entryId
                 },
                 sheetWordComponentsProvider: {
                     guard let surface = currentSelectedSurface() else { return nil }

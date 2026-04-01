@@ -44,6 +44,16 @@ struct WordsView: View {
     @State private var searchResults: [DictionaryEntry] = []
     @State private var searchTask: Task<Void, Never>?
 
+    // Consumes a pending deep link by switching to Saved and opening the matching word detail.
+    private func consumeDeepLinkEntryID(_ entryID: Int64?) {
+        guard let entryID else { return }
+        if let word = wordsStore.words.first(where: { $0.canonicalEntryID == entryID }) {
+            activeTab = .saved
+            selectedDetailWord = word
+        }
+        deepLinkedEntryID.wrappedValue = nil
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -109,14 +119,12 @@ struct WordsView: View {
                 .environmentObject(wordListsStore)
                 .presentationDetents([.large])
         }
+        .onAppear {
+            consumeDeepLinkEntryID(deepLinkedEntryID.wrappedValue)
+        }
         // Opens the detail sheet for a word deep-linked from a Word of the Day notification.
         .onChange(of: deepLinkedEntryID.wrappedValue) { _, entryID in
-            guard let entryID else { return }
-            if let word = wordsStore.words.first(where: { $0.canonicalEntryID == entryID }) {
-                activeTab = .saved
-                selectedDetailWord = word
-            }
-            deepLinkedEntryID.wrappedValue = nil
+            consumeDeepLinkEntryID(entryID)
         }
         .sheet(isPresented: $isFilterSheetPresented) {
             WordsFilterView(activeFilterNoteIDs: $activeFilterNoteIDs, activeFilterListIDs: $activeFilterListIDs)
