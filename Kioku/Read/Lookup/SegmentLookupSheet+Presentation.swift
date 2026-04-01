@@ -131,6 +131,9 @@ extension SegmentLookupSheet {
                     rubyLabel.text = segment.ruby
                     // Invisible spacer when no ruby — preserves vertical alignment across columns.
                     rubyLabel.alpha = segment.ruby != nil ? 1 : 0
+                    // Explicit height ensures all columns are identically sized regardless of text content,
+                    // so UIStackView .bottom alignment produces correct baseline registration at every detent.
+                    rubyLabel.heightAnchor.constraint(equalToConstant: ceil(rubyFont.lineHeight)).isActive = true
 
                     let column = UIStackView(arrangedSubviews: [rubyLabel, headwordLabel])
                     column.axis = .vertical
@@ -146,11 +149,20 @@ extension SegmentLookupSheet {
             headerRow.alignment = .bottom
             headerRow.spacing = 0
 
-            // Wrapper centers the row horizontally within the sheet.
+            // Wrapper centers the row horizontally within the sheet; lemmaLabel is appended below.
             let headerStack = UIStackView(arrangedSubviews: [headerRow])
             headerStack.translatesAutoresizingMaskIntoConstraints = false
             headerStack.axis = .vertical
             headerStack.alignment = .center
+            headerStack.spacing = 2
+
+            // Lemma label — shows the dictionary base form when the surface is an inflected form.
+            let lemmaLabel = UILabel()
+            lemmaLabel.font = UIFont.preferredFont(forTextStyle: .title3)
+            lemmaLabel.textColor = .secondaryLabel
+            lemmaLabel.textAlignment = .center
+            lemmaLabel.isHidden = true
+            headerStack.addArrangedSubview(lemmaLabel)
 
             let prevReadingButton = UIButton(type: .system)
             prevReadingButton.translatesAutoresizingMaskIntoConstraints = false
@@ -228,8 +240,12 @@ extension SegmentLookupSheet {
                 nextReadingButton.isHidden = !showCustomSlot
             }
 
-            // Updates the lemma in the header.
+            // Updates the lemma label when the surface changes or supplemental data refreshes.
             func updateLemmaChain() {
+                let lemma = self.currentSheetLemmaInfo.map { $0.lemma }
+                let show = lemma != nil && lemma != currentSurface
+                lemmaLabel.text = show ? lemma : nil
+                lemmaLabel.isHidden = !show
                 syncFuriganaToCurrentIndex()
             }
 
@@ -498,11 +514,18 @@ extension SegmentLookupSheet {
                     withHorizontalFittingPriority: .required,
                     verticalFittingPriority: .fittingSizeLevel
                 ).height)
-                // Chrome covers grabber (20), top safe-area (~59), nav row (~56), split gap (8+0),
+                // Header height is measured from the live view so the lemma label (when present)
+                // is included automatically rather than relying on a hardcoded constant.
+                let headerHeight = ceil(headerStack.systemLayoutSizeFitting(
+                    CGSize(width: contentWidth, height: UIView.layoutFittingCompressedSize.height),
+                    withHorizontalFittingPriority: .required,
+                    verticalFittingPriority: .fittingSizeLevel
+                ).height)
+                // Chrome covers grabber (20), top safe-area (~59), nav row (measured), split gap (8+0),
                 // middle top spacing (16), action bar (two rows: 44+8+44+12=108 container + 12 margin),
                 // bottom safe-area (~34), plus margins.
                 let safeArea = self.topPresentingController().flatMap { $0.view.window?.safeAreaInsets } ?? .zero
-                let baseChrome: CGFloat = 20 + safeArea.top + 56 + 8 + 16 + 108 + 12 + safeArea.bottom + 16
+                let baseChrome: CGFloat = 20 + safeArea.top + headerHeight + 8 + 16 + 108 + 12 + safeArea.bottom + 16
                 return baseChrome + middleHeight + splitHeight
             }
 
@@ -713,10 +736,15 @@ extension SegmentLookupSheet {
                 for: .touchUpInside
             )
 
-            // Dismisses the sheet and opens WordDetailView for the current segment.
+            // Dismisses the lookup sheet first so SwiftUI can present WordDetailView afterward.
             openDetailButton.addAction(
                 UIAction { _ in
-                    self.sheetOpenWordDetail?()
+                    let openWordDetail = self.sheetOpenWordDetail
+                    self.dismissPopover(notifyDismissal: false) {
+                        DispatchQueue.main.async {
+                            openWordDetail?()
+                        }
+                    }
                 },
                 for: .touchUpInside
             )

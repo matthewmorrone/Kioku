@@ -10,6 +10,7 @@ struct ReadView: View {
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var wordsStore: WordsStore
+    @EnvironmentObject var wotdNavigation: WordOfTheDayNavigation
     let segmenter: any TextSegmenting
     let dictionaryStore: DictionaryStore?
     let lexicon: Lexicon?
@@ -76,7 +77,6 @@ struct ReadView: View {
     @State var isSheetSwipeTransitionActive = false
     @State var sharedScrollOffsetY: CGFloat = 0
     @State private var isShowingSegmentList = false
-    @State var wordDetailWord: SavedWord?
     @State private var isShowingDisplayOptions = false
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
@@ -172,13 +172,6 @@ struct ReadView: View {
             // Pixel ruler is non-interactive and only drawn when its debug toggle is active.
             if debugPixelRuler {
                 PixelRulerOverlayView()
-            }
-        }
-        .sheet(item: $wordDetailWord) { word in
-            // WordDetailView reads wordListsStore via @EnvironmentObject inherited from ContentView.
-            NavigationStack {
-                WordDetailView(word: word, dictionaryStore: dictionaryStore)
-                    .environmentObject(wordsStore)
             }
         }
         .sheet(isPresented: $isShowingSegmentList) {

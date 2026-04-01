@@ -163,6 +163,9 @@ final class Deinflector {
                 }
 
                 let stem = item.surface.dropLast(rule.kanaIn.count)
+                // An empty stem means the entire surface is the inflectional ending, which cannot
+                // produce a valid dictionary entry. Reject it before enqueueing.
+                guard stem.isEmpty == false else { continue }
                 let candidateSurface = String(stem) + rule.kanaOut
                 let chainItem = normalizedRuleLabel(labeledRule.label)
 
