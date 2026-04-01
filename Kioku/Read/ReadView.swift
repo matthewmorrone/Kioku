@@ -10,13 +10,13 @@ struct ReadView: View {
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var wordsStore: WordsStore
-    @EnvironmentObject var wotdNavigation: WordOfTheDayNavigation
     let segmenter: any TextSegmenting
     let dictionaryStore: DictionaryStore?
     let lexicon: Lexicon?
     let surfaceReadingData: SurfaceReadingDataMap
     let segmenterRevision: Int
     let readResourcesReady: Bool
+    var onOpenWordDetail: ((Int64, String) -> Void)? = nil
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
     @AppStorage(TypographySettings.textSizeKey)
@@ -126,6 +126,7 @@ struct ReadView: View {
         surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
         segmenterRevision: Int,
         readResourcesReady: Bool,
+        onOpenWordDetail: ((Int64, String) -> Void)? = nil,
         onActiveNoteChanged: ((UUID) -> Void)? = nil
     ) {
         _selectedNote = selectedNote
@@ -136,6 +137,7 @@ struct ReadView: View {
         self.surfaceReadingData = surfaceReadingData
         self.segmenterRevision = segmenterRevision
         self.readResourcesReady = readResourcesReady
+        self.onOpenWordDetail = onOpenWordDetail
         self.onActiveNoteChanged = onActiveNoteChanged
     }
 

@@ -11,12 +11,18 @@ enum WordsSortOrder: String {
     case zToA
 }
 
+// Cross-tab routing for the Words screen.
+enum WordsRoute: Equatable {
+    case detail(entryID: Int64, surface: String?)
+    case search(String)
+}
+
 // Renders the saved-word list screen for the Words tab.
 // Major sections: search bar, saved/history tab picker, word rows, toolbar.
 struct WordsView: View {
     let dictionaryStore: DictionaryStore?
-    // Receives a canonicalEntryID from a notification deep link; opens its word detail when set.
-    var deepLinkedEntryID: Binding<Int64?> = .constant(nil)
+    // Receives cross-tab routing requests from ContentView.
+    var pendingRoute: Binding<WordsRoute?> = .constant(nil)
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var wordListsStore: WordListsStore
@@ -44,14 +50,50 @@ struct WordsView: View {
     @State private var searchResults: [DictionaryEntry] = []
     @State private var searchTask: Task<Void, Never>?
 
-    // Consumes a pending deep link by switching to Saved and opening the matching word detail.
-    private func consumeDeepLinkEntryID(_ entryID: Int64?) {
-        guard let entryID else { return }
-        if let word = wordsStore.words.first(where: { $0.canonicalEntryID == entryID }) {
-            activeTab = .saved
-            selectedDetailWord = word
+    // Builds the word model used by WordDetailView, reusing a saved word when available and
+    // otherwise synthesizing a temporary detail target from the route payload or dictionary entry.
+    private func detailWord(entryID: Int64, surfaceHint: String?) -> SavedWord? {
+        if let saved = wordsStore.words.first(where: { $0.canonicalEntryID == entryID }) {
+            return saved
         }
-        deepLinkedEntryID.wrappedValue = nil
+
+        if let surfaceHint, surfaceHint.isEmpty == false {
+            return SavedWord(canonicalEntryID: entryID, surface: surfaceHint)
+        }
+
+        guard let entry = try? dictionaryStore?.lookupEntry(entryID: entryID) else {
+            return nil
+        }
+
+        let surface = entry.kanjiForms.first?.text
+            ?? entry.kanaForms.first?.text
+            ?? entry.matchedSurface
+
+        guard surface.isEmpty == false else { return nil }
+        return SavedWord(canonicalEntryID: entryID, surface: surface)
+    }
+
+    // Applies a cross-tab route, either by opening a word detail or populating the search query.
+    private func consumePendingRoute(_ route: WordsRoute?) {
+        guard let route else { return }
+
+        switch route {
+        case let .detail(entryID, surface):
+            if let word = detailWord(entryID: entryID, surfaceHint: surface) {
+                activeTab = .saved
+                selectedDetailWord = word
+            }
+
+        case let .search(query):
+            activeTab = .saved
+            selectedDetailWord = nil
+            editMode = .inactive
+            selectedWordIDs.removeAll()
+            selectedHistoryIDs.removeAll()
+            searchText = query
+        }
+
+        pendingRoute.wrappedValue = nil
     }
 
     var body: some View {
@@ -120,11 +162,11 @@ struct WordsView: View {
                 .presentationDetents([.large])
         }
         .onAppear {
-            consumeDeepLinkEntryID(deepLinkedEntryID.wrappedValue)
+            consumePendingRoute(pendingRoute.wrappedValue)
         }
-        // Opens the detail sheet for a word deep-linked from a Word of the Day notification.
-        .onChange(of: deepLinkedEntryID.wrappedValue) { _, entryID in
-            consumeDeepLinkEntryID(entryID)
+        // Applies cross-tab routes from notifications and read-mode lookup actions.
+        .onChange(of: pendingRoute.wrappedValue) { _, route in
+            consumePendingRoute(route)
         }
         .sheet(isPresented: $isFilterSheetPresented) {
             WordsFilterView(activeFilterNoteIDs: $activeFilterNoteIDs, activeFilterListIDs: $activeFilterListIDs)

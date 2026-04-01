@@ -235,7 +235,7 @@ extension ReadView {
                 continue
             }
 
-            var mergedStart = segment.start
+            let mergedStart = segment.start
             var mergedEnd = segment.end
             var nextIndex = index + 1
 

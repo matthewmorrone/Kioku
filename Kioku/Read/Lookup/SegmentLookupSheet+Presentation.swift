@@ -27,6 +27,7 @@ extension SegmentLookupSheet {
         let capturedSheetDictionaryEntryProvider = self.sheetDictionaryEntryProvider
         let capturedSheetIsSavedProvider = self.sheetIsSavedProvider
         let capturedSheetSaveToggle = self.sheetSaveToggle
+        let capturedSheetOpenWordDetail = self.sheetOpenWordDetail
         let capturedSheetWordComponentsProvider = self.sheetWordComponentsProvider
         let capturedActiveReadingOverrideProvider = self.activeReadingOverrideProvider
         let capturedOnReadingReset = self.onReadingReset
@@ -43,6 +44,7 @@ extension SegmentLookupSheet {
             self.sheetDictionaryEntryProvider = capturedSheetDictionaryEntryProvider
             self.sheetIsSavedProvider = capturedSheetIsSavedProvider
             self.sheetSaveToggle = capturedSheetSaveToggle
+            self.sheetOpenWordDetail = capturedSheetOpenWordDetail
             self.sheetWordComponentsProvider = capturedSheetWordComponentsProvider
             self.activeReadingOverrideProvider = capturedActiveReadingOverrideProvider
             self.onSheetSelectPrevious = nil
@@ -411,11 +413,7 @@ extension SegmentLookupSheet {
 
             let openDetailButton = UIButton(type: .system)
             openDetailButton.translatesAutoresizingMaskIntoConstraints = false
-            openDetailButton.setImage(UIImage(systemName: "text.magnifyingglass"), for: .normal)
-            openDetailButton.tintColor = .secondaryLabel
-            openDetailButton.backgroundColor = .tertiarySystemFill
             openDetailButton.layer.cornerRadius = 8
-            openDetailButton.accessibilityLabel = "Open Word Detail"
 
             // Refreshes the save button icon and tint to reflect the current saved state.
             func updateSaveButtonAppearance() {
@@ -424,6 +422,21 @@ extension SegmentLookupSheet {
                 saveButton.setImage(UIImage(systemName: imageName), for: .normal)
                 saveButton.tintColor = isSaved ? .systemYellow : .secondaryLabel
                 saveButton.accessibilityLabel = isSaved ? "Unsave" : "Save"
+            }
+
+            // Reflects whether the current surface resolved to a dictionary entry that can be opened in Words.
+            func updateOpenDetailButtonAppearance() {
+                let hasDictionaryEntry = self.currentSheetDictionaryEntry != nil
+                openDetailButton.setImage(UIImage(systemName: "text.magnifyingglass"), for: .normal)
+                openDetailButton.isEnabled = hasDictionaryEntry
+                openDetailButton.alpha = hasDictionaryEntry ? 1 : 0.45
+                openDetailButton.tintColor = hasDictionaryEntry ? .systemBlue : .tertiaryLabel
+                openDetailButton.backgroundColor = hasDictionaryEntry
+                    ? UIColor.systemBlue.withAlphaComponent(0.14)
+                    : .tertiarySystemFill
+                openDetailButton.accessibilityLabel = hasDictionaryEntry
+                    ? "Look Up in Words"
+                    : "No Dictionary Entry Available"
             }
 
             wordActionsStack.addArrangedSubview(speakButton)
@@ -734,7 +747,7 @@ extension SegmentLookupSheet {
                 for: .touchUpInside
             )
 
-            // Dismisses the lookup sheet first so SwiftUI can present WordDetailView afterward.
+            // Dismisses the lookup sheet first so the app can switch tabs or present follow-on UI cleanly.
             openDetailButton.addAction(
                 UIAction { _ in
                     let openWordDetail = self.sheetOpenWordDetail
@@ -815,6 +828,7 @@ extension SegmentLookupSheet {
 
             // Populate initial content.
             updateMiddleContent()
+            updateOpenDetailButtonAppearance()
 
             self.onSheetSelectNext = {
                 guard isSplitEditorVisible == false, let outcome = currentOnSelectNext?() else {
@@ -829,6 +843,7 @@ extension SegmentLookupSheet {
                 updateLemmaChain()
                 updateMiddleContent()
                 updateSaveButtonAppearance()
+                updateOpenDetailButtonAppearance()
             }
 
             self.onSheetSelectPrevious = {
@@ -844,6 +859,7 @@ extension SegmentLookupSheet {
                 updateLemmaChain()
                 updateMiddleContent()
                 updateSaveButtonAppearance()
+                updateOpenDetailButtonAppearance()
             }
 
             self.updatePresentedSheetSelection = {
@@ -888,6 +904,7 @@ extension SegmentLookupSheet {
                 updateLemmaChain()
                 updateMiddleContent()
                 updateSaveButtonAppearance()
+                updateOpenDetailButtonAppearance()
             }
 
             let swipeLeftGesture = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
@@ -920,6 +937,7 @@ extension SegmentLookupSheet {
                     updateReadingFurigana()
                     updateLemmaChain()
                     updateMiddleContent()
+                    updateOpenDetailButtonAppearance()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -947,6 +965,7 @@ extension SegmentLookupSheet {
                     updateReadingFurigana()
                     updateLemmaChain()
                     updateMiddleContent()
+                    updateOpenDetailButtonAppearance()
                     updateSheetPreferredHeight(animated: true)
                 },
                 for: .touchUpInside
@@ -967,6 +986,7 @@ extension SegmentLookupSheet {
                             updateReadingFurigana()
                             updateLemmaChain()
                             updateMiddleContent()
+                            updateOpenDetailButtonAppearance()
                             updateSheetPreferredHeight(animated: true)
                         }
                         return
