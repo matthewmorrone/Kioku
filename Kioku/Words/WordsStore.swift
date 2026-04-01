@@ -12,7 +12,7 @@ final class WordsStore: ObservableObject {
     init() {
         let key = storageKey
         words = StartupTimer.measure("WordsStore.init") {
-            SavedWordStorageMigrator.loadSavedWords(storageKey: key)
+            SavedWordStorage.loadSavedWords(storageKey: key)
         }
     }
 
@@ -20,7 +20,7 @@ final class WordsStore: ObservableObject {
     func add(_ word: SavedWord) {
         var updated = words
         updated.append(word)
-        persist(SavedWordStorageMigrator.normalizedEntries(updated))
+        persist(SavedWordStorage.normalizedEntries(updated))
     }
 
     // Removes a word by canonical entry id.
@@ -81,12 +81,17 @@ final class WordsStore: ObservableObject {
 
     // Reloads the published words array from persistent storage. Called by external writers (e.g. SegmentListView) to keep the store in sync after a direct persist.
     func reload() {
-        words = SavedWordStorageMigrator.loadSavedWords(storageKey: storageKey)
+        words = SavedWordStorage.loadSavedWords(storageKey: storageKey)
+    }
+
+    // Replaces the saved-word store with one canonical snapshot.
+    func replaceAll(with words: [SavedWord]) {
+        persist(SavedWordStorage.normalizedEntries(words))
     }
 
     // Writes normalized entries to storage and refreshes the published array.
     private func persist(_ entries: [SavedWord]) {
-        SavedWordStorageMigrator.persist(entries: entries, storageKey: storageKey)
-        words = SavedWordStorageMigrator.loadSavedWords(storageKey: storageKey)
+        SavedWordStorage.persist(entries: entries, storageKey: storageKey)
+        words = SavedWordStorage.loadSavedWords(storageKey: storageKey)
     }
 }

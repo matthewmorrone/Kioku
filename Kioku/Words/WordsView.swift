@@ -44,6 +44,11 @@ struct WordsView: View {
     @AppStorage("savedWordsSortOrder") private var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
     @AppStorage("historySortOrder") private var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
     @State private var searchText = ""
+    @State private var searchMode: DictionarySearchMode = .japanese
+    @State private var searchSortMode: DictionarySearchSortMode = .relevance
+    @State private var searchCommonWordsOnly = false
+    @State private var searchSelectedPartsOfSpeech: Set<String> = []
+    @State private var areSearchFiltersExpanded = false
 
     private var savedSort: WordsSortOrder { WordsSortOrder(rawValue: savedSortOrder) ?? .newestFirst }
     private var historySort: WordsSortOrder { WordsSortOrder(rawValue: historySortOrderRaw) ?? .newestFirst }
@@ -197,33 +202,13 @@ struct WordsView: View {
             selectedHistoryIDs.removeAll()
         }
         .onChange(of: searchText) { _, newValue in
-            searchTask?.cancel()
-            searchTask = nil
-            if newValue.isEmpty {
-                searchResults = []
-                return
-            }
             editMode = .inactive
             selectedWordIDs.removeAll()
-            searchTask = Task {
-                do { try await Task.sleep(nanoseconds: 300_000_000) } catch { return }
-                guard let store = dictionaryStore, Task.isCancelled == false else { return }
-                let query = newValue
-                let hasKanji = ScriptClassifier.containsKanji(query)
-                let results = await withCheckedContinuation { continuation in
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        var entries: [DictionaryEntry] = []
-                        if hasKanji {
-                            entries += (try? store.lookup(surface: query, mode: .kanjiAndKana)) ?? []
-                        }
-                        entries += (try? store.lookup(surface: query, mode: .kanaOnly)) ?? []
-                        var seen = Set<Int64>()
-                        continuation.resume(returning: entries.filter { seen.insert($0.entryId).inserted })
-                    }
-                }
-                guard Task.isCancelled == false, searchText == query else { return }
-                searchResults = results
-            }
+            selectedHistoryIDs.removeAll()
+            startSearchTask(for: newValue)
+        }
+        .onChange(of: searchMode) { _, _ in
+            startSearchTask(for: searchText)
         }
     }
 
@@ -268,18 +253,96 @@ struct WordsView: View {
 
     @ViewBuilder
     private var searchResultsContent: some View {
-        if searchResults.isEmpty {
-            Text(searchText.isEmpty ? "" : "No results")
-                .foregroundStyle(.secondary)
+        Section {
+            searchFiltersSection
+        }
+        .listRowSeparator(.hidden)
+
+        if filteredSearchResults.isEmpty {
+            Section {
+                Text(searchText.isEmpty ? "" : "No results")
+                    .foregroundStyle(.secondary)
+            }
         } else {
-            ForEach(searchResults, id: \.entryId) { entry in
-                DictionarySearchResultRow(
-                    entry: entry,
-                    isSaved: isSaved(entry),
-                    onToggleSave: { toggleSave(entry) }
-                )
+            Section {
+                ForEach(filteredSearchResults, id: \.entryId) { entry in
+                    DictionarySearchResultRow(
+                        entry: entry,
+                        isSaved: isSaved(entry),
+                        onToggleSave: { toggleSave(entry) }
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        openSearchResult(entry)
+                    }
+                }
+            } header: {
+                Text("\(filteredSearchResults.count) Result\(filteredSearchResults.count == 1 ? "" : "s")")
             }
         }
+    }
+
+    // Renders the search-mode picker plus optional live result filters for dictionary search.
+    private var searchFiltersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Search Mode", selection: $searchMode) {
+                ForEach(DictionarySearchMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            DisclosureGroup(isExpanded: $areSearchFiltersExpanded) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Common words only", isOn: $searchCommonWordsOnly)
+
+                    Picker("Sort", selection: $searchSortMode) {
+                        ForEach(DictionarySearchSortMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    HStack {
+                        Text("Part of speech")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Menu {
+                            ForEach(availableSearchPartsOfSpeech, id: \.self) { label in
+                                Button {
+                                    toggleSearchPartOfSpeech(label)
+                                } label: {
+                                    Label(label, systemImage: searchSelectedPartsOfSpeech.contains(label) ? "checkmark" : "")
+                                }
+                            }
+                        } label: {
+                            Text(searchPartOfSpeechSummary)
+                                .font(.caption)
+                        }
+                        .disabled(availableSearchPartsOfSpeech.isEmpty)
+                    }
+
+                    Button("Reset Filters") {
+                        resetSearchControls()
+                    }
+                    .disabled(hasActiveSearchControls == false)
+                }
+                .padding(.top, 4)
+            } label: {
+                HStack(spacing: 8) {
+                    Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
+                    Spacer()
+                    if hasActiveSearchControls {
+                        Text("Active")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     // Renders one history entry row with swipe-to-delete and a context menu matching the saved-words CRUD pattern.
@@ -556,7 +619,7 @@ struct WordsView: View {
 
     // Saves or removes an entry from search results.
     private func toggleSave(_ entry: DictionaryEntry) {
-        let surface = entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? entry.matchedSurface
+        let surface = entry.primarySearchSurface
         if isSaved(entry) {
             wordsStore.remove(id: entry.entryId)
         } else {
@@ -577,6 +640,133 @@ struct WordsView: View {
     private func wordForHistory(_ entry: HistoryEntry) -> SavedWord {
         wordsStore.words.first { $0.canonicalEntryID == entry.canonicalEntryID }
             ?? SavedWord(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
+    }
+
+    // Returns available POS labels from the current raw search result set.
+    private var availableSearchPartsOfSpeech: [String] {
+        var seen = Set<String>()
+        var labels: [String] = []
+
+        for entry in searchResults {
+            for label in entry.searchPartOfSpeechLabels where seen.insert(label).inserted {
+                labels.append(label)
+            }
+        }
+
+        return labels
+    }
+
+    // Returns the current result set after applying common-word, POS, and sort controls.
+    private var filteredSearchResults: [DictionaryEntry] {
+        let filtered = searchResults.filter { entry in
+            if searchCommonWordsOnly && entry.isCommonSearchEntry == false {
+                return false
+            }
+
+            if searchSelectedPartsOfSpeech.isEmpty == false {
+                let entryParts = Set(entry.searchPartOfSpeechLabels)
+                if entryParts.isDisjoint(with: searchSelectedPartsOfSpeech) {
+                    return false
+                }
+            }
+
+            return true
+        }
+
+        switch searchSortMode {
+        case .relevance:
+            return filtered
+        case .commonFirst:
+            return filtered.enumerated().sorted { lhs, rhs in
+                if lhs.element.isCommonSearchEntry != rhs.element.isCommonSearchEntry {
+                    return lhs.element.isCommonSearchEntry && rhs.element.isCommonSearchEntry == false
+                }
+                return lhs.offset < rhs.offset
+            }.map(\.element)
+        case .alphabetical:
+            return filtered.sorted {
+                $0.primarySearchSurface.localizedCaseInsensitiveCompare($1.primarySearchSurface) == .orderedAscending
+            }
+        }
+    }
+
+    // Describes the active POS selection in the search filter summary line.
+    private var searchPartOfSpeechSummary: String {
+        if searchSelectedPartsOfSpeech.isEmpty {
+            return availableSearchPartsOfSpeech.isEmpty ? "Unavailable" : "Any"
+        }
+
+        return searchSelectedPartsOfSpeech.sorted().joined(separator: ", ")
+    }
+
+    // True when any live dictionary-search control is narrowing or reordering the result set.
+    private var hasActiveSearchControls: Bool {
+        searchCommonWordsOnly || searchSortMode != .relevance || searchSelectedPartsOfSpeech.isEmpty == false
+    }
+
+    // Starts or replaces the debounced dictionary-search task for the current query and mode.
+    private func startSearchTask(for query: String) {
+        searchTask?.cancel()
+        searchTask = nil
+
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedQuery.isEmpty == false else {
+            searchResults = []
+            return
+        }
+
+        searchTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 300_000_000)
+            } catch {
+                return
+            }
+
+            guard let store = dictionaryStore, Task.isCancelled == false else { return }
+            let mode = searchMode
+            let results = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let entries = (try? store.searchEntries(term: trimmedQuery, mode: mode)) ?? []
+                    continuation.resume(returning: entries)
+                }
+            }
+
+            guard Task.isCancelled == false,
+                  searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery,
+                  searchMode == mode else {
+                return
+            }
+
+            searchResults = results
+            pruneUnavailableSearchPartsOfSpeech()
+        }
+    }
+
+    // Removes POS selections that are no longer available after a new search result set arrives.
+    private func pruneUnavailableSearchPartsOfSpeech() {
+        searchSelectedPartsOfSpeech.formIntersection(Set(availableSearchPartsOfSpeech))
+    }
+
+    // Toggles one POS label in the search filter menu.
+    private func toggleSearchPartOfSpeech(_ label: String) {
+        if searchSelectedPartsOfSpeech.contains(label) {
+            searchSelectedPartsOfSpeech.remove(label)
+        } else {
+            searchSelectedPartsOfSpeech.insert(label)
+        }
+    }
+
+    // Resets live dictionary-search controls back to the default broad result set.
+    private func resetSearchControls() {
+        searchCommonWordsOnly = false
+        searchSortMode = .relevance
+        searchSelectedPartsOfSpeech = []
+    }
+
+    // Opens one live search result in the detail sheet and records it in lookup history.
+    private func openSearchResult(_ entry: DictionaryEntry) {
+        historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
+        selectedDetailWord = detailWord(entryID: entry.entryId, surfaceHint: entry.primarySearchSurface)
     }
 }
 

@@ -57,3 +57,14 @@ Prevented from scrolling all the way down in view mode
 - [ ] embedding refinements
 - [ ] kanji metadata
 - [ ] Halfwidth katakana normalization in lookup (ｱｲｳｴｵ → アイウエオ etc.) — no current handling in KanaNormalizer or DictionaryStore
+
+Remaining Kyouku carryovers:
+
+- [ ] Render pitch accent in word detail
+- [ ] Add manual/custom word creation and editing
+- [ ] Import Whisper JSON timing, including `word_segments`, into subtitle cues
+- [ ] Expand TTS beyond per-word playback
+- [ ] Note-level TTS controls
+- [ ] Pause/resume note-level TTS
+- [ ] Rate and voice controls for note-level TTS
+- [ ] Spoken-range highlighting for note-level TTS

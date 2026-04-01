@@ -2,6 +2,8 @@ import Foundation
 import Combine
 
 struct Note: Identifiable, Codable, Equatable, Hashable {
+    static let currentSchemaVersion = 1
+
     var id: UUID
     var title: String
     var content: String
@@ -31,31 +33,5 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.audioAttachmentID = audioAttachmentID
-    }
-
-    // Decodes a note using the current segments-based schema.
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: NoteCodingKeys.self)
-        let now = Date()
-
-        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
-        content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
-        segments = try container.decodeIfPresent([SegmentRange].self, forKey: .segments)
-        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? now
-        modifiedAt = try container.decodeIfPresent(Date.self, forKey: .modifiedAt) ?? createdAt
-        audioAttachmentID = try container.decodeIfPresent(UUID.self, forKey: .audioAttachmentID)
-    }
-
-    // Encodes a note with explicit segmentation and timestamp fields for stable transfer files.
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: NoteCodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(title, forKey: .title)
-        try container.encode(content, forKey: .content)
-        try container.encode(segments ?? [], forKey: .segments)
-        try container.encode(createdAt, forKey: .createdAt)
-        try container.encode(modifiedAt, forKey: .modifiedAt)
-        try container.encodeIfPresent(audioAttachmentID, forKey: .audioAttachmentID)
     }
 }

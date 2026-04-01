@@ -435,7 +435,7 @@ struct SegmentListView: View {
             )
         }
 
-        let normalizedEntries = SavedWordStorageMigrator.normalizedEntries(entries)
+        let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
         persistSavedWordEntriesToStorage(normalizedEntries)
         applySavedWordState(entries: normalizedEntries)
     }
@@ -515,7 +515,7 @@ struct SegmentListView: View {
                 savedWordEntryIDs.insert(entryID)
             }
 
-            let normalizedEntries = SavedWordStorageMigrator.normalizedEntries(entries)
+            let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
             persistSavedWordEntriesToStorage(normalizedEntries)
             applySavedWordState(entries: normalizedEntries)
             showAddAllFeedback(addedCount: addedCount)
@@ -581,12 +581,12 @@ struct SegmentListView: View {
 
     // Loads canonical saved-word entries from shared storage.
     private func loadSavedWordEntriesFromStorage() -> [SavedWord] {
-        SavedWordStorageMigrator.loadSavedWords(storageKey: savedWordsStorageKey)
+        SavedWordStorage.loadSavedWords(storageKey: savedWordsStorageKey)
     }
 
     // Persists saved-word entries including optional source note references, then notifies WordsStore so WordsView reflects the change.
     private func persistSavedWordEntriesToStorage(_ entries: [SavedWord]) {
-        SavedWordStorageMigrator.persist(entries: entries, storageKey: savedWordsStorageKey)
+        SavedWordStorage.persist(entries: entries, storageKey: savedWordsStorageKey)
         wordsStore.reload()
     }
 

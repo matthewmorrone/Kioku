@@ -50,7 +50,7 @@ Deinflection must remain data-driven. Rules must live in `Resources/deinflection
 
 ## Data Model Invariants
 
-**Note Persistence** — Notes must never persist rendering artifacts, karaoke state, layout state, or hard cuts.
+**Note Persistence** — Notes must never persist rendering artifacts, layout state, or hard cuts.
 
 **Span Invariants** — Spans must satisfy: UTF-16 coordinate system, half-open ranges `[start, end)`, full text coverage, no gaps, no overlaps, strictly ascending order, `end > start`. Editing note text invalidates segmentation and forces recomputation.
 
@@ -112,4 +112,4 @@ Deinflection must remain data-driven. Rules must live in `Resources/deinflection
 
 ## Architecture Non-Goals
 
-The system must never introduce: hard cuts, boundary-only segmentation, karaoke subsystem, layout persistence, surface-based word identity, mandatory cloud sync, mandatory network dependency.
+The system must never introduce: hard cuts, boundary-only segmentation, layout persistence, surface-based word identity, mandatory cloud sync, mandatory network dependency.

@@ -8,23 +8,23 @@ struct DictionarySearchResultRow: View {
 
     // Picks the best display surface: first kanji form if present, else first kana form.
     private var displaySurface: String {
-        entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? entry.matchedSurface
+        entry.primarySearchSurface
     }
 
     // Returns the primary kana reading, omitted when the surface is already pure kana.
     private var reading: String? {
-        guard entry.kanjiForms.isEmpty == false else { return nil }
-        return entry.kanaForms.first?.text
+        entry.primarySearchReading
     }
 
     // Builds a compact POS + gloss label from the first available sense.
     private var primaryGloss: String {
-        guard let sense = entry.senses.first else { return "" }
+        guard let sense = entry.senses.first else { return entry.primarySearchGloss }
         var parts: [String] = []
         if let pos = sense.pos, pos.isEmpty == false {
             parts.append("[\(JMdictTagExpander.expand(pos))]")
         }
-        if let gloss = sense.glosses.first {
+        if entry.primarySearchGloss.isEmpty == false {
+            let gloss = entry.primarySearchGloss
             parts.append(gloss)
         }
         return parts.joined(separator: " ")

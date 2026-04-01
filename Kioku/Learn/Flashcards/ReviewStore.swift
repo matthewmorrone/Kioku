@@ -61,6 +61,22 @@ final class ReviewStore: ObservableObject {
         return Double(lifetimeCorrect) / Double(total)
     }
 
+    // Replaces the entire persisted review snapshot after a validated backup import.
+    func replaceAll(
+        stats: [Int64: ReviewWordStats],
+        markedWrong: Set<Int64>,
+        lifetimeCorrect: Int,
+        lifetimeAgain: Int
+    ) {
+        self.stats = stats
+        self.markedWrong = markedWrong
+        self.lifetimeCorrect = lifetimeCorrect
+        self.lifetimeAgain = lifetimeAgain
+        persistStats()
+        persistWrong()
+        persistLifetime()
+    }
+
     // Loads all persisted review state from UserDefaults on init.
     private func load() {
         if let data = UserDefaults.standard.data(forKey: statsKey),
