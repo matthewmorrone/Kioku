@@ -8,6 +8,9 @@ struct SettingsView: View {
 
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var wordsStore: WordsStore
+    @EnvironmentObject private var wordListsStore: WordListsStore
+    @EnvironmentObject private var historyStore: HistoryStore
+    @EnvironmentObject private var reviewStore: ReviewStore
 
     @AppStorage(TypographySettings.textSizeKey)
     private var textSize = TypographySettings.defaultTextSize
@@ -56,12 +59,20 @@ struct SettingsView: View {
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
     @State private var wotdPendingCount: Int = 0
 
-    @State private var exportDocument = NotesTransferDocument(notes: [])
+    @State private var exportDocument = AppBackupDocument(
+        payload: AppBackupPayload(
+            notes: [],
+            words: [],
+            wordLists: [],
+            history: [],
+            reviewStats: [],
+            markedWrong: [],
+            lifetimeCorrect: 0,
+            lifetimeAgain: 0
+        )
+    )
     @State private var isShowingExporter = false
     @State private var isShowingImporter = false
-    @State private var isShowingImportModeMenu = false
-    @State private var pendingImportFileURL: URL?
-    @State private var selectedImportMode: NotesImportMode = .replaceAll
     @State private var isShowingTransferAlert = false
     @State private var transferAlertTitle = ""
     @State private var transferAlertMessage = ""
@@ -320,18 +331,22 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    // Exports the current notes collection and saved segments to a JSON file.
+                    // Exports the full app state to one JSON backup file.
                     Button {
-                        beginNotesExport()
+                        beginAppExport()
                     } label: {
-                        Label("Export", systemImage: "square.and.arrow.up")
+                        Label("Export App Data", systemImage: "square.and.arrow.up")
                     }
-                    // Imports a JSON export and replaces the current notes collection.
+                    // Imports a full-app backup and replaces the current persisted state.
                     Button {
                         isShowingImporter = true
                     } label: {
-                        Label("Import", systemImage: "square.and.arrow.down")
+                        Label("Import App Data", systemImage: "square.and.arrow.down")
                     }
+                } header: {
+                    Text("Backup & Restore")
+                } footer: {
+                    Text("Imports replace notes, saved words, lists, history, and review metrics.")
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -353,42 +368,6 @@ struct SettingsView: View {
         ) { result in
             handleImportResult(result)
         }
-        .sheet(
-            isPresented: $isShowingImportModeMenu,
-            onDismiss: {
-                pendingImportFileURL = nil
-            }
-        ) {
-            NavigationStack {
-                List {
-                    ForEach(NotesImportMode.allCases, id: \.self) { mode in
-                        Button {
-                            selectedImportMode = mode
-                            importNotes(from: mode)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(mode.title)
-                                Text(mode.detail)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .navigationTitle("Import Notes")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Cancel") {
-                            pendingImportFileURL = nil
-                            isShowingImportModeMenu = false
-                        }
-                    }
-                }
-            }
-        }
         .alert(transferAlertTitle, isPresented: $isShowingTransferAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -396,9 +375,23 @@ struct SettingsView: View {
         }
     }
 
-    // Captures the latest notes state before presenting the system export flow.
-    private func beginNotesExport() {
-        exportDocument = notesStore.makeTransferDocument()
+    // Captures the latest full app state before presenting the system export flow.
+    private func beginAppExport() {
+        let reviewStats = reviewStore.stats
+            .map { AppBackupReviewStats(canonicalEntryID: $0.key, stats: $0.value) }
+            .sorted { $0.canonicalEntryID < $1.canonicalEntryID }
+        exportDocument = AppBackupDocument(
+            payload: AppBackupPayload(
+                notes: notesStore.exportNotes(),
+                words: wordsStore.words,
+                wordLists: wordListsStore.lists,
+                history: historyStore.entries,
+                reviewStats: reviewStats,
+                markedWrong: Array(reviewStore.markedWrong).sorted(),
+                lifetimeCorrect: reviewStore.lifetimeCorrect,
+                lifetimeAgain: reviewStore.lifetimeAgain
+            )
+        )
         isShowingExporter = true
     }
 
@@ -406,13 +399,13 @@ struct SettingsView: View {
     private func handleExportResult(_ result: Result<URL, Error>) {
         switch result {
         case .success:
-            showTransferAlert(title: "Export Complete", message: "Your notes export was saved successfully.")
+            showTransferAlert(title: "Export Complete", message: "Your app backup was saved successfully.")
         case .failure(let error):
             showTransferAlert(title: "Export Failed", message: error.localizedDescription)
         }
     }
 
-    // Validates the importer selection and loads the selected notes export file.
+    // Validates the importer selection and loads the selected app-backup file.
     private func handleImportResult(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
@@ -421,41 +414,45 @@ struct SettingsView: View {
                 return
             }
 
-            pendingImportFileURL = fileURL
-            isShowingImportModeMenu = true
+            let hasSecurityScope = fileURL.startAccessingSecurityScopedResource()
+            defer {
+                if hasSecurityScope {
+                    fileURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                let document = try AppBackupDocument(contentsOf: fileURL)
+                importAppBackup(document)
+            } catch {
+                showTransferAlert(title: "Import Failed", message: error.localizedDescription)
+            }
         case .failure(let error):
             showTransferAlert(title: "Import Failed", message: error.localizedDescription)
         }
     }
 
-    // Imports a previously selected file using one explicit merge mode from the import-mode menu.
-    private func importNotes(from mode: NotesImportMode) {
-        guard let fileURL = pendingImportFileURL else {
-            showTransferAlert(title: "Import Failed", message: "No file was selected.")
-            return
-        }
+    // Applies one validated app-backup snapshot to every persisted store in a single replace-all pass.
+    private func importAppBackup(_ document: AppBackupDocument) {
+        let payload = document.payload
+        let stats = Dictionary(uniqueKeysWithValues: payload.reviewStats.map { ($0.canonicalEntryID, $0.reviewWordStats()) })
 
-        let hasSecurityScope = fileURL.startAccessingSecurityScopedResource()
-        defer {
-            if hasSecurityScope {
-                fileURL.stopAccessingSecurityScopedResource()
-            }
-        }
+        wordListsStore.replaceAll(with: payload.wordLists)
+        wordsStore.replaceAll(with: payload.words)
+        historyStore.replaceAll(with: payload.history)
+        reviewStore.replaceAll(
+            stats: stats,
+            markedWrong: Set(payload.markedWrong),
+            lifetimeCorrect: payload.lifetimeCorrect,
+            lifetimeAgain: payload.lifetimeAgain
+        )
+        notesStore.replaceAll(with: payload.notes)
 
-        do {
-            let document = try NotesTransferDocument(contentsOf: fileURL)
-            notesStore.importTransferDocument(document, mode: mode)
-            pendingImportFileURL = nil
-            isShowingImportModeMenu = false
-            showTransferAlert(
-                title: "Import Complete",
-                message: "\(mode.completionVerb) \(document.payload.notes.count) notes."
-            )
-        } catch {
-            pendingImportFileURL = nil
-            isShowingImportModeMenu = false
-            showTransferAlert(title: "Import Failed", message: error.localizedDescription)
-        }
+        let message = """
+        Imported \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.history.count) history entries, and \(payload.reviewStats.count) review records.
+        """
+
+        showTransferAlert(title: "Import Complete", message: message)
     }
 
     // Presents a single alert for import and export status messages.

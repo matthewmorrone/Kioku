@@ -39,6 +39,14 @@ struct NotesTransferDocument: FileDocument {
     private static func decodePayload(from data: Data) throws -> NotesTransferPayload {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(NotesTransferPayload.self, from: data)
+        let payload = try decoder.decode(NotesTransferPayload.self, from: data)
+        guard payload.version == NotesTransferPayload.currentVersion else {
+            throw NSError(
+                domain: "Kioku.NotesTransfer",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unsupported notes export version \(payload.version). Expected version \(NotesTransferPayload.currentVersion)."]
+            )
+        }
+        return payload
     }
 }

@@ -1,26 +1,25 @@
 import Foundation
 
-// Loads and persists canonical-entry keyed saved words in normalized form.
-struct SavedWordStorageMigrator {
-    // Loads canonical saved words from storage and rewrites them in normalized form.
+// Loads and persists saved words in canonical-entry keyed normalized form.
+enum SavedWordStorage {
+    // Loads saved words from storage and rewrites them if normalization changes the payload.
     static func loadSavedWords(
         storageKey: String,
         userDefaults: UserDefaults = .standard
     ) -> [SavedWord] {
-        if let data = userDefaults.data(forKey: storageKey) {
-            if let decodedEntries = try? JSONDecoder().decode([SavedWord].self, from: data) {
-                let normalizedEntries = normalizedEntries(decodedEntries)
-                if let normalizedData = try? JSONEncoder().encode(normalizedEntries), normalizedData != data {
-                    userDefaults.set(normalizedData, forKey: storageKey)
-                }
-                return normalizedEntries
-            }
+        guard let data = userDefaults.data(forKey: storageKey),
+              let decodedEntries = try? JSONDecoder().decode([SavedWord].self, from: data) else {
+            return []
         }
 
-        return []
+        let normalizedEntries = normalizedEntries(decodedEntries)
+        if let normalizedData = try? JSONEncoder().encode(normalizedEntries), normalizedData != data {
+            userDefaults.set(normalizedData, forKey: storageKey)
+        }
+        return normalizedEntries
     }
 
-    // Persists saved-word entries as normalized canonical-entry keyed payloads.
+    // Persists saved words after coalescing duplicates by canonical entry id.
     static func persist(entries: [SavedWord], storageKey: String, userDefaults: UserDefaults = .standard) {
         let normalized = normalizedEntries(entries)
         if let encoded = try? JSONEncoder().encode(normalized) {
@@ -29,7 +28,6 @@ struct SavedWordStorageMigrator {
     }
 
     // Coalesces duplicate saves by canonical entry id while preserving first-seen order.
-    // wordListIDs are unioned across duplicates so list membership is never dropped.
     static func normalizedEntries(_ entries: [SavedWord]) -> [SavedWord] {
         var mergedByEntryID: [Int64: SavedWord] = [:]
         var orderedEntryIDs: [Int64] = []
@@ -47,7 +45,8 @@ struct SavedWordStorageMigrator {
                     canonicalEntryID: existing.canonicalEntryID,
                     surface: preferredSurface,
                     sourceNoteIDs: mergedSourceNoteIDs,
-                    wordListIDs: mergedWordListIDs
+                    wordListIDs: mergedWordListIDs,
+                    savedAt: existing.savedAt
                 )
                 mergedByEntryID[entry.canonicalEntryID] = existing
                 continue

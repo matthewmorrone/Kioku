@@ -43,6 +43,20 @@ final class HistoryStore: ObservableObject {
         persist()
     }
 
+    // Replaces the history store with one bounded, most-recent-first snapshot.
+    func replaceAll(with entries: [HistoryEntry]) {
+        var dedupedByID: [Int64: HistoryEntry] = [:]
+        for entry in entries.sorted(by: { $0.lookedUpAt > $1.lookedUpAt }) {
+            if dedupedByID[entry.canonicalEntryID] == nil {
+                dedupedByID[entry.canonicalEntryID] = entry
+            }
+        }
+
+        let ordered = dedupedByID.values.sorted(by: { $0.lookedUpAt > $1.lookedUpAt })
+        self.entries = Array(ordered.prefix(maxEntries))
+        persist()
+    }
+
     // Decodes persisted history entries from UserDefaults on first access.
     private func load() {
         guard

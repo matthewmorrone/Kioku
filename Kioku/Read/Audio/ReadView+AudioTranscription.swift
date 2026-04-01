@@ -130,10 +130,21 @@ extension ReadView {
                 return
             }
 
-            // Generates segment timing for karaoke workflows without injecting timing payload into note text.
-            _ = Self.makeKaraokeTimingJSON(from: bestSegments)
+            let lineLevelCues = Self.makeLineLevelSubtitleCues(
+                from: bestSegments,
+                fallbackTranscript: bestTranscript,
+                audioDurationSeconds: audioDuration
+            )
+            let finalText = SubtitleParser.assembleNoteContent(from: lineLevelCues)
+            let attachmentID = UUID()
+            _ = try NotesAudioStore.shared.saveAudio(from: copiedURL, attachmentID: attachmentID)
+            try NotesAudioStore.shared.saveCues(lineLevelCues, attachmentID: attachmentID)
             await MainActor.run {
-                finalizeStreamingTranscriptionNote(id: transcriptionNoteID, finalText: bestTranscript)
+                finalizeStreamingTranscriptionNote(
+                    id: transcriptionNoteID,
+                    finalText: finalText,
+                    attachmentID: attachmentID
+                )
             }
         } catch {
             audioTranscriptionErrorMessage = error.localizedDescription
@@ -234,7 +245,7 @@ extension ReadView {
     }
 
     // Replaces the temporary status-prefixed content with the final transcript after chunked recognition is complete.
-    func finalizeStreamingTranscriptionNote(id: UUID, finalText: String) {
+    func finalizeStreamingTranscriptionNote(id: UUID, finalText: String, attachmentID: UUID?) {
         let normalizedText = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
         let titleToSave = firstLineTitle(from: normalizedText)
 
@@ -244,6 +255,7 @@ extension ReadView {
             content: normalizedText,
             segments: nil
         )
+        notesStore.updateAudioAttachment(id: id, attachmentID: attachmentID)
 
         if activeNoteID == id {
             isLoadingSelectedNote = true
@@ -251,6 +263,7 @@ extension ReadView {
             fallbackTitle = titleToSave
             text = normalizedText
             segments = nil
+            loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
             isLoadingSelectedNote = false
         }
     }
@@ -466,6 +479,99 @@ extension ReadView {
         return trimmedExisting + "\n" + trimmedIncoming
     }
 
+    // Builds line-level subtitle cues from timestamped speech segments so playback can highlight one line at a time.
+    nonisolated static func makeLineLevelSubtitleCues(
+        from segments: [SFTranscriptionSegment],
+        fallbackTranscript: String,
+        audioDurationSeconds: TimeInterval
+    ) -> [SubtitleCue] {
+        let orderedSegments = segments.sorted { lhs, rhs in
+            if lhs.timestamp != rhs.timestamp {
+                return lhs.timestamp < rhs.timestamp
+            }
+            return lhs.duration < rhs.duration
+        }
+
+        var cues: [SubtitleCue] = []
+        var currentText = ""
+        var currentStartMs: Int?
+        var currentEndMs: Int?
+
+        func flushCurrentCue() {
+            let trimmed = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.isEmpty == false,
+                  let startMs = currentStartMs,
+                  let endMs = currentEndMs else {
+                currentText = ""
+                currentStartMs = nil
+                currentEndMs = nil
+                return
+            }
+
+            cues.append(
+                SubtitleCue(
+                    index: cues.count + 1,
+                    startMs: max(0, startMs),
+                    endMs: max(startMs + 1, endMs),
+                    text: trimmed
+                )
+            )
+            currentText = ""
+            currentStartMs = nil
+            currentEndMs = nil
+        }
+
+        for segment in orderedSegments {
+            let piece = normalizedSubtitleSegmentText(segment.substring)
+            guard piece.isEmpty == false else {
+                continue
+            }
+
+            let startMs = Int((segment.timestamp * 1000).rounded())
+            let endMs = Int(((segment.timestamp + segment.duration) * 1000).rounded())
+            let gapMs = currentEndMs.map { startMs - $0 } ?? 0
+            let shouldStartNewCue = gapMs > 900
+                || (gapMs > 350 && currentText.count >= 24)
+
+            if shouldStartNewCue {
+                flushCurrentCue()
+            }
+
+            if currentText.isEmpty {
+                currentText = piece
+                currentStartMs = startMs
+                currentEndMs = endMs
+            } else {
+                currentText = appendedSubtitleLineText(currentText, piece)
+                currentEndMs = max(currentEndMs ?? endMs, endMs)
+            }
+
+            if currentText.hasSentenceEndingPunctuation {
+                flushCurrentCue()
+            }
+        }
+
+        flushCurrentCue()
+
+        if cues.isEmpty {
+            let trimmedFallback = fallbackTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmedFallback.isEmpty == false else {
+                return []
+            }
+
+            return [
+                SubtitleCue(
+                    index: 1,
+                    startMs: 0,
+                    endMs: max(1, Int((audioDurationSeconds * 1000).rounded())),
+                    text: trimmedFallback
+                )
+            ]
+        }
+
+        return cues
+    }
+
     // Detects the common Speech-framework "no speech detected" failure so silent chunks can be skipped non-fatally.
     nonisolated static func isNoSpeechDetectedError(_ error: Error) -> Bool {
         let nsError = error as NSError
@@ -534,6 +640,27 @@ extension ReadView {
         return Array(uniqueParts.prefix(80))
     }
 
+    // Normalizes one speech segment for subtitle assembly without altering Japanese text content.
+    nonisolated static func normalizedSubtitleSegmentText(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Appends a segment to the current subtitle line, inserting a space only for adjacent latin/digit runs.
+    nonisolated static func appendedSubtitleLineText(_ existingText: String, _ incomingText: String) -> String {
+        guard existingText.isEmpty == false else {
+            return incomingText
+        }
+
+        guard let lastScalar = existingText.unicodeScalars.last,
+              let firstScalar = incomingText.unicodeScalars.first else {
+            return existingText + incomingText
+        }
+
+        let needsSpace = CharacterSet.alphanumerics.contains(lastScalar)
+            && CharacterSet.alphanumerics.contains(firstScalar)
+        return needsSpace ? existingText + " " + incomingText : existingText + incomingText
+    }
+
     // Builds karaoke-oriented JSON from recognizer segment timing at the finest granularity Apple Speech exposes.
     nonisolated static func makeKaraokeTimingJSON(from segments: [SFTranscriptionSegment]) -> String {
         var segmentEntries: [String] = []
@@ -572,5 +699,11 @@ extension ReadView {
         escaped = escaped.replacingOccurrences(of: "\r", with: "\\r")
         escaped = escaped.replacingOccurrences(of: "\t", with: "\\t")
         return escaped
+    }
+}
+
+private extension String {
+    var hasSentenceEndingPunctuation: Bool {
+        last == "。" || last == "！" || last == "？" || last == "!" || last == "?"
     }
 }

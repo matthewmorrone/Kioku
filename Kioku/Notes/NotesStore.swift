@@ -122,6 +122,11 @@ final class NotesStore: ObservableObject {
         return NotesTransferDocument(notes: exportNotes)
     }
 
+    // Returns the current notes collection as export-ready values with live segmentation snapshots applied.
+    func exportNotes() -> [Note] {
+        makeTransferDocument().payload.notes
+    }
+
     // Imports notes using the selected merge strategy and persists the resulting collection.
     func importTransferDocument(_ document: NotesTransferDocument, mode: NotesImportMode) {
         let importedNotes = document.payload.notes
@@ -135,6 +140,12 @@ final class NotesStore: ObservableObject {
         case .append:
             notes += importedNotes
         }
+    }
+
+    // Replaces the entire notes collection with one validated snapshot.
+    func replaceAll(with notes: [Note]) {
+        runtimeSegmentationByNoteID = [:]
+        self.notes = notes
     }
 
     // Merges imported notes by replacing existing entries with matching identifiers.
@@ -204,6 +215,16 @@ final class NotesStore: ObservableObject {
         let newNote = Note(title: title, content: content, segments: segments, createdAt: now, modifiedAt: now)
         notes.insert(newNote, at: 0)
         return newNote.id
+    }
+
+    // Updates the audio attachment binding for one note without disturbing text or segmentation.
+    func updateAudioAttachment(id: UUID, attachmentID: UUID?) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        notes[index].audioAttachmentID = attachmentID
+        notes[index].modifiedAt = Date()
     }
 
     // Persists a read-screen edit by upserting into the in-memory store and writing to disk immediately.

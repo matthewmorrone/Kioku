@@ -1,6 +1,8 @@
 import Foundation
 
 struct SegmentRange: Codable, Equatable, Hashable {
+    static let currentSchemaVersion = 1
+
     var start: Int
     var end: Int
     var surface: String
@@ -14,14 +16,5 @@ struct SegmentRange: Codable, Equatable, Hashable {
         self.end = end
         self.surface = surface
         self.furigana = furigana
-    }
-
-    // Decodes with a fallback empty surface so legacy segments without the field still load.
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        start = try container.decode(Int.self, forKey: .start)
-        end = try container.decode(Int.self, forKey: .end)
-        surface = try container.decodeIfPresent(String.self, forKey: .surface) ?? ""
-        furigana = try container.decodeIfPresent([FuriganaAnnotation].self, forKey: .furigana)
     }
 }
