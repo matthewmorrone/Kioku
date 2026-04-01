@@ -15,23 +15,28 @@ nonisolated enum StartupTimer {
     // Measures a synchronous block, logging elapsed ms to console and emitting signpost intervals.
     nonisolated static func measure<T>(_ label: String, block: () throws -> T) rethrows -> T {
         let start = CFAbsoluteTimeGetCurrent()
-        os_signpost(.begin, log: log, name: "Startup", "%{public}s", label)
+        // Logging disabled.
+        // os_signpost(.begin, log: log, name: "Startup", "%{public}s", label)
         let result = try block()
         let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-        os_signpost(.end, log: log, name: "Startup", "%{public}s", label)
-        os_log(
-            .info,
-            log: log,
-            "[Startup +%.1f ms] %{public}s: %.1f ms",
-            elapsedSinceLaunchMs,
-            label,
-            elapsed
-        )
+        _ = elapsed
+        // Logging disabled.
+        // os_signpost(.end, log: log, name: "Startup", "%{public}s", label)
+        // os_log(
+        //     .info,
+        //     log: log,
+        //     "[Startup +%.1f ms] %{public}s: %.1f ms",
+        //     elapsedSinceLaunchMs,
+        //     label,
+        //     elapsed
+        // )
         return result
     }
 
     // Logs a single timestamp marker for async boundaries and lifecycle events.
     nonisolated static func mark(_ label: String) {
-        os_log(.info, log: log, "[Startup +%.1f ms] %{public}s", elapsedSinceLaunchMs, label)
+        _ = label
+        // Logging disabled.
+        // os_log(.info, log: log, "[Startup +%.1f ms] %{public}s", elapsedSinceLaunchMs, label)
     }
 }

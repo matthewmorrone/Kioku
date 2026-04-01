@@ -4,11 +4,16 @@ import Combine
 @MainActor
 final class NotesStore: ObservableObject {
     @Published var notes: [Note] {
-        didSet { save() }
+        didSet {
+            guard suppressSave == false else { return }
+            save()
+        }
     }
 
     private let storageKey = "kioku.notes.v1"
     private var runtimeSegmentationByNoteID: [UUID: NotesRuntimeSegmentationSnapshot] = [:]
+    private var saveTask: Task<Void, Never>?
+    private var suppressSave = false
 
     // Loads persisted notes so the in-memory store starts from disk state.
     init() {
@@ -20,7 +25,10 @@ final class NotesStore: ObservableObject {
 
     // Reloads notes from storage to reflect external updates.
     func reload() {
+        saveTask?.cancel()
+        suppressSave = true
         notes = NotesStore.readNotes(for: storageKey)
+        suppressSave = false
     }
 
     // Inserts a new empty note at the top of the list.
@@ -199,10 +207,17 @@ final class NotesStore: ObservableObject {
     }
 
     // Persists a read-screen edit by upserting into the in-memory store and writing to disk immediately.
-    // Uses upsertNote so writes are synchronous and there is no window where data can be lost on process kill.
+    // Uses upsertNote so writes are coalesced in memory and can be flushed explicitly when needed.
     @discardableResult
     func scheduleReadEditorPersist(id: UUID?, title: String, content: String, segments: [SegmentRange]?) -> UUID {
         upsertNote(id: id, title: title, content: content, segments: segments)
+    }
+
+    // Forces the latest in-memory snapshot to disk, used when the app is backgrounding or a screen disappears.
+    func flushPendingSave() {
+        saveTask?.cancel()
+        saveTask = nil
+        Self.persist(notes: notes, for: storageKey)
     }
 
     // Produces export segment ranges from existing runtime or persisted state without recomputing segmentation.
@@ -228,8 +243,19 @@ final class NotesStore: ObservableObject {
 
     // Persists the current notes array into user defaults immediately.
     private func save() {
+        let snapshot = notes
+        let key = storageKey
+        saveTask?.cancel()
+        saveTask = Task.detached(priority: .utility) {
+            guard Task.isCancelled == false else { return }
+            Self.persist(notes: snapshot, for: key)
+        }
+    }
+
+    // Encodes and persists a concrete note snapshot without touching main-actor state.
+    private nonisolated static func persist(notes: [Note], for key: String) {
         guard let data = try? JSONEncoder().encode(notes) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        UserDefaults.standard.set(data, forKey: key)
     }
 
     // Reads and decodes notes for the given storage key.

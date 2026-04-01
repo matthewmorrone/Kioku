@@ -1,5 +1,4 @@
 import UIKit
-import SwiftUI
 import AVFoundation
 
 extension SegmentLookupSheet {
@@ -31,12 +30,14 @@ extension SegmentLookupSheet {
         let capturedSheetWordComponentsProvider = self.sheetWordComponentsProvider
         let capturedActiveReadingOverrideProvider = self.activeReadingOverrideProvider
         let capturedOnReadingReset = self.onReadingReset
+        let capturedOnWillDismiss = self.onWillDismiss
         dismissPopover(notifyDismissal: false) { [weak self] in
             guard let self, let presenter = self.topPresentingController() else {
                 return
             }
 
             self.onDismiss = onDismiss
+            self.onWillDismiss = capturedOnWillDismiss
             self.onReadingSelected = capturedOnReadingSelected
             self.onReadingReset = capturedOnReadingReset
             self.pathSegmentFrequencyProvider = capturedPathSegmentFrequencyProvider
@@ -55,116 +56,18 @@ extension SegmentLookupSheet {
             self.sheetLexiconDebugProvider = sheetLexiconDebugProvider
             self.sheetFrequencyProvider = sheetFrequencyProvider
             self.refreshSheetSupplementalData()
-
             var currentSurface = surface
-
             let sheetController = UIViewController()
             sheetController.view.backgroundColor = .systemBackground
             // Keeps content clear of the grabber area so the title is never clipped.
             sheetController.additionalSafeAreaInsets.top = 20
-
-            // SwiftUI header — mirrors WordDetailView header exactly.
-            let headerReading: String? = self.currentSheetUniqueReadings.first
-            let headerLemma: String? = self.currentSheetLemmaInfo.map { $0.lemma }
-            let headerView = SegmentLookupSheetHeader(surface: surface, reading: headerReading, lemma: headerLemma)
-            let headerHost = UIHostingController(rootView: headerView)
-            // sizingOptions must be set before the view is added to a parent so Auto Layout
-            // uses SwiftUI's ideal size — needed since FuriganaView computes height via CoreText.
-            if #available(iOS 16.0, *) {
-                headerHost.sizingOptions = .intrinsicContentSize
-            }
-            headerHost.view.translatesAutoresizingMaskIntoConstraints = false
-            headerHost.view.backgroundColor = .clear
-
-            // Header with per-kanji-run furigana centered above each headword.
-            let headwordFont = UIFont.systemFont(ofSize: 34, weight: .bold)
-            let rubyFont = UIFont.systemFont(ofSize: 17)
-
-            // Builds the header as a horizontal stack of columns. Kanji runs get a small
-            // reading label centered above; kana runs sit at the baseline with an empty
-            // spacer above so all columns share the same top-to-baseline geometry.
-            func buildHeaderSubviews(surface: String, reading: String) -> [UIView] {
-                let chars = Array(surface)
-                let runs = FuriganaAttributedString.kanjiRuns(in: surface)
-                let readings = FuriganaAttributedString.projectRunReadings(surface: surface, reading: reading, runs: runs)
-
-                // Segments: alternating kana and kanji chunks with their per-run readings.
-                struct Segment {
-                    let text: String
-                    let ruby: String? // nil for kana-only segments
-                }
-
-                var segments: [Segment] = []
-                var cursor = 0
-                for (i, run) in runs.enumerated() {
-                    // Kana before this kanji run.
-                    if cursor < run.start {
-                        segments.append(Segment(text: String(chars[cursor..<run.start]), ruby: nil))
-                    }
-                    let kanjiText = String(chars[run.start..<run.end])
-                    let ruby = readings.flatMap { $0.indices.contains(i) ? $0[i] : nil }
-                    segments.append(Segment(text: kanjiText, ruby: (ruby != nil && ruby != kanjiText) ? ruby : nil))
-                    cursor = run.end
-                }
-                // Trailing kana after last kanji run.
-                if cursor < chars.count {
-                    segments.append(Segment(text: String(chars[cursor...]), ruby: nil))
-                }
-
-                // No kanji runs at all — single plain label.
-                if segments.isEmpty {
-                    let label = UILabel()
-                    label.font = headwordFont
-                    label.text = surface
-                    label.textAlignment = .center
-                    return [label]
-                }
-
-                return segments.map { segment in
-                    let headwordLabel = UILabel()
-                    headwordLabel.font = headwordFont
-                    headwordLabel.text = segment.text
-                    headwordLabel.textAlignment = .center
-
-                    let rubyLabel = UILabel()
-                    rubyLabel.font = rubyFont
-                    rubyLabel.textColor = .secondaryLabel
-                    rubyLabel.textAlignment = .center
-                    rubyLabel.text = segment.ruby
-                    // Invisible spacer when no ruby — preserves vertical alignment across columns.
-                    rubyLabel.alpha = segment.ruby != nil ? 1 : 0
-                    // Explicit height ensures all columns are identically sized regardless of text content,
-                    // so UIStackView .bottom alignment produces correct baseline registration at every detent.
-                    rubyLabel.heightAnchor.constraint(equalToConstant: ceil(rubyFont.lineHeight)).isActive = true
-
-                    let column = UIStackView(arrangedSubviews: [rubyLabel, headwordLabel])
-                    column.axis = .vertical
-                    column.alignment = .center
-                    column.spacing = 2
-                    return column
-                }
-            }
-
-            let initialReading = self.currentSheetUniqueReadings.first ?? ""
-            let headerRow = UIStackView(arrangedSubviews: buildHeaderSubviews(surface: surface, reading: initialReading))
-            headerRow.axis = .horizontal
-            headerRow.alignment = .bottom
-            headerRow.spacing = 0
-
-            // Wrapper centers the row horizontally within the sheet; lemmaLabel is appended below.
-            let headerStack = UIStackView(arrangedSubviews: [headerRow])
-            headerStack.translatesAutoresizingMaskIntoConstraints = false
-            headerStack.axis = .vertical
-            headerStack.alignment = .center
-            headerStack.spacing = 2
-
-            // Lemma label — shows the dictionary base form when the surface is an inflected form.
-            let lemmaLabel = UILabel()
-            lemmaLabel.font = UIFont.preferredFont(forTextStyle: .title3)
-            lemmaLabel.textColor = .secondaryLabel
-            lemmaLabel.textAlignment = .center
-            lemmaLabel.isHidden = true
-            headerStack.addArrangedSubview(lemmaLabel)
+            // Restrict interactive dismissal to our custom handle instead of allowing a drag anywhere on the sheet.
+            sheetController.isModalInPresentation = true
+            let dismissHandleButton = makeSheetDismissHandleButton()
+            let headerComponents = makeSheetHeaderView(surface: surface, initialReading: self.currentSheetUniqueReadings.first)
+            let headerStack = headerComponents.stack
+            let headerRow = headerComponents.row
+            let lemmaLabel = headerComponents.lemmaLabel
 
             let prevReadingButton = UIButton(type: .system)
             prevReadingButton.translatesAutoresizingMaskIntoConstraints = false
@@ -194,7 +97,12 @@ extension SegmentLookupSheet {
                 showCustomSlot ? currentReadings.count + 1 : currentReadings.count
             }
 
-            // Updates the SwiftUI header to reflect the reading at the current index.
+            // Rebuilds the visible header row with furigana for the current surface and reading.
+            func rebuildHeaderRow(reading: String?) {
+                self.rebuildSheetHeaderRow(headerRow, surface: currentSurface, reading: reading)
+            }
+
+            // Updates the visible header to reflect the reading at the current index.
             // When on the empty custom slot, shows "..." as a tap affordance.
             func syncFuriganaToCurrentIndex() {
                 let reading: String?
@@ -205,8 +113,7 @@ extension SegmentLookupSheet {
                 } else {
                     reading = nil
                 }
-                let lemma = self.currentSheetLemmaInfo.map { $0.lemma }
-                headerHost.rootView = SegmentLookupSheetHeader(surface: currentSurface, reading: reading, lemma: lemma)
+                rebuildHeaderRow(reading: reading)
             }
 
             // Refreshes header for the current segment surface.
@@ -536,7 +443,7 @@ extension SegmentLookupSheet {
                 // middle top spacing (16), action bar (two rows: 44+8+44+12=108 container + 12 margin),
                 // bottom safe-area (~34), plus margins.
                 let safeArea = self.topPresentingController().flatMap { $0.view.window?.safeAreaInsets } ?? .zero
-                let baseChrome: CGFloat = 20 + safeArea.top + headerHeight + 8 + 16 + 108 + 12 + safeArea.bottom + 16
+                let baseChrome = self.surfaceSheetBaseChromeHeight(headerHeight: headerHeight, safeArea: safeArea)
                 return baseChrome + middleHeight + splitHeight
             }
 
@@ -576,25 +483,11 @@ extension SegmentLookupSheet {
                 currentSurface = outcome.surface
                 currentLeftNeighborSurface = outcome.leftNeighborSurface
                 currentRightNeighborSurface = outcome.rightNeighborSurface
-                // Rebuild the header row with per-run furigana for the new surface.
-                let updatedReading = self.currentSheetUniqueReadings.first ?? ""
-                headerRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
-                for view in buildHeaderSubviews(surface: currentSurface, reading: updatedReading) {
-                    headerRow.addArrangedSubview(view)
-                }
-                syncFuriganaToCurrentIndex()
+                // Clear the header reading until the new segment's providers refresh.
+                rebuildHeaderRow(reading: nil)
                 splitButton.isEnabled = currentSurface.count > 1
                 splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
                 updateMergeButtonAvailability()
-            }
-
-            // Converts frequency data to a unified Zipf-equivalent score (higher = more frequent).
-            // jpdbRank is preferred; wordfreqZipf used as fallback. Both land on a ~0–7 scale.
-            func normalizedScore(_ data: [String: FrequencyData]) -> Double? {
-                if let rank = data.values.compactMap({ $0.jpdbRank }).min() {
-                    return max(0.0, 7.0 - log10(Double(rank)))
-                }
-                return data.values.compactMap({ $0.wordfreqZipf }).max()
             }
 
             // Resets left and right split values using the highest-scoring two-segment sublattice path,
@@ -602,7 +495,7 @@ extension SegmentLookupSheet {
             func resetSplitInputs(using outcomeSurface: String) {
                 // Returns a normalized frequency score for one segment, defaulting to 0 when unscored.
                 func segmentScore(_ segment: String) -> Double {
-                    self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) } ?? 0
+                    self.pathSegmentFrequencyProvider?(segment).flatMap { self.normalizedSheetFrequencyScore($0) } ?? 0
                 }
 
                 func pathScore(_ path: [String]) -> Double {
@@ -645,84 +538,9 @@ extension SegmentLookupSheet {
             middleContentStack.spacing = 12
             middleContentStack.alignment = .fill
 
-            // Builds a small section header label.
-            func makeSectionHeader(_ text: String) -> UILabel {
-                let label = UILabel()
-                label.text = text.uppercased()
-                label.font = .systemFont(ofSize: 10, weight: .semibold)
-                label.textColor = .tertiaryLabel
-                return label
-            }
-
-            // Builds a body label for multi-line debug content.
-            func makeBodyLabel(_ text: String) -> UILabel {
-                let label = UILabel()
-                label.text = text
-                label.numberOfLines = 0
-                label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-                label.textColor = .secondaryLabel
-                return label
-            }
-
             // Rebuilds middleContentStack — shows sublattice paths with scores, then dictionary definitions.
             func updateMiddleContent() {
-                for subview in middleContentStack.arrangedSubviews {
-                    middleContentStack.removeArrangedSubview(subview)
-                    subview.removeFromSuperview()
-                }
-
-                // Sublattice paths with normalized frequency scores, sorted best-first.
-                let sublatticeEdges = self.currentSheetSublatticeEdges
-                if sublatticeEdges.isEmpty == false {
-                    func segmentScore(_ segment: String) -> Double {
-                        self.pathSegmentFrequencyProvider?(segment).flatMap { normalizedScore($0) } ?? 0
-                    }
-                    let paths = self.sublatticeValidPaths(from: sublatticeEdges)
-                        .sorted { lhs, rhs in
-                            let lScore = lhs.map(segmentScore).reduce(0, +) / max(1, Double(lhs.count))
-                            let rScore = rhs.map(segmentScore).reduce(0, +) / max(1, Double(rhs.count))
-                            return lScore > rScore
-                        }
-                    if paths.isEmpty == false {
-                        middleContentStack.addArrangedSubview(makeSectionHeader("Paths"))
-                        let pathLines = paths.map { path -> String in
-                            let score = path.map(segmentScore).reduce(0, +) / max(1, Double(path.count))
-                            return path.joined(separator: " · ") + "  [\(String(format: "%.2f", score))]"
-                        }.joined(separator: "\n")
-                        middleContentStack.addArrangedSubview(makeBodyLabel(pathLines))
-                    }
-                }
-
-                guard let entry = self.currentSheetDictionaryEntry else { return }
-                let senses = entry.senses
-                guard senses.isEmpty == false else { return }
-
-                for (index, sense) in senses.enumerated() {
-                    let glossText = sense.glosses.joined(separator: "; ")
-                    guard glossText.isEmpty == false else { continue }
-
-                    let row = UIStackView()
-                    row.axis = .horizontal
-                    row.spacing = 8
-                    row.alignment = .firstBaseline
-
-                    let numberLabel = UILabel()
-                    numberLabel.text = "\(index + 1)."
-                    numberLabel.font = .systemFont(ofSize: 14, weight: .medium)
-                    numberLabel.textColor = .tertiaryLabel
-                    numberLabel.setContentHuggingPriority(.required, for: .horizontal)
-                    numberLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-                    let glossLabel = UILabel()
-                    glossLabel.text = glossText
-                    glossLabel.font = .systemFont(ofSize: 15)
-                    glossLabel.textColor = .label
-                    glossLabel.numberOfLines = 0
-
-                    row.addArrangedSubview(numberLabel)
-                    row.addArrangedSubview(glossLabel)
-                    middleContentStack.addArrangedSubview(row)
-                }
+                self.updateMiddleContent(in: middleContentStack)
             }
 
             // Speaks the current surface using the device TTS engine with a Japanese voice.
@@ -1092,6 +910,7 @@ extension SegmentLookupSheet {
             // segmentRangeProvider() returns the NSRange of the current segment within the note.
             // Add content to middleContentStack here using that range as needed.
 
+            sheetController.view.addSubview(dismissHandleButton)
             sheetController.view.addSubview(headerStack)
             sheetController.view.addSubview(splitPanelContainer)
             sheetController.view.addSubview(middleContentStack)
@@ -1101,12 +920,15 @@ extension SegmentLookupSheet {
             updateLemmaChain()
 
             NSLayoutConstraint.activate([
+                dismissHandleButton.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 8),
+                dismissHandleButton.centerXAnchor.constraint(equalTo: sheetController.view.centerXAnchor),
+                dismissHandleButton.widthAnchor.constraint(equalToConstant: 72),
+                dismissHandleButton.heightAnchor.constraint(equalToConstant: 28),
+
                 // Surface header with furigana at the top of the sheet.
-                headerStack.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                headerStack.topAnchor.constraint(equalTo: dismissHandleButton.bottomAnchor, constant: 12),
                 headerStack.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 headerStack.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
-
-
                 splitPanelContainer.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 8),
                 splitPanelContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 splitPanelContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
@@ -1123,32 +945,12 @@ extension SegmentLookupSheet {
 
             // Measure initial height from actual content now that constraints and content are established.
             currentSheetPreferredHeight = computePreferredSheetHeight()
-
-            sheetController.modalPresentationStyle = .pageSheet
-            sheetController.presentationController?.delegate = self
-            if let sheetPresentationController = sheetController.sheetPresentationController {
-                if #available(iOS 16.0, *) {
-                    let fittedDetentIdentifier = UISheetPresentationController.Detent.Identifier("surfaceFitted")
-                    let fittedDetent = UISheetPresentationController.Detent.custom(identifier: fittedDetentIdentifier) { context in
-                        // Cap at half the available screen height so the sheet never dominates the reading surface.
-                        let halfScreen = context.maximumDetentValue * 0.5
-                        return min(currentSheetPreferredHeight, halfScreen)
-                    }
-                    sheetPresentationController.detents = [fittedDetent, .medium(), .large()]
-                    sheetPresentationController.selectedDetentIdentifier = fittedDetentIdentifier
-                    sheetPresentationController.largestUndimmedDetentIdentifier = .large
-                } else {
-                    sheetPresentationController.detents = [.medium()]
-                    sheetPresentationController.largestUndimmedDetentIdentifier = .medium
-                }
-
-                sheetPresentationController.prefersGrabberVisible = true
+            configureSurfaceSheetPresentation(sheetController) {
+                currentSheetPreferredHeight
             }
-
-            presenter.present(sheetController, animated: false)
+            presenter.present(sheetController, animated: true)
             self.presentedSheetController = sheetController
         }
     }
 
-    // Refreshes hidden per-selection sheet metadata for future UI usage.
 }

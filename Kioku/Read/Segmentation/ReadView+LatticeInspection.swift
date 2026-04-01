@@ -23,19 +23,9 @@ extension ReadView {
             selectedEnd: selectedEnd
         )
 
-        let debugLines = Lattice.debugSectionLines(
-            sectionEdges: sectionEdges,
-            in: text,
-            sectionRange: selectedRange,
-            sectionSurface: selectedSurface,
-            resolutionSummary: { surface in
-                let derivedLemma = segmenter.preferredLemma(for: surface) ?? surface
-                return segmenter.debugResolutionSummary(for: surface, lemma: derivedLemma)
-            }
-        )
-
-        for line in debugLines {
-            print(line)
-        }
+        // Logging disabled.
+        // for line in debugLines {
+        //     print(line)
+        // }
     }
 }

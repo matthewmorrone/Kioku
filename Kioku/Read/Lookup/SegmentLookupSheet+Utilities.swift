@@ -24,16 +24,11 @@ extension SegmentLookupSheet {
 
     // Routes horizontal sheet swipe gestures to the current selection-navigation callbacks.
     @objc func handleSheetSwipe(_ gestureRecognizer: UISwipeGestureRecognizer) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        UIView.performWithoutAnimation {
-            switch gestureRecognizer.direction {
-                case .left: onSheetSelectNext?()
-                case .right: onSheetSelectPrevious?()
-                default: break
-            }
+        switch gestureRecognizer.direction {
+            case .left: onSheetSelectNext?()
+            case .right: onSheetSelectPrevious?()
+            default: break
         }
-        CATransaction.commit()
     }
 
     // Generates initial left and right segment groups for split mode from the tapped surface text.

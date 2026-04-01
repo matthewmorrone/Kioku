@@ -369,11 +369,11 @@ nonisolated final class Deinflector {
              0x304B, 0x304C,                         // かが
              0x3055, 0x3056,                         // さざ
              0x305F, 0x3060,                         // ただ
-             0x306A,                                  // な
+             0x306A,                                 // な
              0x306F, 0x3070, 0x3071,                 // はばぱ
-             0x307E,                                  // ま
+             0x307E,                                 // ま
              0x3083, 0x3084,                         // ゃや
-             0x3089,                                  // ら
+             0x3089,                                 // ら
              0x308E, 0x308F:                         // ゎわ
             return UnicodeScalar(0x3042)!            // → あ
         // い段
@@ -381,46 +381,46 @@ nonisolated final class Deinflector {
              0x304D, 0x304E,                         // きぎ
              0x3057, 0x3058,                         // しじ
              0x3061, 0x3062,                         // ちぢ
-             0x306B,                                  // に
+             0x306B,                                 // に
              0x3072, 0x3073, 0x3074,                 // ひびぴ
-             0x307F,                                  // み
-             0x308A,                                  // り
-             0x3090:                                  // ゐ
+             0x307F,                                 // み
+             0x308A,                                 // り
+             0x3090:                                 // ゐ
             return UnicodeScalar(0x3044)!            // → い
         // う段
         case 0x3045, 0x3046,                         // ぅう
              0x304F, 0x3050,                         // くぐ
              0x3059, 0x305A,                         // すず
              0x3063, 0x3064, 0x3065,                 // っつづ
-             0x306C,                                  // ぬ
+             0x306C,                                 // ぬ
              0x3075, 0x3076, 0x3077,                 // ふぶぷ
-             0x3080,                                  // む
+             0x3080,                                 // む
              0x3085, 0x3086,                         // ゅゆ
-             0x308B,                                  // る
-             0x3094:                                  // ゔ
+             0x308B,                                 // る
+             0x3094:                                 // ゔ
             return UnicodeScalar(0x3046)!            // → う
         // え段 → い (standard long-e spelling)
         case 0x3047, 0x3048,                         // ぇえ
              0x3051, 0x3052,                         // けげ
              0x305B, 0x305C,                         // せぜ
              0x3066, 0x3067,                         // てで
-             0x306D,                                  // ね
+             0x306D,                                 // ね
              0x3078, 0x3079, 0x307A,                 // へべぺ
-             0x3081,                                  // め
-             0x308C,                                  // れ
-             0x3091:                                  // ゑ
+             0x3081,                                 // め
+             0x308C,                                 // れ
+             0x3091:                                 // ゑ
             return UnicodeScalar(0x3044)!            // → い
         // お段 → う (standard long-o spelling)
         case 0x3049, 0x304A,                         // ぉお
              0x3053, 0x3054,                         // こご
              0x305D, 0x305E,                         // そぞ
              0x3068, 0x3069,                         // とど
-             0x306E,                                  // の
+             0x306E,                                 // の
              0x307B, 0x307C, 0x307D,                 // ほぼぽ
-             0x3082,                                  // も
+             0x3082,                                 // も
              0x3087, 0x3088,                         // ょよ
-             0x308D,                                  // ろ
-             0x3092:                                  // を
+             0x308D,                                 // ろ
+             0x3092:                                 // を
             return UnicodeScalar(0x3046)!            // → う
         default:
             // No expansion rule (e.g. ん); keep the prolonged sound mark as-is.

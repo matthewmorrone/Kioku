@@ -210,15 +210,18 @@ struct WordsView: View {
                 guard let store = dictionaryStore, Task.isCancelled == false else { return }
                 let query = newValue
                 let hasKanji = ScriptClassifier.containsKanji(query)
-                let results = await Task.detached(priority: .userInitiated) {
-                    var entries: [DictionaryEntry] = []
-                    if hasKanji {
-                        entries += (try? await MainActor.run { try store.lookup(surface: query, mode: .kanjiAndKana) }) ?? []
+                let results = await withCheckedContinuation { continuation in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        var entries: [DictionaryEntry] = []
+                        if hasKanji {
+                            entries += (try? store.lookup(surface: query, mode: .kanjiAndKana)) ?? []
+                        }
+                        entries += (try? store.lookup(surface: query, mode: .kanaOnly)) ?? []
+                        var seen = Set<Int64>()
+                        continuation.resume(returning: entries.filter { seen.insert($0.entryId).inserted })
                     }
-                    entries += (try? await MainActor.run { try store.lookup(surface: query, mode: .kanaOnly) }) ?? []
-                    var seen = Set<Int64>()
-                    return entries.filter { seen.insert($0.entryId).inserted }
-                }.value
+                }
+                guard Task.isCancelled == false, searchText == query else { return }
                 searchResults = results
             }
         }

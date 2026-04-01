@@ -39,6 +39,7 @@ extension ReadView {
         pendingPersistenceTask?.cancel()
         pendingPersistenceTask = nil
         persistCurrentNoteIfNeeded()
+        notesStore.flushPendingSave()
     }
 
     // Loads the selected note into editor state when navigation targets change.
@@ -52,6 +53,8 @@ extension ReadView {
 
             pendingPersistenceTask?.cancel()
             pendingPersistenceTask = nil
+            segmentationRefreshTask?.cancel()
+            furiganaComputationTask?.cancel()
             isLoadingSelectedNote = true
             activeNoteID = nil
             loadAudioAttachmentIfNeeded(attachmentID: nil)
@@ -80,6 +83,8 @@ extension ReadView {
 
         pendingPersistenceTask?.cancel()
         pendingPersistenceTask = nil
+        segmentationRefreshTask?.cancel()
+        furiganaComputationTask?.cancel()
         pendingLLMChangedLocations = []
         pendingLLMChangedReadingLocations = []
         preLLMSegmentEntries = []

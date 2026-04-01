@@ -19,7 +19,8 @@ extension ReadView {
 
         let capturedText = text
         let compactSegments = buildCompactFormat(from: currentSegments)
-        print("[LLM] Compact input:\n\(compactSegments)")
+        // Logging disabled.
+        // print("[LLM] Compact input:\n\(compactSegments)")
         let service = LLMCorrectionService()
 
         isRequestingLLMCorrection = true
@@ -132,7 +133,8 @@ extension ReadView {
 
         // Rebuild LatticeEdge values from the validated UTF-16 ranges.
         guard let rebuiltEdges = edgesFromSegmentRanges(validatedRanges, in: originalText) else {
-            print("[LLM] edgesFromSegmentRanges returned nil despite passing normalizedSegmentRanges")
+            // Logging disabled.
+            // print("[LLM] edgesFromSegmentRanges returned nil despite passing normalizedSegmentRanges")
             return .surfaceMismatch("Segments validated but edge reconstruction failed — this is a bug.")
         }
 
@@ -466,60 +468,51 @@ extension ReadView {
         let origChars = Array(original)
         let reconChars = Array(reconstructed)
 
-        // Compute line + column for a character index by scanning for newlines.
-        func lineCol(in chars: [Character], at idx: Int) -> (line: Int, col: Int) {
+        // Compute the line for a character index by scanning for newlines.
+        func lineNumber(in chars: [Character], at idx: Int) -> Int {
             var line = 1
-            var col = 1
             for i in 0..<min(idx, chars.count) {
-                if chars[i] == "\n" { line += 1; col = 1 } else { col += 1 }
+                if chars[i] == "\n" { line += 1 }
             }
-            return (line, col)
+            return line
         }
 
-        // Unicode scalar dump for a character so invisible differences are visible.
-        func scalars(_ c: Character) -> String {
-            c.unicodeScalars.map { "U+\(String($0.value, radix: 16, uppercase: true))" }.joined(separator: " ")
-        }
-
-        print("[LLM] Mismatch — original \(original.utf16.count) UTF-16 units, reconstructed \(reconstructed.utf16.count)")
+        // Logging disabled.
+        // print("[LLM] Mismatch — original \(original.utf16.count) UTF-16 units, reconstructed \(reconstructed.utf16.count)")
 
         if let idx = zip(origChars, reconChars).enumerated().first(where: { $0.element.0 != $0.element.1 })?.offset {
-            let (line, col) = lineCol(in: origChars, at: idx)
-            let origChar = origChars[idx]
-            let reconChar = reconChars[idx]
-            print("[LLM] First difference at line \(line), col \(col):")
-            print("       original : '\(origChar)'  \(scalars(origChar))")
-            print("       response : '\(reconChar)'  \(scalars(reconChar))")
+            let line = lineNumber(in: origChars, at: idx)
+            // Logging disabled.
+            // print("[LLM] First difference at line \(line), col \(col):")
+            // print("       original : '\(origChar)'  \(scalars(origChar))")
+            // print("       response : '\(reconChar)'  \(scalars(reconChar))")
 
             // Side-by-side context: 3 lines centred on the divergence line, aligned.
             let origLines = original.components(separatedBy: "\n")
             let reconLines = reconstructed.components(separatedBy: "\n")
             let firstLine = max(1, line - 1)
             let lastLine  = min(max(origLines.count, reconLines.count), line + 1)
-            print("[LLM] Context (line | original vs response):")
-            for l in firstLine...lastLine {
-                let o = l <= origLines.count ? origLines[l - 1] : "<missing>"
-                let r = l <= reconLines.count ? reconLines[l - 1] : "<missing>"
-                let marker = l == line ? ">>>" : "   "
-                print("  \(marker) \(l) | orig: \(o)")
-                print("  \(marker) \(l) | resp: \(r)")
-            }
+            // Logging disabled.
+            // print("[LLM] Context (line | original vs response):")
+            _ = firstLine
+            _ = lastLine
         } else {
-            // Common prefix — difference is in the tail.
-            let shorter = min(origChars.count, reconChars.count)
-            let origTail = origChars.dropFirst(shorter)
-            let reconTail = reconChars.dropFirst(shorter)
-            print("[LLM] Common prefix, then:")
-            print("       original extra: \(origTail.isEmpty ? "<nothing>" : "\"\(String(origTail))\"")")
-            print("       response extra: \(reconTail.isEmpty ? "<nothing>" : "\"\(String(reconTail))\"")")
-            if let c = origTail.first { print("       original char scalars: \(scalars(c))") }
-            if let c = reconTail.first { print("       response char scalars: \(scalars(c))") }
+            // Logging disabled.
+            // print("[LLM] Common prefix, then:")
+            // print("       original extra: \(origTail.isEmpty ? "<nothing>" : "\"\(String(origTail))\"")")
+            // print("       response extra: \(reconTail.isEmpty ? "<nothing>" : "\"\(String(reconTail))\"")")
+            // if let c = origTail.first { print("       original char scalars: \(scalars(c))") }
+            // if let c = reconTail.first { print("       response char scalars: \(scalars(c))") }
         }
 
-        print("[LLM] Response segments (\(response.segments.count) total):")
+        // Logging disabled.
+        // print("[LLM] Response segments (\(response.segments.count) total):")
         for (i, entry) in response.segments.enumerated() {
             let scalarStr = entry.surface.unicodeScalars.map { "U+\(String($0.value, radix: 16, uppercase: true))" }.joined(separator: " ")
-            print("  [\(i)] \"\(entry.surface)\"  [\(scalarStr)]  reading: \"\(entry.reading)\"")
+            _ = i
+            _ = scalarStr
+            // Logging disabled.
+            // print("  [\(i)] \"\(entry.surface)\"  [\(scalarStr)]  reading: \"\(entry.reading)\"")
         }
     }
 
@@ -594,11 +587,7 @@ extension ReadView {
     private func handleLLMCorrectionResult(_ result: LLMCorrectionResult) {
         switch result {
         case .applied(let diff, let changedLocations, let changedReadingLocations, let changesByLocation):
-            if diff.isEmpty {
-                print("[LLM] No changes detected.")
-            } else {
-                print("[LLM] \(diff.count) change(s):\n" + diff.joined(separator: "\n"))
-            }
+            _ = diff
             if changedLocations.isEmpty == false {
                 pendingLLMChangedLocations = changedLocations
                 pendingLLMChangedReadingLocations = changedReadingLocations
