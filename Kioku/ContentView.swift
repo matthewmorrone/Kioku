@@ -28,8 +28,8 @@ struct ContentView: View {
     @StateObject private var wotdNavigation = WordOfTheDayNavigation()
     // Retained for its delegate lifetime; nil until onAppear.
     @State private var notificationHandler: NotificationDeepLinkHandler?
-    // Set by WordOfTheDayNavigation observer; consumed by WordsView to open a word detail.
-    @State private var pendingDeepLinkEntryID: Int64? = nil
+    // Set by notification and read-tab actions; consumed by WordsView.
+    @State private var pendingWordsRoute: WordsRoute? = nil
     @State private var wotdRefreshTask: Task<Void, Never>?
 
     // Initializes the selected tab so previews and deep links can choose an initial section.
@@ -40,7 +40,12 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: readResources.segmenter, dictionaryStore: readResources.dictionaryStore, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, segmenterRevision: readResources.segmenterRevision, readResourcesReady: readResources.ready, onActiveNoteChanged: { id in
+            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: readResources.segmenter, dictionaryStore: readResources.dictionaryStore, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, segmenterRevision: readResources.segmenterRevision, readResourcesReady: readResources.ready, onOpenWordDetail: { entryID, surface in
+                selectedTab = .words
+                DispatchQueue.main.async {
+                    pendingWordsRoute = .detail(entryID: entryID, surface: surface)
+                }
+            }, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
             })
             .tag(ContentTab.read)
@@ -89,8 +94,8 @@ struct ContentView: View {
                 Label("Notes", systemImage: "text.line.magnify")
             }
 
-            // Renders the Words tab entry point; deepLinkedEntryID carries notification deep links.
-            WordsView(dictionaryStore: readResources.dictionaryStore, deepLinkedEntryID: $pendingDeepLinkEntryID)
+            // Renders the Words tab entry point; pendingWordsRoute carries notification and read-tab routes.
+            WordsView(dictionaryStore: readResources.dictionaryStore, pendingRoute: $pendingWordsRoute)
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .environmentObject(historyStore)
@@ -130,7 +135,7 @@ struct ContentView: View {
             guard let entryID else { return }
             selectedTab = .words
             DispatchQueue.main.async {
-                pendingDeepLinkEntryID = entryID
+                pendingWordsRoute = .detail(entryID: entryID, surface: nil)
             }
             wotdNavigation.pendingEntryID = nil
         }

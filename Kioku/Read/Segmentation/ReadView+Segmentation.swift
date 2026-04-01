@@ -341,11 +341,7 @@ extension ReadView {
                     return nil
                 },
                 sheetDictionaryEntryProvider: {
-                    // Use the lemma form when the surface is inflected so we fetch the base dictionary entry once.
-                    guard let surface = currentSelectedSurface(),
-                          let store = dictionaryStore else { return nil }
-                    let lookupSurface = lemmaInfoForCurrentSelectedSegment()?.lemma ?? surface
-                    return (try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana))?.first
+                    resolvedDictionaryEntryForCurrentSelectedSegment()
                 },
                 sheetIsSavedProvider: {
                     guard let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry else { return false }
@@ -363,12 +359,8 @@ extension ReadView {
                 },
                 sheetOpenWordDetail: {
                     guard let surface = currentSelectedSurface(),
-                          let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry else { return }
-                    // Ensure the word exists in the saved list before routing to the shared Words tab detail flow.
-                    if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) == false {
-                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface))
-                    }
-                    wotdNavigation.pendingEntryID = entry.entryId
+                          let entry = resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
+                    onOpenWordDetail?(entry.entryId, surface)
                 },
                 sheetWordComponentsProvider: {
                     guard let surface = currentSelectedSurface() else { return nil }
@@ -451,6 +443,46 @@ extension ReadView {
             } catch {
                 // Keeps tap interaction resilient if dictionary access fails for a specific lookup candidate.
                 continue
+            }
+        }
+
+        return nil
+    }
+
+    // Resolves ordered lookup candidates for the current selected segment by surface first, then lemma fallback.
+    private func currentSelectedLookupCandidates() -> [String] {
+        guard let surface = currentSelectedSurface() else { return [] }
+        return orderedLookupCandidates(
+            surface: surface,
+            lemma: lemmaInfoForCurrentSelectedSegment()?.lemma
+        )
+    }
+
+    // Returns the first query candidate for the current segment that has a dictionary hit.
+    // Uses the same candidate ordering as history recording and Words-tab routing.
+    private func resolvedLookupQueryForCurrentSelectedSegment() -> String? {
+        guard let store = dictionaryStore else { return nil }
+
+        for candidate in currentSelectedLookupCandidates() {
+            let lookupMode: LookupMode = ScriptClassifier.containsKanji(candidate) ? .kanjiAndKana : .kanaOnly
+            if let entries = try? store.lookup(surface: candidate, mode: lookupMode),
+               entries.isEmpty == false {
+                return candidate
+            }
+        }
+
+        return nil
+    }
+
+    // Returns the first dictionary entry resolved from the current segment using the same candidate ordering
+    // as the Words-tab route so the sheet button state matches the actual open behavior.
+    private func resolvedDictionaryEntryForCurrentSelectedSegment() -> DictionaryEntry? {
+        guard let store = dictionaryStore else { return nil }
+
+        for candidate in currentSelectedLookupCandidates() {
+            let lookupMode: LookupMode = ScriptClassifier.containsKanji(candidate) ? .kanjiAndKana : .kanaOnly
+            if let entry = try? store.lookup(surface: candidate, mode: lookupMode).first {
+                return entry
             }
         }
 
