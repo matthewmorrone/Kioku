@@ -176,8 +176,6 @@ extension SegmentLookupSheet {
 
             // Arrows are laid out independently so their centerY can be pinned to the headword text row,
             // which sits below the furigana inset — stack alignment can't express this offset cleanly.
-            let furiganaInset: CGFloat = UIFont.systemFont(ofSize: 34 * 0.5).lineHeight + CGFloat(TypographySettings.defaultFuriganaGap)
-
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
             var customReading: String? = nil

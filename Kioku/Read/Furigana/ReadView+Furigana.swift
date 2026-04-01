@@ -13,11 +13,13 @@ extension ReadView {
         }
 
         furiganaComputationTask = Task(priority: .userInitiated) {
-            let furiganaResult = buildFuriganaBySegmentLocation(
-                for: sourceText,
-                edges: edges,
-                surfaceReadingData: currentSurfaceReadingData
-            )
+            let furiganaResult = StartupTimer.measure("buildFuriganaBySegmentLocation (\(edges.count) edges)") {
+                buildFuriganaBySegmentLocation(
+                    for: sourceText,
+                    edges: edges,
+                    surfaceReadingData: currentSurfaceReadingData
+                )
+            }
 
             guard !Task.isCancelled else {
                 return
@@ -27,6 +29,8 @@ extension ReadView {
                 guard text == sourceText else {
                     return
                 }
+
+                StartupTimer.mark("applying furigana result to UI")
 
                 let shouldKeepExistingFurigana = hasKanjiEdges
                     && furiganaResult.furiganaByLocation.isEmpty
