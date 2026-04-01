@@ -53,6 +53,8 @@ struct ReadView: View {
     private var debugHeadwordLineBands: Bool = false
     @AppStorage(DebugSettings.furiganaLineBandsKey)
     private var debugFuriganaLineBands: Bool = false
+    @AppStorage(DebugSettings.startupSegmentationDiffsKey)
+    private var debugStartupSegmentationDiffs: Bool = false
 
     @State var customTitle = ""
     @State var fallbackTitle = ""
@@ -292,11 +294,12 @@ struct ReadView: View {
         }
         .onChange(of: segmenterRevision) { _, _ in
             StartupTimer.mark("segmenterRevision changed")
-            // Print segmentation diffs whenever the segmenter becomes ready, even for persisted segments.
-            if text.isEmpty == false {
+            if text.isEmpty == false, debugStartupSegmentationDiffs {
                 StartupTimer.measure("SegmentationDiffPrinter.printDiffs") {
                     SegmentationDiffPrinter.printDiffs(for: text, trieSegmenter: segmenter)
                 }
+            } else if text.isEmpty == false {
+                StartupTimer.mark("startup segmentation diffs disabled")
             }
 
             // When segments are persisted and furigana is already loaded, nothing to do.

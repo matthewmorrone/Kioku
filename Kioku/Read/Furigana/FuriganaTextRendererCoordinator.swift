@@ -15,6 +15,11 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
     private var segmentationNSRanges: [NSRange] = []
     private var wasActive = false
     private var lastPublishedScrollOffsetY: CGFloat?
+    private var hasLoggedMakeUIView = false
+    private var hasLoggedFirstActiveUpdate = false
+    private var hasLoggedFirstTextRender = false
+    private var hasLoggedFirstOverlayApply = false
+    private var hasLoggedFirstExhaustiveLayout = false
 
     // Stores shared state bindings used by the renderer coordinator.
     init(
@@ -79,6 +84,46 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
     // Persists the latest text-only render signature after base text is applied.
     func markTextRendered(signature: Int) {
         lastTextRenderSignature = signature
+    }
+
+    // Emits a startup marker once per renderer lifecycle for the given phase.
+    func markStartupPhase(_ label: String) {
+        StartupTimer.mark(label)
+    }
+
+    // Emits a startup marker only the first time the UIView is created.
+    func markMakeUIViewIfNeeded() {
+        guard hasLoggedMakeUIView == false else { return }
+        hasLoggedMakeUIView = true
+        StartupTimer.mark("FuriganaTextRenderer.makeUIView")
+    }
+
+    // Emits a startup marker only for the first active updateUIView call.
+    func markFirstActiveUpdateIfNeeded(textLength: Int, segmentCount: Int, furiganaCount: Int) {
+        guard hasLoggedFirstActiveUpdate == false else { return }
+        hasLoggedFirstActiveUpdate = true
+        StartupTimer.mark("FuriganaTextRenderer.updateUIView first active pass text=\(textLength) segments=\(segmentCount) furigana=\(furiganaCount)")
+    }
+
+    // Emits a startup marker only for the first base text rebuild.
+    func markFirstTextRenderIfNeeded() {
+        guard hasLoggedFirstTextRender == false else { return }
+        hasLoggedFirstTextRender = true
+        StartupTimer.mark("FuriganaTextRenderer first text render")
+    }
+
+    // Emits a startup marker only for the first overlay apply.
+    func markFirstOverlayApplyIfNeeded(furiganaCount: Int) {
+        guard hasLoggedFirstOverlayApply == false else { return }
+        hasLoggedFirstOverlayApply = true
+        StartupTimer.mark("FuriganaTextRenderer first overlay apply furigana=\(furiganaCount)")
+    }
+
+    // Emits a startup marker only for the first layout pass of a given type.
+    func markFirstLayoutIfNeeded(exhaustive: Bool) {
+        guard exhaustive, hasLoggedFirstExhaustiveLayout == false else { return }
+        hasLoggedFirstExhaustiveLayout = true
+        StartupTimer.mark("FuriganaTextRenderer first exhaustive layout")
     }
 
     // Publishes user-driven scroll offsets to the shared read/edit sync state.

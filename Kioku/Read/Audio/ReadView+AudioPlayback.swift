@@ -8,6 +8,7 @@ extension ReadView {
     // import-time offsets can never silently break playback highlighting.
     func loadAudioAttachmentIfNeeded(attachmentID: UUID?) {
         guard let attachmentID else {
+            StartupTimer.mark("loadAudioAttachmentIfNeeded clearing attachment")
             audioController.unload()
             audioAttachmentCues = []
             audioAttachmentHighlightRanges = []
@@ -16,20 +17,33 @@ extension ReadView {
             return
         }
 
+        StartupTimer.mark("loadAudioAttachmentIfNeeded start")
         activeAudioAttachmentID = attachmentID
-        let cues = NotesAudioStore.shared.loadCues(for: attachmentID)
+        let cues = StartupTimer.measure("loadAudioAttachmentIfNeeded.loadCues") {
+            NotesAudioStore.shared.loadCues(for: attachmentID)
+        }
         audioAttachmentCues = cues
-        audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cues, in: text)
+        audioAttachmentHighlightRanges = StartupTimer.measure("loadAudioAttachmentIfNeeded.resolveHighlightRanges") {
+            SubtitleParser.resolveHighlightRanges(for: cues, in: text)
+        }
 
-        guard let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else {
+        let audioURL = StartupTimer.measure("loadAudioAttachmentIfNeeded.audioURL") {
+            NotesAudioStore.shared.audioURL(for: attachmentID)
+        }
+        guard let audioURL else {
             // Cues were found but audio file is missing — show subtitle highlights only.
+            StartupTimer.mark("loadAudioAttachmentIfNeeded audio missing")
             return
         }
 
         do {
-            try audioController.load(audioURL: audioURL, cues: cues)
+            try StartupTimer.measure("loadAudioAttachmentIfNeeded.audioController.load") {
+                try audioController.load(audioURL: audioURL, cues: cues)
+            }
+            StartupTimer.mark("loadAudioAttachmentIfNeeded finished")
         } catch {
             // Audio file exists but couldn't be opened; degrade gracefully without blocking editing.
+            StartupTimer.mark("loadAudioAttachmentIfNeeded failed: \(error.localizedDescription)")
             audioAttachmentCues = []
             audioAttachmentHighlightRanges = []
         }

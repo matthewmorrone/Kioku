@@ -49,6 +49,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
     // Builds the read-mode text view with a furigana overlay that scrolls with text content.
     func makeUIView(context: Context) -> UITextView {
+        context.coordinator.markMakeUIViewIfNeeded()
         let textView = TextViewFactory.makeTextView()
         textView.delegate = context.coordinator
         textView.textLayoutManager?.delegate = context.coordinator
@@ -89,15 +90,23 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             return
         }
 
+        context.coordinator.markFirstActiveUpdateIfNeeded(
+            textLength: text.utf16.count,
+            segmentCount: segmentationRanges.count,
+            furiganaCount: furiganaBySegmentLocation.count
+        )
+
         context.coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
         context.coordinator.onSegmentTapped = onSegmentTapped
         context.coordinator.configureTapSegmentationRanges(segmentationRanges, in: text)
         configureWrapping(for: textView)
         if context.coordinator.shouldApplyInitialExternalSync(isActive: true) {
+            context.coordinator.markStartupPhase("FuriganaTextRenderer applying initial external scroll sync")
             context.coordinator.applyExternalScrollIfNeeded(to: textView, targetOffsetY: externalContentOffsetY)
         }
 
         if isOverlayFrozen {
+            context.coordinator.markStartupPhase("FuriganaTextRenderer overlay frozen")
             return
         }
 
@@ -133,6 +142,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         )
 
         if context.coordinator.shouldRenderText(for: baseTextRenderSignature) {
+            context.coordinator.markFirstTextRenderIfNeeded()
             // Use the external scroll target instead of the current UITextView offset so that
             // scroll-to-top on note switch (sharedScrollOffsetY = 0) takes effect when text changes.
             // During normal style updates the external offset stays in sync with the actual position.
@@ -141,7 +151,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // so glyph positions used by overlay drawing are correct before the view is displayed.
             // Doing this inside the text-change branch avoids blocking the main thread on every
             // scroll-driven updateUIView call (which would cause gesture-gate timeouts on large notes).
-            ensureTextLayout(for: textView, exhaustive: true)
+            ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
             let minOffsetY = -textView.adjustedContentInset.top
             let maxOffsetY = max(minOffsetY, textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom)
             let clampedOffsetY = min(max(externalContentOffsetY, minOffsetY), maxOffsetY)
@@ -151,7 +161,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // Text is unchanged; the full layout from the last text-change pass is still valid.
             // Run the viewport-only layout so newly-scrolled-into-view fragments are ready for
             // overlay drawing without re-laying out the entire document.
-            ensureTextLayout(for: textView)
+            ensureTextLayout(for: textView, coordinator: context.coordinator)
         }
 
         let overlayFrame = CGRect(
@@ -254,7 +264,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // ones — is measured consistently. caretRect.height is unreliable on blank lines
             // because UIKit falls back to an internal default rather than reading the attributed font.
             let bandHeight = bodyFont.lineHeight
-            let furiganaRowHeight = furiganaFont.lineHeight + CGFloat(furiganaGap)
             tlm.enumerateTextLayoutFragments(from: nil, options: []) { fragment in
                 // Convert the fragment's start to an integer UTF-16 offset in the document.
                 let fragmentOffset = tcm.offset(from: docStart, to: fragment.rangeInElement.location)
@@ -319,6 +328,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             debugHeadwordLineBandRects: debugHeadwordLineBandRects,
             debugFuriganaLineBandRects: debugFuriganaLineBandRects
         )
+        context.coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
 
         guard isVisualEnhancementsEnabled || selectedSegmentRect != nil || illegalBoundaryRect != nil else {
             context.coordinator.markRendered(signature: renderSignature)
@@ -338,7 +348,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             return nil
         }
 
-        ensureTextLayout(for: textView)
+        ensureTextLayout(for: textView, coordinator: nil)
         let segmentRect = textView.firstRect(for: textRange)
         guard segmentRect.isNull == false, segmentRect.isInfinite == false, segmentRect.isEmpty == false else {
             return nil
@@ -369,7 +379,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             return nil
         }
 
-        ensureTextLayout(for: textView)
+        ensureTextLayout(for: textView, coordinator: nil)
         guard
             let previousTextRange = textRange(in: textView, nsRange: NSRange(location: boundaryUTF16Location - 1, length: 1)),
             let nextTextRange = textRange(in: textView, nsRange: NSRange(location: boundaryUTF16Location, length: 1))
@@ -401,25 +411,33 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     }
 
     // Forces lazy TextKit layout to complete before any geometry is queried for annotations.
-    private func ensureTextLayout(for textView: UITextView, exhaustive: Bool = false) {
-        if exhaustive,
-           let textLayoutManager = textView.textLayoutManager,
-           let documentRange = textLayoutManager.textContentManager?.documentRange {
-            textLayoutManager.ensureLayout(for: documentRange)
-            // TextKit 2 does not synchronously update UITextView.contentSize after ensureLayout,
-            // so user scroll physics are capped at the lazily-computed partial height. Fix by
-            // reading the last layout fragment's maxY and patching contentSize when it is too small.
-            var maxLayoutY: CGFloat = 0
-            textLayoutManager.enumerateTextLayoutFragments(from: documentRange.endLocation, options: [.reverse]) { fragment in
-                maxLayoutY = fragment.layoutFragmentFrame.maxY
-                return false
-            }
-            let requiredHeight = textView.textContainerInset.top + maxLayoutY + textView.textContainerInset.bottom
-            if requiredHeight > textView.contentSize.height {
-                textView.contentSize = CGSize(width: textView.contentSize.width, height: requiredHeight)
+    private func ensureTextLayout(for textView: UITextView, coordinator: FuriganaTextRendererCoordinator?, exhaustive: Bool = false) {
+        coordinator?.markFirstLayoutIfNeeded(exhaustive: exhaustive)
+        if exhaustive {
+            StartupTimer.measure("FuriganaTextRenderer.ensureTextLayout.exhaustive") {
+                guard let textLayoutManager = textView.textLayoutManager,
+                      let documentRange = textLayoutManager.textContentManager?.documentRange else {
+                    return
+                }
+                textLayoutManager.ensureLayout(for: documentRange)
+                // TextKit 2 does not synchronously update UITextView.contentSize after ensureLayout,
+                // so user scroll physics are capped at the lazily-computed partial height. Fix by
+                // reading the last layout fragment's maxY and patching contentSize when it is too small.
+                var maxLayoutY: CGFloat = 0
+                textLayoutManager.enumerateTextLayoutFragments(from: documentRange.endLocation, options: [.reverse]) { fragment in
+                    maxLayoutY = fragment.layoutFragmentFrame.maxY
+                    return false
+                }
+                let requiredHeight = textView.textContainerInset.top + maxLayoutY + textView.textContainerInset.bottom
+                if requiredHeight > textView.contentSize.height {
+                    textView.contentSize = CGSize(width: textView.contentSize.width, height: requiredHeight)
+                }
             }
         } else {
             textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        }
+        if exhaustive {
+            StartupTimer.mark("FuriganaTextRenderer exhaustive layout finished")
         }
         textView.layoutIfNeeded()
     }

@@ -85,6 +85,7 @@ extension ReadView {
         preLLMSegmentEntries = []
         hasPendingLLMChanges = false
         let noteToLoad = notesStore.note(withID: selectedNote.id) ?? selectedNote
+        StartupTimer.mark("loadSelectedNoteIfNeeded preparing note")
         isLoadingSelectedNote = true
         activeNoteID = noteToLoad.id
         sharedScrollOffsetY = 0
@@ -112,6 +113,7 @@ extension ReadView {
         // If furigana annotations are present on the segments, restore them directly too.
         // The trie is still loaded in the background for lookup and new notes.
         if let loadedSegments, let edges = edgesFromSegmentRanges(loadedSegments, in: text) {
+            StartupTimer.mark("loadSelectedNoteIfNeeded restoring persisted segments")
             segmentEdges = edges
             segmentRanges = edges.map { $0.start..<$0.end }
             unknownSegmentLocations = []
@@ -127,6 +129,7 @@ extension ReadView {
         }
         self.selectedNote = nil
         isLoadingSelectedNote = false
+        StartupTimer.mark("loadSelectedNoteIfNeeded finished")
     }
 
     // Saves the in-memory editor state to storage and maintains active note identity.

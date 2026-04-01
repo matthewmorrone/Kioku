@@ -51,6 +51,7 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
     @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
     @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
+    @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
 
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
     @State private var wotdPendingCount: Int = 0
@@ -311,10 +312,11 @@ struct SettingsView: View {
                     Toggle("Headword Rects", isOn: $debugHeadwordRects)
                     Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
                     Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
+                    Toggle("Startup Segmentation Diffs", isOn: $debugStartupSegmentationDiffs)
                 } header: {
                     Text("Debug Overlays")
                 } footer: {
-                    Text("Visual debugging aids for read-mode layout inspection.")
+                    Text("Visual debugging aids for read-mode layout inspection. Startup segmentation diffs are expensive and should stay off unless you are actively profiling segmenter output.")
                 }
 
                 Section {
@@ -482,7 +484,8 @@ struct SettingsView: View {
                 dictionaryStore: store,
                 hour: hour,
                 minute: minute,
-                enabled: enabled
+                enabled: enabled,
+                forceRefresh: true
             )
             let count = await WordOfTheDayScheduler.pendingWordOfTheDayRequestCount()
             await MainActor.run { wotdPendingCount = count }
@@ -610,4 +613,3 @@ private struct ParticleTagEditor: View {
 #Preview {
     ContentView(selectedTab: .settings)
 }
-

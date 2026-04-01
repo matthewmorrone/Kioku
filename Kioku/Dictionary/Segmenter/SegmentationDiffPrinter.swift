@@ -13,26 +13,34 @@ enum SegmentationDiffPrinter {
     static func printDiffs(for text: String, trieSegmenter: any TextSegmenting) {
         guard text.isEmpty == false else { return }
 
-        let trie = stripWhitespace(trieSegmenter.longestMatchEdges(for: text).map(\.surface))
+        let trie = StartupTimer.measure("SegmentationDiffPrinter.trie") {
+            stripWhitespace(trieSegmenter.longestMatchEdges(for: text).map(\.surface))
+        }
 
         let ipadic: [String]?
-        if let mecab = MeCabSegmenter(dictionary: .ipadic) {
-            ipadic = stripWhitespace(mecab.longestMatchEdges(for: text).map(\.surface))
-        } else {
-            print("[SegmentationDiff] IPAdic dictionary not available — skipping")
-            ipadic = nil
+        ipadic = StartupTimer.measure("SegmentationDiffPrinter.ipadic") {
+            if let mecab = MeCabSegmenter(dictionary: .ipadic) {
+                return stripWhitespace(mecab.longestMatchEdges(for: text).map(\.surface))
+            } else {
+                print("[SegmentationDiff] IPAdic dictionary not available — skipping")
+                return nil
+            }
         }
 
         let unidic: [String]?
-        if let mecab = MeCabSegmenter(dictionary: .unidic) {
-            unidic = stripWhitespace(mecab.longestMatchEdges(for: text).map(\.surface))
-        } else {
-            print("[SegmentationDiff] UniDic dictionary not available — skipping")
-            unidic = nil
+        unidic = StartupTimer.measure("SegmentationDiffPrinter.unidic") {
+            if let mecab = MeCabSegmenter(dictionary: .unidic) {
+                return stripWhitespace(mecab.longestMatchEdges(for: text).map(\.surface))
+            } else {
+                print("[SegmentationDiff] UniDic dictionary not available — skipping")
+                return nil
+            }
         }
 
         // NLTokenizer is always available — no external dictionary needed.
-        let nlTokenizer = stripWhitespace(NLTokenizerSegmenter().longestMatchEdges(for: text).map(\.surface))
+        let nlTokenizer = StartupTimer.measure("SegmentationDiffPrinter.nlTokenizer") {
+            stripWhitespace(NLTokenizerSegmenter().longestMatchEdges(for: text).map(\.surface))
+        }
 
         // Build the list of named segmentations that are available.
         var named: [(name: String, segments: [String])] = [("Trie", trie)]
@@ -42,7 +50,9 @@ enum SegmentationDiffPrinter {
 
         guard named.count >= 2 else { return }
 
-        printThreeWayDiff(named)
+        StartupTimer.measure("SegmentationDiffPrinter.printThreeWayDiff") {
+            printThreeWayDiff(named)
+        }
     }
 
     // Walks all segmentations in lockstep, emitting divergent regions where any backend disagrees.
@@ -139,10 +149,10 @@ enum SegmentationDiffPrinter {
             return
         }
 
-        let maxNameLen = named.map(\.name.count).max() ?? 0
-        let names = named.map(\.name).joined(separator: " / ")
         // print("[Segmentation] \(names): \(divergences.count) difference\(divergences.count == 1 ? "" : "s"):")
         /*
+        let maxNameLen = named.map(\.name.count).max() ?? 0
+        let names = named.map(\.name).joined(separator: " / ")
         for (i, entry) in divergences.enumerated() {
             let text = entry[0].span.joined()
             print("  \(i + 1). 「\(text)」")

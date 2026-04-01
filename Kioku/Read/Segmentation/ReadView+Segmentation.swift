@@ -136,7 +136,9 @@ extension ReadView {
         }
 
         StartupTimer.mark("refreshSegmentationRanges: running segmenter")
-        let segmentationResult = segmenter.longestMatchResult(for: text)
+        let segmentationResult = StartupTimer.measure("segmenter.longestMatchResult") {
+            segmenter.longestMatchResult(for: text)
+        }
         segmentLatticeEdges = segmentationResult.latticeEdges
         // segmenter.debugPrintLattice(for: text)
         let baseEdges = segmentationResult.selectedEdges

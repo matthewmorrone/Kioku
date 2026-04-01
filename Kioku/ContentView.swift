@@ -30,6 +30,7 @@ struct ContentView: View {
     @State private var notificationHandler: NotificationDeepLinkHandler?
     // Set by WordOfTheDayNavigation observer; consumed by WordsView to open a word detail.
     @State private var pendingDeepLinkEntryID: Int64? = nil
+    @State private var wotdRefreshTask: Task<Void, Never>?
 
     // Initializes the selected tab so previews and deep links can choose an initial section.
     init(selectedTab: ContentTab = .read) {
@@ -140,26 +141,16 @@ struct ContentView: View {
         .onChange(of: mecabDictionarySetting) { _, _ in
             rebuildReadResources()
         }
-        // Refresh the Word of the Day schedule once dictionary resources are ready.
+        // Validate WOTD scheduling after startup has settled rather than on the critical path.
         .onChange(of: readResources.ready) { _, ready in
             guard ready else { return }
-            let words = wordsStore.words
-            let store = readResources.dictionaryStore
-            let enabled = UserDefaults.standard.bool(forKey: WordOfTheDayScheduler.enabledKey)
-            // Fall back to 9am when the key has never been written (object returns nil for missing keys).
-            let hour = UserDefaults.standard.object(forKey: WordOfTheDayScheduler.hourKey) != nil
-                ? UserDefaults.standard.integer(forKey: WordOfTheDayScheduler.hourKey)
-                : 9
-            let minute = UserDefaults.standard.integer(forKey: WordOfTheDayScheduler.minuteKey)
-            Task.detached(priority: .utility) {
-                await WordOfTheDayScheduler.refreshScheduleIfEnabled(
-                    words: words,
-                    dictionaryStore: store,
-                    hour: hour,
-                    minute: minute,
-                    enabled: enabled
-                )
-            }
+            StartupTimer.mark("readResources.ready onChange fired")
+            scheduleWotdRefresh(reason: "startup validation", delayNanoseconds: 2_000_000_000, forceRefresh: false)
+        }
+        // Refresh WOTD when the underlying saved-word set changes.
+        .onChange(of: wordsStore.words) { _, _ in
+            guard readResources.ready else { return }
+            scheduleWotdRefresh(reason: "words changed", delayNanoseconds: 500_000_000, forceRefresh: true)
         }
     }
 
@@ -167,9 +158,12 @@ struct ContentView: View {
     private func restoreLastActiveNote() {
         guard let noteID = UUID(uuidString: lastActiveNoteID) else { return }
 
-        notesStore.reload()
+        StartupTimer.measure("restoreLastActiveNote.reload") {
+            notesStore.reload()
+        }
         guard let note = notesStore.notes.first(where: { $0.id == noteID }) else { return }
 
+        StartupTimer.mark("restoreLastActiveNote selected note")
         selectedReadNote = note
         selectedTab = .read
     }
@@ -185,6 +179,40 @@ struct ContentView: View {
         guard !hasLoadedReadResources else { return }
         hasLoadedReadResources = true
         rebuildReadResources()
+    }
+
+    // Schedules a deferred WOTD refresh so startup can stay responsive while still validating stale schedules.
+    private func scheduleWotdRefresh(reason: String, delayNanoseconds: UInt64, forceRefresh: Bool) {
+        wotdRefreshTask?.cancel()
+        let words = wordsStore.words
+        let store = readResources.dictionaryStore
+        let enabled = UserDefaults.standard.bool(forKey: WordOfTheDayScheduler.enabledKey)
+        let hour = UserDefaults.standard.object(forKey: WordOfTheDayScheduler.hourKey) != nil
+            ? UserDefaults.standard.integer(forKey: WordOfTheDayScheduler.hourKey)
+            : 9
+        let minute = UserDefaults.standard.integer(forKey: WordOfTheDayScheduler.minuteKey)
+
+        wotdRefreshTask = Task.detached(priority: .utility) {
+            if delayNanoseconds > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: delayNanoseconds)
+                } catch {
+                    return
+                }
+            }
+
+            guard Task.isCancelled == false else { return }
+            StartupTimer.mark("WordOfTheDayScheduler.refreshScheduleIfEnabled starting (\(reason))")
+            await WordOfTheDayScheduler.refreshScheduleIfEnabled(
+                words: words,
+                dictionaryStore: store,
+                hour: hour,
+                minute: minute,
+                enabled: enabled,
+                forceRefresh: forceRefresh
+            )
+            StartupTimer.mark("WordOfTheDayScheduler.refreshScheduleIfEnabled finished (\(reason))")
+        }
     }
 
     // Rebuilds the segmenter and related resources on a background thread using the current settings.
@@ -213,7 +241,7 @@ struct ContentView: View {
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
     // Uses the specified backend and MeCab dictionary when MeCab is selected.
-    private static func makeReadResources(backend: String, mecabDictionary: String) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap) {
+    private nonisolated static func makeReadResources(backend: String, mecabDictionary: String) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap) {
         StartupTimer.mark("makeReadResources started")
         let overallStart = CFAbsoluteTimeGetCurrent()
 

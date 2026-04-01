@@ -11,3 +11,4 @@ Resources/sentence-pairs.tsv
 Resources/MeCab/ipadic/
 Resources/MeCab/unidic/
 .build/
+.swiftpm
