@@ -1,0 +1,4064 @@
+import SwiftUI
+import UIKit
+import Foundation
+import AVFoundation
+import UniformTypeIdentifiers
+import VisionKit
+
+struct PasteView: View {
+    private enum KaraokeImportMode {
+        case audio
+        case subtitles
+    }
+
+    @EnvironmentObject var notes: NotesStore
+    @EnvironmentObject var router: AppRouter
+    @EnvironmentObject var words: WordsStore
+    @EnvironmentObject var readingOverrides: ReadingOverridesStore
+    @EnvironmentObject var tokenBoundaries: TokenBoundariesStore
+    @Environment(\.undoManager) var undoManager
+    @Environment(\.appColorTheme) private var appColorTheme
+
+    @ObservedObject private var speech = SpeechManager.shared
+
+    @State var inputText: String = ""
+    @State var currentNote: Note? = nil
+    @State private var noteTitleInput: String = ""
+    @State private var hasManuallyEditedTitle: Bool = false
+    @State private var isTitleEditAlertPresented: Bool = false
+    @State private var titleEditDraft: String = ""
+    @State private var hasInitialized: Bool = false
+    @State var isEditing: Bool = false
+    @State var furiganaAttributedText: NSAttributedString? = nil
+    @State var furiganaAttributedTextBase: NSAttributedString? = nil
+    @State var furiganaSpans: [AnnotatedSpan]? = nil
+    @State var furiganaSemanticSpans: [SemanticSpan] = []
+    @State private var furiganaRefreshToken: Int = 0
+    @State private var furiganaTaskHandle: Task<Void, Never>? = nil
+    @StateObject private var inlineLookup = DictionaryLookupViewModel()
+    @StateObject private var selectionController = TokenSelectionController()
+    @State var overrideSignature: Int = 0
+    @State var customizedRanges: [NSRange] = []
+    @State var showTokensPopover: Bool = false
+    @State private var debugTokenListText: String = ""
+    @State private var lastLoggedTokenListText: String = ""
+    @State private var pendingRouterResetNoteID: UUID? = nil
+    @State private var skipNextInitialFuriganaEnsure: Bool = false
+    @State var isDictionarySheetPresented: Bool = false
+    @State private var measuredSheetHeight: CGFloat = 0
+    @State var pasteAreaFrame: CGRect? = nil
+
+    @State private var toastText: String? = nil
+    @State private var toastDismissWorkItem: DispatchWorkItem? = nil
+    @State private var pendingEndEditingRequestID: Int = 0
+    @State private var awaitingEditCommitBeforeViewMode: Bool = false
+    @State private var isKaraokeImporterPresented: Bool = false
+    @State private var karaokeImportMode: KaraokeImportMode? = nil
+    @State private var isGeneratingKaraokeAlignment: Bool = false
+    @State private var isCameraTextScannerPresented: Bool = false
+    @State private var karaokeGenerationProgress: Double = 0
+    @State private var karaokeProgressTask: Task<Void, Never>? = nil
+    @State private var karaokeAudioPlayer: AVAudioPlayer? = nil
+    @State private var karaokePlaybackTimer: Timer? = nil
+    @State private var karaokeCurrentRange: NSRange? = nil
+    @State private var karaokeCurrentLineRange: NSRange? = nil
+    @State private var karaokeScrollToSelectedRangeToken: Int = 0
+    @State private var karaokeScheduledStartDeviceTime: TimeInterval? = nil
+    @State private var karaokeStartOffsetSeconds: TimeInterval = 0
+    @State private var karaokePlaybackSecondsDisplay: TimeInterval = 0
+    @State private var isKaraokeDebugDumpPresented: Bool = false
+    @State private var karaokeDebugDumpText: String = ""
+    @State private var karaokeDebugDumpFilePath: String = ""
+    @State private var karaokeDiagnosticsLog: [String] = []
+
+    // Incremental lookup (tap character → lookup n, n+n1, ..., up to next newline)
+    @State var incrementalPopupHits: [IncrementalLookupHit] = []
+    @State var isIncrementalPopupVisible: Bool = false
+    @State var incrementalLookupTask: Task<Void, Never>? = nil
+    @State var savedWordOverlays: [RubyText.TokenOverlay] = []
+    @State var incrementalSelectedCharacterRange: NSRange? = nil
+    @State var incrementalSheetDetent: PresentationDetent = .height(420)
+
+    @State var editorSelectedRange: NSRange? = nil
+
+    private struct WordDefinitionsRequest: Identifiable, Hashable {
+        let id = UUID()
+        let surface: String
+        let kana: String?
+        let contextSentence: String?
+        let lemmaCandidates: [String]
+        let tokenPartOfSpeech: String?
+        let sourceNoteID: UUID?
+        let tokenParts: [WordDefinitionView.TokenPart]
+    }
+
+    @State private var wordDefinitionsRequest: WordDefinitionsRequest? = nil
+
+    var tokenSelection: TokenSelectionContext? {
+        get { selectionController.tokenSelection }
+        nonmutating set { selectionController.tokenSelection = newValue }
+    }
+
+    var persistentSelectionRange: NSRange? {
+        get { selectionController.persistentSelectionRange }
+        nonmutating set { selectionController.persistentSelectionRange = newValue }
+    }
+
+    var sheetSelection: TokenSelectionContext? {
+        get { selectionController.sheetSelection }
+        nonmutating set { selectionController.sheetSelection = newValue }
+    }
+
+    var sheetPanelHeight: CGFloat {
+        get { selectionController.sheetPanelHeight }
+        nonmutating set { selectionController.sheetPanelHeight = newValue }
+    }
+
+    var pendingSelectionRange: NSRange? {
+        get { selectionController.pendingSelectionRange }
+        nonmutating set { selectionController.pendingSelectionRange = newValue }
+    }
+
+    var pendingSplitFocusSelectionID: String? {
+        get { selectionController.pendingSplitFocusSelectionID }
+        nonmutating set { selectionController.pendingSplitFocusSelectionID = newValue }
+    }
+
+    var tokenPanelFrame: CGRect? {
+        get { selectionController.tokenPanelFrame }
+        nonmutating set { selectionController.tokenPanelFrame = newValue }
+    }
+
+    private var inlineContextMenuState: RubyContextMenuState? {
+        guard let selection = tokenSelection else { return nil }
+        return RubyContextMenuState(
+            canMergeLeft: canMergeSelection(.previous),
+            canMergeRight: canMergeSelection(.next),
+            canSplit: selection.range.length > 1
+        )
+    }
+
+    @AppStorage("readingTextSize") private var readingTextSize: Double = 17
+    @AppStorage("readingFuriganaSize") private var readingFuriganaSize: Double = 9
+    @AppStorage("readingLineSpacing") private var readingLineSpacing: Double = 4
+    @AppStorage("readingGlobalKerningPixels") private var readingGlobalKerningPixels: Double = 0
+    @AppStorage("readingHeadwordSpacingPadding") private var readingHeadwordSpacingPadding: Bool = false
+    @AppStorage("readingHeadwordSpacingAmount") private var readingHeadwordSpacingAmount: Double = 1.0
+    @AppStorage("readingShowFurigana") var showFurigana: Bool = true
+    @AppStorage("readingWrapLines") private var wrapLines: Bool = false
+    @AppStorage("readingAlternateTokenColors") private var alternateTokenColors: Bool = false
+    @AppStorage("readingHighlightUnknownTokens") private var highlightUnknownTokens: Bool = false
+
+    @AppStorage("clipboardAccessEnabled") private var clipboardAccessEnabled: Bool = true
+    // One-time migration to disable token overlay highlighting that can hurt responsiveness.
+    // Users can re-enable manually in the furigana options menu if desired.
+    @AppStorage("paste.migrated.disableTokenOverlayHighlighting.v1") private var didDisableTokenOverlayHighlightingV1: Bool = false
+    @AppStorage("readingAlternateTokenColorA") var alternateTokenColorAHex: String = "#0A84FF"
+    @AppStorage("readingAlternateTokenColorB") private var alternateTokenColorBHex: String = "#FF2D55"
+
+    @State private var showingFuriganaOptions: Bool = false
+    @AppStorage("pasteViewScratchNoteID") private var scratchNoteIDRaw: String = ""
+    @AppStorage("pasteViewLastOpenedNoteID") private var lastOpenedNoteIDRaw: String = ""
+    @AppStorage("extractHideDuplicateTokens") private var hideDuplicateTokens: Bool = false
+    @AppStorage("extractHideCommonParticles") private var hideCommonParticles: Bool = false
+    @AppStorage("extractPropagateTokenEdits") var propagateTokenEdits: Bool = false
+    @AppStorage(CommonParticleSettings.storageKey) private var commonParticlesRaw: String = CommonParticleSettings.defaultRawValue
+    @AppStorage("debugDisableDictionaryPopup") private var debugDisableDictionaryPopup: Bool = false
+    @AppStorage("debugPasteDragToMoveWords") private var debugPasteDragToMoveWords: Bool = false
+    @AppStorage("rubyDebugRects") private var rubyDebugRects: Bool = false
+    @AppStorage("rubyHeadwordDebugRects") private var rubyHeadwordDebugRects: Bool = false
+
+    private var scratchNoteID: UUID {
+        if let cached = UUID(uuidString: scratchNoteIDRaw) {
+            return cached
+        }
+        let newID = UUID()
+        scratchNoteIDRaw = newID.uuidString
+        return newID
+    }
+
+    private var lastOpenedNoteID: UUID? {
+        guard lastOpenedNoteIDRaw.isEmpty == false else { return nil }
+        return UUID(uuidString: lastOpenedNoteIDRaw)
+    }
+
+    
+    static let coordinateSpaceName = "PasteViewRootSpace"
+    @State private var pinchZoomInProgress: Bool = false
+    @State private var pinchZoomBaselineTextSize: Double? = nil
+    @State private var pinchZoomBaselineFuriganaSize: Double? = nil
+    @State private var pendingFuriganaSizeRefreshTask: Task<Void, Never>? = nil
+
+    private static let readingSizeRange: ClosedRange<Double> = 1...30
+    private static let pinchRefreshDebounceNanoseconds: UInt64 = 140_000_000
+
+    private func clampReadingSize(_ value: Double) -> Double {
+        min(max(value, Self.readingSizeRange.lowerBound), Self.readingSizeRange.upperBound)
+    }
+
+    private func snapReadingSize(_ value: Double, step: Double = 0.5) -> Double {
+        guard step > 0 else { return value }
+        return (value / step).rounded() * step
+    }
+
+    private func schedulePinchZoomRefresh(reason: String) {
+        pendingFuriganaSizeRefreshTask?.cancel()
+        pendingFuriganaSizeRefreshTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: Self.pinchRefreshDebounceNanoseconds)
+            } catch {
+                return
+            }
+            guard Task.isCancelled == false else { return }
+            triggerFuriganaRefreshIfNeeded(reason: reason, recomputeSpans: false, skipTailSemanticMerge: true)
+        }
+    }
+
+    private var pinchToZoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                if pinchZoomInProgress == false {
+                    pinchZoomInProgress = true
+                    pinchZoomBaselineTextSize = readingTextSize
+                    pinchZoomBaselineFuriganaSize = readingFuriganaSize
+                }
+                guard let baseText = pinchZoomBaselineTextSize,
+                      let baseFurigana = pinchZoomBaselineFuriganaSize else { return }
+
+                let factor = Double(scale)
+                let nextText = snapReadingSize(clampReadingSize(baseText * factor))
+                let nextFurigana = snapReadingSize(clampReadingSize(baseFurigana * factor))
+
+                if abs(nextText - readingTextSize) > .ulpOfOne {
+                    readingTextSize = nextText
+                }
+                if abs(nextFurigana - readingFuriganaSize) > .ulpOfOne {
+                    readingFuriganaSize = nextFurigana
+                }
+            }
+            .onEnded { _ in
+                pinchZoomInProgress = false
+                pinchZoomBaselineTextSize = nil
+                pinchZoomBaselineFuriganaSize = nil
+                pendingFuriganaSizeRefreshTask?.cancel()
+                pendingFuriganaSizeRefreshTask = nil
+                triggerFuriganaRefreshIfNeeded(reason: "pinch zoom ended", recomputeSpans: false, skipTailSemanticMerge: true)
+            }
+    }
+    private static let inlineDictionaryPanelEnabledFlag = true
+    private static let dictionaryPopupEnabledFlag = true // Tap in paste area shows popup + highlight.
+    private static let dictionaryPopupLoggingEnabledFlag = false
+    private static let incrementalLookupEnabledFlag = false
+    private static let sheetMaxHeightFraction: CGFloat = 0.8
+    private static let sheetExtraPadding: CGFloat = 36
+    private let furiganaPipeline = FuriganaPipelineService()
+    var incrementalLookupEnabled: Bool { Self.incrementalLookupEnabledFlag }
+    private var dictionaryPopupEnabled: Bool { Self.dictionaryPopupEnabledFlag && incrementalLookupEnabled == false && debugDisableDictionaryPopup == false }
+    private var dictionaryPopupLoggingEnabled: Bool { Self.dictionaryPopupLoggingEnabledFlag }
+    private var inlineDictionaryPanelEnabled: Bool { Self.inlineDictionaryPanelEnabledFlag && dictionaryPopupEnabled }
+    var sheetDictionaryPanelEnabled: Bool { dictionaryPopupEnabled && inlineDictionaryPanelEnabled == false }
+    private var pasteAreaDictionaryEnabled: Bool { false }
+    private var tokenSpansAlwaysOn: Bool { true }
+    private var spanConsumersActive: Bool { showFurigana || tokenHighlightsEnabled || tokenSpansAlwaysOn }
+    private static let highlightWhitespace: CharacterSet = {
+        var set = CharacterSet.whitespacesAndNewlines
+        set.formUnion(CharacterSet(charactersIn: "\u{00A0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{200B}"))
+        return set
+    }()
+    private var alternateTokenPalette: [UIColor] {
+        // Honor user overrides when provided; otherwise prefer theme defaults.
+        let defaultA = UIColor(appColorTheme.palette.tokenAlternateA)
+        let defaultB = UIColor(appColorTheme.palette.tokenAlternateB)
+
+        let chosenA = UIColor(hexString: alternateTokenColorAHex) ?? defaultA
+        let chosenB = UIColor(hexString: alternateTokenColorBHex) ?? defaultB
+        return [chosenA, chosenB]
+    }
+    private var unknownTokenColor: UIColor { UIColor(appColorTheme.palette.unknownToken) }
+    var tokenHighlightsEnabled: Bool {
+        guard incrementalLookupEnabled == false else { return false }
+        return alternateTokenColors || highlightUnknownTokens
+    }
+    private var sheetSelectionBinding: Binding<TokenSelectionContext?> {
+        Binding(
+            // The Extract Words sheet relies on this binding to display the in-sheet
+            // dictionary popup. Do not nil it out while the sheet is presented.
+            get: { sheetSelection },
+            set: { sheetSelection = $0 }
+        )
+    }
+    private var commonParticleSet: Set<String> {
+        Set(CommonParticleSettings.decodeList(from: commonParticlesRaw))
+    }
+
+    private var navigationTitleText: String {
+        noteTitleInput.isEmpty ? "Paste" : noteTitleInput
+    }
+
+    private func sanitizeGeometryRect(_ rect: CGRect?) -> CGRect? {
+        guard var rect = rect else { return nil }
+        guard rect.origin.x.isFinite, rect.origin.y.isFinite else { return nil }
+        guard rect.size.width.isFinite, rect.size.height.isFinite else { return nil }
+        rect.size.width = max(0, rect.size.width)
+        rect.size.height = max(0, rect.size.height)
+        return rect
+    }
+
+    private func sanitizeLength(_ value: CGFloat) -> CGFloat {
+        guard value.isFinite else { return 0 }
+        return max(0, value)
+    }
+
+    private func emitTokenListLog(_ message: String) {
+        // CustomLogger.shared.print(message)
+        NSLog("%@", message)
+    }
+
+    var body: some View {
+        NavigationStack {
+            applyDictionarySheet(to: coreContent)
+        }
+        .onPreferenceChange(TokenActionPanelFramePreferenceKey.self) { newValue in
+            tokenPanelFrame = sanitizeGeometryRect(newValue)
+        }
+        .onPreferenceChange(PasteAreaFramePreferenceKey.self) { newValue in
+            pasteAreaFrame = sanitizeGeometryRect(newValue)
+        }
+        .sheet(item: $wordDefinitionsRequest, onDismiss: {
+            // When the dictionary details sheet is dismissed, also clear the
+            // token selection in the paste area so the highlight goes away.
+            clearSelection(resetPersistent: true)
+        }) { request in
+            NavigationStack {
+                WordDefinitionView(
+                    request: .init(
+                        term: .init(surface: request.surface, kana: request.kana),
+                        context: .init(
+                            sentence: request.contextSentence,
+                            lemmaCandidates: request.lemmaCandidates,
+                            tokenPartOfSpeech: request.tokenPartOfSpeech,
+                            tokenParts: request.tokenParts
+                        ),
+                        metadata: .init(sourceNoteID: request.sourceNoteID)
+                    )
+                )
+            }
+        }
+        .sheet(isPresented: $isIncrementalPopupVisible, onDismiss: {
+            dismissIncrementalLookupSheet()
+        }) {
+            incrementalLookupSheet
+                .presentationDetents(incrementalSheetDetents, selection: $incrementalSheetDetent)
+                .presentationDragIndicator(.visible)
+        }
+        .fileImporter(
+            isPresented: $isKaraokeImporterPresented,
+            allowedContentTypes: karaokeAllowedImportTypes,
+            onCompletion: handleKaraokeFileImport
+        )
+        .sheet(isPresented: $isCameraTextScannerPresented) {
+            CameraTextScannerSheet { detectedText in
+                createNoteFromDetectedCameraText(detectedText)
+            }
+        }
+        .sheet(isPresented: $isKaraokeDebugDumpPresented) {
+            NavigationStack {
+                ScrollView {
+                    Text(
+                        karaokeDebugDumpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "[Karaoke Debug Dump]\nNo content rendered. Check persisted file path in summary."
+                        : karaokeDebugDumpText
+                    )
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .textSelection(.enabled)
+                }
+                .navigationTitle("Karaoke Debug Dump")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+    }
+
+    private var coreContent: some View {
+        let base = coreStack
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle(navigationTitleText)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                coreToolbar
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        SpeechManager.shared.togglePlayPause(
+                            sessionID: noteSpeechSessionID,
+                            text: inputText,
+                            language: "ja-JP"
+                        )
+                    } label: {
+                        Image(systemName: noteSpeechIsPlaying ? "pause.circle" : "play.circle")
+                    }
+                    .accessibilityLabel(noteSpeechIsPlaying ? "Pause reading" : (noteSpeechIsPaused ? "Resume reading" : "Read note"))
+                    .accessibilityHint("Speaks the entire note")
+                    .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .contextMenu {
+                        Menu {
+                            Button {
+                                SpeechManager.shared.adjustRate(by: -0.05)
+                                showToast("Rate: \(SpeechManager.formatRate(SpeechManager.shared.preferredRate))")
+                            } label: {
+                                Label("Slower", systemImage: "tortoise")
+                            }
+                            Button {
+                                SpeechManager.shared.adjustRate(by: 0.05)
+                                showToast("Rate: \(SpeechManager.formatRate(SpeechManager.shared.preferredRate))")
+                            } label: {
+                                Label("Faster", systemImage: "hare")
+                            }
+                            Button {
+                                SpeechManager.shared.preferredRate = AVSpeechUtteranceDefaultSpeechRate
+                                showToast("Rate reset")
+                            } label: {
+                                Label("Reset", systemImage: "arrow.counterclockwise")
+                            }
+                        } label: {
+                            Label("Rate", systemImage: "speedometer")
+                        }
+
+                        Menu {
+                            Button {
+                                SpeechManager.shared.adjustPitch(by: -0.1)
+                                showToast("Pitch: \(SpeechManager.formatPitch(SpeechManager.shared.preferredPitch))")
+                            } label: {
+                                Label("Lower", systemImage: "arrow.down")
+                            }
+                            Button {
+                                SpeechManager.shared.adjustPitch(by: 0.1)
+                                showToast("Pitch: \(SpeechManager.formatPitch(SpeechManager.shared.preferredPitch))")
+                            } label: {
+                                Label("Higher", systemImage: "arrow.up")
+                            }
+                            Button {
+                                SpeechManager.shared.preferredPitch = 1.0
+                                showToast("Pitch reset")
+                            } label: {
+                                Label("Reset", systemImage: "arrow.counterclockwise")
+                            }
+                        } label: {
+                            Label("Pitch", systemImage: "waveform")
+                        }
+
+                        Menu {
+                            Button {
+                                SpeechManager.shared.setPreferredVoiceIdentifier(nil)
+                                showToast("Voice: Japanese default")
+                            } label: {
+                                Label("Japanese default", systemImage: "person.crop.circle")
+                            }
+
+                            let voices = SpeechManager.shared.availableVoices(language: "ja-JP")
+                            if voices.isEmpty {
+                                Text("No Japanese voices")
+                            } else {
+                                ForEach(voices) { v in
+                                    Button {
+                                        SpeechManager.shared.setPreferredVoiceIdentifier(v.identifier)
+                                        showToast("Voice: \(v.name)")
+                                    } label: {
+                                        if SpeechManager.shared.preferredVoiceIdentifier == v.identifier {
+                                            Label(v.name, systemImage: "checkmark")
+                                        } else {
+                                            Text(v.name)
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label("Voice", systemImage: "speaker.wave.2")
+                        }
+
+                        Button {
+                            SpeechManager.shared.resetSpeechIndicator(sessionID: noteSpeechSessionID)
+                            showToast("Speech indicator reset")
+                        } label: {
+                            Label("Reset indicator", systemImage: "sparkles")
+                        }
+                        Button(role: .destructive) {
+                            SpeechManager.shared.stop(sessionID: noteSpeechSessionID)
+                        } label: {
+                            Label("Stop", systemImage: "stop.circle")
+                        }
+                    }
+                }
+            }
+            .overlay {
+                if isTitleEditAlertPresented {
+                    titleEditModal
+                }
+            }
+            .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isTitleEditAlertPresented)
+            .safeAreaInset(edge: .bottom) { coreBottomInset }
+            .onAppear { onAppearHandler() }
+            .onDisappear {
+                NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
+                furiganaTaskHandle?.cancel()
+                SpeechManager.shared.stop(sessionID: noteSpeechSessionID)
+                karaokeAudioPlayer?.stop()
+                stopKaraokePlaybackTimer()
+                stopKaraokeProgressSimulation()
+                karaokeCurrentRange = nil
+            }
+
+        let inputHandling = base
+            .onChange(of: inputText) { _, newValue in
+                skipNextInitialFuriganaEnsure = false
+                clearSelection()
+                if incrementalLookupEnabled {
+                    incrementalLookupTask?.cancel()
+                    isIncrementalPopupVisible = false
+                    incrementalPopupHits = []
+                    incrementalSelectedCharacterRange = nil
+                    recomputeSavedWordOverlays()
+                }
+                DispatchQueue.main.async {
+                    syncNoteForInputChange(newValue)
+                }
+                PasteBufferStore.save(newValue)
+                if newValue.isEmpty {
+                    furiganaAttributedText = nil
+                    furiganaSpans = nil
+                    furiganaTaskHandle?.cancel()
+                }
+                triggerFuriganaRefreshIfNeeded(reason: "input changed", recomputeSpans: true)
+            }
+            .onChange(of: isEditing) { oldValue, editing in
+                if editing {
+                    clearSelection()
+                }
+                showToast(editing ? "Edit mode enabled" : "Edit mode disabled")
+            }
+
+        let furiganaControls = inputHandling
+            .onChange(of: words.words.count) {
+                guard incrementalLookupEnabled else { return }
+                recomputeSavedWordOverlays()
+            }
+            .onChange(of: showFurigana) { _, enabled in
+                if enabled {
+                    // Toggling furigana on should reuse existing segmentation when possible.
+                    // Only rebuild the attributed text layer; segmentation is recomputed
+                    // inside the pipeline if spans are missing or invalid.
+                    triggerFuriganaRefreshIfNeeded(reason: "show furigana toggled on", recomputeSpans: false)
+                } else {
+                    furiganaTaskHandle?.cancel()
+                }
+            }
+            .onChange(of: wrapLines) { _, enabled in
+                showToast(enabled ? "Wrapped lines" : "Single-line layout")
+            }
+            .onChange(of: alternateTokenColors) { oldValue, enabled in
+                triggerFuriganaRefreshIfNeeded(
+                    reason: enabled ? "alternate token colors toggled on" : "alternate token colors toggled off",
+                    recomputeSpans: false
+                )
+                showToast(enabled ? "Alternate token colors enabled" : "Alternate token colors disabled")
+            }
+            .onChange(of: highlightUnknownTokens) { oldValue, enabled in
+                triggerFuriganaRefreshIfNeeded(
+                    reason: enabled ? "unknown highlight toggled on" : "unknown highlight toggled off",
+                    recomputeSpans: false
+                )
+                showToast(enabled ? "Highlight unknown words enabled" : "Highlight unknown words disabled")
+            }
+            .onChange(of: readingTextSize) {
+                // Text size changes are render-only; they must update attributed text + ruby overlay.
+                if pinchZoomInProgress {
+                    schedulePinchZoomRefresh(reason: "text font size changed (pinch)")
+                } else {
+                    triggerFuriganaRefreshIfNeeded(reason: "text font size changed", recomputeSpans: false, skipTailSemanticMerge: true)
+                }
+            }
+            .onChange(of: readingFuriganaSize) {
+                guard showFurigana else { return }
+                if pinchZoomInProgress {
+                    schedulePinchZoomRefresh(reason: "furigana font size changed (pinch)")
+                } else {
+                    triggerFuriganaRefreshIfNeeded(reason: "furigana font size changed", recomputeSpans: false, skipTailSemanticMerge: true)
+                }
+            }
+            .onChange(of: readingHeadwordSpacingPadding) { _, enabled in
+                triggerFuriganaRefreshIfNeeded(
+                    reason: enabled ? "headword spacing padding toggled on" : "headword spacing padding toggled off",
+                    recomputeSpans: false,
+                    skipTailSemanticMerge: true
+                )
+            }
+            .onChange(of: readingHeadwordSpacingAmount) { _, _ in
+                triggerFuriganaRefreshIfNeeded(
+                    reason: "headword spacing amount changed",
+                    recomputeSpans: false,
+                    skipTailSemanticMerge: true
+                )
+            }
+
+        let selectionHandling = furiganaControls
+            .onChange(of: selectionController.tokenSelection?.id) { (_: String?, newID: String?) in
+                let newSelection = selectionController.tokenSelection
+                if newSelection == nil {
+                    if isDictionarySheetPresented {
+                        isDictionarySheetPresented = false
+                    }
+                    // Also clear the token panel frame when selection is cleared.
+                    tokenPanelFrame = nil
+                }
+                if dictionaryPopupEnabled {
+                    if let _ = newID {
+                        if let ctx = newSelection {
+                            let r = ctx.range
+                            if dictionaryPopupLoggingEnabled {
+                                CustomLogger.shared.debug(
+                                    "DICT show (selection) t=\(ctx.tokenIndex) r=\(r.location)..\(NSMaxRange(r)) s=\(ctx.surface) inline=\(self.inlineDictionaryPanelEnabled) sheet=\(self.sheetDictionaryPanelEnabled)"
+                                )
+                            }
+                        } else {
+                            if dictionaryPopupLoggingEnabled {
+                                CustomLogger.shared.debug("DICT show (selection)")
+                            }
+                        }
+                    } else {
+                        if dictionaryPopupLoggingEnabled {
+                            CustomLogger.shared.debug("DICT hide (selection cleared)")
+                        }
+                    }
+                }
+                handleSelectionLookup()
+
+            }
+            .onChange(of: selectionController.persistentSelectionRange) { _, newRange in
+                guard incrementalLookupEnabled == false else { return }
+                // Do not drive the sentence heatmap off normal selection changes.
+                // Sentence selection is handled explicitly by the constellation sheet.
+                _ = newRange
+            }
+            .onChange(of: incrementalSelectedCharacterRange) { _, newRange in
+                guard incrementalLookupEnabled else { return }
+                // Do not drive the sentence heatmap off normal selection changes.
+                _ = newRange
+            }
+            .onChange(of: sheetSelection?.id) { (_: String?, newID: String?) in
+                guard dictionaryPopupEnabled else { return }
+                if let _ = newID {
+                    if sheetSelection != nil {
+                        if dictionaryPopupLoggingEnabled {
+                            // CustomLogger.shared.debug("DICT show (sheet)")
+                        }
+                    } else {
+                        if dictionaryPopupLoggingEnabled {
+                            // CustomLogger.shared.debug("DICT show (sheet)")
+                        }
+                    }
+                } else {
+                    if dictionaryPopupLoggingEnabled {
+                        // CustomLogger.shared.debug("DICT hide (sheet cleared)")
+                    }
+                }
+            }
+
+        let noteHandling = selectionHandling
+            .onChange(of: currentNote?.id) { _, newValue in
+                lastOpenedNoteIDRaw = newValue?.uuidString ?? ""
+                clearSelection()
+                overrideSignature = computeOverrideSignature()
+                updateCustomizedRanges()
+                karaokeAudioPlayer?.stop()
+                stopKaraokePlaybackTimer()
+                karaokeCurrentRange = nil
+                if incrementalLookupEnabled {
+                    incrementalLookupTask?.cancel()
+                    isIncrementalPopupVisible = false
+                    incrementalPopupHits = []
+                    incrementalSelectedCharacterRange = nil
+                    recomputeSavedWordOverlays()
+                }
+                processPendingRouterResetRequest()
+            }
+            .onReceive(readingOverrides.$overrides) { _ in
+                handleOverridesExternalChange()
+            }
+
+        return noteHandling
+            .onChange(of: router.pendingResetNoteID) { _, newValue in
+                pendingRouterResetNoteID = newValue
+                processPendingRouterResetRequest()
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if isDictionarySheetPresented {
+                    isDictionarySheetPresented = false
+                    clearSelection(resetPersistent: true)
+                } else if tokenSelection != nil {
+                    // Background/whitespace tap clears selection.
+                    clearSelection(resetPersistent: false)
+                }
+            }
+            .overlay(alignment: Alignment.bottom) {
+                if let toastText {
+                    Text(toastText)
+                        .font(.subheadline)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.bottom, 24)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+    }
+
+    private var coreStack: some View {
+        ZStack(alignment: .bottom) {
+            editorColumn
+            inlineDictionaryOverlay
+        }
+        // Slide in/out ONLY when the panel is shown/hidden.
+        // Switching to a new word updates `presented.requestID` but keeps `presented != nil`,
+        // so this animation does not run during content swaps.
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: inlineLookup.presented != nil)
+        .coordinateSpace(name: Self.coordinateSpaceName)
+    }
+
+    private var editModeBinding: Binding<Bool> {
+        Binding(
+            get: { isEditing },
+            set: { requested in
+                requestEditModeChange(requested)
+            }
+        )
+    }
+
+    
+
+    private var editorColumn: some View {
+        // Precompute helpers outside of the ViewBuilder to avoid non-View statements inside VStack
+        let speechOverlay = noteSpeechOverlay(for: inputText)
+        let karaokeOverlay = karaokePlaybackOverlay(for: inputText)
+        let extraOverlays: [RubyText.TokenOverlay] = {
+            var overlays: [RubyText.TokenOverlay] = incrementalLookupEnabled ? savedWordOverlays : []
+            if let speechOverlay {
+                overlays.append(speechOverlay)
+            }
+            if let karaokeOverlay {
+                overlays.append(karaokeOverlay)
+            }
+            return overlays
+        }()
+
+        let spanSelectionHandler: ((RubySpanSelection?) -> Void)? = { selection in
+            if incrementalLookupEnabled {
+                // In incremental lookup mode we still want whitespace taps to clear state.
+                guard selection != nil else {
+                    incrementalSelectedCharacterRange = nil
+                    incrementalLookupTask?.cancel()
+                    isIncrementalPopupVisible = false
+                    incrementalPopupHits = []
+                    return
+                }
+                return
+            }
+
+            handleInlineSpanSelection(selection)
+        }
+
+        let contextMenuStateProvider: (() -> RubyContextMenuState?)?
+        if incrementalLookupEnabled {
+            contextMenuStateProvider = nil
+        } else {
+            contextMenuStateProvider = {
+                inlineContextMenuState
+            }
+        }
+
+        let contextMenuActionHandler: ((RubyContextMenuAction) -> Void)?
+        if incrementalLookupEnabled {
+            contextMenuActionHandler = nil
+        } else {
+            contextMenuActionHandler = { action in
+                handleContextMenuAction(action)
+            }
+        }
+
+        let tokenPanelOverlap: CGFloat = {
+            guard inlineDictionaryPanelEnabled else { return 0 }
+            guard tokenSelection != nil else { return 0 }
+            guard let paste = pasteAreaFrame else { return 0 }
+            guard let panel = tokenPanelFrame else { return 0 }
+            // Use the panel's height rather than overlap math.
+            // In some layouts the panel can ignore safe-area and overlap computations
+            // can undercount, making it feel like you "can't scroll to the end".
+            return min(max(0, panel.height), paste.height)
+        }()
+
+        let viewMetricsContext = RubyText.ViewMetricsContext(
+            pasteAreaFrame: pasteAreaFrame,
+            tokenPanelFrame: tokenPanelFrame
+        )
+
+        let interTokenSpacing: [Int: CGFloat] = {
+            // When headword-spacing normalization is active, enforce contiguous
+            // segment boundaries from layout passes rather than replaying persisted
+            // manual boundary offsets.
+            guard readingHeadwordSpacingPadding == false else { return [:] }
+            guard let noteID = currentNote?.id else { return [:] }
+            return tokenBoundaries.interTokenSpacing(for: noteID, text: inputText)
+        }()
+
+        let tokenSpacingValueProvider: ((Int) -> CGFloat)? = debugPasteDragToMoveWords ? {
+            guard let noteID = currentNote?.id else { return 0 }
+            return tokenBoundaries.interTokenSpacingWidth(noteID: noteID, boundaryUTF16Index: $0)
+        } : nil
+
+        let onTokenSpacingChanged: ((Int, CGFloat, Bool) -> Void)? = debugPasteDragToMoveWords ? { boundary, width, _ in
+            guard let noteID = currentNote?.id else { return }
+            tokenBoundaries.setInterTokenSpacing(noteID: noteID, boundaryUTF16Index: boundary, width: width, text: inputText)
+            // Spacing is display-only; no need to resync notes or spans.
+        } : nil
+
+        return PasteEditorColumnBody(
+            text: $inputText,
+            editorSelectedRange: $editorSelectedRange,
+            furiganaText: furiganaAttributedText,
+            furiganaSpans: furiganaSpans,
+            semanticSpans: furiganaSemanticSpans,
+            textSize: readingTextSize,
+            isEditing: editModeBinding,
+            showFurigana: $showFurigana,
+            wrapLines: $wrapLines,
+            alternateTokenColors: $alternateTokenColors,
+            highlightUnknownTokens: $highlightUnknownTokens,
+            padHeadwordSpacing: $readingHeadwordSpacingPadding,
+            headwordSpacingAmount: readingHeadwordSpacingAmount,
+            incrementalLookupEnabled: incrementalLookupEnabled,
+            lineSpacing: readingLineSpacing,
+            globalKerningPixels: readingGlobalKerningPixels,
+            tokenPalette: alternateTokenPalette,
+            unknownTokenColor: unknownTokenColor,
+            selectedRangeHighlight: editorSelectedRangeHighlight,
+            scrollToSelectedRangeToken: karaokeScrollToSelectedRangeToken,
+            customizedRanges: customizedRanges,
+            extraTokenOverlays: extraOverlays,
+            bottomObstructionHeight: tokenPanelOverlap,
+            onCharacterTap: incrementalLookupEnabled ? { utf16Index in
+                // Existing incremental lookup behavior
+                let ns = inputText as NSString
+                if ns.length == 0 {
+                    incrementalSelectedCharacterRange = nil
+                } else {
+                    let clamped = min(max(0, utf16Index), max(0, ns.length - 1))
+                    let r = ns.rangeOfComposedCharacterSequence(at: clamped)
+                    let ch = ns.substring(with: r)
+                    if ch == "\n" || ch == "\r" {
+                        incrementalSelectedCharacterRange = nil
+                        incrementalLookupTask?.cancel()
+                        isIncrementalPopupVisible = false
+                        incrementalPopupHits = []
+                        return
+                    }
+                    incrementalSelectedCharacterRange = r
+                }
+                startIncrementalLookup(atUTF16Index: utf16Index)
+            } : nil,
+            onSpanSelection: spanSelectionHandler,
+            enableDragSelection: incrementalLookupEnabled ? false : (alternateTokenColors == false),
+            onDragSelectionBegan: {
+                guard incrementalLookupEnabled == false else { return }
+                // Avoid showing stale popup content while the user is selecting.
+                clearSelection(resetPersistent: true)
+            },
+            onDragSelectionEnded: { range in
+                guard incrementalLookupEnabled == false else { return }
+                guard alternateTokenColors == false else { return }
+                presentDictionaryForArbitraryRange(range)
+            },
+            contextMenuStateProvider: contextMenuStateProvider,
+            onContextMenuAction: contextMenuActionHandler,
+            viewMetricsContext: viewMetricsContext,
+            onDebugTokenListTextChange: { text in
+                // Avoid thrashing SwiftUI state with identical strings.
+                if text != debugTokenListText {
+                    debugTokenListText = text
+                }
+
+                // Always emit token list text to logs for debugging.
+                // Dedupe by string to avoid spamming during scroll/layout.
+                if text != lastLoggedTokenListText {
+                    // emitTokenListLog("[TokenList]\n\(text)")
+                    lastLoggedTokenListText = text
+                }
+            },
+            coordinateSpaceName: Self.coordinateSpaceName,
+            interTokenSpacing: interTokenSpacing,
+            tokenSpacingValueProvider: tokenSpacingValueProvider,
+            onTokenSpacingChanged: onTokenSpacingChanged,
+            onHideKeyboard: {
+                hideKeyboard()
+            },
+            onPaste: {
+                pasteFromClipboard()
+            },
+            onSave: {
+                saveNote()
+            },
+            onPasteContextMenuAction: { action in
+                handlePasteContextMenuAction(action)
+            },
+            clipboardAccessEnabled: clipboardAccessEnabled,
+            onToggleFurigana: { enabled in
+                if enabled {
+                    // Manual toggle should not force a fresh segmentation pass; reuse
+                    // existing spans and just rebuild the ruby text.
+                    triggerFuriganaRefreshIfNeeded(reason: "manual toggle button", recomputeSpans: false)
+                }
+            },
+            onShowToast: { message in
+                showToast(message)
+            },
+            onHaptic: {
+                fireContextMenuHaptic()
+            },
+            onResetDefaultSegmentationReading: {
+                resetCurrentNoteToDefaultSegmentationReading()
+            },
+            endEditingRequestID: pendingEndEditingRequestID,
+            onEditingCommitCompleted: {
+                completePendingExitEditModeIfNeeded()
+            }
+        )
+        .simultaneousGesture(pinchToZoomGesture)
+    }
+
+    private func requestEditModeChange(_ requested: Bool) {
+        guard requested != isEditing else { return }
+
+        if requested {
+            awaitingEditCommitBeforeViewMode = false
+            setEditing(true)
+            return
+        }
+
+        awaitingEditCommitBeforeViewMode = true
+        hideKeyboard()
+        pendingEndEditingRequestID &+= 1
+    }
+
+    private func completePendingExitEditModeIfNeeded() {
+        guard awaitingEditCommitBeforeViewMode else { return }
+        awaitingEditCommitBeforeViewMode = false
+
+        let committedText = inputText
+        syncNoteForInputChange(committedText)
+        PasteBufferStore.save(committedText)
+
+        let base = NSAttributedString(string: committedText)
+        furiganaAttributedTextBase = base
+        furiganaAttributedText = base
+
+        setEditing(false)
+        triggerFuriganaRefreshIfNeeded(
+            reason: "mode switched to view",
+            recomputeSpans: true
+        )
+    }
+
+    private func showToast(_ message: String) {
+        toastDismissWorkItem?.cancel()
+        withAnimation {
+            toastText = message
+        }
+
+        let currentMessage = message
+
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+            if Task.isCancelled {
+                return
+            }
+
+            await MainActor.run {
+                // Only clear the toast if we're still showing the same message.
+                if toastText == currentMessage {
+                    withAnimation {
+                        toastText = nil
+                    }
+                }
+            }
+        }
+    }
+
+    private func chooseKaraokeAudio() {
+        guard isGeneratingKaraokeAlignment == false else { return }
+        karaokeImportMode = .audio
+        isKaraokeImporterPresented = true
+    }
+
+    private func chooseKaraokeSubtitles() {
+        guard isGeneratingKaraokeAlignment == false else { return }
+        karaokeImportMode = .subtitles
+        isKaraokeImporterPresented = true
+    }
+
+    private var karaokeAllowedImportTypes: [UTType] {
+        switch karaokeImportMode {
+        case .audio:
+            return [UTType.mp3, .audio]
+        case .subtitles:
+            if let srtType = UTType(filenameExtension: "srt") {
+                return [srtType, .json]
+            }
+            return [.plainText, .json]
+        case .none:
+            return [.item]
+        }
+    }
+
+    private func handleKaraokePrimaryAction() {
+        if karaokePlaybackAvailable {
+            toggleKaraokePlayback()
+        } else {
+            chooseKaraokeAudio()
+        }
+    }
+
+    private var karaokeAlignmentForCurrentNote: KaraokeAlignment? {
+        currentNote?.karaokeAlignment
+    }
+
+    private var karaokePlaybackAvailable: Bool {
+        guard let note = currentNote else { return false }
+        guard let fileName = note.karaokeAudioFileName, fileName.isEmpty == false else { return false }
+        guard let audioURL = karaokeAudioURL(fileName: fileName) else { return false }
+        return FileManager.default.fileExists(atPath: audioURL.path)
+    }
+
+    private var karaokeHasAudioOnly: Bool {
+        guard let note = currentNote else { return false }
+        guard let fileName = note.karaokeAudioFileName, fileName.isEmpty == false else { return false }
+        guard let audioURL = karaokeAudioURL(fileName: fileName) else { return false }
+        let hasAudioFile = FileManager.default.fileExists(atPath: audioURL.path)
+        let hasAlignment = (note.karaokeAlignment?.segments.isEmpty == false)
+        return hasAudioFile && hasAlignment == false
+    }
+
+    private var karaokeAudioUploaded: Bool {
+        guard let note = currentNote,
+              let fileName = note.karaokeAudioFileName,
+              fileName.isEmpty == false,
+              let audioURL = karaokeAudioURL(fileName: fileName) else {
+            return false
+        }
+        return FileManager.default.fileExists(atPath: audioURL.path)
+    }
+
+    private var karaokeFileUploaded: Bool {
+        guard let alignment = currentNote?.karaokeAlignment else { return false }
+        return alignment.segments.isEmpty == false
+    }
+
+    private var karaokeHasAlignmentOnly: Bool {
+        guard let note = currentNote else { return false }
+        let hasAlignment = (note.karaokeAlignment?.segments.isEmpty == false)
+        let hasAudioFileName = (note.karaokeAudioFileName?.isEmpty == false)
+        return hasAlignment && hasAudioFileName == false
+    }
+
+    private var karaokeIsPlaying: Bool {
+        karaokeAudioPlayer?.isPlaying == true
+    }
+
+    private var karaokePlaybackTimeText: String? {
+        guard karaokeIsPlaying else { return nil }
+        return String(format: "%.3fs", karaokePlaybackSecondsDisplay)
+    }
+
+    private var editorSelectedRangeHighlight: NSRange? {
+        if incrementalLookupEnabled {
+            return incrementalSelectedCharacterRange
+        }
+        if karaokeIsPlaying, let karaokeRange = karaokeCurrentRange {
+            return karaokeRange
+        }
+        return persistentSelectionRange
+    }
+
+    private func handleKaraokeFileImport(_ result: Result<URL, Error>) {
+        let mode = karaokeImportMode
+        karaokeImportMode = nil
+        switch result {
+        case .failure(let error):
+            showToast(error.localizedDescription)
+        case .success(let url):
+            Task { @MainActor in
+                switch mode {
+                case .audio:
+                    await importKaraokeAudio(from: url)
+                case .subtitles:
+                    await importKaraokeSubtitles(from: url)
+                case .none:
+                    showToast("No import mode selected")
+                }
+            }
+        }
+    }
+
+    private func karaokeStrategyLabel(_ strategy: KaraokeAlignment.Strategy) -> String {
+        switch strategy {
+        case .speechOnDevice:
+            return "on-device"
+        case .whisperCpp:
+            return "whisper"
+        case .whisperKit:
+            return "whisperkit"
+        case .subtitleImport:
+            return "subtitle"
+        }
+    }
+
+    @MainActor
+    private func ensureCurrentNoteForKaraoke(requiresLyrics: Bool) -> Note? {
+        let trimmedInputLyrics = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPersistedLyrics = currentNote?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasLyrics = trimmedInputLyrics.isEmpty == false || trimmedPersistedLyrics.isEmpty == false
+        guard requiresLyrics == false || hasLyrics else {
+            showToast("Add lyrics text first")
+            return nil
+        }
+
+        if currentNote == nil {
+            if trimmedInputLyrics.isEmpty {
+                notes.addNote(title: nil, text: "")
+                if let newest = notes.notes.first {
+                    currentNote = newest
+                }
+            } else {
+                saveNote()
+            }
+        } else if let existing = currentNote, existing.text != inputText {
+            syncNoteForInputChange(inputText)
+        }
+
+        guard let note = currentNote else {
+            showToast("Failed to save note")
+            return nil
+        }
+        return note
+    }
+
+    private func resolvedKaraokeLyrics(for note: Note?) -> String {
+        let typedLyrics = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if typedLyrics.isEmpty == false {
+            return inputText
+        }
+
+        let persistedLyrics = note?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if persistedLyrics.isEmpty == false {
+            return note?.text ?? inputText
+        }
+
+        return inputText
+    }
+
+    @MainActor
+    private func importKaraokeAudio(from importedURL: URL) async {
+        guard isGeneratingKaraokeAlignment == false else { return }
+        guard let note = ensureCurrentNoteForKaraoke(requiresLyrics: false) else { return }
+
+        appendKaraokeDiagnostic("Import audio start file=\(importedURL.lastPathComponent)")
+        isGeneratingKaraokeAlignment = true
+        karaokeGenerationProgress = 0.05
+        showToast("Importing audio…")
+        defer {
+            isGeneratingKaraokeAlignment = false
+            karaokeGenerationProgress = 0
+        }
+
+        do {
+            let persistedAudioURL = try persistImportedAudio(importedURL, noteID: note.id)
+            karaokeGenerationProgress = 0.45
+            let effectiveLyrics = resolvedKaraokeLyrics(for: note)
+            let hasLyrics = effectiveLyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+
+            var updated = notes.notes.first(where: { $0.id == note.id }) ?? note
+            updated.karaokeAudioFileName = persistedAudioURL.lastPathComponent
+            updated.karaokeAlignment = nil
+            notes.updateNote(updated)
+            currentNote = updated
+
+            if hasLyrics {
+                appendKaraokeDiagnostic("Import audio triggering auto-alignment")
+                karaokeGenerationProgress = 0.62
+                let alignment = try await KaraokeSpeechAligner.align(
+                    lyrics: effectiveLyrics,
+                    audioURL: persistedAudioURL,
+                    localeIdentifier: "ja-JP"
+                )
+                karaokeDiagnosticsLog = alignment.diagnostics ?? []
+
+                updated = notes.notes.first(where: { $0.id == note.id }) ?? updated
+                updated.text = effectiveLyrics
+                updated.karaokeAudioFileName = persistedAudioURL.lastPathComponent
+                updated.karaokeAlignment = alignment
+                notes.updateNote(updated)
+                currentNote = updated
+
+                karaokeGenerationProgress = 1.0
+                let strategyLabel = karaokeStrategyLabel(alignment.strategy)
+                appendKaraokeDiagnostic("Import audio auto-alignment success strategy=\(strategyLabel) lines=\(alignment.segments.count)")
+                showToast("Audio imported and karaoke sync ready (\(alignment.segments.count) lines, \(strategyLabel))")
+                return
+            }
+
+            karaokeGenerationProgress = 1.0
+            appendKaraokeDiagnostic("Import audio success file=\(persistedAudioURL.lastPathComponent) alignmentCleared=true")
+            showToast("Audio imported. Use Play/Pause or import SRT/JSON")
+        } catch let error as KaraokeSpeechAlignerError {
+            appendKaraokeDiagnostic("Import audio auto-alignment failed error=\(error.localizedDescription)")
+            showToast("Audio imported, but sync failed: \(error.localizedDescription)")
+        } catch {
+            appendKaraokeDiagnostic("Import audio failed error=\(error.localizedDescription)")
+            showToast(error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func generateKaraokeAlignment(from importedURL: URL, usingPersistedAudio: Bool = false) async {
+        guard isGeneratingKaraokeAlignment == false else { return }
+        guard let note = ensureCurrentNoteForKaraoke(requiresLyrics: true) else { return }
+        let effectiveLyrics = resolvedKaraokeLyrics(for: note)
+
+        appendKaraokeDiagnostic("Generate start file=\(importedURL.lastPathComponent)")
+        isGeneratingKaraokeAlignment = true
+        karaokeGenerationProgress = 0.05
+        startKaraokeProgressSimulation()
+        showToast("Generating karaoke sync…")
+        defer {
+            isGeneratingKaraokeAlignment = false
+            stopKaraokeProgressSimulation()
+            karaokeGenerationProgress = 0
+        }
+
+        do {
+            let persistedAudioURL = usingPersistedAudio ? importedURL : try persistImportedAudio(importedURL, noteID: note.id)
+            karaokeGenerationProgress = max(karaokeGenerationProgress, 0.22)
+            let alignment = try await KaraokeSpeechAligner.align(
+                lyrics: effectiveLyrics,
+                audioURL: persistedAudioURL,
+                localeIdentifier: "ja-JP"
+            )
+            karaokeDiagnosticsLog = alignment.diagnostics ?? []
+            karaokeGenerationProgress = 1.0
+
+            var updated = notes.notes.first(where: { $0.id == note.id }) ?? note
+            updated.text = effectiveLyrics
+            updated.karaokeAudioFileName = persistedAudioURL.lastPathComponent
+            updated.karaokeAlignment = alignment
+            notes.updateNote(updated)
+            currentNote = updated
+
+            let strategyLabel = karaokeStrategyLabel(alignment.strategy)
+            appendKaraokeDiagnostic("Generate success strategy=\(strategyLabel) lines=\(alignment.segments.count)")
+            showToast("Karaoke sync ready (\(alignment.segments.count) lines, \(strategyLabel))")
+        } catch let error as KaraokeSpeechAlignerError {
+            appendKaraokeDiagnostic("Generate failed error=\(error.localizedDescription)")
+            switch error {
+            case .authorizationDenied:
+                showToast("Enable Speech Recognition in Settings")
+            case .audioTooLong:
+                showToast("Audio is longer than 8:00")
+            default:
+                showToast(error.localizedDescription)
+            }
+        } catch {
+            appendKaraokeDiagnostic("Generate failed error=\(error.localizedDescription)")
+            showToast(error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func importKaraokeSubtitles(from importedURL: URL) async {
+        guard isGeneratingKaraokeAlignment == false else { return }
+        guard let note = ensureCurrentNoteForKaraoke(requiresLyrics: false) else { return }
+
+        appendKaraokeDiagnostic("Import subtitle start file=\(importedURL.lastPathComponent)")
+        isGeneratingKaraokeAlignment = true
+        karaokeGenerationProgress = 0.05
+        showToast("Importing subtitles…")
+        defer {
+            isGeneratingKaraokeAlignment = false
+            karaokeGenerationProgress = 0
+        }
+
+        do {
+            // Read subtitle file
+            let fileExtension = importedURL.pathExtension.lowercased()
+            guard importedURL.startAccessingSecurityScopedResource() else {
+                throw SubtitleParserError.invalidFormat("Cannot access file")
+            }
+            defer { importedURL.stopAccessingSecurityScopedResource() }
+            
+            let content = try String(contentsOf: importedURL, encoding: .utf8)
+            karaokeGenerationProgress = 0.15
+            
+            // Parse based on file type
+            let entries: [SubtitleEntry]
+            if fileExtension == "srt" {
+                entries = try SubtitleParser.parseSRT(content: content)
+            } else {
+                // Try Whisper JSON
+                entries = try SubtitleParser.parseWhisperJSON(content: content)
+            }
+            let isWordSegmentImport = (fileExtension == "json") && whisperJSONHasWordSegments(content)
+            karaokeGenerationProgress = 0.40
+
+            let useContinuousSeed = entries.count > 30 || entries.allSatisfy { ($0.text as NSString).length <= 2 }
+            let seededLyrics = entries.map { $0.text }.joined(separator: useContinuousSeed ? "" : "\n")
+            let effectiveLyrics: String
+            let trimmedLyrics = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedLyrics.isEmpty {
+                effectiveLyrics = seededLyrics
+                inputText = effectiveLyrics
+            } else {
+                effectiveLyrics = inputText
+            }
+            
+            // Convert to KaraokeAlignment by matching text
+            let alignment: KaraokeAlignment
+            if isWordSegmentImport {
+                alignment = try createWordLevelKaraokeAlignment(from: entries, lyrics: effectiveLyrics)
+            } else {
+                alignment = try createKaraokeAlignment(from: entries, lyrics: effectiveLyrics)
+            }
+            karaokeGenerationProgress = 0.80
+            
+            // Update note
+            var updated = notes.notes.first(where: { $0.id == note.id }) ?? note
+            updated.text = effectiveLyrics
+            updated.karaokeAlignment = alignment
+            notes.updateNote(updated)
+            currentNote = updated
+            karaokeDiagnosticsLog = alignment.diagnostics ?? []
+            karaokeGenerationProgress = 1.0
+
+            let unmatchedCount = alignment.diagnostics?.first(where: { $0.hasPrefix("Unmatched entries count=") })
+                .flatMap { Int($0.replacingOccurrences(of: "Unmatched entries count=", with: "")) } ?? 0
+            let matchedEntryCount = max(0, entries.count - unmatchedCount)
+            let outputSegmentCount = alignment.segments.count
+            if unmatchedCount > 0 {
+                if let sample = alignment.diagnostics?.first(where: { $0.hasPrefix("Unmatched sample:") }) {
+                    appendKaraokeDiagnostic(sample)
+                }
+                appendKaraokeDiagnostic("Import subtitle unmatchedCount=\(unmatchedCount)")
+            }
+            
+            appendKaraokeDiagnostic("Import subtitle success entries=\(entries.count) matchedEntries=\(matchedEntryCount) outputSegments=\(outputSegmentCount)")
+            if updated.karaokeAudioFileName?.isEmpty == false {
+                if unmatchedCount > 0 {
+                    showToast("Imported \(matchedEntryCount)/\(entries.count) entries into \(outputSegmentCount) segments; \(unmatchedCount) unmatched (see logs)")
+                } else {
+                    showToast("Imported \(matchedEntryCount)/\(entries.count) entries into \(outputSegmentCount) segments")
+                }
+            } else {
+                if unmatchedCount > 0 {
+                    showToast("Imported \(matchedEntryCount)/\(entries.count) entries into \(outputSegmentCount) segments; \(unmatchedCount) unmatched. Import audio (MP3) to play")
+                } else {
+                    showToast("Imported \(matchedEntryCount)/\(entries.count) entries into \(outputSegmentCount) segments. Import audio (MP3) to play")
+                }
+            }
+        } catch let error as SubtitleParserError {
+            appendKaraokeDiagnostic("Import subtitle failed error=\(error.localizedDescription)")
+            showToast(error.localizedDescription)
+        } catch {
+            appendKaraokeDiagnostic("Import subtitle failed error=\(error.localizedDescription)")
+            showToast(error.localizedDescription)
+        }
+    }
+
+    private func createKaraokeAlignment(from entries: [SubtitleEntry], lyrics: String) throws -> KaraokeAlignment {
+        let exact = exactSubtitleAlignment(entries: entries, lyrics: lyrics)
+        let exactMatchRatio = entries.isEmpty ? 0 : (Double(exact.segments.count) / Double(entries.count))
+        let shortEntryCount = entries.reduce(into: 0) { count, entry in
+            let length = (entry.text as NSString).length
+            if length <= 2 {
+                count += 1
+            }
+        }
+        let shortEntryRatio = entries.isEmpty ? 0 : (Double(shortEntryCount) / Double(entries.count))
+        let exactThreshold: Double = shortEntryRatio >= 0.70 ? 0.95 : 0.75
+
+        if exact.segments.isEmpty == false && exactMatchRatio >= exactThreshold {
+            return KaraokeAlignment(
+                generatedAt: Date(),
+                localeIdentifier: "ja-JP",
+                audioDurationSeconds: exact.segments.last?.endSeconds ?? 0,
+                strategy: .subtitleImport,
+                version: KaraokeAlignment.currentVersion,
+                granularities: [.line],
+                segments: exact.segments,
+                diagnostics: exact.diagnostics
+            )
+        }
+
+        let forced = forcedSubtitleAlignment(entries: entries, lyrics: lyrics)
+        guard forced.segments.isEmpty == false else {
+            throw SubtitleParserError.textMismatch("Could not align subtitle timings to lyrics")
+        }
+
+        return KaraokeAlignment(
+            generatedAt: Date(),
+            localeIdentifier: "ja-JP",
+            audioDurationSeconds: forced.segments.last?.endSeconds ?? 0,
+            strategy: .subtitleImport,
+            version: KaraokeAlignment.currentVersion,
+            granularities: [.line],
+            segments: forced.segments,
+            diagnostics: forced.diagnostics
+        )
+    }
+
+    private func whisperJSONHasWordSegments(_ content: String) -> Bool {
+        guard let data = content.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let wordSegments = json["word_segments"] as? [[String: Any]] else {
+            return false
+        }
+        return wordSegments.isEmpty == false
+    }
+
+    private func createWordLevelKaraokeAlignment(from entries: [SubtitleEntry], lyrics: String) throws -> KaraokeAlignment {
+        let baseAlignment = try createKaraokeAlignment(from: entries, lyrics: lyrics)
+        let tokenized = exactWordTokenSegments(entries: entries, lyrics: lyrics)
+
+        guard tokenized.segments.isEmpty == false else {
+            var fallbackDiagnostics = baseAlignment.diagnostics ?? []
+            fallbackDiagnostics.append("Word-level import fallback: no exact token matches")
+            return KaraokeAlignment(
+                generatedAt: baseAlignment.generatedAt,
+                localeIdentifier: baseAlignment.localeIdentifier,
+                audioDurationSeconds: baseAlignment.audioDurationSeconds,
+                strategy: baseAlignment.strategy,
+                version: baseAlignment.version,
+                granularities: baseAlignment.granularities,
+                segments: baseAlignment.segments,
+                diagnostics: fallbackDiagnostics
+            )
+        }
+
+        let mappedSegments = baseAlignment.segments.map { line in
+            let lineRange = line.textRange.nsRange
+            let tokenSegments = tokenized.segments.filter { token in
+                NSIntersectionRange(token.textRange.nsRange, lineRange).length > 0
+            }
+
+            return KaraokeAlignmentSegment(
+                textRange: lineRange,
+                startSeconds: line.startSeconds,
+                endSeconds: line.endSeconds,
+                confidence: line.confidence,
+                phraseSegments: line.phraseSegments,
+                tokenSegments: tokenSegments.isEmpty ? nil : tokenSegments
+            )
+        }
+
+        var diagnostics = baseAlignment.diagnostics ?? []
+        diagnostics.append("Word-level import tokenMatches=\(tokenized.segments.count)")
+        diagnostics.append("Word-level import tokenUnmatched=\(tokenized.unmatchedCount)")
+
+        return KaraokeAlignment(
+            generatedAt: baseAlignment.generatedAt,
+            localeIdentifier: baseAlignment.localeIdentifier,
+            audioDurationSeconds: baseAlignment.audioDurationSeconds,
+            strategy: baseAlignment.strategy,
+            version: baseAlignment.version,
+            granularities: [.line, .token],
+            segments: mappedSegments,
+            diagnostics: diagnostics
+        )
+    }
+
+    private func exactWordTokenSegments(entries: [SubtitleEntry], lyrics: String) -> (segments: [KaraokeAlignmentChildSegment], unmatchedCount: Int) {
+        let nsLyrics = lyrics as NSString
+        var currentPosition = 0
+        var unmatched = 0
+        var segments: [KaraokeAlignmentChildSegment] = []
+        segments.reserveCapacity(entries.count)
+
+        for entry in entries {
+            let text = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard text.isEmpty == false else { continue }
+            guard currentPosition < nsLyrics.length else {
+                unmatched += 1
+                continue
+            }
+
+            let searchRange = NSRange(location: currentPosition, length: nsLyrics.length - currentPosition)
+            let range = nsLyrics.range(of: text, options: [.caseInsensitive, .diacriticInsensitive], range: searchRange)
+            guard range.location != NSNotFound else {
+                unmatched += 1
+                continue
+            }
+
+            segments.append(
+                KaraokeAlignmentChildSegment(
+                    granularity: .token,
+                    textRange: range,
+                    startSeconds: entry.startSeconds,
+                    endSeconds: max(entry.startSeconds, entry.endSeconds),
+                    confidence: 1.0
+                )
+            )
+            currentPosition = NSMaxRange(range)
+        }
+
+        return (segments, unmatched)
+    }
+
+    private func exactSubtitleAlignment(entries: [SubtitleEntry], lyrics: String) -> (segments: [KaraokeAlignmentSegment], diagnostics: [String]) {
+        let nsLyrics = lyrics as NSString
+        var segments: [KaraokeAlignmentSegment] = []
+        var unmatchedEntryTexts: [String] = []
+        var currentPosition = 0
+
+        for entry in entries {
+            let searchRange = NSRange(location: currentPosition, length: nsLyrics.length - currentPosition)
+            let range = nsLyrics.range(of: entry.text, options: [.caseInsensitive, .diacriticInsensitive], range: searchRange)
+
+            if range.location != NSNotFound {
+                segments.append(KaraokeAlignmentSegment(
+                    textRange: range,
+                    startSeconds: entry.startSeconds,
+                    endSeconds: entry.endSeconds,
+                    confidence: 1.0
+                ))
+                currentPosition = NSMaxRange(range)
+            } else {
+                unmatchedEntryTexts.append(entry.text)
+            }
+        }
+
+        var diagnostics: [String] = ["Imported from subtitle file with \(entries.count) entries, matched \(segments.count) lines"]
+        if unmatchedEntryTexts.isEmpty == false {
+            diagnostics.append("Unmatched entries count=\(unmatchedEntryTexts.count)")
+            let sample = unmatchedEntryTexts
+                .prefix(8)
+                .map { $0.replacingOccurrences(of: "\n", with: " ") }
+                .joined(separator: " | ")
+            diagnostics.append("Unmatched sample: \(sample)")
+        }
+        return (segments, diagnostics)
+    }
+
+    private struct LyricAlignmentUnit {
+        let range: NSRange
+        let text: String
+        let normalized: String
+        let alignable: Bool
+    }
+
+    private struct TimedAlignmentUnit {
+        let text: String
+        let normalized: String
+        let startSeconds: Double
+        let endSeconds: Double
+    }
+
+    private func forcedSubtitleAlignment(entries: [SubtitleEntry], lyrics: String) -> (segments: [KaraokeAlignmentSegment], diagnostics: [String]) {
+        let lyricUnits = makeLyricAlignmentUnits(from: lyrics)
+        let timedUnits = makeTimedAlignmentUnits(from: entries)
+
+        let alignableLyricIndices = lyricUnits.indices.filter { lyricUnits[$0].alignable }
+        guard alignableLyricIndices.isEmpty == false, timedUnits.isEmpty == false else {
+            return ([], ["Forced alignment unavailable: empty lyric/timing units"]) 
+        }
+
+        let lyricCount = alignableLyricIndices.count
+        let timedCount = timedUnits.count
+        let width = timedCount + 1
+
+        var cost = Array(repeating: Int.max / 4, count: (lyricCount + 1) * width)
+        var trace = Array(repeating: UInt8(0), count: (lyricCount + 1) * width)
+        func idx(_ i: Int, _ j: Int) -> Int { i * width + j }
+
+        cost[idx(0, 0)] = 0
+        if lyricCount > 0 {
+            for i in 1...lyricCount {
+                cost[idx(i, 0)] = i
+                trace[idx(i, 0)] = 1
+            }
+        }
+        if timedCount > 0 {
+            for j in 1...timedCount {
+                cost[idx(0, j)] = j
+                trace[idx(0, j)] = 2
+            }
+        }
+
+        if lyricCount > 0 && timedCount > 0 {
+            for i in 1...lyricCount {
+                let lyricUnit = lyricUnits[alignableLyricIndices[i - 1]]
+                for j in 1...timedCount {
+                    let timedUnit = timedUnits[j - 1]
+                    let substitutionPenalty = (lyricUnit.normalized == timedUnit.normalized) ? 0 : 2
+                    let diagonal = cost[idx(i - 1, j - 1)] + substitutionPenalty
+                    let up = cost[idx(i - 1, j)] + 1
+                    let left = cost[idx(i, j - 1)] + 1
+
+                    var best = diagonal
+                    var op: UInt8 = 0
+                    if up < best {
+                        best = up
+                        op = 1
+                    }
+                    if left < best {
+                        best = left
+                        op = 2
+                    }
+
+                    cost[idx(i, j)] = best
+                    trace[idx(i, j)] = op
+                }
+            }
+        }
+
+        var lyricToTimed: [Int?] = Array(repeating: nil, count: lyricCount)
+        var unmatchedTimedIndices: [Int] = []
+        var substitutedTimedIndices: [Int] = []
+        var i = lyricCount
+        var j = timedCount
+        while i > 0 || j > 0 {
+            let op = trace[idx(i, j)]
+            if i > 0 && j > 0 && op == 0 {
+                let lyricUnit = lyricUnits[alignableLyricIndices[i - 1]]
+                let timedUnit = timedUnits[j - 1]
+                lyricToTimed[i - 1] = j - 1
+                if lyricUnit.normalized != timedUnit.normalized {
+                    substitutedTimedIndices.append(j - 1)
+                }
+                i -= 1
+                j -= 1
+            } else if i > 0 && op == 1 {
+                i -= 1
+            } else if j > 0 {
+                unmatchedTimedIndices.append(j - 1)
+                j -= 1
+            } else {
+                break
+            }
+        }
+
+        var assignedTimes: [(start: Double, end: Double)?] = Array(repeating: nil, count: lyricCount)
+        for index in 0..<lyricCount {
+            if let timedIndex = lyricToTimed[index] {
+                let timed = timedUnits[timedIndex]
+                assignedTimes[index] = (timed.startSeconds, timed.endSeconds)
+            }
+        }
+
+        for index in 0..<lyricCount where assignedTimes[index] == nil {
+            var prevIndex: Int? = nil
+            var nextIndex: Int? = nil
+            var scan = index - 1
+            while scan >= 0 {
+                if assignedTimes[scan] != nil {
+                    prevIndex = scan
+                    break
+                }
+                scan -= 1
+            }
+            scan = index + 1
+            while scan < lyricCount {
+                if assignedTimes[scan] != nil {
+                    nextIndex = scan
+                    break
+                }
+                scan += 1
+            }
+
+            if let prev = prevIndex, let next = nextIndex,
+               let prevTime = assignedTimes[prev],
+               let nextTime = assignedTimes[next],
+               next > prev {
+                let ratio = Double(index - prev) / Double(next - prev)
+                let start = prevTime.start + (nextTime.start - prevTime.start) * ratio
+                let end = max(start + 0.01, prevTime.end + (nextTime.end - prevTime.end) * ratio)
+                assignedTimes[index] = (start, end)
+            } else if let prev = prevIndex, let prevTime = assignedTimes[prev] {
+                let start = prevTime.end
+                assignedTimes[index] = (start, start + 0.01)
+            } else if let next = nextIndex, let nextTime = assignedTimes[next] {
+                let end = nextTime.start
+                assignedTimes[index] = (max(0, end - 0.01), end)
+            }
+        }
+
+        let displayRanges = karaokeDisplayRanges(for: lyrics)
+        var segments: [KaraokeAlignmentSegment] = []
+        segments.reserveCapacity(max(8, displayRanges.count))
+
+        for displayRange in displayRanges {
+            var starts: [Double] = []
+            var ends: [Double] = []
+            starts.reserveCapacity(8)
+            ends.reserveCapacity(8)
+
+            for index in 0..<lyricCount {
+                let lyricUnit = lyricUnits[alignableLyricIndices[index]]
+                let unitRange = lyricUnit.range
+                let intersects = NSIntersectionRange(unitRange, displayRange).length > 0
+                guard intersects else { continue }
+                guard let timing = assignedTimes[index] else { continue }
+                starts.append(timing.start)
+                ends.append(timing.end)
+            }
+
+            guard let start = starts.min(), let end = ends.max() else { continue }
+            segments.append(
+                KaraokeAlignmentSegment(
+                    textRange: displayRange,
+                    startSeconds: start,
+                    endSeconds: max(end, start + 0.01),
+                    confidence: 0.7
+                )
+            )
+        }
+
+        if segments.isEmpty {
+            segments.reserveCapacity(lyricCount)
+            for index in 0..<lyricCount {
+                guard let timing = assignedTimes[index] else { continue }
+                let lyricUnit = lyricUnits[alignableLyricIndices[index]]
+                segments.append(
+                    KaraokeAlignmentSegment(
+                        textRange: lyricUnit.range,
+                        startSeconds: timing.start,
+                        endSeconds: max(timing.end, timing.start + 0.01),
+                        confidence: 0.7
+                    )
+                )
+            }
+        }
+
+        let mismatchIndices = Set(unmatchedTimedIndices + substitutedTimedIndices)
+        let mismatchSample = mismatchIndices
+            .sorted()
+            .prefix(12)
+            .map { timedUnits[$0].text.replacingOccurrences(of: "\n", with: " ") }
+            .joined(separator: " | ")
+        let diagnostics: [String] = [
+            "Forced alignment enabled entries=\(entries.count) lyricUnits=\(lyricCount) timedUnits=\(timedCount) outputSegments=\(segments.count)",
+            "Unmatched entries count=\(mismatchIndices.count)",
+            mismatchSample.isEmpty ? "Unmatched sample: (none)" : "Unmatched sample: \(mismatchSample)"
+        ]
+
+        return (segments, diagnostics)
+    }
+
+    private func karaokeDisplayRanges(for lyrics: String) -> [NSRange] {
+        let nsLyrics = lyrics as NSString
+
+        let semanticRanges: [NSRange] = furiganaSemanticSpans
+            .map(\ .range)
+            .filter { range in
+                range.location != NSNotFound && range.length > 0 && NSMaxRange(range) <= nsLyrics.length
+            }
+            .sorted { lhs, rhs in
+                if lhs.location != rhs.location { return lhs.location < rhs.location }
+                return lhs.length < rhs.length
+            }
+
+        let filteredSemantic = semanticRanges.filter { range in
+            let surface = nsLyrics.substring(with: range)
+            return isHardBoundaryOnly(surface) == false
+        }
+        if filteredSemantic.isEmpty == false {
+            return filteredSemantic
+        }
+
+        var lineRanges: [NSRange] = []
+        lineRanges.reserveCapacity(12)
+
+        var lineStart = 0
+        var index = 0
+        while index < nsLyrics.length {
+            let charRange = nsLyrics.rangeOfComposedCharacterSequence(at: index)
+            let token = nsLyrics.substring(with: charRange)
+            if token == "\n" || token == "\r" {
+                let length = charRange.location - lineStart
+                if length > 0 {
+                    let range = NSRange(location: lineStart, length: length)
+                    let surface = nsLyrics.substring(with: range)
+                    if isHardBoundaryOnly(surface) == false {
+                        lineRanges.append(range)
+                    }
+                }
+                lineStart = NSMaxRange(charRange)
+            }
+            index = NSMaxRange(charRange)
+        }
+
+        if lineStart < nsLyrics.length {
+            let tailRange = NSRange(location: lineStart, length: nsLyrics.length - lineStart)
+            let surface = nsLyrics.substring(with: tailRange)
+            if isHardBoundaryOnly(surface) == false {
+                lineRanges.append(tailRange)
+            }
+        }
+
+        if lineRanges.isEmpty == false {
+            return lineRanges
+        }
+
+        if nsLyrics.length > 0 {
+            return [NSRange(location: 0, length: nsLyrics.length)]
+        }
+        return []
+    }
+
+    private func makeLyricAlignmentUnits(from lyrics: String) -> [LyricAlignmentUnit] {
+        let nsLyrics = lyrics as NSString
+        var units: [LyricAlignmentUnit] = []
+        units.reserveCapacity(max(16, nsLyrics.length))
+
+        var index = 0
+        while index < nsLyrics.length {
+            let range = nsLyrics.rangeOfComposedCharacterSequence(at: index)
+            let text = nsLyrics.substring(with: range)
+            units.append(
+                LyricAlignmentUnit(
+                    range: range,
+                    text: text,
+                    normalized: normalizedAlignmentToken(text),
+                    alignable: isAlignableToken(text)
+                )
+            )
+            index = NSMaxRange(range)
+        }
+        return units
+    }
+
+    private func makeTimedAlignmentUnits(from entries: [SubtitleEntry]) -> [TimedAlignmentUnit] {
+        var units: [TimedAlignmentUnit] = []
+        for entry in entries {
+            let nsText = entry.text as NSString
+            var ranges: [NSRange] = []
+            var index = 0
+            while index < nsText.length {
+                let range = nsText.rangeOfComposedCharacterSequence(at: index)
+                let text = nsText.substring(with: range)
+                if isAlignableToken(text) {
+                    ranges.append(range)
+                }
+                index = NSMaxRange(range)
+            }
+            guard ranges.isEmpty == false else { continue }
+
+            let duration = max(0.01, entry.endSeconds - entry.startSeconds)
+            for (unitIndex, range) in ranges.enumerated() {
+                let text = nsText.substring(with: range)
+                let start = entry.startSeconds + duration * (Double(unitIndex) / Double(ranges.count))
+                let end = entry.startSeconds + duration * (Double(unitIndex + 1) / Double(ranges.count))
+                units.append(
+                    TimedAlignmentUnit(
+                        text: text,
+                        normalized: normalizedAlignmentToken(text),
+                        startSeconds: start,
+                        endSeconds: max(end, start + 0.01)
+                    )
+                )
+            }
+        }
+        return units
+    }
+
+    private func normalizedAlignmentToken(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "ja_JP"))
+    }
+
+    private func isAlignableToken(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return false }
+        guard trimmed.unicodeScalars.allSatisfy({ CharacterSet.punctuationCharacters.contains($0) || CharacterSet.symbols.contains($0) }) == false else {
+            return false
+        }
+        return true
+    }
+
+    private func startKaraokeProgressSimulation() {
+        karaokeProgressTask?.cancel()
+        karaokeProgressTask = nil
+    }
+
+    private func stopKaraokeProgressSimulation() {
+        karaokeProgressTask?.cancel()
+        karaokeProgressTask = nil
+    }
+
+    private func karaokeAudioURL(fileName: String) -> URL? {
+        let trimmed = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return nil }
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        return docs
+            .appendingPathComponent("karaoke-audio", isDirectory: true)
+            .appendingPathComponent(trimmed, isDirectory: false)
+    }
+
+    private func toggleKaraokePlayback() {
+        guard karaokePlaybackAvailable else {
+            showToast("Import karaoke audio first")
+            return
+        }
+
+        if karaokeIsPlaying {
+            karaokeAudioPlayer?.pause()
+            stopKaraokePlaybackTimer()
+            karaokeStartOffsetSeconds = karaokeAudioPlayer?.currentTime ?? karaokeStartOffsetSeconds
+            karaokePlaybackSecondsDisplay = karaokeStartOffsetSeconds
+            karaokeScheduledStartDeviceTime = nil
+            return
+        }
+
+        guard let note = currentNote,
+              let fileName = note.karaokeAudioFileName,
+              let audioURL = karaokeAudioURL(fileName: fileName) else {
+            showToast("Karaoke audio file not found")
+            return
+        }
+
+        do {
+            if karaokeAudioPlayer == nil || karaokeAudioPlayer?.url != audioURL {
+                karaokeAudioPlayer = try AVAudioPlayer(contentsOf: audioURL)
+                karaokeAudioPlayer?.prepareToPlay()
+            }
+            guard let player = karaokeAudioPlayer else { return }
+
+            karaokeStartOffsetSeconds = player.currentTime
+            let session = AVAudioSession.sharedInstance()
+            let leadTime = max(0.08, session.outputLatency)
+            let scheduledStart = player.deviceCurrentTime + leadTime
+            if player.play(atTime: scheduledStart) {
+                karaokeScheduledStartDeviceTime = scheduledStart
+            } else {
+                player.play()
+                karaokeScheduledStartDeviceTime = nil
+            }
+            karaokePlaybackSecondsDisplay = karaokeStartOffsetSeconds
+            updateKaraokeHighlight(at: karaokeStartOffsetSeconds)
+            startKaraokePlaybackTimer()
+        } catch {
+            showToast(error.localizedDescription)
+        }
+    }
+
+    private func restartKaraokePlaybackFromBeginning() {
+        guard karaokePlaybackAvailable else {
+            showToast("Import karaoke audio first")
+            return
+        }
+
+        guard let note = currentNote,
+              let fileName = note.karaokeAudioFileName,
+              let audioURL = karaokeAudioURL(fileName: fileName) else {
+            showToast("Karaoke audio file not found")
+            return
+        }
+
+        do {
+            if karaokeAudioPlayer == nil || karaokeAudioPlayer?.url != audioURL {
+                karaokeAudioPlayer = try AVAudioPlayer(contentsOf: audioURL)
+                karaokeAudioPlayer?.prepareToPlay()
+            }
+            guard let player = karaokeAudioPlayer else { return }
+
+            player.pause()
+            player.currentTime = 0
+            karaokeStartOffsetSeconds = 0
+
+            let session = AVAudioSession.sharedInstance()
+            let leadTime = max(0.08, session.outputLatency)
+            let scheduledStart = player.deviceCurrentTime + leadTime
+            if player.play(atTime: scheduledStart) {
+                karaokeScheduledStartDeviceTime = scheduledStart
+            } else {
+                player.play()
+                karaokeScheduledStartDeviceTime = nil
+            }
+
+            karaokePlaybackSecondsDisplay = 0
+            updateKaraokeHighlight(at: 0)
+            startKaraokePlaybackTimer()
+        } catch {
+            showToast(error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func recomputeKaraokeFromCurrentAudio() async {
+        guard isGeneratingKaraokeAlignment == false else { return }
+        guard let note = ensureCurrentNoteForKaraoke(requiresLyrics: true) else { return }
+                let effectiveLyrics = resolvedKaraokeLyrics(for: note)
+        guard let fileName = note.karaokeAudioFileName,
+              let audioURL = karaokeAudioURL(fileName: fileName),
+              FileManager.default.fileExists(atPath: audioURL.path) else {
+            showToast("No karaoke audio file to recompute")
+            return
+        }
+
+                appendKaraokeDiagnostic("Recompute start file=\(audioURL.lastPathComponent)")
+        isGeneratingKaraokeAlignment = true
+        karaokeGenerationProgress = 0.05
+        startKaraokeProgressSimulation()
+        showToast("Recomputing karaoke sync…")
+        defer {
+            isGeneratingKaraokeAlignment = false
+            stopKaraokeProgressSimulation()
+            karaokeGenerationProgress = 0
+        }
+
+        do {
+            karaokeGenerationProgress = max(karaokeGenerationProgress, 0.20)
+            let alignment = try await KaraokeSpeechAligner.align(
+                lyrics: effectiveLyrics,
+                audioURL: audioURL,
+                localeIdentifier: "ja-JP"
+            )
+            karaokeDiagnosticsLog = alignment.diagnostics ?? []
+            karaokeGenerationProgress = 1.0
+
+            var updated = notes.notes.first(where: { $0.id == note.id }) ?? note
+            updated.text = effectiveLyrics
+            updated.karaokeAlignment = alignment
+            notes.updateNote(updated)
+            currentNote = updated
+
+            let strategyLabel = karaokeStrategyLabel(alignment.strategy)
+            appendKaraokeDiagnostic("Recompute success strategy=\(strategyLabel) lines=\(alignment.segments.count)")
+            showToast("Karaoke recomputed (\(alignment.segments.count) lines, \(strategyLabel))")
+        } catch let error as KaraokeSpeechAlignerError {
+            appendKaraokeDiagnostic("Recompute failed error=\(error.localizedDescription)")
+            switch error {
+            case .authorizationDenied:
+                showToast("Enable Speech Recognition in Settings")
+            case .audioTooLong:
+                showToast("Audio is longer than 8:00")
+            default:
+                showToast(error.localizedDescription)
+            }
+        } catch {
+            appendKaraokeDiagnostic("Recompute failed error=\(error.localizedDescription)")
+            showToast(error.localizedDescription)
+        }
+    }
+
+    private func clearKaraokeData() {
+        guard let note = currentNote else {
+            showToast("No karaoke data to clear")
+            return
+        }
+
+        karaokeAudioPlayer?.stop()
+        stopKaraokePlaybackTimer()
+        karaokeCurrentRange = nil
+        karaokeCurrentLineRange = nil
+        karaokeScheduledStartDeviceTime = nil
+        karaokeStartOffsetSeconds = 0
+
+        if let fileName = note.karaokeAudioFileName,
+           let url = karaokeAudioURL(fileName: fileName),
+           FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.removeItem(at: url)
+        }
+
+        var updated = note
+        updated.karaokeAudioFileName = nil
+        updated.karaokeAlignment = nil
+        karaokeDiagnosticsLog.removeAll(keepingCapacity: false)
+        notes.updateNote(updated)
+        currentNote = updated
+        showToast("Cleared karaoke audio and sync")
+    }
+
+    private func appendKaraokeDiagnostic(_ message: String) {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let stamped = "\(formatter.string(from: Date())) \(message)"
+        karaokeDiagnosticsLog.append(stamped)
+        CustomLogger.shared.raw("[Karaoke][UI] \(stamped)")
+        KaraokeDiagnosticsStore.append("[Karaoke][UI] \(message)")
+    }
+
+    private func startKaraokePlaybackTimer() {
+        stopKaraokePlaybackTimer()
+        karaokePlaybackTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+            Task { @MainActor in
+                guard let player = karaokeAudioPlayer else {
+                    stopKaraokePlaybackTimer()
+                    karaokeCurrentRange = nil
+                    return
+                }
+
+                if player.isPlaying == false {
+                    if player.currentTime >= player.duration {
+                        karaokeCurrentRange = nil
+                        karaokePlaybackSecondsDisplay = player.duration
+                    } else {
+                        karaokePlaybackSecondsDisplay = player.currentTime
+                    }
+                    stopKaraokePlaybackTimer()
+                    karaokeScheduledStartDeviceTime = nil
+                    return
+                }
+
+                let playbackSeconds: TimeInterval
+                if let scheduledStart = karaokeScheduledStartDeviceTime {
+                    let elapsed = player.deviceCurrentTime - scheduledStart
+                    if elapsed < 0 {
+                        karaokeCurrentRange = nil
+                        return
+                    }
+                    playbackSeconds = karaokeStartOffsetSeconds + elapsed
+                } else {
+                    playbackSeconds = player.currentTime
+                }
+
+                karaokePlaybackSecondsDisplay = playbackSeconds
+                updateKaraokeHighlight(at: playbackSeconds)
+            }
+        }
+        if let timer = karaokePlaybackTimer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
+    }
+
+    private func stopKaraokePlaybackTimer() {
+        karaokePlaybackTimer?.invalidate()
+        karaokePlaybackTimer = nil
+    }
+
+    private func openKaraokeDebugDump() {
+        guard let note = currentNote,
+              let alignment = note.karaokeAlignment else {
+            showToast("No karaoke alignment to inspect")
+            return
+        }
+
+        karaokeDebugDumpText = "[Karaoke Debug Dump]\nPreparing dump..."
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+
+        do {
+            let data = try encoder.encode(alignment)
+            let jsonText = String(data: data, encoding: .utf8) ?? "{}"
+            let alignmentDiagnostics = alignment.diagnostics ?? []
+            let runtimeDiagnostics = KaraokeDiagnosticsStore.snapshot(maxLines: 120)
+            let persistedDiagnostics = KaraokeDiagnosticsStore.persistedTail(maxLines: 200)
+            let diagnosticsCombined = alignmentDiagnostics + karaokeDiagnosticsLog + runtimeDiagnostics + persistedDiagnostics
+            let diagnosticsText: String = diagnosticsCombined.isEmpty
+                ? "No diagnostics found in alignment/runtime/persisted logs. Recompute karaoke and reopen this dump."
+                : diagnosticsCombined.joined(separator: "\n")
+
+            let persistedDumpFilePath = persistKaraokeDebugDumpFile(candidateText: jsonText)
+            karaokeDebugDumpFilePath = persistedDumpFilePath ?? "(write failed)"
+
+            let summary = """
+            [Summary]
+            strategy=\(alignment.strategy.rawValue)
+            version=\(alignment.version)
+            locale=\(alignment.localeIdentifier)
+            lines=\(alignment.segments.count)
+            generatedAt=\(alignment.generatedAt)
+            runtimeBufferCount=\(karaokeDiagnosticsLog.count)
+            persistedTailCount=\(persistedDiagnostics.count)
+            persistedDumpFile=\(karaokeDebugDumpFilePath)
+            """
+
+            karaokeDebugDumpText = """
+            \(summary)
+
+            [Karaoke Diagnostics]
+            \(diagnosticsText)
+
+            [Alignment JSON]
+            \(jsonText)
+            """
+
+            if karaokeDebugDumpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                karaokeDebugDumpText = "Debug dump generated, but content is unexpectedly empty. strategy=\(alignment.strategy.rawValue) lines=\(alignment.segments.count)"
+            }
+
+            let preview = String(karaokeDebugDumpText.prefix(320))
+            CustomLogger.shared.raw("[Karaoke][DebugDump] preview=\(preview)")
+            KaraokeDiagnosticsStore.append("[Karaoke][DebugDump] opened strategy=\(alignment.strategy.rawValue) lines=\(alignment.segments.count)")
+            isKaraokeDebugDumpPresented = true
+        } catch {
+            karaokeDebugDumpText = "Failed to encode karaoke debug dump: \(error.localizedDescription)"
+            isKaraokeDebugDumpPresented = true
+        }
+    }
+
+    private func persistKaraokeDebugDumpFile(candidateText: String) -> String? {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let url = docs.appendingPathComponent("karaoke-debug-dump.txt", isDirectory: false)
+        do {
+            try candidateText.data(using: .utf8)?.write(to: url, options: .atomic)
+            return url.path
+        } catch {
+            CustomLogger.shared.raw("[Karaoke][DebugDump] write failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func updateKaraokeHighlight(at seconds: TimeInterval) {
+        guard let alignment = karaokeAlignmentForCurrentNote else {
+            karaokeCurrentRange = nil
+            karaokeCurrentLineRange = nil
+            return
+        }
+
+        let previousLineRange = karaokeCurrentLineRange
+        if let active = alignment.segments.first(where: { seconds >= $0.startSeconds && seconds < $0.endSeconds }) {
+            let lineRange = active.textRange.nsRange
+            karaokeCurrentLineRange = lineRange
+
+            let activeTokenRange = active.tokenSegments?
+                .first(where: { seconds >= $0.startSeconds && seconds < $0.endSeconds })?
+                .textRange
+                .nsRange
+
+            let activePhraseRange = active.phraseSegments?
+                .first(where: { seconds >= $0.startSeconds && seconds < $0.endSeconds })?
+                .textRange
+                .nsRange
+
+            let resolvedRange = activeTokenRange ?? activePhraseRange ?? lineRange
+            karaokeCurrentRange = resolvedRange
+
+            if previousLineRange != lineRange, karaokeIsPlaying {
+                karaokeScrollToSelectedRangeToken &+= 1
+            }
+            return
+        }
+
+        if let last = alignment.segments.last,
+           seconds >= last.endSeconds {
+            karaokeCurrentRange = nil
+            karaokeCurrentLineRange = nil
+        }
+    }
+
+    private func persistImportedAudio(_ importedURL: URL, noteID: UUID) throws -> URL {
+        let fileManager = FileManager.default
+        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            throw NSError(
+                domain: "PasteView.KaraokeAudio",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to access app documents directory."]
+            )
+        }
+
+        let directory = docs.appendingPathComponent("karaoke-audio", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
+
+        let sourceURL = importedURL.standardizedFileURL
+        let ext = sourceURL.pathExtension.isEmpty ? "m4a" : sourceURL.pathExtension.lowercased()
+        let destinationURL = directory.appendingPathComponent("\(noteID.uuidString).\(ext)")
+
+        if sourceURL == destinationURL.standardizedFileURL {
+            return destinationURL
+        }
+
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+
+        let needsStop = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if needsStop {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        try? fileManager.startDownloadingUbiquitousItem(at: sourceURL)
+
+        do {
+            try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        } catch {
+            let data = try Data(contentsOf: sourceURL)
+            try data.write(to: destinationURL, options: .atomic)
+        }
+
+        return destinationURL
+    }
+
+    private func fireContextMenuHaptic() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+
+    @MainActor
+    private func processPendingRouterResetRequest() {
+        guard let resetID = pendingRouterResetNoteID else { return }
+        guard let currentID = currentNote?.id, currentID == resetID else { return }
+
+        pendingRouterResetNoteID = nil
+        router.pendingResetNoteID = nil
+
+        readingOverrides.removeAll(for: resetID)
+        tokenBoundaries.removeAll(for: resetID)
+
+        overrideSignature = computeOverrideSignature()
+        updateCustomizedRanges()
+        triggerFuriganaRefreshIfNeeded(reason: "reset custom spans", recomputeSpans: true)
+        showToast("Reset custom spans")
+    }
+
+    @MainActor
+    private func resetCurrentNoteToDefaultSegmentationReading() {
+        guard let noteID = currentNote?.id else {
+            showToast("No note selected")
+            return
+        }
+        pendingRouterResetNoteID = noteID
+        processPendingRouterResetRequest()
+    }
+
+    private func ensureClipboardAccessEnabledOrToast() -> Bool {
+        guard clipboardAccessEnabled else {
+            showToast("Clipboard access is disabled in Settings")
+            return false
+        }
+        return true
+    }
+
+    private func sendStandardEditAction(_ selector: Selector) {
+        // Best-effort: enable editing so the text view can accept responder actions.
+        setEditing(true)
+        DispatchQueue.main.async {
+            UIApplication.shared.sendAction(selector, to: nil, from: nil, for: nil)
+        }
+    }
+
+    private func handlePasteContextMenuAction(_ action: PasteControlsBar.PasteContextMenuAction) {
+        switch action {
+        case .cut:
+            guard ensureClipboardAccessEnabledOrToast() else { return }
+            sendStandardEditAction(#selector(UIResponderStandardEditActions.cut(_:)))
+        case .copy:
+            guard ensureClipboardAccessEnabledOrToast() else { return }
+            sendStandardEditAction(#selector(UIResponderStandardEditActions.copy(_:)))
+        case .pasteInsert:
+            guard ensureClipboardAccessEnabledOrToast() else { return }
+            sendStandardEditAction(#selector(UIResponderStandardEditActions.paste(_:)))
+        case .pasteReplaceAll:
+            pasteFromClipboard()
+        case .selectAll:
+            sendStandardEditAction(#selector(UIResponderStandardEditActions.selectAll(_:)))
+        case .newNoteFromClipboard:
+            newNoteFromClipboard()
+        }
+    }
+
+    private var tokenListItems: [TokenListItem] {
+        guard furiganaSemanticSpans.isEmpty == false else { return [] }
+        let noteID = currentNote?.id
+
+        var items: [TokenListItem] = []
+        items.reserveCapacity(furiganaSemanticSpans.count)
+
+        var seenKeys: Set<String> = []
+        for (index, semantic) in furiganaSemanticSpans.enumerated() {
+            guard let trimmed = trimmedRangeAndSurface(for: semantic.range) else { continue }
+            let surface = trimmed.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard surface.isEmpty == false else { continue }
+            // Punctuation/whitespace-only spans are useful hard boundaries for segmentation,
+            // but not meaningful “words” to extract.
+            guard isHardBoundaryOnly(surface) == false else { continue }
+
+            if hideCommonParticles, commonParticleSet.contains(surface) {
+                continue
+            }
+
+            let preferred = normalizedReading(preferredReading(for: trimmed.range, fallback: semantic.readingKana))
+            let key = "\(surface)|\(preferred ?? "")"
+            if hideDuplicateTokens, seenKeys.contains(key) {
+                continue
+            }
+            seenKeys.insert(key)
+
+            let displayReading = readingWithOkurigana(surface: surface, baseReading: preferred)
+            let alreadySaved = hasSavedWord(surface: surface, reading: preferred, noteID: noteID)
+            items.append(
+                TokenListItem(
+                    spanIndex: index,
+                    range: trimmed.range,
+                    surface: surface,
+                    reading: preferred,
+                    displayReading: displayReading,
+                    isAlreadySaved: alreadySaved
+                )
+            )
+        }
+
+        return items
+    }
+
+    @ToolbarContentBuilder
+    private var coreToolbar: some ToolbarContent {
+        PasteCoreToolbar(
+            isTitleEditPresented: $isTitleEditAlertPresented,
+            titleEditDraft: $titleEditDraft,
+            navigationTitleText: navigationTitleText,
+            onResetSpans: {
+                resetAllCustomSpans()
+            },
+            onCameraOCRTap: {
+                openCameraTextScanner()
+            },
+            onKaraokePrimaryTap: {
+                handleKaraokePrimaryAction()
+            },
+            onKaraokeRestartFromBeginning: {
+                restartKaraokePlaybackFromBeginning()
+            },
+            onChooseAudio: {
+                chooseKaraokeAudio()
+            },
+            onChooseSubtitles: {
+                chooseKaraokeSubtitles()
+            },
+            onClearKaraoke: {
+                clearKaraokeData()
+            },
+            onRecomputeKaraoke: {
+                Task { @MainActor in
+                    await recomputeKaraokeFromCurrentAudio()
+                }
+            },
+            onOpenKaraokeDebugDump: {
+                openKaraokeDebugDump()
+            },
+            isKaraokeAudioUploaded: karaokeAudioUploaded,
+            isKaraokeFileUploaded: karaokeFileUploaded,
+            isKaraokeBusy: isGeneratingKaraokeAlignment,
+            karaokeProgress: karaokeGenerationProgress,
+            isKaraokeReady: karaokePlaybackAvailable,
+            isKaraokePlaying: karaokeIsPlaying,
+            karaokePlaybackTimeText: karaokePlaybackTimeText,
+            showTokensSheet: $showTokensPopover,
+            tokenListSheet: {
+                PasteTokenListSheet(
+                    items: tokenListItems,
+                    noteID: activeNoteID,
+                    isReady: (furiganaSemanticSpans.isEmpty == false) || (furiganaSpans != nil),
+                    isEditing: isEditing,
+                    selectedRange: tokenSelection?.range ?? persistentSelectionRange,
+                    hideDuplicateTokens: $hideDuplicateTokens,
+                    hideCommonParticles: $hideCommonParticles,
+                    onSelect: { presentDictionaryForSpan(at: $0, focusSplitMenu: false) },
+                    onGoTo: { goToSpanInNote(at: $0) },
+                    onAdd: { bookmarkToken(at: $0) },
+                    onAddAll: { addAllTokensToWordList() },
+                    onMergeLeft: { mergeSpan(at: $0, direction: .previous) },
+                    onMergeRight: { mergeSpan(at: $0, direction: .next) },
+                    onSplit: { startSplitFlow(for: $0) },
+                    canMergeLeft: { canMergeSpan(at: $0, direction: .previous) },
+                    canMergeRight: { canMergeSpan(at: $0, direction: .next) },
+                    sheetSelection: sheetSelectionBinding,
+                    dictionaryPanel: { selection in
+                        dictionaryPanel(for: selection, enableDragToDismiss: true, embedInMaterialBackground: true)
+                    },
+                    onDone: { showTokensPopover = false }
+                )
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var coreBottomInset: some View {
+        if selectionController.tokenSelection == nil {
+            Color.clear.frame(height: 24)
+        }
+    }
+
+    @ViewBuilder
+    private var inlineDictionaryOverlay: some View {
+        if inlineDictionaryPanelEnabled {
+            // Presentation gate:
+            // Keep the panel mounted as long as we have a stable `presented` snapshot.
+            // When a new lookup starts, `phase` flips to `.resolving`, but `presented`
+            // remains unchanged until the next lookup commits. This prevents flicker.
+            if let presented = inlineLookup.presented,
+               let selection = presented.selection,
+               selection.range.length > 0 {
+                inlineDismissScrim
+                inlineTokenActionPanel(for: selection)
+            }
+        }
+    }
+
+    
+
+    @ViewBuilder
+    private var incrementalLookupOverlay: some View { EmptyView() }
+
+    private var incrementalSheetDetents: Set<PresentationDetent> {
+        Set([.height(300), .height(420), .height(560), .large])
+    }
+
+    var incrementalPreferredSheetDetent: PresentationDetent {
+        let groupCount = incrementalPopupGroups.count
+        if groupCount <= 1 {
+            return .height(300)
+        } else if groupCount <= 3 {
+            return .height(420)
+        } else {
+            return .height(560)
+        }
+    }
+
+    private func dismissIncrementalLookupSheet() {
+        incrementalLookupTask?.cancel()
+        incrementalPopupHits = []
+        incrementalSelectedCharacterRange = nil
+    }
+
+    private func inlineTokenActionPanel(for selection: TokenSelectionContext) -> some View {
+        let preferred = normalizedReading(preferredReadingForSelection(selection))
+
+        return PasteInlineTokenActionPanel(
+            selection: selection,
+            lookup: inlineLookup,
+            preferredReading: preferred,
+            canMergePrevious: canMergeSelection(.previous),
+            canMergeNext: canMergeSelection(.next),
+            onShowDefinitions: {
+                presentWordDefinitions(for: selection)
+            },
+            onDismiss: { clearSelection(resetPersistent: true) },
+            onSaveWord: { entry in
+                toggleSavedWord(surface: selection.surface, preferredReading: preferred, entry: entry)
+            },
+            onApplyReading: { entry in
+                applyDictionaryReading(entry)
+            },
+            onApplyCustomReading: { kana in
+                applyCustomReading(kana)
+            },
+            isWordSaved: { entry in
+                isSavedWord(for: selection.surface, preferredReading: preferred, entry: entry)
+            },
+            onMergePrevious: { mergeSelection(.previous) },
+            onMergeNext: { mergeSelection(.next) },
+            onSplit: { offset in splitSelection(at: offset) },
+            onReset: resetSelectionOverrides,
+            isSelectionCustomized: selectionIsCustomized(selection),
+            overrideSignature: overrideSignature,
+            focusSplitMenu: pendingSplitFocusSelectionID == selection.id,
+            onSplitFocusConsumed: { pendingSplitFocusSelectionID = nil },
+            coordinateSpaceName: Self.coordinateSpaceName
+        )
+    }
+
+    private func pasteFromClipboard() {
+        guard ensureClipboardAccessEnabledOrToast() else { return }
+        if let str = UIPasteboard.general.string {
+            inputText = str
+        } else {
+            showToast("Clipboard is empty")
+        }
+    }
+
+    private func openCameraTextScanner() {
+        CustomLogger.shared.pipeline(context: "OCR", stage: "Entry", "openCameraTextScanner invoked")
+        guard DataScannerViewController.isSupported else {
+            CustomLogger.shared.pipeline(context: "OCR", stage: "Error", "DataScanner unsupported on device", level: .error)
+            showToast("Camera text scanning is not supported on this device")
+            return
+        }
+        guard DataScannerViewController.isAvailable else {
+            CustomLogger.shared.pipeline(context: "OCR", stage: "Error", "DataScanner currently unavailable", level: .error)
+            showToast("Camera text scanning is currently unavailable")
+            return
+        }
+        CustomLogger.shared.pipeline(context: "OCR", stage: "Entry", "Presenting camera scanner sheet")
+        isCameraTextScannerPresented = true
+    }
+
+    private func createNoteFromDetectedCameraText(_ rawText: String) {
+        let scannedText = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard scannedText.isEmpty == false else {
+            CustomLogger.shared.pipeline(context: "OCR", stage: "Result", "No text detected from scanner", level: .warning)
+            showToast("No text detected")
+            return
+        }
+
+        CustomLogger.shared.pipeline(
+            context: "OCR",
+            stage: "Result",
+            "Detected text length=\((scannedText as NSString).length)"
+        )
+
+        let resolvedTitle = inferredTitle(from: scannedText)
+        notes.addNote(title: resolvedTitle, text: scannedText)
+        if let newest = notes.notes.first {
+            currentNote = newest
+            noteTitleInput = newest.title ?? ""
+            hasManuallyEditedTitle = (newest.title?.isEmpty == false)
+            inputText = scannedText
+            router.noteToOpen = newest
+            router.pasteShouldBeginEditing = true
+            router.selectedTab = .paste
+        }
+        PasteBufferStore.save(scannedText)
+        showToast("Added scanned text to a new note")
+    }
+
+    private func newNoteFromClipboard() {
+        guard ensureClipboardAccessEnabledOrToast() else { return }
+        guard let str = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines), str.isEmpty == false else {
+            showToast("Clipboard is empty")
+            return
+        }
+
+        let resolvedTitle = inferredTitle(from: str)
+        notes.addNote(title: resolvedTitle, text: str)
+        if let newest = notes.notes.first {
+            router.noteToOpen = newest
+            router.pasteShouldBeginEditing = true
+            router.selectedTab = .paste
+        }
+        PasteBufferStore.save(str)
+        showToast("Pasted to new note")
+    }
+
+    private func saveNote() {
+        guard inputText.isEmpty == false else { return }
+        let resolvedTitle = normalizedTitle(noteTitleInput) ?? inferredTitle(from: inputText)
+        if var existing = currentNote {
+            existing.text = inputText
+            existing.title = resolvedTitle
+            notes.updateNote(existing)
+            currentNote = existing
+            noteTitleInput = resolvedTitle ?? ""
+        } else {
+            notes.addNote(title: resolvedTitle, text: inputText)
+            if let newest = notes.notes.first {
+                currentNote = newest
+                noteTitleInput = newest.title ?? ""
+            }
+        }
+    }
+
+    private func newNote() {
+        hideKeyboard()
+        setEditing(true)
+
+        inputText = ""
+        notes.addNote(title: nil, text: "")
+        notes.save()
+
+        if let newest = notes.notes.first {
+            currentNote = newest
+            noteTitleInput = newest.title ?? ""
+            hasManuallyEditedTitle = (newest.title?.isEmpty == false)
+        }
+        else if let last = notes.notes.last {
+            currentNote = last
+            noteTitleInput = last.title ?? ""
+            hasManuallyEditedTitle = (last.title?.isEmpty == false)
+        }
+        else {
+            currentNote = nil
+            noteTitleInput = ""
+            hasManuallyEditedTitle = false
+        }
+
+        PasteBufferStore.save("")
+        furiganaAttributedText = nil
+        furiganaSpans = nil
+        furiganaSemanticSpans = []
+    }
+
+    private func onAppearHandler() {
+        if let note = router.noteToOpen {
+            currentNote = note
+            assignInputTextFromExternalSource(note.text)
+            noteTitleInput = note.title ?? ""
+            hasManuallyEditedTitle = (note.title?.isEmpty == false)
+            if router.pasteShouldBeginEditing {
+                setEditing(true)
+            }
+            else {
+                setEditing(false)
+            }
+            router.pasteShouldBeginEditing = false
+            router.noteToOpen = nil
+        } else if currentNote == nil,
+                  inputText.isEmpty,
+                  let lastID = lastOpenedNoteID,
+                  let note = notes.notes.first(where: { $0.id == lastID }) {
+            currentNote = note
+            assignInputTextFromExternalSource(note.text)
+            noteTitleInput = note.title ?? ""
+            hasManuallyEditedTitle = (note.title?.isEmpty == false)
+            setEditing(false)
+        } else if let existingNote = currentNote, noteTitleInput.isEmpty {
+            noteTitleInput = existingNote.title ?? ""
+            hasManuallyEditedTitle = (existingNote.title?.isEmpty == false)
+        }
+        if !hasInitialized {
+            if inputText.isEmpty {
+                setEditing(true)
+            }
+            hasInitialized = true
+        }
+        if currentNote == nil && inputText.isEmpty {
+            let persisted = PasteBufferStore.load()
+            if !persisted.isEmpty {
+                assignInputTextFromExternalSource(persisted)
+                setEditing(false)
+            }
+            noteTitleInput = ""
+            hasManuallyEditedTitle = false
+        }
+        overrideSignature = computeOverrideSignature()
+        updateCustomizedRanges()
+        migrateBoundaryOverridesIfNeeded()
+        pendingRouterResetNoteID = router.pendingResetNoteID
+        processPendingRouterResetRequest()
+
+        // If token overlay highlighting was enabled in a previous version, disable it once.
+        // This avoids the "faint highlight everywhere" look and reduces per-refresh work.
+        if didDisableTokenOverlayHighlightingV1 == false {
+            if alternateTokenColors || highlightUnknownTokens {
+                alternateTokenColors = false
+                highlightUnknownTokens = false
+            }
+            didDisableTokenOverlayHighlightingV1 = true
+        }
+
+        if incrementalLookupEnabled {
+            // New paste strategy: furigana + token highlighting disabled (pipeline remains).
+            if showFurigana {
+                showFurigana = false
+            }
+            if alternateTokenColors {
+                alternateTokenColors = false
+            }
+            if highlightUnknownTokens {
+                highlightUnknownTokens = false
+            }
+            incrementalLookupTask?.cancel()
+            isIncrementalPopupVisible = false
+            incrementalPopupHits = []
+            recomputeSavedWordOverlays()
+        }
+
+        PasteRenderTimingTrace.begin(
+            noteID: currentNote?.id,
+            textLength: (inputText as NSString).length,
+            reason: "first note appearance"
+        )
+        PasteRenderTimingTrace.checkpoint(
+            "APPEAR",
+            "showFurigana=\(showFurigana) altColors=\(alternateTokenColors) unknown=\(highlightUnknownTokens)"
+        )
+
+        ensureInitialFuriganaReady(reason: "onAppear initialization")
+    }
+
+    private func migrateBoundaryOverridesIfNeeded() {
+        let noteID = activeNoteID
+        let boundaryOverrides = readingOverrides.overrides(for: noteID).filter { $0.userKana == nil }
+        if tokenBoundaries.hasCustomSpans(for: noteID) {
+            if boundaryOverrides.isEmpty == false {
+                readingOverrides.removeBoundaryOverrides(for: noteID)
+                overrideSignature = computeOverrideSignature()
+                updateCustomizedRanges()
+            }
+            return
+        }
+        guard boundaryOverrides.isEmpty == false else { return }
+        guard inputText.isEmpty == false else { return }
+
+        Task {
+            let text = inputText
+            let nsText = text as NSString
+            let length = nsText.length
+            guard length > 0 else { return }
+            do {
+                let base = try await SegmentationService.shared.segment(text: text)
+                let overrideSpans: [TextSpan] = boundaryOverrides.compactMap { override in
+                    let r = override.nsRange
+                    guard r.location != NSNotFound, r.length > 0 else { return nil }
+                    guard r.location < length else { return nil }
+                    let end = min(NSMaxRange(r), length)
+                    guard end > r.location else { return nil }
+                    let range = NSRange(location: r.location, length: end - r.location)
+                    let surface = nsText.substring(with: range)
+                    return TextSpan(range: range, surface: surface, isLexiconMatch: false)
+                }
+                guard overrideSpans.isEmpty == false else { return }
+                let overrideRanges = overrideSpans.map(\.range)
+                var amended = base.filter { baseSpan in
+                    overrideRanges.contains { NSIntersectionRange($0, baseSpan.range).length > 0 } == false
+                }
+                amended.append(contentsOf: overrideSpans)
+                amended.sort { lhs, rhs in
+                    if lhs.range.location == rhs.range.location { return lhs.range.length < rhs.range.length }
+                    return lhs.range.location < rhs.range.location
+                }
+                await MainActor.run {
+                    tokenBoundaries.setSpans(noteID: noteID, spans: amended, text: text)
+                    readingOverrides.removeBoundaryOverrides(for: noteID)
+                    overrideSignature = computeOverrideSignature()
+                    updateCustomizedRanges()
+                    triggerFuriganaRefreshIfNeeded(reason: "migrated legacy token edits", recomputeSpans: true)
+                }
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func syncNoteForInputChange(_ newValue: String) {
+        guard let existing = currentNote else { return }
+        var updated = existing
+        updated.text = newValue
+        let nextTitle: String?
+        if hasManuallyEditedTitle == false {
+            let fallback = inferredTitle(from: newValue)
+            nextTitle = fallback
+            noteTitleInput = fallback ?? ""
+        } else {
+            nextTitle = normalizedTitle(noteTitleInput)
+        }
+        updated.title = nextTitle
+        notes.updateNote(updated)
+        currentNote = updated
+    }
+
+    private func normalizedTitle(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func isHardBoundaryOnly(_ surface: String) -> Bool {
+        if surface.isEmpty { return true }
+        let hardBoundary = CharacterSet.whitespacesAndNewlines
+            .union(.punctuationCharacters)
+            .union(.symbols)
+        for scalar in surface.unicodeScalars {
+            if hardBoundary.contains(scalar) == false {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func presentTitleEditAlert() {
+        titleEditDraft = noteTitleInput
+        isTitleEditAlertPresented = true
+    }
+
+    private var titleEditModal: some View {
+        TitleEditModalView(
+            isPresented: $isTitleEditAlertPresented,
+            draft: $titleEditDraft,
+            onApply: {
+                applyTitleEditDraft()
+            }
+        )
+    }
+
+    private func applyTitleEditDraft() {
+        let normalized = normalizedTitle(titleEditDraft)
+
+        if normalized == nil {
+            hasManuallyEditedTitle = false
+            let fallback = inferredTitle(from: inputText)
+            noteTitleInput = fallback ?? ""
+            if var existing = currentNote {
+                existing.title = fallback
+                notes.updateNote(existing)
+                currentNote = existing
+            }
+            return
+        }
+
+        hasManuallyEditedTitle = true
+        noteTitleInput = normalized ?? ""
+
+        if var existing = currentNote {
+            existing.title = normalized
+            notes.updateNote(existing)
+            currentNote = existing
+        }
+    }
+
+    private func inferredTitle(from text: String) -> String? {
+        let firstLine = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        let trimmed = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var activeNoteID: UUID {
+        currentNote?.id ?? scratchNoteID
+    }
+
+    private var noteSpeechSessionID: String {
+        "paste-note:\(activeNoteID.uuidString)"
+    }
+
+    private var isNoteSpeechActive: Bool {
+        speech.activeSessionID == noteSpeechSessionID
+    }
+
+    private var noteSpeechIsPlaying: Bool {
+        isNoteSpeechActive && speech.isSpeaking && speech.isPaused == false
+    }
+
+    private var noteSpeechIsPaused: Bool {
+        isNoteSpeechActive && speech.isSpeaking && speech.isPaused
+    }
+
+    private func noteSpeechOverlay(for text: String) -> RubyText.TokenOverlay? {
+        guard isNoteSpeechActive else { return nil }
+        guard let range = speech.currentSpokenRange else { return nil }
+        return tokenOverlay(for: text, range: range)
+    }
+
+    private func karaokePlaybackOverlay(for text: String) -> RubyText.TokenOverlay? {
+        guard let range = karaokeCurrentRange else { return nil }
+        return tokenOverlay(for: text, range: range, color: .systemPink)
+    }
+
+    private func tokenOverlay(for text: String, range: NSRange) -> RubyText.TokenOverlay? {
+        tokenOverlay(for: text, range: range, color: .systemOrange)
+    }
+
+    private func tokenOverlay(for text: String, range: NSRange, color: UIColor) -> RubyText.TokenOverlay? {
+        let ns = text as NSString
+        guard range.location != NSNotFound, range.length > 0 else { return nil }
+        guard NSMaxRange(range) <= ns.length else { return nil }
+        let snippet = ns.substring(with: range)
+        guard snippet.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { return nil }
+
+        // `TokenOverlay` maps to `.foregroundColor` (not background highlight),
+        // so choose a high-contrast color that stays readable in dark mode.
+        return RubyText.TokenOverlay(range: range, color: color)
+    }
+
+    func clearSelection(resetPersistent: Bool = true) {
+        selectionController.clearSelection(resetPersistent: resetPersistent)
+        isDictionarySheetPresented = false
+        Task { @MainActor in
+            inlineLookup.reset()
+        }
+    }
+
+    private func handleInlineSpanSelection(_ selection: RubySpanSelection?) {
+        guard let selection else {
+            clearSelection()
+            return
+        }
+
+        // INVESTIGATION NOTES (2026-01-04)
+        // Token tap → dictionary popup execution path:
+        // RubyText.TokenOverlayTextView.handleInspectionTap → spanSelectionHandler → PasteView.handleInlineSpanSelection
+        // → presentDictionaryForSpan(at:) → selectionContext(forSpanAt:) → aggregatedAnnotatedSpan(for:) (lemma + POS aggregation)
+        // → TokenActionPanel + DictionaryLookupViewModel.load(term:fallbackTerms:).
+        //
+        // Potential jitter sources on tap:
+        // - `selectionContext(forSpanAt:)` rebuilds a TokenSelectionContext and aggregates lemma candidates.
+        // - `handleSelectionLookup` can trigger multiple SQLite lookups (primary term + lemma fallbacks).
+        presentDictionaryForSpan(at: selection.tokenIndex, focusSplitMenu: false)
+        persistentSelectionRange = selection.highlightRange
+    }
+
+
+
+    private func handleContextMenuAction(_ action: RubyContextMenuAction) {
+        switch action {
+        case .mergeLeft:
+            mergeSelection(.previous)
+        case .mergeRight:
+            mergeSelection(.next)
+        case .split:
+            focusSplitMenuForCurrentSelection()
+        }
+    }
+
+    private func focusSplitMenuForCurrentSelection() {
+        guard let selection = tokenSelection else { return }
+        startSplitFlow(for: selection.tokenIndex)
+    }
+
+    private func presentDictionaryForArbitraryRange(_ rawRange: NSRange) {
+        guard rawRange.location != NSNotFound, rawRange.length > 0 else {
+            clearSelection()
+            return
+        }
+        guard let trimmed = trimmedRangeAndSurface(for: rawRange) else {
+            clearSelection()
+            return
+        }
+        let surface = trimmed.surface
+        // Guardrail: the dictionary popup is intended for single token-like selections.
+        // If the trimmed surface still contains internal whitespace/newlines, treat this
+        // as an invalid selection and do not open the popup (multi-span selections like
+        // "虹色 もっともっと" should never reach the dictionary).
+        if surface.rangeOfCharacter(from: Self.highlightWhitespace) != nil {
+            clearSelection()
+            return
+        }
+        guard surface.isEmpty == false else {
+            clearSelection()
+            return
+        }
+
+        let semantic = SemanticSpan(range: trimmed.range, surface: surface, sourceSpanIndices: 0..<0, readingKana: nil)
+        let annotated = AnnotatedSpan(span: TextSpan(range: trimmed.range, surface: surface, isLexiconMatch: false), readingKana: nil, lemmaCandidates: [], partOfSpeech: nil)
+        let ctx = TokenSelectionContext(
+            tokenIndex: -1,
+            range: trimmed.range,
+            surface: surface,
+            semanticSpan: semantic,
+            sourceSpanIndices: 0..<0,
+            annotatedSpan: annotated
+        )
+
+        pendingSelectionRange = nil
+        persistentSelectionRange = trimmed.range
+        tokenSelection = ctx
+        pendingSplitFocusSelectionID = nil
+    }
+
+    private func handleSelectionLookup() {
+        // INVESTIGATION NOTES (2026-01-04)
+        // Dictionary lookup behavior for the popup:
+        // - Always routes through DictionaryLookupViewModel.lookup(selectedRange:...)
+        // - Ordering is surface → deinflection → STOP (no lemma/reading fallbacks for UI determinism)
+        guard let selection = tokenSelection else {
+            Task { @MainActor in
+                inlineLookup.reset()
+            }
+            return
+        }
+
+        // Use semantic spans (post Stage 2.5 + tail merge) as the token basis for
+        // dictionary candidate generation. This makes late-stage token combining
+        // visible to lookup behavior without requiring user-authored base spans.
+        let tokens: [TextSpan] = {
+            if furiganaSemanticSpans.isEmpty == false {
+                return furiganaSemanticSpans.map { TextSpan(range: $0.range, surface: $0.surface, isLexiconMatch: false) }
+            }
+            return furiganaSpans?.map(\.span) ?? []
+        }()
+        let selectedRange = selection.range
+        let currentText = inputText
+        let selectionID = selection.id
+
+        // If a semantic token is a merge of multiple Stage-1 spans, the merged surface may not exist
+        // as a dictionary headword even when some components do. Keep determinism (single transaction),
+        // but add bounded component/n-gram fallbacks so the popup doesn't dead-end on a made-up composite.
+        let lemmaFallbacks: [String] = {
+            func normalized(_ raw: String) -> String {
+                raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            var out: [String] = []
+            out.reserveCapacity(16)
+            var seen: Set<String> = []
+
+            func appendUnique(_ raw: String) {
+                let trimmed = normalized(raw)
+                guard trimmed.isEmpty == false else { return }
+                if seen.insert(trimmed).inserted {
+                    out.append(trimmed)
+                }
+            }
+
+            // 1) Aggregated MeCab lemma candidates (existing behavior).
+            for lemma in selection.annotatedSpan.lemmaCandidates {
+                appendUnique(lemma)
+            }
+
+            // 2) If this selection covers multiple Stage-1 spans, also try component surfaces and
+            //    short adjacent concatenations (e.g. A, B, AB, BC, ABC) as fallbacks.
+            if selection.sourceSpanIndices.count > 1, let stage1 = furiganaSpans {
+                let idx = selection.sourceSpanIndices
+                if idx.lowerBound >= 0, idx.upperBound <= stage1.count {
+                    let group = Array(stage1[idx.lowerBound..<idx.upperBound])
+                    let surfaces = group.map { normalized($0.span.surface) }.filter { $0.isEmpty == false }
+
+                    for s in surfaces {
+                        appendUnique(s)
+                    }
+
+                    // Bounded n-grams: keep small to avoid doing too many dictionary queries.
+                    let maxGram = min(4, surfaces.count)
+                    if surfaces.count >= 2 {
+                        for i in 0..<surfaces.count {
+                            var combined = ""
+                            for len in 2...maxGram {
+                                let j = i + len
+                                if j > surfaces.count { break }
+                                if combined.isEmpty {
+                                    combined = surfaces[i..<j].joined(separator: "")
+                                } else {
+                                    combined += surfaces[j - 1]
+                                }
+                                appendUnique(combined)
+                            }
+                        }
+                    }
+
+                    // Include any per-span lemma candidates that might not have been surfaced by aggregation.
+                    for span in group {
+                        for lemma in span.lemmaCandidates {
+                            appendUnique(lemma)
+                        }
+                    }
+                }
+            }
+
+            return out
+        }()
+
+        Task { [selection, tokens, selectedRange, currentText, selectionID, lemmaFallbacks] in
+            // Treat surface/deinflection + lemma fallbacks as ONE transaction.
+            // The UI should not see intermediate empty/loading states.
+            await inlineLookup.lookupTransaction(
+                requestID: selectionID,
+                selection: selection,
+                selectedRange: selectedRange,
+                inText: currentText,
+                tokenSpans: tokens,
+                lemmaFallbacks: lemmaFallbacks,
+                mode: .japanese
+            )
+        }
+    }
+
+    private func dictionaryPanel(for selection: TokenSelectionContext, enableDragToDismiss: Bool, embedInMaterialBackground: Bool) -> TokenActionPanel {
+        let preferred = normalizedReading(preferredReadingForSelection(selection))
+        return TokenActionPanel(
+            selection: selection,
+            lookup: inlineLookup,
+            preferredReading: preferred,
+            canMergePrevious: canMergeSelection(.previous),
+            canMergeNext: canMergeSelection(.next),
+            onShowDefinitions: {
+                presentWordDefinitions(for: selection)
+            },
+            onDismiss: { clearSelection(resetPersistent: true) },
+            onSaveWord: { entry in
+                toggleSavedWord(surface: selection.surface, preferredReading: preferred, entry: entry)
+            },
+            onApplyReading: { entry in
+                applyDictionaryReading(entry)
+            },
+            onApplyCustomReading: { kana in
+                applyCustomReading(kana)
+            },
+            isWordSaved: { entry in
+                isSavedWord(for: selection.surface, preferredReading: preferred, entry: entry)
+            },
+            onMergePrevious: { mergeSelection(.previous) },
+            onMergeNext: { mergeSelection(.next) },
+            onSplit: { offset in splitSelection(at: offset) },
+            onReset: resetSelectionOverrides,
+            isSelectionCustomized: selectionIsCustomized(selection),
+            enableDragToDismiss: enableDragToDismiss,
+            embedInMaterialBackground: embedInMaterialBackground,
+            focusSplitMenu: pendingSplitFocusSelectionID == selection.id,
+            onSplitFocusConsumed: { pendingSplitFocusSelectionID = nil }
+        )
+    }
+
+    func isSavedWord(for surface: String, preferredReading: String?, entry: DictionaryEntry) -> Bool {
+        let s = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let k = entry.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kana = (k?.isEmpty == false) ? k : nil
+        guard s.isEmpty == false else { return false }
+        let noteID = currentNote?.id
+        let tokenSurface = kanaFoldToHiragana(s)
+        let dictionarySurface = kanaFoldToHiragana(resolvedSurface(from: entry, fallback: s))
+        let targetKana = kanaFoldToHiragana(kana)
+        let preferredKana = kanaFoldToHiragana(preferredReading)
+        return words.words.contains { word in
+            guard word.isAssociated(with: noteID) else { return false }
+            if word.dictionaryEntryID == entry.entryID {
+                return true
+            }
+            let savedSurface = kanaFoldToHiragana(word.surface)
+            let savedDictionarySurface = kanaFoldToHiragana(word.dictionarySurface)
+            // New shape: surface matches note token; legacy shape: surface matches dictionary headword.
+            guard savedSurface == tokenSurface || savedSurface == dictionarySurface || savedDictionarySurface == dictionarySurface else { return false }
+            let savedKana = kanaFoldToHiragana(word.kana)
+            if let preferredKana {
+                // If the user has applied a custom reading override, treat that as the
+                // authoritative “saved” reading for the bookmark state.
+                if savedKana == preferredKana { return true }
+            }
+            return savedKana == targetKana
+        }
+    }
+
+    func toggleSavedWord(surface: String, preferredReading: String?, entry: DictionaryEntry) {
+        let s = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let k = entry.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kana = (k?.isEmpty == false) ? k : nil
+        guard s.isEmpty == false else { return }
+        let noteID = currentNote?.id
+
+        let tokenSurface = kanaFoldToHiragana(s)
+        let dictionarySurface = kanaFoldToHiragana(resolvedSurface(from: entry, fallback: s))
+        let targetKana = kanaFoldToHiragana(kana)
+        let preferredKana = kanaFoldToHiragana(preferredReading)
+
+        func matchesSavedKey(_ word: Word) -> Bool {
+            guard word.isAssociated(with: noteID) else { return false }
+            if word.dictionaryEntryID == entry.entryID {
+                return true
+            }
+            let savedSurface = kanaFoldToHiragana(word.surface)
+            let savedDictionarySurface = kanaFoldToHiragana(word.dictionarySurface)
+            guard savedSurface == tokenSurface || savedSurface == dictionarySurface || savedDictionarySurface == dictionarySurface else { return false }
+            let savedKana = kanaFoldToHiragana(word.kana)
+            if let preferredKana, savedKana == preferredKana { return true }
+            return savedKana == targetKana
+        }
+
+        let matchingIDs = Set(
+            words.words
+                .filter(matchesSavedKey)
+                .map(\.id)
+        )
+
+        if matchingIDs.isEmpty {
+            let meaning = normalizedMeaning(from: entry.gloss)
+            guard meaning.isEmpty == false else { return }
+            let resolvedDictionarySurface = resolvedSurface(from: entry, fallback: s)
+            // If the user has a custom reading override active for this token, save that
+            // reading so the words list and bookmark state stay in sync.
+            let resolvedKana = normalizedReading(preferredReading) ?? normalizedReading(entry.kana)
+            // Store surface as it appears in the note so Extract Words and other token-based
+            // UIs can reliably recognize the saved state.
+            words.add(dictionaryEntryID: entry.entryID, surface: s, dictionarySurface: resolvedDictionarySurface, kana: resolvedKana, meaning: meaning, note: nil, sourceNoteID: noteID)
+        } else {
+            if let noteID {
+                words.removeWords(ids: matchingIDs, fromNoteID: noteID)
+            } else {
+                words.delete(ids: matchingIDs)
+            }
+        }
+    }
+
+    private func presentWordDefinitions(for selection: TokenSelectionContext) {
+        wordDefinitionsRequest = WordDefinitionsRequest(
+            surface: selection.surface,
+            kana: normalizedReading(preferredReadingForSelection(selection)),
+            contextSentence: SentenceContextExtractor.sentence(containing: selection.range, in: inputText)?.sentence,
+            lemmaCandidates: selection.annotatedSpan.lemmaCandidates,
+            tokenPartOfSpeech: selection.annotatedSpan.partOfSpeech,
+            sourceNoteID: currentNote?.id,
+            tokenParts: tokenPartsForSelection(selection)
+        )
+    }
+
+    private func tokenPartsForSelection(_ selection: TokenSelectionContext) -> [WordDefinitionView.TokenPart] {
+        let indices = selection.sourceSpanIndices
+        guard indices.isEmpty == false else { return [] }
+        guard let stage1 = furiganaSpans, stage1.isEmpty == false else { return [] }
+
+        var parts: [WordDefinitionView.TokenPart] = []
+        parts.reserveCapacity(min(8, indices.count))
+        var seen: Set<String> = []
+
+        for idx in indices {
+            guard stage1.indices.contains(idx) else { continue }
+            let annotated = stage1[idx]
+            guard let trimmed = trimmedRangeAndSurface(for: annotated.span.range) else { continue }
+            guard isHardBoundaryOnly(trimmed.surface) == false else { continue }
+
+            let reading = normalizedReading(preferredReading(for: trimmed.range, fallback: annotated.readingKana))
+            let key = "\(trimmed.range.location)#\(trimmed.range.length)"
+            guard seen.contains(key) == false else { continue }
+            seen.insert(key)
+            parts.append(.init(id: key, surface: trimmed.surface, kana: reading))
+        }
+
+        return parts.count > 1 ? parts : []
+    }
+
+    private func preferredReadingForSelection(_ selection: TokenSelectionContext) -> String? {
+        preferredReading(for: selection.range, fallback: selection.annotatedSpan.readingKana)
+    }
+
+    private func preferredReading(for range: NSRange, fallback: String?) -> String? {
+        let overrides = readingOverrides.overrides(for: activeNoteID, overlapping: range)
+        if let exact = overrides.first(where: {
+            $0.rangeStart == range.location &&
+            $0.rangeLength == range.length &&
+            $0.userKana != nil
+        }) {
+            return exact.userKana
+        }
+
+        if let bestOverlap = overrides
+            .filter({ $0.userKana != nil })
+            .max(by: { lhs, rhs in
+                let lhsRange = NSRange(location: lhs.rangeStart, length: lhs.rangeLength)
+                let rhsRange = NSRange(location: rhs.rangeStart, length: rhs.rangeLength)
+                return NSIntersectionRange(lhsRange, range).length < NSIntersectionRange(rhsRange, range).length
+            }) {
+            return bestOverlap.userKana
+        }
+
+        return fallback
+    }
+
+    private func applyDictionarySheet<Content: View>(to view: Content) -> AnyView {
+        if sheetDictionaryPanelEnabled {
+            return AnyView(
+                view.sheet(isPresented: $isDictionarySheetPresented, onDismiss: {
+                    if dictionaryPopupEnabled {
+                        CustomLogger.shared.debug("Dictionary popup dismissed by user")
+                    }
+                    clearSelection(resetPersistent: true)
+                }) {
+                    if let selection = sheetSelection {
+                        let sheetPanel = dictionaryPanel(
+                            for: selection,
+                            enableDragToDismiss: false,
+                            embedInMaterialBackground: false
+                        )
+
+                        sheetPanel
+                            .overlay(
+                                GeometryReader { proxy in
+                                    Color.clear.preference(
+                                        key: SheetPanelHeightPreferenceKey.self,
+                                        value: proxy.size.height
+                                    )
+                                }
+                            )
+                            .onPreferenceChange(SheetPanelHeightPreferenceKey.self) { newValue in
+                                let sanitized = sanitizeLength(newValue)
+                                // Updating state synchronously from a size preference can create
+                                // SwiftUI AttributeGraph cycles (layout -> preference -> state -> layout).
+                                // Defer to the next run loop to break the cycle.
+                                if abs(measuredSheetHeight - sanitized) > 0.5 {
+                                    DispatchQueue.main.async {
+                                        sheetPanelHeight = sanitized
+                                        measuredSheetHeight = sanitized
+                                    }
+                                }
+                            }
+                            .presentationDragIndicator(.visible)
+                            .presentationDetents(Set([.height(max(sheetPanelHeight + 50, 300))]))
+                            .presentationBackgroundInteraction(.enabled)
+                    } else {
+                        // If the selection is nil while presented, close the sheet.
+                        EmptyView()
+                            .onAppear { isDictionarySheetPresented = false }
+                    }
+                }
+            )
+        } else {
+            return AnyView(view)
+        }
+    }
+
+    private func preferredSheetDetentHeight() -> CGFloat {
+        let screenHeight: CGFloat = {
+            let scenes = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+            for scene in scenes {
+                if let keyWindow = scene.windows.first(where: { $0.isKeyWindow }) {
+                    return keyWindow.bounds.height
+                }
+                if let firstWindow = scene.windows.first {
+                    return firstWindow.bounds.height
+                }
+                if let screen = scene.screen as UIScreen? {
+                    return screen.bounds.height
+                }
+            }
+            return 480
+        }()
+        let fallback = screenHeight * 0.45
+        guard sheetPanelHeight > 0 else { return fallback }
+        let padded = sheetPanelHeight + Self.sheetExtraPadding
+        let maxHeight = screenHeight * Self.sheetMaxHeightFraction
+        let minHeight: CGFloat = 280
+        return min(max(padded, minHeight), maxHeight)
+    }
+
+    
+
+    func trimmedRangeAndSurface(for spanRange: NSRange) -> (range: NSRange, surface: String)? {
+        guard spanRange.location != NSNotFound, spanRange.length > 0 else { return nil }
+        let storage = inputText as NSString
+        guard NSMaxRange(spanRange) <= storage.length else { return nil }
+        let local = storage.substring(with: spanRange) as NSString
+        let localLength = local.length
+        guard localLength > 0 else { return nil }
+        var start = 0
+        var end = localLength
+        let whitespace = Self.highlightWhitespace
+        while start < end {
+            let scalarValue = local.character(at: start)
+            if let scalar = UnicodeScalar(scalarValue), whitespace.contains(scalar) {
+                start += 1
+                continue
+            }
+            break
+        }
+        while end > start {
+            let scalarValue = local.character(at: end - 1)
+            if let scalar = UnicodeScalar(scalarValue), whitespace.contains(scalar) {
+                end -= 1
+                continue
+            }
+            break
+        }
+        guard end > start else { return nil }
+        let trimmedLocalRange = NSRange(location: start, length: end - start)
+        let highlightRange = NSRange(location: spanRange.location + trimmedLocalRange.location, length: trimmedLocalRange.length)
+        let trimmedSurface = local.substring(with: trimmedLocalRange)
+        return (highlightRange, trimmedSurface)
+    }
+
+    func aggregatedAnnotatedSpan(for semantic: SemanticSpan) -> AnnotatedSpan {
+        let stage1 = furiganaSpans ?? []
+        let indices = semantic.sourceSpanIndices
+        let group: ArraySlice<AnnotatedSpan>
+        if indices.lowerBound >= 0, indices.upperBound <= stage1.count {
+            group = stage1[indices.lowerBound..<indices.upperBound]
+        } else {
+            group = []
+        }
+
+        var lemmas: [String] = []
+        if group.isEmpty == false {
+            var seen: Set<String> = []
+            for span in group {
+                for lemma in span.lemmaCandidates where seen.contains(lemma) == false {
+                    seen.insert(lemma)
+                    lemmas.append(lemma)
+                }
+            }
+        }
+
+        let isLexiconMatch = group.contains(where: { $0.span.isLexiconMatch })
+        let partOfSpeech = group.compactMap(
+            { $0.partOfSpeech }
+        ).first
+        return AnnotatedSpan(
+            span: TextSpan(range: semantic.range, surface: semantic.surface, isLexiconMatch: isLexiconMatch),
+            readingKana: semantic.readingKana,
+            lemmaCandidates: lemmas,
+            partOfSpeech: partOfSpeech
+        )
+    }
+
+    private func selectionContext(forSpanAt index: Int) -> TokenSelectionContext? {
+        guard furiganaSemanticSpans.indices.contains(index) else { return nil }
+        let semantic = furiganaSemanticSpans[index]
+        guard let trimmed = trimmedRangeAndSurface(for: semantic.range) else { return nil }
+        // Ignore punctuation/whitespace selections (e.g. "," "、" "。"),
+        // which are useful as hard boundaries but not meaningful lookup terms.
+        guard isHardBoundaryOnly(trimmed.surface) == false else { return nil }
+        return TokenSelectionContext(
+            tokenIndex: index,
+            range: trimmed.range,
+            surface: trimmed.surface,
+            semanticSpan: semantic,
+            sourceSpanIndices: semantic.sourceSpanIndices,
+            annotatedSpan: aggregatedAnnotatedSpan(for: semantic)
+        )
+    }
+
+    func presentDictionaryForSpan(at index: Int, focusSplitMenu: Bool) {
+        guard let context = selectionContext(forSpanAt: index) else {
+            clearSelection(resetPersistent: true)
+            return
+        }
+
+        pendingSelectionRange = nil
+        persistentSelectionRange = context.range
+        tokenSelection = context
+        // If the Extract Words sheet is open, keep its in-sheet dictionary panel in sync.
+        // (The inline dictionary overlay is behind the sheet and not visible.)
+        if showTokensPopover {
+            sheetSelection = context
+        }
+        if sheetDictionaryPanelEnabled {
+            sheetSelection = context
+            // If the Extract Words sheet is open, do not present another sheet (which would
+            // dismiss/replace the token list). The token list sheet already renders an
+            // in-sheet dictionary panel when `sheetSelection` is set.
+            if showTokensPopover == false {
+                isDictionarySheetPresented = true
+            }
+        }
+        if dictionaryPopupEnabled {
+            if dictionaryPopupLoggingEnabled {
+                let r = context.range
+                CustomLogger.shared.debug(
+                    "DICT show (tap) t=\(index) r=\(r.location)..\(NSMaxRange(r)) s=\(context.surface) inline=\(self.inlineDictionaryPanelEnabled) sheet=\(self.sheetDictionaryPanelEnabled)"
+                )
+            }
+        }
+        pendingSplitFocusSelectionID = focusSplitMenu ? context.id : nil
+    }
+
+    private func goToSpanInNote(at index: Int) {
+        guard let context = selectionContext(forSpanAt: index) else { return }
+        pendingSelectionRange = nil
+        persistentSelectionRange = context.range
+        tokenSelection = nil
+        if sheetDictionaryPanelEnabled {
+            sheetSelection = nil
+        }
+        pendingSplitFocusSelectionID = nil
+        showTokensPopover = false
+    }
+
+    private func bookmarkToken(at index: Int) {
+        guard furiganaSemanticSpans.indices.contains(index) else { return }
+        guard let context = selectionContext(forSpanAt: index) else { return }
+        let reading = normalizedReading(preferredReading(for: context.range, fallback: context.semanticSpan.readingKana))
+        let surface = context.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let noteID = currentNote?.id
+
+        func matchesSavedKey(_ word: Word) -> Bool {
+            guard word.isAssociated(with: noteID) else { return false }
+            guard kanaFoldToHiragana(word.surface) == kanaFoldToHiragana(surface) else { return false }
+            // If we don't know the token's reading (common when we haven't attached readings
+            // for this token), treat reading as a wildcard so the star can still toggle.
+            if let foldedReading = kanaFoldToHiragana(reading) {
+                return kanaFoldToHiragana(word.kana) == foldedReading
+            }
+            return true
+        }
+
+        // Toggle behavior: if already saved, delete; otherwise add
+        if hasSavedWord(surface: surface, reading: reading, noteID: noteID) {
+            let matches = words.words.filter(matchesSavedKey)
+            let ids = Set(matches.map { $0.id })
+            if ids.isEmpty == false {
+                if let noteID {
+                    words.removeWords(ids: ids, fromNoteID: noteID)
+                } else {
+                    words.delete(ids: ids)
+                }
+            }
+            return
+        }
+
+        Task {
+            let entry = await lookupPreferredDictionaryEntry(
+                surface: surface,
+                reading: reading,
+                lemmaCandidates: context.annotatedSpan.lemmaCandidates
+            )
+
+            await MainActor.run {
+                guard let entry else {
+                    presentDictionaryForSpan(at: index, focusSplitMenu: false)
+                    return
+                }
+                let meaning = normalizedMeaning(from: entry.gloss)
+                guard meaning.isEmpty == false else {
+                    presentDictionaryForSpan(at: index, focusSplitMenu: false)
+                    return
+                }
+                // Save with the preferred reading (custom override) when present.
+                let kana = reading ?? normalizedReading(entry.kana)
+                let resolvedDictionarySurface = resolvedSurface(from: entry, fallback: context.surface)
+                words.add(dictionaryEntryID: entry.entryID, surface: surface, dictionarySurface: resolvedDictionarySurface, kana: kana, meaning: meaning, note: nil, sourceNoteID: noteID)
+            }
+        }
+    }
+
+    private func addAllTokensToWordList() {
+        let items = tokenListItems
+        guard items.isEmpty == false else {
+            showToast("No tokens to add")
+            return
+        }
+
+        let candidates = items.filter { $0.isAlreadySaved == false }
+        guard candidates.isEmpty == false else {
+            showToast("All words already saved")
+            return
+        }
+
+        showToast("Saving…")
+        let noteID = currentNote?.id
+
+        Task {
+            var batch: [WordsStore.WordToAdd] = []
+            batch.reserveCapacity(candidates.count)
+
+            for item in candidates {
+                let surface = item.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard surface.isEmpty == false else { continue }
+
+                let reading = normalizedReading(item.reading)
+                let lemmaCandidates = selectionContext(forSpanAt: item.spanIndex)?.annotatedSpan.lemmaCandidates ?? []
+                let entry = await lookupPreferredDictionaryEntry(
+                    surface: surface,
+                    reading: reading,
+                    lemmaCandidates: lemmaCandidates
+                )
+                guard let entry else { continue }
+
+                let meaning = normalizedMeaning(from: entry.gloss)
+                guard meaning.isEmpty == false else { continue }
+
+                let kana = reading ?? normalizedReading(entry.kana)
+                let dictionarySurface = resolvedSurface(from: entry, fallback: surface)
+                let payload = WordsStore.WordToAdd(
+                    dictionaryEntryID: entry.entryID,
+                    surface: surface,
+                    dictionarySurface: dictionarySurface,
+                    kana: kana,
+                    meaning: meaning,
+                    note: nil
+                )
+                batch.append(payload)
+            }
+
+            await MainActor.run {
+                if batch.isEmpty {
+                    showToast("No dictionary matches")
+                } else {
+                    words.addMany(batch, sourceNoteID: noteID)
+                    showToast("Saved \(batch.count) words")
+                }
+            }
+        }
+    }
+
+    private func lookupPreferredDictionaryEntry(surface: String, reading: String?, lemmaCandidates: [String] = []) async -> DictionaryEntry? {
+        let normalizedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedReading = normalizedReading(reading)
+        let normalizedLemmas = lemmaCandidates
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+
+        let store = DictionarySQLiteStore.shared
+        let lookupLimit = 30
+
+        var terms: [String] = []
+        if normalizedSurface.isEmpty == false { terms.append(normalizedSurface) }
+        for lemma in normalizedLemmas where terms.contains(lemma) == false {
+            terms.append(lemma)
+        }
+        if let desired = normalizedReading, desired.isEmpty == false, terms.contains(desired) == false {
+            // Reading-only fallback (useful when the surface is inflected or otherwise not in JMdict).
+            terms.append(desired)
+        }
+
+        guard terms.isEmpty == false else { return nil }
+
+        var candidatesByID: [Int64: DictionaryEntry] = [:]
+        for term in terms {
+            let lookupToken = DictionaryKeyPolicy.normalizedToken(forSurface: term)
+            guard lookupToken.lookupForm.isEmpty == false else { continue }
+            if let rows = try? await store.lookup(term: lookupToken.lookupForm, limit: lookupLimit), rows.isEmpty == false {
+                for row in rows {
+                    candidatesByID[row.entryID] = row
+                }
+            }
+        }
+
+        var candidates = Array(candidatesByID.values)
+        guard candidates.isEmpty == false else { return nil }
+
+        // If we know the token's reading, require it for auto-picks.
+        if let desired = normalizedReading {
+            let filtered = candidates.filter { entryMatchesReading($0, reading: desired) }
+            if filtered.isEmpty == false {
+                candidates = filtered
+            }
+        }
+
+        let entryIDs = Array(Set(candidates.map { $0.entryID }))
+        let priority = (try? await store.fetchEntryPriorityScores(for: entryIDs)) ?? [:]
+        let details = (try? await DictionaryEntryDetailsCache.shared.details(for: entryIDs)) ?? []
+        let detailsByID: [Int64: DictionaryEntryDetail] = details.reduce(into: [:]) { partialResult, detail in
+            partialResult[detail.entryID] = detail
+        }
+
+        return DictionaryEntryResolver.chooseBest(
+            surface: normalizedSurface,
+            reading: normalizedReading,
+            candidates: candidates,
+            detailsByEntryID: detailsByID,
+            entryPriority: priority
+        )
+    }
+
+    private func entryMatchesReading(_ entry: DictionaryEntry, reading: String) -> Bool {
+        guard let kana = normalizedReading(entry.kana) else { return false }
+        return kana == reading
+    }
+
+    private func normalizedMeaning(from gloss: String) -> String {
+        let first = gloss
+            .split(separator: ";", maxSplits: 1, omittingEmptySubsequences: true)
+            .first
+            .map(String.init) ?? gloss
+        return first.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func resolvedSurface(from entry: DictionaryEntry, fallback: String) -> String {
+        let trimmedFallback = fallback.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // If the user created/saved a word from a kana surface, preserve that kana surface.
+        // Do NOT replace it with the dictionary's kanji spelling.
+        if isKanaOnlySurface(trimmedFallback) {
+            return trimmedFallback
+        }
+
+        let trimmedKanji = entry.kanji.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedKanji.isEmpty == false {
+            return trimmedKanji
+        }
+        if let kana = normalizedReading(entry.kana) {
+            return kana
+        }
+        return trimmedFallback
+    }
+
+    func isKanaOnlySurface(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return false }
+        return trimmed.unicodeScalars.allSatisfy { scalar in
+            if isKanaScalar(scalar) { return true }
+            // Half-width katakana block.
+            if (0xFF66...0xFF9F).contains(scalar.value) { return true }
+            return false
+        }
+    }
+
+    func normalizedReading(_ reading: String?) -> String? {
+        guard let value = reading?.trimmingCharacters(in: .whitespacesAndNewlines), value.isEmpty == false else { return nil }
+        return value
+    }
+
+    func kanaFoldToHiragana(_ value: String) -> String {
+        // Fold katakana/hiragana differences so "カタカナ" and "かたかな" compare equal.
+        value.applyingTransform(.hiraganaToKatakana, reverse: true) ?? value
+    }
+
+    func kanaFoldToHiragana(_ value: String?) -> String? {
+        guard let value else { return nil }
+        return kanaFoldToHiragana(value)
+    }
+
+    func kanaVariants(_ value: String) -> [String] {
+        let hira = kanaFoldToHiragana(value)
+        let kata = hira.applyingTransform(.hiraganaToKatakana, reverse: false) ?? hira
+        if hira == kata { return [hira] }
+        return [hira, kata]
+    }
+
+    private func readingWithOkurigana(surface: String, baseReading: String?) -> String? {
+        guard var reading = baseReading else { return nil }
+        guard let suffix = trailingKanaSuffix(in: surface), suffix.isEmpty == false else { return reading }
+        if reading.hasSuffix(suffix) {
+            return reading
+        }
+        reading.append(suffix)
+        return reading
+    }
+
+    func trailingKanaSuffix(in surface: String) -> String? {
+        guard surface.isEmpty == false else { return nil }
+        var scalars: [UnicodeScalar] = []
+        for scalar in surface.unicodeScalars.reversed() {
+            if isKanaScalar(scalar) {
+                scalars.append(scalar)
+            } else {
+                break
+            }
+        }
+        guard scalars.isEmpty == false else { return nil }
+        return String(String.UnicodeScalarView(scalars.reversed()))
+    }
+
+    private func isKanaScalar(_ scalar: UnicodeScalar) -> Bool {
+        (0x3040...0x309F).contains(scalar.value) ||
+        (0x30A0...0x30FF).contains(scalar.value) ||
+        scalar.value == 0xFF70
+    }
+
+    private func ensureInitialFuriganaReady(reason: String) {
+        if skipNextInitialFuriganaEnsure {
+            return
+        }
+        guard furiganaSpans == nil || furiganaAttributedText == nil else { return }
+        guard inputText.isEmpty == false else { return }
+        triggerFuriganaRefreshIfNeeded(reason: reason, recomputeSpans: true)
+    }
+
+    func triggerFuriganaRefreshIfNeeded(
+        reason: String = "state change",
+        recomputeSpans: Bool = true,
+        skipTailSemanticMerge: Bool = false
+    ) {
+        guard inputText.isEmpty == false else { return }
+        PasteRenderTimingTrace.checkpoint(
+            "REFRESH",
+            "reason=\(reason) recompute=\(recomputeSpans) skipTail=\(skipTailSemanticMerge)"
+        )
+        furiganaRefreshToken &+= 1
+        startFuriganaTask(token: furiganaRefreshToken, recomputeSpans: recomputeSpans, skipTailSemanticMerge: skipTailSemanticMerge)
+    }
+
+    private func assignInputTextFromExternalSource(_ text: String) {
+        guard inputText != text else { return }
+        skipNextInitialFuriganaEnsure = true
+        inputText = text
+    }
+
+    private func startFuriganaTask(token: Int, recomputeSpans: Bool, skipTailSemanticMerge: Bool) {
+        PasteRenderTimingTrace.checkpoint(
+            "TASK",
+            "start token=\(token) recompute=\(recomputeSpans)"
+        )
+        guard let taskBody = makeFuriganaTask(token: token, recomputeSpans: recomputeSpans, skipTailSemanticMerge: skipTailSemanticMerge) else { return }
+        furiganaTaskHandle?.cancel()
+        furiganaTaskHandle = Task {
+            await taskBody()
+        }
+    }
+
+    private func makeFuriganaTask(token: Int, recomputeSpans: Bool, skipTailSemanticMerge: Bool) -> (() async -> Void)? {
+        guard inputText.isEmpty == false else { return nil }
+
+        // INVESTIGATION NOTES (2026-01-04)
+        // Initial load / furigana recompute execution path:
+        // PasteView.triggerFuriganaRefreshIfNeeded → startFuriganaTask → makeFuriganaTask → FuriganaPipelineService.render.
+        // FuriganaPipelineService.render → FuriganaAttributedTextBuilder.computeStage2 → Stage-1 segmentation → Stage-2 attachReadings
+        // (now includes Stage-2.5 semanticRegrouping) → ruby projection (when showFurigana == true).
+        //
+        // Main-thread boundary:
+        // `service.render(...)` runs off-main; applying results is wrapped in `MainActor.run`.
+        // Any heavy work inside rendering/ruby layout that happens on the main thread should be flagged separately (see RubyText).
+        // Capture current values by value to avoid capturing self
+        let currentText = inputText
+        let currentShowFurigana = showFurigana
+        let currentSpanConsumersActive = spanConsumersActive
+        let currentTextSize = readingTextSize
+        let currentFuriganaSize = readingFuriganaSize
+        let currentSpans = furiganaSpans
+        let currentSemanticSpans = furiganaSemanticSpans
+        let currentOverrides = readingOverrides.overrides(for: activeNoteID).filter { $0.userKana != nil }
+        let currentAmendedSpans = tokenBoundaries.spans(for: activeNoteID, text: currentText)
+        let currentHardCuts = tokenBoundaries.hardCuts(for: activeNoteID, text: currentText)
+        let currentHeadwordSpacingPadding = readingHeadwordSpacingPadding
+        let currentHeadwordSpacingAmount = readingHeadwordSpacingAmount
+
+        let canReuseCachedSpans = spansMatchCurrentText(
+            currentText,
+            spans: currentSpans,
+            semanticSpans: currentSemanticSpans
+        )
+        let effectiveRecomputeSpans = recomputeSpans || (canReuseCachedSpans == false)
+
+        let knownWordSurfaceKeys: Set<String> = []
+
+        let pipelineInput = FuriganaPipelineService.Input(
+            text: currentText,
+            showFurigana: currentShowFurigana,
+            needsTokenHighlights: currentSpanConsumersActive,
+            textSize: currentTextSize,
+            furiganaSize: currentFuriganaSize,
+            recomputeSpans: effectiveRecomputeSpans,
+            existingSpans: effectiveRecomputeSpans ? nil : currentSpans,
+            existingSemanticSpans: effectiveRecomputeSpans ? [] : currentSemanticSpans,
+            amendedSpans: currentAmendedSpans,
+            hardCuts: currentHardCuts,
+            readingOverrides: currentOverrides,
+            context: "PasteView",
+            padHeadwordSpacing: currentHeadwordSpacingPadding,
+            headwordSpacingAmount: currentHeadwordSpacingAmount,
+            skipTailSemanticMerge: skipTailSemanticMerge,
+            knownWordSurfaceKeys: knownWordSurfaceKeys
+        )
+        let service = furiganaPipeline
+        return {
+            PasteRenderTimingTrace.checkpoint("PIPE", "render begin")
+            let result = await service.render(pipelineInput)
+            PasteRenderTimingTrace.checkpoint("PIPE", "render end semantic=\(result.semanticSpans.count)")
+            await MainActor.run {
+                guard Task.isCancelled == false else {
+                    PasteRenderTimingTrace.checkpoint("APPLY", "cancelled")
+                    return
+                }
+                guard token == furiganaRefreshToken else {
+                    PasteRenderTimingTrace.checkpoint("APPLY", "stale token=\(token) latest=\(furiganaRefreshToken)")
+                    return
+                }
+                guard inputText == currentText else {
+                    PasteRenderTimingTrace.checkpoint("APPLY", "input changed")
+                    return
+                }
+                furiganaSpans = result.spans
+                furiganaSemanticSpans = result.semanticSpans
+                if showFurigana == currentShowFurigana {
+                    let base = result.attributedString ?? NSAttributedString(string: currentText)
+                    furiganaAttributedTextBase = base
+                    furiganaAttributedText = base
+                } else if showFurigana == false {
+                    let base = NSAttributedString(string: currentText)
+                    furiganaAttributedTextBase = base
+                    furiganaAttributedText = base
+                }
+                PasteRenderTimingTrace.checkpoint(
+                    "APPLY",
+                    "attributed=\(furiganaAttributedText?.length ?? 0) showFurigana=\(showFurigana) altColors=\(alternateTokenColors)"
+                )
+                restoreSelectionIfNeeded()
+            }
+        }
+    }
+
+    private func spansMatchCurrentText(
+        _ text: String,
+        spans: [AnnotatedSpan]?,
+        semanticSpans: [SemanticSpan]
+    ) -> Bool {
+        guard let spans, spans.isEmpty == false else { return false }
+        let backing = text as NSString
+        let bounds = NSRange(location: 0, length: backing.length)
+
+        for item in spans {
+            let range = item.span.range
+            guard NSIntersectionRange(range, bounds).length == range.length else { return false }
+            guard backing.substring(with: range) == item.span.surface else { return false }
+        }
+
+        if semanticSpans.isEmpty == false {
+            for semantic in semanticSpans {
+                let range = semantic.range
+                guard NSIntersectionRange(range, bounds).length == range.length else { return false }
+                guard backing.substring(with: range) == semantic.surface else { return false }
+            }
+        }
+
+        return true
+    }
+
+    @MainActor
+    private func restoreSelectionIfNeeded() {
+        guard let targetRange = pendingSelectionRange else { return }
+        let spans = furiganaSemanticSpans
+        guard spans.isEmpty == false else { return }
+        guard let match = spans.enumerated().first(where: { $0.element.range == targetRange }) else { return }
+        let textStorage = inputText as NSString
+        guard NSMaxRange(targetRange) <= textStorage.length else {
+            pendingSelectionRange = nil
+            return
+        }
+        let surface = textStorage.substring(with: targetRange)
+        let semantic = match.element
+        let context = TokenSelectionContext(
+            tokenIndex: match.offset,
+            range: targetRange,
+            surface: surface,
+            semanticSpan: semantic,
+            sourceSpanIndices: semantic.sourceSpanIndices,
+            annotatedSpan: aggregatedAnnotatedSpan(for: semantic)
+        )
+        tokenSelection = context
+        if sheetDictionaryPanelEnabled || showTokensPopover {
+            sheetSelection = context
+        }
+        pendingSelectionRange = nil
+    }
+
+    private func saveAllVisibleTokens() {
+        let noteID = currentNote?.id
+        let items = tokenListItems
+        guard items.isEmpty == false else { return }
+
+        Task {
+            let existingKeys: Set<String> = await MainActor.run {
+                Set(
+                    {
+                        if let noteID {
+                            return words.words.filter { $0.sourceNoteIDs.contains(noteID) }
+                        }
+                        return words.words
+                    }()
+                        .map { w in
+                            let s = w.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let k = w.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let nk = (k?.isEmpty == false) ? k! : ""
+                            return "\(s)|\(nk)"
+                        }
+                )
+            }
+
+            var toAdd: [WordsStore.WordToAdd] = []
+            toAdd.reserveCapacity(items.count)
+
+            for item in items {
+                // Skip if already saved for this note
+                let candidateKey: String = {
+                    let s = item.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let k = item.reading?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    return "\(s)|\(k)"
+                }()
+                if existingKeys.contains(candidateKey) {
+                    continue
+                }
+                // Lookup preferred dictionary entry for richer meaning/surface if available
+                let entry = await lookupPreferredDictionaryEntry(surface: item.surface, reading: item.reading)
+
+                guard let entry else { continue }
+                let meaning = normalizedMeaning(from: entry.gloss)
+                guard meaning.isEmpty == false else { continue }
+                let kana = normalizedReading(entry.kana)
+                let surface = resolvedSurface(from: entry, fallback: item.surface)
+                toAdd.append(WordsStore.WordToAdd(dictionaryEntryID: entry.entryID, surface: surface, kana: kana, meaning: meaning))
+            }
+
+            await MainActor.run {
+                words.addMany(toAdd, sourceNoteID: noteID)
+            }
+        }
+    }
+
+}
+
+extension PasteView {
+    static func createNewNote(notes: NotesStore, router: AppRouter) {
+        notes.addNote(title: nil, text: "")
+        notes.save()
+        router.noteToOpen = notes.notes.first ?? notes.notes.last
+        router.pasteShouldBeginEditing = true
+        router.selectedTab = .paste
+        PasteBufferStore.save("")
+    }
+}
