@@ -32,8 +32,9 @@ final class LLMCorrectionService {
             guard stub.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
                 throw LLMCorrectionError.noKeyConfigured
             }
-            print("[LLM] Input:\n\(compactSegments)")
-            print("[LLM] Stub response:\n\(stub)")
+            // Logging disabled.
+            // print("[LLM] Input:\n\(compactSegments)")
+            // print("[LLM] Stub response:\n\(stub)")
             return try parseCompactResponse(stub)
         }
 
@@ -44,8 +45,9 @@ final class LLMCorrectionService {
 
         let messages = buildMessages(compactSegments: compactSegments)
 
-        print("[LLM] System:\n\(messages.system)")
-        print("[LLM] User:\n\(messages.user)")
+        // Logging disabled.
+        // print("[LLM] System:\n\(messages.system)")
+        // print("[LLM] User:\n\(messages.user)")
 
         switch provider {
         case .none:
@@ -138,7 +140,8 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.unexpectedResponseShape("OpenAI response missing choices[0].message.content")
         }
 
-        print("[LLM:OpenAI] Response:\n\(content)")
+        // Logging disabled.
+        // print("[LLM:OpenAI] Response:\n\(content)")
         return try parseCompactResponse(content)
     }
 
@@ -179,7 +182,8 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.unexpectedResponseShape("Claude response missing content[0].text")
         }
 
-        print("[LLM:Claude] Response:\n\(text)")
+        // Logging disabled.
+        // print("[LLM:Claude] Response:\n\(text)")
         return try parseCompactResponse(text)
     }
 

@@ -10,7 +10,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
 
     private weak var presentedController: UIViewController?
     weak var presentedSheetController: UIViewController?
+    private var isPreparingSheetDismissal = false
     var onDismiss: (() -> Void)?
+    var onWillDismiss: ((@escaping () -> Void) -> Void)?
     var onReadingSelected: ((String) -> Void)?
     // Called when the user taps the reset button to clear the current reading override.
     var onReadingReset: (() -> Void)?
@@ -64,6 +66,15 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Prevents external construction so a single presenter coordinates popover lifecycle.
     private override init() {
         super.init()
+    }
+
+    private var hasActivePresentedSheetController: Bool {
+        guard let presentedSheetController else {
+            return false
+        }
+
+        return presentedSheetController.isBeingDismissed == false
+            && (presentedSheetController.presentingViewController != nil || presentedSheetController.viewIfLoaded?.window != nil)
     }
 
     // Presents the current definition in a UIKit popover anchored to the tapped segment rectangle.
@@ -169,7 +180,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         popoverPresentationController.sourceRect = sourceRect
         popoverPresentationController.permittedArrowDirections = [.up, .down]
 
-        presentingController.present(viewController, animated: false)
+        presentingController.present(viewController, animated: true)
         presentedController = viewController
     }
 
@@ -198,9 +209,17 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetSaveToggle: (() -> Void)? = nil,
         sheetOpenWordDetail: (() -> Void)? = nil,
         sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
+        onWillDismiss: ((@escaping () -> Void) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
+        if hasActivePresentedSheetController == false, updatePresentedSheetSelection != nil {
+            presentedSheetController = nil
+            isPreparingSheetDismissal = false
+            updatePresentedSheetSelection = nil
+        }
+
         // Always update the reading callbacks so re-taps on a different segment get the right closures.
+        self.onWillDismiss = onWillDismiss
         self.onReadingSelected = onReadingSelected
         self.onReadingReset = onReadingReset
         self.activeReadingOverrideProvider = activeReadingOverrideProvider
@@ -211,8 +230,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.sheetSaveToggle = sheetSaveToggle
         self.sheetOpenWordDetail = sheetOpenWordDetail
         self.sheetWordComponentsProvider = sheetWordComponentsProvider
-        if let updatePresentedSheetSelection {
+        if let updatePresentedSheetSelection, hasActivePresentedSheetController {
             self.onDismiss = onDismiss
+            self.onWillDismiss = onWillDismiss
             updatePresentedSheetSelection(
                 surface,
                 leftNeighborSurface,
@@ -267,7 +287,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
                 return
             }
 
-            presentedController.dismiss(animated: false) {
+            presentedController.dismiss(animated: true) {
                 if notifyDismissal {
                     self.fireOnDismissIfNeeded()
                 }
@@ -277,42 +297,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         }
     }
 
-    // Dismisses the currently presented action sheet if one is active.
-    private func dismissSheet(completion: (() -> Void)? = nil) {
-        guard let presentedSheetController else {
-            onSheetSelectPrevious = nil
-            onSheetSelectNext = nil
-            onReadingSelected = nil
-            onReadingReset = nil
-            sheetReadingsProvider = nil
-            sheetSublatticeProvider = nil
-            segmentRangeProvider = nil
-            sheetLexiconDebugProvider = nil
-            sheetFrequencyProvider = nil
-            sheetLemmaInfoProvider = nil
-            activeReadingOverrideProvider = nil
-            pathSegmentFrequencyProvider = nil
-            sheetDictionaryEntryProvider = nil
-            sheetIsSavedProvider = nil
-            sheetSaveToggle = nil
-            sheetOpenWordDetail = nil
-            sheetWordComponentsProvider = nil
-            currentSheetUniqueReadings = []
-            currentSheetSublatticeEdges = []
-            currentSheetLexiconDebugInfo = ""
-            currentSheetFrequencyByReading = nil
-            currentSheetLemmaInfo = nil
-            currentSheetDictionaryEntry = nil
-            currentSheetWordComponents = []
-            updatePresentedSheetSelection = nil
-            completion?()
-            return
-        }
-
-        presentedSheetController.dismiss(animated: false) {
-            completion?()
-        }
-        self.presentedSheetController = nil
+    private func resetSheetPresentationState() {
+        isPreparingSheetDismissal = false
+        onWillDismiss = nil
         onSheetSelectPrevious = nil
         onSheetSelectNext = nil
         onReadingSelected = nil
@@ -324,6 +311,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetFrequencyProvider = nil
         sheetLemmaInfoProvider = nil
         activeReadingOverrideProvider = nil
+        pathSegmentFrequencyProvider = nil
         sheetDictionaryEntryProvider = nil
         sheetIsSavedProvider = nil
         sheetSaveToggle = nil
@@ -339,6 +327,51 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         updatePresentedSheetSelection = nil
     }
 
+    // Dismisses the currently presented action sheet if one is active.
+    private func dismissSheet(completion: (() -> Void)? = nil) {
+        guard let presentedSheetController, hasActivePresentedSheetController else {
+            self.presentedSheetController = nil
+            resetSheetPresentationState()
+            completion?()
+            return
+        }
+
+        if isPreparingSheetDismissal == false, let onWillDismiss {
+            isPreparingSheetDismissal = true
+            onWillDismiss { [weak self] in
+                self?.dismissSheet(completion: completion)
+            }
+            return
+        }
+
+        presentedSheetController.dismiss(animated: true) { [weak self] in
+            guard let self else {
+                completion?()
+                return
+            }
+
+            self.presentedSheetController = nil
+            self.resetSheetPresentationState()
+            completion?()
+        }
+    }
+
+    func presentationControllerShouldDismiss(_ presentationController: UIPresentationController) -> Bool {
+        guard presentedSheetController === presentationController.presentedViewController else {
+            return true
+        }
+
+        guard isPreparingSheetDismissal == false, let onWillDismiss else {
+            return true
+        }
+
+        isPreparingSheetDismissal = true
+        onWillDismiss { [weak self] in
+            self?.presentedSheetController?.dismiss(animated: true)
+        }
+        return false
+    }
+
     // Clears tracked presentation references when users dismiss controllers interactively.
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         if presentedController === presentationController.presentedViewController {
@@ -348,29 +381,11 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
 
         if presentedSheetController === presentationController.presentedViewController {
             presentedSheetController = nil
-            onReadingSelected = nil
-            onReadingReset = nil
-            sheetReadingsProvider = nil
-            sheetSublatticeProvider = nil
-            segmentRangeProvider = nil
-            sheetLexiconDebugProvider = nil
-            sheetFrequencyProvider = nil
-            sheetLemmaInfoProvider = nil
-            activeReadingOverrideProvider = nil
-            pathSegmentFrequencyProvider = nil
-            sheetDictionaryEntryProvider = nil
-            sheetIsSavedProvider = nil
-            sheetSaveToggle = nil
-            sheetOpenWordDetail = nil
-            sheetWordComponentsProvider = nil
-            currentSheetUniqueReadings = []
-            currentSheetSublatticeEdges = []
-            currentSheetLexiconDebugInfo = ""
-            currentSheetFrequencyByReading = nil
-            currentSheetLemmaInfo = nil
-            currentSheetDictionaryEntry = nil
-            currentSheetWordComponents = []
-            updatePresentedSheetSelection = nil
+            resetSheetPresentationState()
+            fireOnDismissIfNeeded()
+        } else if updatePresentedSheetSelection != nil {
+            presentedSheetController = nil
+            resetSheetPresentationState()
             fireOnDismissIfNeeded()
         }
     }

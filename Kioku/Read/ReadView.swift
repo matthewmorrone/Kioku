@@ -1,4 +1,5 @@
 import PhotosUI
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
@@ -72,6 +73,7 @@ struct ReadView: View {
     @State var furiganaBySegmentLocation: [Int: String] = [:]
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
     @State var furiganaComputationTask: Task<Void, Never>?
+    @State var segmentationRefreshTask: Task<Void, Never>?
     @State var pendingPersistenceTask: Task<Void, Never>?
     @State var activeNoteID: UUID?
     @State var isLoadingSelectedNote = false
@@ -90,7 +92,7 @@ struct ReadView: View {
     @State var audioTranscriptionErrorMessage = ""
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
-    @StateObject var audioController = AudioPlaybackController()
+    @State var audioController = AudioPlaybackController()
     @State var audioAttachmentCues: [SubtitleCue] = []
     @State var audioAttachmentHighlightRanges: [NSRange?] = []
     @State var activeAudioAttachmentID: UUID? = nil
@@ -172,6 +174,13 @@ struct ReadView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
         .toolbar(.visible, for: .tabBar)
+        .background {
+            AudioCueHighlightObserver(
+                controller: audioController,
+                highlightRanges: audioAttachmentHighlightRanges,
+                selectedHighlightRangeOverride: $selectedHighlightRangeOverride
+            )
+        }
         .overlay(alignment: .topLeading) {
             // Pixel ruler is non-interactive and only drawn when its debug toggle is active.
             if debugPixelRuler {
@@ -228,14 +237,6 @@ struct ReadView: View {
             // Syncs editor state when Notes tab selects a different note.
             loadSelectedNoteIfNeeded()
         }
-        .onChange(of: audioController.activeCueIndex) { _, newIndex in
-            // Resolves the precomputed highlight range for the newly active cue.
-            guard let newIndex, newIndex < audioAttachmentHighlightRanges.count else {
-                selectedHighlightRangeOverride = nil
-                return
-            }
-            selectedHighlightRangeOverride = audioAttachmentHighlightRanges[newIndex]
-        }
         .onChange(of: text) { oldText, newText in
             // Persists edits as content changes.
             scheduleCurrentNotePersistenceIfNeeded()
@@ -256,6 +257,7 @@ struct ReadView: View {
                 illegalMergeBoundaryLocation = nil
                 illegalMergeFlashTask?.cancel()
                 // Clears stale range state while editing so view-mode reactivation never reads mismatched ranges.
+                segmentationRefreshTask?.cancel()
                 furiganaComputationTask?.cancel()
                 segmentLatticeEdges = []
                 segmentEdges = []
@@ -278,6 +280,7 @@ struct ReadView: View {
                 // Suspends furigana computation while editing text.
                 illegalMergeBoundaryLocation = nil
                 illegalMergeFlashTask?.cancel()
+                segmentationRefreshTask?.cancel()
                 furiganaComputationTask?.cancel()
                 segmentLatticeEdges = []
                 segmentEdges = []
@@ -326,6 +329,7 @@ struct ReadView: View {
         }
         .onDisappear {
             // Flushes any pending edit persistence before leaving the read screen.
+            segmentationRefreshTask?.cancel()
             flushPendingNotePersistenceIfNeeded()
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -470,6 +474,7 @@ struct ReadView: View {
                 )
                 .opacity(isEditMode ? 0 : 1)
                 .allowsHitTesting(isEditMode == false)
+                .animation(.default, value: isEditMode)
 
                 RichTextEditor(
                     text: $text,
@@ -495,6 +500,7 @@ struct ReadView: View {
                 )
                 .opacity(isEditMode ? 1 : 0)
                 .allowsHitTesting(isEditMode)
+                .animation(.default, value: isEditMode)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -513,6 +519,7 @@ struct ReadView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 8)
+        .animation(.default, value: isEditMode)
     }
 
     // Renders action buttons for segmentation and display controls.
@@ -796,6 +803,32 @@ struct ReadView: View {
         .accessibilityLabel(isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
     }
 
+}
+
+private struct AudioCueHighlightObserver: View {
+    @ObservedObject var controller: AudioPlaybackController
+    let highlightRanges: [NSRange?]
+    @Binding var selectedHighlightRangeOverride: NSRange?
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                updateHighlight(for: controller.activeCueIndex)
+            }
+            .onReceive(controller.$activeCueIndex.removeDuplicates()) { newIndex in
+                updateHighlight(for: newIndex)
+            }
+    }
+
+    private func updateHighlight(for cueIndex: Int?) {
+        guard let cueIndex, cueIndex < highlightRanges.count else {
+            selectedHighlightRangeOverride = nil
+            return
+        }
+
+        selectedHighlightRangeOverride = highlightRanges[cueIndex]
+    }
 }
 
 #Preview {

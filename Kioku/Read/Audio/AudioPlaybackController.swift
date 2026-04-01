@@ -75,9 +75,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     private func startTimer() {
         stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.updateCurrentTime()
-            }
+            self?.updateCurrentTime()
         }
     }
 
@@ -91,7 +89,9 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     private func updateCurrentTime() {
         guard let player else { return }
         let ms = Int(player.currentTime * 1000)
-        currentTimeMs = ms
+        if currentTimeMs != ms {
+            currentTimeMs = ms
+        }
 
         // Stop state is already handled; check if playback has reached the end naturally.
         if player.isPlaying == false && isPlaying {
@@ -101,8 +101,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             return
         }
 
-        activeCueIndex = cues.firstIndex { cue in
+        let newActiveCueIndex = cues.firstIndex { cue in
             ms >= cue.startMs && ms < cue.endMs
+        }
+        if activeCueIndex != newActiveCueIndex {
+            activeCueIndex = newActiveCueIndex
         }
     }
 }

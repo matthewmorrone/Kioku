@@ -1,8 +1,80 @@
 import SwiftUI
 import UIKit
 
+// Describes the viewport and selection geometry used to plan sheet-visibility scrolling.
+struct ReadViewSheetVisibilityScrollContext: Equatable {
+    let currentOffsetY: CGFloat
+    let minOffsetY: CGFloat
+    let maxOffsetY: CGFloat
+    let viewportHeight: CGFloat
+    let adjustedTopInset: CGFloat
+    let selectedSegmentRectInContent: CGRect
+    let estimatedSheetHeight: CGFloat
+    let estimatedRelativeCoverage: CGFloat
+    let maximumCoveredHeightRatio: CGFloat
+    let topPadding: CGFloat
+    let bottomPadding: CGFloat
+}
+
+// Describes one sheet-visibility scroll adjustment computed from pure geometry.
+struct ReadViewSheetVisibilityScrollAdjustment: Equatable {
+    let targetOffsetY: CGFloat
+    let usesTemporaryBottomOverscroll: Bool
+}
+
+// Computes scroll adjustments needed to keep the selected segment visible while the lookup sheet is active.
+enum ReadViewSheetVisibilityScrollPlanner {
+    static func adjustment(for context: ReadViewSheetVisibilityScrollContext) -> ReadViewSheetVisibilityScrollAdjustment? {
+        let expectedCoveredHeight = min(
+            max(
+                context.estimatedSheetHeight,
+                context.viewportHeight * context.estimatedRelativeCoverage
+            ),
+            context.viewportHeight * context.maximumCoveredHeightRatio
+        )
+        let visibleTopLimitY = max(context.topPadding, context.adjustedTopInset + context.topPadding)
+        let coveredTopY = context.viewportHeight - expectedCoveredHeight
+        let visibleBottomLimitY = max(visibleTopLimitY, coveredTopY - context.bottomPadding)
+
+        let visibleSegmentRect = context.selectedSegmentRectInContent.offsetBy(
+            dx: 0,
+            dy: -context.currentOffsetY
+        )
+
+        var targetOffsetY = context.currentOffsetY
+        if visibleSegmentRect.minY < visibleTopLimitY {
+            targetOffsetY += visibleSegmentRect.minY - visibleTopLimitY
+        } else if visibleSegmentRect.maxY > visibleBottomLimitY {
+            targetOffsetY += visibleSegmentRect.maxY - visibleBottomLimitY
+        } else {
+            return nil
+        }
+
+        targetOffsetY = max(targetOffsetY, context.minOffsetY)
+        guard abs(targetOffsetY - context.currentOffsetY) > 0.5 else {
+            return nil
+        }
+
+        return ReadViewSheetVisibilityScrollAdjustment(
+            targetOffsetY: targetOffsetY,
+            usesTemporaryBottomOverscroll: targetOffsetY > context.maxOffsetY + 0.5
+        )
+    }
+
+    static func dismissalTargetOffsetY(currentOffsetY: CGFloat, minOffsetY: CGFloat, maxOffsetY: CGFloat) -> CGFloat? {
+        let clampedOffsetY = min(max(currentOffsetY, minOffsetY), maxOffsetY)
+        guard abs(clampedOffsetY - currentOffsetY) > 0.5 else {
+            return nil
+        }
+
+        return clampedOffsetY
+    }
+}
+
 // Hosts sheet-selection and sheet-driven scroll helpers for the read screen.
 extension ReadView {
+    private var sheetVisibilityScrollAnimationDuration: TimeInterval { 0.18 }
+
     // Clears selected segment state when segment action UI is dismissed by user interaction.
     func clearSelectedSegmentStateAfterPopoverDismissal() {
         selectedSegmentLocation = nil
@@ -29,60 +101,108 @@ extension ReadView {
         return tappedSurface
     }
 
-    // Scrolls only enough to keep the selected segment above the incoming sheet.
-    func preScrollSegmentForSheetVisibility(sourceView: UITextView?, tappedSegmentRect: CGRect?, animated: Bool = false) {
+    // Animates content-offset changes with a completion callback so sheet presentation/dismissal can be sequenced cleanly.
+    func animateContentOffset(
+        for sourceView: UITextView,
+        targetOffsetY: CGFloat,
+        animated: Bool,
+        completion: (() -> Void)? = nil
+    ) {
+        if animated == false {
+            sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: targetOffsetY), animated: false)
+            completion?()
+            return
+        }
+
+        UIView.animate(
+            withDuration: sheetVisibilityScrollAnimationDuration,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]
+        ) {
+            sourceView.contentOffset = CGPoint(x: sourceView.contentOffset.x, y: targetOffsetY)
+        } completion: { _ in
+            completion?()
+        }
+    }
+
+    // Scrolls only enough to keep the selected segment inside the visible band above the lookup sheet.
+    func preScrollSegmentForSheetVisibility(
+        sourceView: UITextView?,
+        tappedSegmentRect: CGRect?,
+        animated: Bool = true,
+        completion: (() -> Void)? = nil
+    ) {
         guard let sourceView, let tappedSegmentRect else {
+            completion?()
             return
         }
 
-        // Treats tap geometry as content-space coordinates so scroll math uses the segment's visible position.
-        let normalizedSegmentRect = tappedSegmentRect.offsetBy(dx: 0, dy: -sourceView.contentOffset.y)
-
-        let estimatedSheetHeight: CGFloat = 360
-        let estimatedRelativeCoverage = sourceView.bounds.height * 0.64
-        let expectedCoveredHeight = max(estimatedSheetHeight, estimatedRelativeCoverage)
-        let coveredTopY = sourceView.bounds.height - expectedCoveredHeight
-
-        // Keeps already-visible segments fixed and only moves lower ones enough to clear the sheet edge.
-        let visibilityPadding: CGFloat = 16
-        let visibleBottomLimitY = max(24, coveredTopY - visibilityPadding)
-        let requiredScrollDeltaY = max(0, normalizedSegmentRect.maxY - visibleBottomLimitY)
-        guard requiredScrollDeltaY > 0.5 else {
-            sharedScrollOffsetY = sourceView.contentOffset.y
-            return
-        }
-
-        let requestedOffsetY = sourceView.contentOffset.y + requiredScrollDeltaY
         let minOffsetY = -sourceView.adjustedContentInset.top
         let maxContentOffsetY = max(
             minOffsetY,
             sourceView.contentSize.height - sourceView.bounds.height + sourceView.adjustedContentInset.bottom
         )
-        // Overscroll must cover the full expected sheet height so short-content notes can still
-        // push a bottom segment above the sheet edge even when normal scroll range is exhausted.
-        let overscrollAllowance: CGFloat = max(expectedCoveredHeight, requestedOffsetY - maxContentOffsetY)
-        let clampedOffsetY = min(max(requestedOffsetY, minOffsetY), maxContentOffsetY + overscrollAllowance)
+        let context = ReadViewSheetVisibilityScrollContext(
+            currentOffsetY: sourceView.contentOffset.y,
+            minOffsetY: minOffsetY,
+            maxOffsetY: maxContentOffsetY,
+            viewportHeight: sourceView.bounds.height,
+            adjustedTopInset: sourceView.adjustedContentInset.top,
+            selectedSegmentRectInContent: tappedSegmentRect,
+            estimatedSheetHeight: 360,
+            estimatedRelativeCoverage: 0.64,
+            maximumCoveredHeightRatio: 0.5,
+            topPadding: 24,
+            bottomPadding: 16
+        )
+        guard let adjustment = ReadViewSheetVisibilityScrollPlanner.adjustment(for: context) else {
+            sharedScrollOffsetY = sourceView.contentOffset.y
+            completion?()
+            return
+        }
 
-        sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: clampedOffsetY), animated: animated)
-        sharedScrollOffsetY = clampedOffsetY
+        sharedScrollOffsetY = adjustment.targetOffsetY
+        animateContentOffset(
+            for: sourceView,
+            targetOffsetY: adjustment.targetOffsetY,
+            animated: animated,
+            completion: completion
+        )
     }
 
     // Removes temporary sheet-induced overscroll once the segment action sheet is dismissed.
-    func restoreScrollAfterSheetDismissal(sourceView: UITextView?, animated: Bool = false) {
+    func restoreScrollAfterSheetDismissal(
+        sourceView: UITextView?,
+        animated: Bool = true,
+        completion: (() -> Void)? = nil
+    ) {
         guard let sourceView else {
+            completion?()
             return
         }
 
         let minOffsetY = -sourceView.adjustedContentInset.top
-        let maxContentOffsetY = max(minOffsetY, sourceView.contentSize.height - sourceView.bounds.height + sourceView.adjustedContentInset.bottom)
-        let clampedOffsetY = min(max(sharedScrollOffsetY, minOffsetY), maxContentOffsetY)
-        guard abs(clampedOffsetY - sourceView.contentOffset.y) > 0.5 else {
-            sharedScrollOffsetY = clampedOffsetY
+        let maxContentOffsetY = max(
+            minOffsetY,
+            sourceView.contentSize.height - sourceView.bounds.height + sourceView.adjustedContentInset.bottom
+        )
+        guard let dismissalTargetOffsetY = ReadViewSheetVisibilityScrollPlanner.dismissalTargetOffsetY(
+            currentOffsetY: sourceView.contentOffset.y,
+            minOffsetY: minOffsetY,
+            maxOffsetY: maxContentOffsetY
+        ) else {
+            sharedScrollOffsetY = sourceView.contentOffset.y
+            completion?()
             return
         }
 
-        sourceView.setContentOffset(CGPoint(x: sourceView.contentOffset.x, y: clampedOffsetY), animated: animated)
-        sharedScrollOffsetY = clampedOffsetY
+        sharedScrollOffsetY = dismissalTargetOffsetY
+        animateContentOffset(
+            for: sourceView,
+            targetOffsetY: dismissalTargetOffsetY,
+            animated: animated,
+            completion: completion
+        )
     }
 
     // Moves sheet selection to the previous or next selectable segment and returns refreshed sheet payload.

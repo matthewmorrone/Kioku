@@ -109,6 +109,9 @@ extension ReadView {
     // Rebuilds greedy segmentation ranges used by alternating segment colors in the editor.
     // Skips recomputation when persisted segments already cover the text — trusts them as ground truth.
     func refreshSegmentationRanges() {
+        segmentationRefreshTask?.cancel()
+        segmentationRefreshTask = nil
+
         if let segments, let edges = edgesFromSegmentRanges(segments, in: text) {
             segmentEdges = edges
             segmentRanges = edges.map { $0.start..<$0.end }
@@ -135,53 +138,83 @@ extension ReadView {
             return
         }
 
+        let sourceText = text
+        let sourceNoteID = activeNoteID
+        let persistedSegments = segments
+        let segmenter = self.segmenter
+
         StartupTimer.mark("refreshSegmentationRanges: running segmenter")
-        let segmentationResult = StartupTimer.measure("segmenter.longestMatchResult") {
-            segmenter.longestMatchResult(for: text)
-        }
-        segmentLatticeEdges = segmentationResult.latticeEdges
-        // segmenter.debugPrintLattice(for: text)
-        let baseEdges = segmentationResult.selectedEdges
-        let refreshedEdges: [LatticeEdge]
-        if let segments,
-           let overriddenEdges = edgesFromSegmentRanges(segments, in: text) {
-            if shouldDiscardPersistedSegmentOverride(overriddenEdges: overriddenEdges, computedEdges: baseEdges) {
-                self.segments = nil
-                persistCurrentNoteIfNeeded()
-                refreshedEdges = baseEdges
-            } else {
-                refreshedEdges = overriddenEdges
+        segmentationRefreshTask = Task(priority: .userInitiated) {
+            let segmentationResult = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let result = StartupTimer.measure("segmenter.longestMatchResult") {
+                        segmenter.longestMatchResult(for: sourceText)
+                    }
+                    continuation.resume(returning: result)
+                }
             }
-        } else {
-            if segments != nil {
-                segments = nil
-                persistCurrentNoteIfNeeded()
-            }
-            refreshedEdges = baseEdges
-        }
 
-        segmentEdges = refreshedEdges
-        segmentRanges = refreshedEdges.map { edge in
-            edge.start..<edge.end
-        }
-        unknownSegmentLocations = unknownSegmentLocations(for: refreshedEdges)
-        recordRuntimeSegmentationSnapshot(for: refreshedEdges)
-
-        // Clears stale selection if the tapped segment no longer exists after recomputing ranges.
-        if let selectedSegmentLocation {
-            let hasSelectedSegment = segmentRanges.contains { segmentRange in
-                let nsRange = NSRange(segmentRange, in: text)
-                return nsRange.location == selectedSegmentLocation && nsRange.length > 0
+            guard Task.isCancelled == false else {
+                return
             }
-            if hasSelectedSegment == false {
-                self.selectedSegmentLocation = nil
-                selectedHighlightRangeOverride = nil
-                selectedBounds = nil
-                SegmentLookupSheet.shared.dismissPopover()
+
+            await MainActor.run {
+                guard
+                    Task.isCancelled == false,
+                    text == sourceText,
+                    activeNoteID == sourceNoteID,
+                    segments == persistedSegments,
+                    isEditMode == false
+                else {
+                    return
+                }
+
+                segmentLatticeEdges = segmentationResult.latticeEdges
+                // segmenter.debugPrintLattice(for: text)
+                let baseEdges = segmentationResult.selectedEdges
+                let refreshedEdges: [LatticeEdge]
+                if let persistedSegments,
+                   let overriddenEdges = edgesFromSegmentRanges(persistedSegments, in: sourceText) {
+                    if shouldDiscardPersistedSegmentOverride(overriddenEdges: overriddenEdges, computedEdges: baseEdges) {
+                        self.segments = nil
+                        persistCurrentNoteIfNeeded()
+                        refreshedEdges = baseEdges
+                    } else {
+                        refreshedEdges = overriddenEdges
+                    }
+                } else {
+                    if segments != nil {
+                        segments = nil
+                        persistCurrentNoteIfNeeded()
+                    }
+                    refreshedEdges = baseEdges
+                }
+
+                segmentEdges = refreshedEdges
+                segmentRanges = refreshedEdges.map { edge in
+                    edge.start..<edge.end
+                }
+                unknownSegmentLocations = unknownSegmentLocations(for: refreshedEdges)
+                recordRuntimeSegmentationSnapshot(for: refreshedEdges)
+
+                // Clears stale selection if the tapped segment no longer exists after recomputing ranges.
+                if let selectedSegmentLocation {
+                    let hasSelectedSegment = segmentRanges.contains { segmentRange in
+                        let nsRange = NSRange(segmentRange, in: sourceText)
+                        return nsRange.location == selectedSegmentLocation && nsRange.length > 0
+                    }
+                    if hasSelectedSegment == false {
+                        self.selectedSegmentLocation = nil
+                        selectedHighlightRangeOverride = nil
+                        selectedBounds = nil
+                        SegmentLookupSheet.shared.dismissPopover()
+                    }
+                }
+
+                segmentationRefreshTask = nil
+                scheduleFuriganaGeneration(for: sourceText, edges: refreshedEdges)
             }
         }
-
-        scheduleFuriganaGeneration(for: text, edges: refreshedEdges)
     }
 
     // Records the current runtime segmentation for the active note so export can reuse live segment boundaries.
@@ -262,13 +295,19 @@ extension ReadView {
                     if let sourceView,
                        let selectedSegmentLocation,
                        let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: sourceView, selectedLocation: selectedSegmentLocation) {
-                        preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect, animated: false)
-                    }
-
-                    Task { @MainActor in
-                        await Task.yield()
-                        isSheetSwipeTransitionActive = false
-                        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                        preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
+                            Task { @MainActor in
+                                await Task.yield()
+                                isSheetSwipeTransitionActive = false
+                                scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                            }
+                        }
+                    } else {
+                        Task { @MainActor in
+                            await Task.yield()
+                            isSheetSwipeTransitionActive = false
+                            scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                        }
                     }
 
                     return outcome
@@ -279,13 +318,19 @@ extension ReadView {
                     if let sourceView,
                        let selectedSegmentLocation,
                        let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: sourceView, selectedLocation: selectedSegmentLocation) {
-                        preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect, animated: false)
-                    }
-
-                    Task { @MainActor in
-                        await Task.yield()
-                        isSheetSwipeTransitionActive = false
-                        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                        preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
+                            Task { @MainActor in
+                                await Task.yield()
+                                isSheetSwipeTransitionActive = false
+                                scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                            }
+                        }
+                    } else {
+                        Task { @MainActor in
+                            await Task.yield()
+                            isSheetSwipeTransitionActive = false
+                            scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                        }
                     }
 
                     return outcome
@@ -372,10 +417,12 @@ extension ReadView {
                         return (edge.surface, gloss)
                     }
                 },
+                onWillDismiss: { completion in
+                    restoreScrollAfterSheetDismissal(sourceView: sourceView, completion: completion)
+                },
                 onDismiss: {
                     isSheetSwipeTransitionActive = false
                     clearSelectedSegmentStateAfterPopoverDismissal()
-                    restoreScrollAfterSheetDismissal(sourceView: sourceView, animated: false)
                 }
             )
             return
