@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-enum ScriptClassifier {
+nonisolated enum ScriptClassifier {
     private static let voicedKanaMap = loadVoicedKanaMap()
 
     // Determines whether text is composed only of kana code points and prolonged sound marks.

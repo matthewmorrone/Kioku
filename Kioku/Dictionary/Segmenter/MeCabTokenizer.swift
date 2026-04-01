@@ -2,7 +2,7 @@ import Foundation
 import mecab
 
 // Wraps the MeCab C library lifecycle and provides Swift-friendly tokenization of Japanese text.
-final class MeCabTokenizer {
+nonisolated final class MeCabTokenizer {
     private var mecabPtr: OpaquePointer?
 
     // Initializes MeCab with the compiled dictionary at the given directory path.

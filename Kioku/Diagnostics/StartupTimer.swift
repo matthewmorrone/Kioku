@@ -3,8 +3,8 @@ import os.log
 
 // Provides structured startup timing via os_signpost and console output.
 // Filter in Console.app by subsystem "com.kioku.startup" to see all entries.
-enum StartupTimer {
-    static let log = OSLog(subsystem: "com.kioku.startup", category: "performance")
+nonisolated enum StartupTimer {
+    nonisolated static let log = OSLog(subsystem: "com.kioku.startup", category: "performance")
     private static let launchStart = CFAbsoluteTimeGetCurrent()
 
     // Elapsed wall-clock milliseconds since the startup timer was initialized.
@@ -13,7 +13,7 @@ enum StartupTimer {
     }
 
     // Measures a synchronous block, logging elapsed ms to console and emitting signpost intervals.
-    static func measure<T>(_ label: String, block: () throws -> T) rethrows -> T {
+    nonisolated static func measure<T>(_ label: String, block: () throws -> T) rethrows -> T {
         let start = CFAbsoluteTimeGetCurrent()
         os_signpost(.begin, log: log, name: "Startup", "%{public}s", label)
         let result = try block()
@@ -31,7 +31,7 @@ enum StartupTimer {
     }
 
     // Logs a single timestamp marker for async boundaries and lifecycle events.
-    static func mark(_ label: String) {
+    nonisolated static func mark(_ label: String) {
         os_log(.info, log: log, "[Startup +%.1f ms] %{public}s", elapsedSinceLaunchMs, label)
     }
 }

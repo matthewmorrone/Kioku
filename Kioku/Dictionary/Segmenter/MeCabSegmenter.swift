@@ -2,7 +2,7 @@ import Foundation
 
 // Provides TextSegmenting conformance backed by the MeCab morphological analyzer.
 // Each instance owns a MeCabTokenizer tied to one dictionary (IPAdic or UniDic).
-final class MeCabSegmenter: TextSegmenting {
+nonisolated final class MeCabSegmenter: TextSegmenting {
 
     private let tokenizer: MeCabTokenizer
     private let dictionary: MeCabDictionary

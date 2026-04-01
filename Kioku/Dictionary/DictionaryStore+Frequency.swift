@@ -9,7 +9,7 @@ extension DictionaryStore {
     // so a single sequential scan produces correctly-ordered readings without runtime sorting.
     // Each surface retains up to maxReadingsPerSurface distinct readings; frequency data is populated
     // for any reading that has at least one frequency signal (jpdb_rank or wordfreq_zipf).
-    func fetchSurfaceReadingData(maxReadingsPerSurface: Int = 8) throws -> [String: SurfaceReadingData] {
+    nonisolated func fetchSurfaceReadingData(maxReadingsPerSurface: Int = 8) throws -> [String: SurfaceReadingData] {
         try withSerializedDatabaseAccess {
             let sql = """
             SELECT surface, reading, jpdb_rank, wordfreq_zipf
@@ -92,7 +92,7 @@ extension DictionaryStore {
     }
 
     // Fetches all unique dictionary surfaces from kanji and kana_forms tables.
-    public func fetchAllSurfaces() throws -> [String] {
+    nonisolated public func fetchAllSurfaces() throws -> [String] {
         try withSerializedDatabaseAccess {
             let sql = """
             SELECT DISTINCT text FROM kanji

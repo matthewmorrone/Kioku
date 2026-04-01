@@ -1,6 +1,6 @@
 import Foundation
 
-public struct DictionaryEntry: Equatable {
+nonisolated public struct DictionaryEntry: Equatable {
     public let entryId: Int64
     // Best JPDB frequency rank for the matched (kanji, kana) pair. Lower = more frequent. Nil if not in JPDB.
     public let jpdbRank: Int?

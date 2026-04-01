@@ -1,6 +1,6 @@
 import Foundation
 
-public struct DictionaryEntrySense: Equatable {
+nonisolated public struct DictionaryEntrySense: Equatable {
     public let pos: String?
     // Miscellaneous information about this sense (e.g. "uk", "col", "arch"), comma-joined.
     public let misc: String?

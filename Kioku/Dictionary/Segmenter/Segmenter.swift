@@ -1,7 +1,7 @@
 import Foundation
 
 // Builds segmentation lattice edges by querying dictionary prefix matches at each text position.
-final class Segmenter: TextSegmenting {
+nonisolated final class Segmenter: TextSegmenting {
 
     private let trie: DictionaryTrie
     private let deinflector: Deinflector?
@@ -92,12 +92,12 @@ final class Segmenter: TextSegmenting {
             // Single-character fallback so the greedy walk lands on every position,
             // allowing dictionary words that start mid-unknown-run to be reached.
             if keptMatches == 0 {
-                let nextIndex = text.index(after: index)
+                let fallbackRange = unknownFallbackRange(in: text, startingAt: index)
                 edges.append(
                     LatticeEdge(
-                        start: index,
-                        end: nextIndex,
-                        surface: String(text[index..<nextIndex])
+                        start: fallbackRange.lowerBound,
+                        end: fallbackRange.upperBound,
+                        surface: String(text[fallbackRange])
                     )
                 )
             }
@@ -164,10 +164,10 @@ final class Segmenter: TextSegmenting {
             }
 
             if keptMatches == 0 {
-                let nextIndex = text.index(after: index)
-                let fallbackSurface = String(text[index..<nextIndex])
+                let fallbackRange = unknownFallbackRange(in: text, startingAt: index)
+                let fallbackSurface = String(text[fallbackRange])
                 let startOffset = text.distance(from: text.startIndex, to: index)
-                let endOffset = text.distance(from: text.startIndex, to: nextIndex)
+                let endOffset = text.distance(from: text.startIndex, to: fallbackRange.upperBound)
                 print("\(startOffset)→\(endOffset) \(escapedForDebug(fallbackSurface)) [lemma: \(escapedForDebug(fallbackSurface))] [fallback]")
             }
 

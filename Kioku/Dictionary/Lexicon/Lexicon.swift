@@ -1,7 +1,7 @@
 import Foundation
 
 // Exposes UI-oriented lexical data methods by composing dictionary lookup, deinflection, and segmentation primitives.
-public final class Lexicon {
+nonisolated public final class Lexicon {
     private let dictionaryStore: DictionaryStore?
     private let segmenter: any TextSegmenting
     private let deinflector: Deinflector
