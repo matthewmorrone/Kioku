@@ -1,0 +1,91 @@
+import XCTest
+@testable import kyouku
+
+final class MeCabTokenBoundaryNormalizerTests: XCTestCase {
+    private func mecab(_ range: NSRange, surface: String, pos: String) -> SpanReadingAttacher.MeCabAnnotation {
+        SpanReadingAttacher.MeCabAnnotation(
+            range: range,
+            reading: surface,
+            surface: surface,
+            dictionaryForm: surface,
+            partOfSpeech: pos
+        )
+    }
+
+    func testSplitsSpanAtAdjacentTokenBoundary() {
+        let text = "食べる"
+        let nsText = text as NSString
+        let spans = [
+            TextSpan(range: NSRange(location: 0, length: 3), surface: text, isLexiconMatch: true)
+        ]
+        let mecab = [
+            mecab(NSRange(location: 0, length: 2), surface: "食べ", pos: "動詞"),
+            mecab(NSRange(location: 2, length: 1), surface: "る", pos: "助動詞")
+        ]
+
+        let result = MeCabTokenBoundaryNormalizer.apply(text: nsText, spans: spans, mecab: mecab)
+
+        let expected = [
+            TextSpan(range: NSRange(location: 0, length: 2), surface: nsText.substring(with: NSRange(location: 0, length: 2)), isLexiconMatch: false),
+            TextSpan(range: NSRange(location: 2, length: 1), surface: nsText.substring(with: NSRange(location: 2, length: 1)), isLexiconMatch: false)
+        ]
+        XCTAssertEqual(result.spans, expected)
+        XCTAssertEqual(result.forcedCuts, [2])
+    }
+
+    func testKeepsSpanFullyContainedInToken() {
+        let text = "食べる"
+        let nsText = text as NSString
+        let spans = [
+            TextSpan(range: NSRange(location: 0, length: 2), surface: nsText.substring(with: NSRange(location: 0, length: 2)), isLexiconMatch: true)
+        ]
+        let mecab = [
+            mecab(NSRange(location: 0, length: 2), surface: "食べ", pos: "動詞"),
+            mecab(NSRange(location: 2, length: 1), surface: "る", pos: "助動詞")
+        ]
+
+        let result = MeCabTokenBoundaryNormalizer.apply(text: nsText, spans: spans, mecab: mecab)
+
+        XCTAssertEqual(result.spans, spans)
+        XCTAssertTrue(result.forcedCuts.isEmpty)
+    }
+
+    func testDoesNotSplitImmediatelyAfterSokuonWhenNextIsNotBoundary() {
+        // Regression guard: avoid emitting spans that end with small っ/ッ
+        // (e.g. "ぼっ" + "ちよ" for "ぼっちよ").
+        let text = "ぼっちよ"
+        let nsText = text as NSString
+        let spans = [
+            TextSpan(range: NSRange(location: 0, length: nsText.length), surface: text, isLexiconMatch: true)
+        ]
+        let mecab = [
+            mecab(NSRange(location: 0, length: 2), surface: "ぼっ", pos: "名詞"),
+            mecab(NSRange(location: 2, length: 2), surface: "ちよ", pos: "名詞")
+        ]
+
+        let result = MeCabTokenBoundaryNormalizer.apply(text: nsText, spans: spans, mecab: mecab)
+
+        XCTAssertEqual(result.spans.count, 1)
+        XCTAssertEqual(result.spans.first?.surface, text)
+        XCTAssertTrue(result.forcedCuts.isEmpty)
+    }
+
+    func testDoesNotSplitAcrossIterationMarkAdjacentMecabTokens() {
+        let text = "さゝやく"
+        let nsText = text as NSString
+        let spans = [
+            TextSpan(range: NSRange(location: 0, length: nsText.length), surface: text, isLexiconMatch: true)
+        ]
+        let mecab = [
+            mecab(NSRange(location: 0, length: 1), surface: "さ", pos: "動詞"),
+            mecab(NSRange(location: 1, length: 1), surface: "ゝ", pos: "記号"),
+            mecab(NSRange(location: 2, length: 2), surface: "やく", pos: "動詞")
+        ]
+
+        let result = MeCabTokenBoundaryNormalizer.apply(text: nsText, spans: spans, mecab: mecab)
+
+        XCTAssertEqual(result.spans.count, 1)
+        XCTAssertEqual(result.spans.first?.surface, text)
+        XCTAssertTrue(result.forcedCuts.isEmpty)
+    }
+}

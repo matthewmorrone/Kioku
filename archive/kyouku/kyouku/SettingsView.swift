@@ -1,0 +1,950 @@
+import SwiftUI
+import UniformTypeIdentifiers
+import UserNotifications
+import UIKit
+
+struct SettingsView: View {
+    @EnvironmentObject private var wordsStore: WordsStore
+    @EnvironmentObject private var notesStore: NotesStore
+    @EnvironmentObject private var readingOverrides: ReadingOverridesStore
+
+    @Environment(\.appColorTheme) private var appColorTheme
+    @AppStorage(AppColorThemeID.storageKey) private var appColorThemeRaw: String = AppColorThemeID.defaultValue.rawValue
+
+    @AppStorage("readingTextSize") private var readingTextSize: Double = 17
+    @AppStorage("readingFuriganaSize") private var readingFuriganaSize: Double = 9
+    @AppStorage("readingLineSpacing") private var readingLineSpacing: Double = 4
+    // Absolute gap between ruby and headword (in points). 0 means “touching”.
+    @AppStorage("readingRubyBaselineGap") private var readingRubyBaselineGap: Double = 0.5
+    @AppStorage("readingGlobalKerningPixels") private var readingGlobalKerningPixels: Double = 0
+    /// Preferred base font PostScript name for reading text.
+    /// Empty string means "System".
+    @AppStorage("readingFontName") private var readingFontName: String = ""
+    @AppStorage("readingDistinctKanaKanjiFonts") private var readingDistinctKanaKanjiFonts: Bool = false
+    @AppStorage("readingHeadwordSpacingPadding") private var readingHeadwordSpacingPadding: Bool = false
+    @AppStorage("readingHeadwordSpacingAmount") private var readingHeadwordSpacingAmount: Double = 1.0
+    @AppStorage("readingAlternateTokenColorA") private var alternateTokenColorAHex: String = "#0A84FF"
+    @AppStorage("readingAlternateTokenColorB") private var alternateTokenColorBHex: String = "#FF2D55"
+    @AppStorage(CommonParticleSettings.storageKey) private var commonParticlesRaw: String = CommonParticleSettings.defaultRawValue
+
+    @AppStorage("notesPreviewLineCount") private var notesPreviewLineCount: Int = 3
+
+    @AppStorage("clipboardAccessEnabled") private var clipboardAccessEnabled: Bool = true
+
+    @AppStorage(WordOfTheDayScheduler.enabledKey) private var wotdEnabled: Bool = false
+    @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
+    @AppStorage(WordOfTheDayScheduler.minuteKey) private var wotdMinute: Int = 0
+
+    @AppStorage("debugViewMetricsHUD") private var debugViewMetricsHUD: Bool = false
+    @AppStorage("rubyDebugRects") private var rubyDebugRects: Bool = false
+    @AppStorage("RubyEnvelopeDebug.selectionEnvelopeRects") private var rubyEnvelopeSelectionEnvelopeRects: Bool = false
+    @AppStorage("rubyDebugBisectors") private var rubyDebugBisectors: Bool = false
+    @AppStorage("RubyDebug.showHeadwordBisectors") private var rubyDebugHeadwordBisectors: Bool = true
+    @AppStorage("RubyDebug.showRubyBisectors") private var rubyDebugRubyBisectors: Bool = true
+    @AppStorage("rubyHeadwordDebugRects") private var rubyHeadwordDebugRects: Bool = false
+    @AppStorage("rubyHeadwordLineBands") private var rubyHeadwordLineBands: Bool = false
+    @AppStorage("rubyFuriganaLineBands") private var rubyFuriganaLineBands: Bool = false
+    @AppStorage("RubyDebug.showHeadwordLineNumbers") private var rubyDebugShowHeadwordLineNumbers: Bool = true
+    @AppStorage("RubyDebug.showRubyLineNumbers") private var rubyDebugShowRubyLineNumbers: Bool = true
+    @AppStorage("RubyDebug.insetGuides") private var rubyDebugInsetGuides: Bool = false
+    @AppStorage("debugDisableDictionaryPopup") private var debugDisableDictionaryPopup: Bool = false
+    @AppStorage("debugPixelRulerOverlay") private var debugPixelRulerOverlay: Bool = false
+    @AppStorage("debugPasteDragToMoveWords") private var debugPasteDragToMoveWords: Bool = false
+
+    @State private var wotdAuthStatus: UNAuthorizationStatus = .notDetermined
+    @State private var wotdPendingCount: Int = 0
+
+    @State private var exportURL: URL? = nil
+    @State private var isImporting: Bool = false
+    @State private var importError: String? = nil
+    @State private var importSummary: String? = nil
+
+    @State private var previewAttributedText = NSAttributedString(string: SettingsView.previewSampleTextValue)
+    @State private var previewRebuildTask: Task<Void, Never>? = nil
+    @State private var previewAnnotatedSpans: [AnnotatedSpan]? = nil
+    @State private var previewSemanticSpans: [SemanticSpan]? = nil
+    @State private var previewSpansText: String? = nil
+    @State private var previewValuesInitialized = false
+    @State private var pendingReadingTextSize: Double = 17
+    @State private var pendingReadingFuriganaSize: Double = 9
+    @State private var pendingReadingLineSpacing: Double = 4
+
+    init() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "debugViewMetricsHUD") == nil,
+           defaults.object(forKey: "rubyDebugHUD") != nil {
+            defaults.set(defaults.bool(forKey: "rubyDebugHUD"), forKey: "debugViewMetricsHUD")
+        }
+        if defaults.object(forKey: "rubyHeadwordLineBands") == nil,
+           defaults.bool(forKey: "rubyDebugLineBands") {
+            defaults.set(true, forKey: "rubyHeadwordLineBands")
+        }
+        if defaults.object(forKey: "rubyFuriganaLineBands") == nil,
+           defaults.bool(forKey: "rubyDebugLineBands") {
+            defaults.set(true, forKey: "rubyFuriganaLineBands")
+        }
+
+        // Bisectors used to be implicitly tied to `rubyDebugRects`. Initialize the new toggle
+        // to preserve existing behavior until the user changes it.
+        if defaults.object(forKey: "rubyDebugBisectors") == nil {
+            defaults.set(defaults.bool(forKey: "rubyDebugRects"), forKey: "rubyDebugBisectors")
+        }
+
+        // Default per-type bisectors to ON so the new split doesn't change output.
+        if defaults.object(forKey: "RubyDebug.showHeadwordBisectors") == nil {
+            defaults.set(true, forKey: "RubyDebug.showHeadwordBisectors")
+        }
+        if defaults.object(forKey: "RubyDebug.showRubyBisectors") == nil {
+            defaults.set(true, forKey: "RubyDebug.showRubyBisectors")
+        }
+
+        // Line band labels used to be controlled by a single toggle. Split into per-type toggles
+        // (Headword/Ruby) while preserving the user's previous preference.
+        let legacyLineNumbersKey = "RubyDebug.showLineBandLabels"
+        let headwordLineNumbersKey = "RubyDebug.showHeadwordLineNumbers"
+        let rubyLineNumbersKey = "RubyDebug.showRubyLineNumbers"
+        if defaults.object(forKey: headwordLineNumbersKey) == nil,
+           defaults.object(forKey: rubyLineNumbersKey) == nil,
+           defaults.object(forKey: legacyLineNumbersKey) != nil {
+            let legacy = defaults.bool(forKey: legacyLineNumbersKey)
+            defaults.set(legacy, forKey: headwordLineNumbersKey)
+            defaults.set(legacy, forKey: rubyLineNumbersKey)
+        }
+        if defaults.object(forKey: headwordLineNumbersKey) == nil {
+            defaults.set(true, forKey: headwordLineNumbersKey)
+        }
+        if defaults.object(forKey: rubyLineNumbersKey) == nil {
+            defaults.set(true, forKey: rubyLineNumbersKey)
+        }
+
+        // Migrate the old "adjustment" style setting to an absolute gap.
+        // We treat the historical default baseline gap as 0.5pt.
+        if defaults.bool(forKey: "didMigrateReadingRubyBaselineGap") == false {
+            defaults.set(true, forKey: "didMigrateReadingRubyBaselineGap")
+            let old = defaults.double(forKey: "readingRubyBaselineGapAdjustment")
+            if old != 0 {
+                defaults.set(max(0, 0.5 + old), forKey: "readingRubyBaselineGap")
+                defaults.set(0.0, forKey: "readingRubyBaselineGapAdjustment")
+            } else if defaults.object(forKey: "readingRubyBaselineGap") == nil {
+                defaults.set(0.5, forKey: "readingRubyBaselineGap")
+            }
+        }
+    }
+
+    private static let previewPlainLine = "かなだけのぎょうです。"
+    private static let previewFuriganaLine = "京都で日本語を勉強しています。"
+    private static let previewSampleTextValue = "\(previewPlainLine)\n\(previewFuriganaLine)"
+
+    private struct ReadingFontOption: Identifiable {
+        let id: String
+        let title: String
+        let postScriptName: String
+    }
+
+    private static let preferredJapaneseFontFamilies: [String] = [
+        "Hiragino Sans",
+        "Hiragino Mincho ProN",
+        "YuGothic",
+        "YuMincho",
+        "Klee",
+        "Tsukushi A Round Gothic",
+        "Tsukushi B Round Gothic"
+    ]
+
+    private var readingFontOptions: [ReadingFontOption] {
+        var options: [ReadingFontOption] = [
+            .init(id: "system", title: "System", postScriptName: "")
+        ]
+
+        var seen: Set<String> = [""]
+        for family in Self.preferredJapaneseFontFamilies {
+            let names = UIFont.fontNames(forFamilyName: family).sorted()
+            for postScriptName in names {
+                guard seen.contains(postScriptName) == false else { continue }
+                seen.insert(postScriptName)
+                options.append(
+                    .init(
+                        id: postScriptName,
+                        title: "\(family) — \(postScriptName)",
+                        postScriptName: postScriptName
+                    )
+                )
+            }
+        }
+
+        // If none of the preferred Japanese families are available (unlikely),
+        // keep the picker functional with just System.
+        return options
+    }
+
+    private var previewText: String {
+        Self.previewSampleTextValue
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                appThemeSection
+                textAppearanceSection
+                tokenHighlightSection
+                notesSection
+                clipboardSection
+                extractFilterSection
+                wordOfTheDaySection
+                debugSection
+                Section("Backup & Restore") {
+                    Button("Export…") {
+                        exportAll()
+                    }
+                    Button("Import…") {
+                        isImporting = true
+                    }
+                    .tint(.red)
+                }
+            }
+            .appThemedScrollBackground()
+            .navigationTitle("Settings")
+            .fileImporter(
+                isPresented: $isImporting,
+                allowedContentTypes: [.json],
+                onCompletion: handleBackupImport
+            )
+            .sheet(isPresented: exportSheetBinding) {
+                if let exportURL {
+                    ShareLink(item: exportURL) {
+                        Text("Share Backup")
+                    }
+                    .presentationDetents([.medium, .large])
+                }
+            }
+            .alert(
+                "Import Error",
+                isPresented: .constant(importError != nil),
+                actions: { Button("OK") { importError = nil } },
+                message: { Text(importError ?? "Unknown error") }
+            )
+            .alert("Import Summary", isPresented: importSummaryBinding) {
+                Button("OK") { importSummary = nil }
+            } message: {
+                Text(importSummary ?? "")
+            }
+            .task { await initializePreviewValuesIfNeeded() }
+            .task { await refreshWordOfTheDayStatus() }
+            .onChange(of: readingTextSize) { _, newValue in syncPendingTextSize(to: newValue) }
+            .onChange(of: readingFuriganaSize) { _, newValue in syncPendingFuriganaSize(to: newValue) }
+            .onChange(of: readingLineSpacing) { _, newValue in syncPendingLineSpacing(to: newValue) }
+            .onChange(of: readingHeadwordSpacingPadding) { _, _ in schedulePreviewRebuild() }
+            .onChange(of: readingHeadwordSpacingAmount) { _, _ in schedulePreviewRebuild() }
+            .onDisappear { previewRebuildTask?.cancel() }
+            .onChange(of: wotdEnabled) { _, _ in Task { await rescheduleWordOfTheDay() } }
+            .onChange(of: wotdHour) { _, _ in Task { await rescheduleWordOfTheDay() } }
+            .onChange(of: wotdMinute) { _, _ in Task { await rescheduleWordOfTheDay() } }
+        }
+        .appThemedRoot()
+    }
+
+    private var appThemeSection: some View {
+        Section("App Theme") {
+            Picker("Theme", selection: $appColorThemeRaw) {
+                ForEach(AppColorThemeID.allCases) { themeID in
+                    Text(themeID.displayName).tag(themeID.rawValue)
+                }
+            }
+
+            HStack(spacing: 10) {
+                themeSwatch(appColorTheme.palette.accent)
+                themeSwatch(appColorTheme.palette.highlight)
+                themeSwatch(appColorTheme.palette.textPrimary)
+                themeSwatch(appColorTheme.palette.surface)
+                themeSwatch(appColorTheme.palette.background)
+                Spacer()
+                Text(appColorTheme.displayName)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Theme preview")
+        }
+    }
+
+    private func themeSwatch(_ color: Color) -> some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(color)
+            .frame(width: 18, height: 18)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color.appBorder, lineWidth: 1)
+            )
+    }
+
+    private var textAppearanceSection: some View {
+        Section("Reading Appearance") {
+            RubyText(
+                attributed: previewAttributedText,
+                fontName: readingFontName.isEmpty ? nil : readingFontName,
+                fontSize: CGFloat(pendingReadingTextSize),
+                lineHeightMultiple: 1.0,
+                extraGap: CGFloat(pendingReadingLineSpacing),
+                rubyBaselineGap: CGFloat(readingRubyBaselineGap),
+                isScrollEnabled: true,
+                globalKerning: CGFloat(readingGlobalKerningPixels),
+                padHeadwordSpacing: readingHeadwordSpacingPadding,
+                headwordSpacingAmount: CGFloat(max(0, readingHeadwordSpacingAmount)),
+                rubyHorizontalAlignment: .center,
+                semanticSpans: previewSemanticSpans ?? [],
+                enableTapInspection: false,
+                distinctKanaKanjiFonts: readingDistinctKanaKanjiFonts
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 140, alignment: .topLeading)
+            .padding(.vertical, 8)
+
+            Toggle("Pad multi-kanji headwords", isOn: $readingHeadwordSpacingPadding)
+                .toggleStyle(.switch)
+
+            HStack {
+                Text("Kanji Pad Amount")
+                Spacer()
+                Text(String(format: "%.1f px", readingHeadwordSpacingAmount))
+                    .foregroundStyle(.secondary)
+            }
+            Slider(
+                value: $readingHeadwordSpacingAmount,
+                in: 0.0...8.0,
+                step: 1.0
+            )
+
+            HStack {
+                Text("Text Size")
+                Spacer()
+                Text("\(Int(pendingReadingTextSize))")
+                    .foregroundStyle(.secondary)
+            }
+            Slider(
+                value: Binding(
+                    get: { pendingReadingTextSize },
+                    set: { pendingReadingTextSize = $0; schedulePreviewRebuild() }
+                ),
+                in: 1...30,
+                step: 1,
+                onEditingChanged: { editing in
+                    if editing == false { readingTextSize = pendingReadingTextSize }
+                }
+            )
+            HStack {
+                Text("Furigana Size")
+                Spacer()
+                Text("\(Int(pendingReadingFuriganaSize))")
+                    .foregroundStyle(.secondary)
+            }
+            Slider(
+                value: Binding(
+                    get: { pendingReadingFuriganaSize },
+                    set: { pendingReadingFuriganaSize = $0; schedulePreviewRebuild() }
+                ),
+                in: 1...30,
+                step: 1,
+                onEditingChanged: { editing in
+                    if editing == false { readingFuriganaSize = pendingReadingFuriganaSize }
+                }
+            )
+
+            HStack {
+                Text("Line Spacing")
+                Spacer()
+                Text("\(Int(pendingReadingLineSpacing))")
+                    .foregroundStyle(.secondary)
+            }
+            Slider(
+                value: Binding(
+                    get: { pendingReadingLineSpacing },
+                    set: { pendingReadingLineSpacing = $0 }
+                ),
+                in: 0...30,
+                step: 1,
+                onEditingChanged: { editing in
+                    if editing == false { readingLineSpacing = pendingReadingLineSpacing }
+                }
+            )
+
+            HStack {
+                Text("Ruby Gap")
+                Spacer()
+                Text(String(format: "%.2f pt", readingRubyBaselineGap))
+                    .foregroundStyle(.secondary)
+            }
+            Slider(
+                value: $readingRubyBaselineGap,
+                in: 0.0...12.0,
+                step: 0.25
+            )
+            HStack {
+                Text("Kerning")
+                Spacer()
+                Text(String(format: "%.2f px", readingGlobalKerningPixels))
+                    .foregroundStyle(.secondary)
+            }
+            Slider(
+                value: $readingGlobalKerningPixels,
+                in: -2.0...10.0,
+                step: 0.25
+            )
+        }
+    }
+
+    private var tokenHighlightSection: some View {
+        Section("Token Highlighting") {
+            ColorPicker("Primary Token Color", selection: alternateTokenColorABinding, supportsOpacity: false)
+            ColorPicker("Secondary Token Color", selection: alternateTokenColorBBinding, supportsOpacity: false)
+        }
+    }
+
+    private var notesSection: some View {
+        Section("Notes") {
+            Picker("Preview lines", selection: $notesPreviewLineCount) {
+                ForEach(0...4, id: \.self) { count in
+                    Text("\(count)").tag(count)
+                }
+            }
+        }
+    }
+
+    private var clipboardSection: some View {
+        Section("Clipboard") {
+            Toggle("Allow clipboard access", isOn: $clipboardAccessEnabled)
+
+            Text("Used by Paste actions (including “New Note from Clipboard”). iOS may still ask for paste permission the first time you use it.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Button("Open iOS Settings") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    private var extractFilterSection: some View {
+        Section("Extract Filters") {
+            ParticleTagEditor(tags: commonParticlesBinding)
+        }
+    }
+
+    private var wordOfTheDaySection: some View {
+        Section("Word of the Day") {
+            Toggle("Daily notification", isOn: $wotdEnabled)
+
+            DatePicker(
+                "Time",
+                selection: wotdTimeBinding,
+                displayedComponents: [.hourAndMinute]
+            )
+            .disabled(wotdEnabled == false)
+
+            HStack {
+                Text("Permission")
+                Spacer()
+                Text(wotdPermissionLabel)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Text("Scheduled")
+                Spacer()
+                Text("\(wotdPendingCount)")
+                    .foregroundStyle(.secondary)
+            }
+
+            Button("Request Permission") {
+                Task {
+                    _ = await WordOfTheDayScheduler.requestAuthorization()
+                    await refreshWordOfTheDayStatus()
+                    await rescheduleWordOfTheDay()
+                }
+            }
+            .disabled(wotdAuthStatus == .authorized || wotdAuthStatus == .provisional)
+
+            Button("Schedule Now") {
+                Task {
+                    await rescheduleWordOfTheDay(force: true)
+                }
+            }
+            .disabled(wotdEnabled == false)
+
+            Button("Send Test Notification") {
+                Task {
+                    let word = wordsStore.allWords().randomElement()
+                    await WordOfTheDayScheduler.sendTestNotification(word: word)
+                    await refreshWordOfTheDayStatus()
+                }
+            }
+            .disabled(wotdEnabled == false)
+        }
+    }
+
+    private var debugSection: some View {
+        Section("Debug") {
+            Toggle("Disable dictionary popup", isOn: $debugDisableDictionaryPopup)
+            Toggle("Drag words to move them", isOn: $debugPasteDragToMoveWords)
+            Toggle("View metrics", isOn: $debugViewMetricsHUD)
+            Toggle("Pixel ruler overlay", isOn: $debugPixelRulerOverlay)
+            Toggle("Inset guides", isOn: $rubyDebugInsetGuides)
+
+            debugTableRow(
+                "Boundaries",
+                headword: $rubyHeadwordDebugRects,
+                ruby: $rubyDebugRects
+            )
+            debugTableRow(
+                "Bisectors",
+                headword: bisectorHeadwordBinding,
+                ruby: bisectorRubyBinding
+            )
+            debugTableRow(
+                "Line Bands",
+                headword: $rubyHeadwordLineBands,
+                ruby: $rubyFuriganaLineBands
+            )
+            debugTableRow(
+                "Line Numbers",
+                headword: $rubyDebugShowHeadwordLineNumbers,
+                ruby: $rubyDebugShowRubyLineNumbers
+            )
+        }
+    }
+
+    private func debugGroupHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 2)
+    }
+
+    private var debugTableHeaderRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text("Setting")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Headword")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 84, alignment: .trailing)
+
+            Text("Ruby")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 64, alignment: .trailing)
+        }
+        .padding(.top, 2)
+    }
+
+    private func debugTableRow(
+        _ title: String,
+        headword: Binding<Bool>,
+        ruby: Binding<Bool>,
+        headwordDisabled: Bool = false,
+        rubyDisabled: Bool = false
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle("", isOn: headword)
+                .labelsHidden()
+                .tint(Color.appAccent)
+                .disabled(headwordDisabled)
+                .frame(width: 84, alignment: .trailing)
+
+            Toggle("", isOn: ruby)
+                .labelsHidden()
+                .tint(Color.appAccent)
+                .disabled(rubyDisabled)
+                .frame(width: 64, alignment: .trailing)
+        }
+    }
+
+    private var bisectorHeadwordBinding: Binding<Bool> {
+        Binding(
+            get: { rubyDebugBisectors && rubyDebugHeadwordBisectors },
+            set: { newValue in
+                rubyDebugHeadwordBisectors = newValue
+                let wantsAny = newValue || rubyDebugRubyBisectors
+                rubyDebugBisectors = wantsAny
+                if wantsAny == false {
+                    // When disabled entirely, keep sub-toggles consistent so future enables are explicit.
+                    rubyDebugRubyBisectors = false
+                }
+            }
+        )
+    }
+
+    private var bisectorRubyBinding: Binding<Bool> {
+        Binding(
+            get: { rubyDebugBisectors && rubyDebugRubyBisectors },
+            set: { newValue in
+                rubyDebugRubyBisectors = newValue
+                let wantsAny = newValue || rubyDebugHeadwordBisectors
+                rubyDebugBisectors = wantsAny
+                if wantsAny == false {
+                    rubyDebugHeadwordBisectors = false
+                }
+            }
+        )
+    }
+
+    private var commonParticlesBinding: Binding<[String]> {
+        Binding(
+            get: { CommonParticleSettings.decodeList(from: commonParticlesRaw) },
+            set: { commonParticlesRaw = CommonParticleSettings.encodeList($0) }
+        )
+    }
+
+    private var exportSheetBinding: Binding<Bool> {
+        Binding(
+            get: { exportURL != nil },
+            set: { if $0 == false { exportURL = nil } }
+        )
+    }
+
+    private var importSummaryBinding: Binding<Bool> {
+        Binding(
+            get: { importSummary != nil },
+            set: { if $0 == false { importSummary = nil } }
+        )
+    }
+
+    private func handleBackupImport(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            let needsStop = url.startAccessingSecurityScopedResource()
+            defer {
+                if needsStop {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            do {
+                try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+                let backup = try AppDataBackup.importData(from: url)
+                wordsStore.replaceAll(with: backup.words)
+                notesStore.replaceAll(with: backup.notes)
+                readingOverrides.replaceAll(with: backup.readingOverrides)
+                NotificationCenter.default.post(name: .didImportNotesBackup, object: backup.notes)
+                importSummary = "Imported \(backup.words.count) words, \(backup.notes.count) notes, and \(backup.readingOverrides.count) reading overrides."
+            } catch {
+                importError = error.localizedDescription
+            }
+        case .failure(let err):
+            importError = err.localizedDescription
+        }
+    }
+
+    private func exportAll() {
+        do {
+            let words = wordsStore.allWords()
+            let notes = notesStore.allNotes()
+            let overrides = readingOverrides.allOverrides()
+            exportURL = try AppDataBackup.exportData(words: words, notes: notes, readingOverrides: overrides)
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func initializePreviewValuesIfNeeded() async {
+        guard previewValuesInitialized == false else { return }
+        previewValuesInitialized = true
+
+        pendingReadingTextSize = readingTextSize
+        pendingReadingFuriganaSize = readingFuriganaSize
+        pendingReadingLineSpacing = readingLineSpacing
+        _ = await ensurePreviewStage2(for: previewText)
+        schedulePreviewRebuild()
+    }
+
+    private func syncPendingTextSize(to newValue: Double) {
+        guard previewValuesInitialized else { return }
+        if abs(pendingReadingTextSize - newValue) > .ulpOfOne {
+            pendingReadingTextSize = newValue
+            schedulePreviewRebuild()
+        }
+    }
+
+    private func syncPendingFuriganaSize(to newValue: Double) {
+        guard previewValuesInitialized else { return }
+        if abs(pendingReadingFuriganaSize - newValue) > .ulpOfOne {
+            pendingReadingFuriganaSize = newValue
+            schedulePreviewRebuild()
+        }
+    }
+
+    private func syncPendingLineSpacing(to newValue: Double) {
+        guard previewValuesInitialized else { return }
+        if abs(pendingReadingLineSpacing - newValue) > .ulpOfOne {
+            pendingReadingLineSpacing = newValue
+        }
+    }
+
+    private var alternateTokenColorABinding: Binding<Color> {
+        Binding(
+            get: { Color(hexString: alternateTokenColorAHex, fallback: Color(UIColor.systemBlue)) },
+            set: { newColor in
+                if let hex = newColor.hexString() {
+                    alternateTokenColorAHex = hex
+                }
+            }
+        )
+    }
+
+    private var alternateTokenColorBBinding: Binding<Color> {
+        Binding(
+            get: { Color(hexString: alternateTokenColorBHex, fallback: Color(UIColor.systemPink)) },
+            set: { newColor in
+                if let hex = newColor.hexString() {
+                    alternateTokenColorBHex = hex
+                }
+            }
+        )
+    }
+
+    private func schedulePreviewRebuild() {
+        let text = previewText
+        let textSize = pendingReadingTextSize
+        let furiganaSize = pendingReadingFuriganaSize
+        let spacingEnabled = readingHeadwordSpacingPadding
+        let spacingAmount = readingHeadwordSpacingAmount
+
+        previewRebuildTask?.cancel()
+        previewRebuildTask = Task {
+            await rebuildPreviewAttributedText(
+                text: text,
+                textSize: textSize,
+                furiganaSize: furiganaSize,
+                padHeadwordSpacing: spacingEnabled,
+                headwordSpacingAmount: spacingAmount
+            )
+        }
+    }
+
+    private var wotdTimeBinding: Binding<Date> {
+        Binding(
+            get: {
+                let calendar = Calendar.current
+                var comps = calendar.dateComponents([.year, .month, .day], from: Date())
+                comps.hour = wotdHour
+                comps.minute = wotdMinute
+                return calendar.date(from: comps) ?? Date()
+            },
+            set: { newValue in
+                let calendar = Calendar.current
+                let comps = calendar.dateComponents([.hour, .minute], from: newValue)
+                wotdHour = comps.hour ?? 9
+                wotdMinute = comps.minute ?? 0
+            }
+        )
+    }
+
+    private var wotdPermissionLabel: String {
+        switch wotdAuthStatus {
+        case .authorized:
+            return "Allowed"
+        case .provisional:
+            return "Provisional"
+        case .denied:
+            return "Denied"
+        case .notDetermined:
+            return "Not requested"
+        case .ephemeral:
+            return "Ephemeral"
+        @unknown default:
+            return "Unknown"
+        }
+    }
+
+    private func refreshWordOfTheDayStatus() async {
+        wotdAuthStatus = await WordOfTheDayScheduler.authorizationStatus()
+        wotdPendingCount = await WordOfTheDayScheduler.pendingWordOfTheDayRequestCount()
+    }
+
+    private func rescheduleWordOfTheDay(force: Bool = false) async {
+        if force {
+            await WordOfTheDayScheduler.clearPendingWordOfTheDayRequests()
+        }
+        let words = wordsStore.allWords()
+        await WordOfTheDayScheduler.refreshScheduleIfEnabled(
+            words: words,
+            hour: wotdHour,
+            minute: wotdMinute,
+            enabled: wotdEnabled,
+            daysToSchedule: 14
+        )
+        await refreshWordOfTheDayStatus()
+    }
+
+    private func rebuildPreviewAttributedText(
+        text: String,
+        textSize: Double,
+        furiganaSize: Double,
+        padHeadwordSpacing: Bool,
+        headwordSpacingAmount: Double
+    ) async {
+        let stage2 = await ensurePreviewStage2(for: text)
+        if Task.isCancelled { return }
+        let attributed = FuriganaAttributedTextBuilder.project(
+            text: text,
+            semanticSpans: stage2.semantic,
+            textSize: textSize,
+            furiganaSize: furiganaSize,
+            context: "SettingsPreview",
+            padHeadwordSpacing: padHeadwordSpacing,
+            headwordSpacingAmount: CGFloat(headwordSpacingAmount)
+        )
+        if Task.isCancelled { return }
+        await MainActor.run {
+            previewAttributedText = attributed
+        }
+    }
+
+    private func ensurePreviewStage2(for text: String) async -> (annotated: [AnnotatedSpan], semantic: [SemanticSpan]) {
+        let cached = await MainActor.run(body: { () -> (String?, [AnnotatedSpan]?, [SemanticSpan]?) in
+            (previewSpansText, previewAnnotatedSpans, previewSemanticSpans)
+        })
+        if cached.0 == text, let annotated = cached.1, let semantic = cached.2 {
+            return (annotated: annotated, semantic: semantic)
+        }
+
+        do {
+            let stage2 = try await FuriganaAttributedTextBuilder.computeStage2(
+                text: text,
+                context: "SettingsPreview",
+                tokenBoundaries: [],
+                readingOverrides: [],
+                baseSpans: nil
+            )
+            await MainActor.run {
+                previewAnnotatedSpans = stage2.annotatedSpans
+                previewSemanticSpans = stage2.semanticSpans
+                previewSpansText = text
+            }
+            return (annotated: stage2.annotatedSpans, semantic: stage2.semanticSpans)
+        } catch {
+            await MainActor.run {
+                previewAnnotatedSpans = []
+                previewSemanticSpans = []
+                previewSpansText = text
+            }
+            return (annotated: [], semantic: [])
+        }
+    }
+}
+
+enum CommonParticleSettings {
+    static let storageKey = "extractCommonParticles"
+    static let defaultValues: [String] = [
+        "は", "が", "を", "に", "へ", "で", "と", "も", "や", "ね", "よ", "な", "の"
+    ]
+    static let defaultRawValue: String = defaultValues.joined(separator: ",")
+
+    static func decodeList(from rawValue: String) -> [String] {
+        let source = rawValue.isEmpty ? defaultRawValue : rawValue
+        return source
+            .components(separatedBy: separatorCharacterSet)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+    }
+
+    static func encodeList(_ list: [String]) -> String {
+        list
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+            .joined(separator: ",")
+    }
+
+    static func normalizedToken(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static let separatorCharacterSet = CharacterSet(charactersIn: ",\n\r\t")
+}
+
+private struct ParticleTagEditor: View {
+    @Binding var tags: [String]
+    @State private var draft: String = ""
+
+    private let columns: [GridItem] = [GridItem(.adaptive(minimum: 70), spacing: 8)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if tags.isEmpty {
+                Text("No particles configured yet. Add particles to hide them from the Extract Words list when filtering is enabled.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    ForEach(tags, id: \.self) { tag in
+                        tagChip(for: tag)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField("Add particle", text: $draft)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .onSubmit { commitDraft() }
+
+                Button("Add") { commitDraft() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.accentColor)
+                    .disabled(CommonParticleSettings.normalizedToken(draft).isEmpty)
+            }
+
+            Text("Tap a tag’s × button to remove it. These values inform the ‘Hide common particles’ filter in Extract Words.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func tagChip(for tag: String) -> some View {
+        HStack(spacing: 6) {
+            Text(tag)
+                .font(.subheadline)
+            Button(role: .destructive) {
+                remove(tag: tag)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func commitDraft() {
+        let normalized = CommonParticleSettings.normalizedToken(draft)
+        guard normalized.isEmpty == false else { return }
+        if tags.contains(normalized) == false {
+            tags.append(normalized)
+            tags.sort()
+        }
+        draft = ""
+    }
+
+    private func remove(tag: String) {
+        tags.removeAll { $0 == tag }
+    }
+}
+
+extension Notification.Name {
+    static let didImportNotesBackup = Notification.Name("didImportNotesBackup")
+}
