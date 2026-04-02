@@ -65,7 +65,7 @@ extension ReadView {
             if hasEditableSubtitles {
                 presentSubtitleEditorIfPossible()
             } else {
-                isShowingSubtitleActionDialog = true
+                isShowingSubtitleSubmissionSheet = true
             }
         }
         .onLongPressGesture(minimumDuration: 0.45) {
@@ -84,16 +84,12 @@ extension ReadView {
         switch result {
         case .success(let selectedURLs):
             guard let sourceURL = selectedURLs.first else {
-                clearPendingSubtitleAudioSelection()
                 subtitleImportErrorMessage = "No subtitle file was selected."
                 return
             }
-
-            Task {
-                await importSubtitles(from: sourceURL, usingPendingAudioSelection: true)
-            }
+            pendingSubtitleFileURL = sourceURL
+            pendingSubtitleFilename = sourceURL.lastPathComponent
         case .failure(let error):
-            clearPendingSubtitleAudioSelection()
             guard Self.isUserCancelledFileSelection(error) == false else {
                 return
             }
@@ -109,60 +105,39 @@ extension ReadView {
                 lyricAlignmentErrorMessage = "No audio file was selected."
                 return
             }
-            routeSubtitleAudioSelection(from: sourceURL)
+            preparePendingSubtitleAudioSelection(from: sourceURL)
         case .failure(let error):
-            pendingSubtitleFlow = nil
             lyricAlignmentErrorMessage = error.localizedDescription
         }
     }
 
     @MainActor
-    func importSubtitles(from sourceURL: URL, usingPendingAudioSelection: Bool) async {
+    func importSubtitles(
+        from sourceURL: URL,
+        audioURL: URL?,
+        originalAudioFilename: String?
+    ) async {
         do {
             let importedText = try Self.readImportedSubtitleText(from: sourceURL)
             let cues = SubtitleParser.parse(importedText)
             guard cues.isEmpty == false else {
-                if usingPendingAudioSelection {
-                    clearPendingSubtitleAudioSelection()
-                }
                 subtitleImportErrorMessage = "No subtitle cues were found in the selected file."
                 return
             }
 
             let importedContent = SubtitleParser.assembleNoteContent(from: cues)
             let noteID = ensureNoteExistsForSubtitleImport(prefilledContent: importedContent)
-            let pendingAudioURL = usingPendingAudioSelection ? pendingSubtitleAudioURL : nil
-            let pendingAudioFilename = usingPendingAudioSelection ? pendingSubtitleAudioFilename : nil
             try saveImportedSubtitles(
                 srtText: importedText,
                 cues: cues,
                 preferredFilename: sourceURL.lastPathComponent,
                 noteID: noteID,
-                audioURL: pendingAudioURL,
-                originalAudioFilename: pendingAudioFilename
+                audioURL: audioURL,
+                originalAudioFilename: originalAudioFilename
             )
-            if usingPendingAudioSelection {
-                clearPendingSubtitleAudioSelection()
-            }
         } catch {
-            if usingPendingAudioSelection {
-                clearPendingSubtitleAudioSelection()
-            }
             subtitleImportErrorMessage = error.localizedDescription
         }
-    }
-
-    @MainActor
-    func generateSubtitlesFromPendingAudioSelection() async {
-        guard let sourceURL = pendingSubtitleAudioURL else {
-            lyricAlignmentErrorMessage = "Select an audio file first."
-            return
-        }
-
-        let sourceFilename = pendingSubtitleAudioFilename
-        clearPendingSubtitleAudioSelection(removeTemporaryFile: false)
-        await generateAlignedSRT(fromPreparedAudioURL: sourceURL, originalAudioFilename: sourceFilename)
-        try? FileManager.default.removeItem(at: sourceURL)
     }
 
     @MainActor
@@ -408,33 +383,23 @@ extension ReadView {
     }
 
     @MainActor
-    private func routeSubtitleAudioSelection(from sourceURL: URL) {
-        guard let pendingSubtitleFlow else {
-            lyricAlignmentErrorMessage = "Choose a subtitle action first."
-            return
-        }
-
-        preparePendingSubtitleAudioSelection(from: sourceURL)
-
-        switch pendingSubtitleFlow {
-        case .importExistingSRT:
-            DispatchQueue.main.async {
-                presentFileImporter(for: .subtitleFile)
-            }
-        case .generateOnServer:
-            Task {
-                await generateSubtitlesFromPendingAudioSelection()
-            }
-        }
-    }
-
-    @MainActor
     func clearPendingSubtitleAudioSelection(removeTemporaryFile: Bool = true) {
         let temporaryURL = pendingSubtitleAudioURL
         pendingSubtitleAudioURL = nil
         pendingSubtitleAudioFilename = ""
-        pendingSubtitleFlow = nil
+        pendingSubtitleFileURL = nil
+        pendingSubtitleFilename = ""
         if removeTemporaryFile, let temporaryURL {
+            try? FileManager.default.removeItem(at: temporaryURL)
+        }
+    }
+
+    @MainActor
+    func removePendingSubtitleAudioSelection() {
+        let temporaryURL = pendingSubtitleAudioURL
+        pendingSubtitleAudioURL = nil
+        pendingSubtitleAudioFilename = ""
+        if let temporaryURL {
             try? FileManager.default.removeItem(at: temporaryURL)
         }
     }
@@ -516,5 +481,39 @@ extension ReadView {
         if activeAudioAttachmentID != nil {
             isShowingSubtitleEditor = true
         }
+    }
+
+    @MainActor
+    func submitPendingSubtitleSelection() async {
+        subtitleImportErrorMessage = ""
+        lyricAlignmentErrorMessage = ""
+
+        guard let audioURL = pendingSubtitleAudioURL else {
+            lyricAlignmentErrorMessage = "Select an audio file before submitting."
+            return
+        }
+
+        if let subtitleURL = pendingSubtitleFileURL {
+            await importSubtitles(
+                from: subtitleURL,
+                audioURL: audioURL,
+                originalAudioFilename: pendingSubtitleAudioFilename
+            )
+            guard subtitleImportErrorMessage.isEmpty else {
+                return
+            }
+        } else {
+            await generateAlignedSRT(
+                fromPreparedAudioURL: audioURL,
+                originalAudioFilename: pendingSubtitleAudioFilename
+            )
+            guard lyricAlignmentErrorMessage.isEmpty else {
+                return
+            }
+        }
+
+        try? FileManager.default.removeItem(at: audioURL)
+        clearPendingSubtitleAudioSelection(removeTemporaryFile: false)
+        isShowingSubtitleSubmissionSheet = false
     }
 }
