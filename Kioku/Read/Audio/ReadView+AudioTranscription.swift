@@ -21,7 +21,7 @@ extension ReadView {
     // Renders the title-row waveform button that imports an audio file for transcription.
     var audioTranscriptionButton: some View {
         Button {
-            isShowingAudioFileImporter = true
+            presentFileImporter(for: .transcriptionAudio)
         } label: {
             Group {
                 if isPerformingAudioTranscription {
@@ -703,7 +703,7 @@ extension ReadView {
 }
 
 private extension String {
-    var hasSentenceEndingPunctuation: Bool {
+    nonisolated var hasSentenceEndingPunctuation: Bool {
         last == "。" || last == "！" || last == "？" || last == "!" || last == "?"
     }
 }

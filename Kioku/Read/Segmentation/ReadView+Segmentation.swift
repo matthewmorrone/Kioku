@@ -141,18 +141,15 @@ extension ReadView {
         let sourceText = text
         let sourceNoteID = activeNoteID
         let persistedSegments = segments
-        let segmenter = self.segmenter
 
         StartupTimer.mark("refreshSegmentationRanges: running segmenter")
         segmentationRefreshTask = Task(priority: .userInitiated) {
-            let segmentationResult = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let result = StartupTimer.measure("segmenter.longestMatchResult") {
-                        segmenter.longestMatchResult(for: sourceText)
-                    }
-                    continuation.resume(returning: result)
+            let segmentationResult = await Task.detached(priority: .userInitiated) { [segmenter = self.segmenter, sourceText] in
+                StartupTimer.measure("segmenter.longestMatchResult") {
+                    segmenter.longestMatchResult(for: sourceText)
                 }
             }
+            .value
 
             guard Task.isCancelled == false else {
                 return

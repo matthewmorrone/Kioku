@@ -40,6 +40,13 @@ struct SettingsView: View {
     @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
 
+    @AppStorage(LyricAlignmentSettings.baseURLKey)
+    private var lyricAlignmentBaseURL: String = LyricAlignmentSettings.defaultBaseURL
+    @AppStorage(LyricAlignmentSettings.pathKey)
+    private var lyricAlignmentPath: String = LyricAlignmentSettings.defaultPath
+    @AppStorage(LyricAlignmentSettings.languageKey)
+    private var lyricAlignmentLanguage: String = LyricAlignmentSettings.defaultLanguage
+
     @AppStorage(WordOfTheDayScheduler.enabledKey) private var wotdEnabled: Bool = false
     @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
     @AppStorage(WordOfTheDayScheduler.minuteKey) private var wotdMinute: Int = 0
@@ -247,6 +254,33 @@ struct SettingsView: View {
                     } else {
                         Text("Using stub response. Enable \"Use LLM API\" to call the real API.")
                     }
+                }
+
+                Section {
+                    TextField("Base URL", text: $lyricAlignmentBaseURL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    TextField("Path", text: $lyricAlignmentPath)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    TextField("Language", text: $lyricAlignmentLanguage)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    Button("Reset to Defaults") {
+                        lyricAlignmentBaseURL = LyricAlignmentSettings.defaultBaseURL
+                        lyricAlignmentPath = LyricAlignmentSettings.defaultPath
+                        lyricAlignmentLanguage = LyricAlignmentSettings.defaultLanguage
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                } header: {
+                    Text("Lyric Alignment")
+                } footer: {
+                    Text("Generate SRT uploads the selected audio plus the current note text to this endpoint and saves the returned subtitles back onto the note.")
                 }
 
                 // Controls daily Word of the Day push notifications from the saved word list.

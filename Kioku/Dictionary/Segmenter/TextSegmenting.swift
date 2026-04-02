@@ -1,7 +1,7 @@
 import Foundation
 
 // Defines the shared interface for text segmentation backends so the app can swap implementations.
-nonisolated protocol TextSegmenting {
+nonisolated protocol TextSegmenting: Sendable {
     // Produces both the full candidate lattice and the currently selected greedy path for one text snapshot.
     func longestMatchResult(for text: String) -> (latticeEdges: [LatticeEdge], selectedEdges: [LatticeEdge])
 

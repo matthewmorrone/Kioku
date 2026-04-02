@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct NotesTransferDocument: FileDocument {
+nonisolated struct NotesTransferDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
 
     var payload: NotesTransferPayload

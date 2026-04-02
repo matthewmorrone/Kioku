@@ -75,7 +75,9 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     private func startTimer() {
         stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            self?.updateCurrentTime()
+            Task { @MainActor [weak self] in
+                self?.updateCurrentTime()
+            }
         }
     }
 

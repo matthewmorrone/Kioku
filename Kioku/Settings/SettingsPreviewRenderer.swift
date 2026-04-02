@@ -127,6 +127,8 @@ struct SettingsPreviewRenderer: UIViewRepresentable {
             overlayFrame: overlayFrame,
             selectedSegmentRect: nil,
             selectedSegmentColor: nil,
+            playbackHighlightRect: nil,
+            playbackHighlightColor: nil,
             illegalBoundaryRect: nil,
             illegalBoundaryColor: nil,
             furiganaStrings: furiganaStrings,

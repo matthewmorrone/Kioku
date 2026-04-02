@@ -4,6 +4,26 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
+enum ReadViewFileImportTarget {
+    case transcriptionAudio
+    case subtitleAudio
+    case subtitleFile
+
+    var allowedContentTypes: [UTType] {
+        switch self {
+        case .transcriptionAudio, .subtitleAudio:
+            return [.audio, .mpeg4Audio, .mp3]
+        case .subtitleFile:
+            return [.subripText, .plainText]
+        }
+    }
+}
+
+enum ReadViewSubtitleFlow {
+    case importExistingSRT
+    case generateOnServer
+}
+
 // Provides the primary reading and editing surface for an active note.
 struct ReadView: View {
     @Binding var selectedNote: Note?
@@ -84,19 +104,32 @@ struct ReadView: View {
     @State private var isShowingDisplayOptions = false
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
-    @State var isShowingAudioFileImporter = false
+    @State var activeFileImportTarget: ReadViewFileImportTarget? = nil
+    @State var isShowingFileImporter = false
+    @State var isShowingSubtitleActionDialog = false
+    @State var pendingSubtitleFlow: ReadViewSubtitleFlow? = nil
     @State var selectedOCRImageItem: PhotosPickerItem?
     @State var isPerformingOCRImport = false
     @State var isPerformingAudioTranscription = false
+    @State var isGeneratingLyricAlignment = false
     @State var ocrImportErrorMessage = ""
     @State var audioTranscriptionErrorMessage = ""
+    @State var lyricAlignmentErrorMessage = ""
+    @State var subtitleImportErrorMessage = ""
+    @State var lyricAlignmentProgressMessage = ""
+    @State var lyricAlignmentSourceFilename = ""
+    @State var pendingSubtitleAudioURL: URL? = nil
+    @State var pendingSubtitleAudioFilename = ""
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
     @State var audioController = AudioPlaybackController()
     @State var audioAttachmentCues: [SubtitleCue] = []
     @State var audioAttachmentHighlightRanges: [NSRange?] = []
+    @State var playbackHighlightRangeOverride: NSRange?
+    @State var activePlaybackCueIndex: Int? = nil
     @State var activeAudioAttachmentID: UUID? = nil
-    @State private var isShowingSubtitleEditor = false
+    @State var isAudioScrubberVisible = true
+    @State var isShowingSubtitleEditor = false
     @State var isRequestingLLMCorrection = false
     @State var isShowingLLMCorrectionError = false
     @State var llmCorrectionErrorMessage = ""
@@ -156,18 +189,208 @@ struct ReadView: View {
     }
 
     var body: some View {
+        alertingReadView
+    }
+
+    private var alertingReadView: some View {
+        lifecycleReadView
+            .alert("OCR Import Failed", isPresented: ocrImportErrorPresented) {
+                Button("OK", role: .cancel) {
+                    ocrImportErrorMessage = ""
+                }
+            } message: {
+                Text(ocrImportErrorMessage)
+            }
+            .sheet(isPresented: $isShowingSubtitleEditor) {
+                if let attachmentID = activeAudioAttachmentID {
+                    SubtitleEditorSheet(
+                        attachmentID: attachmentID,
+                        initialCues: audioAttachmentCues
+                    ) { newCues in
+                        // Reload the controller with updated cues so highlighting stays in sync.
+                        audioAttachmentCues = newCues
+                        if let url = NotesAudioStore.shared.audioURL(for: attachmentID) {
+                            try? audioController.load(audioURL: url, cues: newCues)
+                        }
+                    }
+                }
+            }
+            .alert("Audio Transcription Failed", isPresented: audioTranscriptionErrorPresented) {
+                Button("OK", role: .cancel) {
+                    audioTranscriptionErrorMessage = ""
+                }
+            } message: {
+                Text(audioTranscriptionErrorMessage)
+            }
+            .alert("Generate SRT Failed", isPresented: lyricAlignmentErrorPresented) {
+                Button("OK", role: .cancel) {
+                    lyricAlignmentErrorMessage = ""
+                }
+            } message: {
+                Text(lyricAlignmentErrorMessage)
+            }
+            .alert("Subtitle Import Failed", isPresented: subtitleImportErrorPresented) {
+                Button("OK", role: .cancel) {
+                    subtitleImportErrorMessage = ""
+                }
+            } message: {
+                Text(subtitleImportErrorMessage)
+            }
+            .alert("AI Correction", isPresented: $isShowingLLMCorrectionError) {
+                Button("OK", role: .cancel) {
+                    llmCorrectionErrorMessage = ""
+                }
+            } message: {
+                Text(llmCorrectionErrorMessage)
+            }
+            .alert("", isPresented: $isShowingLLMChangePopover) {
+                Button("Confirm") {
+                    if let loc = llmChangePopoverLocation {
+                        confirmLLMChange(at: loc)
+                    }
+                }
+                Button("Undo", role: .destructive) {
+                    if let loc = llmChangePopoverLocation {
+                        rejectLLMChange(at: loc)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(llmChangePopoverText)
+            }
+            .alert("Re-run AI Correction?", isPresented: $isShowingLLMRerunConfirm) {
+                Button("Re-run", role: .destructive) {
+                    requestLLMCorrection()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This note already has corrections applied. Re-running will replace them.")
+            }
+    }
+
+    private var lifecycleReadView: some View {
+        selectionLifecycleReadView
+            .onChange(of: selectedOCRImageItem) { _, newItem in
+                guard let newItem else {
+                    return
+                }
+
+                // Starts OCR import once the user has picked an image for recognition.
+                Task {
+                    await importTextFromSelectedOCRImage(newItem)
+                }
+            }
+            .onDisappear {
+                // Flushes any pending edit persistence before leaving the read screen.
+                segmentationRefreshTask?.cancel()
+                flushPendingNotePersistenceIfNeeded()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                // Flushes pending edits when the app moves to background so in-flight debounce tasks
+                // are not lost when the process is killed (e.g. during a Xcode rebuild).
+                if newPhase == .background {
+                    flushPendingNotePersistenceIfNeeded()
+                }
+            }
+    }
+
+    private var selectionLifecycleReadView: some View {
+        presentedReadView
+            .onAppear {
+                // Syncs editor state when this screen first appears.
+                loadSelectedNoteIfNeeded()
+            }
+            .onChange(of: selectedNote?.id) { _, _ in
+                // Syncs editor state when Notes tab selects a different note.
+                loadSelectedNoteIfNeeded()
+            }
+            .onChange(of: text) { oldText, newText in
+                // Persists edits as content changes.
+                scheduleCurrentNotePersistenceIfNeeded()
+                // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
+                // mapping is stable for in-line edits but shifts whenever lines are added or removed.
+                if audioAttachmentCues.isEmpty == false {
+                    let oldLineCount = oldText.components(separatedBy: .newlines).count
+                    let newLineCount = newText.components(separatedBy: .newlines).count
+                    if oldLineCount != newLineCount {
+                        audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(
+                            for: audioAttachmentCues,
+                            in: newText
+                        )
+                    }
+                }
+                if isEditMode {
+                    segments = nil
+                    illegalMergeBoundaryLocation = nil
+                    illegalMergeFlashTask?.cancel()
+                    // Clears stale range state while editing so view-mode reactivation never reads mismatched ranges.
+                    segmentationRefreshTask?.cancel()
+                    furiganaComputationTask?.cancel()
+                    segmentLatticeEdges = []
+                    segmentEdges = []
+                    segmentRanges = []
+                    selectedSegmentLocation = nil
+                    selectedHighlightRangeOverride = nil
+                    selectedBounds = nil
+                    SegmentLookupSheet.shared.dismissPopover()
+                    furiganaBySegmentLocation = [:]
+                    furiganaLengthBySegmentLocation = [:]
+                    return
+                }
+                // Recomputes segments only after full read resources are ready.
+                if readResourcesReady && isEditMode == false {
+                    refreshSegmentationRanges()
+                }
+            }
+            .onChange(of: isEditMode) { _, editing in
+                if editing {
+                    // Suspends furigana computation while editing text.
+                    illegalMergeBoundaryLocation = nil
+                    illegalMergeFlashTask?.cancel()
+                    segmentationRefreshTask?.cancel()
+                    furiganaComputationTask?.cancel()
+                    segmentLatticeEdges = []
+                    segmentEdges = []
+                    segmentRanges = []
+                    selectedSegmentLocation = nil
+                    selectedHighlightRangeOverride = nil
+                    selectedBounds = nil
+                    SegmentLookupSheet.shared.dismissPopover()
+                    furiganaBySegmentLocation = [:]
+                    furiganaLengthBySegmentLocation = [:]
+                } else if readResourcesReady {
+                    flushPendingNotePersistenceIfNeeded()
+                    // Recomputes once when returning to view mode so furigana matches latest text.
+                    refreshSegmentationRanges()
+                }
+            }
+            .onChange(of: segmenterRevision) { _, _ in
+                if text.isEmpty == false, debugStartupSegmentationDiffs {
+                    StartupTimer.measure("SegmentationDiffPrinter.printDiffs") {
+                        SegmentationDiffPrinter.printDiffs(for: text, trieSegmenter: segmenter)
+                    }
+                }
+
+                // When segments are persisted and furigana is already loaded, nothing to do.
+                // When segments exist but furigana is missing, generate it now that surfaceReadingData is ready.
+                // Otherwise recompute full segmentation.
+                if segments != nil {
+                    if furiganaBySegmentLocation.isEmpty {
+                        StartupTimer.mark("scheduling furigana for persisted segments (furigana missing)")
+                        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                    }
+                } else {
+                    StartupTimer.mark("no persisted segments, running full segmentation")
+                    refreshSegmentationRanges()
+                }
+            }
+    }
+
+    private var presentedReadView: some View {
         NavigationStack {
             titleView
             VStack(spacing: 10) {
                 editorView
-                // Shows playback controls when the active note has an audio attachment with cues loaded.
-                if audioAttachmentCues.isEmpty == false {
-                    AudioPlayerBar(
-                        controller: audioController,
-                        highlightRange: $selectedHighlightRangeOverride,
-                        onEditSubtitles: { isShowingSubtitleEditor = true }
-                    )
-                }
                 toolbarButtons
             }
         }
@@ -178,13 +401,19 @@ struct ReadView: View {
             AudioCueHighlightObserver(
                 controller: audioController,
                 highlightRanges: audioAttachmentHighlightRanges,
-                selectedHighlightRangeOverride: $selectedHighlightRangeOverride
+                playbackHighlightRangeOverride: $playbackHighlightRangeOverride,
+                activePlaybackCueIndex: $activePlaybackCueIndex
             )
         }
         .overlay(alignment: .topLeading) {
             // Pixel ruler is non-interactive and only drawn when its debug toggle is active.
             if debugPixelRuler {
                 PixelRulerOverlayView()
+            }
+        }
+        .overlay {
+            if isGeneratingLyricAlignment {
+                lyricAlignmentProgressOverlay
             }
         }
         .sheet(isPresented: $isShowingSegmentList) {
@@ -223,200 +452,65 @@ struct ReadView: View {
             preferredItemEncoding: .automatic
         )
         .fileImporter(
-            isPresented: $isShowingAudioFileImporter,
-            allowedContentTypes: [.audio],
+            isPresented: $isShowingFileImporter,
+            allowedContentTypes: activeFileImportTarget?.allowedContentTypes ?? [.data],
             allowsMultipleSelection: false
         ) { result in
-            handleAudioImportSelection(result)
+            let target = activeFileImportTarget
+            activeFileImportTarget = nil
+            handleFileImportSelection(result, target: target)
         }
-        .onAppear {
-            // Syncs editor state when this screen first appears.
-            loadSelectedNoteIfNeeded()
+        .confirmationDialog(
+            "Subtitles",
+            isPresented: $isShowingSubtitleActionDialog,
+            titleVisibility: .visible
+        ) {
+            subtitleActionDialogButtons
+        } message: {
+            subtitleActionDialogMessage
         }
-        .onChange(of: selectedNote?.id) { _, _ in
-            // Syncs editor state when Notes tab selects a different note.
-            loadSelectedNoteIfNeeded()
-        }
-        .onChange(of: text) { oldText, newText in
-            // Persists edits as content changes.
-            scheduleCurrentNotePersistenceIfNeeded()
-            // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
-            // mapping is stable for in-line edits but shifts whenever lines are added or removed.
-            if audioAttachmentCues.isEmpty == false {
-                let oldLineCount = oldText.components(separatedBy: .newlines).count
-                let newLineCount = newText.components(separatedBy: .newlines).count
-                if oldLineCount != newLineCount {
-                    audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(
-                        for: audioAttachmentCues,
-                        in: newText
-                    )
-                }
-            }
-            if isEditMode {
-                segments = nil
-                illegalMergeBoundaryLocation = nil
-                illegalMergeFlashTask?.cancel()
-                // Clears stale range state while editing so view-mode reactivation never reads mismatched ranges.
-                segmentationRefreshTask?.cancel()
-                furiganaComputationTask?.cancel()
-                segmentLatticeEdges = []
-                segmentEdges = []
-                segmentRanges = []
-                selectedSegmentLocation = nil
-                selectedHighlightRangeOverride = nil
-                selectedBounds = nil
-                SegmentLookupSheet.shared.dismissPopover()
-                furiganaBySegmentLocation = [:]
-                furiganaLengthBySegmentLocation = [:]
-                return
-            }
-            // Recomputes segments only after full read resources are ready.
-            if readResourcesReady && isEditMode == false {
-                refreshSegmentationRanges()
-            }
-        }
-        .onChange(of: isEditMode) { _, editing in
-            if editing {
-                // Suspends furigana computation while editing text.
-                illegalMergeBoundaryLocation = nil
-                illegalMergeFlashTask?.cancel()
-                segmentationRefreshTask?.cancel()
-                furiganaComputationTask?.cancel()
-                segmentLatticeEdges = []
-                segmentEdges = []
-                segmentRanges = []
-                selectedSegmentLocation = nil
-                selectedHighlightRangeOverride = nil
-                selectedBounds = nil
-                SegmentLookupSheet.shared.dismissPopover()
-                furiganaBySegmentLocation = [:]
-                furiganaLengthBySegmentLocation = [:]
-            } else if readResourcesReady {
-                flushPendingNotePersistenceIfNeeded()
-                // Recomputes once when returning to view mode so furigana matches latest text.
-                refreshSegmentationRanges()
-            }
-        }
-        .onChange(of: segmenterRevision) { _, _ in
-            if text.isEmpty == false, debugStartupSegmentationDiffs {
-                StartupTimer.measure("SegmentationDiffPrinter.printDiffs") {
-                    SegmentationDiffPrinter.printDiffs(for: text, trieSegmenter: segmenter)
-                }
-            }
+    }
 
-            // When segments are persisted and furigana is already loaded, nothing to do.
-            // When segments exist but furigana is missing, generate it now that surfaceReadingData is ready.
-            // Otherwise recompute full segmentation.
-            if segments != nil {
-                if furiganaBySegmentLocation.isEmpty {
-                    StartupTimer.mark("scheduling furigana for persisted segments (furigana missing)")
-                    scheduleFuriganaGeneration(for: text, edges: segmentEdges)
-                }
-            } else {
-                StartupTimer.mark("no persisted segments, running full segmentation")
-                refreshSegmentationRanges()
-            }
+    @ViewBuilder
+    private var subtitleActionDialogButtons: some View {
+        Button("Choose Audio + SRT") {
+            pendingSubtitleFlow = .importExistingSRT
+            presentFileImporter(for: .subtitleAudio)
         }
-        .onChange(of: selectedOCRImageItem) { _, newItem in
-            guard let newItem else {
-                return
-            }
+        Button("Choose Audio + Generate SRT") {
+            pendingSubtitleFlow = .generateOnServer
+            presentFileImporter(for: .subtitleAudio)
+        }
+        Button("Cancel", role: .cancel) {
+            pendingSubtitleFlow = nil
+            clearPendingSubtitleAudioSelection()
+        }
+    }
 
-            // Starts OCR import once the user has picked an image for recognition.
-            Task {
-                await importTextFromSelectedOCRImage(newItem)
-            }
-        }
-        .onDisappear {
-            // Flushes any pending edit persistence before leaving the read screen.
-            segmentationRefreshTask?.cancel()
-            flushPendingNotePersistenceIfNeeded()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            // Flushes pending edits when the app moves to background so in-flight debounce tasks
-            // are not lost when the process is killed (e.g. during a Xcode rebuild).
-            if newPhase == .background {
-                flushPendingNotePersistenceIfNeeded()
-            }
-        }
-        .alert("OCR Import Failed", isPresented: ocrImportErrorPresented) {
-            Button("OK", role: .cancel) {
-                ocrImportErrorMessage = ""
-            }
-        } message: {
-            Text(ocrImportErrorMessage)
-        }
-        .sheet(isPresented: $isShowingSubtitleEditor) {
-            if let attachmentID = activeAudioAttachmentID {
-                SubtitleEditorSheet(
-                    attachmentID: attachmentID,
-                    initialCues: audioAttachmentCues
-                ) { newCues in
-                    // Reload the controller with updated cues so highlighting stays in sync.
-                    audioAttachmentCues = newCues
-                    if let url = NotesAudioStore.shared.audioURL(for: attachmentID) {
-                        try? audioController.load(audioURL: url, cues: newCues)
-                    }
-                }
-            }
-        }
-        .alert("Audio Transcription Failed", isPresented: audioTranscriptionErrorPresented) {
-            Button("OK", role: .cancel) {
-                audioTranscriptionErrorMessage = ""
-            }
-        } message: {
-            Text(audioTranscriptionErrorMessage)
-        }
-        .alert("AI Correction", isPresented: $isShowingLLMCorrectionError) {
-            Button("OK", role: .cancel) {
-                llmCorrectionErrorMessage = ""
-            }
-        } message: {
-            Text(llmCorrectionErrorMessage)
-        }
-        .alert("", isPresented: $isShowingLLMChangePopover) {
-            Button("Confirm") {
-                if let loc = llmChangePopoverLocation {
-                    confirmLLMChange(at: loc)
-                }
-            }
-            Button("Undo", role: .destructive) {
-                if let loc = llmChangePopoverLocation {
-                    rejectLLMChange(at: loc)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(llmChangePopoverText)
-        }
-        .alert("Re-run AI Correction?", isPresented: $isShowingLLMRerunConfirm) {
-            Button("Re-run", role: .destructive) {
-                requestLLMCorrection()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This note already has corrections applied. Re-running will replace them.")
-        }
+    private var subtitleActionDialogMessage: some View {
+        Text("Choose an audio file, then either attach an existing SRT or generate one from the alignment server.")
     }
 
     // Displays the editable note title at the top of the reading screen.
     private var titleView: some View {
-        ZStack {
+        VStack(spacing: 8) {
             Text(displayTitle)
                 .font(.system(size: 24, weight: .bold))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
                 .onTapGesture {
                     titleDraft = resolvedTitle
                     isShowingTitleAlert = true
                 }
-            Spacer()
+
             HStack {
                 Spacer()
-                // audioTranscriptionButton
+                generateSRTButton
                 ocrImportButton
                 newNoteButton
             }
         }
-        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 8)
         .alert("Edit Title", isPresented: $isShowingTitleAlert) {
             TextField("Title", text: $titleDraft)
@@ -440,6 +534,8 @@ struct ReadView: View {
                     segmentationRanges: readResourcesReady ? segmentRanges : [],
                     selectedSegmentLocation: selectedSegmentLocation,
                     selectedHighlightRangeOverride: selectedHighlightRangeOverride,
+                    playbackHighlightRangeOverride: playbackHighlightRangeOverride,
+                    activePlaybackCueIndex: activePlaybackCueIndex,
                     illegalMergeBoundaryLocation: illegalMergeBoundaryLocation,
                     furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
                     furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
@@ -524,15 +620,26 @@ struct ReadView: View {
 
     // Renders action buttons for segmentation and display controls.
     private var toolbarButtons: some View {
-        HStack {
-            Spacer()
-            llmCorrectionButton
-            resetButton
-            segmentListButton
-            furiganaButton
-            editModeButton
+        VStack(spacing: 8) {
+            if audioController.duration > 0 && isAudioScrubberVisible {
+                AudioPlaybackScrubber(controller: audioController)
+            }
+
+            HStack {
+                if audioController.duration > 0 {
+                    AudioPlayerButton(
+                        controller: audioController,
+                        isScrubberVisible: $isAudioScrubberVisible
+                    )
+                }
+                Spacer()
+                llmCorrectionButton
+                resetButton
+                segmentListButton
+                furiganaButton
+                editModeButton
+            }
         }
-        // .padding(.horizontal, 8)
     }
 
     // Triggers an LLM correction request for the current note's segmentation and readings.
@@ -808,26 +915,29 @@ struct ReadView: View {
 private struct AudioCueHighlightObserver: View {
     @ObservedObject var controller: AudioPlaybackController
     let highlightRanges: [NSRange?]
-    @Binding var selectedHighlightRangeOverride: NSRange?
+    @Binding var playbackHighlightRangeOverride: NSRange?
+    @Binding var activePlaybackCueIndex: Int?
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
             .onAppear {
-                updateHighlight(for: controller.activeCueIndex)
+                updateHighlight(for: controller.activeCueIndex, isPlaying: controller.isPlaying)
             }
-            .onReceive(controller.$activeCueIndex.removeDuplicates()) { newIndex in
-                updateHighlight(for: newIndex)
+            .onReceive(controller.$activeCueIndex.combineLatest(controller.$isPlaying)) { newIndex, isPlaying in
+                updateHighlight(for: newIndex, isPlaying: isPlaying)
             }
     }
 
-    private func updateHighlight(for cueIndex: Int?) {
-        guard let cueIndex, cueIndex < highlightRanges.count else {
-            selectedHighlightRangeOverride = nil
+    private func updateHighlight(for cueIndex: Int?, isPlaying: Bool) {
+        guard isPlaying, let cueIndex, cueIndex < highlightRanges.count else {
+            playbackHighlightRangeOverride = nil
+            activePlaybackCueIndex = nil
             return
         }
 
-        selectedHighlightRangeOverride = highlightRanges[cueIndex]
+        activePlaybackCueIndex = cueIndex
+        playbackHighlightRangeOverride = highlightRanges[cueIndex]
     }
 }
 
