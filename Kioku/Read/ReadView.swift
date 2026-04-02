@@ -89,6 +89,7 @@ struct ReadView: View {
     @State var selectedSegmentLocation: Int?
     @State var selectedHighlightRangeOverride: NSRange?
     @State var selectedBounds: ClosedRange<Int>?
+    @State var transientBlankReadingSegmentLocation: Int?
     @State var segments: [SegmentRange]?
     @State var furiganaBySegmentLocation: [Int: String] = [:]
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
@@ -533,6 +534,7 @@ struct ReadView: View {
                     isLineWrappingEnabled: isLineWrappingEnabled,
                     segmentationRanges: readResourcesReady ? segmentRanges : [],
                     selectedSegmentLocation: selectedSegmentLocation,
+                    blankSelectedSegmentLocation: transientBlankReadingSegmentLocation,
                     selectedHighlightRangeOverride: selectedHighlightRangeOverride,
                     playbackHighlightRangeOverride: playbackHighlightRangeOverride,
                     activePlaybackCueIndex: activePlaybackCueIndex,

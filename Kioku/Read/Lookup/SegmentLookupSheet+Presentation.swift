@@ -65,19 +65,43 @@ extension SegmentLookupSheet {
             let headerStack = headerComponents.stack
             let headerRow = headerComponents.row
             let lemmaLabel = headerComponents.lemmaLabel
+            let headerContainer = UIView()
+            headerContainer.translatesAutoresizingMaskIntoConstraints = false
 
             let prevReadingButton = UIButton(type: .system)
             prevReadingButton.translatesAutoresizingMaskIntoConstraints = false
             prevReadingButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
             prevReadingButton.tintColor = .tertiaryLabel
+            prevReadingButton.accessibilityLabel = "Previous Reading"
 
             let nextReadingButton = UIButton(type: .system)
             nextReadingButton.translatesAutoresizingMaskIntoConstraints = false
             nextReadingButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
             nextReadingButton.tintColor = .tertiaryLabel
+            nextReadingButton.accessibilityLabel = "Next Reading"
 
-            // Arrows are laid out independently so their centerY can be pinned to the headword text row,
-            // which sits below the furigana inset — stack alignment can't express this offset cleanly.
+            headerContainer.addSubview(headerStack)
+            headerContainer.addSubview(prevReadingButton)
+            headerContainer.addSubview(nextReadingButton)
+            let readingButtonSize: CGFloat = 36
+            NSLayoutConstraint.activate([
+                headerStack.topAnchor.constraint(equalTo: headerContainer.topAnchor),
+                headerStack.centerXAnchor.constraint(equalTo: headerContainer.centerXAnchor),
+                headerStack.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor),
+                headerStack.leadingAnchor.constraint(greaterThanOrEqualTo: prevReadingButton.trailingAnchor, constant: 8),
+                headerStack.trailingAnchor.constraint(lessThanOrEqualTo: nextReadingButton.leadingAnchor, constant: -8),
+
+                prevReadingButton.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor),
+                prevReadingButton.widthAnchor.constraint(equalToConstant: readingButtonSize),
+                prevReadingButton.heightAnchor.constraint(equalToConstant: readingButtonSize),
+                prevReadingButton.centerYAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: -18),
+
+                nextReadingButton.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor),
+                nextReadingButton.widthAnchor.constraint(equalToConstant: readingButtonSize),
+                nextReadingButton.heightAnchor.constraint(equalToConstant: readingButtonSize),
+                nextReadingButton.centerYAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: -18),
+            ])
+
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
             var customReading: String? = nil
@@ -97,6 +121,19 @@ extension SegmentLookupSheet {
             // Rebuilds the visible header row with furigana for the current surface and reading.
             func rebuildHeaderRow(reading: String?) {
                 self.rebuildSheetHeaderRow(headerRow, surface: currentSurface, reading: reading)
+            }
+
+            // Keeps header arrows visible beside the title only when reading navigation is available.
+            func updateReadingNavigationButtons() {
+                let showsReadingNavigation = showCustomSlot
+                let canCycleReadings = totalSlots() > 1
+
+                prevReadingButton.isHidden = !showsReadingNavigation
+                nextReadingButton.isHidden = !showsReadingNavigation
+                prevReadingButton.isEnabled = canCycleReadings
+                nextReadingButton.isEnabled = canCycleReadings
+                prevReadingButton.alpha = canCycleReadings ? 1 : 0.45
+                nextReadingButton.alpha = canCycleReadings ? 1 : 0.45
             }
 
             // Updates the visible header to reflect the reading at the current index.
@@ -139,9 +176,7 @@ extension SegmentLookupSheet {
                 // print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) index=\(currentReadingIndex)")
 
                 syncFuriganaToCurrentIndex()
-                // Show arrows for any kanji segment — custom reading entry is always available.
-                prevReadingButton.isHidden = !showCustomSlot
-                nextReadingButton.isHidden = !showCustomSlot
+                updateReadingNavigationButtons()
             }
 
             // Updates the lemma label when the surface changes or supplemental data refreshes.
@@ -431,7 +466,7 @@ extension SegmentLookupSheet {
                 ).height)
                 // Header height is measured from the live view so the lemma label (when present)
                 // is included automatically rather than relying on a hardcoded constant.
-                let headerHeight = ceil(headerStack.systemLayoutSizeFitting(
+                let headerHeight = ceil(headerContainer.systemLayoutSizeFitting(
                     CGSize(width: contentWidth, height: UIView.layoutFittingCompressedSize.height),
                     withHorizontalFittingPriority: .required,
                     verticalFittingPriority: .fittingSizeLevel
@@ -614,9 +649,9 @@ extension SegmentLookupSheet {
                 }
             }
 
-            // Tap on the header opens a text-entry alert to set a custom reading (kanji only).
+            // Tap on the placeholder header opens a text-entry alert to set a custom reading.
             let headerTapHandler = ClosureTarget { [weak sheetController] in
-                guard let vc = sheetController, showCustomSlot else { return }
+                guard let vc = sheetController, showCustomSlot, isOnCustomSlot() else { return }
                 let alert = UIAlertController(title: "Custom Reading", message: nil, preferredStyle: .alert)
                 alert.addTextField { field in
                     field.text = customReading
@@ -638,8 +673,11 @@ extension SegmentLookupSheet {
                 })
                 vc.present(alert, animated: true)
             }
-            // headerTapHandler is retained but not wired to a gesture — header is hidden.
-            _ = headerTapHandler
+            let headerTapRecognizer = UITapGestureRecognizer(target: headerTapHandler, action: #selector(ClosureTarget.invoke))
+            headerTapRecognizer.cancelsTouchesInView = false
+            headerStack.isUserInteractionEnabled = true
+            headerStack.addGestureRecognizer(headerTapRecognizer)
+            objc_setAssociatedObject(headerStack, &SegmentLookupSheet.tapHandlerKey, headerTapHandler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
             // Populate initial content.
             updateMiddleContent()
@@ -907,7 +945,7 @@ extension SegmentLookupSheet {
             // segmentRangeProvider() returns the NSRange of the current segment within the note.
             // Add content to middleContentStack here using that range as needed.
 
-            sheetController.view.addSubview(headerStack)
+            sheetController.view.addSubview(headerContainer)
             sheetController.view.addSubview(splitPanelContainer)
             sheetController.view.addSubview(middleContentStack)
             sheetController.view.addSubview(actionMenuContainer)
@@ -917,10 +955,10 @@ extension SegmentLookupSheet {
 
             NSLayoutConstraint.activate([
                 // Surface header with furigana at the top of the sheet.
-                headerStack.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
-                headerStack.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
-                headerStack.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
-                splitPanelContainer.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 8),
+                headerContainer.topAnchor.constraint(equalTo: sheetController.view.safeAreaLayoutGuide.topAnchor, constant: 16),
+                headerContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
+                headerContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
+                splitPanelContainer.topAnchor.constraint(equalTo: headerContainer.bottomAnchor, constant: 8),
                 splitPanelContainer.leadingAnchor.constraint(equalTo: sheetController.view.leadingAnchor, constant: 16),
                 splitPanelContainer.trailingAnchor.constraint(equalTo: sheetController.view.trailingAnchor, constant: -16),
 

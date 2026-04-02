@@ -31,7 +31,7 @@ extension SegmentLookupSheet {
         let chars = Array(surface)
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)
         let readings = reading.flatMap {
-            FuriganaAttributedString.projectRunReadings(surface: surface, reading: $0, runs: runs)
+            FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: $0, runs: runs)
         }
 
         struct Segment {

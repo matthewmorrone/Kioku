@@ -27,8 +27,8 @@ nonisolated public final class Lexicon {
             return surface
         }
 
-        if let lookupReading = surfaceReadingData[surface]?.readings.first {
-            return lookupReading
+        if let surfaceReading = readings(surface: surface).first {
+            return surfaceReading
         }
 
         // Compute paths once so bestTransitions does not re-traverse below.
@@ -51,6 +51,64 @@ nonisolated public final class Lexicon {
         }
 
         return surface
+    }
+
+    // Returns all valid readings for one surface, ordered by direct surface matches first and
+    // then by deinflected lemma readings projected back onto the encountered surface.
+    public func readings(surface: String) -> [String] {
+        let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedSurface.isEmpty == false else {
+            return []
+        }
+
+        var readingCandidates: [String] = []
+        var seenReadings = Set<String>()
+
+        func appendReading(_ reading: String?) {
+            guard let reading, reading.isEmpty == false, seenReadings.contains(reading) == false else {
+                return
+            }
+
+            seenReadings.insert(reading)
+            readingCandidates.append(reading)
+        }
+
+        if ScriptClassifier.isPureKana(trimmedSurface) {
+            appendReading(trimmedSurface)
+            return readingCandidates
+        }
+
+        if let directSurfaceData = surfaceReadingData[trimmedSurface] {
+            for reading in directSurfaceData.readings {
+                appendReading(reading)
+            }
+        }
+
+        let (candidateLemmas, pathsByLemma) = admittedLemmasAndPaths(for: trimmedSurface)
+        for entry in candidateLemmas {
+            let candidateLemma = entry.lemma
+            let lemmaReadings = readingsForLemma(candidateLemma)
+            guard lemmaReadings.isEmpty == false else {
+                continue
+            }
+
+            if trimmedSurface == candidateLemma {
+                for lemmaReading in lemmaReadings {
+                    appendReading(lemmaReading)
+                }
+                continue
+            }
+
+            guard let transitions = deinflector.bestTransitions(from: pathsByLemma, targetLemma: candidateLemma) else {
+                continue
+            }
+
+            for lemmaReading in lemmaReadings {
+                appendReading(applySurfaceTransitions(to: lemmaReading, transitions: transitions))
+            }
+        }
+
+        return readingCandidates
     }
 
     // Returns the most deeply deinflected admitted candidates for one surface.
@@ -367,24 +425,49 @@ nonisolated public final class Lexicon {
         }
     }
 
-    // Resolves preferred reading for one lemma from the in-memory reading map or dictionary fallback.
-    private func readingForLemma(_ lemma: String) -> String? {
-        if let mapReading = surfaceReadingData[lemma]?.readings.first {
-            return mapReading
+    // Resolves all known readings for one lemma from the in-memory reading map or dictionary fallback.
+    private func readingsForLemma(_ lemma: String) -> [String] {
+        let trimmedLemma = lemma.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedLemma.isEmpty == false else {
+            return []
         }
 
-        if ScriptClassifier.isPureKana(lemma) {
-            return lemma
+        var readings: [String] = []
+        var seenReadings = Set<String>()
+
+        func appendReading(_ reading: String?) {
+            guard let reading, reading.isEmpty == false, seenReadings.contains(reading) == false else {
+                return
+            }
+
+            seenReadings.insert(reading)
+            readings.append(reading)
         }
 
-        let entries = lookupLexeme(lemma, nil)
-        for entry in entries {
-            if let firstReading = entry.kanaForms.first?.text {
-                return firstReading
+        if let mapReadings = surfaceReadingData[trimmedLemma]?.readings {
+            for reading in mapReadings {
+                appendReading(reading)
             }
         }
 
-        return nil
+        if ScriptClassifier.isPureKana(trimmedLemma) {
+            appendReading(trimmedLemma)
+            return readings
+        }
+
+        let entries = lookupLexeme(trimmedLemma, nil)
+        for entry in entries where entry.kanjiForms.contains(where: { $0.text == trimmedLemma }) {
+            for kanaForm in entry.kanaForms where kanaForm.nokanji == false {
+                appendReading(kanaForm.text)
+            }
+        }
+
+        return readings
+    }
+
+    // Resolves preferred reading for one lemma from the ordered reading candidates.
+    private func readingForLemma(_ lemma: String) -> String? {
+        readingsForLemma(lemma).first
     }
 
     // Applies inverse deinflection transitions in reverse order to project lemma reading back to surface reading.

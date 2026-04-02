@@ -6,26 +6,21 @@ import CoreText
 enum FuriganaAttributedString {
 
     // Builds an attributed string with per-kanji-run furigana for the given surface and reading.
-    // Falls back to a full-surface ruby annotation when run-reading projection fails.
+    // Falls back to plain text when run-reading projection fails so okurigana never ends up inside ruby.
     static func build(surface: String, reading: String, font: UIFont) -> NSAttributedString {
         let runs = kanjiRuns(in: surface)
         guard !runs.isEmpty else {
             return NSAttributedString(string: surface, attributes: [.font: font])
         }
 
-        if let runReadings = projectRunReadings(surface: surface, reading: reading, runs: runs),
+        if let runReadings = normalizedRunReadings(surface: surface, reading: reading, runs: runs),
            runReadings.count == runs.count {
             return buildPerRunAttributedString(surface: surface, runs: runs, runReadings: runReadings, font: font)
         }
 
-        // Fall back: apply full reading as a single ruby span over the entire surface.
-        return NSAttributedString(
-            string: surface,
-            attributes: [
-                .font: font,
-                NSAttributedString.Key(kCTRubyAnnotationAttributeName as String): makeRuby(reading),
-            ]
-        )
+        // A whole-surface ruby fallback puts trailing kana inside the annotation, which is worse than
+        // showing no furigana for that token.
+        return NSAttributedString(string: surface, attributes: [.font: font])
     }
 
     // Assembles the attributed string segment-by-segment, tagging only kanji runs with ruby.
@@ -160,5 +155,93 @@ enum FuriganaAttributedString {
         }
 
         return result
+    }
+
+    // Normalizes a segment reading into one per kanji run, trimming redundant okurigana when a
+    // single-run surface was stored as one mixed annotation (for example 抱かれ + だかれ -> だ).
+    static func normalizedRunReadings(
+        surface: String,
+        reading: String,
+        runs: [(start: Int, end: Int)]? = nil
+    ) -> [String]? {
+        let runs = runs ?? kanjiRuns(in: surface)
+        guard runs.isEmpty == false else { return nil }
+
+        if let projected = projectRunReadings(surface: surface, reading: reading, runs: runs),
+           projected.count == runs.count {
+            return projected
+        }
+
+        guard runs.count == 1,
+              let isolatedReading = isolatedRunReading(surface: surface, reading: reading, run: runs[0]) else {
+            return nil
+        }
+
+        return [isolatedReading]
+    }
+
+    // Returns the display reading for a single applied furigana annotation range.
+    // Multi-run mixed surfaces are rejected because one overlay label cannot represent them safely.
+    static func normalizedDisplayReading(surface: String, reading: String) -> String? {
+        let runs = kanjiRuns(in: surface)
+        guard runs.count == 1,
+              let runReadings = normalizedRunReadings(surface: surface, reading: reading, runs: runs),
+              runReadings.count == 1 else {
+            return nil
+        }
+
+        return runReadings[0]
+    }
+
+    // Extracts the reading for a single kanji run by removing matching kana affixes from the full
+    // segment reading using the same phonetic normalization used elsewhere in furigana alignment.
+    private static func isolatedRunReading(
+        surface: String,
+        reading: String,
+        run: (start: Int, end: Int)
+    ) -> String? {
+        let characters = Array(surface)
+        let prefixSurface = run.start > 0 ? String(characters[..<run.start]) : ""
+        let suffixSurface = run.end < characters.count ? String(characters[run.end..<characters.count]) : ""
+        var trimmedReading = reading
+
+        if !prefixSurface.isEmpty {
+            guard hasPhoneticPrefix(trimmedReading, matching: prefixSurface) else {
+                return nil
+            }
+            trimmedReading = String(trimmedReading.dropFirst(prefixSurface.count))
+        }
+
+        if !suffixSurface.isEmpty {
+            guard hasPhoneticSuffix(trimmedReading, matching: suffixSurface) else {
+                return nil
+            }
+            trimmedReading = String(trimmedReading.dropLast(suffixSurface.count))
+        }
+
+        let runSurface = String(characters[run.start..<run.end])
+        guard !trimmedReading.isEmpty, trimmedReading != runSurface else {
+            return nil
+        }
+
+        return trimmedReading
+    }
+
+    private static func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
+        guard reading.count >= surfacePrefix.count else {
+            return false
+        }
+
+        let readingPrefix = String(reading.prefix(surfacePrefix.count))
+        return KanaNormalizer.normalizeForFuriganaAlignment(readingPrefix) == KanaNormalizer.normalizeForFuriganaAlignment(surfacePrefix)
+    }
+
+    private static func hasPhoneticSuffix(_ reading: String, matching surfaceSuffix: String) -> Bool {
+        guard reading.count >= surfaceSuffix.count else {
+            return false
+        }
+
+        let readingSuffix = String(reading.suffix(surfaceSuffix.count))
+        return KanaNormalizer.normalizeForFuriganaAlignment(readingSuffix) == KanaNormalizer.normalizeForFuriganaAlignment(surfaceSuffix)
     }
 }
