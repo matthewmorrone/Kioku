@@ -10,13 +10,12 @@ extension ReadView {
 
         let selectedStart = segmentEdges[selectedBounds.lowerBound].start
         let selectedEnd = segmentEdges[selectedBounds.upperBound].end
-        let selectedSurface = String(text[selectedStart..<selectedEnd])
         let selectedRange = NSRange(selectedStart..<selectedEnd, in: text)
         guard selectedRange.location != NSNotFound, selectedRange.length > 0 else {
             return
         }
 
-        let sectionEdges = Lattice.sectionEdges(
+        _ = Lattice.sectionEdges(
             from: segmentLatticeEdges,
             in: text,
             selectedStart: selectedStart,

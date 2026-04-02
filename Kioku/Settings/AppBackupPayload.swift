@@ -1,7 +1,7 @@
 import Foundation
 
 // Versioned full-app backup payload covering all persisted Kioku user data.
-struct AppBackupPayload: Codable {
+nonisolated struct AppBackupPayload: Codable {
     static let currentVersion = 1
 
     var version: Int

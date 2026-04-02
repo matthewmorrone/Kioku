@@ -4,6 +4,8 @@ import UIKit
 final class FuriganaOverlayView: UIView {
     private var selectedSegmentRect: CGRect?
     private var selectedSegmentColor: UIColor?
+    private var playbackHighlightRect: CGRect?
+    private var playbackHighlightColor: UIColor?
     private var illegalBoundaryRect: CGRect?
     private var illegalBoundaryColor: UIColor?
     private var furiganaStrings: [String] = []
@@ -39,6 +41,8 @@ final class FuriganaOverlayView: UIView {
         overlayFrame: CGRect,
         selectedSegmentRect: CGRect?,
         selectedSegmentColor: UIColor?,
+        playbackHighlightRect: CGRect?,
+        playbackHighlightColor: UIColor?,
         illegalBoundaryRect: CGRect?,
         illegalBoundaryColor: UIColor?,
         furiganaStrings: [String],
@@ -57,6 +61,8 @@ final class FuriganaOverlayView: UIView {
         frame = overlayFrame
         self.selectedSegmentRect = selectedSegmentRect
         self.selectedSegmentColor = selectedSegmentColor
+        self.playbackHighlightRect = playbackHighlightRect
+        self.playbackHighlightColor = playbackHighlightColor
         self.illegalBoundaryRect = illegalBoundaryRect
         self.illegalBoundaryColor = illegalBoundaryColor
         self.furiganaStrings = furiganaStrings
@@ -100,6 +106,11 @@ final class FuriganaOverlayView: UIView {
         if let selectedSegmentRect, let selectedSegmentColor, selectedSegmentRect.intersects(rect) {
             selectedSegmentColor.setFill()
             UIBezierPath(roundedRect: selectedSegmentRect, cornerRadius: 4).fill()
+        }
+
+        if let playbackHighlightRect, let playbackHighlightColor, playbackHighlightRect.intersects(rect) {
+            playbackHighlightColor.setFill()
+            UIBezierPath(roundedRect: playbackHighlightRect, cornerRadius: 7).fill()
         }
 
         if let illegalBoundaryRect, let illegalBoundaryColor, illegalBoundaryRect.intersects(rect) {

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Presents a raw SRT text editor for the subtitle cues attached to a note.
 // On save the text is re-parsed and the updated cues are persisted via NotesAudioStore.
@@ -12,6 +13,8 @@ struct SubtitleEditorSheet: View {
 
     @State private var srtText = ""
     @State private var parseError = ""
+    @State private var exportDocument = SRTDocument(text: "")
+    @State private var isShowingExporter = false
 
     var body: some View {
         NavigationStack {
@@ -21,6 +24,22 @@ struct SubtitleEditorSheet: View {
                 .navigationTitle("Edit Subtitles")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItemGroup(placement: .topBarLeading) {
+                        Button {
+                            UIPasteboard.general.string = srtText
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                        .disabled(srtText.isEmpty)
+
+                        Button {
+                            exportDocument = SRTDocument(text: srtText)
+                            isShowingExporter = true
+                        } label: {
+                            Label("Export", systemImage: "square.and.arrow.up")
+                        }
+                        .disabled(srtText.isEmpty)
+                    }
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
                     }
@@ -36,7 +55,17 @@ struct SubtitleEditorSheet: View {
         }
         .onAppear {
             // Reconstruct the SRT text from stored cues so the user sees the current state.
-            srtText = SubtitleParser.formatSRT(from: initialCues)
+            srtText = NotesAudioStore.shared.loadSRT(for: attachmentID) ?? SubtitleParser.formatSRT(from: initialCues)
+        }
+        .fileExporter(
+            isPresented: $isShowingExporter,
+            document: exportDocument,
+            contentType: .subripText,
+            defaultFilename: NotesAudioStore.shared.preferredSubtitleExportFilename(for: attachmentID)
+        ) { result in
+            if case .failure(let error) = result {
+                parseError = error.localizedDescription
+            }
         }
     }
 
@@ -58,6 +87,11 @@ struct SubtitleEditorSheet: View {
 
         do {
             try NotesAudioStore.shared.saveCues(newCues, attachmentID: attachmentID)
+            _ = try NotesAudioStore.shared.saveSRT(
+                srtText,
+                attachmentID: attachmentID,
+                preferredFilename: NotesAudioStore.shared.preferredSubtitleExportFilename(for: attachmentID)
+            )
             onSave(newCues)
             dismiss()
         } catch {

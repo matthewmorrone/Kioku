@@ -1,105 +1,99 @@
 import SwiftUI
 
-// Renders a compact play/pause button for notes with an audio attachment.
-// Long-pressing the button reveals a bottom sheet with the scrubber, restart,
-// and subtitle-edit actions.
-struct AudioPlayerBar: View {
+// Compact bottom-row playback button with restart and subtitle-edit affordances.
+struct AudioPlayerButton: View {
     @ObservedObject var controller: AudioPlaybackController
-    // Writes the NSRange of the active cue back to ReadView for text highlighting.
-    @Binding var highlightRange: NSRange?
-    // Called when the user requests to edit the subtitle file.
-    var onEditSubtitles: () -> Void
-
-    @State private var isShowingControls = false
+    @Binding var isScrubberVisible: Bool
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color(.tertiarySystemFill))
-            Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: 16, weight: .semibold))
-        }
-        .frame(width: 36, height: 36)
-        .contentShape(Circle())
-        .onTapGesture {
-            if controller.isPlaying { controller.pause() } else { controller.play() }
-        }
-        .onLongPressGesture(minimumDuration: 0.4) {
-            isShowingControls = true
-        }
-        .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
-        .sheet(isPresented: $isShowingControls) {
-            expandedControls
-                .presentationDetents([.height(160)])
-                .presentationDragIndicator(.visible)
-        }
-        .onDisappear {
-            // Clear highlight so it doesn't linger when the bar is hidden.
-            highlightRange = nil
-        }
-    }
-
-    // Bottom sheet content: scrubber, time, restart, and edit-subtitles actions.
-    @ViewBuilder
-    private var expandedControls: some View {
-        VStack(spacing: 20) {
-            // Tappable scrubber with elapsed time label.
-            HStack(spacing: 12) {
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color(.systemFill))
-                            .frame(height: 4)
-                        Capsule()
-                            .fill(Color.accentColor)
-                            .frame(width: proxy.size.width * playbackFraction, height: 4)
-                    }
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture { location in
-                        let ms = Int((location.x / max(proxy.size.width, 1)) * controller.duration * 1000)
-                        controller.seek(toMs: ms)
-                    }
-                }
-                .frame(height: 36)
-
-                Text(formattedTime)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 36, alignment: .trailing)
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color(.tertiarySystemFill))
+                Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
             }
-
-            // Secondary actions: restart playback and open subtitle editor.
-            HStack {
-                Button {
-                    controller.seek(toMs: 0)
-                } label: {
-                    Label("Restart", systemImage: "arrow.counterclockwise")
+            .frame(width: 36, height: 36)
+            .contentShape(Circle())
+            .onTapGesture {
+                if controller.isPlaying {
+                    controller.pause()
+                } else {
+                    controller.play()
+                    isScrubberVisible = true
                 }
-                .buttonStyle(.bordered)
-
-                Spacer()
-
-                Button {
-                    isShowingControls = false
-                    onEditSubtitles()
-                } label: {
-                    Label("Edit Subtitles", systemImage: "pencil")
-                }
-                .buttonStyle(.bordered)
             }
+            .onLongPressGesture(minimumDuration: 0.4) {
+                controller.seek(toMs: 0)
+                controller.play()
+                isScrubberVisible = true
+            }
+            .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
+            .accessibilityHint("Press and hold to restart playback")
+
+            Button {
+                isScrubberVisible.toggle()
+            } label: {
+                Image(systemName: isScrubberVisible ? "chevron.down" : "chevron.up")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        Circle()
+                            .fill(Color(.tertiarySystemFill))
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isScrubberVisible ? "Hide Scrubber" : "Show Scrubber")
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 20)
+    }
+}
+
+// Dedicated playback scrubber row that appears only while audio is playing.
+struct AudioPlaybackScrubber: View {
+    @ObservedObject var controller: AudioPlaybackController
+
+    @State private var scrubPositionSeconds: Double = 0
+    @State private var isScrubbing = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Slider(
+                value: Binding(
+                    get: { isScrubbing ? scrubPositionSeconds : currentPositionSeconds },
+                    set: { scrubPositionSeconds = $0 }
+                ),
+                in: 0...max(controller.duration, 0.1),
+                onEditingChanged: { editing in
+                    isScrubbing = editing
+                    if editing {
+                        scrubPositionSeconds = currentPositionSeconds
+                    } else {
+                        controller.seek(toMs: Int(scrubPositionSeconds * 1000))
+                    }
+                }
+            )
+            .tint(.accentColor)
+
+            Text(formattedTime)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 42, alignment: .trailing)
+        }
+        .padding(.horizontal, 4)
+        .onChange(of: controller.currentTimeMs) { _, newTimeMs in
+            guard isScrubbing == false else {
+                return
+            }
+            scrubPositionSeconds = Double(newTimeMs) / 1000
+        }
     }
 
-    // Fraction of total duration elapsed; clamped to [0, 1].
-    private var playbackFraction: CGFloat {
-        guard controller.duration > 0 else { return 0 }
-        return CGFloat(min(Double(controller.currentTimeMs) / (controller.duration * 1000), 1.0))
+    private var currentPositionSeconds: Double {
+        Double(controller.currentTimeMs) / 1000
     }
 
-    // Converts milliseconds to a M:SS string for the elapsed time label.
     private var formattedTime: String {
         let totalSeconds = controller.currentTimeMs / 1000
         return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)

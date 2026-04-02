@@ -5,8 +5,11 @@ enum SubtitleParser {
     // Parses an SRT string into cues. Offsets into note content are not stored here;
     // call resolveHighlightRanges(for:in:) separately at playback time.
     static func parse(_ srtContent: String) -> [SubtitleCue] {
+        let normalizedContent = srtContent
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
         // Split on blank lines that separate cue blocks.
-        let blocks = srtContent.components(separatedBy: "\n\n")
+        let blocks = normalizedContent.components(separatedBy: "\n\n")
         var cues: [SubtitleCue] = []
 
         for block in blocks {

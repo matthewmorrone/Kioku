@@ -1,6 +1,6 @@
 import Foundation
 
-struct NotesTransferPayload: Codable {
+nonisolated struct NotesTransferPayload: Codable {
     static let currentVersion = 2
 
     var version: Int
@@ -8,7 +8,7 @@ struct NotesTransferPayload: Codable {
     var notes: [Note]
 
     // Creates a versioned payload for note import and export workflows.
-    nonisolated init(version: Int = currentVersion, exportedAt: Date = Date(), notes: [Note]) {
+    init(version: Int = currentVersion, exportedAt: Date = Date(), notes: [Note]) {
         self.version = version
         self.exportedAt = exportedAt
         self.notes = notes

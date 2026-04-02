@@ -13,6 +13,9 @@ extension ReadView {
             audioAttachmentCues = []
             audioAttachmentHighlightRanges = []
             activeAudioAttachmentID = nil
+            isAudioScrubberVisible = false
+            playbackHighlightRangeOverride = nil
+            activePlaybackCueIndex = nil
             selectedHighlightRangeOverride = nil
             return
         }
@@ -26,6 +29,9 @@ extension ReadView {
         audioAttachmentHighlightRanges = StartupTimer.measure("loadAudioAttachmentIfNeeded.resolveHighlightRanges") {
             SubtitleParser.resolveHighlightRanges(for: cues, in: text)
         }
+        isAudioScrubberVisible = false
+        playbackHighlightRangeOverride = nil
+        activePlaybackCueIndex = nil
 
         let audioURL = StartupTimer.measure("loadAudioAttachmentIfNeeded.audioURL") {
             NotesAudioStore.shared.audioURL(for: attachmentID)
@@ -46,6 +52,8 @@ extension ReadView {
             StartupTimer.mark("loadAudioAttachmentIfNeeded failed: \(error.localizedDescription)")
             audioAttachmentCues = []
             audioAttachmentHighlightRanges = []
+            playbackHighlightRangeOverride = nil
+            activePlaybackCueIndex = nil
         }
     }
 }

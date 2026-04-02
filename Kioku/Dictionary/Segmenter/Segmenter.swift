@@ -1,7 +1,7 @@
 import Foundation
 
 // Builds segmentation lattice edges by querying dictionary prefix matches at each text position.
-nonisolated final class Segmenter: TextSegmenting {
+nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
     private let trie: DictionaryTrie
     private let deinflector: Deinflector?

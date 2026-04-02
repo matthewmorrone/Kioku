@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 // Reads and writes the current full-app backup JSON format.
-struct AppBackupDocument: FileDocument {
+nonisolated struct AppBackupDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
 
     var payload: AppBackupPayload

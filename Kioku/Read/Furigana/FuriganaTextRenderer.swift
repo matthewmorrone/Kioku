@@ -10,6 +10,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let segmentationRanges: [Range<String.Index>]
     let selectedSegmentLocation: Int?
     let selectedHighlightRangeOverride: NSRange?
+    let playbackHighlightRangeOverride: NSRange?
+    let activePlaybackCueIndex: Int?
     let illegalMergeBoundaryLocation: Int?
     let furiganaBySegmentLocation: [Int: String]
     let furiganaLengthBySegmentLocation: [Int: Int]
@@ -184,6 +186,25 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             selectedSegmentRect = selectedRect.insetBy(dx: -1, dy: 0)
         }
 
+        var playbackHighlightRect: CGRect?
+        var playbackHighlightColor: UIColor?
+        if let playbackHighlightRange = playbackHighlightNSRange(in: text),
+           let playbackRect = segmentRectInTextView(textView: textView, nsRange: playbackHighlightRange) {
+            playbackHighlightColor = UIColor { traitCollection in
+                traitCollection.userInterfaceStyle == .dark
+                    ? UIColor.systemMint.withAlphaComponent(0.28)
+                    : UIColor.systemTeal.withAlphaComponent(0.20)
+            }
+            playbackHighlightRect = playbackRect.insetBy(dx: -6, dy: -2)
+            context.coordinator.applyPlaybackAutoscrollIfNeeded(
+                to: textView,
+                cueIndex: activePlaybackCueIndex,
+                targetRect: playbackRect
+            )
+        } else {
+            context.coordinator.clearPlaybackAutoscrollState()
+        }
+
         var illegalBoundaryRect: CGRect?
         var illegalBoundaryColor: UIColor?
         if let illegalMergeBoundaryLocation,
@@ -313,6 +334,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             overlayFrame: overlayFrame,
             selectedSegmentRect: selectedSegmentRect,
             selectedSegmentColor: selectedSegmentColor,
+            playbackHighlightRect: playbackHighlightRect,
+            playbackHighlightColor: playbackHighlightColor,
             illegalBoundaryRect: illegalBoundaryRect,
             illegalBoundaryColor: illegalBoundaryColor,
             furiganaStrings: furiganaStrings,
@@ -474,6 +497,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(selectedSegmentLocation)
         hasher.combine(selectedHighlightRangeOverride?.location)
         hasher.combine(selectedHighlightRangeOverride?.length)
+        hasher.combine(playbackHighlightRangeOverride?.location)
+        hasher.combine(playbackHighlightRangeOverride?.length)
+        hasher.combine(activePlaybackCueIndex)
         hasher.combine(illegalMergeBoundaryLocation)
         hasher.combine(textSize)
         hasher.combine(lineSpacing)
@@ -565,6 +591,17 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         }
 
         return nil
+    }
+
+    private func playbackHighlightNSRange(in sourceText: String) -> NSRange? {
+        guard let playbackHighlightRangeOverride,
+              playbackHighlightRangeOverride.location != NSNotFound,
+              playbackHighlightRangeOverride.length > 0,
+              playbackHighlightRangeOverride.upperBound <= (sourceText as NSString).length else {
+            return nil
+        }
+
+        return playbackHighlightRangeOverride
     }
 
     // Measures text width for furigana label sizing so readings don't collapse into truncation glyphs.

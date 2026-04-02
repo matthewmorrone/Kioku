@@ -15,6 +15,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
     private var segmentationNSRanges: [NSRange] = []
     private var wasActive = false
     private var lastPublishedScrollOffsetY: CGFloat?
+    private var lastPlaybackAutoscrolledCueIndex: Int?
     private var hasLoggedMakeUIView = false
     private var hasLoggedFirstActiveUpdate = false
     private var hasLoggedFirstTextRender = false
@@ -162,6 +163,27 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
         isApplyingExternalScroll = false
         lastPublishedScrollOffsetY = clampedTargetY
         onScrollOffsetYChanged(clampedTargetY)
+    }
+
+    // Scrolls the active playback cue into a comfortable reading band when the cue changes.
+    func applyPlaybackAutoscrollIfNeeded(to textView: UITextView, cueIndex: Int?, targetRect: CGRect?) {
+        guard let cueIndex, let targetRect else {
+            clearPlaybackAutoscrollState()
+            return
+        }
+
+        guard lastPlaybackAutoscrolledCueIndex != cueIndex else {
+            return
+        }
+
+        lastPlaybackAutoscrolledCueIndex = cueIndex
+        let preferredVisibleY = textView.bounds.height * 0.32
+        let targetOffsetY = targetRect.midY - preferredVisibleY
+        applyExternalScrollIfNeeded(to: textView, targetOffsetY: targetOffsetY)
+    }
+
+    func clearPlaybackAutoscrollState() {
+        lastPlaybackAutoscrolledCueIndex = nil
     }
 
     // Maps pinch gestures in read mode to persisted text-size updates.
