@@ -9,6 +9,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let isLineWrappingEnabled: Bool
     let segmentationRanges: [Range<String.Index>]
     let selectedSegmentLocation: Int?
+    let blankSelectedSegmentLocation: Int?
     let selectedHighlightRangeOverride: NSRange?
     let playbackHighlightRangeOverride: NSRange?
     let activePlaybackCueIndex: Int?
@@ -174,9 +175,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             )
         )
 
+        let selectedSegmentRange = selectedSegmentNSRange(in: text)
         var selectedSegmentRect: CGRect?
         var selectedSegmentColor: UIColor?
-        if let selectedSegmentRange = selectedSegmentNSRange(in: text),
+        if let selectedSegmentRange,
            let selectedRect = segmentRectInTextView(textView: textView, nsRange: selectedSegmentRange) {
             selectedSegmentColor = UIColor { traitCollection in
                 traitCollection.userInterfaceStyle == .dark
@@ -232,13 +234,27 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 }
 
                 let nsRange = NSRange(location: location, length: length)
+                guard
+                    let surfaceRange = Range(nsRange, in: text),
+                    let displayReading = FuriganaAttributedString.normalizedDisplayReading(
+                        surface: String(text[surfaceRange]),
+                        reading: furigana
+                    )
+                else {
+                    continue
+                }
+                if blankSelectedSegmentLocation == selectedSegmentLocation,
+                   let selectedSegmentRange,
+                   NSIntersectionRange(nsRange, selectedSegmentRange).length > 0 {
+                    continue
+                }
                 guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else {
                     continue
                 }
 
-                let furiganaWidth = measureTextWidth(furigana, font: furiganaFont, kerning: 0)
+                let furiganaWidth = measureTextWidth(displayReading, font: furiganaFont, kerning: 0)
                 let furiganaX = segmentRect.midX - (furiganaWidth / 2)
-                furiganaStrings.append(furigana)
+                furiganaStrings.append(displayReading)
                 furiganaFrames.append(
                     CGRect(
                         x: furiganaX,
@@ -495,6 +511,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             hasher.combine(furiganaLengthBySegmentLocation[location] ?? 0)
         }
         hasher.combine(selectedSegmentLocation)
+        hasher.combine(blankSelectedSegmentLocation)
         hasher.combine(selectedHighlightRangeOverride?.location)
         hasher.combine(selectedHighlightRangeOverride?.length)
         hasher.combine(playbackHighlightRangeOverride?.location)

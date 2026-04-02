@@ -77,6 +77,7 @@ extension ReadView {
 
     // Clears selected segment state when segment action UI is dismissed by user interaction.
     func clearSelectedSegmentStateAfterPopoverDismissal() {
+        transientBlankReadingSegmentLocation = nil
         selectedSegmentLocation = nil
         selectedHighlightRangeOverride = nil
         selectedBounds = nil
@@ -303,24 +304,25 @@ extension ReadView {
             readingCandidates.append(reading)
         }
 
-        // Lead with the lexicon reading for the merged surface so this matches the LEXICON section's "reading:" line.
+        // Lead with lexicon-derived readings for the merged surface so inflected forms can expose
+        // all projected kana variants, not just the preferred reading cached on the surface table.
         if let lexicon {
-            appendReading(lexicon.reading(surface: mergedSurface))
-        }
-
-        // Additional candidates for the merged surface only — no lemma forms.
-        if let mergedData = surfaceReadingData[mergedSurface] {
+            for reading in lexicon.readings(surface: mergedSurface) {
+                appendReading(reading)
+            }
+        } else if let mergedData = surfaceReadingData[mergedSurface] {
             for reading in mergedData.readings {
                 appendReading(reading)
             }
         }
 
-        // For multi-edge merges, include per-edge surface readings (not lemma readings).
+        // For multi-edge merges, include per-edge surface readings as additional fallback candidates.
         for edge in selectedEdges where edge.surface != mergedSurface {
             if let lexicon {
-                appendReading(lexicon.reading(surface: edge.surface))
-            }
-            if let edgeData = surfaceReadingData[edge.surface] {
+                for reading in lexicon.readings(surface: edge.surface) {
+                    appendReading(reading)
+                }
+            } else if let edgeData = surfaceReadingData[edge.surface] {
                 for reading in edgeData.readings {
                     appendReading(reading)
                 }

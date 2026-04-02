@@ -214,7 +214,6 @@ extension ReadView {
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
 
             let location = nsRange.location
-            let length = nsRange.length
 
             if entry.reading.isEmpty {
                 furiganaBySegmentLocation.removeValue(forKey: location)
@@ -225,7 +224,7 @@ extension ReadView {
                 let surfaceChars = Array(edge.surface)
                 let runs = kanjiRuns(in: edge.surface)
                 if runs.isEmpty == false,
-                   let runReadings = projectRunReadings(surface: edge.surface, reading: entry.reading),
+                   let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: edge.surface, reading: entry.reading, runs: runs),
                    runReadings.count == runs.count {
                     // Clear any stale segment-level entry before writing run-level entries.
                     furiganaBySegmentLocation.removeValue(forKey: location)
@@ -240,9 +239,8 @@ extension ReadView {
                         furiganaLengthBySegmentLocation[location + prefixUTF16] = runUTF16
                     }
                 } else {
-                    // Fall back to segment-level when run projection fails.
-                    furiganaBySegmentLocation[location] = entry.reading
-                    furiganaLengthBySegmentLocation[location] = length
+                    furiganaBySegmentLocation.removeValue(forKey: location)
+                    furiganaLengthBySegmentLocation.removeValue(forKey: location)
                 }
 
                 // Compare normalized display output against the pre-mutation snapshot so we aren't
@@ -410,7 +408,7 @@ extension ReadView {
         let runs = kanjiRuns(in: surface)
         guard runs.isEmpty == false else { return [:] }
 
-        if let runReadings = projectRunReadings(surface: surface, reading: reading),
+        if let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs),
            runReadings.count == runs.count {
             var result: [Int: String] = [:]
             for (run, runReading) in zip(runs, runReadings) {
@@ -421,7 +419,7 @@ extension ReadView {
             return result
         }
 
-        return [baseLocation: reading]
+        return [:]
     }
 
     // Extracts display readings from a pre-mutation furigana snapshot for comparison.
@@ -564,7 +562,7 @@ extension ReadView {
         let chars = Array(entry.surface)
         guard runs.isEmpty == false else { return entry.surface }
 
-        let runReadings = projectRunReadings(surface: entry.surface, reading: entry.reading)
+        let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: entry.surface, reading: entry.reading, runs: runs)
 
         var result = ""
         var charIdx = 0

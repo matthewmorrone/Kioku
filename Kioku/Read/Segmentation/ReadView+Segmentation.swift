@@ -9,6 +9,7 @@ extension ReadView {
     // When shouldApplyChangesGlobally is active, the override is also applied to all other segment edges with the same surface.
     func applyReadingOverride(reading: String) {
         guard let location = selectedSegmentLocation else { return }
+        transientBlankReadingSegmentLocation = nil
 
         // Derive the surface text and length from the merged edge bounds so the furigana rect covers
         // the correct source characters, not the reading's kana length.
@@ -46,8 +47,9 @@ extension ReadView {
             }
         }
 
-        // Apply the override to each target, removing stale per-kanji-run furigana within the range
-        // so the single override entry is the only annotation shown for each matching segment.
+        // Apply the override to each target, removing stale furigana inside the range first.
+        // Overrides use the same per-kanji-run projection as the lookup-sheet title so okurigana
+        // never ends up inside the highlighted word's furigana.
         for (targetLocation, targetLength) in targets {
             let segmentNSRange = NSRange(location: targetLocation, length: targetLength)
             let staleLocations = Set(furiganaBySegmentLocation.keys.filter { loc in
@@ -56,8 +58,27 @@ extension ReadView {
             })
             furiganaBySegmentLocation = furiganaBySegmentLocation.filter { !staleLocations.contains($0.key) }
             furiganaLengthBySegmentLocation = furiganaLengthBySegmentLocation.filter { !staleLocations.contains($0.key) }
-            furiganaBySegmentLocation[targetLocation] = reading
-            furiganaLengthBySegmentLocation[targetLocation] = targetLength
+
+            let chars = Array(selectedSurface ?? "")
+            let runs = FuriganaAttributedString.kanjiRuns(in: selectedSurface ?? "")
+
+            if let selectedSurface, runs.isEmpty == false,
+               let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: selectedSurface, reading: reading, runs: runs),
+               runReadings.count == runs.count {
+                for (index, run) in runs.enumerated() {
+                    let runSurface = String(chars[run.start..<run.end])
+                    let runReading = runReadings[index]
+                    guard runReading.isEmpty == false, runReading != runSurface else {
+                        continue
+                    }
+
+                    let prefixUTF16 = String(chars[..<run.start]).utf16.count
+                    let runLength = String(chars[run.start..<run.end]).utf16.count
+                    let runLocation = targetLocation + prefixUTF16
+                    furiganaBySegmentLocation[runLocation] = runReading
+                    furiganaLengthBySegmentLocation[runLocation] = runLength
+                }
+            }
         }
         // Rebuild segments with updated furigana then persist.
         segments = buildSegmentRanges(
@@ -70,11 +91,7 @@ extension ReadView {
 
     // Removes the persisted reading for the currently selected segment and re-runs furigana computation.
     func clearReadingOverrideForCurrentSegment() {
-        guard let location = selectedSegmentLocation else { return }
-        furiganaBySegmentLocation.removeValue(forKey: location)
-        furiganaLengthBySegmentLocation.removeValue(forKey: location)
-        // scheduleFuriganaGeneration will rebuild segments and persist once it completes.
-        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+        transientBlankReadingSegmentLocation = selectedSegmentLocation
     }
 
     // Clears note-backed segment range overrides and restores computed segmentation from the segmenter.
@@ -83,6 +100,7 @@ extension ReadView {
         illegalMergeBoundaryLocation = nil
         illegalMergeFlashTask?.cancel()
         selectedSegmentLocation = nil
+        transientBlankReadingSegmentLocation = nil
         selectedHighlightRangeOverride = nil
         selectedBounds = nil
         pendingLLMChangedLocations = []
@@ -130,6 +148,7 @@ extension ReadView {
             segmentRanges = []
             unknownSegmentLocations = []
             selectedSegmentLocation = nil
+            transientBlankReadingSegmentLocation = nil
             selectedHighlightRangeOverride = nil
             selectedBounds = nil
             SegmentLookupSheet.shared.dismissPopover()
@@ -370,6 +389,9 @@ extension ReadView {
                           let edge = segmentEdges.first(where: {
                               NSRange($0.start..<$0.end, in: text).location == location
                           }) else { return nil }
+                    if transientBlankReadingSegmentLocation == location {
+                        return nil
+                    }
                     let reading = reconstructedReading(for: edge.surface, at: location)
                     return reading.isEmpty ? nil : reading
                 },

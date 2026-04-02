@@ -119,7 +119,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
 
         // Compute per-run readings for furigana placement.
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)
-        let runReadings = FuriganaAttributedString.projectRunReadings(surface: surface, reading: reading, runs: runs)
+        let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs)
 
         // Measure each run rect using CoreText within the inset text area.
         let runRects = rubyRunRects(for: baseAttrString, runs: runs, in: textRect)
@@ -273,4 +273,3 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         }
     }
 }
-
