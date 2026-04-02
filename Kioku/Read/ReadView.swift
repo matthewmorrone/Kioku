@@ -19,11 +19,6 @@ enum ReadViewFileImportTarget {
     }
 }
 
-enum ReadViewSubtitleFlow {
-    case importExistingSRT
-    case generateOnServer
-}
-
 // Provides the primary reading and editing surface for an active note.
 struct ReadView: View {
     @Binding var selectedNote: Note?
@@ -107,8 +102,7 @@ struct ReadView: View {
     @State var isShowingCameraPicker = false
     @State var activeFileImportTarget: ReadViewFileImportTarget? = nil
     @State var isShowingFileImporter = false
-    @State var isShowingSubtitleActionDialog = false
-    @State var pendingSubtitleFlow: ReadViewSubtitleFlow? = nil
+    @State var isShowingSubtitleSubmissionSheet = false
     @State var selectedOCRImageItem: PhotosPickerItem?
     @State var isPerformingOCRImport = false
     @State var isPerformingAudioTranscription = false
@@ -121,6 +115,8 @@ struct ReadView: View {
     @State var lyricAlignmentSourceFilename = ""
     @State var pendingSubtitleAudioURL: URL? = nil
     @State var pendingSubtitleAudioFilename = ""
+    @State var pendingSubtitleFileURL: URL? = nil
+    @State var pendingSubtitleFilename = ""
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
     @State var audioController = AudioPlaybackController()
@@ -398,6 +394,11 @@ struct ReadView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
         .toolbar(.visible, for: .tabBar)
+        .sheet(isPresented: $isShowingSubtitleSubmissionSheet) {
+            subtitleSubmissionSheet
+                .presentationDetents([.height(330)])
+                .presentationDragIndicator(.visible)
+        }
         .background {
             AudioCueHighlightObserver(
                 controller: audioController,
@@ -461,35 +462,130 @@ struct ReadView: View {
             activeFileImportTarget = nil
             handleFileImportSelection(result, target: target)
         }
-        .confirmationDialog(
-            "Subtitles",
-            isPresented: $isShowingSubtitleActionDialog,
-            titleVisibility: .visible
-        ) {
-            subtitleActionDialogButtons
-        } message: {
-            subtitleActionDialogMessage
-        }
     }
 
-    @ViewBuilder
-    private var subtitleActionDialogButtons: some View {
-        Button("Choose Audio + SRT") {
-            pendingSubtitleFlow = .importExistingSRT
-            presentFileImporter(for: .subtitleAudio)
+    private var subtitleSubmissionSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Subtitles")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    isShowingSubtitleSubmissionSheet = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color(.tertiarySystemFill)))
+                }
+                .buttonStyle(.plain)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                subtitleSelectionButton(
+                    title: "Audio File",
+                    systemImage: "waveform",
+                    value: pendingSubtitleAudioFilename.isEmpty ? "Choose..." : pendingSubtitleAudioFilename
+                ) {
+                    presentFileImporter(for: .subtitleAudio)
+                }
+
+                if pendingSubtitleAudioURL != nil {
+                    Button("Remove Audio", role: .destructive) {
+                        removePendingSubtitleAudioSelection()
+                    }
+                    .font(.caption)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                subtitleSelectionButton(
+                    title: "Subtitle File",
+                    systemImage: "captions.bubble",
+                    value: pendingSubtitleFilename.isEmpty ? "Generate on submit" : pendingSubtitleFilename
+                ) {
+                    presentFileImporter(for: .subtitleFile)
+                }
+
+                if pendingSubtitleFileURL != nil {
+                    Button("Remove Subtitle File", role: .destructive) {
+                        pendingSubtitleFileURL = nil
+                        pendingSubtitleFilename = ""
+                    }
+                    .font(.caption)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button("Cancel") {
+                    isShowingSubtitleSubmissionSheet = false
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    Task {
+                        await submitPendingSubtitleSelection()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isGeneratingLyricAlignment {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text("Submit")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(pendingSubtitleAudioURL == nil || isGeneratingLyricAlignment)
+            }
         }
-        Button("Choose Audio + Generate SRT") {
-            pendingSubtitleFlow = .generateOnServer
-            presentFileImporter(for: .subtitleAudio)
-        }
-        Button("Cancel", role: .cancel) {
-            pendingSubtitleFlow = nil
-            clearPendingSubtitleAudioSelection()
-        }
+        .padding(20)
+        .interactiveDismissDisabled(isGeneratingLyricAlignment)
     }
 
-    private var subtitleActionDialogMessage: some View {
-        Text("Choose an audio file, then either attach an existing SRT or generate one from the alignment server.")
+    private func subtitleSelectionButton(
+        title: String,
+        systemImage: String,
+        value: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.accentColor.opacity(0.12))
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(value)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // Displays the editable note title at the top of the reading screen.
