@@ -20,6 +20,8 @@ struct SettingsView: View {
     private var kerning = TypographySettings.defaultKerning
     @AppStorage(TypographySettings.furiganaGapKey)
     private var furiganaGap = TypographySettings.defaultFuriganaGap
+    @AppStorage(LyricsDisplayStyle.storageKey)
+    private var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
     @AppStorage(ParticleSettings.storageKey)
     private var particlesRaw: String = ParticleSettings.defaultRawValue
 
@@ -168,6 +170,11 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Slider(value: $furiganaGap, in: TypographySettings.furiganaGapRange, step: 0.5)
+                    }
+                    Picker("Lyrics Style", selection: $lyricsDisplayStyleRaw) {
+                        ForEach(LyricsDisplayStyle.allCases, id: \.rawValue) { style in
+                            Text(style.displayName).tag(style.rawValue)
+                        }
                     }
                 } header: {
                     Text("Typography")
