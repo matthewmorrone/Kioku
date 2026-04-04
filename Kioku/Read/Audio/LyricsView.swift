@@ -57,12 +57,23 @@ struct LyricsView: View {
 
     private let controlsHeight: CGFloat = 56
 
+    // Returns the slice of cue indices visible in the window around the active cue.
+    // Shows 3 before and 3 after the active cue, clamped to bounds.
+    private var visibleCueIndices: [Int] {
+        let active = controller.activeCueIndex ?? 0
+        let start = max(0, active - 3)
+        let end = min(cues.count - 1, active + 3)
+        guard start <= end else { return [] }
+        return Array(start...end)
+    }
+
     // Scrollable cue list with a fade-out gradient at the bottom.
     private func cueList(height: CGFloat) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 16) {
-                    ForEach(Array(cues.enumerated()), id: \.element.index) { i, cue in
+                LazyVStack(spacing: 20) {
+                    ForEach(visibleCueIndices, id: \.self) { i in
+                        let cue = cues[i]
                         LyricsCueRow(
                             cue: cue,
                             cueIndex: i,
