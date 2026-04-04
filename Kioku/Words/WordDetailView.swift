@@ -137,9 +137,10 @@ struct WordDetailView: View {
                 }
 
                 // Pitch Accent section — uses data already present in WordDisplayData.
+                // Uses offset as the id because multiple entries can share the same kana value.
                 if let pitchAccents = savedDisplayData?.pitchAccents, pitchAccents.isEmpty == false {
                     Section("Pitch Accent") {
-                        ForEach(pitchAccents, id: \.kana) { pa in
+                        ForEach(Array(pitchAccents.enumerated()), id: \.offset) { _, pa in
                             PitchAccentView(accent: pa)
                         }
                     }
