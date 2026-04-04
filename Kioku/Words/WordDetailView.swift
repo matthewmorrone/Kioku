@@ -46,16 +46,18 @@ struct WordDetailView: View {
         return VerbConjugator.detectVerbClass(fromJMDictPosTags: posTags)
     }
 
+    // Static set of known grammaticalized auxiliary verb surfaces — hoisted to avoid allocating on every call.
+    private static let auxiliaryComponents: Set<String> = [
+        "続ける", "始める", "終わる", "出す", "込む", "合う", "切る",
+        "もらう", "あげる", "くれる", "いく", "くる", "おく", "みる",
+        "しまう", "ある", "いる", "させる", "もらえる",
+    ]
+
     // Returns true when a component surface is a grammaticalized auxiliary verb in this compound context.
     // These are ichidan verbs that function as aspect/voice markers when suffixed to a masu-stem.
     // Checked by exact match against known auxiliary surfaces.
     private func isAuxiliaryComponent(_ surface: String) -> Bool {
-        let auxiliaries: Set<String> = [
-            "続ける", "始める", "終わる", "出す", "込む", "合う", "切る",
-            "もらう", "あげる", "くれる", "いく", "くる", "おく", "みる",
-            "しまう", "ある", "いる", "させる", "もらえる",
-        ]
-        return auxiliaries.contains(surface)
+        Self.auxiliaryComponents.contains(surface)
     }
 
     var body: some View {
