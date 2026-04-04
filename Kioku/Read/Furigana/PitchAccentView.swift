@@ -47,8 +47,15 @@ struct PitchAccentView: View {
                 }
             }
             if accent.accent == 0 {
-                // Heiban: show a trailing marker to indicate no drop
+                // Heiban: show a trailing arrow to indicate the pitch stays high with no drop
                 Text("→")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 2)
+            } else if accent.accent == accent.morae {
+                // Odaka: downstep occurs after the final mora, so add a trailing drop marker
+                // to distinguish it from Heiban (which also has all-H morae from position 1 on)
+                Text("꜀")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .padding(.leading, 2)
@@ -57,8 +64,9 @@ struct PitchAccentView: View {
         .padding(.vertical, 2)
     }
 
-    // Splits a kana string into mora units, keeping digraphs (ゃゅょャュョ) and
-    // special characters (っッー) attached to their preceding mora.
+    // Splits a kana string into mora units. Digraphs (ゃゅょャュョ) attach to the
+    // preceding mora (e.g. き + ゃ → きゃ), while っ, ッ, and ー are independent mora
+    // and always become their own entries.
     // This is needed because SwiftUI iterates over Character, but digraphs must
     // stay with their base kana for correct mora counting and display.
     private func moraeSplit(_ kana: String) -> [String] {
