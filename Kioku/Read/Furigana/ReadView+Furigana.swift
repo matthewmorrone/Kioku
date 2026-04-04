@@ -208,24 +208,6 @@ extension ReadView {
                      surfaceReadingData: surfaceReadingData
               ),
            let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: lemmaReading) {
-            let lemmaSurfaceRuns = kanjiRuns(in: furiganaLemmaReference)
-            if let lemmaRun = lemmaSurfaceRuns.first {
-                let segmentCharacters = Array(segmentSurface)
-                let lemmaCharacters = Array(furiganaLemmaReference)
-
-                let segmentSuffix = runs[0].end < segmentCharacters.count
-                    ? String(segmentCharacters[runs[0].end..<segmentCharacters.count])
-                    : ""
-                let lemmaSuffix = lemmaRun.end < lemmaCharacters.count
-                    ? String(lemmaCharacters[lemmaRun.end..<lemmaCharacters.count])
-                    : ""
-
-                // Avoid attaching full lemma readings when surface adds trailing kana not represented in the lemma.
-                if segmentSuffix.isEmpty == false, lemmaSuffix.isEmpty {
-                    return []
-                }
-            }
-
             return [
                 (
                     reading: lemmaCoreReading,
@@ -395,6 +377,7 @@ extension ReadView {
     // Extracts the reading that maps to the first contiguous kanji run of a dictionary surface.
     func firstKanjiRunReading(in surface: String, using reading: String) -> String? {
         let characters = Array(surface)
+        let runs = kanjiRuns(in: surface)
         var runStart: Int?
         var runEnd: Int?
 
@@ -414,6 +397,7 @@ extension ReadView {
             return nil
         }
 
+        let allowsIsolatedRunReading = runs.count == 1
         let prefixSurface = String(characters[..<runStart])
         let suffixSurface = runEnd < characters.count
             ? String(characters[runEnd..<characters.count])
@@ -421,19 +405,19 @@ extension ReadView {
         var trimmedReading = reading
 
         if !prefixSurface.isEmpty {
-            guard hasPhoneticPrefix(trimmedReading, matching: prefixSurface) else {
+            if hasPhoneticPrefix(trimmedReading, matching: prefixSurface) {
+                trimmedReading.removeFirst(prefixSurface.count)
+            } else if allowsIsolatedRunReading == false {
                 return nil
             }
-
-            trimmedReading.removeFirst(prefixSurface.count)
         }
 
         if !suffixSurface.isEmpty {
-            guard hasPhoneticSuffix(trimmedReading, matching: suffixSurface) else {
+            if hasPhoneticSuffix(trimmedReading, matching: suffixSurface) {
+                trimmedReading.removeLast(suffixSurface.count)
+            } else if allowsIsolatedRunReading == false {
                 return nil
             }
-
-            trimmedReading.removeLast(suffixSurface.count)
         }
 
         let kanjiRunSurface = String(characters[runStart..<runEnd])

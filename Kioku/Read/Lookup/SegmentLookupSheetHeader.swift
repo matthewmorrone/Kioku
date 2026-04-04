@@ -12,9 +12,7 @@ struct SegmentLookupSheetHeader: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            let isPlaceholder = reading == "..."
-            let hasFurigana = !isPlaceholder
-                && ScriptClassifier.containsKanji(surface)
+            let hasFurigana = ScriptClassifier.containsKanji(surface)
                 && reading != nil
                 && reading != surface
 
@@ -27,18 +25,6 @@ struct SegmentLookupSheetHeader: View {
                 )
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
-            } else if isPlaceholder {
-                // Placeholder slot: show ... above the surface text in ruby position,
-                // so it's visually clear the user can tap to enter a custom reading.
-                VStack(spacing: 2) {
-                    Text("...")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                    Text(surface)
-                        .font(.largeTitle.weight(.bold))
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
             } else {
                 Text(surface)
                     .font(.largeTitle.weight(.bold))
@@ -46,7 +32,7 @@ struct SegmentLookupSheetHeader: View {
                     .frame(maxWidth: .infinity)
             }
 
-            if !isPlaceholder, let lemma, lemma != surface {
+            if let lemma, lemma != surface {
                 Text(lemma)
                     .font(.title3)
                     .foregroundStyle(.secondary)

@@ -105,17 +105,17 @@ extension SegmentLookupSheet {
             var currentReadingIndex = 0
             var currentReadings: [String] = self.currentSheetUniqueReadings
             var customReading: String? = nil
-            // Custom slot and navigation arrows are only relevant for kanji-bearing segments.
-            var showCustomSlot = ScriptClassifier.containsKanji(surface)
+            // Custom entry is only relevant for kanji-bearing segments.
+            var allowsCustomReading = ScriptClassifier.containsKanji(surface)
 
-            // True when the current index points to the custom-entry slot (always the last slot).
-            func isOnCustomSlot() -> Bool {
-                showCustomSlot && currentReadingIndex == currentReadings.count
-            }
-
-            // Total navigable slots: dictionary readings plus the custom slot when applicable.
-            func totalSlots() -> Int {
-                showCustomSlot ? currentReadings.count + 1 : currentReadings.count
+            func displayedReading() -> String? {
+                if let customReading {
+                    return customReading
+                }
+                guard currentReadings.indices.contains(currentReadingIndex) else {
+                    return nil
+                }
+                return currentReadings[currentReadingIndex]
             }
 
             // Rebuilds the visible header row with furigana for the current surface and reading.
@@ -125,11 +125,10 @@ extension SegmentLookupSheet {
 
             // Keeps header arrows visible beside the title only when reading navigation is available.
             func updateReadingNavigationButtons() {
-                let showsReadingNavigation = showCustomSlot
-                let canCycleReadings = totalSlots() > 1
+                let canCycleReadings = currentReadings.count > 1
 
-                prevReadingButton.isHidden = !showsReadingNavigation
-                nextReadingButton.isHidden = !showsReadingNavigation
+                prevReadingButton.isHidden = !canCycleReadings
+                nextReadingButton.isHidden = !canCycleReadings
                 prevReadingButton.isEnabled = canCycleReadings
                 nextReadingButton.isEnabled = canCycleReadings
                 prevReadingButton.alpha = canCycleReadings ? 1 : 0.45
@@ -137,40 +136,29 @@ extension SegmentLookupSheet {
             }
 
             // Updates the visible header to reflect the reading at the current index.
-            // When on the empty custom slot, shows "..." as a tap affordance.
             func syncFuriganaToCurrentIndex() {
-                let reading: String?
-                if isOnCustomSlot() {
-                    reading = customReading ?? "..."
-                } else if currentReadings.indices.contains(currentReadingIndex) {
-                    reading = currentReadings[currentReadingIndex]
-                } else {
-                    reading = nil
-                }
-                rebuildHeaderRow(reading: reading)
+                rebuildHeaderRow(reading: displayedReading())
             }
 
             // Refreshes header for the current segment surface.
             // Initializes the selected index from any persisted override so the UI reflects prior choices.
             func updateReadingFurigana() {
                 currentReadings = self.currentSheetUniqueReadings
-                showCustomSlot = ScriptClassifier.containsKanji(currentSurface)
+                allowsCustomReading = ScriptClassifier.containsKanji(currentSurface)
 
                 let activeOverride = self.activeReadingOverrideProvider?()
                 if let override = activeOverride, let idx = currentReadings.firstIndex(of: override) {
                     currentReadingIndex = idx
                     customReading = nil
-                } else if showCustomSlot, let override = activeOverride, currentReadings.contains(override) == false {
-                    currentReadingIndex = currentReadings.count // custom slot
+                } else if allowsCustomReading, let override = activeOverride, currentReadings.contains(override) == false {
+                    currentReadingIndex = 0
                     customReading = override
                 } else {
                     currentReadingIndex = 0
                     customReading = nil
                 }
-                // Clamp index in case segment changed and custom slot is no longer available.
-                if currentReadingIndex >= totalSlots() {
+                if currentReadings.indices.contains(currentReadingIndex) == false {
                     currentReadingIndex = 0
-                    customReading = nil
                 }
 
                 // print("[SegmentLookupSheet] updateReadingFurigana: surface=\(currentSurface) readings=\(currentReadings) index=\(currentReadingIndex)")
@@ -613,8 +601,9 @@ extension SegmentLookupSheet {
             // Register reading navigation actions here so updateMiddleContent is already in scope.
             prevReadingButton.addAction(
                 UIAction { _ in
-                    let total = totalSlots()
+                    let total = currentReadings.count
                     guard total > 1 else { return }
+                    customReading = nil
                     currentReadingIndex = (currentReadingIndex - 1 + total) % total
                     syncFuriganaToCurrentIndex()
                     applyCurrentReadingSelection()
@@ -625,8 +614,9 @@ extension SegmentLookupSheet {
 
             nextReadingButton.addAction(
                 UIAction { _ in
-                    let total = totalSlots()
+                    let total = currentReadings.count
                     guard total > 1 else { return }
+                    customReading = nil
                     currentReadingIndex = (currentReadingIndex + 1) % total
                     syncFuriganaToCurrentIndex()
                     applyCurrentReadingSelection()
@@ -635,26 +625,21 @@ extension SegmentLookupSheet {
                 for: .touchUpInside
             )
 
-            // Applies the reading at the current index, or clears the override when landing on an empty custom slot.
+            // Applies the visible reading choice, favoring a custom override when present.
             func applyCurrentReadingSelection() {
-                if isOnCustomSlot() {
-                    if let reading = customReading {
-                        self.onReadingSelected?(reading)
-                    } else {
-                        // Custom slot with no entry: remove furigana rather than leaving a stale override.
-                        self.onReadingReset?()
-                    }
-                } else {
+                if let customReading {
+                    self.onReadingSelected?(customReading)
+                } else if currentReadings.indices.contains(currentReadingIndex) {
                     self.onReadingSelected?(currentReadings[currentReadingIndex])
                 }
             }
 
-            // Tap on the placeholder header opens a text-entry alert to set a custom reading.
+            // Tapping the displayed reading opens a text-entry alert for a custom override.
             let headerTapHandler = ClosureTarget { [weak sheetController] in
-                guard let vc = sheetController, showCustomSlot, isOnCustomSlot() else { return }
+                guard let vc = sheetController, allowsCustomReading else { return }
                 let alert = UIAlertController(title: "Custom Reading", message: nil, preferredStyle: .alert)
                 alert.addTextField { field in
-                    field.text = customReading
+                    field.text = displayedReading()
                     field.placeholder = "e.g. よむ"
                     field.clearButtonMode = .whileEditing
                     field.keyboardType = .default
@@ -662,11 +647,19 @@ extension SegmentLookupSheet {
                     field.spellCheckingType = .no
                 }
                 alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                if self.activeReadingOverrideProvider?() != nil {
+                    alert.addAction(UIAlertAction(title: "Reset", style: .destructive) { _ in
+                        customReading = nil
+                        currentReadingIndex = 0
+                        self.onReadingReset?()
+                        syncFuriganaToCurrentIndex()
+                        updateMiddleContent()
+                    })
+                }
                 alert.addAction(UIAlertAction(title: "Set", style: .default) { _ in
                     let entered = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     guard entered.isEmpty == false else { return }
                     customReading = entered
-                    currentReadingIndex = currentReadings.count
                     syncFuriganaToCurrentIndex()
                     self.onReadingSelected?(entered)
                     // print("[SegmentLookupSheet] custom reading set: \(entered)")

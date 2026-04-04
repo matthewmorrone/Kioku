@@ -8,26 +8,6 @@ extension SegmentLookupSheet {
         headwordFont: UIFont = UIFont.systemFont(ofSize: 34, weight: .bold),
         rubyFont: UIFont = UIFont.systemFont(ofSize: 17)
     ) -> [UIView] {
-        if reading == "..." {
-            let headwordLabel = UILabel()
-            headwordLabel.font = headwordFont
-            headwordLabel.text = surface
-            headwordLabel.textAlignment = .center
-
-            let rubyLabel = UILabel()
-            rubyLabel.font = .preferredFont(forTextStyle: .caption1)
-            rubyLabel.textColor = .tertiaryLabel
-            rubyLabel.textAlignment = .center
-            rubyLabel.text = "..."
-            rubyLabel.heightAnchor.constraint(equalToConstant: ceil(rubyFont.lineHeight)).isActive = true
-
-            let column = UIStackView(arrangedSubviews: [rubyLabel, headwordLabel])
-            column.axis = .vertical
-            column.alignment = .center
-            column.spacing = 2
-            return [column]
-        }
-
         let chars = Array(surface)
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)
         let readings = reading.flatMap {
