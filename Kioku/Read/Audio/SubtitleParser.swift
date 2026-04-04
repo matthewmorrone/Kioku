@@ -42,13 +42,79 @@ enum SubtitleParser {
     // Returns nil for any cue whose text cannot be found (e.g. after the note was heavily edited).
     static func resolveHighlightRanges(for cues: [SubtitleCue], in noteText: String) -> [NSRange?] {
         var searchStart = noteText.startIndex
+        var lineSearchIndex = 0
+        let noteLineRanges = extractNoteLineRanges(from: noteText)
         return cues.map { cue in
             guard let range = noteText.range(of: cue.text, range: searchStart..<noteText.endIndex) else {
-                return nil
+                guard let fallbackRange = resolveLineBasedHighlightRange(
+                    for: cue,
+                    in: noteText,
+                    lineRanges: noteLineRanges,
+                    lineSearchIndex: &lineSearchIndex
+                ) else {
+                    return nil
+                }
+                if let fallbackSwiftRange = Range(fallbackRange, in: noteText) {
+                    searchStart = fallbackSwiftRange.upperBound
+                }
+                return fallbackRange
             }
             searchStart = range.upperBound
+            if let matchedLineIndex = noteLineRanges.firstIndex(where: { NSIntersectionRange($0, NSRange(range, in: noteText)).length > 0 }) {
+                lineSearchIndex = matchedLineIndex + 1
+            }
             return NSRange(range, in: noteText)
         }
+    }
+
+    private static func resolveLineBasedHighlightRange(
+        for cue: SubtitleCue,
+        in noteText: String,
+        lineRanges: [NSRange],
+        lineSearchIndex: inout Int
+    ) -> NSRange? {
+        let normalizedCueText = normalizedSubtitleMatchText(cue.text)
+        guard normalizedCueText.isEmpty == false else {
+            return nil
+        }
+
+        for lineIndex in lineSearchIndex..<lineRanges.count {
+            let lineRange = lineRanges[lineIndex]
+            guard let swiftRange = Range(lineRange, in: noteText) else {
+                continue
+            }
+
+            let lineText = String(noteText[swiftRange])
+            guard normalizedSubtitleMatchText(lineText) == normalizedCueText else {
+                continue
+            }
+
+            lineSearchIndex = lineIndex + 1
+            return lineRange
+        }
+
+        return nil
+    }
+
+    private static func extractNoteLineRanges(from noteText: String) -> [NSRange] {
+        let nsText = noteText as NSString
+        var lineRanges: [NSRange] = []
+        nsText.enumerateSubstrings(
+            in: NSRange(location: 0, length: nsText.length),
+            options: [.byLines, .substringNotRequired]
+        ) { _, substringRange, _, _ in
+            lineRanges.append(substringRange)
+        }
+        return lineRanges
+    }
+
+    private static func normalizedSubtitleMatchText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\u{3000}", with: " ")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // Reconstructs a well-formed SRT string from a cue list so the user can edit and re-import it.

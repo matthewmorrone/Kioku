@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-enum ReadViewFileImportTarget {
+enum ReadViewFileImportTarget: Equatable {
     case transcriptionAudio
     case subtitleAudio
     case subtitleFile
@@ -187,6 +187,46 @@ struct ReadView: View {
 
     var body: some View {
         alertingReadView
+    }
+
+    private var isShowingTranscriptionFileImporter: Binding<Bool> {
+        Binding(
+            get: {
+                isShowingFileImporter && activeFileImportTarget == .transcriptionAudio
+            },
+            set: { isPresented in
+                if isPresented == false, activeFileImportTarget == .transcriptionAudio {
+                    isShowingFileImporter = false
+                }
+            }
+        )
+    }
+
+    private var isShowingSubtitleFileImporter: Binding<Bool> {
+        Binding(
+            get: {
+                guard isShowingFileImporter else {
+                    return false
+                }
+
+                switch activeFileImportTarget {
+                case .subtitleAudio, .subtitleFile:
+                    return true
+                default:
+                    return false
+                }
+            },
+            set: { isPresented in
+                if isPresented == false {
+                    switch activeFileImportTarget {
+                    case .subtitleAudio, .subtitleFile:
+                        isShowingFileImporter = false
+                    default:
+                        break
+                    }
+                }
+            }
+        )
     }
 
     private var alertingReadView: some View {
@@ -454,11 +494,12 @@ struct ReadView: View {
             preferredItemEncoding: .automatic
         )
         .fileImporter(
-            isPresented: $isShowingFileImporter,
+            isPresented: isShowingTranscriptionFileImporter,
             allowedContentTypes: activeFileImportTarget?.allowedContentTypes ?? [.data],
             allowsMultipleSelection: false
         ) { result in
             let target = activeFileImportTarget
+            isShowingFileImporter = false
             activeFileImportTarget = nil
             handleFileImportSelection(result, target: target)
         }
@@ -543,6 +584,16 @@ struct ReadView: View {
         }
         .padding(20)
         .interactiveDismissDisabled(isGeneratingLyricAlignment)
+        .fileImporter(
+            isPresented: isShowingSubtitleFileImporter,
+            allowedContentTypes: activeFileImportTarget?.allowedContentTypes ?? [.data],
+            allowsMultipleSelection: false
+        ) { result in
+            let target = activeFileImportTarget
+            isShowingFileImporter = false
+            activeFileImportTarget = nil
+            handleFileImportSelection(result, target: target)
+        }
     }
 
     private func subtitleSelectionButton(

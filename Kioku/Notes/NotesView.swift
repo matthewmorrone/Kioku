@@ -21,14 +21,20 @@ struct NotesView: View {
             List(selection: $selectedNoteIDs) {
                 ForEach(store.notes) { note in
                     // Renders a single note row with title and content preview.
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(note.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : note.title)
-                            .font(.headline)
-                            .lineLimit(1)
-                        Text(note.content)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(note.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : note.title)
+                                .font(.headline)
+                                .lineLimit(1)
+                            Text(note.content)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 0)
+
+                        noteAttachmentIndicators(for: note)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -149,6 +155,41 @@ struct NotesView: View {
             .environment(\.editMode, $editMode)
         }
         .toolbar(.visible, for: .tabBar)
+    }
+
+    // Shows whether a note currently has stored audio and/or subtitle files attached.
+    @ViewBuilder
+    private func noteAttachmentIndicators(for note: Note) -> some View {
+        let attachmentState = attachmentState(for: note)
+
+        if attachmentState.hasAudio || attachmentState.hasSubtitles {
+            HStack(spacing: 8) {
+                if attachmentState.hasAudio {
+                    Image(systemName: "waveform")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Has audio")
+                }
+
+                if attachmentState.hasSubtitles {
+                    Image(systemName: "captions.bubble")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Has subtitles")
+                }
+            }
+            .font(.system(size: 14, weight: .medium))
+        }
+    }
+
+    // Resolves attachment state from the note's stored attachment identifier and on-disk files.
+    private func attachmentState(for note: Note) -> (hasAudio: Bool, hasSubtitles: Bool) {
+        guard let attachmentID = note.audioAttachmentID else {
+            return (false, false)
+        }
+
+        return (
+            hasAudio: NotesAudioStore.shared.audioURL(for: attachmentID) != nil,
+            hasSubtitles: NotesAudioStore.shared.subtitleURL(for: attachmentID) != nil
+        )
     }
 
     // Binds subtitle-import error alert to whether there is currently a failure message.
