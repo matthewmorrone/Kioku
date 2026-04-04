@@ -104,7 +104,7 @@ private extension VerbConjugator {
             fullGroup(
                 name: "Volitional",
                 form: stem + "よう",
-                negative: stem + "まい",
+                negative: base + "まい",
                 past: stem + "たろう",
                 negativePast: stem + "なかったろう"
             ),
