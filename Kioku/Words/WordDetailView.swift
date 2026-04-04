@@ -576,18 +576,23 @@ struct WordDetailView: View {
 
         allDisplayData = results
 
-        guard let segmenter, results.isEmpty == false else { return }
+        guard results.isEmpty == false else { return }
         let store = dictionaryStore
-        let edges = segmenter.longestMatchEdges(for: surface)
-        guard edges.count > 1 else { return }
-        let components = await Task { @MainActor in
-            edges.compactMap { edge -> (String, String?)? in
-                let entries = try? store.lookup(surface: edge.surface, mode: .kanjiAndKana)
-                let gloss = entries?.first?.senses.first?.glosses.first
-                return (edge.surface, gloss)
+
+        // Fetch components via segmenter when available (compound words only).
+        if let segmenter {
+            let edges = segmenter.longestMatchEdges(for: surface)
+            if edges.count > 1 {
+                let components = await Task { @MainActor in
+                    edges.compactMap { edge -> (String, String?)? in
+                        let entries = try? store.lookup(surface: edge.surface, mode: .kanjiAndKana)
+                        let gloss = entries?.first?.senses.first?.glosses.first
+                        return (edge.surface, gloss)
+                    }
+                }.value
+                wordComponents = components
             }
-        }.value
-        wordComponents = components
+        }
 
         // Fetch kanji breakdown for each unique kanji character in the surface.
         let uniqueKanji = word.surface
@@ -600,18 +605,16 @@ struct WordDetailView: View {
         kanjiInfos = infos
 
         // Fetch cross-references, antonyms, and loanword origins for the saved entry.
-        if allDisplayData.isEmpty == false {
-            let savedID = word.canonicalEntryID
-            let sources = await Task { @MainActor in
-                (try? store.fetchLoanwordSources(entryID: savedID)) ?? []
-            }.value
-            loanwordSources = sources
+        let savedID = word.canonicalEntryID
+        let sources = await Task { @MainActor in
+            (try? store.fetchLoanwordSources(entryID: savedID)) ?? []
+        }.value
+        loanwordSources = sources
 
-            let refs = await Task { @MainActor in
-                (try? store.fetchSenseReferences(entryID: savedID)) ?? []
-            }.value
-            senseReferences = refs
-        }
+        let refs = await Task { @MainActor in
+            (try? store.fetchSenseReferences(entryID: savedID)) ?? []
+        }.value
+        senseReferences = refs
 
         // Compute conjugation groups if this is a verb — uses the saved entry's primary kanji or kana form.
         if let vc = verbClass,
