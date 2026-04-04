@@ -27,6 +27,15 @@ struct WordDetailView: View {
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
 
+    // Returns true when the saved entry is flagged as a common word in JMdict priority data.
+    // Checks all kanji and kana forms for ichi1/news1/spec1 priority tags.
+    private var isCommonWord: Bool {
+        guard let entry = savedDisplayData?.entry else { return false }
+        let priorities = (entry.kanjiForms.map(\.priority) + entry.kanaForms.map(\.priority))
+            .compactMap { $0 }
+        return priorities.contains { $0.contains("ichi1") || $0.contains("news1") || $0.contains("spec1") }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             let entry = savedDisplayData?.entry
@@ -47,6 +56,16 @@ struct WordDetailView: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 24)
             .padding(.bottom, 16)
+
+            if isCommonWord {
+                Text("Common Word")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.accentColor, in: Capsule())
+                    .padding(.bottom, 8)
+            }
 
             List {
                 // Single Definition section with all matching entries sorted most- to least-common.
