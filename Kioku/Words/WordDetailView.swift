@@ -23,6 +23,8 @@ struct WordDetailView: View {
     @State private var kanjiInfos: [KanjiInfo] = []
     @State private var loanwordSources: [LoanwordSource] = []
     @State private var senseReferences: [SenseReference] = []
+    @State private var showingConjugations: Bool = false
+    @State private var conjugationGroups: [ConjugationGroup] = []
 
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
@@ -34,6 +36,14 @@ struct WordDetailView: View {
         let priorities = (entry.kanjiForms.map(\.priority) + entry.kanaForms.map(\.priority))
             .compactMap { $0 }
         return priorities.contains { $0.contains("ichi1") || $0.contains("news1") || $0.contains("spec1") }
+    }
+
+    // Returns the verb class detected from the saved entry's POS tags, or nil for non-verbs.
+    // Used to decide whether to show the Forms section.
+    private var verbClass: VerbClass? {
+        guard let entry = savedDisplayData?.entry else { return nil }
+        let posTags = entry.senses.compactMap(\.pos).flatMap { $0.components(separatedBy: ",") }
+        return VerbConjugator.detectVerbClass(fromJMDictPosTags: posTags)
     }
 
     var body: some View {
@@ -57,16 +67,6 @@ struct WordDetailView: View {
             .padding(.top, 24)
             .padding(.bottom, 16)
 
-            if isCommonWord {
-                Text("Common Word")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.accentColor, in: Capsule())
-                    .padding(.bottom, 8)
-            }
-
             List {
                 // Single Definition section with all matching entries sorted most- to least-common.
                 // Each entry's senses are preceded by an entry label + frequency tier.
@@ -80,23 +80,48 @@ struct WordDetailView: View {
                         ForEach(sortedData, id: \.entry.entryId) { data in
                             if data.entry.senses.isEmpty == false {
                                 definitionSectionHeader(for: data.entry)
+                                let freqLabel = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel
                                 ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
                                     // Cross-references are fetched only for the saved entry; pass empty refs for other entries.
                                     let senseRefs = data.entry.entryId == word.canonicalEntryID
                                         ? senseReferences.filter { $0.senseOrderIndex == idx }
                                         : []
-                                    senseRow(number: idx + 1, sense: sense, refs: senseRefs)
+                                    // Frequency label is shown inline in the first sense only — it is an entry-level attribute.
+                                    senseRow(number: idx + 1, sense: sense, refs: senseRefs, freqLabel: idx == 0 ? freqLabel : nil, showNumber: data.entry.senses.count > 1)
                                 }
-                                // Frequency tag chip after this entry's senses.
-                                if let label = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel {
-                                    Text(label)
-                                        .font(.caption2)
+                            }
+                        }
+                    }
+                }
+
+                // Forms section — shown for verbs only. Displays te-form / negative / past inline,
+                // with an "All conjugations" row that opens ConjugationSheetView.
+                if let vc = verbClass,
+                   let dictionaryForm = savedDisplayData?.entry.kanjiForms.first?.text
+                                     ?? savedDisplayData?.entry.kanaForms.first?.text {
+                    let keyForms = VerbConjugator.keyForms(for: dictionaryForm, verbClass: vc)
+                    if keyForms.isEmpty == false {
+                        Section("Forms") {
+                            ForEach(keyForms, id: \.surface) { form in
+                                HStack {
+                                    Text(form.surface)
+                                        .foregroundStyle(Color.accentColor)
+                                    Spacer()
+                                    Text(form.label)
+                                        .font(.caption)
                                         .foregroundStyle(.secondary)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2)
-                                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
-                                        .listRowSeparator(.hidden)
-                                        .padding(.bottom, 4)
+                                }
+                            }
+                            Button {
+                                showingConjugations = true
+                            } label: {
+                                HStack {
+                                    Text("All conjugations")
+                                        .foregroundStyle(Color.accentColor)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
                                 }
                             }
                         }
@@ -126,8 +151,8 @@ struct WordDetailView: View {
 
                 // Examples — driven by saved entry only.
                 if let sentences = savedDisplayData?.sentences, sentences.isEmpty == false {
+                    let shown = sentencesExpanded ? sentences : Array(sentences.prefix(1))
                     Section("Examples") {
-                        let shown = sentencesExpanded ? sentences : Array(sentences.prefix(1))
                         ForEach(shown, id: \.japanese) { pair in
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(pair.japanese)
@@ -335,6 +360,21 @@ struct WordDetailView: View {
 
             }
             .listStyle(.insetGrouped)
+            .sheet(isPresented: $showingConjugations) {
+                if let vc = verbClass,
+                   let dictionaryForm = savedDisplayData?.entry.kanjiForms.first?.text
+                                     ?? savedDisplayData?.entry.kanaForms.first?.text {
+                    ConjugationSheetView(
+                        dictionaryForm: dictionaryForm,
+                        groups: conjugationGroups,
+                        onLookup: { _ in
+                            // Tapping a conjugated form — lookup integration is a future task.
+                            showingConjugations = false
+                        }
+                    )
+                    .presentationDetents([.large])
+                }
+            }
         }
         .task {
             await loadDisplayData()
@@ -354,21 +394,35 @@ struct WordDetailView: View {
         }
     }
 
-    // Renders one numbered sense with POS label, gloss, metadata tags, and optional cross-references.
+    // Renders one sense with POS label, gloss, metadata tags, and optional cross-references.
+    // showNumber: pass false when the entry has only one sense — the number adds no information.
+    // freqLabel is non-nil only for the first sense of an entry.
     @ViewBuilder
-    private func senseRow(number: Int, sense: DictionaryEntrySense, refs: [SenseReference] = []) -> some View {
+    private func senseRow(number: Int, sense: DictionaryEntrySense, refs: [SenseReference] = [], freqLabel: String? = nil, showNumber: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(number).")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18, alignment: .trailing)
+                if showNumber {
+                    Text("\(number).")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, alignment: .trailing)
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    if let pos = sense.pos, pos.isEmpty == false {
-                        Text(JMdictTagExpander.expandAll(pos))
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.primary)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        if let pos = sense.pos, pos.isEmpty == false {
+                            Text(JMdictTagExpander.expandAll(pos))
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.primary)
+                        }
+                        if let label = freqLabel {
+                            Text(label)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
+                        }
                     }
                     Text(sense.glosses.joined(separator: "; "))
                         .font(.subheadline)
@@ -390,7 +444,7 @@ struct WordDetailView: View {
                             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
                     }
                 }
-                .padding(.leading, 24)
+                .padding(.leading, showNumber ? 24 : 0)
             }
 
             // Cross-references and antonyms for this sense.
@@ -405,7 +459,7 @@ struct WordDetailView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.leading, 24)
+                .padding(.leading, showNumber ? 24 : 0)
             }
             if ants.isEmpty == false {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -416,7 +470,7 @@ struct WordDetailView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.leading, 24)
+                .padding(.leading, showNumber ? 24 : 0)
             }
         }
         .padding(.vertical, 2)
@@ -513,6 +567,13 @@ struct WordDetailView: View {
                 (try? store.fetchSenseReferences(entryID: savedID)) ?? []
             }.value
             senseReferences = refs
+        }
+
+        // Compute conjugation groups if this is a verb — uses the saved entry's primary kanji or kana form.
+        if let vc = verbClass,
+           let form = savedDisplayData?.entry.kanjiForms.first?.text
+                   ?? savedDisplayData?.entry.kanaForms.first?.text {
+            conjugationGroups = VerbConjugator.conjugationGroups(for: form, verbClass: vc)
         }
     }
 
