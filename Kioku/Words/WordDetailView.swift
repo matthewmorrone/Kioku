@@ -46,6 +46,18 @@ struct WordDetailView: View {
         return VerbConjugator.detectVerbClass(fromJMDictPosTags: posTags)
     }
 
+    // Returns true when a component surface is a grammaticalized auxiliary verb in this compound context.
+    // These are ichidan verbs that function as aspect/voice markers when suffixed to a masu-stem.
+    // Checked by exact match against known auxiliary surfaces.
+    private func isAuxiliaryComponent(_ surface: String) -> Bool {
+        let auxiliaries: Set<String> = [
+            "続ける", "始める", "終わる", "出す", "込む", "合う", "切る",
+            "もらう", "あげる", "くれる", "いく", "くる", "おく", "みる",
+            "しまう", "ある", "いる", "させる", "もらえる",
+        ]
+        return auxiliaries.contains(surface)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             let entry = savedDisplayData?.entry
@@ -77,17 +89,47 @@ struct WordDetailView: View {
                 }
                 if sortedData.isEmpty == false {
                     Section("Definition") {
-                        ForEach(sortedData, id: \.entry.entryId) { data in
-                            if data.entry.senses.isEmpty == false {
-                                definitionSectionHeader(for: data.entry)
-                                let freqLabel = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel
-                                ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
-                                    // Cross-references are fetched only for the saved entry; pass empty refs for other entries.
-                                    let senseRefs = data.entry.entryId == word.canonicalEntryID
-                                        ? senseReferences.filter { $0.senseOrderIndex == idx }
-                                        : []
-                                    // Frequency label is shown inline in the first sense only — it is an entry-level attribute.
-                                    senseRow(number: idx + 1, sense: sense, refs: senseRefs, freqLabel: idx == 0 ? freqLabel : nil, showNumber: data.entry.senses.count > 1)
+                        if wordComponents.isEmpty == false {
+                            // Compound word: one card per component showing that component's definition.
+                            ForEach(wordComponents, id: \.surface) { component in
+                                VStack(alignment: .leading, spacing: 0) {
+                                    // Component label row with optional auxiliary badge.
+                                    HStack(spacing: 6) {
+                                        Text(component.surface)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                        if isAuxiliaryComponent(component.surface) {
+                                            Text("auxiliary")
+                                                .font(.caption2.weight(.medium))
+                                                .foregroundStyle(Color.purple)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 2)
+                                                .background(Color.purple.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+                                        }
+                                    }
+                                    .padding(.bottom, 4)
+
+                                    if let gloss = component.gloss {
+                                        Text(gloss)
+                                            .font(.subheadline)
+                                    }
+                                }
+                                .padding(.vertical, 6)
+                            }
+                        } else {
+                            // Single entry: standard sense rows.
+                            ForEach(sortedData, id: \.entry.entryId) { data in
+                                if data.entry.senses.isEmpty == false {
+                                    definitionSectionHeader(for: data.entry)
+                                    let freqLabel = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel
+                                    ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
+                                        // Cross-references are fetched only for the saved entry; pass empty refs for other entries.
+                                        let senseRefs = data.entry.entryId == word.canonicalEntryID
+                                            ? senseReferences.filter { $0.senseOrderIndex == idx }
+                                            : []
+                                        // Frequency label is shown inline in the first sense only — it is an entry-level attribute.
+                                        senseRow(number: idx + 1, sense: sense, refs: senseRefs, freqLabel: idx == 0 ? freqLabel : nil, showNumber: data.entry.senses.count > 1)
+                                    }
                                 }
                             }
                         }
