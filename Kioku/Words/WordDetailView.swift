@@ -15,6 +15,7 @@ struct WordDetailView: View {
     @State private var allDisplayData: [WordDisplayData] = []
     @State private var sentencesExpanded: Bool = false
     @State private var wordComponents: [(surface: String, gloss: String?)] = []
+    @State private var kanjiInfos: [KanjiInfo] = []
 
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
@@ -132,6 +133,59 @@ struct WordDetailView: View {
                                         .lineLimit(1)
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Kanji breakdown — one row per unique kanji character found in the surface.
+                if kanjiInfos.isEmpty == false {
+                    Section("Kanji") {
+                        ForEach(kanjiInfos, id: \.literal) { info in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    Text(info.literal)
+                                        .font(.system(size: 28, weight: .medium))
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(info.meanings.prefix(3).joined(separator: ", "))
+                                            .font(.subheadline)
+
+                                        HStack(spacing: 8) {
+                                            if let grade = info.grade {
+                                                metadataLabel(grade == 8 ? "Secondary" : "Grade \(grade)")
+                                            }
+                                            if let jlpt = info.jlptLevel {
+                                                metadataLabel("JLPT N\(jlpt)")
+                                            }
+                                            if let strokes = info.strokeCount {
+                                                metadataLabel("\(strokes) strokes")
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if info.onReadings.isEmpty == false {
+                                    HStack(spacing: 4) {
+                                        Text("ON")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.tertiary)
+                                        Text(info.onReadings.joined(separator: "・"))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                if info.kunReadings.isEmpty == false {
+                                    HStack(spacing: 4) {
+                                        Text("KUN")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.tertiary)
+                                        Text(info.kunReadings.joined(separator: "・"))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
                         }
                     }
                 }
@@ -277,5 +331,28 @@ struct WordDetailView: View {
             }
         }.value
         wordComponents = components
+
+        // Fetch kanji breakdown for each unique kanji character in the surface.
+        if let store = dictionaryStore {
+            let uniqueKanji = word.surface
+                .map(String.init)
+                .filter { ScriptClassifier.containsKanji($0) }
+                .reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+            let infos = await Task { @MainActor in
+                uniqueKanji.compactMap { try? store.fetchKanjiInfo(for: $0) }
+            }.value
+            kanjiInfos = infos
+        }
+    }
+
+    // Renders a small pill-shaped metadata chip used across multiple sections.
+    @ViewBuilder
+    private func metadataLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
     }
 }
