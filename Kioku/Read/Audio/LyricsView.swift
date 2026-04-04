@@ -61,7 +61,7 @@ struct LyricsView: View {
     private func cueList(height: CGFloat) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 6) {
+                LazyVStack(spacing: 16) {
                     ForEach(Array(cues.enumerated()), id: \.element.index) { i, cue in
                         LyricsCueRow(
                             cue: cue,

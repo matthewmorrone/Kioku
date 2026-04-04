@@ -44,8 +44,8 @@ struct LyricsCueRow: View {
                     .multilineTextAlignment(.center)
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
         .frame(maxWidth: .infinity)
         .background(Color(.systemOrange).opacity(0.14))
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -64,8 +64,8 @@ struct LyricsCueRow: View {
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
         } else {
-            // Wrap segments in a flow-style HStack; for simplicity use a wrapping layout via fixed width.
-            HStack(spacing: 2) {
+            // Flow-wrap segments so long lines break naturally.
+            InlineWrapLayout(spacing: 4, lineSpacing: 8) {
                 ForEach(segments, id: \.location) { segment in
                     Button {
                         onSegmentTapped(segment.location)
@@ -78,19 +78,20 @@ struct LyricsCueRow: View {
                             FuriganaLabel(
                                 surface: surface,
                                 reading: reading,
-                                font: .systemFont(ofSize: 18),
+                                font: .systemFont(ofSize: 20),
                                 gap: 2
                             )
-                            .fixedSize()
+                            .fixedSize(horizontal: true, vertical: true)
                         } else {
                             Text(segment.surface)
-                                .font(.system(size: 18, weight: .bold))
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(.primary)
                         }
                     }
                     .buttonStyle(.plain)
                 }
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -103,7 +104,7 @@ struct LyricsCueRow: View {
                     .font(.system(size: 15))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 3)
+                    .padding(.vertical, 6)
             case .accentBar:
                 HStack(spacing: 0) {
                     Rectangle()
