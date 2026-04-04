@@ -303,13 +303,12 @@ struct WordDetailView: View {
                     }
                     .font(.subheadline)
 
-                    // Resolve list names from IDs so the user sees human-readable labels.
-                    let memberNames = wordListsStore.lists
+                    // Resolve list objects from IDs so the user sees human-readable labels keyed by stable UUID.
+                    let memberLists = wordListsStore.lists
                         .filter { word.wordListIDs.contains($0.id) }
-                        .map(\.name)
-                        .sorted()
-                    ForEach(memberNames, id: \.self) { name in
-                        Label(name, systemImage: "list.bullet")
+                        .sorted { $0.name < $1.name }
+                    ForEach(memberLists, id: \.id) { list in
+                        Label(list.name, systemImage: "list.bullet")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
