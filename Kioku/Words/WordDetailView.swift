@@ -60,7 +60,10 @@ struct WordDetailView: View {
                             if data.entry.senses.isEmpty == false {
                                 definitionSectionHeader(for: data.entry)
                                 ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
-                                    let senseRefs = senseReferences.filter { $0.senseOrderIndex == idx }
+                                    // Cross-references are fetched only for the saved entry; pass empty refs for other entries.
+                                    let senseRefs = data.entry.entryId == word.canonicalEntryID
+                                        ? senseReferences.filter { $0.senseOrderIndex == idx }
+                                        : []
                                     senseRow(number: idx + 1, sense: sense, refs: senseRefs)
                                 }
                                 // Frequency tag chip after this entry's senses.
