@@ -11,6 +11,9 @@ struct WordDetailView: View {
     // Default nil so the existing call site in WordsView compiles without change.
     let segmenter: (any TextSegmenting)? = nil
 
+    // Provides per-word review statistics keyed by canonicalEntryID.
+    @EnvironmentObject private var reviewStore: ReviewStore
+
     // All entries matching the saved surface; saved entry is first.
     @State private var allDisplayData: [WordDisplayData] = []
     @State private var sentencesExpanded: Bool = false
@@ -197,6 +200,60 @@ struct WordDetailView: View {
                         ForEach(Array(pitchAccents.enumerated()), id: \.offset) { _, pa in
                             PitchAccentView(accent: pa)
                         }
+                    }
+                }
+
+                // Review statistics section — always shown; "Not yet reviewed" for words never studied.
+                Section("Review") {
+                    if let stats = reviewStore.stats[word.canonicalEntryID] {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Correct")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("\(stats.correct)")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(.green)
+                            }
+                            Spacer()
+                            VStack(alignment: .center, spacing: 2) {
+                                Text("Again")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("\(stats.again)")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(.red)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("Accuracy")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if let acc = stats.accuracy {
+                                    Text("\(Int(acc * 100))%")
+                                        .font(.title3.weight(.semibold))
+                                } else {
+                                    Text("—")
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+
+                        if let lastReviewed = stats.lastReviewedAt {
+                            HStack {
+                                Text("Last reviewed")
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(lastReviewed, style: .relative)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption)
+                        }
+                    } else {
+                        Text("Not yet reviewed")
+                            .foregroundStyle(.secondary)
                     }
                 }
 
