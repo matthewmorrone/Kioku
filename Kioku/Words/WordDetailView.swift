@@ -1,18 +1,15 @@
 import SwiftUI
 
 // Renders the full-screen word detail screen shown from Words list rows.
-// Major sections: title/header, definitions (all matching entries), alternate spellings, examples, components, kanji breakdown, word list membership.
+// Major sections: title/header (furigana + lemma), definitions (all matching entries), alternate spellings, examples, components.
 struct WordDetailView: View {
     let word: SavedWord
+    // Reading resolved by the lookup sheet at save time — matches furigana shown there exactly.
+    // Nil when opened directly from the words list (not via lookup sheet).
+    let reading: String?
     let dictionaryStore: DictionaryStore?
     // Default nil so the existing call site in WordsView compiles without change.
     let segmenter: (any TextSegmenting)? = nil
-
-    @EnvironmentObject private var wordsStore: WordsStore
-    @EnvironmentObject private var wordListsStore: WordListsStore
-
-    @AppStorage(TypographySettings.furiganaGapKey)
-    private var furiganaGap = TypographySettings.defaultFuriganaGap
 
     // All entries matching the saved surface; saved entry is first.
     @State private var allDisplayData: [WordDisplayData] = []
@@ -22,54 +19,24 @@ struct WordDetailView: View {
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
 
-    // Uses live store data so list membership and list names always reflect the current state.
-    private var membershipNames: [String] {
-        let liveIDs = wordsStore.words.first { $0.canonicalEntryID == word.canonicalEntryID }?.wordListIDs ?? word.wordListIDs
-        return wordListsStore.lists.filter { liveIDs.contains($0.id) }.map(\.name).sorted()
-    }
-
-
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 0) {
-                let lemmaReading = savedDisplayData?.entry.kanaForms.first?.text
-                let lemma = savedDisplayData?.entry.kanjiForms.first?.text
-                // Derive the surface's reading from the lemma reading by swapping okurigana.
-                // e.g. surface=届けたい, lemma=届ける, lemmaReading=とどける → surfaceReading=とどけたい
-                let surfaceReading = deriveSurfaceReading(
-                    surface: word.surface,
-                    lemma: lemma,
-                    lemmaReading: lemmaReading
-                )
-                let hasFurigana = ScriptClassifier.containsKanji(word.surface)
-                    && surfaceReading != nil
-                    && surfaceReading != word.surface
-
-                if hasFurigana, let surfaceReading {
-                    // Per-kanji-run furigana; kana okurigana portions carry no annotation.
-                    FuriganaLabel(
-                        surface: word.surface,
-                        reading: surfaceReading,
-                        font: .systemFont(ofSize: 34, weight: .bold),
-                        gap: furiganaGap
-                    )
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                } else {
-                    Text(word.surface)
-                        .font(.largeTitle.weight(.bold))
-                        .multilineTextAlignment(.center)
-                }
-
-                if let lemma, lemma != word.surface {
-                    Text(lemma)
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                        .offset(y: hasFurigana ? -8 : 0)
-                }
-            }
+            let entry = savedDisplayData?.entry
+            // Use the reading passed from the lookup sheet when available; fall back to the
+            // entry's primary kana form so the header still shows furigana for words opened
+            // directly from the words list.
+            let surfaceReading = reading ?? entry?.kanaForms.first?.text
+            // Show lemma only when the surface is an inflected form — i.e. not present in the
+            // entry's own kanji or kana forms. Mirrors the lookup sheet's lemma visibility rule.
+            let surfaceIsBaseForm = entry?.kanjiForms.contains(where: { $0.text == word.surface }) == true
+                || entry?.kanaForms.contains(where: { $0.text == word.surface }) == true
+            let lemma = surfaceIsBaseForm ? nil : entry?.kanjiForms.first?.text
+            SegmentLookupSheetHeader(
+                surface: word.surface,
+                reading: surfaceReading,
+                lemma: lemma
+            )
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 16)
 
@@ -169,16 +136,15 @@ struct WordDetailView: View {
                     }
                 }
 
-                Section("Lists") {
-                    if membershipNames.isEmpty {
-                        Text("Unsorted")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(membershipNames, id: \.self) { name in
-                            Text(name)
+                // Pitch Accent section — uses data already present in WordDisplayData.
+                if let pitchAccents = savedDisplayData?.pitchAccents, pitchAccents.isEmpty == false {
+                    Section("Pitch Accent") {
+                        ForEach(pitchAccents, id: \.kana) { pa in
+                            PitchAccentView(accent: pa)
                         }
                     }
                 }
+
             }
             .listStyle(.insetGrouped)
         }
@@ -240,47 +206,6 @@ struct WordDetailView: View {
             }
         }
         .padding(.vertical, 2)
-    }
-
-    // Derives the reading for the actual saved surface from the dictionary lemma's reading.
-    // When the surface is an inflected form (e.g. 近づいて from lemma 近づく), the lemma's kana
-    // reading (ちかずく) uses a different okurigana than the surface (づいて). We cannot match
-    // the lemma okurigana string against the reading because historical kana spellings differ
-    // (づく in surface vs ずく in reading). Instead we use character counts: the kanji-run
-    // characters in the lemma tell us how many kana to keep from the front of the lemma reading
-    // as the kanji stem, then append the surface's own kana suffix.
-    private func deriveSurfaceReading(surface: String, lemma: String?, lemmaReading: String?) -> String? {
-        guard let lemmaReading else { return nil }
-        guard let lemma, lemma != surface else { return lemmaReading }
-
-        let lemmaOkurigana = kanaSuffix(of: lemma)
-        let surfaceOkurigana = kanaSuffix(of: surface)
-
-        // Nothing to do when okurigana already match.
-        guard lemmaOkurigana != surfaceOkurigana else { return lemmaReading }
-
-        // Count kanji characters in the lemma to determine how many kana begin the reading.
-        // The reading encodes kanji-run pronunciation first, then okurigana at the end.
-        // We strip exactly lemmaOkurigana.count characters from the end of the reading,
-        // regardless of whether the kana glyphs match (they may differ in historical spelling).
-        if !lemmaOkurigana.isEmpty, lemmaReading.count > lemmaOkurigana.count {
-            let stemEndIndex = lemmaReading.index(lemmaReading.endIndex, offsetBy: -lemmaOkurigana.count)
-            let kanjiStemReading = String(lemmaReading[..<stemEndIndex])
-            return kanjiStemReading + surfaceOkurigana
-        }
-
-        return lemmaReading
-    }
-
-    // Returns the trailing kana-only suffix of a string (the okurigana after the last kanji).
-    private func kanaSuffix(of text: String) -> String {
-        var suffix = ""
-        for char in text.reversed() {
-            let s = String(char)
-            if ScriptClassifier.containsKanji(s) { break }
-            suffix = s + suffix
-        }
-        return suffix
     }
 
     // Returns spellings to surface as secondary display — excludes archaic and search-only forms.
