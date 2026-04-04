@@ -32,7 +32,8 @@ struct ReadView: View {
     let surfaceReadingData: SurfaceReadingDataMap
     let segmenterRevision: Int
     let readResourcesReady: Bool
-    var onOpenWordDetail: ((Int64, String) -> Void)? = nil
+    // (entryID, surface, reading) — reading is the resolved kana reading active in the lookup sheet.
+    var onOpenWordDetail: ((Int64, String, String?) -> Void)? = nil
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
     @AppStorage(TypographySettings.textSizeKey)
@@ -126,6 +127,9 @@ struct ReadView: View {
     @State var activePlaybackCueIndex: Int? = nil
     @State var activeAudioAttachmentID: UUID? = nil
     @State var isAudioScrubberVisible = true
+    @State var isShowingLyricsView = false
+    @State var lyricsTranslationCache = LyricsTranslationCache()
+    @AppStorage(LyricsDisplayStyle.storageKey) var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
     @State var isShowingSubtitleEditor = false
     @State var isRequestingLLMCorrection = false
     @State var isShowingLLMCorrectionError = false
@@ -158,7 +162,7 @@ struct ReadView: View {
         surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
         segmenterRevision: Int,
         readResourcesReady: Bool,
-        onOpenWordDetail: ((Int64, String) -> Void)? = nil,
+        onOpenWordDetail: ((Int64, String, String?) -> Void)? = nil,
         onActiveNoteChanged: ((UUID) -> Void)? = nil
     ) {
         _selectedNote = selectedNote
@@ -456,6 +460,28 @@ struct ReadView: View {
         .overlay {
             if isGeneratingLyricAlignment {
                 lyricAlignmentProgressOverlay
+            }
+        }
+        .overlay {
+            if isShowingLyricsView {
+                LyricsView(
+                    controller: audioController,
+                    cues: audioAttachmentCues,
+                    highlightRanges: audioAttachmentHighlightRanges,
+                    furiganaBySegmentLocation: furiganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+                    segmentationRanges: segmentRanges,
+                    noteText: text,
+                    displayStyle: LyricsDisplayStyle(rawValue: lyricsDisplayStyleRaw) ?? .appleMusic,
+                    translationCache: lyricsTranslationCache,
+                    onSegmentTapped: { tappedLocation in
+                        handleReadModeSegmentTap(tappedLocation, tappedSegmentRect: nil, sourceView: nil)
+                    },
+                    onDismiss: {
+                        isShowingLyricsView = false
+                    }
+                )
+                .transition(.opacity)
             }
         }
         .sheet(isPresented: $isShowingSegmentList) {
@@ -768,18 +794,33 @@ struct ReadView: View {
     }
 
     // Renders action buttons for segmentation and display controls.
+    // The audio scrubber and play button are hidden while the lyrics popup is open (it has its own controls).
     private var toolbarButtons: some View {
         VStack(spacing: 8) {
-            if audioController.duration > 0 && isAudioScrubberVisible {
+            if audioController.duration > 0 && isAudioScrubberVisible && isShowingLyricsView == false {
                 AudioPlaybackScrubber(controller: audioController)
             }
 
             HStack {
-                if audioController.duration > 0 {
+                if audioController.duration > 0 && isShowingLyricsView == false {
                     AudioPlayerButton(
                         controller: audioController,
                         isScrubberVisible: $isAudioScrubberVisible
                     )
+                }
+                // ♪ button — only when audio and subtitles are both loaded.
+                if audioController.duration > 0 && audioAttachmentCues.isEmpty == false {
+                    Button {
+                        isShowingLyricsView.toggle()
+                    } label: {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(isShowingLyricsView ? Color(.systemOrange) : Color.secondary)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Color(.tertiarySystemFill)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Lyrics")
                 }
                 Spacer()
                 llmCorrectionButton
