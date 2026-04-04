@@ -11,11 +11,12 @@ struct ConjugationRow: Hashable, Sendable {
 
 // One paradigm card shown in ConjugationSheetView — e.g. "Plain" with rows for
 // plain / negative / past / negative past forms.
-struct ConjugationGroup: Identifiable, Sendable {
+struct ConjugationGroup: Identifiable, Hashable, Sendable {
     // The paradigm name shown as the card title — e.g. "Plain", "Polite", "Progressive".
     let name: String
     // Ordered rows for this paradigm. First row label matches `name`.
     let rows: [ConjugationRow]
 
+    // Identifiable conformance — name is unique per paradigm within a single verb's conjugation table.
     var id: String { name }
 }
