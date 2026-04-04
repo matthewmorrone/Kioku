@@ -333,16 +333,14 @@ struct WordDetailView: View {
         wordComponents = components
 
         // Fetch kanji breakdown for each unique kanji character in the surface.
-        if let store = dictionaryStore {
-            let uniqueKanji = word.surface
-                .map(String.init)
-                .filter { ScriptClassifier.containsKanji($0) }
-                .reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
-            let infos = await Task { @MainActor in
-                uniqueKanji.compactMap { try? store.fetchKanjiInfo(for: $0) }
-            }.value
-            kanjiInfos = infos
-        }
+        let uniqueKanji = word.surface
+            .map(String.init)
+            .filter { ScriptClassifier.containsKanji($0) }
+            .reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        let infos = await Task { @MainActor in
+            uniqueKanji.compactMap { try? store.fetchKanjiInfo(for: $0) }
+        }.value
+        kanjiInfos = infos
     }
 
     // Renders a small pill-shaped metadata chip used across multiple sections.
