@@ -19,6 +19,8 @@ struct WordDetailView: View {
     @State private var sentencesExpanded: Bool = false
     @State private var wordComponents: [(surface: String, gloss: String?)] = []
     @State private var kanjiInfos: [KanjiInfo] = []
+    @State private var loanwordSources: [LoanwordSource] = []
+    @State private var senseReferences: [SenseReference] = []
 
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
@@ -58,7 +60,8 @@ struct WordDetailView: View {
                             if data.entry.senses.isEmpty == false {
                                 definitionSectionHeader(for: data.entry)
                                 ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
-                                    senseRow(number: idx + 1, sense: sense)
+                                    let senseRefs = senseReferences.filter { $0.senseOrderIndex == idx }
+                                    senseRow(number: idx + 1, sense: sense, refs: senseRefs)
                                 }
                                 // Frequency tag chip after this entry's senses.
                                 if let label = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel {
@@ -193,6 +196,33 @@ struct WordDetailView: View {
                     }
                 }
 
+                // Loanword origin section — shown only when the entry has JMdict lsource data.
+                if loanwordSources.isEmpty == false {
+                    Section("Origin") {
+                        ForEach(Array(loanwordSources.enumerated()), id: \.offset) { _, source in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    if let sourceWord = source.content, sourceWord.isEmpty == false {
+                                        Text(sourceWord)
+                                            .font(.subheadline.weight(.medium))
+                                    }
+                                    Text(languageName(for: source.lang))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if source.wasei {
+                                    metadataLabel("wasei")
+                                }
+                                if source.lsType == .part {
+                                    metadataLabel("partial")
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+
                 // Pitch Accent section — uses data already present in WordDisplayData.
                 // Uses offset as the id because multiple entries can share the same kana value.
                 if let pitchAccents = savedDisplayData?.pitchAccents, pitchAccents.isEmpty == false {
@@ -278,9 +308,9 @@ struct WordDetailView: View {
         }
     }
 
-    // Renders one numbered sense with POS label, gloss text, and subdued metadata tags.
+    // Renders one numbered sense with POS label, gloss, metadata tags, and optional cross-references.
     @ViewBuilder
-    private func senseRow(number: Int, sense: DictionaryEntrySense) -> some View {
+    private func senseRow(number: Int, sense: DictionaryEntrySense, refs: [SenseReference] = []) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(number).")
@@ -313,6 +343,32 @@ struct WordDetailView: View {
                             .padding(.vertical, 2)
                             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
                     }
+                }
+                .padding(.leading, 24)
+            }
+
+            // Cross-references and antonyms for this sense.
+            let xrefs = refs.filter { $0.type == .xref }.map(\.target)
+            let ants  = refs.filter { $0.type == .ant  }.map(\.target)
+            if xrefs.isEmpty == false {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("See also:")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Text(xrefs.joined(separator: "、"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 24)
+            }
+            if ants.isEmpty == false {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("Antonym:")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Text(ants.joined(separator: "、"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.leading, 24)
             }
@@ -398,6 +454,31 @@ struct WordDetailView: View {
             uniqueKanji.compactMap { try? store.fetchKanjiInfo(for: $0) }
         }.value
         kanjiInfos = infos
+
+        // Fetch cross-references, antonyms, and loanword origins for the saved entry.
+        if allDisplayData.isEmpty == false {
+            let savedID = word.canonicalEntryID
+            let sources = await Task { @MainActor in
+                (try? store.fetchLoanwordSources(entryID: savedID)) ?? []
+            }.value
+            loanwordSources = sources
+
+            let refs = await Task { @MainActor in
+                (try? store.fetchSenseReferences(entryID: savedID)) ?? []
+            }.value
+            senseReferences = refs
+        }
+    }
+
+    // Maps ISO 639-2/B language codes to display names for common loanword source languages.
+    private func languageName(for code: String) -> String {
+        let map: [String: String] = [
+            "eng": "English", "fre": "French", "ger": "German",
+            "por": "Portuguese", "dut": "Dutch", "ita": "Italian",
+            "spa": "Spanish", "rus": "Russian", "chi": "Chinese",
+            "kor": "Korean", "san": "Sanskrit", "ara": "Arabic",
+        ]
+        return map[code] ?? code.uppercased()
     }
 
     // Renders a small pill-shaped metadata chip used across multiple sections.
