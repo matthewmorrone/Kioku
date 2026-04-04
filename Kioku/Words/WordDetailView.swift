@@ -102,7 +102,7 @@ struct WordDetailView: View {
                     let keyForms = VerbConjugator.keyForms(for: dictionaryForm, verbClass: vc)
                     if keyForms.isEmpty == false {
                         Section("Forms") {
-                            ForEach(keyForms, id: \.surface) { form in
+                            ForEach(keyForms, id: \.label) { form in
                                 HStack {
                                     Text(form.surface)
                                         .foregroundStyle(Color.accentColor)
@@ -361,7 +361,7 @@ struct WordDetailView: View {
             }
             .listStyle(.insetGrouped)
             .sheet(isPresented: $showingConjugations) {
-                if let vc = verbClass,
+                if verbClass != nil,
                    let dictionaryForm = savedDisplayData?.entry.kanjiForms.first?.text
                                      ?? savedDisplayData?.entry.kanaForms.first?.text {
                     ConjugationSheetView(
