@@ -13,6 +13,8 @@ struct WordDetailView: View {
 
     // Provides per-word review statistics keyed by canonicalEntryID.
     @EnvironmentObject private var reviewStore: ReviewStore
+    // Provides the list of all user-created word lists so membership can be displayed.
+    @EnvironmentObject private var wordListsStore: WordListsStore
 
     // All entries matching the saved surface; saved entry is first.
     @State private var allDisplayData: [WordDisplayData] = []
@@ -286,6 +288,29 @@ struct WordDetailView: View {
                         }
                     } else {
                         Text("Not yet reviewed")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                // Save date and word list membership — always shown for context on when and how the word was saved.
+                Section("Saved") {
+                    HStack {
+                        Text("Added")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(word.savedAt, style: .date)
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.subheadline)
+
+                    // Resolve list names from IDs so the user sees human-readable labels.
+                    let memberNames = wordListsStore.lists
+                        .filter { word.wordListIDs.contains($0.id) }
+                        .map(\.name)
+                        .sorted()
+                    ForEach(memberNames, id: \.self) { name in
+                        Label(name, systemImage: "list.bullet")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
