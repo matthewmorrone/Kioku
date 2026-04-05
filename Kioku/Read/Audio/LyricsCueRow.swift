@@ -1,9 +1,10 @@
 import SwiftUI
+import UIKit
 import Translation
 
 // Renders one subtitle cue row inside the lyrics popup.
-// The active row shows furigana for the full cue line, tappable word chips, and a translation.
-// Inactive rows show plain text with opacity scaled by distance from the active cue.
+// Active row: a single full-line FuriganaLabel with per-segment colors, scaled to fit without wrapping.
+// Inactive rows: plain text scaled and faded by distance from the active cue.
 struct LyricsCueRow: View {
     let cue: SubtitleCue
     let cueIndex: Int
@@ -14,63 +15,48 @@ struct LyricsCueRow: View {
     let furiganaLengthBySegmentLocation: [Int: Int]
     let segmentationRanges: [Range<String.Index>]
     let noteText: String
-    // The NSRange in noteText corresponding to this cue, nil if unresolved.
     let highlightRange: NSRange?
+    // Per-segment foreground colors keyed by UTF-16 location in noteText.
+    let segmentColorByLocation: [Int: UIColor]
     let translationCache: LyricsTranslationCache
     let onSegmentTapped: (Int) -> Void
     let onCueTapped: () -> Void
 
-    var body: some View {
-        if isActive {
-            activeCueRow
-        } else {
-            inactiveCueRow
+    @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
+    @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
+
+    private var rowOpacity: Double {
+        switch distanceFromActive {
+        case 0: return 1.0
+        case 1: return 0.50
+        case 2: return 0.30
+        default: return 0.18
         }
     }
 
-    // Renders the highlighted active cue: full-line furigana, tappable word chips, translation.
+    private var inactiveFontSize: CGFloat {
+        switch distanceFromActive {
+            case 1:  return 17
+            case 2:  return 15
+            default: return 13
+        }
+    }
+
+    private var verticalPadding: CGFloat {
+        switch distanceFromActive {
+            case 1:  return 10
+            case 2:  return 6
+            default: return 4
+        }
+    }
+
+    var body: some View {
+        if isActive { activeCueRow } else { inactiveCueRow }
+    }
+
     private var activeCueRow: some View {
         VStack(spacing: 8) {
-            // Full cue rendered as one FuriganaLabel using the concatenated reading.
-            // This avoids per-segment layout issues and keeps furigana above the correct kanji.
-            if let (surface, reading) = fullCueSurfaceAndReading() {
-                FuriganaLabel(
-                    surface: surface,
-                    reading: reading,
-                    font: .systemFont(ofSize: 20, weight: .bold),
-                    gap: 3
-                )
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity)
-            } else {
-                Text(cue.text)
-                    .font(.system(size: 20, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-            }
-
-            // Tappable word chips — plain text, no furigana duplication.
-            let segments = cueSegments()
-            if segments.isEmpty == false {
-                InlineWrapLayout(spacing: 6, lineSpacing: 6) {
-                    ForEach(segments, id: \.location) { segment in
-                        Button {
-                            onSegmentTapped(segment.location)
-                        } label: {
-                            Text(segment.surface)
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(Color(.secondarySystemFill))
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-
+            fullLineView
             if let translation = translationCache.translations[cueIndex] {
                 Text(translation)
                     .font(.system(size: 12))
@@ -80,81 +66,124 @@ struct LyricsCueRow: View {
                     .frame(maxWidth: .infinity)
             }
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 14)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 10)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemOrange).opacity(0.14))
+        .background(Color(.systemOrange).opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // Tapping the active cue row with no segment taps is a no-op — tapping a segment
+            // requires knowing which one was tapped, which needs hit-testing inside FuriganaView.
+        }
         .translationTask(TranslationSession.Configuration(source: .init(identifier: "ja"), target: nil)) { session in
             translationCache.requestTranslation(cueIndex: cueIndex, text: cue.text, session: session)
         }
     }
 
-    // Renders a faded inactive row. Tap seeks to that cue.
-    private var inactiveCueRow: some View {
-        Group {
-            switch displayStyle {
-            case .appleMusic:
-                Text(cue.text)
-                    .font(.system(size: 16))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-            case .accentBar:
-                HStack(spacing: 0) {
-                    Rectangle()
-                        .fill(Color(.systemOrange).opacity(0))
-                        .frame(width: 3)
-                    Text(cue.text)
-                        .font(.system(size: 16))
-                        .padding(.leading, 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            case .focusCard:
-                Text(cue.text)
-                    .font(.system(size: 14))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-            }
+    // Full cue as one FuriganaLabel with per-segment colors, scaled to fit the available width.
+    @ViewBuilder
+    private var fullLineView: some View {
+        let uiFont = UIFont.systemFont(ofSize: CGFloat(textSize))
+        let gap = CGFloat(furiganaGap)
+
+        if let (surface, reading, localColors) = fullCueData() {
+            ScaledFuriganaLine(
+                surface: surface,
+                reading: reading,
+                font: uiFont,
+                gap: gap,
+                segmentColors: localColors
+            )
+        } else {
+            Text(cue.text)
+                .font(Font(uiFont))
+                .lineLimit(1)
+                .minimumScaleFactor(0.4)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
-        .foregroundStyle(Color.primary.opacity(distanceFromActive <= 1 ? 0.35 : 0.20))
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .onTapGesture { onCueTapped() }
     }
 
-    // Builds the full surface string and concatenated reading for the cue's note text range.
-    // Returns nil if the highlight range is unresolved or no furigana exists for this cue.
-    private func fullCueSurfaceAndReading() -> (surface: String, reading: String)? {
+    // Inactive row: plain text, faded and scaled by distance.
+    private var inactiveCueRow: some View {
+        Text(cue.text)
+            .font(.system(size: inactiveFontSize, weight: distanceFromActive == 1 ? .medium : .regular))
+            .multilineTextAlignment(.center)
+            .foregroundStyle(Color.primary.opacity(rowOpacity))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, verticalPadding)
+            .contentShape(Rectangle())
+            .onTapGesture { onCueTapped() }
+    }
+
+    // Builds the surface, concatenated reading, and surface-local segment color map for the full cue.
+    // Returns nil if the cue has no resolved range or empty surface.
+    private func fullCueData() -> (surface: String, reading: String, localColors: [Int: UIColor])? {
         guard let highlightRange,
               let swiftRange = Range(highlightRange, in: noteText) else { return nil }
         let surface = String(noteText[swiftRange])
-
-        // Collect all readings for segments within this range in order.
-        let reading = segmentationRanges
-            .compactMap { range -> String? in
-                let nsRange = NSRange(range, in: noteText)
-                guard NSIntersectionRange(nsRange, highlightRange).length > 0,
-                      let reading = furiganaBySegmentLocation[nsRange.location],
-                      reading.isEmpty == false else { return nil }
-                return reading
-            }
-            .joined()
-
         guard surface.isEmpty == false else { return nil }
-        // If no furigana found for this cue, return nil so we fall back to plain text.
-        return reading.isEmpty ? nil : (surface: surface, reading: reading)
+
+        // The surface starts at highlightRange.location in noteText.
+        // Remap noteText-relative segment locations to surface-local UTF-16 offsets.
+        let surfaceBase = highlightRange.location
+        var reading = ""
+        var localColors: [Int: UIColor] = [:]
+
+        for segRange in segmentationRanges {
+            let nsRange = NSRange(segRange, in: noteText)
+            guard NSIntersectionRange(nsRange, highlightRange).length > 0 else { continue }
+
+            let localOffset = nsRange.location - surfaceBase
+
+            // Remap color for every UTF-16 unit in this segment to surface-local offsets.
+            if let color = segmentColorByLocation[nsRange.location] {
+                for offset in 0..<nsRange.length {
+                    localColors[localOffset + offset] = color
+                }
+            }
+
+            // Accumulate reading.
+            if let r = furiganaBySegmentLocation[nsRange.location], r.isEmpty == false {
+                reading += r
+            }
+        }
+
+        return (surface: surface, reading: reading, localColors: localColors)
+    }
+}
+
+// A FuriganaLabel that scales uniformly to fit the available width on a single line.
+// Measures natural width via FuriganaView.naturalSize() (no live view needed), then
+// applies a scaleEffect so the label never wraps regardless of cue length.
+private struct ScaledFuriganaLine: View {
+    let surface: String
+    let reading: String
+    let font: UIFont
+    let gap: CGFloat
+    let segmentColors: [Int: UIColor]
+
+    var body: some View {
+        let natural = naturalSize()
+        GeometryReader { geo in
+            let scale = natural.width > geo.size.width ? geo.size.width / natural.width : 1.0
+            FuriganaLabel(
+                surface: surface,
+                reading: reading,
+                font: font,
+                gap: gap,
+                segmentColors: segmentColors
+            )
+            .frame(width: natural.width, height: natural.height)
+            .scaleEffect(scale, anchor: .center)
+            .frame(width: geo.size.width, height: natural.height * scale)
+        }
+        .frame(height: natural.height)
     }
 
-    // Resolves the segments that fall within this cue's note text range.
-    private func cueSegments() -> [(location: Int, surface: String)] {
-        guard let highlightRange else { return [] }
-        return segmentationRanges.compactMap { range in
-            let nsRange = NSRange(range, in: noteText)
-            guard NSIntersectionRange(nsRange, highlightRange).length > 0 else { return nil }
-            let surface = String(noteText[range])
-            // Skip whitespace-only segments.
-            guard surface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { return nil }
-            return (location: nsRange.location, surface: surface)
-        }
+    private func naturalSize() -> CGSize {
+        let view = FuriganaView()
+        view.configure(surface: surface, reading: reading, font: font, gap: gap, segmentColors: segmentColors)
+        return view.naturalSize()
     }
 }

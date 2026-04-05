@@ -10,6 +10,9 @@ struct FuriganaLabel: UIViewRepresentable {
     let reading: String
     let font: UIFont
     let gap: CGFloat
+    var textColor: UIColor = .label
+    // Per-UTF-16-offset colors local to `surface`. When provided, overrides textColor per segment.
+    var segmentColors: [Int: UIColor] = [:]
 
     func makeUIView(context: Context) -> FuriganaView {
         let view = FuriganaView()
@@ -19,13 +22,18 @@ struct FuriganaLabel: UIViewRepresentable {
     }
 
     func updateUIView(_ view: FuriganaView, context: Context) {
-        view.configure(surface: surface, reading: reading, font: font, gap: gap)
+        view.configure(surface: surface, reading: reading, font: font, gap: gap, textColor: textColor, segmentColors: segmentColors)
     }
 
     // Reports the view's natural size so SwiftUI can allocate the correct height.
-    // Without this, fixedSize(vertical:) collapses UIViewRepresentable to zero height.
+    // When width is unspecified (InlineWrapLayout measuring chip size), returns the natural
+    // single-line width so chips don't claim the full screen width and force line breaks.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: FuriganaView, context: Context) -> CGSize? {
-        let width = proposal.width ?? uiView.window?.screen.bounds.width ?? 390
-        return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        if let width = proposal.width {
+            return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        }
+        // No width constraint — return natural (single-line) dimensions.
+        return uiView.naturalSize()
     }
+
 }

@@ -1,16 +1,18 @@
 import SwiftUI
+import UIKit
 
 // Floating karaoke-style lyrics popup rendered as an overlay on ReadView.
-// Shows all subtitle cues in a free-scrollable list; the active cue auto-scrolls into view.
-// Bottom controls: play/pause (left), scrubber (center), repeat-cue toggle (right).
-// Tapping the dimmed backdrop behind the popup calls onDismiss.
-// Major sections: backdrop, floating panel (cue list + bottom controls).
+// Shows the full cue list in a free-scrollable view; the active cue auto-scrolls to center.
+// Inactive cues scale down and fade based on distance from the active cue (Apple Music style).
+// Bottom controls: play/pause (left), scrubber with timestamps (center), repeat-cue toggle (right).
+// Tapping the dimmed backdrop calls onDismiss.
 struct LyricsView: View {
     @ObservedObject var controller: AudioPlaybackController
     let cues: [SubtitleCue]
     let highlightRanges: [NSRange?]
     let furiganaBySegmentLocation: [Int: String]
     let furiganaLengthBySegmentLocation: [Int: Int]
+    let segmentColorByLocation: [Int: UIColor]
     let segmentationRanges: [Range<String.Index>]
     let noteText: String
     let displayStyle: LyricsDisplayStyle
@@ -19,7 +21,6 @@ struct LyricsView: View {
     let onDismiss: () -> Void
 
     @State private var isRepeatOn = false
-    // Tracks whether the user is manually scrolling so auto-scroll doesn't fight them.
     @State private var userIsScrolling = false
 
     var body: some View {
@@ -33,7 +34,6 @@ struct LyricsView: View {
 
                 // Floating panel.
                 panel(geo: geo)
-                    // Prevent taps on the panel from propagating to the backdrop.
                     .contentShape(Rectangle())
                     .onTapGesture { }
             }
@@ -43,10 +43,10 @@ struct LyricsView: View {
     // Builds the rounded floating card centered in the screen.
     private func panel(geo: GeometryProxy) -> some View {
         let panelWidth = geo.size.width * 0.9
-        let panelHeight = geo.size.height * 0.5
+        let panelHeight = geo.size.height * 0.55
 
         return VStack(spacing: 0) {
-            cueList(height: panelHeight - controlsHeight)
+            cueList(panelWidth: panelWidth, height: panelHeight - controlsHeight)
             controls
         }
         .frame(width: panelWidth, height: panelHeight)
@@ -57,72 +57,64 @@ struct LyricsView: View {
 
     private let controlsHeight: CGFloat = 56
 
-    // Returns the slice of cue indices visible in the window around the active cue.
-    // Shows 3 before and 3 after the active cue, clamped to bounds.
-    private var visibleCueIndices: [Int] {
-        let active = controller.activeCueIndex ?? 0
-        let start = max(0, active - 3)
-        let end = min(cues.count - 1, active + 3)
-        guard start <= end else { return [] }
-        return Array(start...end)
-    }
+    // Full cue list — all cues visible, active scrolled to center.
+    // Top and bottom padding equals half the list height so the active cue can truly center.
+    private func cueList(panelWidth: CGFloat, height: CGFloat) -> some View {
+        let halfHeight = height / 2
 
-    // Scrollable cue list with a fade-out gradient at the bottom.
-    private func cueList(height: CGFloat) -> some View {
-        ScrollViewReader { proxy in
+        return ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 20) {
-                    ForEach(visibleCueIndices, id: \.self) { i in
-                        let cue = cues[i]
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(cues.enumerated()), id: \.offset) { i, cue in
+                        let distance = abs(i - (controller.activeCueIndex ?? 0))
+                        let isActive = controller.activeCueIndex == i
                         LyricsCueRow(
                             cue: cue,
                             cueIndex: i,
-                            isActive: controller.activeCueIndex == i,
-                            distanceFromActive: abs(i - (controller.activeCueIndex ?? 0)),
+                            isActive: isActive,
+                            distanceFromActive: distance,
                             displayStyle: displayStyle,
                             furiganaBySegmentLocation: furiganaBySegmentLocation,
                             furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
                             segmentationRanges: segmentationRanges,
                             noteText: noteText,
                             highlightRange: i < highlightRanges.count ? highlightRanges[i] : nil,
+                            segmentColorByLocation: segmentColorByLocation,
                             translationCache: translationCache,
                             onSegmentTapped: onSegmentTapped,
                             onCueTapped: {
                                 controller.seek(toMs: cue.startMs)
-                                if controller.isPlaying == false {
-                                    controller.play()
-                                }
+                                if controller.isPlaying == false { controller.play() }
                             }
                         )
                         .id(i)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+                // Vertical padding lets the first and last cues scroll to center.
+                .padding(.vertical, halfHeight)
+                .padding(.horizontal, 16)
             }
             .frame(height: height)
-            // Fade the bottom of the cue list into the controls.
+            // Fade top and bottom so cues dissolve naturally into the panel edges.
             .mask(
                 LinearGradient(
                     stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black, location: 0.75),
-                        .init(color: .clear, location: 1)
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: 0.18),
+                        .init(color: .black, location: 0.82),
+                        .init(color: .clear, location: 1),
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             )
             .onChange(of: controller.activeCueIndex) { _, newIndex in
-                // Auto-scroll to the new active cue when not manually scrolling.
                 guard let newIndex, userIsScrolling == false else { return }
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(.easeInOut(duration: 0.35)) {
                     proxy.scrollTo(newIndex, anchor: .center)
                 }
             }
             .onChange(of: controller.currentTimeMs) { _, currentMs in
-                // Repeat-cue logic: seek back to cue start when it ends.
                 guard isRepeatOn,
                       let activeIndex = controller.activeCueIndex,
                       activeIndex < cues.count else { return }
@@ -136,40 +128,31 @@ struct LyricsView: View {
 
     // Bottom control row: play/pause · scrubber · repeat.
     private var controls: some View {
-        HStack(spacing: 10) {
-            // Play/pause button — 22pt.
+        HStack(alignment: .center, spacing: 10) {
             Button {
-                if controller.isPlaying {
-                    controller.pause()
-                } else {
-                    controller.play()
-                }
+                if controller.isPlaying { controller.pause() } else { controller.play() }
             } label: {
                 Circle()
                     .fill(Color(.systemOrange).opacity(0.2))
-                    .frame(width: 22, height: 22)
+                    .frame(width: 36, height: 36)
                     .overlay(
                         Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color(.systemOrange))
                     )
             }
             .buttonStyle(.plain)
             .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
 
-            // Scrubber with timestamps below.
             LyricsScrubber(controller: controller)
 
-            // Repeat-cue toggle — 22pt.
-            Button {
-                isRepeatOn.toggle()
-            } label: {
+            Button { isRepeatOn.toggle() } label: {
                 Circle()
                     .fill(isRepeatOn ? Color(.systemOrange).opacity(0.25) : Color(.systemFill))
-                    .frame(width: 22, height: 22)
+                    .frame(width: 36, height: 36)
                     .overlay(
                         Image(systemName: "repeat")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(isRepeatOn ? Color(.systemOrange) : Color.secondary)
                     )
             }
@@ -183,7 +166,7 @@ struct LyricsView: View {
     }
 }
 
-// Inline scrubber with timestamps below the track — used only inside LyricsView.
+// Inline scrubber with timestamps flanking the slider — used only inside LyricsView.
 private struct LyricsScrubber: View {
     @ObservedObject var controller: AudioPlaybackController
 
@@ -191,7 +174,12 @@ private struct LyricsScrubber: View {
     @State private var isScrubbing = false
 
     var body: some View {
-        VStack(spacing: 2) {
+        HStack(spacing: 6) {
+            Text(formattedCurrentTime)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 30, alignment: .trailing)
+
             Slider(
                 value: Binding(
                     get: { isScrubbing ? scrubPositionSeconds : currentPositionSeconds },
@@ -208,17 +196,11 @@ private struct LyricsScrubber: View {
                 }
             )
             .tint(Color(.systemOrange))
-            .controlSize(.mini)
 
-            HStack {
-                Text(formattedCurrentTime)
-                    .font(.system(size: 8, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(formattedDuration)
-                    .font(.system(size: 8, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
+            Text(formattedDuration)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 30, alignment: .leading)
         }
         .onChange(of: controller.currentTimeMs) { _, newTimeMs in
             guard isScrubbing == false else { return }
@@ -226,9 +208,7 @@ private struct LyricsScrubber: View {
         }
     }
 
-    private var currentPositionSeconds: Double {
-        Double(controller.currentTimeMs) / 1000
-    }
+    private var currentPositionSeconds: Double { Double(controller.currentTimeMs) / 1000 }
 
     private var formattedCurrentTime: String {
         let s = controller.currentTimeMs / 1000

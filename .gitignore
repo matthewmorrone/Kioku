@@ -12,3 +12,4 @@ Resources/MeCab/ipadic/
 Resources/MeCab/unidic/
 .build/
 .swiftpm
+.superpowers

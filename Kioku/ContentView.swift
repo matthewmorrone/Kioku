@@ -40,10 +40,10 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: readResources.segmenter, dictionaryStore: readResources.dictionaryStore, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, segmenterRevision: readResources.segmenterRevision, readResourcesReady: readResources.ready, onOpenWordDetail: { entryID, surface in
+            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: readResources.segmenter, dictionaryStore: readResources.dictionaryStore, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, segmenterRevision: readResources.segmenterRevision, readResourcesReady: readResources.ready, onOpenWordDetail: { entryID, surface, reading in
                 selectedTab = .words
                 DispatchQueue.main.async {
-                    pendingWordsRoute = .detail(entryID: entryID, surface: surface)
+                    pendingWordsRoute = .detail(entryID: entryID, surface: surface, reading: reading)
                 }
             }, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString

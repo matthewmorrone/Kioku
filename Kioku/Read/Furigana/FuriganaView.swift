@@ -22,6 +22,9 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
     private var gap: CGFloat = 2
 
     private var textColor: UIColor = .label
+    // Per-character-index colors within `surface` (UTF-16 offsets local to this view's surface string).
+    // When non-empty, overrides textColor for each run.
+    private var segmentColors: [Int: UIColor] = [:]
 
     // Intrinsic size is computed from CoreText layout at the last known width.
     private var lastLayoutWidth: CGFloat = 0
@@ -60,13 +63,22 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
     }
 
     // Sets the text content and visual parameters. Triggers relayout and redraw.
-    func configure(surface: String, reading: String, font: UIFont, gap: CGFloat, textColor: UIColor = .label) {
+    // segmentColors: per-UTF-16-offset colors local to `surface` (not the full note text).
+    func configure(
+        surface: String,
+        reading: String,
+        font: UIFont,
+        gap: CGFloat,
+        textColor: UIColor = .label,
+        segmentColors: [Int: UIColor] = [:]
+    ) {
         self.surface = surface
         self.reading = reading
         self.font = font
         self.gap = gap
         self.plainText = surface
         self.textColor = textColor
+        self.segmentColors = segmentColors
         invalidateIntrinsicContentSize()
         setNeedsLayout()
         setNeedsDisplay()
@@ -142,20 +154,23 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         paragraphStyle.alignment = .center
         paragraphStyle.lineBreakMode = .byClipping
 
-        let furiganaAttributes: [NSAttributedString.Key: Any] = [
-            .font: furiganaFont,
-            .foregroundColor: textColor,
-            .paragraphStyle: paragraphStyle,
-        ]
-
         for (i, runReading) in runReadings.enumerated() {
             guard !runReading.isEmpty, i < runRects.count else { continue }
             let runRect = runRects[i]
             guard runRect != .null else { continue }
 
+            // Use the segment color for the run's start position if available.
+            let runStartOffset = runs[i].start
+            let runColor = segmentColors[runStartOffset] ?? textColor
+
+            let furiganaAttributes: [NSAttributedString.Key: Any] = [
+                .font: furiganaFont,
+                .foregroundColor: runColor,
+                .paragraphStyle: paragraphStyle,
+            ]
+
             let furiganaSize = (runReading as NSString).size(withAttributes: furiganaAttributes)
             let furiganaX = runRect.midX - furiganaSize.width / 2
-            // Position furigana so its bottom edge sits `gap` points above the top of the base glyph rect.
             let furiganaY = runRect.minY - gap - furiganaSize.height
             let furiganaRect = CGRect(x: furiganaX, y: furiganaY, width: furiganaSize.width, height: furiganaSize.height)
 
@@ -179,15 +194,54 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         return ceil(size.height) + furiganaFont.lineHeight + gap
     }
 
+    // Computes the natural (unconstrained) size of the label — the width the text occupies
+    // on a single line, and the corresponding height. Used when InlineWrapLayout asks for
+    // a chip's size with no width constraint (.unspecified proposal).
+    func naturalSize() -> CGSize {
+        let attrString = baseAttributedString()
+        let framesetter = CTFramesetterCreateWithAttributedString(attrString)
+        let size = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRangeMake(0, 0),
+            nil,
+            CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
+            nil
+        )
+        let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * 0.5)
+        // Also account for the furigana text width, which may be wider than the kanji surface.
+        let furiganaWidth = (reading as NSString).size(
+            withAttributes: [.font: furiganaFont]
+        ).width
+        let naturalWidth = ceil(max(size.width, furiganaWidth))
+        let naturalHeight = ceil(size.height) + furiganaFont.lineHeight + gap
+        return CGSize(width: naturalWidth, height: naturalHeight)
+    }
+
     // Builds a plain attributed string (no ruby) for CoreText base-text layout.
+    // Applies per-character segment colors when segmentColors is populated.
     private func baseAttributedString() -> NSAttributedString {
         let style = NSMutableParagraphStyle()
         style.alignment = .center
-        return NSAttributedString(string: surface, attributes: [
+        let attrString = NSMutableAttributedString(string: surface, attributes: [
             .font: font,
             .foregroundColor: textColor,
             .paragraphStyle: style,
         ])
+        // Apply per-segment colors. Walk UTF-16 units; batch contiguous offsets with the
+        // same color into a single NSRange attribute call.
+        if segmentColors.isEmpty == false {
+            let count = surface.utf16.count
+            var offset = 0
+            while offset < count {
+                guard let color = segmentColors[offset] else { offset += 1; continue }
+                // Find how far this exact color extends without interruption.
+                var end = offset + 1
+                while end < count, let next = segmentColors[end], next.isEqual(color) { end += 1 }
+                attrString.addAttribute(.foregroundColor, value: color, range: NSRange(location: offset, length: end - offset))
+                offset = end
+            }
+        }
+        return attrString
     }
 
     // Returns the UIKit-coordinate bounding rect for each kanji run in the base text layout.

@@ -185,7 +185,15 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     ? UIColor.systemYellow.withAlphaComponent(0.26)
                     : UIColor.systemYellow.withAlphaComponent(0.32)
             }
-            selectedSegmentRect = selectedRect.insetBy(dx: -1, dy: 0)
+            // Extend upward to cover the furigana row above the base text.
+            let furiganaRowHeight = furiganaFont.lineHeight + CGFloat(furiganaGap)
+            let expandedRect = selectedRect.insetBy(dx: -1, dy: 0)
+            selectedSegmentRect = CGRect(
+                x: expandedRect.minX,
+                y: expandedRect.minY - furiganaRowHeight,
+                width: expandedRect.width,
+                height: expandedRect.height + furiganaRowHeight
+            )
         }
 
         var playbackHighlightRect: CGRect?
@@ -194,10 +202,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
            let playbackRect = segmentRectInTextView(textView: textView, nsRange: playbackHighlightRange) {
             playbackHighlightColor = UIColor { traitCollection in
                 traitCollection.userInterfaceStyle == .dark
-                    ? UIColor.systemMint.withAlphaComponent(0.28)
-                    : UIColor.systemTeal.withAlphaComponent(0.20)
+                    ? UIColor.systemOrange.withAlphaComponent(0.30)
+                    : UIColor.systemOrange.withAlphaComponent(0.22)
             }
-            playbackHighlightRect = playbackRect.insetBy(dx: -6, dy: -2)
+            playbackHighlightRect = playbackRect.insetBy(dx: -10, dy: -4)
             context.coordinator.applyPlaybackAutoscrollIfNeeded(
                 to: textView,
                 cueIndex: activePlaybackCueIndex,
