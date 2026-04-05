@@ -126,7 +126,7 @@ struct ReadView: View {
     @State var playbackHighlightRangeOverride: NSRange?
     @State var activePlaybackCueIndex: Int? = nil
     @State var activeAudioAttachmentID: UUID? = nil
-    @State var isAudioScrubberVisible = true
+
     @State var isShowingLyricsView = false
     @State var lyricsTranslationCache = LyricsTranslationCache()
     @AppStorage(LyricsDisplayStyle.storageKey) var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
@@ -505,6 +505,7 @@ struct ReadView: View {
                     },
                     onDismiss: {
                         isShowingLyricsView = false
+                        audioController.resetToStart()
                     }
                 )
                 .transition(.opacity)
@@ -820,41 +821,28 @@ struct ReadView: View {
     }
 
     // Renders action buttons for segmentation and display controls.
-    // The audio scrubber and play button are hidden while the lyrics popup is open (it has its own controls).
     private var toolbarButtons: some View {
-        VStack(spacing: 8) {
-            if audioController.duration > 0 && isAudioScrubberVisible && isShowingLyricsView == false {
-                AudioPlaybackScrubber(controller: audioController)
-            }
-
-            HStack {
-                if audioController.duration > 0 && isShowingLyricsView == false {
-                    AudioPlayerButton(
-                        controller: audioController,
-                        isScrubberVisible: $isAudioScrubberVisible
-                    )
+        HStack {
+            // ♪ button — only when audio and subtitles are both loaded.
+            if audioController.duration > 0 && audioAttachmentCues.isEmpty == false {
+                Button {
+                    isShowingLyricsView.toggle()
+                } label: {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(isShowingLyricsView ? Color(.systemOrange) : Color.secondary)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color(.tertiarySystemFill)))
                 }
-                // ♪ button — only when audio and subtitles are both loaded.
-                if audioController.duration > 0 && audioAttachmentCues.isEmpty == false {
-                    Button {
-                        isShowingLyricsView.toggle()
-                    } label: {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(isShowingLyricsView ? Color(.systemOrange) : Color.secondary)
-                            .frame(width: 36, height: 36)
-                            .background(Circle().fill(Color(.tertiarySystemFill)))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Lyrics")
-                }
-                Spacer()
-                llmCorrectionButton
-                resetButton
-                segmentListButton
-                furiganaButton
-                editModeButton
+                .buttonStyle(.plain)
+                .accessibilityLabel("Lyrics")
             }
+            Spacer()
+            llmCorrectionButton
+            resetButton
+            segmentListButton
+            furiganaButton
+            editModeButton
         }
     }
 

@@ -26,7 +26,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         self.cues = cues
         duration = newPlayer.duration
         currentTimeMs = 0
-        activeCueIndex = nil
+        updateCurrentTime()
     }
 
     // Unloads audio and resets all state when switching away from a note with audio.
@@ -39,12 +39,24 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         activeCueIndex = nil
     }
 
-    // Starts playback and begins polling for the current cue.
+    // Starts or resumes playback. Begins polling for the current cue.
+    // Starts from position 0 if not already mid-song (currentTimeMs == 0), otherwise resumes.
     func play() {
         guard let player else { return }
         player.play()
         isPlaying = true
         startTimer()
+    }
+
+    // Starts playback from the beginning regardless of current position.
+    func playFromStart() {
+        guard let player else { return }
+        player.currentTime = 0
+        currentTimeMs = 0
+        player.play()
+        isPlaying = true
+        startTimer()
+        updateCurrentTime()
     }
 
     // Pauses playback and takes one final time snapshot.
@@ -62,6 +74,16 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         stopTimer()
         currentTimeMs = 0
         activeCueIndex = nil
+    }
+
+    // Pauses playback and seeks back to the beginning. Called when the lyrics view is dismissed.
+    func resetToStart() {
+        player?.pause()
+        player?.currentTime = 0
+        isPlaying = false
+        stopTimer()
+        currentTimeMs = 0
+        updateCurrentTime()
     }
 
     // Seeks to a specific millisecond offset without interrupting the play/pause state.
@@ -103,9 +125,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             return
         }
 
-        let newActiveCueIndex = cues.firstIndex { cue in
-            ms >= cue.startMs && ms < cue.endMs
-        }
+        // Use the current cue if time falls within it, otherwise show the next upcoming cue.
+        // This ensures the display is never blank before the first cue or between cues.
+        let activeCue = cues.firstIndex { ms >= $0.startMs && ms < $0.endMs }
+        let nextCue = cues.firstIndex { $0.startMs > ms }
+        let newActiveCueIndex = activeCue ?? nextCue
         if activeCueIndex != newActiveCueIndex {
             activeCueIndex = newActiveCueIndex
         }

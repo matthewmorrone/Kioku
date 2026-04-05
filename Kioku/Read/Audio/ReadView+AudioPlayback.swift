@@ -13,7 +13,6 @@ extension ReadView {
             audioAttachmentCues = []
             audioAttachmentHighlightRanges = []
             activeAudioAttachmentID = nil
-            isAudioScrubberVisible = false
             isShowingLyricsView = false
             lyricsTranslationCache.clear()
             playbackHighlightRangeOverride = nil
@@ -33,7 +32,6 @@ extension ReadView {
         audioAttachmentHighlightRanges = StartupTimer.measure("loadAudioAttachmentIfNeeded.resolveHighlightRanges") {
             SubtitleParser.resolveHighlightRanges(for: cues, in: text)
         }
-        isAudioScrubberVisible = false
         playbackHighlightRangeOverride = nil
         activePlaybackCueIndex = nil
 

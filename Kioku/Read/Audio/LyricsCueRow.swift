@@ -77,7 +77,15 @@ struct LyricsCueRow: View {
             // requires knowing which one was tapped, which needs hit-testing inside FuriganaView.
         }
         .translationTask(TranslationSession.Configuration(source: .init(identifier: "ja"), target: nil)) { session in
-            translationCache.requestTranslation(cueIndex: cueIndex, text: cue.text, session: session)
+            // Translate directly in this closure — session must not escape it.
+            // .translationTask may re-fire on re-render; the needsTranslation guard makes it idempotent.
+            guard translationCache.needsTranslation(cueIndex: cueIndex, text: cue.text) else { return }
+            do {
+                let response = try await session.translate(cue.text)
+                await MainActor.run { translationCache.store(cueIndex: cueIndex, result: response.targetText) }
+            } catch {
+                // Failures are silent — the translation row simply won't appear.
+            }
         }
     }
 
