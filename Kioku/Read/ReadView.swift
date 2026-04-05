@@ -233,6 +233,31 @@ struct ReadView: View {
         )
     }
 
+    // Builds the segment color map for the lyrics overlay using the same resolver as the read view.
+    // Called only while the lyrics overlay is visible, so no persistent storage is needed.
+    private var lyricsSegmentColorByLocation: [Int: UIColor] {
+        guard readResourcesReady else { return [:] }
+        let customEven = customTokenColorsEnabled ? UIColor(hexString: tokenColorAHex) : nil
+        let customOdd  = customTokenColorsEnabled ? UIColor(hexString: tokenColorBHex) : nil
+        let resolver = ReadTextStyleResolver(
+            text: text,
+            segmentationRanges: segmentRanges,
+            textSize: textSize,
+            lineSpacing: lineSpacing,
+            kerning: kerning,
+            isLineWrappingEnabled: isLineWrappingEnabled,
+            isVisualEnhancementsEnabled: isColorAlternationEnabled,
+            isColorAlternationEnabled: isColorAlternationEnabled,
+            isHighlightUnknownEnabled: false,
+            unknownSegmentLocations: [],
+            changedSegmentLocations: [],
+            changedReadingLocations: [],
+            customEvenSegmentColor: customEven,
+            customOddSegmentColor: customOdd
+        )
+        return resolver.makePayload().segmentForegroundByLocation
+    }
+
     private var alertingReadView: some View {
         lifecycleReadView
             .alert("OCR Import Failed", isPresented: ocrImportErrorPresented) {
@@ -470,6 +495,7 @@ struct ReadView: View {
                     highlightRanges: audioAttachmentHighlightRanges,
                     furiganaBySegmentLocation: furiganaBySegmentLocation,
                     furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+                    segmentColorByLocation: lyricsSegmentColorByLocation,
                     segmentationRanges: segmentRanges,
                     noteText: text,
                     displayStyle: LyricsDisplayStyle(rawValue: lyricsDisplayStyleRaw) ?? .appleMusic,

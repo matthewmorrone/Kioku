@@ -13,7 +13,7 @@ enum WordsSortOrder: String {
 
 // Cross-tab routing for the Words screen.
 enum WordsRoute: Equatable {
-    case detail(entryID: Int64, surface: String?)
+    case detail(entryID: Int64, surface: String?, reading: String? = nil)
     case search(String)
 }
 
@@ -30,6 +30,8 @@ struct WordsView: View {
     @EnvironmentObject private var historyStore: HistoryStore
 
     @State private var selectedDetailWord: SavedWord?
+    // Reading that was active in the lookup sheet when this word detail was opened, if available.
+    @State private var selectedDetailReading: String?
     @State private var activeFilterNoteIDs: Set<UUID> = []
     @State private var activeFilterListIDs: Set<UUID> = []
     @State private var isFilterSheetPresented = false
@@ -83,10 +85,11 @@ struct WordsView: View {
         guard let route else { return }
 
         switch route {
-        case let .detail(entryID, surface):
+        case let .detail(entryID, surface, reading):
             if let word = detailWord(entryID: entryID, surfaceHint: surface) {
                 activeTab = .saved
                 selectedDetailWord = word
+                selectedDetailReading = reading
             }
 
         case let .search(query):
@@ -160,8 +163,8 @@ struct WordsView: View {
             }
         }
         .toolbar(.visible, for: .tabBar)
-        .sheet(item: $selectedDetailWord) { word in
-            WordDetailView(word: word, dictionaryStore: dictionaryStore)
+        .sheet(item: $selectedDetailWord, onDismiss: { selectedDetailReading = nil }) { word in
+            WordDetailView(word: word, reading: selectedDetailReading, dictionaryStore: dictionaryStore)
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .presentationDetents([.large])

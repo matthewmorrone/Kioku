@@ -110,7 +110,7 @@ final class FuriganaOverlayView: UIView {
 
         if let playbackHighlightRect, let playbackHighlightColor, playbackHighlightRect.intersects(rect) {
             playbackHighlightColor.setFill()
-            UIBezierPath(roundedRect: playbackHighlightRect, cornerRadius: 7).fill()
+            UIBezierPath(roundedRect: playbackHighlightRect, cornerRadius: 10).fill()
         }
 
         if let illegalBoundaryRect, let illegalBoundaryColor, illegalBoundaryRect.intersects(rect) {
