@@ -89,20 +89,23 @@ struct LyricsCueRow: View {
         }
     }
 
-    // Full cue as one FuriganaLabel with per-segment colors, scaled to fit the available width.
+    // Full cue as one FuriganaLabel with per-segment colors, constrained to the available width.
+    // FuriganaLabel.sizeThatFits reports the correct height (base text + furigana headroom) for
+    // any given width, so SwiftUI allocates the right vertical space without manual scaling tricks.
     @ViewBuilder
     private var fullLineView: some View {
         let uiFont = UIFont.systemFont(ofSize: CGFloat(textSize))
         let gap = CGFloat(furiganaGap)
 
         if let (surface, reading, localColors) = fullCueData() {
-            ScaledFuriganaLine(
+            FuriganaLabel(
                 surface: surface,
                 reading: reading,
                 font: uiFont,
                 gap: gap,
                 segmentColors: localColors
             )
+            .frame(maxWidth: .infinity)
         } else {
             Text(cue.text)
                 .font(Font(uiFont))
@@ -138,60 +141,31 @@ struct LyricsCueRow: View {
         var reading = ""
         var localColors: [Int: UIColor] = [:]
 
+        // Build the full kana reading of the surface by walking segments in order.
+        // Each segment contributes either its furigana (if it has one) or its own surface text.
+        // This produces a full phonetic reading that FuriganaView can align against kanji runs.
+        var fullReading = ""
         for segRange in segmentationRanges {
             let nsRange = NSRange(segRange, in: noteText)
             guard NSIntersectionRange(nsRange, highlightRange).length > 0 else { continue }
 
             let localOffset = nsRange.location - surfaceBase
+            let segSurface = String(noteText[segRange])
 
-            // Remap color for every UTF-16 unit in this segment to surface-local offsets.
             if let color = segmentColorByLocation[nsRange.location] {
                 for offset in 0..<nsRange.length {
                     localColors[localOffset + offset] = color
                 }
             }
 
-            // Accumulate reading.
             if let r = furiganaBySegmentLocation[nsRange.location], r.isEmpty == false {
-                reading += r
+                fullReading += r
+            } else {
+                fullReading += segSurface
             }
         }
+        reading = fullReading
 
         return (surface: surface, reading: reading, localColors: localColors)
-    }
-}
-
-// A FuriganaLabel that scales uniformly to fit the available width on a single line.
-// Measures natural width via FuriganaView.naturalSize() (no live view needed), then
-// applies a scaleEffect so the label never wraps regardless of cue length.
-private struct ScaledFuriganaLine: View {
-    let surface: String
-    let reading: String
-    let font: UIFont
-    let gap: CGFloat
-    let segmentColors: [Int: UIColor]
-
-    var body: some View {
-        let natural = naturalSize()
-        GeometryReader { geo in
-            let scale = natural.width > geo.size.width ? geo.size.width / natural.width : 1.0
-            FuriganaLabel(
-                surface: surface,
-                reading: reading,
-                font: font,
-                gap: gap,
-                segmentColors: segmentColors
-            )
-            .frame(width: natural.width, height: natural.height)
-            .scaleEffect(scale, anchor: .center)
-            .frame(width: geo.size.width, height: natural.height * scale)
-        }
-        .frame(height: natural.height)
-    }
-
-    private func naturalSize() -> CGSize {
-        let view = FuriganaView()
-        view.configure(surface: surface, reading: reading, font: font, gap: gap, segmentColors: segmentColors)
-        return view.naturalSize()
     }
 }

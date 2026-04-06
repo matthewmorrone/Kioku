@@ -117,38 +117,23 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
     }
 
     override func draw(_ rect: CGRect) {
-        guard let context = UIGraphicsGetCurrentContext() else { return }
-
         let baseAttrString = baseAttributedString()
         let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * 0.5)
         let topInset = furiganaFont.lineHeight + gap
 
-        // Use the canonical computed height rather than bounds.height so the coordinate pipeline
-        // is stable even when Auto Layout hasn't yet propagated the correct frame to this view.
         let drawWidth = bounds.width > 0 ? bounds.width : rect.width
-        let drawHeight = computeHeight(for: drawWidth)
-        let textRect = CGRect(x: 0, y: topInset, width: drawWidth, height: drawHeight - topInset)
+        // The base text sits below the furigana headroom, drawn in UIKit coordinates.
+        let textRect = CGRect(x: 0, y: topInset, width: drawWidth, height: rect.height - topInset)
 
-        // Compute per-run readings for furigana placement.
+        // Draw base text using UIKit — no coordinate flip needed.
+        baseAttrString.draw(in: textRect)
+
+        // Locate each kanji run using CoreText layout of the same rect, then draw furigana above.
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)
-        let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs)
+        guard let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs),
+              runReadings.count == runs.count else { return }
 
-        // Measure each run rect using CoreText within the inset text area.
-        let runRects = rubyRunRects(for: baseAttrString, runs: runs, in: textRect)
-
-        // Draw base text via CoreText into the inset rect (no ruby annotations).
-        context.saveGState()
-        context.textMatrix = .identity
-        context.translateBy(x: 0, y: drawHeight)
-        context.scaleBy(x: 1, y: -1)
-        let framesetter = CTFramesetterCreateWithAttributedString(baseAttrString)
-        let framePath = CGPath(rect: textRect, transform: nil)
-        let frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), framePath, nil)
-        CTFrameDraw(frame, context)
-        context.restoreGState()
-
-        // Draw furigana strings above each kanji run in UIKit coordinates.
-        guard let runReadings, runReadings.count == runs.count else { return }
+        let runRects = uikitRunRects(for: baseAttrString, runs: runs, in: textRect)
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
@@ -159,10 +144,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
             let runRect = runRects[i]
             guard runRect != .null else { continue }
 
-            // Use the segment color for the run's start position if available.
-            let runStartOffset = runs[i].start
-            let runColor = segmentColors[runStartOffset] ?? textColor
-
+            let runColor = segmentColors[runs[i].start] ?? textColor
             let furiganaAttributes: [NSAttributedString.Key: Any] = [
                 .font: furiganaFont,
                 .foregroundColor: runColor,
@@ -171,10 +153,12 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
 
             let furiganaSize = (runReading as NSString).size(withAttributes: furiganaAttributes)
             let furiganaX = runRect.midX - furiganaSize.width / 2
+            // Place furigana above the run rect with the configured gap.
             let furiganaY = runRect.minY - gap - furiganaSize.height
-            let furiganaRect = CGRect(x: furiganaX, y: furiganaY, width: furiganaSize.width, height: furiganaSize.height)
-
-            (runReading as NSString).draw(in: furiganaRect, withAttributes: furiganaAttributes)
+            (runReading as NSString).draw(
+                in: CGRect(x: furiganaX, y: furiganaY, width: furiganaSize.width, height: furiganaSize.height),
+                withAttributes: furiganaAttributes
+            )
         }
     }
 
@@ -244,68 +228,28 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         return attrString
     }
 
-    // Returns the UIKit-coordinate bounding rect for each kanji run in the base text layout.
-    // Uses CoreText glyph positions to compute per-run rects so furigana centers correctly.
-    private func rubyRunRects(for attrString: NSAttributedString, runs: [(start: Int, end: Int)], in rect: CGRect) -> [CGRect] {
+    // Returns the UIKit-coordinate bounding rect for each kanji run within the laid-out text rect.
+    // Uses NSLayoutManager to measure glyph positions — same coordinate space as NSAttributedString.draw(in:).
+    private func uikitRunRects(for attrString: NSAttributedString, runs: [(start: Int, end: Int)], in textRect: CGRect) -> [CGRect] {
         guard !runs.isEmpty else { return [] }
 
-        let framesetter = CTFramesetterCreateWithAttributedString(attrString)
-        let framePath = CGPath(rect: rect, transform: nil)
-        let frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), framePath, nil)
+        let storage = NSTextStorage(attributedString: attrString)
+        let container = NSTextContainer(size: textRect.size)
+        container.lineFragmentPadding = 0
+        let manager = NSLayoutManager()
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+        manager.ensureLayout(for: container)
 
-        let lines = CTFrameGetLines(frame) as? [CTLine] ?? []
-        var lineOrigins = [CGPoint](repeating: .zero, count: lines.count)
-        CTFrameGetLineOrigins(frame, CFRangeMake(0, 0), &lineOrigins)
-
-        // Build a map from character index → glyph rect in UIKit coordinates (y flipped).
-        var charRects: [Int: CGRect] = [:]
-        let chars = Array(surface)
-
-        for (lineIndex, line) in lines.enumerated() {
-            let lineOrigin = lineOrigins[lineIndex]
-            let lineRuns = CTLineGetGlyphRuns(line) as? [CTRun] ?? []
-
-            for run in lineRuns {
-                let runAttrs = CTRunGetAttributes(run) as? [NSAttributedString.Key: Any] ?? [:]
-                _ = runAttrs // suppress unused warning
-
-                let glyphCount = CTRunGetGlyphCount(run)
-                let runRange = CTRunGetStringRange(run)
-
-                for glyphIndex in 0..<glyphCount {
-                    let glyphRange = CFRangeMake(glyphIndex, 1)
-                    var glyphBounds = CGRect.zero
-                    CTRunGetTypographicBounds(run, glyphRange, nil, nil, nil)
-                    let xOffset = CTLineGetOffsetForStringIndex(line, runRange.location + glyphIndex, nil)
-
-                    var ascent: CGFloat = 0
-                    var descent: CGFloat = 0
-                    CTRunGetTypographicBounds(run, glyphRange, &ascent, &descent, nil)
-
-                    // CoreText origin is bottom-left of the frame rect; convert to UIKit top-left view coordinates.
-                    // rect.minY offsets back into view space when the frame rect is inset from the view top.
-                    let glyphX = lineOrigin.x + xOffset
-                    let glyphY = rect.minY + rect.height - (lineOrigin.y + ascent)
-                    let glyphH = ascent + descent
-
-                    var glyphAdvance: CGFloat = 0
-                    CTRunGetTypographicBounds(run, glyphRange, nil, nil, &glyphAdvance)
-                    glyphBounds = CGRect(x: glyphX, y: glyphY, width: glyphAdvance, height: glyphH)
-
-                    let charIndex = runRange.location + glyphIndex
-                    if charIndex < chars.count {
-                        charRects[charIndex] = glyphBounds
-                    }
-                }
-            }
-        }
-
-        // Union glyph rects across each run to get a bounding rect per kanji run.
         return runs.map { run in
+            // Union the glyph rects for every character in this run.
             var unionRect = CGRect.null
-            for i in run.start..<run.end {
-                if let r = charRects[i] {
-                    unionRect = unionRect.union(r)
+            for charIndex in run.start..<run.end {
+                let glyphRange = manager.glyphRange(forCharacterRange: NSRange(location: charIndex, length: 1), actualCharacterRange: nil)
+                manager.enumerateEnclosingRects(forGlyphRange: glyphRange, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: container) { glyphRect, _ in
+                    // glyphRect is in the text container's coordinate space; offset by textRect origin.
+                    let viewRect = glyphRect.offsetBy(dx: textRect.minX, dy: textRect.minY)
+                    unionRect = unionRect.union(viewRect)
                 }
             }
             return unionRect
