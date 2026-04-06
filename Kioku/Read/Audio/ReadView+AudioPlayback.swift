@@ -23,7 +23,7 @@ extension ReadView {
 
         StartupTimer.mark("loadAudioAttachmentIfNeeded start")
         isShowingLyricsView = false
-        lyricsTranslationCache.clear()
+        lyricsTranslationCache.load(for: attachmentID)
         activeAudioAttachmentID = attachmentID
         let cues = StartupTimer.measure("loadAudioAttachmentIfNeeded.loadCues") {
             NotesAudioStore.shared.loadCues(for: attachmentID)

@@ -24,7 +24,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let changedSegmentLocations: Set<Int>
     // Subset of changedSegmentLocations where only the furigana reading changed (surface unchanged).
     let changedReadingLocations: Set<Int>
-    let segmenter: any TextSegmenting
     // Hex strings for user-configured segment alternation colors. Empty string = use system default.
     let customEvenSegmentColorHex: String
     let customOddSegmentColorHex: String
@@ -40,8 +39,21 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let lineSpacing: Double
     let kerning: Double
     let furiganaGap: Double
+    var textAlignment: NSTextAlignment = .natural
+    var isScrollEnabled: Bool = true
 
-    // Creates coordinator state used to skip redundant expensive furigana layout passes.
+    // Reports a fixed single-line height when scroll is disabled (e.g. lyrics cue row) so SwiftUI
+    // allocates a real frame before the first render. When scrolling is enabled the view fills
+    // whatever space SwiftUI offers, so we defer to the default behaviour by returning nil.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        guard !uiView.isScrollEnabled else { return nil }
+        let bodyFont = UIFont.systemFont(ofSize: textSize)
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        let height = furiganaFont.lineHeight + CGFloat(furiganaGap) + 4 + bodyFont.lineHeight + 8
+        return CGSize(width: proposal.width ?? uiView.bounds.width, height: height)
+    }
+
+// Creates coordinator state used to skip redundant expensive furigana layout passes.
     func makeCoordinator() -> FuriganaTextRendererCoordinator {
         FuriganaTextRendererCoordinator(
             textSize: $textSize,
@@ -65,6 +77,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         textView.adjustsFontForContentSizeCategory = true
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textContainer.lineFragmentPadding = 0
+        textView.textAlignment = textAlignment
+        textView.isScrollEnabled = isScrollEnabled
         configureWrapping(for: textView)
         textView.clipsToBounds = true
         let pinchRecognizer = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(FuriganaTextRendererCoordinator.handlePinch(_:)))
@@ -114,7 +128,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         }
 
         let renderSignature = makeRenderSignature(for: textView)
-        guard context.coordinator.shouldRender(for: renderSignature) else {
+        guard context.coordinator.shouldRender(for: renderSignature, boundsWidth: textView.bounds.width) else {
             return
         }
 
@@ -134,7 +148,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             changedSegmentLocations: changedSegmentLocations,
             changedReadingLocations: changedReadingLocations,
             customEvenSegmentColor: customEvenSegmentColorHex.isEmpty ? nil : UIColor(hexString: customEvenSegmentColorHex),
-            customOddSegmentColor: customOddSegmentColorHex.isEmpty ? nil : UIColor(hexString: customOddSegmentColorHex)
+            customOddSegmentColor: customOddSegmentColorHex.isEmpty ? nil : UIColor(hexString: customOddSegmentColorHex),
+            textAlignment: textAlignment
         ).makePayload()
         // Top inset must accommodate the furigana row above the first line so it matches
         // the spacing above all other lines (which comes from paragraph lineSpacing).
@@ -376,6 +391,13 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             debugFuriganaLineBandRects: debugFuriganaLineBandRects
         )
         context.coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
+
+        // If furigana data was present but no frames were produced, the text layout wasn't ready
+        // (e.g. bounds were zero on first render). Don't mark as rendered so the next updateUIView
+        // call retries with a real frame.
+        if !furiganaBySegmentLocation.isEmpty && furiganaStrings.isEmpty && textView.bounds.width == 0 {
+            return
+        }
 
         guard isVisualEnhancementsEnabled || selectedSegmentRect != nil || illegalBoundaryRect != nil else {
             context.coordinator.markRendered(signature: renderSignature)
