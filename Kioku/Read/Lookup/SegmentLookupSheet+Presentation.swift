@@ -143,7 +143,9 @@ extension SegmentLookupSheet {
                 sheetVC.updateOpenDetailButtonAppearance()
             }
 
-            sheetVC.currentSheetPreferredHeight = sheetVC.computePreferredSheetHeight()
+            // Views aren't built yet (viewDidLoad fires on present); use fallback height.
+            // viewDidLoad recomputes currentSheetPreferredHeight once views exist.
+            sheetVC.currentSheetPreferredHeight = 400
             self.configureSurfaceSheetPresentation(sheetVC) {
                 sheetVC.currentSheetPreferredHeight
             }

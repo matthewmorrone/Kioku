@@ -21,6 +21,7 @@ struct ReadTextStyleResolver {
     // User-configured colors for even/odd segment alternation. When nil, falls back to system defaults.
     let customEvenSegmentColor: UIColor?
     let customOddSegmentColor: UIColor?
+    var textAlignment: NSTextAlignment = .natural
 
     // Produces the read-mode attributed string and segment foreground map for one render pass.
     func makePayload() -> ReadTextStylePayload {
@@ -28,6 +29,7 @@ struct ReadTextStyleResolver {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing + (baseFont.lineHeight * 0.5)
         paragraphStyle.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping
+        paragraphStyle.alignment = textAlignment
 
         let attributedText = NSMutableAttributedString(
             string: text,

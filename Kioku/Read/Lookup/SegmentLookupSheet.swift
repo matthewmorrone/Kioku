@@ -1,7 +1,7 @@
 import UIKit
 
 // Presents a native UIKit popover anchored to tapped segment rects in the read-mode text view.
-final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegate, UIAdaptivePresentationControllerDelegate {
+final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegate, UIAdaptivePresentationControllerDelegate, UISheetPresentationControllerDelegate {
     static let shared = SegmentLookupSheet()
     // Key for retaining the tap handler via associated objects (gesture recognizer holds weak ref).
     static var tapHandlerKey: UInt8 = 0

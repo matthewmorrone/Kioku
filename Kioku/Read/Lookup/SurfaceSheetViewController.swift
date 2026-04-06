@@ -112,6 +112,8 @@ final class SurfaceSheetViewController: UIViewController {
         splitButton.isEnabled = currentSurface.count > 1
         splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
         updateMergeButtonAvailability()
+        // Views are now built — compute the real preferred height for the detent.
+        currentSheetPreferredHeight = computePreferredSheetHeight()
     }
 
     // MARK: - Reading management

@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 // Floating karaoke-style lyrics popup rendered as an overlay on ReadView.
 // Shows the full cue list in a free-scrollable view; the active cue auto-scrolls to center.
@@ -12,26 +11,23 @@ struct LyricsView: View {
     let highlightRanges: [NSRange?]
     let furiganaBySegmentLocation: [Int: String]
     let furiganaLengthBySegmentLocation: [Int: Int]
-    let segmentColorByLocation: [Int: UIColor]
     let segmentationRanges: [Range<String.Index>]
     let noteText: String
     let displayStyle: LyricsDisplayStyle
-    let translationCache: LyricsTranslationCache
+    @ObservedObject var translationCache: LyricsTranslationCache
     let onSegmentTapped: (Int) -> Void
     let onDismiss: () -> Void
 
     @State private var isRepeatOn = false
     // Index highlighted while the user manually browses — overrides activeCueIndex visually.
+    // nil = follow playback auto-scroll.
     @State private var browseIndex: Int? = nil
-    // True while the user is scrolling; suppresses playback auto-scroll.
-    @State private var userIsScrolling = false
-    // Timestamp of the last scroll activity — used to detect when momentum has fully settled.
+    // Scroll position binding: tracks which cue row is currently scrolled to.
+    @State private var scrolledID: Int? = nil
+    // Timestamp of the last manual scroll event — used to detect idle threshold (1.5s) before resuming auto-scroll.
     @State private var lastScrollTime: Date = .distantPast
-    // Set when the user taps a cue to seek; blocks onPreferenceChange from overriding browseIndex
-    // until the scroll view has settled on the new position.
-    @State private var pendingSeekIndex: Int? = nil
-    // True after the first layout pass has fired, so we don't treat initial render as a scroll.
-    @State private var hasAppeared = false
+    // True while the scrubber thumb is being dragged; suppresses scroll/playback interference.
+    @State private var isScrubbing = false
 
     var body: some View {
         GeometryReader { geo in
@@ -47,6 +43,8 @@ struct LyricsView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { }
             }
+            .contentShape(Rectangle())
+            .allowsHitTesting(true)
         }
     }
 
@@ -67,118 +65,121 @@ struct LyricsView: View {
 
     private let controlsHeight: CGFloat = 56
 
-    // The start time of the browsed cue — only valid while the user is actively scrolling.
+    // The start time of the browsed cue — only valid while browsing.
     private var browseStartMs: Int? {
-        guard userIsScrolling, let idx = browseIndex, cues.indices.contains(idx) else { return nil }
+        guard let idx = browseIndex, cues.indices.contains(idx) else { return nil }
         return cues[idx].startMs
     }
 
     // Full cue list — all cues visible, active scrolled to center.
     // Top and bottom padding equals half the list height so the active cue can truly center.
+    // The active-cue FuriganaTextRenderer lives as a ZStack overlay so it is never torn down between cue transitions; inactive rows show plain text placeholders.
     private func cueList(panelWidth: CGFloat, height: CGFloat) -> some View {
         let halfHeight = height / 2
 
         return ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(cues.enumerated()), id: \.offset) { i, cue in
-                        let highlighted = browseIndex ?? controller.activeCueIndex
-                        let distance = abs(i - (highlighted ?? 0))
-                        let isActive = highlighted == i
-                        LyricsCueRow(
-                            cue: cue,
-                            cueIndex: i,
-                            isActive: isActive,
-                            distanceFromActive: distance,
-                            displayStyle: displayStyle,
-                            furiganaBySegmentLocation: furiganaBySegmentLocation,
-                            furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
-                            segmentationRanges: segmentationRanges,
-                            noteText: noteText,
-                            highlightRange: i < highlightRanges.count ? highlightRanges[i] : nil,
-                            segmentColorByLocation: segmentColorByLocation,
-                            translationCache: translationCache,
-                            onSegmentTapped: onSegmentTapped,
-                            onCueTapped: {
-                                controller.seek(toMs: cue.startMs)
-                                browseIndex = i
-                                pendingSeekIndex = i
-                                userIsScrolling = false
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    proxy.scrollTo(i, anchor: .center)
-                                }
-                            }
-                        )
-                        // Each row reports its center Y in scroll-view coordinates so we can
-                        // determine which cue is closest to center during manual scroll.
-                        .background(
-                            GeometryReader { rowGeo in
-                                Color.clear.preference(
-                                    key: RowCenterPreferenceKey.self,
-                                    value: [i: rowGeo.frame(in: .named("lyricsScroll")).midY]
+            ZStack {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(cues.enumerated()), id: \.offset) { i, cue in
+                                let highlighted = browseIndex ?? controller.activeCueIndex
+                                let distance = abs(i - (highlighted ?? 0))
+                                let isActive = highlighted == i
+                                LyricsCueRow(
+                                    cue: cue,
+                                    cueIndex: i,
+                                    isActive: isActive,
+                                    distanceFromActive: distance,
+                                    displayStyle: displayStyle,
+                                    translationCache: translationCache,
+                                    onCueTapped: {
+                                        controller.seek(toMs: cue.startMs)
+                                        browseIndex = i
+                                        lastScrollTime = Date()
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            proxy.scrollTo(i, anchor: .center)
+                                        }
+                                    }
                                 )
+                                .id(i)
                             }
-                        )
-                        .id(i)
-                    }
+                        } // LazyVStack
+                    } // VStack
+                    // Vertical padding lets the first and last cues scroll to center.
+                    .padding(.vertical, halfHeight)
+                    .padding(.horizontal, 16)
                 }
-                // Vertical padding lets the first and last cues scroll to center.
-                .padding(.vertical, halfHeight)
-                .padding(.horizontal, 16)
-            }
-            .coordinateSpace(name: "lyricsScroll")
-            .frame(height: height)
-            // Fade top and bottom so cues dissolve naturally into the panel edges.
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .black, location: 0.18),
-                        .init(color: .black, location: 0.82),
-                        .init(color: .clear, location: 1),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
+                .frame(height: height)
+                .scrollPosition(id: $scrolledID)
+                // Fade top and bottom so cues dissolve naturally into the panel edges.
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black, location: 0.18),
+                            .init(color: .black, location: 0.82),
+                            .init(color: .clear, location: 1),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
                 )
-            )
-            // Update browseIndex to whichever cue is nearest the panel center.
-            // Only marks userIsScrolling when the centered cue differs from the playback cue —
-            // meaning the user has scrolled away from where audio is, not just that a cue advanced.
-            .onPreferenceChange(RowCenterPreferenceKey.self) { centers in
-                guard hasAppeared else { hasAppeared = true; return }
-                let midY = height / 2
-                guard let closest = centers.min(by: { abs($0.value - midY) < abs($1.value - midY) }) else { return }
-                if let pending = pendingSeekIndex {
-                    if closest.key == pending { pendingSeekIndex = nil }
-                    return
-                }
-                browseIndex = closest.key
-                // Only treat as a user scroll when the centered cue differs from playback position.
-                if closest.key != controller.activeCueIndex {
-                    lastScrollTime = Date()
-                    userIsScrolling = true
-                }
-            }
-            .onChange(of: controller.activeCueIndex) { _, newIndex in
-                // Resume auto-scroll when playback advances and the user hasn't scrolled recently.
-                guard let newIndex else { return }
-                let idleThreshold: TimeInterval = 1.5
-                if Date().timeIntervalSince(lastScrollTime) > idleThreshold {
-                    userIsScrolling = false
-                    browseIndex = nil
-                    withAnimation(.easeInOut(duration: 0.35)) {
-                        proxy.scrollTo(newIndex, anchor: .center)
+                // When user scrolls to a different cue, record the browse position.
+                // scrollPosition binding does not fire during programmatic proxy.scrollTo calls,
+                // so this cleanly distinguishes user scrolls from auto-scroll.
+                .onChange(of: scrolledID) { _, newID in
+                    guard !isScrubbing, let newID else { return }
+                    if newID != controller.activeCueIndex {
+                        browseIndex = newID
+                        lastScrollTime = Date()
                     }
                 }
-            }
-            .onChange(of: controller.currentTimeMs) { _, currentMs in
-                guard isRepeatOn,
-                      let activeIndex = controller.activeCueIndex,
-                      activeIndex < cues.count else { return }
-                let activeCue = cues[activeIndex]
-                if currentMs >= activeCue.endMs {
-                    controller.seek(toMs: activeCue.startMs)
+                // When playback advances, resume auto-scroll if user has been idle 1.5s.
+                .onChange(of: controller.activeCueIndex) { _, newIndex in
+                    guard let newIndex else { return }
+                    // While scrubbing, always scroll immediately to track the drag.
+                    if isScrubbing {
+                        browseIndex = nil
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            proxy.scrollTo(newIndex, anchor: .center)
+                        }
+                        return
+                    }
+                    // Resume auto-scroll when playback advances and the user hasn't scrolled recently.
+                    let idleThreshold: TimeInterval = 1.5
+                    if Date().timeIntervalSince(lastScrollTime) > idleThreshold {
+                        browseIndex = nil
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            proxy.scrollTo(newIndex, anchor: .center)
+                        }
+                    }
                 }
+                .onChange(of: controller.currentTimeMs) { _, currentMs in
+                    guard isRepeatOn,
+                          let activeIndex = controller.activeCueIndex,
+                          activeIndex < cues.count else { return }
+                    let activeCue = cues[activeIndex]
+                    if currentMs >= activeCue.endMs {
+                        controller.seek(toMs: activeCue.startMs)
+                    }
+                }
+
+                // Persistent active-cue renderer — always mounted so UITextView is never torn down
+                // between cue changes. Centered in the list area, layered above the scroll list.
+                LyricsActiveCueOverlay(
+                    activeCueIndex: browseIndex ?? controller.activeCueIndex,
+                    cues: cues,
+                    highlightRanges: highlightRanges,
+                    furiganaBySegmentLocation: furiganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+                    segmentationRanges: segmentationRanges,
+                    noteText: noteText,
+                    translationCache: translationCache,
+                    panelWidth: panelWidth,
+                    onSegmentTapped: onSegmentTapped
+                )
+                .allowsHitTesting(true)
             }
         }
     }
@@ -207,7 +208,7 @@ struct LyricsView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
 
-            LyricsScrubber(controller: controller, browseTimeMs: browseStartMs)
+            LyricsScrubber(controller: controller, browseTimeMs: browseStartMs, isScrubbing: $isScrubbing)
 
             Button { isRepeatOn.toggle() } label: {
                 Circle()
@@ -231,12 +232,13 @@ struct LyricsView: View {
 
 // Inline scrubber with timestamps flanking the slider — used only inside LyricsView.
 // browseTimeMs: when non-nil (user is scrolling), overrides the displayed position without seeking.
+// isScrubbing: bound to LyricsView so it can suppress scroll-position interference during drags.
 private struct LyricsScrubber: View {
     @ObservedObject var controller: AudioPlaybackController
     let browseTimeMs: Int?
+    @Binding var isScrubbing: Bool
 
     @State private var scrubPositionSeconds: Double = 0
-    @State private var isScrubbing = false
 
     // Displayed position: browse position > manual scrub > playback position.
     private var displayPositionSeconds: Double {
@@ -262,7 +264,10 @@ private struct LyricsScrubber: View {
             Slider(
                 value: Binding(
                     get: { displayPositionSeconds },
-                    set: { scrubPositionSeconds = $0 }
+                    set: {
+                        scrubPositionSeconds = $0
+                        controller.seek(toMs: Int($0 * 1000))
+                    }
                 ),
                 in: 0...max(controller.duration, 0.1),
                 onEditingChanged: { editing in
@@ -298,11 +303,3 @@ private struct LyricsScrubber: View {
     }
 }
 
-// Collects each cue row's center Y position (in scroll-view coordinates) so LyricsView
-// can determine which cue is closest to the panel center during manual scrolling.
-private struct RowCenterPreferenceKey: PreferenceKey {
-    static let defaultValue: [Int: CGFloat] = [:]
-    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}

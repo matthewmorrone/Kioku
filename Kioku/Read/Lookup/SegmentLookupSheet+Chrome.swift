@@ -12,11 +12,14 @@ extension SegmentLookupSheet {
         preferredHeight: @escaping () -> CGFloat
     ) {
         sheetController.modalPresentationStyle = .pageSheet
-        sheetController.presentationController?.delegate = self
 
         guard let sheetPresentationController = sheetController.sheetPresentationController else {
             return
         }
+
+        // sheetPresentationController exists before presentation; delegate set here is reliable.
+        // presentationController is nil before present() is called so setting delegate there is a no-op.
+        sheetPresentationController.delegate = self
 
         if #available(iOS 16.0, *) {
             let fittedDetentIdentifier = UISheetPresentationController.Detent.Identifier("surfaceFitted")

@@ -10,6 +10,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
     var onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
     private var lastRenderSignature: Int?
     private var lastTextRenderSignature: Int?
+    private var lastKnownBoundsWidth: CGFloat = 0
     private var pinchStartTextSize: Double?
     private var isApplyingExternalScroll = false
     private var segmentationNSRanges: [NSRange] = []
@@ -60,11 +61,18 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
     }
 
     // Determines whether a new render pass is needed for the provided signature.
-    func shouldRender(for signature: Int) -> Bool {
+    // Also invalidates when the view transitions from zero to non-zero width, so that
+    // a first render with no real frame doesn't permanently suppress furigana drawing.
+    func shouldRender(for signature: Int, boundsWidth: CGFloat) -> Bool {
+        let wasZero = lastKnownBoundsWidth == 0
+        let isNonZero = boundsWidth > 0
+        lastKnownBoundsWidth = boundsWidth
+        if wasZero && isNonZero {
+            lastRenderSignature = nil
+        }
         guard let lastRenderSignature else {
             return true
         }
-
         return lastRenderSignature != signature
     }
 
