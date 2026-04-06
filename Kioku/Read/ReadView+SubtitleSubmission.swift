@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // Subtitle submission sheet UI — the bottom sheet for attaching audio + subtitle files to a note.
 extension ReadView {

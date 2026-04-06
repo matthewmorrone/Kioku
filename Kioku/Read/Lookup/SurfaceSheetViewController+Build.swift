@@ -59,7 +59,7 @@ extension SurfaceSheetViewController {
         headerTapRecognizer.cancelsTouchesInView = false
         headerStack.isUserInteractionEnabled = true
         headerStack.addGestureRecognizer(headerTapRecognizer)
-        objc_setAssociatedObject(headerStack, &SegmentLookupSheet.tapHandlerKey, headerTapHandler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(headerStack as Any, &SegmentLookupSheet.tapHandlerKey, headerTapHandler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 
     // Constructs the split boundary editor panel (hidden by default).

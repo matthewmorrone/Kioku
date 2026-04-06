@@ -51,15 +51,15 @@ struct ReadView: View {
     @AppStorage(TokenColorSettings.colorBKey)
     private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
     @AppStorage("kioku.settings.showFurigana")
-    private var isFuriganaVisible = true
+    var isFuriganaVisible = true
     @AppStorage("kioku.settings.colorAlternation")
-    private var isColorAlternationEnabled = true
+    var isColorAlternationEnabled = true
     @AppStorage("kioku.settings.highlightUnknown")
-    private var isHighlightUnknownEnabled = false
+    var isHighlightUnknownEnabled = false
     @AppStorage("kioku.settings.applyGlobally")
     var shouldApplyChangesGlobally = false
     @AppStorage("kioku.settings.lineWrapping")
-    private var isLineWrappingEnabled = true
+    var isLineWrappingEnabled = true
     @AppStorage(DebugSettings.pixelRulerKey)
     private var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey)
@@ -97,8 +97,8 @@ struct ReadView: View {
     @State var isEditMode = false
     @State var isSheetSwipeTransitionActive = false
     @State var sharedScrollOffsetY: CGFloat = 0
-    @State private var isShowingSegmentList = false
-    @State private var isShowingDisplayOptions = false
+    @State var isShowingSegmentList = false
+    @State var isShowingDisplayOptions = false
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
     @State var activeFileImportTarget: ReadViewFileImportTarget? = nil
@@ -206,7 +206,7 @@ struct ReadView: View {
         )
     }
 
-    private var isShowingSubtitleFileImporter: Binding<Bool> {
+    var isShowingSubtitleFileImporter: Binding<Bool> {
         Binding(
             get: {
                 guard isShowingFileImporter else {
