@@ -468,16 +468,6 @@ struct ReadView: View {
                 LyricsView(
                     controller: audioController,
                     cues: audioAttachmentCues,
-                    highlightRanges: audioAttachmentHighlightRanges,
-                    furiganaBySegmentLocation: furiganaBySegmentLocation,
-                    furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
-                    segmentationRanges: segmentRanges,
-                    noteText: text,
-                    displayStyle: LyricsDisplayStyle(rawValue: lyricsDisplayStyleRaw) ?? .appleMusic,
-                    translationCache: lyricsTranslationCache,
-                    onSegmentTapped: { tappedLocation in
-                        handleReadModeSegmentTap(tappedLocation, tappedSegmentRect: nil, sourceView: nil)
-                    },
                     onDismiss: {
                         isShowingLyricsView = false
                     }
