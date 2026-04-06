@@ -8,25 +8,9 @@ import SwiftUI
 struct LyricsView: View {
     @ObservedObject var controller: AudioPlaybackController
     let cues: [SubtitleCue]
-    let highlightRanges: [NSRange?]
-    let furiganaBySegmentLocation: [Int: String]
-    let furiganaLengthBySegmentLocation: [Int: Int]
-    let segmentationRanges: [Range<String.Index>]
-    let noteText: String
-    let displayStyle: LyricsDisplayStyle
-    @ObservedObject var translationCache: LyricsTranslationCache
-    let onSegmentTapped: (Int) -> Void
     let onDismiss: () -> Void
 
     @State private var isRepeatOn = false
-    // Index highlighted while the user manually browses — overrides activeCueIndex visually.
-    // nil = follow playback auto-scroll.
-    @State private var browseIndex: Int? = nil
-    // Scroll position binding: tracks which cue row is currently scrolled to.
-    @State private var scrolledID: Int? = nil
-    // Timestamp of the last manual scroll event — used to detect idle threshold (1.5s) before resuming auto-scroll.
-    @State private var lastScrollTime: Date = .distantPast
-    // True while the scrubber thumb is being dragged; suppresses scroll/playback interference.
     @State private var isScrubbing = false
 
     var body: some View {
@@ -48,143 +32,31 @@ struct LyricsView: View {
         }
     }
 
-    // Builds the rounded floating card centered in the screen.
     private func panel(geo: GeometryProxy) -> some View {
         let panelWidth = geo.size.width * 0.9
         let panelHeight = geo.size.height * 0.55
+        let controlsHeight: CGFloat = 56
 
         return VStack(spacing: 0) {
-            cueList(panelWidth: panelWidth, height: panelHeight - controlsHeight)
+            Color.clear
+                .frame(height: panelHeight - controlsHeight)
             controls
         }
         .frame(width: panelWidth, height: panelHeight)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.4), radius: 24, x: 0, y: 8)
-    }
-
-    private let controlsHeight: CGFloat = 56
-
-    // The start time of the browsed cue — only valid while browsing.
-    private var browseStartMs: Int? {
-        guard let idx = browseIndex, cues.indices.contains(idx) else { return nil }
-        return cues[idx].startMs
-    }
-
-    // Full cue list — all cues visible, active scrolled to center.
-    // Top and bottom padding equals half the list height so the active cue can truly center.
-    // The active-cue FuriganaTextRenderer lives as a ZStack overlay so it is never torn down between cue transitions; inactive rows show plain text placeholders.
-    private func cueList(panelWidth: CGFloat, height: CGFloat) -> some View {
-        let halfHeight = height / 2
-
-        return ScrollViewReader { proxy in
-            ZStack {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(cues.enumerated()), id: \.offset) { i, cue in
-                                let highlighted = browseIndex ?? controller.activeCueIndex
-                                let distance = abs(i - (highlighted ?? 0))
-                                let isActive = highlighted == i
-                                LyricsCueRow(
-                                    cue: cue,
-                                    cueIndex: i,
-                                    isActive: isActive,
-                                    distanceFromActive: distance,
-                                    displayStyle: displayStyle,
-                                    translationCache: translationCache,
-                                    onCueTapped: {
-                                        controller.seek(toMs: cue.startMs)
-                                        browseIndex = i
-                                        lastScrollTime = Date()
-                                        withAnimation(.easeInOut(duration: 0.3)) {
-                                            proxy.scrollTo(i, anchor: .center)
-                                        }
-                                    }
-                                )
-                                .id(i)
-                            }
-                        } // LazyVStack
-                    } // VStack
-                    // Vertical padding lets the first and last cues scroll to center.
-                    .padding(.vertical, halfHeight)
-                    .padding(.horizontal, 16)
-                }
-                .frame(height: height)
-                .scrollPosition(id: $scrolledID)
-                // Fade top and bottom so cues dissolve naturally into the panel edges.
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black, location: 0.18),
-                            .init(color: .black, location: 0.82),
-                            .init(color: .clear, location: 1),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                // When user scrolls to a different cue, record the browse position.
-                // scrollPosition binding does not fire during programmatic proxy.scrollTo calls,
-                // so this cleanly distinguishes user scrolls from auto-scroll.
-                .onChange(of: scrolledID) { _, newID in
-                    guard !isScrubbing, let newID else { return }
-                    if newID != controller.activeCueIndex {
-                        browseIndex = newID
-                        lastScrollTime = Date()
-                    }
-                }
-                // When playback advances, resume auto-scroll if user has been idle 1.5s.
-                .onChange(of: controller.activeCueIndex) { _, newIndex in
-                    guard let newIndex else { return }
-                    // While scrubbing, always scroll immediately to track the drag.
-                    if isScrubbing {
-                        browseIndex = nil
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            proxy.scrollTo(newIndex, anchor: .center)
-                        }
-                        return
-                    }
-                    // Resume auto-scroll when playback advances and the user hasn't scrolled recently.
-                    let idleThreshold: TimeInterval = 1.5
-                    if Date().timeIntervalSince(lastScrollTime) > idleThreshold {
-                        browseIndex = nil
-                        withAnimation(.easeInOut(duration: 0.35)) {
-                            proxy.scrollTo(newIndex, anchor: .center)
-                        }
-                    }
-                }
-                .onChange(of: controller.currentTimeMs) { _, currentMs in
-                    guard isRepeatOn,
-                          let activeIndex = controller.activeCueIndex,
-                          activeIndex < cues.count else { return }
-                    let activeCue = cues[activeIndex]
-                    if currentMs >= activeCue.endMs {
-                        controller.seek(toMs: activeCue.startMs)
-                    }
-                }
-
-                // Persistent active-cue renderer — always mounted so UITextView is never torn down
-                // between cue changes. Centered in the list area, layered above the scroll list.
-                LyricsActiveCueOverlay(
-                    activeCueIndex: browseIndex ?? controller.activeCueIndex,
-                    cues: cues,
-                    highlightRanges: highlightRanges,
-                    furiganaBySegmentLocation: furiganaBySegmentLocation,
-                    furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
-                    segmentationRanges: segmentationRanges,
-                    noteText: noteText,
-                    translationCache: translationCache,
-                    panelWidth: panelWidth,
-                    onSegmentTapped: onSegmentTapped
-                )
-                .allowsHitTesting(true)
+        .onChange(of: controller.currentTimeMs) { _, currentMs in
+            guard isRepeatOn,
+                  let activeIndex = controller.activeCueIndex,
+                  activeIndex < cues.count else { return }
+            let activeCue = cues[activeIndex]
+            if currentMs >= activeCue.endMs {
+                controller.seek(toMs: activeCue.startMs)
             }
         }
     }
 
-    // Bottom control row: play/pause · scrubber · repeat.
     private var controls: some View {
         HStack(alignment: .center, spacing: 10) {
             Button {
@@ -208,7 +80,7 @@ struct LyricsView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
 
-            LyricsScrubber(controller: controller, browseTimeMs: browseStartMs, isScrubbing: $isScrubbing)
+            LyricsScrubber(controller: controller, isScrubbing: $isScrubbing)
 
             Button { isRepeatOn.toggle() } label: {
                 Circle()
@@ -226,31 +98,22 @@ struct LyricsView: View {
         .padding(.horizontal, 14)
         .padding(.bottom, 12)
         .padding(.top, 6)
-        .frame(height: controlsHeight)
+        .frame(height: 56)
     }
 }
 
-// Inline scrubber with timestamps flanking the slider — used only inside LyricsView.
-// browseTimeMs: when non-nil (user is scrolling), overrides the displayed position without seeking.
-// isScrubbing: bound to LyricsView so it can suppress scroll-position interference during drags.
 private struct LyricsScrubber: View {
     @ObservedObject var controller: AudioPlaybackController
-    let browseTimeMs: Int?
     @Binding var isScrubbing: Bool
 
     @State private var scrubPositionSeconds: Double = 0
 
-    // Displayed position: browse position > manual scrub > playback position.
     private var displayPositionSeconds: Double {
-        if let browse = browseTimeMs, isScrubbing == false {
-            return Double(browse) / 1000
-        }
-        return isScrubbing ? scrubPositionSeconds : Double(controller.currentTimeMs) / 1000
+        isScrubbing ? scrubPositionSeconds : Double(controller.currentTimeMs) / 1000
     }
 
     private var displayTimeMs: Int {
-        if let browse = browseTimeMs, isScrubbing == false { return browse }
-        return isScrubbing ? Int(scrubPositionSeconds * 1000) : controller.currentTimeMs
+        isScrubbing ? Int(scrubPositionSeconds * 1000) : controller.currentTimeMs
     }
 
     var body: some View {
