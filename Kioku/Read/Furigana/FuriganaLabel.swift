@@ -13,6 +13,8 @@ struct FuriganaLabel: UIViewRepresentable {
     var textColor: UIColor = .label
     // Per-UTF-16-offset colors local to `surface`. When provided, overrides textColor per segment.
     var segmentColors: [Int: UIColor] = [:]
+    // Per-kanji-run readings keyed by run start character index. When non-empty, bypasses reading projection so every kanji run is guaranteed to show its furigana.
+    var explicitRunReadings: [Int: String] = [:]
 
     func makeUIView(context: Context) -> FuriganaView {
         let view = FuriganaView()
@@ -22,7 +24,7 @@ struct FuriganaLabel: UIViewRepresentable {
     }
 
     func updateUIView(_ view: FuriganaView, context: Context) {
-        view.configure(surface: surface, reading: reading, font: font, gap: gap, textColor: textColor, segmentColors: segmentColors)
+        view.configure(surface: surface, reading: reading, font: font, gap: gap, textColor: textColor, segmentColors: segmentColors, explicitRunReadings: explicitRunReadings)
     }
 
     // Reports the view's natural size so SwiftUI can allocate the correct height.

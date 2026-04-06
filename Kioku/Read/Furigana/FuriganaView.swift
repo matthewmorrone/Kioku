@@ -25,6 +25,9 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
     // Per-character-index colors within `surface` (UTF-16 offsets local to this view's surface string).
     // When non-empty, overrides textColor for each run.
     private var segmentColors: [Int: UIColor] = [:]
+    // Explicit per-run readings keyed by the run's start character index in `surface`.
+    // When provided, used directly instead of projecting from the full `reading` string.
+    private var explicitRunReadings: [Int: String] = [:]
 
     // Intrinsic size is computed from CoreText layout at the last known width.
     private var lastLayoutWidth: CGFloat = 0
@@ -64,13 +67,16 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
 
     // Sets the text content and visual parameters. Triggers relayout and redraw.
     // segmentColors: per-UTF-16-offset colors local to `surface` (not the full note text).
+    // explicitRunReadings: per-kanji-run readings keyed by run start character index in surface.
+    //   When provided, bypasses projectRunReadings so every kanji run gets its reading directly.
     func configure(
         surface: String,
         reading: String,
         font: UIFont,
         gap: CGFloat,
         textColor: UIColor = .label,
-        segmentColors: [Int: UIColor] = [:]
+        segmentColors: [Int: UIColor] = [:],
+        explicitRunReadings: [Int: String] = [:]
     ) {
         self.surface = surface
         self.reading = reading
@@ -79,6 +85,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         self.plainText = surface
         self.textColor = textColor
         self.segmentColors = segmentColors
+        self.explicitRunReadings = explicitRunReadings
         invalidateIntrinsicContentSize()
         setNeedsLayout()
         setNeedsDisplay()
@@ -128,10 +135,21 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         // Draw base text using UIKit — no coordinate flip needed.
         baseAttrString.draw(in: textRect)
 
-        // Locate each kanji run using CoreText layout of the same rect, then draw furigana above.
+        // Locate each kanji run, then resolve per-run readings.
+        // Prefer explicitRunReadings (keyed by run start char index) when provided — they come directly from furiganaBySegmentLocation and are always correct per segment.
+        // Fall back to normalizedRunReadings which projects from the concatenated full reading.
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)
-        guard let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs),
-              runReadings.count == runs.count else { return }
+        guard !runs.isEmpty else { return }
+
+        let runReadings: [String]
+        if explicitRunReadings.isEmpty == false {
+            runReadings = runs.map { explicitRunReadings[$0.start] ?? "" }
+        } else if let projected = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs),
+                  projected.count == runs.count {
+            runReadings = projected
+        } else {
+            return
+        }
 
         let runRects = uikitRunRects(for: baseAttrString, runs: runs, in: textRect)
 

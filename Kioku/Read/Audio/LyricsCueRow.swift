@@ -97,13 +97,14 @@ struct LyricsCueRow: View {
         let uiFont = UIFont.systemFont(ofSize: CGFloat(textSize))
         let gap = CGFloat(furiganaGap)
 
-        if let (surface, reading, localColors) = fullCueData() {
+        if let (surface, reading, localColors, runReadings) = fullCueData() {
             FuriganaLabel(
                 surface: surface,
                 reading: reading,
                 font: uiFont,
                 gap: gap,
-                segmentColors: localColors
+                segmentColors: localColors,
+                explicitRunReadings: runReadings
             )
             .frame(maxWidth: .infinity)
         } else {
@@ -127,24 +128,21 @@ struct LyricsCueRow: View {
             .onTapGesture { onCueTapped() }
     }
 
-    // Builds the surface, concatenated reading, and surface-local segment color map for the full cue.
-    // Returns nil if the cue has no resolved range or empty surface.
-    private func fullCueData() -> (surface: String, reading: String, localColors: [Int: UIColor])? {
+    // Builds the surface, concatenated reading, surface-local segment colors, and explicit per-run readings for the full cue. Returns nil if the cue has no resolved range or empty surface.
+    private func fullCueData() -> (surface: String, reading: String, localColors: [Int: UIColor], runReadings: [Int: String])? {
         guard let highlightRange,
               let swiftRange = Range(highlightRange, in: noteText) else { return nil }
         let surface = String(noteText[swiftRange])
         guard surface.isEmpty == false else { return nil }
 
-        // The surface starts at highlightRange.location in noteText.
-        // Remap noteText-relative segment locations to surface-local UTF-16 offsets.
         let surfaceBase = highlightRange.location
-        var reading = ""
         var localColors: [Int: UIColor] = [:]
-
-        // Build the full kana reading of the surface by walking segments in order.
-        // Each segment contributes either its furigana (if it has one) or its own surface text.
-        // This produces a full phonetic reading that FuriganaView can align against kanji runs.
         var fullReading = ""
+        // Per-kanji-run readings keyed by character index within `surface`.
+        // Built by tracking how many Swift characters we've accumulated in the surface so far.
+        var runReadings: [Int: String] = [:]
+        var surfaceCharCursor = 0
+
         for segRange in segmentationRanges {
             let nsRange = NSRange(segRange, in: noteText)
             guard NSIntersectionRange(nsRange, highlightRange).length > 0 else { continue }
@@ -160,12 +158,16 @@ struct LyricsCueRow: View {
 
             if let r = furiganaBySegmentLocation[nsRange.location], r.isEmpty == false {
                 fullReading += r
+                // Map this segment's character start in the surface to its furigana reading.
+                // Only kanji segments have furigana, so this correctly keys kanji run starts.
+                runReadings[surfaceCharCursor] = r
             } else {
                 fullReading += segSurface
             }
-        }
-        reading = fullReading
 
-        return (surface: surface, reading: reading, localColors: localColors)
+            surfaceCharCursor += segSurface.count
+        }
+
+        return (surface: surface, reading: fullReading, localColors: localColors, runReadings: runReadings)
     }
 }
