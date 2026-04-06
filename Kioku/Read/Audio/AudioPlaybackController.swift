@@ -2,8 +2,7 @@ import AVFoundation
 import Combine
 import Foundation
 
-// Controls MP3/audio playback and publishes the current subtitle cue index so ReadView can
-// drive real-time text highlighting without any UI logic inside this class.
+// Controls MP3/audio playback and publishes the current subtitle cue index so ReadView can drive real-time text highlighting without any UI logic inside this class.
 @MainActor
 final class AudioPlaybackController: NSObject, ObservableObject {
     @Published var isPlaying = false
