@@ -73,14 +73,15 @@ struct LyricsCueRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
         .onTapGesture {
-            // Tapping the active cue row with no segment taps is a no-op — tapping a segment
-            // requires knowing which one was tapped, which needs hit-testing inside FuriganaView.
+            // Tapping the active cue row with no segment taps is a no-op — tapping a segment requires knowing which one was tapped, which needs hit-testing inside FuriganaView.
         }
-        .translationTask(TranslationSession.Configuration(source: .init(identifier: "ja"), target: nil)) { session in
+        .translationTask(translationConfig) { session in
             // Translate directly in this closure — session must not escape it.
             // .translationTask may re-fire on re-render; the needsTranslation guard makes it idempotent.
             guard translationCache.needsTranslation(cueIndex: cueIndex, text: cue.text) else { return }
             do {
+                // prepareTranslation prompts the user to download the language pack if not present.
+                try await session.prepareTranslation()
                 let response = try await session.translate(cue.text)
                 await MainActor.run { translationCache.store(cueIndex: cueIndex, result: response.targetText) }
             } catch {
@@ -126,6 +127,20 @@ struct LyricsCueRow: View {
             .padding(.vertical, verticalPadding)
             .contentShape(Rectangle())
             .onTapGesture { onCueTapped() }
+    }
+
+
+    // Explicit source→target config so the Translation framework always has a concrete target locale.
+    // Falls back to en-US when the device has no preferred language distinct from Japanese.
+    private var translationConfig: TranslationSession.Configuration {
+        let target = Locale.preferredLanguages
+            .first(where: { !$0.hasPrefix("ja") })
+            .map { Locale.Language(identifier: $0) }
+            ?? Locale.Language(identifier: "en-US")
+        return TranslationSession.Configuration(
+            source: Locale.Language(identifier: "ja"),
+            target: target
+        )
     }
 
     // Builds the surface, concatenated reading, surface-local segment colors, and explicit per-run readings for the full cue. Returns nil if the cue has no resolved range or empty surface.

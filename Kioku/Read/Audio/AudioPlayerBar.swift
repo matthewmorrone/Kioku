@@ -32,6 +32,7 @@ struct AudioPlayerButton: View {
             .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
             .accessibilityHint("Press and hold to restart playback")
 
+            // TODO: why is this still here? 
             Button {
                 isScrubberVisible.toggle()
             } label: {
@@ -50,6 +51,7 @@ struct AudioPlayerButton: View {
     }
 }
 
+// TODO: why is this still here? 
 // Dedicated playback scrubber row that appears only while audio is playing.
 struct AudioPlaybackScrubber: View {
     @ObservedObject var controller: AudioPlaybackController
