@@ -269,10 +269,12 @@ final class SurfaceSheetViewController: UIViewController {
     func resetSplitInputs(using outcomeSurface: String) {
         guard let sheet else { return }
 
+        // Looks up the frequency-based score for a single segment candidate.
         func segmentScore(_ segment: String) -> Double {
             sheet.pathSegmentFrequencyProvider?(segment).flatMap { sheet.normalizedSheetFrequencyScore($0) } ?? 0
         }
 
+        // Averages segment scores across a full path to find the highest-quality two-segment split.
         func pathScore(_ path: [String]) -> Double {
             path.map(segmentScore).reduce(0, +) / max(1, Double(path.count))
         }

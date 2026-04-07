@@ -67,6 +67,7 @@ enum SubtitleParser {
         }
     }
 
+    // Finds the note line that matches a cue's text so the cue can be highlighted during playback.
     private static func resolveLineBasedHighlightRange(
         for cue: SubtitleCue,
         in noteText: String,
@@ -96,6 +97,7 @@ enum SubtitleParser {
         return nil
     }
 
+    // Pre-computes NSRanges for every line in the note so cue matching can walk them without re-scanning.
     private static func extractNoteLineRanges(from noteText: String) -> [NSRange] {
         let nsText = noteText as NSString
         var lineRanges: [NSRange] = []
@@ -108,6 +110,7 @@ enum SubtitleParser {
         return lineRanges
     }
 
+    // Collapses whitespace and fullwidth spaces so cue text can be compared to note lines without formatting differences.
     private static func normalizedSubtitleMatchText(_ text: String) -> String {
         text
             .replacingOccurrences(of: "\u{3000}", with: " ")

@@ -12,6 +12,7 @@ struct LookupHeaderView: UIViewRepresentable {
     private let headwordFont = UIFont.systemFont(ofSize: 34, weight: .bold)
     private let rubyFont = UIFont.systemFont(ofSize: 17)
 
+    // Creates the UIStackView host for the header layout so UIKit constraints can control vertical alignment.
     func makeUIView(context: Context) -> UIStackView {
         let stack = UIStackView()
         stack.axis = .vertical
@@ -22,6 +23,7 @@ struct LookupHeaderView: UIViewRepresentable {
         return stack
     }
 
+    // Rebuilds the stack's arranged subviews when surface, reading, or lemma changes so the header stays in sync.
     func updateUIView(_ stack: UIStackView, context: Context) {
         stack.arrangedSubviews.forEach {
             stack.removeArrangedSubview($0)
@@ -41,6 +43,7 @@ struct LookupHeaderView: UIViewRepresentable {
         }
     }
 
+    // Asks the UIStackView for its compressed height so SwiftUI can allocate the exact space needed.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIStackView, context: Context) -> CGSize? {
         let width = proposal.width ?? uiView.window?.screen.bounds.width ?? 390
         return uiView.systemLayoutSizeFitting(
@@ -108,6 +111,7 @@ struct LookupHeaderView: UIViewRepresentable {
         }
     }
 
+    // Returns a single bold label for surfaces that have no kanji runs and therefore no ruby columns.
     private func plainHeadwordLabel() -> UILabel {
         let label = UILabel()
         label.font = headwordFont

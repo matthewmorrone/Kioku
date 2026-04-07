@@ -16,6 +16,7 @@ struct FuriganaLabel: UIViewRepresentable {
     // Per-kanji-run readings keyed by run start character index. When non-empty, bypasses reading projection so every kanji run is guaranteed to show its furigana.
     var explicitRunReadings: [Int: String] = [:]
 
+    // Creates the underlying FuriganaView with compression and hugging priorities set so SwiftUI respects its intrinsic height.
     func makeUIView(context: Context) -> FuriganaView {
         let view = FuriganaView()
         view.setContentHuggingPriority(.required, for: .vertical)
@@ -23,6 +24,7 @@ struct FuriganaLabel: UIViewRepresentable {
         return view
     }
 
+    // Pushes updated text, font, and color state into the underlying UIKit view when SwiftUI state changes.
     func updateUIView(_ view: FuriganaView, context: Context) {
         view.configure(surface: surface, reading: reading, font: font, gap: gap, textColor: textColor, segmentColors: segmentColors, explicitRunReadings: explicitRunReadings)
     }

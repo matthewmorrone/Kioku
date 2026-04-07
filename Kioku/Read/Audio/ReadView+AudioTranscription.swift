@@ -497,6 +497,7 @@ extension ReadView {
         var currentStartMs: Int?
         var currentEndMs: Int?
 
+        // Finalises the accumulated segment text into a SubtitleCue and resets the accumulation state.
         func flushCurrentCue() {
             let trimmed = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard trimmed.isEmpty == false,

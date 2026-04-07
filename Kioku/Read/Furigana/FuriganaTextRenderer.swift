@@ -640,6 +640,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         return nil
     }
 
+    // Validates and returns the playback highlight range, guarding against stale overrides that extend past the current text.
     private func playbackHighlightNSRange(in sourceText: String) -> NSRange? {
         guard let playbackHighlightRangeOverride,
               playbackHighlightRangeOverride.location != NSNotFound,

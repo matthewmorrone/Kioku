@@ -15,6 +15,7 @@ enum LyricAlignmentSettings {
         let language: String
     }
 
+    // Reads the user's alignment server settings and validates the URL, throwing a descriptive error when invalid.
     static func configuration(userDefaults: UserDefaults = .standard) throws -> Configuration {
         let baseURL = (userDefaults.string(forKey: baseURLKey) ?? defaultBaseURL)
             .trimmingCharacters(in: .whitespacesAndNewlines)

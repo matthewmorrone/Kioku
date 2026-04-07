@@ -297,6 +297,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         }
     }
 
+    // Clears all sheet-specific provider closures and cached data so a new segment can be configured cleanly.
     private func resetSheetPresentationState() {
         isPreparingSheetDismissal = false
         onWillDismiss = nil
@@ -356,6 +357,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         }
     }
 
+    // Intercepts system-initiated sheet dismissal so the onWillDismiss hook runs before the sheet disappears.
     func presentationControllerShouldDismiss(_ presentationController: UIPresentationController) -> Bool {
         guard presentedSheetController === presentationController.presentedViewController else {
             return true

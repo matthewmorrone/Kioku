@@ -64,6 +64,7 @@ nonisolated public final class Lexicon {
         var readingCandidates: [String] = []
         var seenReadings = Set<String>()
 
+        // Deduplicates candidate readings while preserving insertion order.
         func appendReading(_ reading: String?) {
             guard let reading, reading.isEmpty == false, seenReadings.contains(reading) == false else {
                 return
@@ -435,6 +436,7 @@ nonisolated public final class Lexicon {
         var readings: [String] = []
         var seenReadings = Set<String>()
 
+        // Deduplicates readings for the lemma lookup path while preserving insertion order.
         func appendReading(_ reading: String?) {
             guard let reading, reading.isEmpty == false, seenReadings.contains(reading) == false else {
                 return

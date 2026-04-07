@@ -10,12 +10,14 @@ enum LearnPage: Int, CaseIterable, Identifiable {
 // Preference key used by FlashcardsView to hide page dots during a session.
 struct CardsPageDotsHiddenPreferenceKey: PreferenceKey {
     static var defaultValue: Bool = false
+    // Bubbles any true value up the view tree so that the pager hides dots when any child requests it.
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
 // Preference key used by FlashcardsView to disable swipe during an active session.
 struct CardsStudySessionActivePreferenceKey: PreferenceKey {
     static var defaultValue: Bool = false
+    // Merges preference values so a session active flag from any child locks the pager's swipe gesture.
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 

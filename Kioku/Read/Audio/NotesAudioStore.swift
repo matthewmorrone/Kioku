@@ -127,6 +127,7 @@ final class NotesAudioStore {
         return attachmentID.uuidString + ".srt"
     }
 
+    // Derives the default subtitle filename from an audio filename so paired files are easy to identify.
     static func preferredSubtitleFilename(forAudioFilename audioFilename: String) -> String {
         let trimmed = audioFilename.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else {
@@ -159,6 +160,7 @@ final class NotesAudioStore {
         )
     }
 
+    // Searches the audio directory for the first file that matches the attachment ID and an allowed extension.
     private func storedFileURL(for attachmentID: UUID, allowedExtensions: [String]) -> URL? {
         let allowed = Set(allowedExtensions.map { $0.lowercased() })
         guard let fileURLs = try? FileManager.default.contentsOfDirectory(
@@ -171,10 +173,12 @@ final class NotesAudioStore {
         return fileURLs.first { matchesAttachmentID($0, attachmentID: attachmentID, allowedExtensions: allowed) }
     }
 
+    // Convenience overload that converts the array to a Set before delegating to the core implementation.
     private func matchesAttachmentID(_ url: URL, attachmentID: UUID, allowedExtensions: [String]) -> Bool {
         matchesAttachmentID(url, attachmentID: attachmentID, allowedExtensions: Set(allowedExtensions.map { $0.lowercased() }))
     }
 
+    // Checks that a file URL belongs to a given attachment by comparing the stem against the UUID prefix pattern.
     private func matchesAttachmentID(_ url: URL, attachmentID: UUID, allowedExtensions: Set<String>) -> Bool {
         let ext = url.pathExtension.lowercased()
         guard allowedExtensions.contains(ext) else {
@@ -185,6 +189,7 @@ final class NotesAudioStore {
         return filename == attachmentID.uuidString || filename.hasPrefix(attachmentID.uuidString + "-")
     }
 
+    // Constructs the on-disk filename by prepending the attachment UUID so files are scoped to their note.
     private func storedFilename(attachmentID: UUID, originalFilename: String, fallbackExtension: String) -> String {
         let ext = originalFilename.pathExtension.isEmpty ? fallbackExtension : originalFilename.pathExtension
         let base = sanitizeFilenameComponent(originalFilename.deletingPathExtension)
@@ -194,6 +199,7 @@ final class NotesAudioStore {
         return attachmentID.uuidString + "-" + base + "." + ext
     }
 
+    // Reverses the UUID-prefix storage scheme to recover the human-readable original filename.
     private func readableFilename(fromStoredURL url: URL, defaultExtension: String) -> String {
         let filename = url.lastPathComponent
         let prefix = url.deletingPathExtension().lastPathComponent
@@ -205,6 +211,7 @@ final class NotesAudioStore {
         return filename
     }
 
+    // Strips characters that are unsafe in filenames so stored audio files open without escaping issues.
     private func sanitizeFilenameComponent(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else {

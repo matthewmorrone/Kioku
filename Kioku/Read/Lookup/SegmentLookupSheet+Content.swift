@@ -38,6 +38,7 @@ extension SegmentLookupSheet {
 
         let sublatticeEdges = currentSheetSublatticeEdges
         if sublatticeEdges.isEmpty == false {
+            // Maps a segment string to a normalised frequency score for path ranking.
             func segmentScore(_ segment: String) -> Double {
                 pathSegmentFrequencyProvider?(segment).flatMap { normalizedSheetFrequencyScore($0) } ?? 0
             }

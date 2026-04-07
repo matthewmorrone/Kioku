@@ -7,6 +7,7 @@ enum LyricAlignmentService {
     private static let resourceTimeout: TimeInterval = 60 * 30
     private static let maxAttempts = 3
 
+    // Entry point that coordinates security-scoped access, multipart body construction, and SRT validation.
     static func align(
         audioURL: URL,
         lyrics: String,
@@ -85,6 +86,7 @@ enum LyricAlignmentService {
         return trimmedText
     }
 
+    // Executes the upload with exponential backoff retries for transient network errors.
     private static func performUpload(
         request: URLRequest,
         bodyFileURL: URL
@@ -119,6 +121,7 @@ enum LyricAlignmentService {
         )
     }
 
+    // Limits automatic retries to errors that indicate a recoverable transient failure.
     private static func shouldRetry(_ error: URLError) -> Bool {
         switch error.code {
         case .networkConnectionLost, .timedOut, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
@@ -128,6 +131,7 @@ enum LyricAlignmentService {
         }
     }
 
+    // Converts URLErrors into user-readable NSErrors with context-specific messages for the alignment flow.
     private static func mapNetworkError(_ error: URLError) -> NSError {
         let message: String
         switch error.code {
@@ -148,6 +152,7 @@ enum LyricAlignmentService {
         )
     }
 
+    // Creates a short-lived ephemeral session with generous timeouts suited for large audio uploads.
     private static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = requestTimeout
@@ -160,12 +165,14 @@ enum LyricAlignmentService {
         return URLSession(configuration: configuration)
     }
 
+    // Produces a unique temporary file URL so multipart body parts do not collide between concurrent requests.
     private static func makeTemporaryFileURL(extension ext: String) -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension(ext)
     }
 
+    // Streams the audio directly from disk into a multipart body file to avoid loading large files into memory.
     private static func createMultipartRequestBodyFile(
         boundary: String,
         audioURL: URL,
@@ -211,6 +218,7 @@ enum LyricAlignmentService {
         return bodyFileURL
     }
 
+    // Strips characters that would break the Content-Disposition header from the audio filename.
     private static func sanitizedMultipartFilename(_ filename: String) -> String {
         let cleaned = filename
             .replacingOccurrences(of: "\"", with: "")
@@ -220,6 +228,7 @@ enum LyricAlignmentService {
         return cleaned.isEmpty ? "audio.mp3" : cleaned
     }
 
+    // Tries multiple encodings in preference order so alignment servers returning non-UTF-8 are still usable.
     private static func decodeResponseText(_ data: Data) -> String {
         if let utf8 = String(data: data, encoding: .utf8) {
             return utf8
