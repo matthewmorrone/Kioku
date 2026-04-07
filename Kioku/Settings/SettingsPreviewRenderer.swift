@@ -53,7 +53,15 @@ struct SettingsPreviewRenderer: UIViewRepresentable {
     // Tells SwiftUI the exact height needed to show all text lines without clipping.
     // Computes directly from attributed string bounds so it is correct on first layout.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
-        let width = (proposal.width ?? UIScreen.main.bounds.width) - 8 // left+right inset
+        // Derive a width without using deprecated UIScreen.main. Prefer the view's window/scene screen when available.
+        let availableWidth: CGFloat = {
+            if let w = proposal.width { return w }
+            // Try to use the screen from the view's window/scene
+            if let screen = uiView.window?.windowScene?.screen { return screen.bounds.width }
+            // Fall back to the current view's bounds as a last resort
+            return uiView.bounds.width
+        }()
+        let width = availableWidth - 8 // left+right inset
         let bodyFont = UIFont.systemFont(ofSize: textSize)
         let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
         let paragraphStyle = NSMutableParagraphStyle()
@@ -110,6 +118,7 @@ struct SettingsPreviewRenderer: UIViewRepresentable {
         )
 
         // Force layout before querying rects so caretRect and firstRect are valid (CLAUDE.md §9).
+        textView.setNeedsLayout()
         textView.layoutIfNeeded()
         applyOverlays(to: textView, bodyFont: bodyFont, furiganaFont: furiganaFont)
     }
@@ -233,3 +242,4 @@ struct SettingsPreviewRenderer: UIViewRepresentable {
         return rects
     }
 }
+
