@@ -655,6 +655,7 @@ private struct FlashcardCard: View {
         return surface
     }
 
+    // Returns the kana reading to show below the headword on a card, or nil when the surface is already pure kana.
     private func displayKanaForCard(displaySurface: String) -> String? {
         if let kana = liveContent?.kana?.trimmingCharacters(in: .whitespacesAndNewlines),
            kana.isEmpty == false { return kana }
@@ -669,6 +670,7 @@ private struct FlashcardCard: View {
         return folded.contains(foldedCandidate)
     }
 
+    // Determines whether a surface form is composed entirely of kana so a redundant reading line is suppressed.
     private func isKanaOnly(_ text: String) -> Bool {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard t.isEmpty == false else { return false }
@@ -731,6 +733,7 @@ private struct FlashcardCard: View {
             }
     }
 
+    // Decides whether a horizontal drag should dismiss the card and in which direction, or spring it back.
     private func handleDragEnd(translation: CGSize, predicted: CGSize) {
         let dx = translation.width
         let predictedDx = predicted.width
@@ -742,6 +745,7 @@ private struct FlashcardCard: View {
         swipeOut(direction: dir) { dir > 0 ? onKnow() : onAgain() }
     }
 
+    // Commits or cancels a vertical flip gesture, snapping the card to the nearest face.
     private func finishFlip(translation: CGSize, predicted: CGSize) {
         let dy = translation.height
         let predictedDy = predicted.height

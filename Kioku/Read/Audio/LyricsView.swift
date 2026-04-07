@@ -52,6 +52,7 @@ struct LyricsView: View {
         return furiganaFont.lineHeight + CGFloat(TypographySettings.defaultFuriganaGap) + 4 + bodyFont.lineHeight + 8
     }
 
+    // Builds the main lyrics panel showing the scrollable cue history above the active-cue renderer.
     private func panel(geo: GeometryProxy) -> some View {
         let panelWidth = geo.size.width * 0.9
         let panelHeight = geo.size.height * 0.55
@@ -223,6 +224,7 @@ struct LyricsView: View {
         )
     }
 
+    // Requests a machine translation for one cue and stores the result in the cache for subsequent renders.
     private func translateCue(session: TranslationSession, index: Int, text: String) async {
         guard translationCache.needsTranslation(cueIndex: index, text: text) else { return }
         do {
@@ -234,6 +236,7 @@ struct LyricsView: View {
         }
     }
 
+    // Extracts the note text slice and per-segment furigana for a cue so the active-cue renderer can display it with readings.
     private func buildRendererData(for cueIndex: Int) -> (surface: String, localSegRanges: [Range<String.Index>], localFurigana: [Int: String], localFuriganaLength: [Int: Int])? {
         guard cueIndex < highlightRanges.count,
               let highlightRange = highlightRanges[cueIndex],
@@ -378,6 +381,7 @@ private struct LyricsScrubber: View {
         }
     }
 
+    // Formats a millisecond timestamp as M:SS for the scrubber time label.
     private func formatted(ms: Int) -> String {
         let s = ms / 1000
         return String(format: "%d:%02d", s / 60, s % 60)

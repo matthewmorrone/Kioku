@@ -58,6 +58,7 @@ struct InlineWrapLayout: Layout {
         return lines
     }
 
+    // Reports the total size so SwiftUI can allocate the correct amount of space for the wrapped chip grid.
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? 320
         let lines = computeLines(maxWidth: maxWidth, subviews: subviews)
@@ -68,6 +69,7 @@ struct InlineWrapLayout: Layout {
         return CGSize(width: min(usedWidth, maxWidth), height: totalHeight)
     }
 
+    // Positions each chip subview along baseline-aligned lines so furigana chips sit at a consistent reading baseline.
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let lines = computeLines(maxWidth: bounds.width, subviews: subviews)
         var y = bounds.minY

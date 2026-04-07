@@ -25,6 +25,7 @@ final class LyricsTranslationCache: ObservableObject {
         }
     }
 
+    // Discards all cached translations and resets the attachment identity so stale results are never shown.
     func clear() {
         attachmentID = nil
         translations = [:]
@@ -35,6 +36,7 @@ final class LyricsTranslationCache: ObservableObject {
         translations[cueIndex] == nil && text.isEmpty == false
     }
 
+    // Persists a completed translation result so repeated view appearances skip the translation API.
     func store(cueIndex: Int, result: String) {
         translations[cueIndex] = result
         persist()
@@ -48,6 +50,7 @@ final class LyricsTranslationCache: ObservableObject {
         UserDefaults.standard.set(stringKeyed, forKey: key)
     }
 
+    // Scopes the UserDefaults key to the attachment so different notes never share translation data.
     private func userDefaultsKey(for attachmentID: UUID) -> String {
         "kioku.lyricsTranslations.\(attachmentID.uuidString)"
     }

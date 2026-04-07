@@ -195,6 +195,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
         applyExternalScrollIfNeeded(to: textView, targetOffsetY: targetOffsetY)
     }
 
+    // Resets playback autoscroll tracking so the next cue change triggers a fresh scroll.
     func clearPlaybackAutoscrollState() {
         lastPlaybackAutoscrolledCueIndex = nil
     }

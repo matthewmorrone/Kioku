@@ -79,6 +79,7 @@ extension ReadView {
         .accessibilityHint("Press and hold to clear attached audio and subtitles")
     }
 
+    // Receives the file picker result for a subtitle file and stages it for import or surfaces an error.
     @MainActor
     func handleSubtitleImportSelection(_ result: Result<[URL], Error>) {
         switch result {
@@ -97,6 +98,7 @@ extension ReadView {
         }
     }
 
+    // Receives the file picker result for an alignment audio file and copies it to a temporary staging location.
     @MainActor
     func handleLyricAlignmentAudioSelection(_ result: Result<[URL], Error>) {
         switch result {
@@ -111,6 +113,7 @@ extension ReadView {
         }
     }
 
+    // Parses an SRT file and persists its cues and optionally its paired audio file to the current note.
     @MainActor
     func importSubtitles(
         from sourceURL: URL,
@@ -140,6 +143,7 @@ extension ReadView {
         }
     }
 
+    // Sends note lyrics and the staged audio to the alignment service and persists the resulting SRT.
     @MainActor
     func generateAlignedSRT(fromPreparedAudioURL sourceURL: URL, originalAudioFilename: String) async {
         guard isGeneratingLyricAlignment == false else {
@@ -189,6 +193,7 @@ extension ReadView {
         }
     }
 
+    // Writes the server-returned SRT and paired audio file to disk and links them to the note.
     @MainActor
     func saveAlignedSubtitles(
         srtText: String,
@@ -232,6 +237,7 @@ extension ReadView {
         }
     }
 
+    // Atomically persists a user-imported SRT (and optional audio) to a note attachment, auto-populating note text when empty.
     @MainActor
     func saveImportedSubtitles(
         srtText: String,
@@ -348,6 +354,7 @@ extension ReadView {
         return remainingText.isEmpty ? normalizedText : remainingText
     }
 
+    // Returns an existing note ID or creates a new note so subtitle import always has a target note to attach to.
     @MainActor
     private func ensureNoteExistsForSubtitleImport(prefilledContent: String) -> UUID {
         flushPendingNotePersistenceIfNeeded()
@@ -371,6 +378,7 @@ extension ReadView {
         return newNote.id
     }
 
+    // Copies the selected audio file to a temporary location so security-scoped access can be released.
     @MainActor
     private func preparePendingSubtitleAudioSelection(from sourceURL: URL) {
         do {
@@ -382,6 +390,7 @@ extension ReadView {
         }
     }
 
+    // Clears all staged subtitle and audio selection state, optionally cleaning up the temporary audio copy.
     @MainActor
     func clearPendingSubtitleAudioSelection(removeTemporaryFile: Bool = true) {
         let temporaryURL = pendingSubtitleAudioURL
@@ -394,6 +403,7 @@ extension ReadView {
         }
     }
 
+    // Removes only the pending audio selection (not the subtitle file) when the user de-selects audio.
     @MainActor
     func removePendingSubtitleAudioSelection() {
         let temporaryURL = pendingSubtitleAudioURL
@@ -404,6 +414,7 @@ extension ReadView {
         }
     }
 
+    // Reads a subtitle file with security-scoped access and decodes it trying common encodings in order.
     nonisolated static func readImportedSubtitleText(from sourceURL: URL) throws -> String {
         let didStartAccess = sourceURL.startAccessingSecurityScopedResource()
         defer {
@@ -426,17 +437,20 @@ extension ReadView {
         return String(decoding: data, as: UTF8.self)
     }
 
+    // Distinguishes user-initiated cancellation from real errors so the UI does not show a spurious error message.
     nonisolated static func isUserCancelledFileSelection(_ error: Error) -> Bool {
         let nsError = error as NSError
         return nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError
     }
 
+    // Opens the system file importer scoped to the correct file types for the given import target.
     @MainActor
     func presentFileImporter(for target: ReadViewFileImportTarget) {
         activeFileImportTarget = target
         isShowingFileImporter = true
     }
 
+    // Routes a file importer result to the correct handler based on which import flow is active.
     @MainActor
     func handleFileImportSelection(_ result: Result<[URL], Error>, target: ReadViewFileImportTarget?) {
         guard let target else {
@@ -453,6 +467,7 @@ extension ReadView {
         }
     }
 
+    // Deletes the note's current subtitle attachment and stops audio so the user can start fresh.
     @MainActor
     func resetCurrentSubtitleAttachment() {
         clearPendingSubtitleAudioSelection()
@@ -470,6 +485,7 @@ extension ReadView {
         loadAudioAttachmentIfNeeded(attachmentID: nil)
     }
 
+    // Ensures an audio attachment is loaded before opening the subtitle editor so the editor always has cue data.
     @MainActor
     func presentSubtitleEditorIfPossible() {
         if activeAudioAttachmentID == nil,
@@ -483,6 +499,7 @@ extension ReadView {
         }
     }
 
+    // Validates and submits both the staged audio and subtitle file, then triggers alignment or import accordingly.
     @MainActor
     func submitPendingSubtitleSelection() async {
         subtitleImportErrorMessage = ""

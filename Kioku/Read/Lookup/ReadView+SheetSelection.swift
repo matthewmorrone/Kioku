@@ -24,6 +24,7 @@ struct ReadViewSheetVisibilityScrollAdjustment: Equatable {
 
 // Computes scroll adjustments needed to keep the selected segment visible while the lookup sheet is active.
 enum ReadViewSheetVisibilityScrollPlanner {
+    // Calculates the minimum scroll offset change required to keep the tapped segment above the sheet.
     static func adjustment(for context: ReadViewSheetVisibilityScrollContext) -> ReadViewSheetVisibilityScrollAdjustment? {
         let expectedCoveredHeight = min(
             max(
@@ -61,6 +62,7 @@ enum ReadViewSheetVisibilityScrollPlanner {
         )
     }
 
+    // Returns the clamped scroll offset to restore when the sheet is dismissed, or nil when no correction is needed.
     static func dismissalTargetOffsetY(currentOffsetY: CGFloat, minOffsetY: CGFloat, maxOffsetY: CGFloat) -> CGFloat? {
         let clampedOffsetY = min(max(currentOffsetY, minOffsetY), maxOffsetY)
         guard abs(clampedOffsetY - currentOffsetY) > 0.5 else {

@@ -27,6 +27,7 @@ struct SRTDocument: FileDocument {
         }
     }
 
+    // Serialises the SRT text back to UTF-8 bytes so the document can be saved or shared.
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: Data(text.utf8))
     }

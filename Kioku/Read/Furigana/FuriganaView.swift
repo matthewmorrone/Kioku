@@ -42,6 +42,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         commonInit()
     }
 
+    // Shared initialisation for both designated and coder paths so setup logic is not duplicated.
     private func commonInit() {
         backgroundColor = .clear
         isOpaque = false
@@ -61,6 +62,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         tapGesture = gr
     }
 
+    // Forwards taps to the registered closure so callers can respond to user interaction without subclassing.
     @objc private func handleTap() {
         onTap?()
     }
@@ -97,6 +99,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         return CGSize(width: UIView.noIntrinsicMetric, height: height)
     }
 
+    // Recomputes intrinsic height when the layout width changes so sheet detents and parent stacks resize correctly.
     override func layoutSubviews() {
         super.layoutSubviews()
         // Recompute intrinsic height when width changes so the sheet detent resizes.
@@ -123,6 +126,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         return CGSize(width: width, height: computeHeight(for: width))
     }
 
+    // Renders the base text and per-run furigana annotations directly into the view's graphics context.
     override func draw(_ rect: CGRect) {
         let baseAttrString = baseAttributedString()
         let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * 0.5)

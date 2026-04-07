@@ -130,6 +130,7 @@ final class ClozeStudyViewModel: ObservableObject {
         }
     }
 
+    // Applies a new question to the view model, resetting all answer state so the UI shows a fresh card.
     private func setNewQuestion(_ question: ClozeQuestion) {
         cancelAutoAdvance()
         currentQuestion = question
@@ -137,6 +138,7 @@ final class ClozeStudyViewModel: ObservableObject {
         checkedBlankIDs = []
     }
 
+    // Cancels any pending auto-advance so navigating manually does not trigger a redundant transition.
     private func cancelAutoAdvance() {
         pendingAutoAdvanceTask?.cancel()
         pendingAutoAdvanceTask = nil
@@ -332,6 +334,7 @@ final class ClozeStudyViewModel: ObservableObject {
         return tokens.sorted { $0.range.location < $1.range.location }
     }
 
+    // Filters out punctuation-only tokens so they are never chosen as cloze blanks.
     private func isMostlyPunctuation(_ s: String) -> Bool {
         let scalars = s.unicodeScalars
         guard scalars.isEmpty == false else { return true }
@@ -339,6 +342,7 @@ final class ClozeStudyViewModel: ObservableObject {
         return punctCount == scalars.count
     }
 
+    // Guards that a candidate sentence has at least some Japanese script before building a question from it.
     private func containsJapanese(_ string: String) -> Bool {
         string.unicodeScalars.contains { s in
             switch s.value {
