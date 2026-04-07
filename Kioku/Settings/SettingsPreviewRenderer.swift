@@ -104,7 +104,9 @@ struct SettingsPreviewRenderer: UIViewRepresentable {
 
         textView.textContainerInset = UIEdgeInsets(
             top: furiganaFont.lineHeight + CGFloat(furiganaGap) + 4,
-            left: 4, bottom: 8, right: 4
+            left: 4,
+            bottom: 8,
+            right: 4
         )
 
         textView.attributedText = NSAttributedString(

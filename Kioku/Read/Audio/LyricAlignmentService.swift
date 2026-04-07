@@ -28,13 +28,12 @@ enum LyricAlignmentService {
             audioURL: audioURL,
             audioFilename: filename,
             audioMimeType: mimeType,
-            lyrics: lyrics,
-            language: configuration.language
+            lyrics: lyrics
         )
         defer {
             try? FileManager.default.removeItem(at: requestBodyURL)
         }
-        let requestBodySize = (try? requestBodyURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let requestBodySize = (try? requestBodyURL.resourceValues(forKeys: [URLResourceKey.fileSizeKey]).fileSize) ?? 0
 
         var request = URLRequest(url: configuration.endpoint)
         request.httpMethod = "POST"
@@ -178,8 +177,7 @@ enum LyricAlignmentService {
         audioURL: URL,
         audioFilename: String,
         audioMimeType: String,
-        lyrics: String,
-        language: String
+        lyrics: String
     ) throws -> URL {
         let bodyFileURL = makeTemporaryFileURL(extension: "multipart")
         FileManager.default.createFile(atPath: bodyFileURL.path, contents: nil)
@@ -208,10 +206,6 @@ enum LyricAlignmentService {
         try bodyHandle.write(contentsOf: Data("--\(boundary)\r\n".utf8))
         try bodyHandle.write(contentsOf: Data("Content-Disposition: form-data; name=\"lyrics\"\r\n\r\n".utf8))
         try bodyHandle.write(contentsOf: Data(lyrics.utf8))
-        try bodyHandle.write(contentsOf: Data("\r\n".utf8))
-        try bodyHandle.write(contentsOf: Data("--\(boundary)\r\n".utf8))
-        try bodyHandle.write(contentsOf: Data("Content-Disposition: form-data; name=\"language\"\r\n\r\n".utf8))
-        try bodyHandle.write(contentsOf: Data(language.utf8))
         try bodyHandle.write(contentsOf: Data("\r\n".utf8))
         try bodyHandle.write(contentsOf: Data("--\(boundary)--\r\n".utf8))
 

@@ -12,51 +12,32 @@ struct SettingsView: View {
     @EnvironmentObject private var historyStore: HistoryStore
     @EnvironmentObject private var reviewStore: ReviewStore
 
-    @AppStorage(TypographySettings.textSizeKey)
-    private var textSize = TypographySettings.defaultTextSize
-    @AppStorage(TypographySettings.lineSpacingKey)
-    private var lineSpacing = TypographySettings.defaultLineSpacing
-    @AppStorage(TypographySettings.kerningKey)
-    private var kerning = TypographySettings.defaultKerning
-    @AppStorage(TypographySettings.furiganaGapKey)
-    private var furiganaGap = TypographySettings.defaultFuriganaGap
-    @AppStorage(LyricsDisplayStyle.storageKey)
-    private var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
-    @AppStorage(ParticleSettings.storageKey)
-    private var particlesRaw: String = ParticleSettings.defaultRawValue
+    @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
+    @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
+    @AppStorage(TypographySettings.kerningKey) private var kerning = TypographySettings.defaultKerning
+    @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
+    @AppStorage(LyricsDisplayStyle.storageKey) private var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
+    @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
 
-    @AppStorage(LLMSettings.providerKey)
-    private var llmProviderRaw: String = LLMSettings.defaultProvider
-    @AppStorage(LLMSettings.openAIKeyStorageKey)
-    private var openAIKey: String = ""
-    @AppStorage(LLMSettings.claudeKeyStorageKey)
-    private var claudeKey: String = ""
-    @AppStorage(LLMSettings.useLLMKey)
-    private var useLLM: Bool = false
-    @AppStorage(LLMSettings.stubResponseKey)
-    private var stubResponse: String = ""
-    @AppStorage(LLMSettings.temperatureKey)
-    private var temperature: Double = LLMSettings.defaultTemperature
+    @AppStorage(LLMSettings.providerKey) private var llmProviderRaw: String = LLMSettings.defaultProvider
+    @AppStorage(LLMSettings.openAIKeyStorageKey) private var openAIKey: String = ""
+    @AppStorage(LLMSettings.claudeKeyStorageKey) private var claudeKey: String = ""
+    @AppStorage(LLMSettings.useLLMKey) private var useLLM: Bool = false
+    @AppStorage(LLMSettings.stubResponseKey) private var stubResponse: String = ""
+    @AppStorage(LLMSettings.temperatureKey) private var temperature: Double = LLMSettings.defaultTemperature
 
     @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
     @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
 
-    @AppStorage(LyricAlignmentSettings.baseURLKey)
-    private var lyricAlignmentBaseURL: String = LyricAlignmentSettings.defaultBaseURL
-    @AppStorage(LyricAlignmentSettings.pathKey)
-    private var lyricAlignmentPath: String = LyricAlignmentSettings.defaultPath
-    @AppStorage(LyricAlignmentSettings.languageKey)
-    private var lyricAlignmentLanguage: String = LyricAlignmentSettings.defaultLanguage
+    @AppStorage(LyricAlignmentSettings.endpointKey) private var lyricAlignmentEndpoint: String = LyricAlignmentSettings.defaultEndpoint
 
     @AppStorage(WordOfTheDayScheduler.enabledKey) private var wotdEnabled: Bool = false
     @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
     @AppStorage(WordOfTheDayScheduler.minuteKey) private var wotdMinute: Int = 0
 
-    @AppStorage(SegmenterSettings.backendKey)
-    private var segmenterBackend: String = SegmenterSettings.defaultBackend
-    @AppStorage(SegmenterSettings.mecabDictionaryKey)
-    private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
+    @AppStorage(SegmenterSettings.backendKey) private var segmenterBackend: String = SegmenterSettings.defaultBackend
+    @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
 
     @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
@@ -102,10 +83,6 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     }
-                } header: {
-                    Text("Token Colors")
-                } footer: {
-                    Text("Alternates between primary and secondary colors across adjacent segments in read mode.")
                 }
 
                 // Hosts typography sliders that update read and preview rendering.
@@ -149,17 +126,6 @@ struct SettingsView: View {
                         Slider(value: $lineSpacing, in: TypographySettings.lineSpacingRange, step: 1)
                     }
 
-                    // Controls character spacing.
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Kerning")
-                            Spacer()
-                            Text(String(format: "%.1f", kerning))
-                                .foregroundStyle(.secondary)
-                        }
-                        Slider(value: $kerning, in: TypographySettings.kerningRange, step: 1)
-                    }
-
                     // Controls vertical gap between furigana text and the kanji below it.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -170,22 +136,38 @@ struct SettingsView: View {
                         }
                         Slider(value: $furiganaGap, in: TypographySettings.furiganaGapRange, step: 0.5)
                     }
+                    // Controls character spacing.
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Kerning")
+                            Spacer()
+                            Text(String(format: "%.1f", kerning))
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $kerning, in: TypographySettings.kerningRange, step: 1)
+                    }
+                }
+
+                Section {
                     Picker("Lyrics Style", selection: $lyricsDisplayStyleRaw) {
                         ForEach(LyricsDisplayStyle.allCases, id: \.rawValue) { style in
                             Text(style.displayName).tag(style.rawValue)
                         }
                     }
-                } header: {
-                    Text("Typography")
                 }
 
                 // Inline chip editor for the single-kana allowlist used during lattice path filtering.
                 Section {
                     ParticleTagEditor(tags: particlesBinding)
-                } header: {
-                    Text("Particles")
-                } footer: {
-                    Text("Single-kana segments not listed here are treated as bound morphemes and excluded from segmentation paths.")
+                    HStack {
+                        Spacer()
+                        Button("Reset to Defaults") {
+                            ParticleSettings.reset()
+                            particlesRaw = ParticleSettings.defaultRawValue
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.footnote)
+                    }
                 }
 
                 // Selects which segmentation engine to use and which MeCab dictionary to load.
@@ -263,46 +245,28 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    TextField("Base URL", text: $lyricAlignmentBaseURL)
+                    TextField("Endpoint URL", text: $lyricAlignmentEndpoint)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
-                    TextField("Path", text: $lyricAlignmentPath)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    TextField("Language", text: $lyricAlignmentLanguage)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    Button("Reset to Defaults") {
-                        lyricAlignmentBaseURL = LyricAlignmentSettings.defaultBaseURL
-                        lyricAlignmentPath = LyricAlignmentSettings.defaultPath
-                        lyricAlignmentLanguage = LyricAlignmentSettings.defaultLanguage
+                    Button("Reset") {
+                        lyricAlignmentEndpoint = LyricAlignmentSettings.defaultEndpoint
                     }
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                } header: {
-                    Text("Lyric Alignment")
-                } footer: {
-                    Text("Generate SRT uploads the selected audio plus the current note text to this endpoint and saves the returned subtitles back onto the note.")
                 }
 
                 // Controls daily Word of the Day push notifications from the saved word list.
                 Section {
-                    Toggle("Enable Word of the Day", isOn: $wotdEnabled)
+                    Toggle("Word of the Day", isOn: $wotdEnabled)
                         .onChange(of: wotdEnabled) { _, _ in rescheduleWordOfTheDay() }
 
                     if wotdEnabled {
                         // Time picker binds to a synthetic Date so the system wheel renders correctly.
-                        DatePicker(
-                            "Notification Time",
-                            selection: wotdTimeDateBinding,
-                            displayedComponents: .hourAndMinute
-                        )
-                        .onChange(of: wotdHour) { _, _ in rescheduleWordOfTheDay() }
-                        .onChange(of: wotdMinute) { _, _ in rescheduleWordOfTheDay() }
+                        DatePicker("Time", selection: wotdTimeDateBinding, displayedComponents: .hourAndMinute)
+                            .onChange(of: wotdHour)   { _, _ in rescheduleWordOfTheDay() }
+                            .onChange(of: wotdMinute) { _, _ in rescheduleWordOfTheDay() }
 
                         // Authorization status row
                         HStack {
@@ -310,15 +274,6 @@ struct SettingsView: View {
                             Spacer()
                             Text(wotdPermissionStatus.displayLabel)
                                 .foregroundStyle(.secondary)
-                        }
-
-                        if wotdPendingCount > 0 {
-                            HStack {
-                                Text("Scheduled")
-                                Spacer()
-                                Text("\(wotdPendingCount) notification\(wotdPendingCount == 1 ? "" : "s")")
-                                    .foregroundStyle(.secondary)
-                            }
                         }
 
                         if wotdPermissionStatus == .notDetermined || wotdPermissionStatus == .denied {
@@ -330,12 +285,21 @@ struct SettingsView: View {
                             }
                             .disabled(wotdPermissionStatus == .denied)
                         }
+                        /*
+                        if wotdPendingCount > 0 {
+                            HStack {
+                                Text("Scheduled")
+                                Spacer()
+                                Text("\(wotdPendingCount) notification\(wotdPendingCount == 1 ? "" : "s")")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
 
                         Button("Schedule Now") {
                             rescheduleWordOfTheDay()
                         }
-
-                        Button("Send Test Notification") {
+                        */
+                        Button("Send Test") {
                             let word = wordsStore.words.randomElement()
                             let store = dictionaryStore
                             Task {
@@ -344,8 +308,6 @@ struct SettingsView: View {
                         }
                         .disabled(wordsStore.words.isEmpty)
                     }
-                } header: {
-                    Text("Word of the Day")
                 } footer: {
                     if wotdEnabled && wotdPermissionStatus == .denied {
                         Text("Notifications are denied. Enable them in Settings → Notifications → Kioku.")
@@ -363,11 +325,6 @@ struct SettingsView: View {
                     Toggle("Headword Rects", isOn: $debugHeadwordRects)
                     Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
                     Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
-                    Toggle("Startup Segmentation Diffs", isOn: $debugStartupSegmentationDiffs)
-                } header: {
-                    Text("Debug Overlays")
-                } footer: {
-                    Text("Visual debugging aids for read-mode layout inspection. Startup segmentation diffs are expensive and should stay off unless you are actively profiling segmenter output.")
                 }
 
                 Section {
@@ -375,18 +332,14 @@ struct SettingsView: View {
                     Button {
                         beginAppExport()
                     } label: {
-                        Label("Export App Data", systemImage: "square.and.arrow.up")
+                        Label("Export", systemImage: "square.and.arrow.up")
                     }
                     // Imports a full-app backup and replaces the current persisted state.
                     Button {
                         isShowingImporter = true
                     } label: {
-                        Label("Import App Data", systemImage: "square.and.arrow.down")
+                        Label("Import", systemImage: "square.and.arrow.down")
                     }
-                } header: {
-                    Text("Backup & Restore")
-                } footer: {
-                    Text("Imports replace notes, saved words, lists, history, and review metrics.")
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -579,46 +532,52 @@ struct SettingsView: View {
 private struct ParticleTagEditor: View {
     @Binding var tags: [String]
     @State private var draft: String = ""
+    @FocusState private var draftFocused: Bool
 
     private let columns: [GridItem] = [GridItem(.adaptive(minimum: 56), spacing: 8)]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if tags.isEmpty {
-                Text("No particles configured. Add kana to allow them as standalone segments.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                    ForEach(tags, id: \.self) { tag in
-                        tagChip(for: tag)
-                    }
-                }
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(tags, id: \.self) { tag in
+                tagChip(for: tag)
             }
-
-            HStack(spacing: 8) {
-                TextField("Add kana", text: $draft)
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
-                    .onSubmit { commitDraft() }
-
-                Button("Add") { commitDraft() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-
-            Button("Reset to Defaults") {
-                ParticleSettings.reset()
-                tags = ParticleSettings.decodeList(from: ParticleSettings.defaultRawValue)
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            addChip
         }
+        .padding(.vertical, 4)
+        .padding(.leading, 8)
+    }
+
+    // Inline text-field chip for entering a new particle without a separate row.
+    // A hidden reference HStack drives the size; the real TextField sits on top.
+    private var addChip: some View {
+        HStack(spacing: 0) {
+            // Hidden reference matches a real chip's content structure for identical sizing.
+            Text(draft.isEmpty ? "か" : draft)
+                .font(.subheadline)
+                .hidden()
+            Image(systemName: "xmark")
+                .font(.caption2)
+                .hidden()
+        }
+        .padding(8)
+        .background(Capsule().fill(Color(.secondarySystemBackground)))
+        .overlay(Capsule().stroke(draftFocused ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.3), lineWidth: 1))
+        .overlay {
+            TextField("＋", text: $draft)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                .focused($draftFocused)
+                .onSubmit { commitDraft() }
+                .font(.subheadline)
+                .padding(.horizontal, 8)
+        }
+        .contentShape(Capsule())
+        .onTapGesture { draftFocused = true }
     }
 
     // Renders a single tag pill with a destructive remove button.
     private func tagChip(for tag: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             Text(tag)
                 .font(.subheadline)
             Button(role: .destructive) {
@@ -626,11 +585,12 @@ private struct ParticleTagEditor: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption2)
+                    .foregroundColor(Color.gray)
             }
             .buttonStyle(.plain)
+            .padding(.leading, 4)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(8)
         .background(Capsule().fill(Color(.secondarySystemBackground)))
         .overlay(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: 1))
     }

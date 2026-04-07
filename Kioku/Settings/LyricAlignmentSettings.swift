@@ -2,49 +2,27 @@ import Foundation
 
 // Centralizes persisted settings and defaults for the lyric-alignment server integration.
 enum LyricAlignmentSettings {
-    static let baseURLKey = "kioku.settings.lyricAlignment.baseURL"
-    static let pathKey = "kioku.settings.lyricAlignment.path"
-    static let languageKey = "kioku.settings.lyricAlignment.language"
+    static let endpointKey = "kioku.settings.lyricAlignment.endpoint"
 
-    static let defaultBaseURL = "http://192.168.0.215:8000"
-    static let defaultPath = "/align"
-    static let defaultLanguage = "ja"
+    static let defaultEndpoint = "http://192.168.0.215:8000/align"
 
     struct Configuration {
         let endpoint: URL
-        let language: String
     }
 
     // Reads the user's alignment server settings and validates the URL, throwing a descriptive error when invalid.
     static func configuration(userDefaults: UserDefaults = .standard) throws -> Configuration {
-        let baseURL = (userDefaults.string(forKey: baseURLKey) ?? defaultBaseURL)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let path = (userDefaults.string(forKey: pathKey) ?? defaultPath)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let language = (userDefaults.string(forKey: languageKey) ?? defaultLanguage)
+        let endpointString = (userDefaults.string(forKey: endpointKey) ?? defaultEndpoint)
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard let resolvedBaseURL = URL(string: baseURL), resolvedBaseURL.scheme != nil else {
+        guard let endpointURL = URL(string: endpointString), endpointURL.scheme != nil else {
             throw NSError(
                 domain: "Kioku.LyricAlignment",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Lyric Alignment Base URL is invalid. Check Settings."]
+                userInfo: [NSLocalizedDescriptionKey: "Lyric Alignment endpoint URL is invalid. Check Settings."]
             )
         }
 
-        var endpoint = resolvedBaseURL
-        let pathComponents = path
-            .split(separator: "/")
-            .map(String.init)
-            .filter { $0.isEmpty == false }
-
-        for component in pathComponents {
-            endpoint.appendPathComponent(component)
-        }
-
-        return Configuration(
-            endpoint: endpoint,
-            language: language.isEmpty ? defaultLanguage : language
-        )
+        return Configuration(endpoint: endpointURL)
     }
 }
