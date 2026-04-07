@@ -93,6 +93,7 @@ struct ReadView: View {
     @State var segmentationRefreshTask: Task<Void, Never>?
     @State var pendingPersistenceTask: Task<Void, Never>?
     @State var activeNoteID: UUID?
+    @StateObject private var lyricsTranslationCache = LyricsTranslationCache()
     @State var isLoadingSelectedNote = false
     @State var isEditMode = false
     @State var isSheetSwipeTransitionActive = false
@@ -128,7 +129,6 @@ struct ReadView: View {
     @State var activeAudioAttachmentID: UUID? = nil
 
     @State var isShowingLyricsView = false
-    @State var lyricsTranslationCache = LyricsTranslationCache()
     @AppStorage(LyricsDisplayStyle.storageKey) var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
     @State var isShowingSubtitleEditor = false
     @State var isRequestingLLMCorrection = false
@@ -464,15 +464,23 @@ struct ReadView: View {
             }
         }
         .overlay {
-            if isShowingLyricsView {
+            if activeAudioAttachmentID != nil {
                 LyricsView(
                     controller: audioController,
                     cues: audioAttachmentCues,
+                    highlightRanges: audioAttachmentHighlightRanges,
+                    furiganaBySegmentLocation: furiganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+                    segmentationRanges: segmentRanges,
+                    noteText: text,
+                    attachmentID: activeAudioAttachmentID,
                     onDismiss: {
                         isShowingLyricsView = false
                     }
                 )
-                .transition(.opacity)
+                .opacity(isShowingLyricsView ? 1 : 0)
+                .allowsHitTesting(isShowingLyricsView)
+                .animation(.easeInOut(duration: 0.2), value: isShowingLyricsView)
             }
         }
         .sheet(isPresented: $isShowingSegmentList) {

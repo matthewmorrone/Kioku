@@ -67,10 +67,15 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
         let wasZero = lastKnownBoundsWidth == 0
         let isNonZero = boundsWidth > 0
         lastKnownBoundsWidth = boundsWidth
+        // Invalidate when transitioning from zero to real width so a zero-frame first render doesn't permanently suppress furigana drawing.
         if wasZero && isNonZero {
             lastRenderSignature = nil
         }
         guard let lastRenderSignature else {
+            return true
+        }
+        // Always re-render while bounds are zero so the next layout pass with a real frame retries.
+        if boundsWidth == 0 {
             return true
         }
         return lastRenderSignature != signature

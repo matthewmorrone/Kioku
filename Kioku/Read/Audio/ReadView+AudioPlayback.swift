@@ -14,7 +14,6 @@ extension ReadView {
             audioAttachmentHighlightRanges = []
             activeAudioAttachmentID = nil
             isShowingLyricsView = false
-            lyricsTranslationCache.clear()
             playbackHighlightRangeOverride = nil
             activePlaybackCueIndex = nil
             selectedHighlightRangeOverride = nil
@@ -23,7 +22,6 @@ extension ReadView {
 
         StartupTimer.mark("loadAudioAttachmentIfNeeded start")
         isShowingLyricsView = false
-        lyricsTranslationCache.load(for: attachmentID)
         activeAudioAttachmentID = attachmentID
         let cues = StartupTimer.measure("loadAudioAttachmentIfNeeded.loadCues") {
             NotesAudioStore.shared.loadCues(for: attachmentID)

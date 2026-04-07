@@ -110,7 +110,7 @@ struct SettingsView: View {
 
                 // Hosts typography sliders that update read and preview rendering.
                 Section {
-                        // Shows live typography preview content.
+                        // Shows live typography preview.
                     SettingsPreviewRenderer(
                         textSize: textSize,
                         lineSpacing: lineSpacing,
@@ -119,7 +119,6 @@ struct SettingsView: View {
                         debugHeadwordLineBands: debugHeadwordLineBands,
                         debugFuriganaLineBands: debugFuriganaLineBands
                     )
-                    .frame(minHeight: 96)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
                     .background(
@@ -647,6 +646,7 @@ private struct ParticleTagEditor: View {
         draft = ""
     }
 }
+
 
 #Preview {
     ContentView(selectedTab: .settings)

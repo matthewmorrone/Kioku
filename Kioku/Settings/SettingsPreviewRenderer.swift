@@ -38,6 +38,8 @@ struct SettingsPreviewRenderer: UIViewRepresentable {
         textView.isSelectable = false
         textView.isScrollEnabled = false
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.setContentCompressionResistancePriority(.required, for: .vertical)
+        textView.setContentHuggingPriority(.defaultHigh, for: .vertical)
         textView.textContainer.lineFragmentPadding = 0
         textView.textContainer.widthTracksTextView = true
 
@@ -48,9 +50,38 @@ struct SettingsPreviewRenderer: UIViewRepresentable {
         return textView
     }
 
+    // Tells SwiftUI the exact height needed to show all text lines without clipping.
+    // Computes directly from attributed string bounds so it is correct on first layout.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let width = (proposal.width ?? UIScreen.main.bounds.width) - 8 // left+right inset
+        let bodyFont = UIFont.systemFont(ofSize: textSize)
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = lineSpacing + bodyFont.lineHeight * 0.5
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: bodyFont,
+            .kern: kerning,
+            .paragraphStyle: paragraphStyle,
+        ]
+        let boundingRect = (Self.previewText as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attrs,
+            context: nil
+        )
+        let topInset = furiganaFont.lineHeight + CGFloat(furiganaGap) + 4
+        let bottomInset: CGFloat = 8
+        return CGSize(width: proposal.width ?? width, height: ceil(boundingRect.height) + topInset + bottomInset)
+    }
+
     // Refreshes typography, furigana positions, and debug band rects when settings change.
+    // Defers a second overlay pass so firstRect is queried after SwiftUI has set the final frame.
     func updateUIView(_ uiView: UITextView, context: Context) {
         apply(to: uiView)
+        DispatchQueue.main.async {
+            self.applyOverlays(to: uiView, bodyFont: UIFont.systemFont(ofSize: self.textSize), furiganaFont: UIFont.systemFont(ofSize: self.textSize * 0.5))
+        }
     }
 
     // Applies all typography and overlay state in one pass.
@@ -61,6 +92,7 @@ struct SettingsPreviewRenderer: UIViewRepresentable {
         // Matches the lineSpacing formula used by ReadTextStyleResolver and RichTextEditor.
         paragraphStyle.lineSpacing = lineSpacing + bodyFont.lineHeight * 0.5
         paragraphStyle.lineBreakMode = .byWordWrapping
+        paragraphStyle.alignment = .left
 
         textView.textContainerInset = UIEdgeInsets(
             top: furiganaFont.lineHeight + CGFloat(furiganaGap) + 4,
@@ -77,10 +109,6 @@ struct SettingsPreviewRenderer: UIViewRepresentable {
             ]
         )
 
-        // Invalidate so SwiftUI remeasures and gives the view enough height for the current
-        // typography settings — prevents the second line being clipped when textSize or
-        // lineSpacing is large.
-        textView.invalidateIntrinsicContentSize()
         // Force layout before querying rects so caretRect and firstRect are valid (CLAUDE.md §9).
         textView.layoutIfNeeded()
         applyOverlays(to: textView, bodyFont: bodyFont, furiganaFont: furiganaFont)
