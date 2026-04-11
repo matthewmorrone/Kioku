@@ -30,8 +30,6 @@ struct SettingsView: View {
     @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
 
-    @AppStorage(LyricAlignmentSettings.endpointKey) private var lyricAlignmentEndpoint: String = LyricAlignmentSettings.defaultEndpoint
-
     @AppStorage(WordOfTheDayScheduler.enabledKey) private var wotdEnabled: Bool = false
     @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
     @AppStorage(WordOfTheDayScheduler.minuteKey) private var wotdMinute: Int = 0
@@ -44,6 +42,7 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
     @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
     @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
+    @AppStorage(DebugSettings.bisectorsKey) private var debugBisectors: Bool = false
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
 
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
@@ -89,12 +88,15 @@ struct SettingsView: View {
                 Section {
                         // Shows live typography preview.
                     SettingsPreviewRenderer(
-                        textSize: textSize,
+                        textSize: $textSize,
                         lineSpacing: lineSpacing,
                         kerning: kerning,
                         furiganaGap: furiganaGap,
+                        debugFuriganaRects: debugFuriganaRects,
+                        debugHeadwordRects: debugHeadwordRects,
                         debugHeadwordLineBands: debugHeadwordLineBands,
-                        debugFuriganaLineBands: debugFuriganaLineBands
+                        debugFuriganaLineBands: debugFuriganaLineBands,
+                        debugBisectors: debugBisectors
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
@@ -244,19 +246,6 @@ struct SettingsView: View {
                     }
                 }
 
-                Section {
-                    TextField("Endpoint URL", text: $lyricAlignmentEndpoint)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    Button("Reset") {
-                        lyricAlignmentEndpoint = LyricAlignmentSettings.defaultEndpoint
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                }
-
                 // Controls daily Word of the Day push notifications from the saved word list.
                 Section {
                     Toggle("Word of the Day", isOn: $wotdEnabled)
@@ -285,20 +274,7 @@ struct SettingsView: View {
                             }
                             .disabled(wotdPermissionStatus == .denied)
                         }
-                        /*
-                        if wotdPendingCount > 0 {
-                            HStack {
-                                Text("Scheduled")
-                                Spacer()
-                                Text("\(wotdPendingCount) notification\(wotdPendingCount == 1 ? "" : "s")")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
 
-                        Button("Schedule Now") {
-                            rescheduleWordOfTheDay()
-                        }
-                        */
                         Button("Send Test") {
                             let word = wordsStore.words.randomElement()
                             let store = dictionaryStore
@@ -325,6 +301,7 @@ struct SettingsView: View {
                     Toggle("Headword Rects", isOn: $debugHeadwordRects)
                     Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
                     Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
+                    Toggle("Bisectors", isOn: $debugBisectors)
                 }
 
                 Section {

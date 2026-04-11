@@ -32,6 +32,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let debugHeadwordRects: Bool
     let debugHeadwordLineBands: Bool
     let debugFuriganaLineBands: Bool
+    let debugBisectors: Bool
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void
     let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
@@ -47,10 +48,24 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     // whatever space SwiftUI offers, so we defer to the default behaviour by returning nil.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         guard !uiView.isScrollEnabled else { return nil }
+        let width = proposal.width ?? uiView.bounds.width
         let bodyFont = UIFont.systemFont(ofSize: textSize)
         let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        // Compute actual content height from attributed text bounds when multi-line.
+        let insets = uiView.textContainerInset
+        let textWidth = max(width - insets.left - insets.right, 0)
+        if let attrText = uiView.attributedText, attrText.length > 0 {
+            let boundingRect = attrText.boundingRect(
+                with: CGSize(width: textWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                context: nil
+            )
+            let topInset = furiganaFont.lineHeight + CGFloat(furiganaGap) + 4
+            return CGSize(width: width, height: ceil(boundingRect.height) + topInset + 8)
+        }
+        // Fallback for empty text: single line height.
         let height = furiganaFont.lineHeight + CGFloat(furiganaGap) + 4 + bodyFont.lineHeight + 8
-        return CGSize(width: proposal.width ?? uiView.bounds.width, height: height)
+        return CGSize(width: width, height: height)
     }
 
 // Creates coordinator state used to skip redundant expensive furigana layout passes.
@@ -244,6 +259,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         var furiganaStrings: [String] = []
         var furiganaFrames: [CGRect] = []
         var furiganaColors: [UIColor] = []
+        // Bisector data: each entry is (headwordMidX, headwordRect, furiganaRect).
+        var bisectorHeadwordMidXs: [CGFloat] = []
+        var bisectorHeadwordRects: [CGRect] = []
+        var bisectorFuriganaRects: [CGRect] = []
 
         if isVisualEnhancementsEnabled {
             for location in furiganaBySegmentLocation.keys.sorted() {
@@ -277,16 +296,21 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
                 let furiganaWidth = measureTextWidth(displayReading, font: furiganaFont, kerning: 0)
                 let furiganaX = segmentRect.midX - (furiganaWidth / 2)
-                furiganaStrings.append(displayReading)
-                furiganaFrames.append(
-                    CGRect(
-                        x: furiganaX,
-                        y: max(segmentRect.minY - furiganaFont.lineHeight - furiganaGap, 0),
-                        width: furiganaWidth,
-                        height: furiganaFont.lineHeight
-                    )
+                let furiganaFrame = CGRect(
+                    x: furiganaX,
+                    y: max(segmentRect.minY - furiganaFont.lineHeight - furiganaGap, 0),
+                    width: furiganaWidth,
+                    height: furiganaFont.lineHeight
                 )
+                furiganaStrings.append(displayReading)
+                furiganaFrames.append(furiganaFrame)
                 furiganaColors.append(textStylePayload.segmentForegroundByLocation[location] ?? .secondaryLabel)
+
+                if debugBisectors {
+                    bisectorHeadwordMidXs.append(segmentRect.midX)
+                    bisectorHeadwordRects.append(segmentRect)
+                    bisectorFuriganaRects.append(furiganaFrame)
+                }
             }
         }
 
@@ -388,7 +412,11 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             debugHeadwordRects: debugCollectedHeadwordRects,
             debugHeadwordColors: debugCollectedHeadwordColors,
             debugHeadwordLineBandRects: debugHeadwordLineBandRects,
-            debugFuriganaLineBandRects: debugFuriganaLineBandRects
+            debugFuriganaLineBandRects: debugFuriganaLineBandRects,
+            debugBisectorsEnabled: debugBisectors,
+            bisectorHeadwordMidXs: bisectorHeadwordMidXs,
+            bisectorHeadwordRects: bisectorHeadwordRects,
+            bisectorFuriganaRects: bisectorFuriganaRects
         )
         context.coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
 
@@ -575,6 +603,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(debugHeadwordRects)
         hasher.combine(debugHeadwordLineBands)
         hasher.combine(debugFuriganaLineBands)
+        hasher.combine(debugBisectors)
         hasher.combine(customEvenSegmentColorHex)
         hasher.combine(customOddSegmentColorHex)
         return hasher.finalize()

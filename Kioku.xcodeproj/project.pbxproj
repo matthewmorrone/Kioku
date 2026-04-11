@@ -34,7 +34,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		E3070AE82F4DFDB6005FD323 /* Kioku.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kioku.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3070AE82F4DFDB6005FD323 /* Kioku Reader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kioku Reader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AF52F4DFDB8005FD323 /* KiokuTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AFF2F4DFDB8005FD323 /* KiokuUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E32B0CDE2F57BC070020F5C2 /* data_manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = data_manifest.json; sourceTree = "<group>"; };
@@ -99,7 +99,7 @@
 		E3070AE92F4DFDB6005FD323 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E3070AE82F4DFDB6005FD323 /* Kioku.app */,
+				E3070AE82F4DFDB6005FD323 /* Kioku Reader.app */,
 				E3070AF52F4DFDB8005FD323 /* KiokuTests.xctest */,
 				E3070AFF2F4DFDB8005FD323 /* KiokuUITests.xctest */,
 			);
@@ -158,7 +158,7 @@
 				F5MECAB022FA0000100000001 /* mecab */,
 			);
 			productName = Kioku;
-			productReference = E3070AE82F4DFDB6005FD323 /* Kioku.app */;
+			productReference = E3070AE82F4DFDB6005FD323 /* Kioku Reader.app */;
 			productType = "com.apple.product-type.application";
 		};
 		E3070AF42F4DFDB8005FD323 /* KiokuTests */ = {
@@ -525,7 +525,7 @@
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = matthewmorrone.Kioku;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Kioku Reader";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_COMPILATION_MODE = singlefile;
@@ -563,7 +563,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = matthewmorrone.Kioku;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Kioku Reader";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;

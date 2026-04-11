@@ -27,6 +27,7 @@ struct RichTextEditor: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textView = TextViewFactory.makeTextView()
         textView.delegate = context.coordinator
+        textView.textLayoutManager?.delegate = context.coordinator
         textView.backgroundColor = .clear
         textView.adjustsFontForContentSizeCategory = true
         textView.alwaysBounceVertical = true
@@ -55,8 +56,8 @@ struct RichTextEditor: UIViewRepresentable {
     func updateUIView(_ uiView: UITextView, context: Context) {
         uiView.isEditable = isEditMode
         uiView.isSelectable = true
+        uiView.textLayoutManager?.delegate = context.coordinator
         context.coordinator.configureSegmentationRanges(isEditMode ? segmentationRanges : [], in: text)
-        configureWrapping(for: uiView)
         let styleSignature = styleSignature
         let needsTextUpdate = context.coordinator.lastRenderedText != text
         let needsStyleUpdate = context.coordinator.lastAppliedStyle != styleSignature
@@ -70,6 +71,9 @@ struct RichTextEditor: UIViewRepresentable {
             context.coordinator.lastRenderedText = text
             context.coordinator.lastAppliedStyle = styleSignature
         }
+
+        // Configure wrapping after typography so text container inset is finalized before calculating available width.
+        configureWrapping(for: uiView)
 
         context.coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
         context.coordinator.applyExternalScrollIfNeeded(to: uiView, targetOffsetY: externalContentOffsetY)
@@ -169,6 +173,7 @@ struct RichTextEditor: UIViewRepresentable {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing + (font.lineHeight * 0.5)
         paragraphStyle.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping
+        paragraphStyle.alignment = .natural
 
         let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: font,

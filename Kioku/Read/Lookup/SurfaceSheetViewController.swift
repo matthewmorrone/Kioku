@@ -202,6 +202,13 @@ final class SurfaceSheetViewController: UIViewController {
             field.autocorrectionType = .no
             field.spellCheckingType = .no
         }
+        alert.addAction(UIAlertAction(title: "Set", style: .default) { [weak self] _ in
+            let entered = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard entered.isEmpty == false else { return }
+            self?.customReading = entered
+            self?.syncFuriganaToCurrentIndex()
+            self?.sheet?.onReadingSelected?(entered)
+        })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         if sheet?.activeReadingOverrideProvider?() != nil {
             alert.addAction(UIAlertAction(title: "Reset", style: .destructive) { [weak self] _ in
@@ -212,13 +219,6 @@ final class SurfaceSheetViewController: UIViewController {
                 self?.updateMiddleContent()
             })
         }
-        alert.addAction(UIAlertAction(title: "Set", style: .default) { [weak self] _ in
-            let entered = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard entered.isEmpty == false else { return }
-            self?.customReading = entered
-            self?.syncFuriganaToCurrentIndex()
-            self?.sheet?.onReadingSelected?(entered)
-        })
         present(alert, animated: true)
     }
 

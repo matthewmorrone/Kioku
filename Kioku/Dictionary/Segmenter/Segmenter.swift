@@ -154,13 +154,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                             break
                         }
                     }
-                } else {
-                    // print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [no-match]")
                 }
 
-                if keptMatches >= config.maxMatchesPerPosition {
-                    break
-                }
+                if keptMatches >= config.maxMatchesPerPosition {break}
             }
 
             if keptMatches == 0 {
@@ -168,7 +164,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 let fallbackSurface = String(text[fallbackRange])
                 let startOffset = text.distance(from: text.startIndex, to: index)
                 let endOffset = text.distance(from: text.startIndex, to: fallbackRange.upperBound)
-                print("\(startOffset)→\(endOffset) \(escapedForDebug(fallbackSurface)) [lemma: \(escapedForDebug(fallbackSurface))] [fallback]")
+                // print("\(startOffset)→\(endOffset) \(escapedForDebug(fallbackSurface)) [lemma: \(escapedForDebug(fallbackSurface))] [fallback]")
             }
 
             index = text.index(after: index)
@@ -198,12 +194,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
         // Recursively enumerates all edge paths from the given index to the end of the text.
         func paths(from index: String.Index) -> [[LatticeEdge]] {
-            if index == text.endIndex {
-                return [[]]
-            }
-            if let cached = memo[index] {
-                return cached
-            }
+            if index == text.endIndex {return [[]]}
+            if let cached = memo[index] {return cached}
             var result: [[LatticeEdge]] = []
             for token in edgesByStart[index] ?? [] {
                 let suffixes = paths(from: token.end)
@@ -330,13 +322,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
         while currentIndex < text.endIndex && groupedLength < config.maxMatchLength {
             let character = text[currentIndex]
-            if boundaryCharacters.contains(character) || isLineBreakCharacter(character) {
-                break
-            }
+            if boundaryCharacters.contains(character) || isLineBreakCharacter(character) { break }
 
-            if ScriptClassifier.unknownGrouping(for: character) != group {
-                break
-            }
+            if ScriptClassifier.unknownGrouping(for: character) != group { break }
 
             currentIndex = text.index(after: currentIndex)
             groupedLength += 1
@@ -346,14 +334,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
     // Applies unknown penalty to non-dictionary non-boundary edges so punctuation separators are not over-penalized.
     private func shouldApplyUnknownSegmentPenalty(_ edge: LatticeEdge) -> Bool {
-        if isDictionaryEdge(edge) {
-            return false
-        }
+        if isDictionaryEdge(edge) { return false }
 
         for character in edge.surface {
-            if !boundaryCharacters.contains(character) {
-                return true
-            }
+            if !boundaryCharacters.contains(character) { return true }
         }
 
         return false
@@ -413,9 +397,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         if let deinflector {
             let candidates = deinflector.generateCandidates(for: surface)
             for candidate in candidates {
-                if hasExactSurfaceMatch,
-                   candidate != surface,
-                   deinflector.isNormalizedKanaCandidate(candidate, for: surface) {
+                if hasExactSurfaceMatch, candidate != surface, deinflector.isNormalizedKanaCandidate(candidate, for: surface) {
                     continue
                 }
                 lemmas.formUnion(matchedTrieLemmas(for: candidate))

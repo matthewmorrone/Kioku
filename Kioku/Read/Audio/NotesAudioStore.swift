@@ -158,6 +158,9 @@ final class NotesAudioStore {
         try? FileManager.default.removeItem(
             at: audioDirectory.appendingPathComponent(attachmentID.uuidString + ".cues.json")
         )
+
+        // Clean up translation cache when the attachment is deleted
+        UserDefaults.standard.removeObject(forKey: "kioku.lyricsTranslations.\(attachmentID.uuidString)")
     }
 
     // Searches the audio directory for the first file that matches the attachment ID and an allowed extension.
