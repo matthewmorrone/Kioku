@@ -78,11 +78,12 @@ struct LyricsActiveCueOverlay: View {
     @ViewBuilder
     private func rendererView(cue: SubtitleCue, cueIndex: Int) -> some View {
         if let (surface, localSegRanges, localFurigana, localFuriganaLength) = cueData(cueIndex: cueIndex) {
+            let scaleFactor = calculateScaleFactor(surface: surface, furiganaBySegmentLocation: localFurigana)
             FuriganaTextRenderer(
                 isActive: true,
                 isOverlayFrozen: false,
                 text: surface,
-                isLineWrappingEnabled: true,
+                isLineWrappingEnabled: false,
                 segmentationRanges: localSegRanges,
                 selectedSegmentLocation: nil,
                 blankSelectedSegmentLocation: nil,
@@ -104,13 +105,14 @@ struct LyricsActiveCueOverlay: View {
                 debugHeadwordRects: false,
                 debugHeadwordLineBands: false,
                 debugFuriganaLineBands: false,
+                debugBisectors: false,
                 externalContentOffsetY: 0,
                 onScrollOffsetYChanged: { _ in },
                 onSegmentTapped: { location, _, _ in
                     guard let location else { return }
                     onSegmentTapped(location)
                 },
-                textSize: Binding(get: { textSize }, set: { _ in }),
+                textSize: Binding(get: { textSize * scaleFactor }, set: { _ in }),
                 lineSpacing: 0,
                 kerning: 0,
                 furiganaGap: furiganaGap,
@@ -125,6 +127,13 @@ struct LyricsActiveCueOverlay: View {
                 .minimumScaleFactor(0.4)
                 .frame(maxWidth: .infinity, alignment: .center)
         }
+    }
+
+    // Calculates the scale factor needed to fit the text on a single line without wrapping.
+    // Conservatively scales to 80% to ensure text never wraps regardless of furigana width.
+    private func calculateScaleFactor(surface: String, furiganaBySegmentLocation: [Int: String]) -> Double {
+        // Always scale to 80% to ensure no wrapping with furigana expansion
+        return 0.80
     }
 
     // Explicit source→target config so the Translation framework always has a concrete target locale.

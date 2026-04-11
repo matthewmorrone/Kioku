@@ -38,24 +38,6 @@ extension ReadView {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                subtitleSelectionButton(
-                    title: "Subtitle File",
-                    systemImage: "captions.bubble",
-                    value: pendingSubtitleFilename.isEmpty ? "Generate on submit" : pendingSubtitleFilename
-                ) {
-                    presentFileImporter(for: .subtitleFile)
-                }
-
-                if pendingSubtitleFileURL != nil {
-                    Button("Remove Subtitle File", role: .destructive) {
-                        pendingSubtitleFileURL = nil
-                        pendingSubtitleFilename = ""
-                    }
-                    .font(.caption)
-                }
-            }
-
             HStack(spacing: 12) {
                 Button("Cancel") {
                     isShowingSubtitleSubmissionSheet = false

@@ -61,103 +61,100 @@ struct LyricsView: View {
 
         return VStack(spacing: 0) {
             VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .center, spacing: 0) {
-                    ForEach(0 ..< displayIndex, id: \.self) { index in
-                        let distance = displayIndex - index
-                        inactiveCueRow(index: index, distance: distance)
+                ScrollView {
+                    VStack(alignment: .center, spacing: 0) {
+                        ForEach(0 ..< displayIndex, id: \.self) { index in
+                            let distance = displayIndex - index
+                            inactiveCueRow(index: index, distance: distance)
+                        }
                     }
                 }
-            }
-            .defaultScrollAnchor(.bottom)
-            .scrollDisabled(true)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
-            }
-
-            // Active cue renderer — always mounted, never torn down between cue changes.
-            let rendererData = buildRendererData(for: displayIndex)
-            VStack(spacing: 0) {
-                FuriganaTextRenderer(
-                    isActive: true,
-                    isOverlayFrozen: false,
-                    text: rendererData?.surface ?? "",
-                    isLineWrappingEnabled: true,
-                    segmentationRanges: rendererData?.localSegRanges ?? [],
-                    selectedSegmentLocation: nil,
-                    blankSelectedSegmentLocation: nil,
-                    selectedHighlightRangeOverride: nil,
-                    playbackHighlightRangeOverride: nil,
-                    activePlaybackCueIndex: nil,
-                    illegalMergeBoundaryLocation: nil,
-                    furiganaBySegmentLocation: rendererData?.localFurigana ?? [:],
-                    furiganaLengthBySegmentLocation: rendererData?.localFuriganaLength ?? [:],
-                    isVisualEnhancementsEnabled: true,
-                    isColorAlternationEnabled: true,
-                    isHighlightUnknownEnabled: false,
-                    unknownSegmentLocations: [],
-                    changedSegmentLocations: [],
-                    changedReadingLocations: [],
-                    customEvenSegmentColorHex: "",
-                    customOddSegmentColorHex: "",
-                    debugFuriganaRects: false,
-                    debugHeadwordRects: false,
-                    debugHeadwordLineBands: false,
-                    debugFuriganaLineBands: false,
-                    externalContentOffsetY: 0,
-                    onScrollOffsetYChanged: { _ in },
-                    onSegmentTapped: { _, _, _ in },
-                    textSize: Binding(get: { TypographySettings.defaultTextSize * 1.3 }, set: { _ in }),
-                    lineSpacing: 0,
-                    kerning: 0,
-                    furiganaGap: TypographySettings.defaultFuriganaGap,
-                    textAlignment: .center,
-                    isScrollEnabled: false
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: rendererHeight)
-                if let translation = translationCache.translations[displayIndex] {
-                    Text(translation)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .italic()
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
+                .defaultScrollAnchor(.bottom)
+                .scrollDisabled(true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
                 }
-            }
-            .padding(.vertical, 8)
-            // .border(Color(.systemOrange).opacity(0.3), width: 1)
-            // .background(Color(.systemOrange).opacity(0.12))
-            // .clipShape(RoundedRectangle(cornerRadius: 12))
-            // .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(.systemOrange).opacity(0.3), lineWidth: 1))
-            .translationTask(translationConfig) { session in
-                translationSession = session
-                if displayIndex < cues.count {
-                    await translateCue(session: session, index: displayIndex, text: cues[displayIndex].text)
-                }
-            }
-            .onChange(of: displayIndex) { _, newIndex in
-                guard newIndex < cues.count, let session = translationSession else { return }
-                Task { await translateCue(session: session, index: newIndex, text: cues[newIndex].text) }
-            }
 
-            ScrollView {
-                VStack(alignment: .center, spacing: 0) {
-                    ForEach((displayIndex + 1) ..< cues.count, id: \.self) { index in
-                        let distance = index - displayIndex
-                        inactiveCueRow(index: index, distance: distance)
+                // Active cue renderer — always mounted, never torn down between cue changes.
+                let rendererData = buildRendererData(for: displayIndex)
+                VStack(spacing: 0) {
+                    FuriganaTextRenderer(
+                        isActive: true,
+                        isOverlayFrozen: false,
+                        text: rendererData?.surface ?? "",
+                        isLineWrappingEnabled: true,
+                        segmentationRanges: rendererData?.localSegRanges ?? [],
+                        selectedSegmentLocation: nil,
+                        blankSelectedSegmentLocation: nil,
+                        selectedHighlightRangeOverride: nil,
+                        playbackHighlightRangeOverride: nil,
+                        activePlaybackCueIndex: nil,
+                        illegalMergeBoundaryLocation: nil,
+                        furiganaBySegmentLocation: rendererData?.localFurigana ?? [:],
+                        furiganaLengthBySegmentLocation: rendererData?.localFuriganaLength ?? [:],
+                        isVisualEnhancementsEnabled: true,
+                        isColorAlternationEnabled: true,
+                        isHighlightUnknownEnabled: false,
+                        unknownSegmentLocations: [],
+                        changedSegmentLocations: [],
+                        changedReadingLocations: [],
+                        customEvenSegmentColorHex: "",
+                        customOddSegmentColorHex: "",
+                        debugFuriganaRects: false,
+                        debugHeadwordRects: false,
+                        debugHeadwordLineBands: false,
+                        debugFuriganaLineBands: false,
+                        debugBisectors: false,
+                        externalContentOffsetY: 0,
+                        onScrollOffsetYChanged: { _ in },
+                        onSegmentTapped: { _, _, _ in },
+                        textSize: Binding(get: { TypographySettings.defaultTextSize * 1.3 }, set: { _ in }),
+                        lineSpacing: 0,
+                        kerning: 0,
+                        furiganaGap: TypographySettings.defaultFuriganaGap,
+                        textAlignment: .center,
+                        isScrollEnabled: false
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: rendererHeight)
+                    if let translation = translationCache.translations[displayIndex] {
+                        Text(translation)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .italic()
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
                     }
                 }
-            }
-            .defaultScrollAnchor(.top)
-            .scrollDisabled(true)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                controller.seek(toMs: cues[min(cues.count - 1, activeIndex + 1)].startMs)
-            }
+                .padding(.vertical, 8)
+                .translationTask(translationConfig) { session in
+                    translationSession = session
+                    if displayIndex < cues.count {
+                        await translateCue(session: session, index: displayIndex, text: cues[displayIndex].text)
+                    }
+                }
+                .onChange(of: displayIndex) { _, newIndex in
+                    guard newIndex < cues.count, let session = translationSession else { return }
+                    Task { await translateCue(session: session, index: newIndex, text: cues[newIndex].text) }
+                }
+
+                ScrollView {
+                    VStack(alignment: .center, spacing: 0) {
+                        ForEach((displayIndex + 1) ..< cues.count, id: \.self) { index in
+                            let distance = index - displayIndex
+                            inactiveCueRow(index: index, distance: distance)
+                        }
+                    }
+                }
+                .defaultScrollAnchor(.top)
+                .scrollDisabled(true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    controller.seek(toMs: cues[min(cues.count - 1, activeIndex + 1)].startMs)
+                }
             } // end lyric VStack
             .clipped()
 
@@ -198,19 +195,34 @@ struct LyricsView: View {
     // Inactive cue row — plain text, scaled, faded, and blurred by distance from the active cue.
     @ViewBuilder
     private func inactiveCueRow(index: Int, distance: Int) -> some View {
-        let scale = max(0.6, 1.0 - Double(distance) * 0.12)
+        let baseScale = max(0.6, 1.0 - Double(distance) * 0.12)
         let opacity = max(0.3, 1.0 - Double(distance) * 0.12)
         let blur = Double(distance) * 1.2
+        let defaultSize = CGFloat(TypographySettings.defaultTextSize)
+        let text = cues[index].text
+        let scaleFactor = distance == 0 ? scaleFactorForActiveCue(text: text, availableWidth: 280, defaultFontSize: defaultSize) : 1.0
+        let fontSize = defaultSize * scaleFactor
 
-        Text(cues[index].text)
-            .font(.system(size: CGFloat(TypographySettings.defaultTextSize)))
+        Text(text)
+            .font(.system(size: fontSize))
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
             .frame(height: activeCueRendererHeight)
             .padding(.horizontal, 16)
-            .scaleEffect(scale)
+            .scaleEffect(baseScale)
             .opacity(opacity)
             .blur(radius: blur)
+            .lineLimit(1)
+    }
+
+    // Calculates the scale factor needed to fit the active cue on a single line without wrapping.
+    // Measures the text at default size and scales down if necessary to fit within available width.
+    private func scaleFactorForActiveCue(text: String, availableWidth: CGFloat, defaultFontSize: CGFloat) -> CGFloat {
+        let font = UIFont.systemFont(ofSize: defaultFontSize)
+        let textSize = (text as NSString).size(withAttributes: [.font: font])
+        let requiredScale = min(1.0, availableWidth / textSize.width)
+        // Clamp to reasonable bounds: don't go below 0.5x or above 1.0x
+        return min(1.0, max(0.5, requiredScale))
     }
 
     private var translationConfig: TranslationSession.Configuration {

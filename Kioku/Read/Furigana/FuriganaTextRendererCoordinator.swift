@@ -267,8 +267,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
         onSegmentTapped(nil, nil, textView)
     }
 
-    // Prevents line breaks from splitting a segment mid-character so the full headword
-    // (including okurigana) always wraps to the next line as an atomic unit.
+    // Prevents line breaks from splitting a segment mid-character so the full headword (including okurigana) always wraps to the next line as an atomic unit.
     func textLayoutManager(
         _ textLayoutManager: NSTextLayoutManager,
         shouldBreakLineBefore location: any NSTextLocation,

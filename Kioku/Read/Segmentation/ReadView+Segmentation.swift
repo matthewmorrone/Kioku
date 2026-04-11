@@ -418,7 +418,8 @@ extension ReadView {
                     if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) {
                         wordsStore.remove(id: entry.entryId)
                     } else {
-                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface))
+                        let sourceIDs = activeNoteID.map { [$0] } ?? []
+                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface, sourceNoteIDs: sourceIDs))
                     }
                 },
                 sheetOpenWordDetail: {

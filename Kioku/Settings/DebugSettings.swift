@@ -8,5 +8,6 @@ enum DebugSettings {
     // Separate band keys so headword and furigana rows can be visualised independently.
     static let headwordLineBandsKey = "debug.lineBands"
     static let furiganaLineBandsKey = "debug.furiganaLineBands"
+    static let bisectorsKey = "debug.bisectors"
     static let startupSegmentationDiffsKey = "debug.startupSegmentationDiffs"
 }

@@ -7,15 +7,9 @@ import UIKit
 enum ReadViewFileImportTarget: Equatable {
     case transcriptionAudio
     case subtitleAudio
-    case subtitleFile
 
     var allowedContentTypes: [UTType] {
-        switch self {
-        case .transcriptionAudio, .subtitleAudio:
-            return [.audio, .mpeg4Audio, .mp3]
-        case .subtitleFile:
-            return [.subripText, .plainText]
-        }
+        return [.audio, .mpeg4Audio, .mp3]
     }
 }
 
@@ -36,42 +30,25 @@ struct ReadView: View {
     var onOpenWordDetail: ((Int64, String, String?) -> Void)? = nil
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
-    @AppStorage(TypographySettings.textSizeKey)
-    private var textSize = TypographySettings.defaultTextSize
-    @AppStorage(TypographySettings.lineSpacingKey)
-    private var lineSpacing = TypographySettings.defaultLineSpacing
-    @AppStorage(TypographySettings.kerningKey)
-    private var kerning = TypographySettings.defaultKerning
-    @AppStorage(TypographySettings.furiganaGapKey)
-    private var furiganaGap = TypographySettings.defaultFuriganaGap
-    @AppStorage(TokenColorSettings.enabledKey)
-    private var customTokenColorsEnabled: Bool = false
-    @AppStorage(TokenColorSettings.colorAKey)
-    private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
-    @AppStorage(TokenColorSettings.colorBKey)
-    private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
-    @AppStorage("kioku.settings.showFurigana")
-    var isFuriganaVisible = true
-    @AppStorage("kioku.settings.colorAlternation")
-    var isColorAlternationEnabled = true
-    @AppStorage("kioku.settings.highlightUnknown")
-    var isHighlightUnknownEnabled = false
-    @AppStorage("kioku.settings.applyGlobally")
-    var shouldApplyChangesGlobally = false
-    @AppStorage("kioku.settings.lineWrapping")
-    var isLineWrappingEnabled = true
-    @AppStorage(DebugSettings.pixelRulerKey)
-    private var debugPixelRuler: Bool = false
-    @AppStorage(DebugSettings.furiganaRectsKey)
-    private var debugFuriganaRects: Bool = false
-    @AppStorage(DebugSettings.headwordRectsKey)
-    private var debugHeadwordRects: Bool = false
-    @AppStorage(DebugSettings.headwordLineBandsKey)
-    private var debugHeadwordLineBands: Bool = false
-    @AppStorage(DebugSettings.furiganaLineBandsKey)
-    private var debugFuriganaLineBands: Bool = false
-    @AppStorage(DebugSettings.startupSegmentationDiffsKey)
-    private var debugStartupSegmentationDiffs: Bool = false
+    @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
+    @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
+    @AppStorage(TypographySettings.kerningKey) private var kerning = TypographySettings.defaultKerning
+    @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
+    @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
+    @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
+    @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
+    @AppStorage("kioku.settings.showFurigana") var isFuriganaVisible = true
+    @AppStorage("kioku.settings.colorAlternation") var isColorAlternationEnabled = true
+    @AppStorage("kioku.settings.highlightUnknown") var isHighlightUnknownEnabled = false
+    @AppStorage("kioku.settings.applyGlobally") var shouldApplyChangesGlobally = true
+    @AppStorage("kioku.settings.lineWrapping") var isLineWrappingEnabled = true
+    @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
+    @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
+    @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
+    @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
+    @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
+    @AppStorage(DebugSettings.bisectorsKey) private var debugBisectors: Bool = false
+    @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
 
     @State var customTitle = ""
     @State var fallbackTitle = ""
@@ -112,13 +89,10 @@ struct ReadView: View {
     @State var ocrImportErrorMessage = ""
     @State var audioTranscriptionErrorMessage = ""
     @State var lyricAlignmentErrorMessage = ""
-    @State var subtitleImportErrorMessage = ""
     @State var lyricAlignmentProgressMessage = ""
     @State var lyricAlignmentSourceFilename = ""
     @State var pendingSubtitleAudioURL: URL? = nil
     @State var pendingSubtitleAudioFilename = ""
-    @State var pendingSubtitleFileURL: URL? = nil
-    @State var pendingSubtitleFilename = ""
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
     @State var audioController = AudioPlaybackController()
@@ -146,7 +120,7 @@ struct ReadView: View {
     @State var llmChangePopoverLocation: Int? = nil
     @State var isShowingLLMChangePopover = false
     @State var isShowingLLMRerunConfirm = false
-    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false
+    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false 
     @AppStorage(LLMSettings.stubResponseKey) private var llmStubResponse = ""
     @AppStorage(LLMSettings.openAIKeyStorageKey) private var llmOpenAIKey = ""
     @AppStorage(LLMSettings.claudeKeyStorageKey) private var llmClaudeKey = ""
@@ -209,25 +183,11 @@ struct ReadView: View {
     var isShowingSubtitleFileImporter: Binding<Bool> {
         Binding(
             get: {
-                guard isShowingFileImporter else {
-                    return false
-                }
-
-                switch activeFileImportTarget {
-                case .subtitleAudio, .subtitleFile:
-                    return true
-                default:
-                    return false
-                }
+                isShowingFileImporter && activeFileImportTarget == .subtitleAudio
             },
             set: { isPresented in
-                if isPresented == false {
-                    switch activeFileImportTarget {
-                    case .subtitleAudio, .subtitleFile:
-                        isShowingFileImporter = false
-                    default:
-                        break
-                    }
+                if isPresented == false, activeFileImportTarget == .subtitleAudio {
+                    isShowingFileImporter = false
                 }
             }
         )
@@ -270,13 +230,6 @@ struct ReadView: View {
                 }
             } message: {
                 Text(lyricAlignmentErrorMessage)
-            }
-            .alert("Subtitle Import Failed", isPresented: subtitleImportErrorPresented) {
-                Button("OK", role: .cancel) {
-                    subtitleImportErrorMessage = ""
-                }
-            } message: {
-                Text(subtitleImportErrorMessage)
             }
             .alert("AI Correction", isPresented: $isShowingLLMCorrectionError) {
                 Button("OK", role: .cancel) {
@@ -591,6 +544,7 @@ struct ReadView: View {
                     debugHeadwordRects: debugHeadwordRects,
                     debugHeadwordLineBands: debugHeadwordLineBands,
                     debugFuriganaLineBands: debugFuriganaLineBands,
+                    debugBisectors: debugBisectors,
                     externalContentOffsetY: sharedScrollOffsetY,
                     onScrollOffsetYChanged: { newOffsetY in
                         sharedScrollOffsetY = newOffsetY
@@ -614,7 +568,7 @@ struct ReadView: View {
                 RichTextEditor(
                     text: $text,
                     isLineWrappingEnabled: isLineWrappingEnabled,
-                    segmentationRanges: readResourcesReady ? segmentRanges : [],
+                    segmentationRanges: segmentRanges,
                     furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
                     furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
                     isVisualEnhancementsEnabled: readResourcesReady,

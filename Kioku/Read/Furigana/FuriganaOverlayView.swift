@@ -21,6 +21,11 @@ final class FuriganaOverlayView: UIView {
     private var debugHeadwordColors: [UIColor] = []
     private var debugHeadwordLineBandRects: [CGRect] = []
     private var debugFuriganaLineBandRects: [CGRect] = []
+    // Bisector debug data — vertical center lines showing headword/furigana alignment.
+    private var debugBisectorsEnabled = false
+    private var bisectorHeadwordMidXs: [CGFloat] = []
+    private var bisectorHeadwordRects: [CGRect] = []
+    private var bisectorFuriganaRects: [CGRect] = []
 
     // Creates the overlay surface used by the read renderer.
     override init(frame: CGRect) {
@@ -56,7 +61,11 @@ final class FuriganaOverlayView: UIView {
         debugHeadwordRects: [CGRect],
         debugHeadwordColors: [UIColor],
         debugHeadwordLineBandRects: [CGRect],
-        debugFuriganaLineBandRects: [CGRect]
+        debugFuriganaLineBandRects: [CGRect],
+        debugBisectorsEnabled: Bool = false,
+        bisectorHeadwordMidXs: [CGFloat] = [],
+        bisectorHeadwordRects: [CGRect] = [],
+        bisectorFuriganaRects: [CGRect] = []
     ) {
         frame = overlayFrame
         self.selectedSegmentRect = selectedSegmentRect
@@ -77,6 +86,10 @@ final class FuriganaOverlayView: UIView {
         self.debugHeadwordColors = debugHeadwordColors
         self.debugHeadwordLineBandRects = debugHeadwordLineBandRects
         self.debugFuriganaLineBandRects = debugFuriganaLineBandRects
+        self.debugBisectorsEnabled = debugBisectorsEnabled
+        self.bisectorHeadwordMidXs = bisectorHeadwordMidXs
+        self.bisectorHeadwordRects = bisectorHeadwordRects
+        self.bisectorFuriganaRects = bisectorFuriganaRects
         setNeedsDisplay()
     }
 
@@ -163,6 +176,38 @@ final class FuriganaOverlayView: UIView {
                 path.setLineDash([3, 2], count: 2, phase: 0)
                 path.lineWidth = 1
                 path.stroke()
+            }
+        }
+
+        // Bisectors: two vertical center lines per headword/furigana pair.
+        // Yellow when aligned (within 0.75pt), green when misaligned.
+        if debugBisectorsEnabled {
+            let tolerance: CGFloat = 0.75
+            for index in bisectorHeadwordMidXs.indices {
+                let headwordRect = bisectorHeadwordRects[index]
+                let furiganaRect = bisectorFuriganaRects[index]
+                let headwordMidX = bisectorHeadwordMidXs[index]
+                let furiganaMidX = furiganaRect.midX
+                let aligned = abs(headwordMidX - furiganaMidX) <= tolerance
+
+                let color = aligned
+                    ? UIColor.systemYellow.withAlphaComponent(0.9)
+                    : UIColor.systemGreen.withAlphaComponent(0.9)
+                color.setStroke()
+
+                // Headword bisector.
+                let headwordPath = UIBezierPath()
+                headwordPath.move(to: CGPoint(x: headwordMidX, y: headwordRect.minY))
+                headwordPath.addLine(to: CGPoint(x: headwordMidX, y: headwordRect.maxY))
+                headwordPath.lineWidth = 2
+                headwordPath.stroke()
+
+                // Furigana bisector.
+                let furiganaPath = UIBezierPath()
+                furiganaPath.move(to: CGPoint(x: furiganaMidX, y: furiganaRect.minY))
+                furiganaPath.addLine(to: CGPoint(x: furiganaMidX, y: furiganaRect.maxY))
+                furiganaPath.lineWidth = 2
+                furiganaPath.stroke()
             }
         }
     }

@@ -13,3 +13,4 @@ Resources/MeCab/unidic/
 .build/
 .swiftpm
 .superpowers
+node_modules/
