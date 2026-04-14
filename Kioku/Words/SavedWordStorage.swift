@@ -41,11 +41,14 @@ enum SavedWordStorage {
                 let mergedWordListIDs = Array(Set(existing.wordListIDs).union(entry.wordListIDs)).sorted { lhs, rhs in
                     lhs.uuidString < rhs.uuidString
                 }
+                // Keep whichever personal note is non-empty; prefer the existing one.
+                let mergedNote = existing.personalNote ?? entry.personalNote
                 existing = SavedWord(
                     canonicalEntryID: existing.canonicalEntryID,
                     surface: preferredSurface,
                     sourceNoteIDs: mergedSourceNoteIDs,
                     wordListIDs: mergedWordListIDs,
+                    personalNote: mergedNote,
                     savedAt: existing.savedAt
                 )
                 mergedByEntryID[entry.canonicalEntryID] = existing

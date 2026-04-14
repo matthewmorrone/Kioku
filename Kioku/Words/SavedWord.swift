@@ -10,6 +10,8 @@ struct SavedWord: Codable, Hashable, Identifiable {
     let sourceNoteIDs: [UUID]
     // User-created word list memberships, keyed by WordList.id.
     var wordListIDs: [UUID]
+    // Free-form personal note attached by the user — mnemonic, context, etc.
+    var personalNote: String?
     // When the word was first saved — used for newest/oldest sort.
     let savedAt: Date
 
@@ -18,11 +20,12 @@ struct SavedWord: Codable, Hashable, Identifiable {
     }
 
     // Creates a saved-word value with optional note-list and word-list memberships.
-    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], savedAt: Date = Date()) {
+    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date()) {
         self.canonicalEntryID = canonicalEntryID
         self.surface = surface
         self.sourceNoteIDs = sourceNoteIDs
         self.wordListIDs = wordListIDs
+        self.personalNote = personalNote
         self.savedAt = savedAt
     }
 

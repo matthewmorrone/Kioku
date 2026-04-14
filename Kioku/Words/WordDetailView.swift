@@ -19,9 +19,11 @@ struct WordDetailView: View {
     @EnvironmentObject private var wordListsStore: WordListsStore
     // Provides note titles for resolving sourceNoteIDs to human-readable labels.
     @EnvironmentObject private var notesStore: NotesStore
+    @EnvironmentObject private var wordsStore: WordsStore
 
     // All entries matching the saved surface; saved entry is first.
     @State private var allDisplayData: [WordDisplayData] = []
+    @State private var personalNoteText: String = ""
     @State private var sentencesExpanded: Bool = false
     @State private var wordComponents: [(surface: String, gloss: String?)] = []
     @State private var kanjiInfos: [KanjiInfo] = []
@@ -396,6 +398,19 @@ struct WordDetailView: View {
                     }
                 }
 
+                // Personal note — editable free-form text for mnemonics, context, etc.
+                Section("Note") {
+                    TextField("Add a personal note…", text: $personalNoteText, axis: .vertical)
+                        .lineLimit(1...6)
+                        .onChange(of: personalNoteText) {
+                            let trimmed = personalNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            wordsStore.updatePersonalNote(
+                                id: word.canonicalEntryID,
+                                note: trimmed.isEmpty ? nil : trimmed
+                            )
+                        }
+                }
+
                 // Save date, source notes, and word list membership — always shown for context.
                 Section("Saved") {
                     // Hidden for now — the save timestamp adds clutter without much value.
@@ -447,6 +462,7 @@ struct WordDetailView: View {
             }
         }
         .task {
+            personalNoteText = word.personalNote ?? ""
             await loadDisplayData()
         }
     }

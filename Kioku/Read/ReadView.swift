@@ -289,8 +289,6 @@ struct ReadView: View {
                 loadSelectedNoteIfNeeded()
             }
             .onChange(of: text) { oldText, newText in
-                // Persists edits as content changes.
-                scheduleCurrentNotePersistenceIfNeeded()
                 // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
                 // mapping is stable for in-line edits but shifts whenever lines are added or removed.
                 if audioAttachmentCues.isEmpty == false {
@@ -304,10 +302,13 @@ struct ReadView: View {
                     }
                 }
                 if isEditMode {
+                    // Clear stale segmentation state before scheduling persistence so the
+                    // debounce snapshot captures the post-edit state (segments = nil).
+                    // Without this ordering the snapshot captures pre-edit segments, then
+                    // the nil assignment below causes the staleness guard to reject the write.
                     segments = nil
                     illegalMergeBoundaryLocation = nil
                     illegalMergeFlashTask?.cancel()
-                    // Clears stale range state while editing so view-mode reactivation never reads mismatched ranges.
                     segmentationRefreshTask?.cancel()
                     furiganaComputationTask?.cancel()
                     segmentLatticeEdges = []
@@ -319,10 +320,13 @@ struct ReadView: View {
                     SegmentLookupSheet.shared.dismissPopover()
                     furiganaBySegmentLocation = [:]
                     furiganaLengthBySegmentLocation = [:]
+                    scheduleCurrentNotePersistenceIfNeeded()
                     return
                 }
+                // Persists edits as content changes.
+                scheduleCurrentNotePersistenceIfNeeded()
                 // Recomputes segments only after full read resources are ready.
-                if readResourcesReady && isEditMode == false {
+                if readResourcesReady {
                     refreshSegmentationRanges()
                 }
             }
@@ -342,10 +346,13 @@ struct ReadView: View {
                     SegmentLookupSheet.shared.dismissPopover()
                     furiganaBySegmentLocation = [:]
                     furiganaLengthBySegmentLocation = [:]
-                } else if readResourcesReady {
+                } else {
+                    // Always flush pending edits when leaving edit mode so no changes are lost.
                     flushPendingNotePersistenceIfNeeded()
                     // Recomputes once when returning to view mode so furigana matches latest text.
-                    refreshSegmentationRanges()
+                    if readResourcesReady {
+                        refreshSegmentationRanges()
+                    }
                 }
             }
             .onChange(of: segmenterRevision) { _, _ in

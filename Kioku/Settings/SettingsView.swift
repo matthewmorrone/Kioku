@@ -66,6 +66,8 @@ struct SettingsView: View {
     @State private var transferAlertTitle = ""
     @State private var transferAlertMessage = ""
     @State private var isShowingResetConfirmation = false
+    @State private var isShowingImportConfirmation = false
+    @State private var pendingImportDocument: AppBackupDocument?
 
     var body: some View {
         NavigationStack {
@@ -295,7 +297,8 @@ struct SettingsView: View {
                     await refreshWotdStatus()
                 }
 
-                // Read-mode visual debugging aids — not for production use.
+                #if DEBUG
+                // Read-mode visual debugging aids — hidden in release builds.
                 Section {
                     Toggle("Pixel Ruler", isOn: $debugPixelRuler)
                     Toggle("Furigana Rects", isOn: $debugFuriganaRects)
@@ -304,6 +307,7 @@ struct SettingsView: View {
                     Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
                     Toggle("Bisectors", isOn: $debugBisectors)
                 }
+                #endif
 
                 Section {
                     // Exports the full app state to one JSON backup file.
@@ -355,6 +359,21 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently erase all notes, saved words, word lists, history, and review progress. This cannot be undone.")
+        }
+        .alert("Replace All Data?", isPresented: $isShowingImportConfirmation) {
+            Button("Import", role: .destructive) {
+                if let document = pendingImportDocument {
+                    importAppBackup(document)
+                    pendingImportDocument = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                pendingImportDocument = nil
+            }
+        } message: {
+            if let payload = pendingImportDocument?.payload {
+                Text("This will replace all current data with \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, and \(payload.reviewStats.count) review records. This cannot be undone.")
+            }
         }
     }
 
@@ -414,7 +433,8 @@ struct SettingsView: View {
 
             do {
                 let document = try AppBackupDocument(contentsOf: fileURL)
-                importAppBackup(document)
+                pendingImportDocument = document
+                isShowingImportConfirmation = true
             } catch {
                 showTransferAlert(title: "Import Failed", message: error.localizedDescription)
             }

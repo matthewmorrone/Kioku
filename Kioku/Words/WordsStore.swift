@@ -72,6 +72,16 @@ final class WordsStore: ObservableObject {
         })
     }
 
+    // Updates the personal note on a saved word.
+    func updatePersonalNote(id: Int64, note: String?) {
+        persist(words.map { word in
+            guard word.canonicalEntryID == id else { return word }
+            var updated = word
+            updated.personalNote = note
+            return updated
+        })
+    }
+
     // Reorders words in response to a drag-and-drop move gesture from the list.
     func move(fromOffsets: IndexSet, toOffset: Int) {
         var updated = words
