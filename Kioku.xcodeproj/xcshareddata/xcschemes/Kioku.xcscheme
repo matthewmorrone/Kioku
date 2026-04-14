@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "E3070AE72F4DFDB6005FD323"
-               BuildableName = "Kioku.app"
+               BuildableName = "Kioku Reader.app"
                BlueprintName = "Kioku"
                ReferencedContainer = "container:Kioku.xcodeproj">
             </BuildableReference>
@@ -49,7 +49,7 @@
       selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
       launchStyle = "0"
       useCustomWorkingDirectory = "NO"
-      ignoresPersistentStateOnLaunch = "NO"
+      ignoresPersistentStateOnLaunch = "YES"
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
@@ -58,11 +58,21 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E3070AE72F4DFDB6005FD323"
-            BuildableName = "Kioku.app"
+            BuildableName = "Kioku Reader.app"
             BlueprintName = "Kioku"
             ReferencedContainer = "container:Kioku.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+         <CommandLineArgument
+            argument = "-LookupTestText"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "&#x65e5;&#x672c;&#x8a9e;&#x306e;&#x30c6;&#x30b9;&#x30c8;&#x6587;&#x7ae0;&#x3067;&#x3059;&#x3002;"
+            isEnabled = "YES">
+         </CommandLineArgument>
+      </CommandLineArguments>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -75,7 +85,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E3070AE72F4DFDB6005FD323"
-            BuildableName = "Kioku.app"
+            BuildableName = "Kioku Reader.app"
             BlueprintName = "Kioku"
             ReferencedContainer = "container:Kioku.xcodeproj">
          </BuildableReference>

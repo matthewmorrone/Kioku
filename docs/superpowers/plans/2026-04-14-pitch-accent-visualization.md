@@ -1,3 +1,35 @@
+# Pitch Accent Visualization Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace the placeholder H/L text pitch accent view with a line-graph visualization where mora sit inside filled dots at high/low positions, connected by lines, with accent-type coloring and a pattern label.
+
+**Architecture:** Single file rewrite of `PitchAccentView.swift`. Uses SwiftUI `Canvas` to draw the graph (circles, lines, text) with computed positions from the existing `PitchAccent` model. No data model or pipeline changes.
+
+**Tech Stack:** SwiftUI, Canvas API
+
+---
+
+## File Map
+
+| File | Action | Responsibility |
+|------|--------|----------------|
+| `Kioku/Read/Furigana/PitchAccentView.swift` | **Rewrite** | Line-graph pitch accent visualization |
+
+The call site in `Kioku/Words/WordDetailView.swift:337-342` already passes `PitchAccent` to `PitchAccentView(accent:)` — the public interface stays identical, so no changes needed there.
+
+---
+
+### Task 1: Rewrite PitchAccentView with Canvas-based line graph
+
+**Files:**
+- Rewrite: `Kioku/Read/Furigana/PitchAccentView.swift`
+
+- [ ] **Step 1: Replace the file contents with the new implementation**
+
+Rewrite `Kioku/Read/Furigana/PitchAccentView.swift` with the following:
+
+```swift
 import SwiftUI
 
 // Renders a pitch accent record as a line graph with mora inside filled dots.
@@ -15,10 +47,8 @@ struct PitchAccentView: View {
     private let canvasHeight: CGFloat = 68
 
     // Splits kana into individual mora strings (handles digraphs like きゃ, っ, ー).
-    // Converts to hiragana for display since the pitch_accent table stores katakana (UniDic convention).
     private var morae: [String] {
-        let hiragana = accent.kana.applyingTransform(.hiraganaToKatakana, reverse: true) ?? accent.kana
-        return moraeSplit(hiragana)
+        moraeSplit(accent.kana)
     }
 
     // Returns true/false for high/low at each mora position given the downstep.
@@ -80,7 +110,7 @@ struct PitchAccentView: View {
     }
 
     // Draws the complete pitch accent graph: lines, dots with mora text, particle, and arrow.
-    private func drawGraph(context: inout GraphicsContext, size: CGSize) {
+    private func drawGraph(context: inout GraphicsContext, size: Size) {
         let color = patternType.color
         let moraPositions = computeMoraPositions()
 
@@ -244,3 +274,43 @@ enum PitchPatternType {
         }
     }
 }
+```
+
+- [ ] **Step 2: Build the project to verify compilation**
+
+Run:
+```bash
+xcodebuild -scheme Kioku -destination 'platform=iOS Simulator,name=iPhone 16' build 2>&1 | tail -5
+```
+Expected: `** BUILD SUCCEEDED **`
+
+The public interface is unchanged (`PitchAccentView(accent:)`) so `WordDetailView.swift` needs no modification.
+
+- [ ] **Step 3: Visual verification on simulator**
+
+1. Build and run on simulator
+2. Open a saved word that has pitch accent data (e.g. a common word like 食べる or 学校)
+3. Scroll to the "Pitch Accent" section in the word detail view
+4. Verify: filled dots with kana inside, connected by lines, positioned at correct heights
+5. Verify: pattern label (平板/頭高/中高/尾高) appears to the right of the graph
+6. Verify: if the word has a non-heiban accent, the particle dot (は) appears with dashed outline and dashed connector stopping at circle edges
+7. Verify: if the word is heiban, a dashed arrow extends from the last dot
+
+- [ ] **Step 4: Test edge cases**
+
+Check these scenarios by browsing different saved words:
+- Single-mora word (e.g. 目 め) — should render one dot
+- Long word with many mora — graph should extend horizontally without clipping
+- Word with digraph mora (e.g. きゃ inside a dot) — should display correctly
+- Multiple accent variants for the same word — each rendered as a separate graph row
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add Kioku/Read/Furigana/PitchAccentView.swift
+git commit -m "feat: replace pitch accent H/L labels with line-graph visualization
+
+Mora sit inside filled dots at high/low positions connected by lines.
+Color varies by accent type. Particle mora shown for non-heiban patterns
+with dashed outline and edge-to-edge connector. Pattern label to the side."
+```

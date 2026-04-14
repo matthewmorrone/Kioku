@@ -16,15 +16,33 @@ extension ReadView {
     }
 
     // Resolves immediate left and right segment surfaces around the active merged edge bounds.
+    // Returns nil for a side when the boundary is illegal (newline, punctuation) so that
+    // merge buttons are disabled before the user can attempt the operation.
     func adjacentSegmentSurfaces(for selectedLocation: Int) -> (left: String?, right: String?) {
         let activeBounds = selectedBounds ?? initialMergedEdgeBounds(for: selectedLocation)
         guard let activeBounds else {
             return (left: nil, right: nil)
         }
 
-        let leftSurface = activeBounds.lowerBound > 0 ? segmentEdges[activeBounds.lowerBound - 1].surface : nil
+        var leftSurface: String? = nil
+        if activeBounds.lowerBound > 0 {
+            let leftEdge = segmentEdges[activeBounds.lowerBound - 1]
+            let currentEdge = segmentEdges[activeBounds.lowerBound]
+            if isMergeAllowed(between: leftEdge, and: currentEdge) {
+                leftSurface = leftEdge.surface
+            }
+        }
+
+        var rightSurface: String? = nil
         let rightIndex = activeBounds.upperBound + 1
-        let rightSurface = rightIndex < segmentEdges.count ? segmentEdges[rightIndex].surface : nil
+        if rightIndex < segmentEdges.count {
+            let currentEdge = segmentEdges[activeBounds.upperBound]
+            let rightEdge = segmentEdges[rightIndex]
+            if isMergeAllowed(between: currentEdge, and: rightEdge) {
+                rightSurface = rightEdge.surface
+            }
+        }
+
         return (left: leftSurface, right: rightSurface)
     }
 
@@ -117,9 +135,20 @@ extension ReadView {
         selectedSegmentLocation = mergedNSRange.location
         selectedHighlightRangeOverride = mergedNSRange
 
-        let leftNeighborSurface = mergedIndex > 0 ? updatedEdges[mergedIndex - 1].surface : nil
+        // Filter neighbors by merge legality so the sheet's buttons reflect what's actually allowed.
+        let leftNeighborSurface: String?
+        if mergedIndex > 0, isMergeAllowed(between: updatedEdges[mergedIndex - 1], and: updatedEdges[mergedIndex]) {
+            leftNeighborSurface = updatedEdges[mergedIndex - 1].surface
+        } else {
+            leftNeighborSurface = nil
+        }
         let rightNeighborIndex = mergedIndex + 1
-        let rightNeighborSurface = rightNeighborIndex < updatedEdges.count ? updatedEdges[rightNeighborIndex].surface : nil
+        let rightNeighborSurface: String?
+        if rightNeighborIndex < updatedEdges.count, isMergeAllowed(between: updatedEdges[mergedIndex], and: updatedEdges[rightNeighborIndex]) {
+            rightNeighborSurface = updatedEdges[rightNeighborIndex].surface
+        } else {
+            rightNeighborSurface = nil
+        }
         return (surface: mergedSurface, leftNeighborSurface: leftNeighborSurface, rightNeighborSurface: rightNeighborSurface)
     }
 
@@ -224,7 +253,13 @@ extension ReadView {
         selectedSegmentLocation = leftRange.location
         selectedHighlightRangeOverride = leftRange
 
-        let leftNeighborSurface = selectedLeftEdgeIndex > 0 ? updatedEdges[selectedLeftEdgeIndex - 1].surface : nil
+        // Filter left neighbor by merge legality; the right neighbor is always the adjacent split piece.
+        let leftNeighborSurface: String?
+        if selectedLeftEdgeIndex > 0, isMergeAllowed(between: updatedEdges[selectedLeftEdgeIndex - 1], and: updatedEdges[selectedLeftEdgeIndex]) {
+            leftNeighborSurface = updatedEdges[selectedLeftEdgeIndex - 1].surface
+        } else {
+            leftNeighborSurface = nil
+        }
         return (surface: leftSurface, leftNeighborSurface: leftNeighborSurface, rightNeighborSurface: rightSurface)
     }
 

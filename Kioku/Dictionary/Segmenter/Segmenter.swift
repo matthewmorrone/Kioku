@@ -159,14 +159,6 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 if keptMatches >= config.maxMatchesPerPosition {break}
             }
 
-            if keptMatches == 0 {
-                let fallbackRange = unknownFallbackRange(in: text, startingAt: index)
-                let fallbackSurface = String(text[fallbackRange])
-                let startOffset = text.distance(from: text.startIndex, to: index)
-                let endOffset = text.distance(from: text.startIndex, to: fallbackRange.upperBound)
-                // print("\(startOffset)→\(endOffset) \(escapedForDebug(fallbackSurface)) [lemma: \(escapedForDebug(fallbackSurface))] [fallback]")
-            }
-
             index = text.index(after: index)
         }
     }
@@ -325,6 +317,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             if boundaryCharacters.contains(character) || isLineBreakCharacter(character) { break }
 
             if ScriptClassifier.unknownGrouping(for: character) != group { break }
+
+            // Stop before standalone particles so they get their own edge rather than being absorbed
+            // into an unknown run (e.g. だ must not consume ね when ね is a standalone particle).
+            if config.standaloneKana.contains(String(character)) { break }
 
             currentIndex = text.index(after: currentIndex)
             groupedLength += 1

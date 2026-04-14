@@ -5,6 +5,8 @@ import SQLite3
 extension DictionaryStore {
 
     // Fetches pitch accent records for a word+kana pair from the UniDic-derived pitch_accent table.
+    // The pitch_accent table stores readings in katakana (UniDic convention), so the incoming
+    // kana is converted to katakana before querying to match regardless of script.
     public func fetchPitchAccent(word: String, kana: String) throws -> [PitchAccent] {
         try withSerializedDatabaseAccess {
             let sql = """
@@ -14,12 +16,15 @@ extension DictionaryStore {
             ORDER BY id ASC
             """
 
+            // Convert hiragana to katakana so the query matches the UniDic-derived table.
+            let katakana = kana.applyingTransform(.hiraganaToKatakana, reverse: false) ?? kana
+
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
 
             try prepare(sql: sql, statement: &statement)
             try bindText(word, index: 1, statement: statement)
-            try bindText(kana, index: 2, statement: statement)
+            try bindText(katakana, index: 2, statement: statement)
 
             return try stepRows(statement: statement) { stmt in
                 guard
@@ -48,10 +53,20 @@ extension DictionaryStore {
         }
     }
 
-    // Fetches all example sentence pairs whose Japanese text contains the given surface string.
+    // Fetches example sentence pairs matching any of the given search terms.
+    // Searches for the surface first, then any additional terms (e.g. lemma kanji forms)
+    // so results favor the exact surface while still finding sentences that use the base form.
     // Uses FTS5 for fast substring search, deduplicates on Japanese text, sorted shortest first.
-    public func fetchSentencePairs(surface: String) throws -> [SentencePair] {
-        try withSerializedDatabaseAccess {
+    public func fetchSentencePairs(terms: [String]) throws -> [SentencePair] {
+        // Deduplicate and filter empty terms while preserving priority order.
+        var uniqueTerms: [String] = []
+        var seen = Set<String>()
+        for term in terms where term.isEmpty == false && seen.insert(term).inserted {
+            uniqueTerms.append(term)
+        }
+        guard uniqueTerms.isEmpty == false else { return [] }
+
+        return try withSerializedDatabaseAccess {
             let sql = """
             SELECT sp.japanese, sp.english
             FROM sentence_pairs sp
@@ -60,29 +75,43 @@ extension DictionaryStore {
             ORDER BY LENGTH(sp.japanese) ASC
             """
 
-            var statement: OpaquePointer?
-            defer { sqlite3_finalize(statement) }
+            var allPairs: [SentencePair] = []
+            var seenJapanese = Set<String>()
 
-            try prepare(sql: sql, statement: &statement)
-            // FTS5 phrase search wraps the term in quotes for exact substring matching.
-            try bindText("\"\(surface)\"", index: 1, statement: statement)
+            // Query each term in priority order so surface matches come first.
+            for term in uniqueTerms {
+                var statement: OpaquePointer?
+                defer { sqlite3_finalize(statement) }
 
-            let all = try stepRows(statement: statement) { stmt -> SentencePair? in
-                guard
-                    let japanesePointer = sqlite3_column_text(stmt, 0),
-                    let englishPointer = sqlite3_column_text(stmt, 1)
-                else { return nil }
+                try prepare(sql: sql, statement: &statement)
+                // FTS5 phrase search wraps the term in quotes for exact substring matching.
+                try bindText("\"\(term)\"", index: 1, statement: statement)
 
-                return SentencePair(
-                    japanese: String(cString: japanesePointer),
-                    english: String(cString: englishPointer)
-                )
+                let rows = try stepRows(statement: statement) { stmt -> SentencePair? in
+                    guard
+                        let japanesePointer = sqlite3_column_text(stmt, 0),
+                        let englishPointer = sqlite3_column_text(stmt, 1)
+                    else { return nil }
+
+                    return SentencePair(
+                        japanese: String(cString: japanesePointer),
+                        english: String(cString: englishPointer)
+                    )
+                }
+
+                // Append only unseen sentences, preserving shortest-first within each term.
+                for pair in rows where seenJapanese.insert(pair.japanese).inserted {
+                    allPairs.append(pair)
+                }
             }
 
-            // Deduplicate on Japanese text, preserving shortest-first order.
-            var seen = Set<String>()
-            return all.filter { seen.insert($0.japanese).inserted }
+            return allPairs
         }
+    }
+
+    // Convenience overload that searches for a single surface string.
+    public func fetchSentencePairs(surface: String) throws -> [SentencePair] {
+        try fetchSentencePairs(terms: [surface])
     }
 
     // Fetches sense-level stagk/stagr application restrictions for one entry.

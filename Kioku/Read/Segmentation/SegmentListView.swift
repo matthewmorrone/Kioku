@@ -54,10 +54,14 @@ struct SegmentListView: View {
                                 let normalizedSurface = normalizedSurfaceForFiltering(edge.surface)
                                 let isSavedForCurrentNote = isSavedForCurrentNote(normalizedSurface: normalizedSurface)
                                 let isSavedForOtherNotes = isSavedForOtherNotes(normalizedSurface: normalizedSurface)
-                                let showsFilledStar = isSavedForCurrentNote || (isSavedSurface(normalizedSurface: normalizedSurface) && isSavedForOtherNotes == false)
+                                let isSavedElsewhere = isSavedSurface(normalizedSurface: normalizedSurface) && isSavedForOtherNotes == false
+                                let showsFilledStar = isSavedForCurrentNote || isSavedElsewhere || isSavedForOtherNotes
+                                let starColor: Color = isSavedForCurrentNote || isSavedElsewhere
+                                    ? .yellow
+                                    : isSavedForOtherNotes ? .secondary.opacity(0.4) : .secondary
                                 Image(systemName: showsFilledStar ? "star.fill" : "star")
-                                    .foregroundStyle(showsFilledStar ? Color.yellow : Color.secondary)
-                                    .font(.system(size: 16, weight: isSavedForOtherNotes ? .black : .semibold))
+                                    .foregroundStyle(starColor)
+                                    .font(.system(size: 16, weight: .semibold))
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(

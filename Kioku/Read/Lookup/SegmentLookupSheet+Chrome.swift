@@ -29,7 +29,7 @@ extension SegmentLookupSheet {
                 return min(preferredHeight(), halfScreen)
             }
             sheetPresentationController.detents = [fittedDetent, .medium(), .large()]
-            sheetPresentationController.selectedDetentIdentifier = fittedDetentIdentifier
+            sheetPresentationController.selectedDetentIdentifier = .medium
             sheetPresentationController.largestUndimmedDetentIdentifier = .large
         } else {
             sheetPresentationController.detents = [.medium()]

@@ -6,8 +6,8 @@ nonisolated enum KanaData {
     // Single-kana and short multi-kana particles used as the default standalone-segment allowlist.
     static let defaultParticles: [String] = [
         "は", "が", "を", "に", "へ", "と", "で", "も", "の", "ね", "よ", "か", "な", "や",
-        "ぞ", "さ", "わ", "し", "て",
-        "から", "まで", "より", "だけ", "ほど", "しか", "こそ", "でも", "なら", "ので", "のに", "って"
+        "ぞ", "さ", "わ", "し", "て", "だ",
+        // "から", "まで", "より", "だけ", "ほど", "しか", "こそ", "でも", "なら", "ので", "のに", "って"
     ]
 
     // Kana variants normalized during furigana alignment so equivalent spellings match.

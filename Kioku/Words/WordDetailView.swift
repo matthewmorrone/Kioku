@@ -8,13 +8,17 @@ struct WordDetailView: View {
     // Nil when opened directly from the words list (not via lookup sheet).
     let reading: String?
     let dictionaryStore: DictionaryStore?
-    // Default nil so the existing call site in WordsView compiles without change.
-    let segmenter: (any TextSegmenting)? = nil
+    // Segmenter used for compound word breakdown and fallback sublattice path computation.
+    let segmenter: (any TextSegmenting)?
+    // Pre-computed sublattice paths from the lookup sheet. When empty, computed from the segmenter.
+    var initialSublatticePaths: [[String]] = []
 
     // Provides per-word review statistics keyed by canonicalEntryID.
     @EnvironmentObject private var reviewStore: ReviewStore
     // Provides the list of all user-created word lists so membership can be displayed.
     @EnvironmentObject private var wordListsStore: WordListsStore
+    // Provides note titles for resolving sourceNoteIDs to human-readable labels.
+    @EnvironmentObject private var notesStore: NotesStore
 
     // All entries matching the saved surface; saved entry is first.
     @State private var allDisplayData: [WordDisplayData] = []
@@ -25,6 +29,7 @@ struct WordDetailView: View {
     @State private var senseReferences: [SenseReference] = []
     @State private var showingConjugations: Bool = false
     @State private var conjugationGroups: [ConjugationGroup] = []
+    @State private var sublatticePaths: [[String]] = []
 
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
@@ -66,7 +71,7 @@ struct WordDetailView: View {
             // Use the reading passed from the lookup sheet when available; fall back to the
             // entry's primary kana form so the header still shows furigana for words opened
             // directly from the words list.
-            let surfaceReading = reading ?? entry?.kanaForms.first?.text
+            let surfaceReading = reading ?? inflectedReading(surface: word.surface, entry: entry)
             // Show lemma only when the surface is an inflected form — i.e. not present in the
             // entry's own kanji or kana forms. Mirrors the lookup sheet's lemma visibility rule.
             let surfaceIsBaseForm = entry?.kanjiForms.contains(where: { $0.text == word.surface }) == true
@@ -134,6 +139,17 @@ struct WordDetailView: View {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Sublattice paths — all valid segmentation paths through the surface.
+                if sublatticePaths.count > 1 {
+                    Section("Paths") {
+                        ForEach(Array(sublatticePaths.enumerated()), id: \.offset) { _, path in
+                            Text(path.joined(separator: " · "))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -380,16 +396,26 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Save date and word list membership — always shown for context on when and how the word was saved.
+                // Save date, source notes, and word list membership — always shown for context.
                 Section("Saved") {
-                    HStack {
-                        Text("Added")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text(word.savedAt, style: .date)
+                    // Hidden for now — the save timestamp adds clutter without much value.
+                    // HStack {
+                    //     Text("Added")
+                    //         .foregroundStyle(.secondary)
+                    //     Spacer()
+                    //     Text(word.savedAt, style: .date)
+                    //         .foregroundStyle(.secondary)
+                    // }
+                    // .font(.subheadline)
+
+                    // Source notes (songs) this word was saved from — many-to-many relationship.
+                    let sourceNotes = word.sourceNoteIDs.compactMap { notesStore.note(withID: $0) }
+                        .sorted { $0.title < $1.title }
+                    ForEach(sourceNotes, id: \.id) { note in
+                        Label(note.title, systemImage: "doc.text")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    .font(.subheadline)
 
                     // Resolve list objects from IDs so the user sees human-readable labels keyed by stable UUID.
                     let memberLists = wordListsStore.lists
@@ -579,18 +605,27 @@ struct WordDetailView: View {
         guard results.isEmpty == false else { return }
         let store = dictionaryStore
 
-        // Fetch components via segmenter when available (compound words only).
+        // Fetch components and sublattice paths via segmenter when available.
         if let segmenter {
-            let edges = segmenter.longestMatchEdges(for: surface)
-            if edges.count > 1 {
+            let result = segmenter.longestMatchResult(for: surface)
+
+            // Compound word breakdown uses the selected (best) path.
+            if result.selectedEdges.count > 1 {
                 let components = await Task { @MainActor in
-                    edges.compactMap { edge -> (String, String?)? in
+                    result.selectedEdges.compactMap { edge -> (String, String?)? in
                         let entries = try? store.lookup(surface: edge.surface, mode: .kanjiAndKana)
                         let gloss = entries?.first?.senses.first?.glosses.first
                         return (edge.surface, gloss)
                     }
                 }.value
                 wordComponents = components
+            }
+
+            // Use pre-computed paths from the lookup sheet; fall back to computing from the segmenter.
+            if initialSublatticePaths.isEmpty {
+                sublatticePaths = LatticeEdge.validPaths(from: result.latticeEdges)
+            } else {
+                sublatticePaths = initialSublatticePaths
             }
         }
 
@@ -633,6 +668,43 @@ struct WordDetailView: View {
             "kor": "Korean", "san": "Sanskrit", "ara": "Arabic",
         ]
         return map[code] ?? code.uppercased()
+    }
+
+    // Derives the inflected reading for the surface from the entry's base forms.
+    // When the surface is an inflected form (e.g. 流れた) and the entry stores the base form
+    // (流れる / ながれる), the base-form reading can't project onto the inflected surface because
+    // the okurigana differ (た vs る). This function finds the common prefix between the base
+    // kanji form and the surface, then replaces the base suffix in the reading with the surface's suffix.
+    // Returns the base reading unchanged when prefix matching fails or the entry is nil.
+    private func inflectedReading(surface: String, entry: DictionaryEntry?) -> String? {
+        guard let entry else { return nil }
+        let baseReading = entry.kanaForms.first?.text
+        guard let baseReading else { return nil }
+
+        // If the surface matches a kanji or kana form exactly, no inflection adjustment needed.
+        let isBaseForm = entry.kanjiForms.contains { $0.text == surface }
+            || entry.kanaForms.contains { $0.text == surface }
+        if isBaseForm { return baseReading }
+
+        // Try each kanji form to find one that shares a prefix with the surface.
+        for kanjiForm in entry.kanjiForms {
+            let base = Array(kanjiForm.text)
+            let surf = Array(surface)
+            let prefixLen = zip(base, surf).prefix(while: { $0 == $1 }).count
+            guard prefixLen > 0, prefixLen < base.count, prefixLen < surf.count else { continue }
+
+            let baseSuffix = String(base[prefixLen...])
+            let surfaceSuffix = String(surf[prefixLen...])
+
+            // The reading should end with the base form's kana suffix.
+            if baseReading.hasSuffix(baseSuffix) {
+                let readingPrefix = baseReading.dropLast(baseSuffix.count)
+                return readingPrefix + surfaceSuffix
+            }
+        }
+
+        // Fallback: return the base reading and let the header do its best.
+        return baseReading
     }
 
     // Renders a small pill-shaped metadata chip used across multiple sections.

@@ -180,6 +180,10 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         }
 
         let whereClause: String
+        // Constrain the frequency join to only consider readings that match the looked-up surface.
+        // Without this, an entry like 鑑 (かがみ=rare, かんがみる=common) would sort by its best
+        // rank across ALL readings, misrepresenting the frequency of the matched reading.
+        let frequencyJoin: String
         if matchKana && matchKanji {
             whereClause = """
             EXISTS (
@@ -188,10 +192,23 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
                 SELECT 1 FROM kana_forms kf WHERE kf.entry_id = e.id AND kf.text = ?1
             )
             """
+            frequencyJoin = """
+            LEFT JOIN word_frequency wf ON wf.entry_id = e.id
+                AND (EXISTS (SELECT 1 FROM kana_forms kf2 WHERE kf2.id = wf.kana_id AND kf2.text = ?1)
+                  OR EXISTS (SELECT 1 FROM kanji kj2 WHERE kj2.id = wf.kanji_id AND kj2.text = ?1))
+            """
         } else if matchKana {
             whereClause = "EXISTS (SELECT 1 FROM kana_forms kf WHERE kf.entry_id = e.id AND kf.text = ?1)"
+            frequencyJoin = """
+            LEFT JOIN word_frequency wf ON wf.entry_id = e.id
+                AND EXISTS (SELECT 1 FROM kana_forms kf2 WHERE kf2.id = wf.kana_id AND kf2.text = ?1)
+            """
         } else {
             whereClause = "EXISTS (SELECT 1 FROM kanji kj WHERE kj.entry_id = e.id AND kj.text = ?1)"
+            frequencyJoin = """
+            LEFT JOIN word_frequency wf ON wf.entry_id = e.id
+                AND EXISTS (SELECT 1 FROM kanji kj2 WHERE kj2.id = wf.kanji_id AND kj2.text = ?1)
+            """
         }
 
         let sql = """
@@ -200,7 +217,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
                MAX(wf.wordfreq_zipf) AS best_zipf,
                COALESCE(MIN(s.order_index), 2147483647) AS min_sense
         FROM entries e
-        LEFT JOIN word_frequency wf ON wf.entry_id = e.id
+        \(frequencyJoin)
         LEFT JOIN senses s ON s.entry_id = e.id
         WHERE \(whereClause)
         GROUP BY e.id
