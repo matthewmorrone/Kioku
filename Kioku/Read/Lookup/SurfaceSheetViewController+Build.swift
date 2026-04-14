@@ -405,6 +405,7 @@ extension SurfaceSheetViewController {
             updateReadingFurigana()
             updateLemmaChain()
             updateMiddleContent()
+            updateSaveButtonAppearance()
             updateOpenDetailButtonAppearance()
             updateSheetPreferredHeight(animated: true)
         }, for: .touchUpInside)
@@ -432,6 +433,7 @@ extension SurfaceSheetViewController {
             updateReadingFurigana()
             updateLemmaChain()
             updateMiddleContent()
+            updateSaveButtonAppearance()
             updateOpenDetailButtonAppearance()
             updateSheetPreferredHeight(animated: true)
         }, for: .touchUpInside)
@@ -448,6 +450,7 @@ extension SurfaceSheetViewController {
                     updateReadingFurigana()
                     updateLemmaChain()
                     updateMiddleContent()
+                    updateSaveButtonAppearance()
                     updateOpenDetailButtonAppearance()
                     updateSheetPreferredHeight(animated: true)
                 }
@@ -519,6 +522,8 @@ extension SurfaceSheetViewController {
             updateReadingFurigana()
             updateLemmaChain()
             updateMiddleContent()
+            updateSaveButtonAppearance()
+            updateOpenDetailButtonAppearance()
             updateSheetPreferredHeight(animated: true)
         }, for: .touchUpInside)
 

@@ -158,6 +158,15 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         }
 
         var orderedSurfaces: [String] = [trimmedSurface]
+
+        // Normalize halfwidth katakana (ｱｲｳ) to fullwidth (アイウ) so copied text from
+        // legacy sources still resolves against JMdict's fullwidth-only entries.
+        let fullwidthNormalized = trimmedSurface.applyingTransform(.fullwidthToHalfwidth, reverse: true)
+        if let fullwidthNormalized, fullwidthNormalized != trimmedSurface,
+           orderedSurfaces.contains(fullwidthNormalized) == false {
+            orderedSurfaces.append(fullwidthNormalized)
+        }
+
         let expandedSurfaces = ScriptClassifier.iterationExpandedCandidates(for: trimmedSurface).sorted()
         for expandedSurface in expandedSurfaces where expandedSurface != trimmedSurface {
             orderedSurfaces.append(expandedSurface)
