@@ -37,11 +37,12 @@ nonisolated struct AppBackupDocument: FileDocument {
     }
 
     // Decodes the current versioned app-backup payload format.
+    // Version 1 backups (no audio) are accepted and upgraded — audioAttachments defaults to [].
     private static func decodePayload(from data: Data) throws -> AppBackupPayload {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let payload = try decoder.decode(AppBackupPayload.self, from: data)
-        guard payload.version == AppBackupPayload.currentVersion else {
+        guard payload.version == AppBackupPayload.currentVersion || payload.version == 1 else {
             throw NSError(
                 domain: "Kioku.AppBackup",
                 code: 1,

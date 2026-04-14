@@ -363,16 +363,24 @@ struct SettingsView: View {
         let reviewStats = reviewStore.stats
             .map { AppBackupReviewStats(canonicalEntryID: $0.key, stats: $0.value) }
             .sorted { $0.canonicalEntryID < $1.canonicalEntryID }
+
+        let notes = notesStore.exportNotes()
+        let audioStore = NotesAudioStore.shared
+        let audioAttachments: [AudioAttachmentBackup] = notes
+            .compactMap { $0.audioAttachmentID }
+            .compactMap { audioStore.exportAttachment(for: $0) }
+
         exportDocument = AppBackupDocument(
             payload: AppBackupPayload(
-                notes: notesStore.exportNotes(),
+                notes: notes,
                 words: wordsStore.words,
                 wordLists: wordListsStore.lists,
                 history: historyStore.entries,
                 reviewStats: reviewStats,
                 markedWrong: Array(reviewStore.markedWrong).sorted(),
                 lifetimeCorrect: reviewStore.lifetimeCorrect,
-                lifetimeAgain: reviewStore.lifetimeAgain
+                lifetimeAgain: reviewStore.lifetimeAgain,
+                audioAttachments: audioAttachments
             )
         )
         isShowingExporter = true
@@ -416,9 +424,20 @@ struct SettingsView: View {
     }
 
     // Applies one validated app-backup snapshot to every persisted store in a single replace-all pass.
+    // Audio attachments are written to disk before notes are restored so playback paths resolve immediately.
     private func importAppBackup(_ document: AppBackupDocument) {
         let payload = document.payload
         let stats = Dictionary(uniqueKeysWithValues: payload.reviewStats.map { ($0.canonicalEntryID, $0.reviewWordStats()) })
+
+        let audioStore = NotesAudioStore.shared
+        var audioFailures = 0
+        for attachment in payload.audioAttachments {
+            do {
+                try audioStore.importAttachment(attachment)
+            } catch {
+                audioFailures += 1
+            }
+        }
 
         wordListsStore.replaceAll(with: payload.wordLists)
         wordsStore.replaceAll(with: payload.words)
@@ -431,9 +450,14 @@ struct SettingsView: View {
         )
         notesStore.replaceAll(with: payload.notes)
 
-        let message = """
-        Imported \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.history.count) history entries, and \(payload.reviewStats.count) review records.
-        """
+        var message = "Imported \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.history.count) history entries, and \(payload.reviewStats.count) review records."
+        if payload.audioAttachments.isEmpty == false {
+            let succeeded = payload.audioAttachments.count - audioFailures
+            message += " Restored \(succeeded) of \(payload.audioAttachments.count) audio attachment(s)."
+        }
+        if audioFailures > 0 {
+            message += " \(audioFailures) audio file(s) could not be restored."
+        }
 
         showTransferAlert(title: "Import Complete", message: message)
     }
