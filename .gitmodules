@@ -1,0 +1,4 @@
+[submodule "Packages/SwiftWhisper"]
+	path = Packages/SwiftWhisper
+	url = git@github.com:matthewmorrone/SwiftWhisper.git
+	branch = kioku-patches
