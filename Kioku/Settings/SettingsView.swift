@@ -65,6 +65,7 @@ struct SettingsView: View {
     @State private var isShowingTransferAlert = false
     @State private var transferAlertTitle = ""
     @State private var transferAlertMessage = ""
+    @State private var isShowingResetConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -317,6 +318,12 @@ struct SettingsView: View {
                     } label: {
                         Label("Import", systemImage: "square.and.arrow.down")
                     }
+                    // Erases all user data (notes, words, lists, history, review stats).
+                    Button(role: .destructive) {
+                        isShowingResetConfirmation = true
+                    } label: {
+                        Label("Reset", systemImage: "trash")
+                    }
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -342,6 +349,12 @@ struct SettingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(transferAlertMessage)
+        }
+        .alert("Reset All Data?", isPresented: $isShowingResetConfirmation) {
+            Button("Reset", role: .destructive) { resetAllData() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently erase all notes, saved words, word lists, history, and review progress. This cannot be undone.")
         }
     }
 
@@ -423,6 +436,16 @@ struct SettingsView: View {
         """
 
         showTransferAlert(title: "Import Complete", message: message)
+    }
+
+    // Clears all persisted user data by replacing every store with empty state.
+    private func resetAllData() {
+        wordListsStore.replaceAll(with: [])
+        wordsStore.replaceAll(with: [])
+        historyStore.replaceAll(with: [])
+        reviewStore.replaceAll(stats: [:], markedWrong: [], lifetimeCorrect: 0, lifetimeAgain: 0)
+        notesStore.replaceAll(with: [])
+        showTransferAlert(title: "Reset Complete", message: "All user data has been erased.")
     }
 
     // Presents a single alert for import and export status messages.
