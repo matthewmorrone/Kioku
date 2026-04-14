@@ -98,6 +98,47 @@ final class NotesAudioStore {
         return FileManager.default.fileExists(atPath: legacyURL.path) ? legacyURL : nil
     }
 
+    // Reads all files for one attachment and returns a backup snapshot.
+    // Returns nil if no audio file exists for the attachment (nothing to back up).
+    func exportAttachment(for attachmentID: UUID) -> AudioAttachmentBackup? {
+        guard let audioURL = audioURL(for: attachmentID) else { return nil }
+        guard let audioData = try? Data(contentsOf: audioURL) else { return nil }
+        let srtText = loadSRT(for: attachmentID)
+        let cues = loadCues(for: attachmentID)
+        return AudioAttachmentBackup(
+            attachmentID: attachmentID,
+            audioFilename: readableFilename(fromStoredURL: audioURL, defaultExtension: audioURL.pathExtension),
+            audioData: audioData,
+            srtText: srtText,
+            cues: cues.isEmpty ? nil : cues
+        )
+    }
+
+    // Writes the audio file, SRT, and cues from a backup snapshot back to disk.
+    // Safe to call multiple times — existing files are overwritten.
+    func importAttachment(_ backup: AudioAttachmentBackup) throws {
+        let ext = (backup.audioFilename as NSString).pathExtension
+        let destination = audioDirectory.appendingPathComponent(
+            storedFilename(
+                attachmentID: backup.attachmentID,
+                originalFilename: backup.audioFilename,
+                fallbackExtension: ext.isEmpty ? "mp3" : ext
+            )
+        )
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try backup.audioData.write(to: destination, options: .atomic)
+
+        if let srtText = backup.srtText {
+            _ = try saveSRT(srtText, attachmentID: backup.attachmentID, preferredFilename: backup.audioFilename)
+        }
+
+        if let cues = backup.cues {
+            try saveCues(cues, attachmentID: backup.attachmentID)
+        }
+    }
+
     // Loads the saved raw SRT text when present.
     func loadSRT(for attachmentID: UUID) -> String? {
         guard let subtitleURL = subtitleURL(for: attachmentID) else { return nil }
