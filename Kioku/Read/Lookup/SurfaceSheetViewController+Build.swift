@@ -229,7 +229,11 @@ extension SurfaceSheetViewController {
 
         openDetailButton = UIButton(type: .system)
         openDetailButton.translatesAutoresizingMaskIntoConstraints = false
+        openDetailButton.setImage(UIImage(systemName: "text.magnifyingglass"), for: .normal)
+        openDetailButton.tintColor = .secondaryLabel
+        openDetailButton.backgroundColor = .tertiarySystemFill
         openDetailButton.layer.cornerRadius = 8
+        openDetailButton.accessibilityLabel = "Look Up in Words"
 
         wordActionsStack.addArrangedSubview(speakButton)
         wordActionsStack.addArrangedSubview(saveButton)
@@ -295,20 +299,34 @@ extension SurfaceSheetViewController {
         }, for: .touchUpInside)
     }
 
-    // Builds the vertical content stack between the header and the action menu.
+    // Builds the vertical content stack between the header and the action menu,
+    // wrapped in a rounded container matching the action menu styling.
     func buildMiddleContent() {
+        middleContentContainer = UIView()
+        middleContentContainer.translatesAutoresizingMaskIntoConstraints = false
+        middleContentContainer.backgroundColor = .secondarySystemBackground
+        middleContentContainer.layer.cornerRadius = 10
+
         middleContentStack = UIStackView()
         middleContentStack.translatesAutoresizingMaskIntoConstraints = false
         middleContentStack.axis = .vertical
         middleContentStack.spacing = 12
         middleContentStack.alignment = .fill
+
+        middleContentContainer.addSubview(middleContentStack)
+        NSLayoutConstraint.activate([
+            middleContentStack.topAnchor.constraint(equalTo: middleContentContainer.topAnchor, constant: 6),
+            middleContentStack.leadingAnchor.constraint(equalTo: middleContentContainer.leadingAnchor, constant: 6),
+            middleContentStack.trailingAnchor.constraint(equalTo: middleContentContainer.trailingAnchor, constant: -6),
+            middleContentStack.bottomAnchor.constraint(equalTo: middleContentContainer.bottomAnchor, constant: -6),
+        ])
     }
 
     // Adds all major subviews to the controller's root view and activates layout constraints.
     func layoutRootSubviews() {
         view.addSubview(headerContainer)
         view.addSubview(splitPanelContainer)
-        view.addSubview(middleContentStack)
+        view.addSubview(middleContentContainer)
         view.addSubview(actionMenuContainer)
 
         NSLayoutConstraint.activate([
@@ -318,10 +336,10 @@ extension SurfaceSheetViewController {
             splitPanelContainer.topAnchor.constraint(equalTo: headerContainer.bottomAnchor, constant: 8),
             splitPanelContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             splitPanelContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            middleContentStack.topAnchor.constraint(equalTo: splitPanelContainer.bottomAnchor, constant: 16),
-            middleContentStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            middleContentStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            middleContentStack.bottomAnchor.constraint(lessThanOrEqualTo: actionMenuContainer.topAnchor, constant: -12),
+            middleContentContainer.topAnchor.constraint(equalTo: splitPanelContainer.bottomAnchor, constant: 16),
+            middleContentContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            middleContentContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            middleContentContainer.bottomAnchor.constraint(lessThanOrEqualTo: actionMenuContainer.topAnchor, constant: -12),
             actionMenuContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             actionMenuContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             actionMenuContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
@@ -366,9 +384,13 @@ extension SurfaceSheetViewController {
 
         mergeLeftButton.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            if let mergeResult = currentOnMergeLeft?() {
+            if let callback = currentOnMergeLeft {
+                // Callback provided — a nil return means the model rejected the merge (e.g. illegal boundary).
+                // Do not fall back to string concatenation; the model's rejection stands.
+                guard let mergeResult = callback() else { return }
                 updateCurrentSurface(mergeResult)
             } else if let leftNeighbor = currentLeftNeighborSurface {
+                // No callback — display-only context where merge is not backed by the model.
                 currentSurface = leftNeighbor + currentSurface
                 currentLeftNeighborSurface = nil
                 syncFuriganaToCurrentIndex()
@@ -389,9 +411,13 @@ extension SurfaceSheetViewController {
 
         mergeRightButton.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            if let mergeResult = currentOnMergeRight?() {
+            if let callback = currentOnMergeRight {
+                // Callback provided — a nil return means the model rejected the merge (e.g. illegal boundary).
+                // Do not fall back to string concatenation; the model's rejection stands.
+                guard let mergeResult = callback() else { return }
                 updateCurrentSurface(mergeResult)
             } else if let rightNeighbor = currentRightNeighborSurface {
+                // No callback — display-only context where merge is not backed by the model.
                 currentSurface = currentSurface + rightNeighbor
                 currentRightNeighborSurface = nil
                 syncFuriganaToCurrentIndex()
@@ -475,9 +501,13 @@ extension SurfaceSheetViewController {
         applySplitButton.addAction(UIAction { [weak self] _ in
             guard let self else { return }
             let splitOffset = leftSplitValue.utf16.count
-            if let splitResult = currentOnSplitApply?(splitOffset) {
+            if let callback = currentOnSplitApply {
+                // Callback provided — a nil return means the model rejected the split (e.g. invalid offset).
+                // Do not fall back to string concatenation; the model's rejection stands.
+                guard let splitResult = callback(splitOffset) else { return }
                 updateCurrentSurface(splitResult)
             } else {
+                // No callback — display-only context where split is not backed by the model.
                 currentSurface = leftSplitValue + rightSplitValue
                 syncFuriganaToCurrentIndex()
             }

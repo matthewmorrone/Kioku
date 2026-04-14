@@ -40,10 +40,10 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: readResources.segmenter, dictionaryStore: readResources.dictionaryStore, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, segmenterRevision: readResources.segmenterRevision, readResourcesReady: readResources.ready, onOpenWordDetail: { entryID, surface, reading in
+            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: readResources.segmenter, dictionaryStore: readResources.dictionaryStore, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, segmenterRevision: readResources.segmenterRevision, readResourcesReady: readResources.ready, onOpenWordDetail: { entryID, surface, reading, sublatticePaths in
                 selectedTab = .words
                 DispatchQueue.main.async {
-                    pendingWordsRoute = .detail(entryID: entryID, surface: surface, reading: reading)
+                    pendingWordsRoute = .detail(entryID: entryID, surface: surface, reading: reading, sublatticePaths: sublatticePaths)
                 }
             }, onActiveNoteChanged: { id in
                 lastActiveNoteID = id.uuidString
@@ -95,7 +95,7 @@ struct ContentView: View {
             }
 
             // Renders the Words tab entry point; pendingWordsRoute carries notification and read-tab routes.
-            WordsView(dictionaryStore: readResources.dictionaryStore, pendingRoute: $pendingWordsRoute)
+            WordsView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, pendingRoute: $pendingWordsRoute)
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .environmentObject(historyStore)
@@ -177,6 +177,7 @@ struct ContentView: View {
         guard notificationHandler == nil else { return }
         notificationHandler = NotificationDeepLinkHandler(navigation: wotdNavigation)
     }
+
 
     // Loads heavy read resources asynchronously so initial app launch stays responsive.
     private func loadReadResourcesIfNeeded() {

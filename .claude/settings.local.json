@@ -7,7 +7,9 @@
       "Write(*)",
       "Glob(*)",
       "Grep(*)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "mcp__xcode__session_set_defaults",
+      "mcp__xcode__build_run_sim"
     ]
   }
 }

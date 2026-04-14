@@ -13,7 +13,7 @@ enum WordsSortOrder: String {
 
 // Cross-tab routing for the Words screen.
 enum WordsRoute: Equatable {
-    case detail(entryID: Int64, surface: String?, reading: String? = nil)
+    case detail(entryID: Int64, surface: String?, reading: String? = nil, sublatticePaths: [[String]] = [])
     case search(String)
 }
 
@@ -21,6 +21,7 @@ enum WordsRoute: Equatable {
 // Major sections: search bar, saved/history tab picker, word rows, toolbar.
 struct WordsView: View {
     let dictionaryStore: DictionaryStore?
+    let segmenter: (any TextSegmenting)?
     // Receives cross-tab routing requests from ContentView.
     var pendingRoute: Binding<WordsRoute?> = .constant(nil)
 
@@ -32,6 +33,7 @@ struct WordsView: View {
     @State private var selectedDetailWord: SavedWord?
     // Reading that was active in the lookup sheet when this word detail was opened, if available.
     @State private var selectedDetailReading: String?
+    @State private var selectedDetailSublatticePaths: [[String]] = []
     @State private var activeFilterNoteIDs: Set<UUID> = []
     @State private var activeFilterListIDs: Set<UUID> = []
     @State private var isFilterSheetPresented = false
@@ -85,11 +87,12 @@ struct WordsView: View {
         guard let route else { return }
 
         switch route {
-        case let .detail(entryID, surface, reading):
+        case let .detail(entryID, surface, reading, sublatticePaths):
             if let word = detailWord(entryID: entryID, surfaceHint: surface) {
                 activeTab = .saved
                 selectedDetailWord = word
                 selectedDetailReading = reading
+                selectedDetailSublatticePaths = sublatticePaths
             }
 
         case let .search(query):
@@ -163,8 +166,8 @@ struct WordsView: View {
             }
         }
         .toolbar(.visible, for: .tabBar)
-        .sheet(item: $selectedDetailWord, onDismiss: { selectedDetailReading = nil }) { word in
-            WordDetailView(word: word, reading: selectedDetailReading, dictionaryStore: dictionaryStore)
+        .sheet(item: $selectedDetailWord, onDismiss: { selectedDetailReading = nil; selectedDetailSublatticePaths = [] }) { word in
+            WordDetailView(word: word, reading: selectedDetailReading, dictionaryStore: dictionaryStore, segmenter: segmenter, initialSublatticePaths: selectedDetailSublatticePaths)
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .presentationDetents([.large])

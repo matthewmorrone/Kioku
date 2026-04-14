@@ -4,15 +4,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-enum ReadViewFileImportTarget: Equatable {
-    case transcriptionAudio
-    case subtitleAudio
-
-    var allowedContentTypes: [UTType] {
-        return [.audio, .mpeg4Audio, .mp3]
-    }
-}
-
 // Provides the primary reading and editing surface for an active note.
 struct ReadView: View {
     @Binding var selectedNote: Note?
@@ -26,8 +17,8 @@ struct ReadView: View {
     let surfaceReadingData: SurfaceReadingDataMap
     let segmenterRevision: Int
     let readResourcesReady: Bool
-    // (entryID, surface, reading) — reading is the resolved kana reading active in the lookup sheet.
-    var onOpenWordDetail: ((Int64, String, String?) -> Void)? = nil
+    // (entryID, surface, reading, sublatticePaths) — carries pre-computed data from the lookup sheet.
+    var onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
     @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
@@ -79,20 +70,25 @@ struct ReadView: View {
     @State var isShowingDisplayOptions = false
     @State var isShowingPhotoLibraryPicker = false
     @State var isShowingCameraPicker = false
-    @State var activeFileImportTarget: ReadViewFileImportTarget? = nil
     @State var isShowingFileImporter = false
-    @State var isShowingSubtitleSubmissionSheet = false
+    @State var isShowingSubtitlePopup = false
     @State var selectedOCRImageItem: PhotosPickerItem?
     @State var isPerformingOCRImport = false
     @State var isPerformingAudioTranscription = false
     @State var isGeneratingLyricAlignment = false
+    @State var isCancellingAlignment = false
     @State var ocrImportErrorMessage = ""
     @State var audioTranscriptionErrorMessage = ""
     @State var lyricAlignmentErrorMessage = ""
     @State var lyricAlignmentProgressMessage = ""
     @State var lyricAlignmentSourceFilename = ""
+    @State var alignmentResultSRT = ""
     @State var pendingSubtitleAudioURL: URL? = nil
     @State var pendingSubtitleAudioFilename = ""
+    @State var pendingSubtitleFileURL: URL? = nil
+    @State var pendingSubtitleFilename = ""
+    @State var isShowingSubtitlePicker = false
+    @State var subtitlePickerTarget: SubtitlePickerTarget = .audio
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
     @State var audioController = AudioPlaybackController()
@@ -105,6 +101,8 @@ struct ReadView: View {
     @State var isShowingLyricsView = false
     @AppStorage(LyricsDisplayStyle.storageKey) var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
     @State var isShowingSubtitleEditor = false
+    @State var isShowingSubtitleMismatchDialog = false
+    @State var subtitleMismatchCount = 0
     @State var isRequestingLLMCorrection = false
     @State var isShowingLLMCorrectionError = false
     @State var llmCorrectionErrorMessage = ""
@@ -136,7 +134,7 @@ struct ReadView: View {
         surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
         segmenterRevision: Int,
         readResourcesReady: Bool,
-        onOpenWordDetail: ((Int64, String, String?) -> Void)? = nil,
+        onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil,
         onActiveNoteChanged: ((UUID) -> Void)? = nil
     ) {
         _selectedNote = selectedNote
@@ -167,31 +165,6 @@ struct ReadView: View {
         alertingReadView
     }
 
-    private var isShowingTranscriptionFileImporter: Binding<Bool> {
-        Binding(
-            get: {
-                isShowingFileImporter && activeFileImportTarget == .transcriptionAudio
-            },
-            set: { isPresented in
-                if isPresented == false, activeFileImportTarget == .transcriptionAudio {
-                    isShowingFileImporter = false
-                }
-            }
-        )
-    }
-
-    var isShowingSubtitleFileImporter: Binding<Bool> {
-        Binding(
-            get: {
-                isShowingFileImporter && activeFileImportTarget == .subtitleAudio
-            },
-            set: { isPresented in
-                if isPresented == false, activeFileImportTarget == .subtitleAudio {
-                    isShowingFileImporter = false
-                }
-            }
-        )
-    }
 
 
     private var alertingReadView: some View {
@@ -207,7 +180,8 @@ struct ReadView: View {
                 if let attachmentID = activeAudioAttachmentID {
                     SubtitleEditorSheet(
                         attachmentID: attachmentID,
-                        initialCues: audioAttachmentCues
+                        initialCues: audioAttachmentCues,
+                        noteText: text
                     ) { newCues in
                         // Reload the controller with updated cues so highlighting stays in sync.
                         audioAttachmentCues = newCues
@@ -230,6 +204,21 @@ struct ReadView: View {
                 }
             } message: {
                 Text(lyricAlignmentErrorMessage)
+            }
+            .confirmationDialog(
+                "\(subtitleMismatchCount) subtitle\(subtitleMismatchCount == 1 ? "" : "s") differ from note text",
+                isPresented: $isShowingSubtitleMismatchDialog,
+                titleVisibility: .visible
+            ) {
+                Button("Update subtitles to match note") {
+                    syncSubtitlesToNote()
+                }
+                Button("Update note to match subtitles") {
+                    syncNoteToSubtitles()
+                }
+                Button("Ignore", role: .cancel) {}
+            } message: {
+                Text("The subtitle text doesn't match the note for some lines. This can happen when alignment produces different characters than the original.")
             }
             .alert("AI Correction", isPresented: $isShowingLLMCorrectionError) {
                 Button("OK", role: .cancel) {
@@ -392,11 +381,6 @@ struct ReadView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
         .toolbar(.visible, for: .tabBar)
-        .sheet(isPresented: $isShowingSubtitleSubmissionSheet) {
-            subtitleSubmissionSheet
-                .presentationDetents([.height(330)])
-                .presentationDragIndicator(.visible)
-        }
         .background {
             AudioCueHighlightObserver(
                 controller: audioController,
@@ -412,8 +396,8 @@ struct ReadView: View {
             }
         }
         .overlay {
-            if isGeneratingLyricAlignment {
-                lyricAlignmentProgressOverlay
+            if isShowingSubtitlePopup || isGeneratingLyricAlignment {
+                subtitlePopupOverlay
             }
         }
         .overlay {
@@ -427,6 +411,9 @@ struct ReadView: View {
                     segmentationRanges: segmentRanges,
                     noteText: text,
                     attachmentID: activeAudioAttachmentID,
+                    onSegmentTapped: { location, rect, sourceView in
+                        handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: sourceView)
+                    },
                     onDismiss: {
                         isShowingLyricsView = false
                     }
@@ -472,14 +459,14 @@ struct ReadView: View {
             preferredItemEncoding: .automatic
         )
         .fileImporter(
-            isPresented: isShowingTranscriptionFileImporter,
-            allowedContentTypes: activeFileImportTarget?.allowedContentTypes ?? [.data],
+            isPresented: $isShowingSubtitlePicker,
+            allowedContentTypes: subtitlePickerTarget.contentTypes,
             allowsMultipleSelection: false
         ) { result in
-            let target = activeFileImportTarget
-            isShowingFileImporter = false
-            activeFileImportTarget = nil
-            handleFileImportSelection(result, target: target)
+            switch subtitlePickerTarget {
+            case .audio: handleLyricAlignmentAudioSelection(result)
+            case .subtitleFile: handleSubtitleFileSelection(result)
+            }
         }
     }
 

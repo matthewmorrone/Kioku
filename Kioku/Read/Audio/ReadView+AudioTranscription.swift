@@ -21,7 +21,7 @@ extension ReadView {
     // Renders the title-row waveform button that imports an audio file for transcription.
     var audioTranscriptionButton: some View {
         Button {
-            presentFileImporter(for: .transcriptionAudio)
+            isShowingFileImporter = true
         } label: {
             Group {
                 if isPerformingAudioTranscription {
@@ -42,6 +42,14 @@ extension ReadView {
         .buttonStyle(.plain)
         .disabled(isPerformingAudioTranscription)
         .accessibilityLabel("Import Audio for Transcription")
+        .fileImporter(
+            isPresented: $isShowingFileImporter,
+            allowedContentTypes: [.audio, .mpeg4Audio, .mp3],
+            allowsMultipleSelection: false
+        ) { result in
+            isShowingFileImporter = false
+            handleAudioImportSelection(result)
+        }
     }
 
     // Handles the audio-file picker result and kicks off speech recognition.

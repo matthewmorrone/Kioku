@@ -12,6 +12,7 @@
 		E32B0CE62F57BC070020F5C2 /* generate_db.py in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE02F57BC070020F5C2 /* generate_db.py */; };
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
 		E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = E4E800022F90000100FFF001 /* SwiftWhisper */; };
+		E4WKA00012FA0000200000001 /* WhisperKitAlign in Frameworks */ = {isa = PBXBuildFile; productRef = E4WKA00022FA0000200000002 /* WhisperKitAlign */; };
 		F5MECAB012FA0000100000001 /* mecab in Frameworks */ = {isa = PBXBuildFile; productRef = F5MECAB022FA0000100000001 /* mecab */; };
 		F5MECAB032FA0000100000002 /* MeCab in Resources */ = {isa = PBXBuildFile; fileRef = F5MECAB042FA0000100000002 /* MeCab */; };
 /* End PBXBuildFile section */
@@ -65,6 +66,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */,
+				E4WKA00012FA0000200000001 /* WhisperKitAlign in Frameworks */,
 				F5MECAB012FA0000100000001 /* mecab in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -155,6 +157,7 @@
 			name = Kioku;
 			packageProductDependencies = (
 				E4E800022F90000100FFF001 /* SwiftWhisper */,
+				E4WKA00022FA0000200000002 /* WhisperKitAlign */,
 				F5MECAB022FA0000100000001 /* mecab */,
 			);
 			productName = Kioku;
@@ -237,7 +240,8 @@
 			mainGroup = E3070ADF2F4DFDB6005FD323;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */,
+				E4E800032F90000100FFF001 /* XCLocalSwiftPackageReference "Packages/SwiftWhisper" */,
+				E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "WhisperKitAlign" */,
 				F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -504,6 +508,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = PZ69YU2D7L;
@@ -524,6 +529,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
+				OTHER_LDFLAGS = "-lz";
 				PRODUCT_BUNDLE_IDENTIFIER = matthewmorrone.Kioku;
 				PRODUCT_NAME = "Kioku Reader";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -543,6 +549,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = PZ69YU2D7L;
@@ -562,6 +569,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-lz";
 				PRODUCT_BUNDLE_IDENTIFIER = matthewmorrone.Kioku;
 				PRODUCT_NAME = "Kioku Reader";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -700,15 +708,18 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/exPHAT/SwiftWhisper.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.2.0;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		E4E800032F90000100FFF001 /* XCLocalSwiftPackageReference "Packages/SwiftWhisper" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SwiftWhisper;
 		};
+		E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "WhisperKitAlign" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = WhisperKitAlign;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
 		F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/matthewmorrone/mecab.git";
@@ -722,8 +733,13 @@
 /* Begin XCSwiftPackageProductDependency section */
 		E4E800022F90000100FFF001 /* SwiftWhisper */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E4E800032F90000100FFF001 /* XCRemoteSwiftPackageReference "SwiftWhisper" */;
+			package = E4E800032F90000100FFF001 /* XCLocalSwiftPackageReference "Packages/SwiftWhisper" */;
 			productName = SwiftWhisper;
+		};
+		E4WKA00022FA0000200000002 /* WhisperKitAlign */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "WhisperKitAlign" */;
+			productName = WhisperKitAlign;
 		};
 		F5MECAB022FA0000100000001 /* mecab */ = {
 			isa = XCSwiftPackageProductDependency;

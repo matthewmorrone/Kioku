@@ -59,6 +59,7 @@ final class SurfaceSheetViewController: UIViewController {
     var mergeRightButton: UIButton!
     var saveButton: UIButton!
     var openDetailButton: UIButton!
+    var middleContentContainer: UIView!
     var middleContentStack: UIStackView!
     var wordActionsStack: UIStackView!
     var actionMenuContainer: UIView!
@@ -324,16 +325,8 @@ final class SurfaceSheetViewController: UIViewController {
     // Reflects whether the current surface resolved to a dictionary entry that can be opened.
     func updateOpenDetailButtonAppearance() {
         let hasDictionaryEntry = sheet?.currentSheetDictionaryEntry != nil
-        openDetailButton.setImage(UIImage(systemName: "text.magnifyingglass"), for: .normal)
         openDetailButton.isEnabled = hasDictionaryEntry
         openDetailButton.alpha = hasDictionaryEntry ? 1 : 0.45
-        openDetailButton.tintColor = hasDictionaryEntry ? .systemBlue : .tertiaryLabel
-        openDetailButton.backgroundColor = hasDictionaryEntry
-            ? UIColor.systemBlue.withAlphaComponent(0.14)
-            : .tertiarySystemFill
-        openDetailButton.accessibilityLabel = hasDictionaryEntry
-            ? "Look Up in Words"
-            : "No Dictionary Entry Available"
     }
 
     // Recalculates and applies the preferred sheet height for the current state.
@@ -349,7 +342,7 @@ final class SurfaceSheetViewController: UIViewController {
     func computePreferredSheetHeight() -> CGFloat {
         guard let sheet else { return 400 }
         let contentWidth = max(200, sheet.activeScreenBounds().width) - 32
-        let middleHeight = ceil(middleContentStack.systemLayoutSizeFitting(
+        let middleHeight = middleContentContainer.isHidden ? 0 : ceil(middleContentContainer.systemLayoutSizeFitting(
             CGSize(width: contentWidth, height: UIView.layoutFittingCompressedSize.height),
             withHorizontalFittingPriority: .required,
             verticalFittingPriority: .fittingSizeLevel

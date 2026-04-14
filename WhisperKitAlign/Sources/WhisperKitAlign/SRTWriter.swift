@@ -18,7 +18,7 @@ public struct SRTWriter {
     }
 
     /// Converts seconds to SRT timestamp format HH:MM:SS,mmm.
-    static func timestamp(_ seconds: Double) -> String {
+    public static func timestamp(_ seconds: Double) -> String {
         let total = max(0, seconds)
         let ms = Int((total * 1000).rounded()) % 1000
         let s  = Int(total) % 60

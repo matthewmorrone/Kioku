@@ -12,7 +12,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     @Published var activeCueIndex: Int? = nil
 
     private var player: AVAudioPlayer?
-    private var cues: [SubtitleCue] = []
+    var cues: [SubtitleCue] = []
     private var timer: Timer?
 
     // Loads audio from a URL and stores the cue list for highlight resolution.
@@ -25,7 +25,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         self.cues = cues
         duration = newPlayer.duration
         currentTimeMs = 0
-        updateCurrentTime()
+        syncTimeAndCue()
     }
 
     // Unloads audio and resets all state when switching away from a note with audio.
@@ -55,7 +55,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         player.play()
         isPlaying = true
         startTimer()
-        updateCurrentTime()
+        syncTimeAndCue()
     }
 
     // Pauses playback and takes one final time snapshot.
@@ -63,7 +63,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         player?.pause()
         isPlaying = false
         stopTimer()
-        updateCurrentTime()
+        syncTimeAndCue()
     }
 
     // Stops playback and resets position to the start.
@@ -82,14 +82,20 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         isPlaying = false
         stopTimer()
         currentTimeMs = 0
-        updateCurrentTime()
+        syncTimeAndCue()
     }
 
     // Seeks to a specific millisecond offset without interrupting the play/pause state.
+    // Resumes playback after seeking if we were playing, since AVAudioPlayer can
+    // momentarily stop during currentTime assignment.
     func seek(toMs ms: Int) {
         guard let player else { return }
+        let wasPlaying = player.isPlaying
         player.currentTime = TimeInterval(ms) / 1000.0
-        updateCurrentTime()
+        if wasPlaying && player.isPlaying == false {
+            player.play()
+        }
+        syncTimeAndCue()
     }
 
     // Schedules a 50 ms polling timer to keep currentTimeMs and activeCueIndex fresh during playback.
@@ -97,7 +103,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.updateCurrentTime()
+                self?.timerTick()
             }
         }
     }
@@ -108,15 +114,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         timer = nil
     }
 
-    // Reads the current player position and resolves which cue (if any) is active at that time.
-    private func updateCurrentTime() {
+    // Timer-driven update that checks for natural end-of-playback and refreshes time/cue.
+    private func timerTick() {
         guard let player else { return }
-        let ms = Int(player.currentTime * 1000)
-        if currentTimeMs != ms {
-            currentTimeMs = ms
-        }
 
-        // Stop state is already handled; check if playback has reached the end naturally.
+        // Detect natural end-of-playback (player stopped on its own).
         if player.isPlaying == false && isPlaying {
             isPlaying = false
             stopTimer()
@@ -124,11 +126,23 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             return
         }
 
-        // Use the current cue if time falls within it, otherwise show the next upcoming cue.
-        // This ensures the display is never blank before the first cue or between cues.
-        let activeCue = cues.firstIndex { ms >= $0.startMs && ms < $0.endMs }
+        syncTimeAndCue()
+    }
+
+    // Reads the current player position and resolves which cue is active at that time.
+    // Called from both seek and the polling timer — never checks end-of-playback so that
+    // seeking during playback cannot accidentally kill the timer.
+    private func syncTimeAndCue() {
+        guard let player else { return }
+        let ms = Int(player.currentTime * 1000)
+        if currentTimeMs != ms {
+            currentTimeMs = ms
+        }
+
+        let currentCue = cues.firstIndex { ms >= $0.startMs && ms < $0.endMs }
         let nextCue = cues.firstIndex { $0.startMs > ms }
-        let newActiveCueIndex = activeCue ?? nextCue
+        let previousCue = cues.lastIndex { $0.endMs <= ms }
+        let newActiveCueIndex = currentCue ?? nextCue ?? previousCue ?? activeCueIndex
         if activeCueIndex != newActiveCueIndex {
             activeCueIndex = newActiveCueIndex
         }

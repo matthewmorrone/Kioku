@@ -1,49 +1,67 @@
 // ForcedAligner.swift
-// Main entry point. WhisperKit is injected via TranscriptionProvider
-// so the core logic is testable without a real model.
+// Public entry point for the forced-alignment pipeline.
+// Wraps ForcedAlignmentProvider and produces SRT output.
 
 import Foundation
 
-public protocol TranscriptionProvider {
-    func transcribe(url: URL, language: String) async throws -> [TranscriptionSegment]
-}
-
+// Orchestrates forced alignment of lyric lines against audio and produces SRT.
 public struct ForcedAligner {
-    private let provider: TranscriptionProvider
-    public init(provider: TranscriptionProvider) { self.provider = provider }
+    private let modelURL: URL
 
-    public func align(input: AlignmentInput) async throws -> AlignmentResult {
-        let segments    = try await provider.transcribe(url: input.audioURL, language: input.language)
-        let alignedLines = LineAligner.align(lines: input.lines, segments: segments)
-        return AlignmentResult(lines: alignedLines)
+    // modelURL must point to a GGML .bin Whisper model file.
+    public init(modelURL: URL) {
+        self.modelURL = modelURL
     }
 
-    public func alignAndWrite(input: AlignmentInput, outputURL: URL) async throws {
-        try SRTWriter.write(try await align(input: input), to: outputURL)
+    // Aligns lyric lines to audio and returns the result with timestamps.
+    // cancellationCheck: polled during inference; return true to abort.
+    // onProgress: called with 0–1 fraction during Whisper inference.
+    // onSegment: called each time a segment completes with partial alignment results.
+    public func align(
+        input: AlignmentInput,
+        cancellationCheck: (() -> Bool)? = nil,
+        onProgress: ((Double) -> Void)? = nil,
+        onSegment: (([AlignedLine]) -> Void)? = nil
+    ) async throws -> AlignmentResult {
+        let provider = ForcedAlignmentProvider(modelURL: modelURL)
+        return try await provider.align(
+            input: input,
+            cancellationCheck: cancellationCheck,
+            onProgress: onProgress,
+            onSegment: onSegment
+        )
+    }
+
+    // Aligns and writes the result as SRT to the given file URL.
+    public func alignAndWrite(
+        input: AlignmentInput,
+        outputURL: URL,
+        cancellationCheck: (() -> Bool)? = nil,
+        onProgress: ((Double) -> Void)? = nil,
+        onSegment: (([AlignedLine]) -> Void)? = nil
+    ) async throws {
+        let result = try await align(
+            input: input,
+            cancellationCheck: cancellationCheck,
+            onProgress: onProgress,
+            onSegment: onSegment
+        )
+        try SRTWriter.write(result, to: outputURL)
+    }
+
+    // Aligns and returns the SRT text as a string.
+    public func alignToSRT(
+        input: AlignmentInput,
+        cancellationCheck: (() -> Bool)? = nil,
+        onProgress: ((Double) -> Void)? = nil,
+        onSegment: (([AlignedLine]) -> Void)? = nil
+    ) async throws -> String {
+        let result = try await align(
+            input: input,
+            cancellationCheck: cancellationCheck,
+            onProgress: onProgress,
+            onSegment: onSegment
+        )
+        return SRTWriter.write(result)
     }
 }
-
-// WhisperKit production provider — compiled only on Apple platforms.
-#if canImport(WhisperKit)
-import WhisperKit
-
-public final class WhisperKitProvider: TranscriptionProvider {
-    private let whisperKit: WhisperKit
-
-    public init(modelFolder: String? = nil) async throws {
-        self.whisperKit = try await WhisperKit(WhisperKitConfig(modelFolder: modelFolder))
-    }
-
-    public func transcribe(url: URL, language: String) async throws -> [TranscriptionSegment] {
-        let options = DecodingOptions(language: language,
-                                     withoutTimestamps: false,
-                                     wordTimestamps: false)
-        guard let results = try await whisperKit.transcribe(audioPath: url.path,
-                                                           decodeOptions: options)
-        else { return [] }
-        return results.flatMap { $0.segments }.map {
-            TranscriptionSegment(text: $0.text, start: Double($0.start), end: Double($0.end))
-        }
-    }
-}
-#endif

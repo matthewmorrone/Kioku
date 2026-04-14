@@ -425,9 +425,9 @@ extension ReadView {
                 sheetOpenWordDetail: {
                     guard let surface = currentSelectedSurface(),
                           let entry = resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
-                    // Pass the active reading so WordDetailView shows the same furigana as the lookup sheet.
                     let reading = SegmentLookupSheet.shared.currentSheetUniqueReadings.first
-                    onOpenWordDetail?(entry.entryId, surface, reading)
+                    let paths = LatticeEdge.validPaths(from: SegmentLookupSheet.shared.currentSheetSublatticeEdges)
+                    onOpenWordDetail?(entry.entryId, surface, reading, paths)
                 },
                 sheetWordComponentsProvider: {
                     guard let surface = currentSelectedSurface() else { return nil }
@@ -640,4 +640,5 @@ extension ReadView {
 
         return preferredDefinition?.gloss
     }
+
 }

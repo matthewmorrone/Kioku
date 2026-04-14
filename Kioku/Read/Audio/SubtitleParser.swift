@@ -37,34 +37,60 @@ enum SubtitleParser {
     }
 
     // Resolves each cue's text to an NSRange within noteText by searching sequentially.
-    // Sequential search means duplicate cue texts are matched in order, not always to the first
-    // occurrence, so a cue that reuses an earlier line highlights the correct second instance.
-    // Returns nil for any cue whose text cannot be found (e.g. after the note was heavily edited).
+    // Three-tier matching: exact substring → normalized line text → positional (next note line).
+    // Positional fallback ensures cues always align even when text differs (e.g. kana vs kanji).
+    // Returns nil only for non-speech cues like ♪ that have no corresponding note line.
     static func resolveHighlightRanges(for cues: [SubtitleCue], in noteText: String) -> [NSRange?] {
         var searchStart = noteText.startIndex
         var lineSearchIndex = 0
         let noteLineRanges = extractNoteLineRanges(from: noteText)
         return cues.map { cue in
-            guard let range = noteText.range(of: cue.text, range: searchStart..<noteText.endIndex) else {
-                guard let fallbackRange = resolveLineBasedHighlightRange(
-                    for: cue,
-                    in: noteText,
-                    lineRanges: noteLineRanges,
-                    lineSearchIndex: &lineSearchIndex
-                ) else {
-                    return nil
+            // Non-speech cues (♪) have no note line — skip.
+            if isNonSpeechCue(cue.text) {
+                return nil
+            }
+
+            // Tier 1: exact substring match.
+            if let range = noteText.range(of: cue.text, range: searchStart..<noteText.endIndex) {
+                searchStart = range.upperBound
+                if let matchedLineIndex = noteLineRanges.firstIndex(where: { NSIntersectionRange($0, NSRange(range, in: noteText)).length > 0 }) {
+                    lineSearchIndex = matchedLineIndex + 1
                 }
+                return NSRange(range, in: noteText)
+            }
+
+            // Tier 2: normalized line text comparison.
+            if let fallbackRange = resolveLineBasedHighlightRange(
+                for: cue,
+                in: noteText,
+                lineRanges: noteLineRanges,
+                lineSearchIndex: &lineSearchIndex
+            ) {
                 if let fallbackSwiftRange = Range(fallbackRange, in: noteText) {
                     searchStart = fallbackSwiftRange.upperBound
                 }
                 return fallbackRange
             }
-            searchStart = range.upperBound
-            if let matchedLineIndex = noteLineRanges.firstIndex(where: { NSIntersectionRange($0, NSRange(range, in: noteText)).length > 0 }) {
-                lineSearchIndex = matchedLineIndex + 1
+
+            // Tier 3: positional fallback — assign to the next non-blank unmatched note line.
+            while lineSearchIndex < noteLineRanges.count {
+                let positionalRange = noteLineRanges[lineSearchIndex]
+                lineSearchIndex += 1
+                guard let swiftRange = Range(positionalRange, in: noteText) else { continue }
+                let lineText = noteText[swiftRange].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard lineText.isEmpty == false else { continue }
+                searchStart = swiftRange.upperBound
+                return positionalRange
             }
-            return NSRange(range, in: noteText)
+
+            return nil
         }
+    }
+
+    // Returns true for cues that represent instrumental/non-speech sections.
+    static func isNonSpeechCue(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == "♪" || trimmed == "♫" || trimmed.isEmpty
     }
 
     // Finds the note line that matches a cue's text so the cue can be highlighted during playback.

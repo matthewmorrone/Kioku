@@ -15,16 +15,29 @@ struct LyricsView: View {
     let segmentationRanges: [Range<String.Index>]
     let noteText: String
     let attachmentID: UUID?
+    let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
     let onDismiss: () -> Void
 
     private var activeIndex: Int { controller.activeCueIndex ?? 0 }
+
+    // Number of cues where the subtitle text differs from the corresponding note text.
+    private var mismatchCount: Int {
+        cues.indices.filter { hasMismatch(at: $0) }.count
+    }
+
+    // Returns true when the cue text doesn't match the note text for this index.
+    private func hasMismatch(at index: Int) -> Bool {
+        let note = displayText(for: index)
+        let cue = cues[index].text
+        return note != cue && SubtitleParser.isNonSpeechCue(cue.trimmingCharacters(in: .whitespacesAndNewlines)) == false
+    }
 
     @State private var dragStartIndex: Int = 0
     @State private var dragDisplayIndex: Int? = nil
     @State private var isDragging: Bool = false
     @State private var dragOverscrolledToStart: Bool = false
     @State private var isScrubbing = false
-    @State private var translationSession: TranslationSession? = nil
+    @State private var translationTrigger: TranslationSession.Configuration? = nil
     @StateObject private var translationCache = LyricsTranslationCache()
 
     var body: some View {
@@ -78,12 +91,14 @@ struct LyricsView: View {
                 }
 
                 // Active cue renderer — always mounted, never torn down between cue changes.
+                // Falls back to cue text when highlight range data is unavailable (e.g. ♪ cues).
                 let rendererData = buildRendererData(for: displayIndex)
+                let activeSurface = rendererData?.surface ?? (displayIndex < cues.count ? cues[displayIndex].text : "")
                 VStack(spacing: 0) {
                     FuriganaTextRenderer(
                         isActive: true,
                         isOverlayFrozen: false,
-                        text: rendererData?.surface ?? "",
+                        text: activeSurface,
                         isLineWrappingEnabled: true,
                         segmentationRanges: rendererData?.localSegRanges ?? [],
                         selectedSegmentLocation: nil,
@@ -109,7 +124,15 @@ struct LyricsView: View {
                         debugBisectors: false,
                         externalContentOffsetY: 0,
                         onScrollOffsetYChanged: { _ in },
-                        onSegmentTapped: { _, _, _ in },
+                        onSegmentTapped: { localLocation, rect, sourceView in
+                            // Convert local cue location back to global noteText location.
+                            let globalLocation: Int? = localLocation.flatMap { loc in
+                                guard displayIndex < highlightRanges.count,
+                                      let range = highlightRanges[displayIndex] else { return nil }
+                                return loc + range.location
+                            }
+                            onSegmentTapped(globalLocation, rect, sourceView)
+                        },
                         textSize: Binding(get: { TypographySettings.defaultTextSize * 1.3 }, set: { _ in }),
                         lineSpacing: 0,
                         kerning: 0,
@@ -127,17 +150,25 @@ struct LyricsView: View {
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                     }
-                }
-                .padding(.vertical, 8)
-                .translationTask(translationConfig) { session in
-                    translationSession = session
-                    if displayIndex < cues.count {
-                        await translateCue(session: session, index: displayIndex, text: cues[displayIndex].text)
+                    if displayIndex < cues.count && hasMismatch(at: displayIndex) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 5, height: 5)
+                            Text("Subtitle: \(cues[displayIndex].text)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.orange)
+                                .lineLimit(1)
+                        }
                     }
                 }
-                .onChange(of: displayIndex) { _, newIndex in
-                    guard newIndex < cues.count, let session = translationSession else { return }
-                    Task { await translateCue(session: session, index: newIndex, text: cues[newIndex].text) }
+                .padding(.vertical, 8)
+                .translationTask(translationTrigger) { session in
+                    // Batch-translate all untranslated cues up front so translations are ready during playback.
+                    await translateAllCues(session: session)
+                }
+                .onAppear {
+                    translationTrigger = translationConfig
                 }
 
                 ScrollView {
@@ -162,7 +193,7 @@ struct LyricsView: View {
         }
         .frame(width: panelWidth, height: panelHeight)
         .gesture(
-            DragGesture(minimumDistance: 0)
+            DragGesture(minimumDistance: 8)
                 .onChanged { value in
                     if !isDragging {
                         isDragging = true
@@ -199,20 +230,27 @@ struct LyricsView: View {
         let opacity = max(0.3, 1.0 - Double(distance) * 0.12)
         let blur = Double(distance) * 1.2
         let defaultSize = CGFloat(TypographySettings.defaultTextSize)
-        let text = cues[index].text
+        let text = displayText(for: index)
         let scaleFactor = distance == 0 ? scaleFactorForActiveCue(text: text, availableWidth: 280, defaultFontSize: defaultSize) : 1.0
         let fontSize = defaultSize * scaleFactor
 
-        Text(text)
-            .font(.system(size: fontSize))
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
-            .frame(height: activeCueRendererHeight)
-            .padding(.horizontal, 16)
-            .scaleEffect(baseScale)
-            .opacity(opacity)
-            .blur(radius: blur)
-            .lineLimit(1)
+        HStack(spacing: 4) {
+            if hasMismatch(at: index) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+            }
+            Text(text)
+                .font(.system(size: fontSize))
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: activeCueRendererHeight)
+        .padding(.horizontal, 16)
+        .scaleEffect(baseScale)
+        .opacity(opacity)
+        .blur(radius: blur)
     }
 
     // Calculates the scale factor needed to fit the active cue on a single line without wrapping.
@@ -236,16 +274,35 @@ struct LyricsView: View {
         )
     }
 
-    // Requests a machine translation for one cue and stores the result in the cache for subsequent renders.
-    private func translateCue(session: TranslationSession, index: Int, text: String) async {
-        guard translationCache.needsTranslation(cueIndex: index, text: text) else { return }
+    // Batch-translates all cues that haven't been cached yet so translations are available during playback.
+    // Uses the note text (via displayText) rather than cue text so translations match what's shown.
+    private func translateAllCues(session: TranslationSession) async {
         do {
             try await session.prepareTranslation()
-            let response = try await session.translate(text)
-            await MainActor.run { translationCache.store(cueIndex: index, result: response.targetText) }
         } catch {
-            // Failures are silent — the translation row simply won't appear.
+            return
         }
+        for index in cues.indices {
+            let text = displayText(for: index)
+            guard translationCache.needsTranslation(cueIndex: index, text: text) else { continue }
+            do {
+                let response = try await session.translate(text)
+                await MainActor.run { translationCache.store(cueIndex: index, result: response.targetText) }
+            } catch {
+                // Individual cue failure is non-fatal — skip and continue.
+            }
+        }
+    }
+
+    // Returns the note text for a cue if a highlight range exists, otherwise the raw cue text.
+    // Used for inactive rows and translation so they always show the original note content.
+    private func displayText(for cueIndex: Int) -> String {
+        guard cueIndex < highlightRanges.count,
+              let range = highlightRanges[cueIndex],
+              let swiftRange = Range(range, in: noteText) else {
+            return cueIndex < cues.count ? cues[cueIndex].text : ""
+        }
+        return String(noteText[swiftRange])
     }
 
     // Extracts the note text slice and per-segment furigana for a cue so the active-cue renderer can display it with readings.
@@ -260,9 +317,10 @@ struct LyricsView: View {
         var localSegRanges: [Range<String.Index>] = []
         for segRange in segmentationRanges {
             let nsRange = NSRange(segRange, in: noteText)
-            guard NSIntersectionRange(nsRange, highlightRange).length > 0 else { continue }
-            let localOffset = nsRange.location - surfaceBase
-            if let localRange = Range(NSRange(location: localOffset, length: nsRange.length), in: surface) {
+            let clipped = NSIntersectionRange(nsRange, highlightRange)
+            guard clipped.length > 0 else { continue }
+            let localOffset = clipped.location - surfaceBase
+            if let localRange = Range(NSRange(location: localOffset, length: clipped.length), in: surface) {
                 localSegRanges.append(localRange)
             }
         }
@@ -285,56 +343,59 @@ struct LyricsView: View {
     }
 
     private var controls: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Button {
-                if controller.isPlaying {
-                    controller.pause()
-                } else if controller.currentTimeMs == 0 {
-                    controller.playFromStart()
-                } else {
-                    controller.play()
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 10) {
+                Button {
+                    if controller.isPlaying {
+                        controller.pause()
+                    } else if controller.currentTimeMs == 0 {
+                        controller.playFromStart()
+                    } else {
+                        controller.play()
+                    }
+                } label: {
+                    Circle()
+                        .fill(Color(.systemOrange).opacity(0.2))
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color(.systemOrange))
+                        )
                 }
-            } label: {
+                .buttonStyle(.plain)
+                .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
+
+                LyricsScrubber(
+                    controller: controller,
+                    isScrubbing: $isScrubbing,
+                    overrideTimeMs: dragOverscrolledToStart ? 0 : dragDisplayIndex.map { cues[$0].startMs }
+                )
+
                 Circle()
-                    .fill(Color(.systemOrange).opacity(0.2))
+                    .fill(Color(.systemFill))
                     .frame(width: 36, height: 36)
                     .overlay(
-                        Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
+                        Image(systemName: "backward.end.fill")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color(.systemOrange))
+                            .foregroundStyle(Color.secondary)
                     )
+                    .onTapGesture {
+                        guard activeIndex < cues.count else { return }
+                        controller.seek(toMs: cues[activeIndex].startMs)
+                    }
+                    .onLongPressGesture {
+                        controller.seek(toMs: 0)
+                    }
+                    .accessibilityLabel("Return to start of line")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
-
-            LyricsScrubber(
-                controller: controller,
-                isScrubbing: $isScrubbing,
-                overrideTimeMs: dragOverscrolledToStart ? 0 : dragDisplayIndex.map { cues[$0].startMs }
-            )
-
-            Circle()
-                .fill(Color(.systemFill))
-                .frame(width: 36, height: 36)
-                .overlay(
-                    Image(systemName: "backward.end.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.secondary)
-                )
-                .onTapGesture {
-                    guard activeIndex < cues.count else { return }
-                    controller.seek(toMs: cues[activeIndex].startMs)
-                }
-                .onLongPressGesture {
-                    controller.seek(toMs: 0)
-                }
-                .accessibilityLabel("Return to start of line")
+            .padding(.horizontal, 14)
+            .padding(.bottom, 12)
+            .padding(.top, 6)
+            .frame(height: 56)
         }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 12)
-        .padding(.top, 6)
-        .frame(height: 56)
     }
+
 }
 
 private struct LyricsScrubber: View {
