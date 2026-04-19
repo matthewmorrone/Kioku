@@ -174,6 +174,10 @@ struct ReadTextStyleResolver {
         for (location, extraKern) in additionalKernByLocation {
             guard location < textLength else { continue }
             let charRange = NSRange(location: location, length: 1)
+            let charText = (text as NSString).substring(with: charRange)
+            if location < 200 {
+                print("[pre-layout] char=\(charText) loc=\(location) extraKern=\(extraKern) totalKern=\(CGFloat(kerning) + extraKern)")
+            }
             // Stack on top of the global base kern that was set for the whole string.
             attributedText.addAttribute(.kern, value: CGFloat(kerning) + extraKern, range: charRange)
         }

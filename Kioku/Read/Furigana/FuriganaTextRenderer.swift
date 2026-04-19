@@ -183,6 +183,14 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // scroll-to-top on note switch (sharedScrollOffsetY = 0) takes effect when text changes.
             // During normal style updates the external offset stays in sync with the actual position.
             textView.attributedText = textStylePayload.attributedText
+            // Probe what survived the assignment — comparing this to the [pre-layout] log values
+            // tells us whether UITextView is silently stripping our .kern attributes.
+            let fullLen = (text as NSString).length
+            for loc in [174, 37, 173] where loc < fullLen {
+                let kernVal = textView.textStorage.attribute(.kern, at: loc, effectiveRange: nil)
+                let ch = (text as NSString).substring(with: NSRange(location: loc, length: 1))
+                print("[post-assign] loc=\(loc) char=\(ch) storedKern=\(kernVal as Any)")
+            }
             // Run the exhaustive full-document layout here, immediately after setting attributedText,
             // so glyph positions used by overlay drawing are correct before the view is displayed.
             // Doing this inside the text-change branch avoids blocking the main thread on every
@@ -224,20 +232,27 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         var selectedSegmentRect: CGRect?
         var selectedSegmentColor: UIColor?
         if let selectedSegmentRange,
-           let selectedRect = segmentRectInTextView(textView: textView, nsRange: selectedSegmentRange) {
+           let selectedRect = segmentRectInTextView(textView: textView, nsRange: selectedSegmentRange),
+           let selectedSurfaceRange = Range(selectedSegmentRange, in: text) {
             selectedSegmentColor = UIColor { traitCollection in
                 traitCollection.userInterfaceStyle == .dark
                     ? UIColor.systemYellow.withAlphaComponent(0.26)
                     : UIColor.systemYellow.withAlphaComponent(0.32)
             }
-            // Extend upward to cover the furigana row above the base text.
+            // Use the visual glyph width (measured with no kern) so the highlight hugs the kanji
+            // instead of stretching across the trailing envelope-padding kern — otherwise the
+            // glyph appears left-aligned inside a too-wide highlight box.
+            let selectedVisualWidth = measureTextWidth(
+                String(text[selectedSurfaceRange]),
+                font: UIFont.systemFont(ofSize: textSize),
+                kerning: 0
+            )
             let furiganaRowHeight = furiganaFont.lineHeight + CGFloat(furiganaGap)
-            let expandedRect = selectedRect.insetBy(dx: -1, dy: 0)
             selectedSegmentRect = CGRect(
-                x: expandedRect.minX,
-                y: expandedRect.minY - furiganaRowHeight,
-                width: expandedRect.width,
-                height: expandedRect.height + furiganaRowHeight
+                x: selectedRect.minX - 1,
+                y: selectedRect.minY - furiganaRowHeight,
+                width: selectedVisualWidth + 2,
+                height: selectedRect.height + furiganaRowHeight
             )
         }
 
@@ -341,12 +356,31 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         let needsDebugSegmentPass = debugHeadwordRects || debugBisectors || debugEnvelopeRects
         if needsDebugSegmentPass {
             let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+            // firstRect(for:) doesn't include trailing .kern from earlier chars on the same line,
+            // so segmentRect.minX for a mid-line segment reports the pre-kern x. Track a per-line
+            // accumulated shift of (stored kern − base kerning) so debug rects land where glyphs
+            // are actually rendered.
+            var cumulativeLineKernShift: CGFloat = 0
+            var previousLineMinY: CGFloat = -.greatestFiniteMagnitude
             for segmentRange in segmentationRanges {
                 let segmentText = String(text[segmentRange])
                 guard !segmentText.unicodeScalars.allSatisfy({ ignoredScalars.contains($0) }) else { continue }
                 let nsRange = NSRange(segmentRange, in: text)
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
-                guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
+                guard let rawSegmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
+                if abs(rawSegmentRect.minY - previousLineMinY) > 2 {
+                    cumulativeLineKernShift = 0
+                }
+                previousLineMinY = rawSegmentRect.minY
+                let segmentRect = rawSegmentRect.offsetBy(dx: cumulativeLineKernShift, dy: 0)
+                // Update the shift after consuming this segment so subsequent segments on the
+                // same line see it. The base global `kerning` is already reflected in segmentRect
+                // so we only carry the EXTRA kern pre-layout (and post-layout) added to this char.
+                let lastCharLoc = nsRange.location + nsRange.length - 1
+                if lastCharLoc < (text as NSString).length,
+                   let kernAttr = textView.textStorage.attribute(.kern, at: lastCharLoc, effectiveRange: nil) as? NSNumber {
+                    cumulativeLineKernShift += CGFloat(kernAttr.doubleValue) - CGFloat(kerning)
+                }
                 let segmentColor = textStylePayload.segmentForegroundByLocation[nsRange.location] ?? .label
 
                 if debugHeadwordRects {
