@@ -14,14 +14,21 @@ extension FuriganaTextRenderer {
         let segmentNSRange: NSRange
         let segmentRect: CGRect
         let furiganaFrame: CGRect
+        // Visual glyph width of the headword with no kern applied, so envelope bounds
+        // describe what the user actually sees rather than segmentRect's advance which
+        // includes the trailing envelope-padding kern.
+        let visualHeadwordWidth: CGFloat
 
         // Envelope boundaries used by the overlap check — ruby extends past the headword when
-        // it's wider, so each segment occupies max(kanji, ruby) horizontally.
+        // it's wider, so each segment occupies max(visualKanji, ruby) horizontally. Using the
+        // visual width (rather than segmentRect.maxX) prevents double-counting kern we already
+        // inserted pre-layout as if it were part of the envelope.
         var envelopeMinX: CGFloat {
             furiganaFrame.isNull ? segmentRect.minX : min(segmentRect.minX, furiganaFrame.minX)
         }
         var envelopeMaxX: CGFloat {
-            furiganaFrame.isNull ? segmentRect.maxX : max(segmentRect.maxX, furiganaFrame.maxX)
+            let kanjiVisualMaxX = segmentRect.minX + visualHeadwordWidth
+            return furiganaFrame.isNull ? kanjiVisualMaxX : max(kanjiVisualMaxX, furiganaFrame.maxX)
         }
         // Y used for line grouping — always the headword baseline so runs with and without
         // furigana group together on the same visual line (a wide-furi segment and a kana-only
@@ -39,7 +46,11 @@ extension FuriganaTextRenderer {
         guard !runs.isEmpty else { return false }
 
         let lines = groupByLine(runs)
-        let minGap: CGFloat = 1.0
+        // No forced gap between adjacent envelopes — TextKit already places glyphs tight and
+        // we only want to intervene when there's actual overlap. A non-zero gap here accumulates
+        // across a line: every adjacent pair gets a small kern, each of which shifts all later
+        // segments on the line by that amount, making their debug envelopes drift right.
+        let minGap: CGFloat = 0
         var corrections: [(NSRange, CGFloat)] = []
 
         for line in lines {
@@ -53,14 +64,35 @@ extension FuriganaTextRenderer {
             for i in 1..<sorted.count {
                 let prev = sorted[i - 1]
                 let curr = sorted[i]
+                // firstRect(for:) doesn't account for trailing .kern on prev's last char when
+                // computing curr's rect, so without this adjustment we'd pile fresh kern on top
+                // of the kern pre-layout already applied. The real rendered position of curr is
+                // curr.segmentRect.minX + (prev's trailing kern minus the base kerning baseline).
+                let prevLastCharLoc = prev.segmentNSRange.location + prev.segmentNSRange.length - 1
+                let trailingKern: CGFloat
+                if prevLastCharLoc < (text as NSString).length,
+                   let kernAttr = textView.textStorage.attribute(.kern, at: prevLastCharLoc, effectiveRange: nil) as? NSNumber {
+                    trailingKern = CGFloat(kernAttr.doubleValue) - CGFloat(kerning)
+                } else {
+                    trailingKern = 0
+                }
                 let prevMaxX = prev.envelopeMaxX + cumulativeShift
-                let currMinX = curr.envelopeMinX + cumulativeShift
+                let currMinX = curr.envelopeMinX + trailingKern + cumulativeShift
                 let overlap = prevMaxX + minGap - currMinX
+                let prevText = (text as NSString).substring(with: prev.segmentNSRange)
+                let currText = (text as NSString).substring(with: curr.segmentNSRange)
+                if prev.segmentNSRange.location < 200 {
+                    print("[post-layout] \(prevText)→\(currText) prevEnvMaxX=\(prevMaxX) currEnvMinX=\(currMinX) overlap=\(overlap) prev.segmentRect.maxX=\(prev.segmentRect.maxX) prev.visualHeadwordWidth=\(prev.visualHeadwordWidth) prev.furi.maxX=\(prev.furiganaFrame.isNull ? -1 : prev.furiganaFrame.maxX)")
+                }
                 guard overlap > 0 else { continue }
 
                 // Insert kern after the last UTF-16 unit of the previous segment's headword.
                 let lastCharLoc = prev.segmentNSRange.location + prev.segmentNSRange.length - 1
                 guard lastCharLoc < (text as NSString).length else { continue }
+                if prev.segmentNSRange.location < 200 {
+                    let existingKernProbe = textView.textStorage.attribute(.kern, at: lastCharLoc, effectiveRange: nil)
+                    print("[post-layout-existing] \(prevText) loc=\(lastCharLoc) existingKern=\(existingKernProbe as Any)")
+                }
                 let charRange = NSRange(location: lastCharLoc, length: 1)
                 let existing = textView.textStorage.attribute(.kern, at: lastCharLoc, effectiveRange: nil)
                 let existingKern = (existing as? NSNumber).map { CGFloat($0.doubleValue) } ?? CGFloat(kerning)
@@ -100,7 +132,14 @@ extension FuriganaTextRenderer {
             // skipping them entirely.
             let skipFurigana = blankedSelectedRange.map { NSIntersectionRange(nsRange, $0).length > 0 } ?? false
 
-            guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
+            guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange),
+                  let surfaceRange = Range(nsRange, in: text) else { continue }
+
+            let baseFont = UIFont.systemFont(ofSize: textSize)
+            // Measured with no kern so it reflects the kanji's visible width, not the advance
+            // inflated by pre-layout envelope padding. Used both to center the ruby and to
+            // bound the envelope.
+            let visualHeadwordWidth = measureTextWidth(String(text[surfaceRange]), font: baseFont, kerning: 0)
 
             var furiganaFrame: CGRect = .null
             if !skipFurigana,
@@ -109,13 +148,12 @@ extension FuriganaTextRenderer {
                let length = furiganaLengthBySegmentLocation[nsRange.location],
                length > 0,
                length == nsRange.length,
-               let surfaceRange = Range(nsRange, in: text),
                let displayReading = FuriganaAttributedString.normalizedDisplayReading(
                    surface: String(text[surfaceRange]),
                    reading: furigana
                ) {
                 let furiganaWidth = measureTextWidth(displayReading, font: furiganaFont, kerning: 0)
-                let furiganaX = segmentRect.midX - furiganaWidth / 2
+                let furiganaX = segmentRect.minX + visualHeadwordWidth / 2 - furiganaWidth / 2
                 furiganaFrame = CGRect(
                     x: furiganaX,
                     y: max(segmentRect.minY - furiganaFont.lineHeight - CGFloat(furiganaGap), 0),
@@ -127,7 +165,8 @@ extension FuriganaTextRenderer {
             runs.append(FuriganaRunGeometry(
                 segmentNSRange: nsRange,
                 segmentRect: segmentRect,
-                furiganaFrame: furiganaFrame
+                furiganaFrame: furiganaFrame,
+                visualHeadwordWidth: visualHeadwordWidth
             ))
         }
 
