@@ -94,6 +94,13 @@ struct LyricsView: View {
                 // Falls back to cue text when highlight range data is unavailable (e.g. ♪ cues).
                 let rendererData = buildRendererData(for: displayIndex)
                 let activeSurface = rendererData?.surface ?? (displayIndex < cues.count ? cues[displayIndex].text : "")
+                let activeTextSize = activeCueTextSize(
+                    surface: activeSurface,
+                    segmentRanges: rendererData?.localSegRanges ?? [],
+                    furiganaBySegmentLocation: rendererData?.localFurigana ?? [:],
+                    furiganaLengthBySegmentLocation: rendererData?.localFuriganaLength ?? [:],
+                    availableWidth: panelWidth
+                )
                 VStack(spacing: 0) {
                     FuriganaTextRenderer(
                         isActive: true,
@@ -122,6 +129,7 @@ struct LyricsView: View {
                         debugHeadwordLineBands: false,
                         debugFuriganaLineBands: false,
                         debugBisectors: false,
+                        debugEnvelopeRects: false,
                         externalContentOffsetY: 0,
                         onScrollOffsetYChanged: { _ in },
                         onSegmentTapped: { localLocation, rect, sourceView in
@@ -133,7 +141,7 @@ struct LyricsView: View {
                             }
                             onSegmentTapped(globalLocation, rect, sourceView)
                         },
-                        textSize: Binding(get: { TypographySettings.defaultTextSize * 1.3 }, set: { _ in }),
+                        textSize: Binding(get: { activeTextSize }, set: { _ in }),
                         lineSpacing: 0,
                         kerning: 0,
                         furiganaGap: TypographySettings.defaultFuriganaGap,
@@ -251,6 +259,88 @@ struct LyricsView: View {
         .scaleEffect(baseScale)
         .opacity(opacity)
         .blur(radius: blur)
+    }
+
+    // Returns a body font size for the active cue renderer that keeps the text on a single line
+    // within availableWidth. Shrinks from the preferred 1.3x base size down toward 0.3x as needed.
+    // A segment's effective width is the max of its headword width and its furigana-run width
+    // (furigana sits at 0.5x the body size) because the renderer widens the envelope to whichever
+    // is larger — that's the real dimension that drives wrapping.
+    private func activeCueTextSize(
+        surface: String,
+        segmentRanges: [Range<String.Index>],
+        furiganaBySegmentLocation: [Int: String],
+        furiganaLengthBySegmentLocation: [Int: Int],
+        availableWidth: CGFloat
+    ) -> CGFloat {
+        let preferred = TypographySettings.defaultTextSize * 1.3
+        let minimum = TypographySettings.defaultTextSize * 0.3
+        guard surface.isEmpty == false, availableWidth > 0 else { return preferred }
+
+        // Account for the 4pt textContainerInset on each side, plus a small slack margin so
+        // minor measurement discrepancies (kerning rounding, TextKit layout padding) can't push
+        // the line into wrapping territory.
+        let horizontalInset: CGFloat = 8
+        let slack: CGFloat = 6
+        let usable = max(1, availableWidth - horizontalInset - slack)
+
+        let requiredAtPreferred = singleLineWidth(
+            surface: surface,
+            segmentRanges: segmentRanges,
+            furiganaBySegmentLocation: furiganaBySegmentLocation,
+            furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+            bodySize: preferred
+        )
+        guard requiredAtPreferred > usable else { return preferred }
+
+        // Widths scale linearly with font size — derive the exact size that fits.
+        let scaled = preferred * (usable / requiredAtPreferred)
+        return max(minimum, scaled)
+    }
+
+    // Sums per-segment envelope widths (max of body-text width and furigana width) to produce
+    // the single-line width that wrap detection needs to compare against the available width.
+    private func singleLineWidth(
+        surface: String,
+        segmentRanges: [Range<String.Index>],
+        furiganaBySegmentLocation: [Int: String],
+        furiganaLengthBySegmentLocation: [Int: Int],
+        bodySize: CGFloat
+    ) -> CGFloat {
+        let bodyFont = UIFont.systemFont(ofSize: bodySize)
+        let furiganaFont = UIFont.systemFont(ofSize: bodySize * 0.5)
+        let bodyAttrs: [NSAttributedString.Key: Any] = [.font: bodyFont]
+        let furiganaAttrs: [NSAttributedString.Key: Any] = [.font: furiganaFont]
+
+        // Fall back to a plain body measurement when segmentation isn't available yet.
+        guard segmentRanges.isEmpty == false else {
+            return (surface as NSString).size(withAttributes: bodyAttrs).width
+        }
+
+        var total: CGFloat = 0
+        var covered: String.Index = surface.startIndex
+        for segRange in segmentRanges {
+            if covered < segRange.lowerBound {
+                let gap = String(surface[covered ..< segRange.lowerBound])
+                total += (gap as NSString).size(withAttributes: bodyAttrs).width
+            }
+            let segText = String(surface[segRange])
+            let bodyWidth = (segText as NSString).size(withAttributes: bodyAttrs).width
+            let location = surface.utf16.distance(from: surface.startIndex, to: segRange.lowerBound)
+            var furiganaWidth: CGFloat = 0
+            if let reading = furiganaBySegmentLocation[location],
+               let length = furiganaLengthBySegmentLocation[location],
+               length > 0 {
+                furiganaWidth = (reading as NSString).size(withAttributes: furiganaAttrs).width
+            }
+            total += max(bodyWidth, furiganaWidth)
+            covered = segRange.upperBound
+        }
+        if covered < surface.endIndex {
+            let tail = String(surface[covered ..< surface.endIndex])
+            total += (tail as NSString).size(withAttributes: bodyAttrs).width
+        }
+        return total
     }
 
     // Calculates the scale factor needed to fit the active cue on a single line without wrapping.

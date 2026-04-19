@@ -64,6 +64,8 @@ struct LyricsCueRow: View {
     private var inactiveCueRow: some View {
         Text(cue.text)
             .font(.system(size: inactiveFontSize, weight: distanceFromActive == 1 ? .medium : .regular))
+            .lineLimit(1)
+            .minimumScaleFactor(0.4)
             .multilineTextAlignment(.center)
             .foregroundStyle(Color.primary.opacity(rowOpacity))
             .frame(maxWidth: .infinity)

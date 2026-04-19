@@ -160,6 +160,40 @@ nonisolated public final class Lexicon {
         return deinflector.bestTransitions(from: pathsByLemma, targetLemma: best.lemma)
     }
 
+    // Detects compound verb components by examining deinflection transitions for auxiliary-stripping
+    // steps. Returns the main lemma and each detected auxiliary as (lemma, first gloss) pairs, or nil
+    // when the surface is not a compound verb.
+    // For example, 消えてゆく → [(消える, "to disappear"), (行く, "to go")]
+    public func compoundVerbComponents(surface: String) -> [(lemma: String, gloss: String?)]? {
+        let (entries, pathsByLemma) = admittedLemmasAndPaths(for: surface)
+        guard let best = entries.first else { return nil }
+        guard let transitions = deinflector.bestTransitions(from: pathsByLemma, targetLemma: best.lemma),
+              transitions.isEmpty == false else { return nil }
+
+        // Walk transitions looking for auxiliary-stripping steps: kanaIn starts with kanaOut and has
+        // extra characters (the auxiliary surface). For example: kanaIn=てゆく kanaOut=て → auxiliary=ゆく.
+        var auxiliaries: [(lemma: String, gloss: String?)] = []
+        for transition in transitions {
+            guard transition.kanaIn.count > transition.kanaOut.count,
+                  transition.kanaIn.hasPrefix(transition.kanaOut) else { continue }
+            let auxSurface = String(transition.kanaIn.dropFirst(transition.kanaOut.count))
+            // Only include auxiliaries that resolve to a real dictionary entry.
+            let auxEntries = lookupEntries(for: auxSurface)
+            guard let auxEntry = auxEntries.first else { continue }
+            let gloss = auxEntry.senses.first?.glosses.joined(separator: "; ")
+            let auxLemma = auxEntry.kanjiForms.first?.text ?? auxEntry.kanaForms.first?.text ?? auxSurface
+            auxiliaries.append((lemma: auxLemma, gloss: gloss))
+        }
+
+        guard auxiliaries.isEmpty == false else { return nil }
+
+        let mainGloss = lookupEntries(for: best.lemma).first?
+            .senses.first?.glosses.joined(separator: "; ")
+        var result: [(lemma: String, gloss: String?)] = [(lemma: best.lemma, gloss: mainGloss)]
+        result.append(contentsOf: auxiliaries)
+        return result
+    }
+
     // Returns lexeme candidates matching one lemma and optional reading filter.
     public func lookupLexeme(_ lemma: String, _ reading: String? = nil) -> [DictionaryEntry] {
         let trimmedLemma = lemma.trimmingCharacters(in: .whitespacesAndNewlines)

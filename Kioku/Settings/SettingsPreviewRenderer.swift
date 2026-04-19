@@ -33,6 +33,7 @@ struct SettingsPreviewRenderer: View {
     let debugHeadwordLineBands: Bool
     let debugFuriganaLineBands: Bool
     let debugBisectors: Bool
+    let debugEnvelopeRects: Bool
 
     // Builds segmentation ranges that treat each furigana word as its own segment,
     // with non-furigana runs as separate segments so every character is covered.
@@ -129,6 +130,7 @@ struct SettingsPreviewRenderer: View {
             debugHeadwordLineBands: debugHeadwordLineBands,
             debugFuriganaLineBands: debugFuriganaLineBands,
             debugBisectors: debugBisectors,
+            debugEnvelopeRects: debugEnvelopeRects,
             externalContentOffsetY: 0,
             onScrollOffsetYChanged: { _ in },
             onSegmentTapped: { _, _, _ in },

@@ -39,6 +39,7 @@ struct ReadView: View {
     @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
     @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
     @AppStorage(DebugSettings.bisectorsKey) private var debugBisectors: Bool = false
+    @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
 
     @State var customTitle = ""
@@ -59,7 +60,6 @@ struct ReadView: View {
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
     @State var furiganaComputationTask: Task<Void, Never>?
     @State var segmentationRefreshTask: Task<Void, Never>?
-    @State var pendingPersistenceTask: Task<Void, Never>?
     @State var activeNoteID: UUID?
     @StateObject private var lyricsTranslationCache = LyricsTranslationCache()
     @State var isLoadingSelectedNote = false
@@ -539,6 +539,7 @@ struct ReadView: View {
                     debugHeadwordLineBands: debugHeadwordLineBands,
                     debugFuriganaLineBands: debugFuriganaLineBands,
                     debugBisectors: debugBisectors,
+                    debugEnvelopeRects: debugEnvelopeRects,
                     externalContentOffsetY: sharedScrollOffsetY,
                     onScrollOffsetYChanged: { newOffsetY in
                         sharedScrollOffsetY = newOffsetY

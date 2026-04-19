@@ -30,6 +30,7 @@ extension SegmentLookupSheet {
         let capturedSheetSaveToggle = self.sheetSaveToggle
         let capturedSheetOpenWordDetail = self.sheetOpenWordDetail
         let capturedSheetWordComponentsProvider = self.sheetWordComponentsProvider
+        let capturedSheetCompoundComponentsProvider = self.sheetCompoundComponentsProvider
         let capturedActiveReadingOverrideProvider = self.activeReadingOverrideProvider
         let capturedOnReadingReset = self.onReadingReset
         let capturedOnWillDismiss = self.onWillDismiss
@@ -48,6 +49,7 @@ extension SegmentLookupSheet {
             self.sheetSaveToggle = capturedSheetSaveToggle
             self.sheetOpenWordDetail = capturedSheetOpenWordDetail
             self.sheetWordComponentsProvider = capturedSheetWordComponentsProvider
+            self.sheetCompoundComponentsProvider = capturedSheetCompoundComponentsProvider
             self.activeReadingOverrideProvider = capturedActiveReadingOverrideProvider
             self.onSheetSelectPrevious = nil
             self.onSheetSelectNext = nil

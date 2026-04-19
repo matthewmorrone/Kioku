@@ -3,41 +3,16 @@ import UIKit
 
 // Hosts note loading and persistence helpers for the read screen.
 extension ReadView {
-    // Schedules the current note state for background persistence so large pastes do not block the UI.
+    // Persists the current note state immediately. Saving is cheap (it just hands off to
+    // NotesStore.scheduleReadEditorPersist), so there's no benefit to debouncing here — and a
+    // debounce silently drops writes if segments/furigana recompute before the timer fires.
     func scheduleCurrentNotePersistenceIfNeeded() {
         guard !isLoadingSelectedNote else { return }
-
-        pendingPersistenceTask?.cancel()
-        let snapshotText = text
-        let snapshotTitle = customTitle
-        let snapshotSegmentRanges = segments
-        let snapshotActiveNoteID = activeNoteID
-
-        pendingPersistenceTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard !Task.isCancelled else { return }
-
-            await MainActor.run {
-                guard
-                    text == snapshotText,
-                    customTitle == snapshotTitle,
-                    segments == snapshotSegmentRanges,
-                    activeNoteID == snapshotActiveNoteID
-                else {
-                    return
-                }
-
-                persistCurrentNoteIfNeeded()
-                pendingPersistenceTask = nil
-            }
-        }
+        persistCurrentNoteIfNeeded()
     }
 
-    // Flushes any pending persistence work immediately when the screen changes mode or disappears.
-    // Cancels any in-flight text-change debounce and writes the current state to disk now.
+    // Flushes any pending NotesStore write immediately when the screen changes mode or disappears.
     func flushPendingNotePersistenceIfNeeded() {
-        pendingPersistenceTask?.cancel()
-        pendingPersistenceTask = nil
         persistCurrentNoteIfNeeded()
         notesStore.flushPendingSave()
     }
@@ -51,8 +26,6 @@ extension ReadView {
                 return
             }
 
-            pendingPersistenceTask?.cancel()
-            pendingPersistenceTask = nil
             segmentationRefreshTask?.cancel()
             furiganaComputationTask?.cancel()
             isLoadingSelectedNote = true
@@ -81,8 +54,14 @@ extension ReadView {
             return
         }
 
-        pendingPersistenceTask?.cancel()
-        pendingPersistenceTask = nil
+        // If the selection re-publishes the note that's already active, skip the full reload —
+        // otherwise in-flight edits in `text`/`customTitle` would be clobbered by the stored copy
+        // before the next save lands.
+        if selectedNote.id == activeNoteID {
+            self.selectedNote = nil
+            return
+        }
+
         segmentationRefreshTask?.cancel()
         furiganaComputationTask?.cancel()
         pendingLLMChangedLocations = []
