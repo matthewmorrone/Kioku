@@ -439,6 +439,10 @@ extension ReadView {
                         return (edge.surface, gloss)
                     }
                 },
+                sheetCompoundComponentsProvider: {
+                    guard let surface = currentSelectedSurface() else { return nil }
+                    return lexicon?.compoundVerbComponents(surface: surface)
+                },
                 onWillDismiss: { completion in
                     restoreScrollAfterSheetDismissal(sourceView: sourceView, completion: completion)
                 },

@@ -41,6 +41,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Provides tappable word components: (surface, first gloss) pairs.
     var sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)?
     var currentSheetWordComponents: [(surface: String, gloss: String?)] = []
+    // Provides compound verb component lemmas: (lemma, first gloss) pairs.
+    var sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)?
+    var currentSheetCompoundComponents: [(lemma: String, gloss: String?)] = []
     var currentSheetUniqueReadings: [String] = []
     var currentSheetSublatticeEdges: [LatticeEdge] = []
     var currentSheetLexiconDebugInfo: String = ""
@@ -209,6 +212,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetSaveToggle: (() -> Void)? = nil,
         sheetOpenWordDetail: (() -> Void)? = nil,
         sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
+        sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)? = nil,
         onWillDismiss: ((@escaping () -> Void) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
@@ -230,6 +234,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.sheetSaveToggle = sheetSaveToggle
         self.sheetOpenWordDetail = sheetOpenWordDetail
         self.sheetWordComponentsProvider = sheetWordComponentsProvider
+        self.sheetCompoundComponentsProvider = sheetCompoundComponentsProvider
         if let updatePresentedSheetSelection, hasActivePresentedSheetController {
             self.onDismiss = onDismiss
             self.onWillDismiss = onWillDismiss
@@ -318,6 +323,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetSaveToggle = nil
         sheetOpenWordDetail = nil
         sheetWordComponentsProvider = nil
+        sheetCompoundComponentsProvider = nil
+        currentSheetCompoundComponents = []
         currentSheetUniqueReadings = []
         currentSheetSublatticeEdges = []
         currentSheetLexiconDebugInfo = ""
@@ -325,6 +332,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         currentSheetLemmaInfo = nil
         currentSheetDictionaryEntry = nil
         currentSheetWordComponents = []
+        currentSheetCompoundComponents = []
         updatePresentedSheetSelection = nil
     }
 

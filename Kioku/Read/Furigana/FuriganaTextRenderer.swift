@@ -33,6 +33,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let debugHeadwordLineBands: Bool
     let debugFuriganaLineBands: Bool
     let debugBisectors: Bool
+    let debugEnvelopeRects: Bool
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void
     let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
@@ -164,6 +165,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             changedReadingLocations: changedReadingLocations,
             customEvenSegmentColor: customEvenSegmentColorHex.isEmpty ? nil : UIColor(hexString: customEvenSegmentColorHex),
             customOddSegmentColor: customOddSegmentColorHex.isEmpty ? nil : UIColor(hexString: customOddSegmentColorHex),
+            furiganaBySegmentLocation: furiganaBySegmentLocation,
+            furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
             textAlignment: textAlignment
         ).makePayload()
         // Top inset must accommodate the furigana row above the first line so it matches
@@ -185,6 +188,18 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // Doing this inside the text-change branch avoids blocking the main thread on every
             // scroll-driven updateUIView call (which would cause gesture-gate timeouts on large notes).
             ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+            // Post-layout kern pass: resolves any remaining furigana overlap that pre-layout
+            // envelope padding could not prevent (e.g. segments at soft-wrapped line starts).
+            if applyPostLayoutRubyKern(to: textView, furiganaFont: furiganaFont) {
+                ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+            }
+            // Line-start inset pass: adds exclusion paths on any line whose first segment has
+            // ruby wider than its kanji, so the envelope's left edge aligns with the container
+            // inset instead of overflowing past it. Requires a relayout because the exclusions
+            // reflow glyphs on affected lines.
+            if applyLeftInsetExclusionsForWideRuby(to: textView, furiganaFont: furiganaFont) {
+                ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+            }
             let minOffsetY = -textView.adjustedContentInset.top
             let maxOffsetY = max(minOffsetY, textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom)
             let clampedOffsetY = min(max(externalContentOffsetY, minOffsetY), maxOffsetY)
@@ -259,10 +274,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         var furiganaStrings: [String] = []
         var furiganaFrames: [CGRect] = []
         var furiganaColors: [UIColor] = []
-        // Bisector data: each entry is (headwordMidX, headwordRect, furiganaRect).
-        var bisectorHeadwordMidXs: [CGFloat] = []
-        var bisectorHeadwordRects: [CGRect] = []
-        var bisectorFuriganaRects: [CGRect] = []
+        // Furigana frames keyed by segment UTF-16 location, used by the debug loops below.
+        var furiganaFrameByLocation: [Int: CGRect] = [:]
 
         if isVisualEnhancementsEnabled {
             for location in furiganaBySegmentLocation.keys.sorted() {
@@ -295,7 +308,14 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 }
 
                 let furiganaWidth = measureTextWidth(displayReading, font: furiganaFont, kerning: 0)
-                let furiganaX = segmentRect.midX - (furiganaWidth / 2)
+                // segmentRect.maxX includes any trailing envelope-padding kern on the segment's
+                // last char, so segmentRect.midX is offset from the kanji's actual visual center
+                // by kern/2. Using the measured visual width instead centers the ruby over the
+                // glyphs you can see — which also makes the envelope's left edge land where the
+                // math predicts (e.g. on the container inset guide for line-start segments).
+                let visualHeadwordWidth = measureTextWidth(String(text[surfaceRange]), font: UIFont.systemFont(ofSize: textSize), kerning: 0)
+                let kanjiVisualMidX = segmentRect.minX + visualHeadwordWidth / 2
+                let furiganaX = kanjiVisualMidX - furiganaWidth / 2
                 let furiganaFrame = CGRect(
                     x: furiganaX,
                     y: max(segmentRect.minY - furiganaFont.lineHeight - furiganaGap, 0),
@@ -305,20 +325,21 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 furiganaStrings.append(displayReading)
                 furiganaFrames.append(furiganaFrame)
                 furiganaColors.append(textStylePayload.segmentForegroundByLocation[location] ?? .secondaryLabel)
-
-                if debugBisectors {
-                    bisectorHeadwordMidXs.append(segmentRect.midX)
-                    bisectorHeadwordRects.append(segmentRect)
-                    bisectorFuriganaRects.append(furiganaFrame)
-                }
+                furiganaFrameByLocation[location] = furiganaFrame
             }
         }
 
-        // Collects a rect for every non-whitespace segment for the headword debug overlay.
-        // Uses the full segment range so okurigana is included alongside the kanji run.
+        // Collects debug geometry for every non-whitespace/punctuation segment:
+        // headword rects, bisectors, and envelope rects. Runs whenever any of the three
+        // debug flags is on so all three share a single layout pass over the segments.
         var debugCollectedHeadwordRects: [CGRect] = []
         var debugCollectedHeadwordColors: [UIColor] = []
-        if debugHeadwordRects {
+        var bisectorHeadwordMidXs: [CGFloat] = []
+        var bisectorHeadwordRects: [CGRect] = []
+        var bisectorFuriganaRects: [CGRect] = []
+        var debugEnvelopeRectsList: [CGRect] = []
+        let needsDebugSegmentPass = debugHeadwordRects || debugBisectors || debugEnvelopeRects
+        if needsDebugSegmentPass {
             let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
             for segmentRange in segmentationRanges {
                 let segmentText = String(text[segmentRange])
@@ -326,10 +347,62 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 let nsRange = NSRange(segmentRange, in: text)
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
                 guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
-                debugCollectedHeadwordRects.append(segmentRect)
-                debugCollectedHeadwordColors.append(
-                    textStylePayload.segmentForegroundByLocation[nsRange.location] ?? .label
-                )
+                let segmentColor = textStylePayload.segmentForegroundByLocation[nsRange.location] ?? .label
+
+                if debugHeadwordRects {
+                    debugCollectedHeadwordRects.append(segmentRect)
+                    debugCollectedHeadwordColors.append(segmentColor)
+                }
+
+                if debugBisectors {
+                    // The headword bisector must span only the kanji the furigana covers,
+                    // not the entire segment — e.g. for "食べる" the bisector sits over "食",
+                    // because that is what the furigana "た" is centered on.
+                    let segStart = nsRange.location
+                    let segEnd = nsRange.location + nsRange.length
+                    let kanjiLocations = furiganaBySegmentLocation.keys
+                        .filter { key in
+                            guard let length = furiganaLengthBySegmentLocation[key], length > 0 else { return false }
+                            return key >= segStart && key + length <= segEnd
+                        }
+                        .sorted()
+                    for kanjiLocation in kanjiLocations {
+                        guard
+                            let kanjiLength = furiganaLengthBySegmentLocation[kanjiLocation],
+                            let kanjiRect = segmentRectInTextView(
+                                textView: textView,
+                                nsRange: NSRange(location: kanjiLocation, length: kanjiLength)
+                            ),
+                            let kanjiSurfaceRange = Range(NSRange(location: kanjiLocation, length: kanjiLength), in: text)
+                        else { continue }
+                        // Use the kanji's visual midX (minX + measured width / 2) instead of
+                        // kanjiRect.midX, since the rect's right edge includes trailing kern and
+                        // would report a false-aligned reading when the ruby is actually offset.
+                        let kanjiVisualWidth = measureTextWidth(String(text[kanjiSurfaceRange]), font: UIFont.systemFont(ofSize: textSize), kerning: 0)
+                        let kanjiVisualMidX = kanjiRect.minX + kanjiVisualWidth / 2
+                        let furiganaFrame = furiganaFrameByLocation[kanjiLocation] ?? .zero
+                        bisectorHeadwordMidXs.append(kanjiVisualMidX)
+                        bisectorHeadwordRects.append(kanjiRect)
+                        bisectorFuriganaRects.append(furiganaFrame)
+                    }
+                }
+
+                if debugEnvelopeRects {
+                    let furiganaFrame = furiganaFrameByLocation[nsRange.location]
+                    if let furiganaFrame {
+                        let envelopeMinX = min(segmentRect.minX, furiganaFrame.minX)
+                        let envelopeMaxX = max(segmentRect.maxX, furiganaFrame.maxX)
+                        debugEnvelopeRectsList.append(CGRect(
+                            x: envelopeMinX,
+                            y: furiganaFrame.minY,
+                            width: envelopeMaxX - envelopeMinX,
+                            height: segmentRect.maxY - furiganaFrame.minY
+                        ))
+                    } else {
+                        // No furigana — envelope is just the headword rect.
+                        debugEnvelopeRectsList.append(segmentRect)
+                    }
+                }
             }
         }
 
@@ -414,9 +487,11 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             debugHeadwordLineBandRects: debugHeadwordLineBandRects,
             debugFuriganaLineBandRects: debugFuriganaLineBandRects,
             debugBisectorsEnabled: debugBisectors,
-            bisectorHeadwordMidXs: bisectorHeadwordMidXs,
-            bisectorHeadwordRects: bisectorHeadwordRects,
-            bisectorFuriganaRects: bisectorFuriganaRects
+            debugBisectorHeadwordMidXs: bisectorHeadwordMidXs,
+            debugBisectorHeadwordRects: bisectorHeadwordRects,
+            debugBisectorFuriganaRects: bisectorFuriganaRects,
+            debugEnvelopeRectsEnabled: debugEnvelopeRects,
+            debugEnvelopeRects: debugEnvelopeRectsList
         )
         context.coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
 
@@ -436,7 +511,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     }
 
     // Resolves the visual segment rectangle used to anchor furigana over the same glyph layout.
-    private func segmentRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
+    func segmentRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
         guard
             nsRange.location != NSNotFound,
             nsRange.length > 0,
@@ -604,6 +679,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(debugHeadwordLineBands)
         hasher.combine(debugFuriganaLineBands)
         hasher.combine(debugBisectors)
+        hasher.combine(debugEnvelopeRects)
         hasher.combine(customEvenSegmentColorHex)
         hasher.combine(customOddSegmentColorHex)
         return hasher.finalize()
@@ -682,7 +758,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     }
 
     // Measures text width for furigana label sizing so readings don't collapse into truncation glyphs.
-    private func measureTextWidth(_ value: String, font: UIFont, kerning: Double) -> CGFloat {
+    func measureTextWidth(_ value: String, font: UIFont, kerning: Double) -> CGFloat {
         guard !value.isEmpty else { return 0 }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,

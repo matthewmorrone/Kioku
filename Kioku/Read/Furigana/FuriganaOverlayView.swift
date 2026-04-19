@@ -15,17 +15,20 @@ final class FuriganaOverlayView: UIView {
     // Debug overlay data — empty/false when debug settings are off.
     private var debugFuriganaRectsEnabled = false
     private var debugHeadwordRectsEnabled = false
-    private var debugHeadwordLineBandsEnabled = false
-    private var debugFuriganaLineBandsEnabled = false
     private var debugHeadwordRects: [CGRect] = []
     private var debugHeadwordColors: [UIColor] = []
-    private var debugHeadwordLineBandRects: [CGRect] = []
-    private var debugFuriganaLineBandRects: [CGRect] = []
+    private var debugHeadwordLineBands: [CGRect] = []
+    private var debugFuriganaLineBands: [CGRect] = []
+    private var debugHeadwordLineBandsEnabled = false
+    private var debugFuriganaLineBandsEnabled = false
+    // Envelope debug data — bounding box spanning both headword and furigana.
+    private var debugEnvelopeRectsEnabled = false
+    private var debugEnvelopeRects: [CGRect] = []
     // Bisector debug data — vertical center lines showing headword/furigana alignment.
     private var debugBisectorsEnabled = false
-    private var bisectorHeadwordMidXs: [CGFloat] = []
-    private var bisectorHeadwordRects: [CGRect] = []
-    private var bisectorFuriganaRects: [CGRect] = []
+    private var debugBisectorHeadwordMidXs: [CGFloat] = []
+    private var debugBisectorHeadwordRects: [CGRect] = []
+    private var debugBisectorFuriganaRects: [CGRect] = []
 
     // Creates the overlay surface used by the read renderer.
     override init(frame: CGRect) {
@@ -63,9 +66,11 @@ final class FuriganaOverlayView: UIView {
         debugHeadwordLineBandRects: [CGRect],
         debugFuriganaLineBandRects: [CGRect],
         debugBisectorsEnabled: Bool = false,
-        bisectorHeadwordMidXs: [CGFloat] = [],
-        bisectorHeadwordRects: [CGRect] = [],
-        bisectorFuriganaRects: [CGRect] = []
+        debugBisectorHeadwordMidXs: [CGFloat] = [],
+        debugBisectorHeadwordRects: [CGRect] = [],
+        debugBisectorFuriganaRects: [CGRect] = [],
+        debugEnvelopeRectsEnabled: Bool = false,
+        debugEnvelopeRects: [CGRect] = []
     ) {
         frame = overlayFrame
         self.selectedSegmentRect = selectedSegmentRect
@@ -78,18 +83,22 @@ final class FuriganaOverlayView: UIView {
         self.furiganaFrames = furiganaFrames
         self.furiganaColors = furiganaColors
         self.furiganaFont = furiganaFont
-        self.debugFuriganaRectsEnabled = debugFuriganaRectsEnabled
-        self.debugHeadwordRectsEnabled = debugHeadwordRectsEnabled
-        self.debugHeadwordLineBandsEnabled = debugHeadwordLineBandsEnabled
-        self.debugFuriganaLineBandsEnabled = debugFuriganaLineBandsEnabled
+
+
         self.debugHeadwordRects = debugHeadwordRects
         self.debugHeadwordColors = debugHeadwordColors
-        self.debugHeadwordLineBandRects = debugHeadwordLineBandRects
-        self.debugFuriganaLineBandRects = debugFuriganaLineBandRects
+        self.debugFuriganaRectsEnabled = debugFuriganaRectsEnabled
+        self.debugHeadwordRectsEnabled = debugHeadwordRectsEnabled
+        self.debugEnvelopeRects = debugEnvelopeRects
+        self.debugEnvelopeRectsEnabled = debugEnvelopeRectsEnabled
+        self.debugHeadwordLineBands = debugHeadwordLineBandRects
+        self.debugHeadwordLineBandsEnabled = debugHeadwordLineBandsEnabled
+        self.debugFuriganaLineBands = debugFuriganaLineBandRects
+        self.debugFuriganaLineBandsEnabled = debugFuriganaLineBandsEnabled
         self.debugBisectorsEnabled = debugBisectorsEnabled
-        self.bisectorHeadwordMidXs = bisectorHeadwordMidXs
-        self.bisectorHeadwordRects = bisectorHeadwordRects
-        self.bisectorFuriganaRects = bisectorFuriganaRects
+        self.debugBisectorHeadwordMidXs = debugBisectorHeadwordMidXs
+        self.debugBisectorHeadwordRects = debugBisectorHeadwordRects
+        self.debugBisectorFuriganaRects = debugBisectorFuriganaRects
         setNeedsDisplay()
     }
 
@@ -101,7 +110,7 @@ final class FuriganaOverlayView: UIView {
         // Headword line bands drawn first so all other overlays render on top.
         if debugHeadwordLineBandsEnabled {
             UIColor.systemOrange.withAlphaComponent(0.08).setFill()
-            for bandRect in debugHeadwordLineBandRects {
+            for bandRect in debugHeadwordLineBands {
                 guard bandRect.intersects(rect) else { continue }
                 UIBezierPath(rect: bandRect).fill()
             }
@@ -110,7 +119,7 @@ final class FuriganaOverlayView: UIView {
         // Furigana line bands sit directly above their corresponding headword rows.
         if debugFuriganaLineBandsEnabled {
             UIColor.systemBlue.withAlphaComponent(0.08).setFill()
-            for bandRect in debugFuriganaLineBandRects {
+            for bandRect in debugFuriganaLineBands {
                 guard bandRect.intersects(rect) else { continue }
                 UIBezierPath(rect: bandRect).fill()
             }
@@ -179,35 +188,56 @@ final class FuriganaOverlayView: UIView {
             }
         }
 
-        // Bisectors: two vertical center lines per headword/furigana pair.
-        // Yellow when aligned (within 0.75pt), green when misaligned.
+        // Envelope rects: dashed outline spanning the full headword+furigana bounding box.
+        if debugEnvelopeRectsEnabled {
+            UIColor.systemPurple.withAlphaComponent(0.8).setStroke()
+            for envelopeRect in debugEnvelopeRects {
+                guard envelopeRect.intersects(rect) else { continue }
+                let path = UIBezierPath(rect: envelopeRect.insetBy(dx: 0.5, dy: 0.5))
+                path.setLineDash([4, 2], count: 2, phase: 0)
+                path.lineWidth = 1
+                path.stroke()
+            }
+        }
+
+        // Bisectors: vertical center line(s) per segment.
+        // Segments with furigana get two lines — yellow when aligned (within 0.75pt), green when not.
+        // Segments without furigana get a single grey headword line.
         if debugBisectorsEnabled {
             let tolerance: CGFloat = 0.75
-            for index in bisectorHeadwordMidXs.indices {
-                let headwordRect = bisectorHeadwordRects[index]
-                let furiganaRect = bisectorFuriganaRects[index]
-                let headwordMidX = bisectorHeadwordMidXs[index]
-                let furiganaMidX = furiganaRect.midX
-                let aligned = abs(headwordMidX - furiganaMidX) <= tolerance
+            for index in debugBisectorHeadwordMidXs.indices {
+                let headwordRect = debugBisectorHeadwordRects[index]
+                let furiganaRect = debugBisectorFuriganaRects[index]
+                let headwordMidX = debugBisectorHeadwordMidXs[index]
+                let hasFurigana = furiganaRect != .zero
 
-                let color = aligned
-                    ? UIColor.systemYellow.withAlphaComponent(0.9)
-                    : UIColor.systemGreen.withAlphaComponent(0.9)
-                color.setStroke()
+                if hasFurigana {
+                    let furiganaMidX = furiganaRect.midX
+                    let aligned = abs(headwordMidX - furiganaMidX) <= tolerance
+                    let color = aligned
+                        ? UIColor.systemYellow.withAlphaComponent(0.9)
+                        : UIColor.systemGreen.withAlphaComponent(0.9)
+                    color.setStroke()
 
-                // Headword bisector.
-                let headwordPath = UIBezierPath()
-                headwordPath.move(to: CGPoint(x: headwordMidX, y: headwordRect.minY))
-                headwordPath.addLine(to: CGPoint(x: headwordMidX, y: headwordRect.maxY))
-                headwordPath.lineWidth = 2
-                headwordPath.stroke()
+                    let headwordPath = UIBezierPath()
+                    headwordPath.move(to: CGPoint(x: headwordMidX, y: headwordRect.minY))
+                    headwordPath.addLine(to: CGPoint(x: headwordMidX, y: headwordRect.maxY))
+                    headwordPath.lineWidth = 2
+                    headwordPath.stroke()
 
-                // Furigana bisector.
-                let furiganaPath = UIBezierPath()
-                furiganaPath.move(to: CGPoint(x: furiganaMidX, y: furiganaRect.minY))
-                furiganaPath.addLine(to: CGPoint(x: furiganaMidX, y: furiganaRect.maxY))
-                furiganaPath.lineWidth = 2
-                furiganaPath.stroke()
+                    let furiganaPath = UIBezierPath()
+                    furiganaPath.move(to: CGPoint(x: furiganaMidX, y: furiganaRect.minY))
+                    furiganaPath.addLine(to: CGPoint(x: furiganaMidX, y: furiganaRect.maxY))
+                    furiganaPath.lineWidth = 2
+                    furiganaPath.stroke()
+                } else {
+                    UIColor.systemYellow.withAlphaComponent(0.9).setStroke()
+                    let path = UIBezierPath()
+                    path.move(to: CGPoint(x: headwordMidX, y: headwordRect.minY))
+                    path.addLine(to: CGPoint(x: headwordMidX, y: headwordRect.maxY))
+                    path.lineWidth = 2
+                    path.stroke()
+                }
             }
         }
     }

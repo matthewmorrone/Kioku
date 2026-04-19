@@ -10,6 +10,7 @@ extension SegmentLookupSheet {
         currentSheetDictionaryEntry = sheetDictionaryEntryProvider?()
         currentSheetLexiconDebugInfo = ""
         currentSheetWordComponents = []
+        currentSheetCompoundComponents = sheetCompoundComponentsProvider?() ?? []
     }
 
     // Delivers and clears one-shot dismissal callback used by the read view to clear selection state.
