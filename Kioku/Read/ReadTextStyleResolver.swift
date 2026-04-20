@@ -10,10 +10,6 @@ struct ReadTextStyleResolver {
     let kerning: Double
     let isLineWrappingEnabled: Bool
     let isVisualEnhancementsEnabled: Bool
-    // User-controlled gate for all ruby-spacing adjustments (envelope padding + post-layout kern
-    // + line-start exclusions). When false, TextKit renders with no spacing corrections so the
-    // reader can verify the un-nudged baseline or turn off the feature if it misbehaves.
-    let isRubySpacingEnabled: Bool
     let isColorAlternationEnabled: Bool
     let isHighlightUnknownEnabled: Bool
     let unknownSegmentLocations: Set<Int>
@@ -106,91 +102,15 @@ struct ReadTextStyleResolver {
             }
         }
 
-        // Envelope padding: when a segment's furigana is wider than its headword, add trailing kern
-        // to the current segment and the previous segment so the reading has room to breathe without
-        // visually overlapping its neighbors.
-        if isVisualEnhancementsEnabled && isRubySpacingEnabled && !furiganaBySegmentLocation.isEmpty {
-            applyEnvelopePadding(to: attributedText, baseFont: baseFont)
-        }
+        // Pre-layout envelope padding was removed: spacing adjustments are handled entirely by
+        // the post-layout kern pass, which measures real TextKit geometry rather than estimating
+        // from font metrics. Keeping both systems was letting them fight; this is the single
+        // source of truth now.
 
         return ReadTextStylePayload(
             attributedText: attributedText,
             segmentForegroundByLocation: segmentForegroundByLocation
         )
-    }
-
-    // Iterates segments that have furigana wider than their headword and injects trailing kern so the
-    // reading overhang lands in empty space rather than on top of the adjacent segment's glyphs.
-    // Takes the max when multiple segments compete for kern on the same trailing character position.
-    private func applyEnvelopePadding(to attributedText: NSMutableAttributedString, baseFont: UIFont) {
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
-        // Maps last-UTF16-unit location → extra kern to add.
-        var additionalKernByLocation: [Int: CGFloat] = [:]
-
-        for (segmentIndex, segmentRange) in segmentationRanges.enumerated() {
-            let nsRange = NSRange(segmentRange, in: text)
-            guard nsRange.location != NSNotFound, nsRange.length > 0,
-                  let furigana = furiganaBySegmentLocation[nsRange.location],
-                  !furigana.isEmpty,
-                  let furiganaLength = furiganaLengthBySegmentLocation[nsRange.location],
-                  furiganaLength > 0,
-                  let surfaceRange = Range(nsRange, in: text),
-                  let displayReading = FuriganaAttributedString.normalizedDisplayReading(
-                      surface: String(text[surfaceRange]),
-                      reading: furigana
-                  ) else { continue }
-
-            let headwordWidth = measureWidth(String(text[surfaceRange]), font: baseFont)
-            let furiganaWidth = measureWidth(displayReading, font: furiganaFont)
-            guard furiganaWidth > headwordWidth else { continue }
-
-            let overhang = ceil((furiganaWidth - headwordWidth) / 2)
-
-            // Right overhang: pad after the current segment.
-            let currentLastLoc = nsRange.location + nsRange.length - 1
-            additionalKernByLocation[currentLastLoc] = max(
-                additionalKernByLocation[currentLastLoc] ?? 0, overhang
-            )
-
-            // Left overhang: pad after the previous segment so the current segment starts further right.
-            // Skip when the previous segment ends in punctuation — adding kern to a trailing comma or
-            // period visually attaches it to the following furigana word's envelope.
-            if segmentIndex > 0 {
-                let prevNSRange = NSRange(segmentationRanges[segmentIndex - 1], in: text)
-                if prevNSRange.location != NSNotFound, prevNSRange.length > 0 {
-                    let prevLastLoc = prevNSRange.location + prevNSRange.length - 1
-                    if let prevLastCharRange = Range(NSRange(location: prevLastLoc, length: 1), in: text) {
-                        let prevLastChar = String(text[prevLastCharRange])
-                        let endsInNonLexical = prevLastChar.unicodeScalars.allSatisfy {
-                            Self.nonLexicalScalars.contains($0)
-                        }
-                        if !endsInNonLexical {
-                            additionalKernByLocation[prevLastLoc] = max(
-                                additionalKernByLocation[prevLastLoc] ?? 0, overhang
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        let textLength = (text as NSString).length
-        for (location, extraKern) in additionalKernByLocation {
-            guard location < textLength else { continue }
-            let charRange = NSRange(location: location, length: 1)
-            let charText = (text as NSString).substring(with: charRange)
-            if location < 200 {
-                print("[pre-layout] char=\(charText) loc=\(location) extraKern=\(extraKern) totalKern=\(CGFloat(kerning) + extraKern)")
-            }
-            // Stack on top of the global base kern that was set for the whole string.
-            attributedText.addAttribute(.kern, value: CGFloat(kerning) + extraKern, range: charRange)
-        }
-    }
-
-    // Measures the rendered width of a string using font metrics, independent of layout state.
-    private func measureWidth(_ value: String, font: UIFont) -> CGFloat {
-        guard !value.isEmpty else { return 0 }
-        return ceil((value as NSString).size(withAttributes: [.font: font]).width)
     }
 
     // Returns the alternating foreground color for even-indexed visible segments.

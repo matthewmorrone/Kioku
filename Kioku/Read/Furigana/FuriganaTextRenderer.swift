@@ -162,7 +162,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             kerning: kerning,
             isLineWrappingEnabled: isLineWrappingEnabled,
             isVisualEnhancementsEnabled: isVisualEnhancementsEnabled,
-            isRubySpacingEnabled: isRubySpacingEnabled,
             isColorAlternationEnabled: isColorAlternationEnabled,
             isHighlightUnknownEnabled: isHighlightUnknownEnabled,
             unknownSegmentLocations: unknownSegmentLocations,
@@ -188,25 +187,11 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // scroll-to-top on note switch (sharedScrollOffsetY = 0) takes effect when text changes.
             // During normal style updates the external offset stays in sync with the actual position.
             textView.attributedText = textStylePayload.attributedText
-            // Probe what survived the assignment — comparing this to the [pre-layout] log values
-            // tells us whether UITextView is silently stripping our .kern attributes.
-            let fullLen = (text as NSString).length
-            for loc in [174, 37, 173] where loc < fullLen {
-                let kernVal = textView.textStorage.attribute(.kern, at: loc, effectiveRange: nil)
-                let ch = (text as NSString).substring(with: NSRange(location: loc, length: 1))
-                print("[post-assign] loc=\(loc) char=\(ch) storedKern=\(kernVal as Any)")
-            }
             // Run the exhaustive full-document layout here, immediately after setting attributedText,
             // so glyph positions used by overlay drawing are correct before the view is displayed.
             // Doing this inside the text-change branch avoids blocking the main thread on every
             // scroll-driven updateUIView call (which would cause gesture-gate timeouts on large notes).
             ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
-            // Post-layout kern pass: resolves furigana overlap that pre-layout envelope padding
-            // could not prevent (e.g. segments at soft-wrapped line starts). Single pass only —
-            // iterating was proven to not converge and the added complexity wasn't worth it.
-            if applyPostLayoutRubyKern(to: textView, furiganaFont: furiganaFont) {
-                ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
-            }
             // Line-start inset pass: adds exclusion paths for any line whose first segment's
             // ruby overhangs left. Called unconditionally — when isRubySpacingEnabled is false
             // the helper itself skips work and clears any lingering exclusions, so flipping
@@ -362,31 +347,12 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         let needsDebugSegmentPass = debugHeadwordRects || debugBisectors || debugEnvelopeRects
         if needsDebugSegmentPass {
             let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
-            // firstRect(for:) doesn't include trailing .kern from earlier chars on the same line,
-            // so segmentRect.minX for a mid-line segment reports the pre-kern x. Track a per-line
-            // accumulated shift of (stored kern − base kerning) so debug rects land where glyphs
-            // are actually rendered.
-            var cumulativeLineKernShift: CGFloat = 0
-            var previousLineMinY: CGFloat = -.greatestFiniteMagnitude
             for segmentRange in segmentationRanges {
                 let segmentText = String(text[segmentRange])
                 guard !segmentText.unicodeScalars.allSatisfy({ ignoredScalars.contains($0) }) else { continue }
                 let nsRange = NSRange(segmentRange, in: text)
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
-                guard let rawSegmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
-                if abs(rawSegmentRect.minY - previousLineMinY) > 2 {
-                    cumulativeLineKernShift = 0
-                }
-                previousLineMinY = rawSegmentRect.minY
-                let segmentRect = rawSegmentRect.offsetBy(dx: cumulativeLineKernShift, dy: 0)
-                // Update the shift after consuming this segment so subsequent segments on the
-                // same line see it. The base global `kerning` is already reflected in segmentRect
-                // so we only carry the EXTRA kern pre-layout (and post-layout) added to this char.
-                let lastCharLoc = nsRange.location + nsRange.length - 1
-                if lastCharLoc < (text as NSString).length,
-                   let kernAttr = textView.textStorage.attribute(.kern, at: lastCharLoc, effectiveRange: nil) as? NSNumber {
-                    cumulativeLineKernShift += CGFloat(kernAttr.doubleValue) - CGFloat(kerning)
-                }
+                guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
                 let segmentColor = textStylePayload.segmentForegroundByLocation[nsRange.location] ?? .label
 
                 if debugHeadwordRects {
@@ -428,19 +394,13 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 }
 
                 if debugEnvelopeRects {
-                    // Match the post-layout kern pass's envelope formula: the right edge is the
-                    // last character's glyph advance plus baseline kerning (where the next segment
-                    // naturally starts), not segmentRect.maxX which would include leftover internal
-                    // layout width and produce false overlaps against tight-kerned neighbors.
-                    let lastCharLoc = nsRange.location + nsRange.length - 1
-                    let lastCharNSRange = NSRange(location: lastCharLoc, length: 1)
-                    let lastCharGlyphMaxX = segmentRectInTextView(textView: textView, nsRange: lastCharNSRange)?.maxX
-                        ?? rawSegmentRect.maxX
-                    let headwordEnvelopeMaxX = lastCharGlyphMaxX + cumulativeLineKernShift + CGFloat(kerning)
+                    // Envelope = visual bounds of kanji advance box ∪ ruby frame. Size is a
+                    // property of the segment's content; ruby-spacing only changes where the
+                    // envelope sits, not how large it is.
                     let furiganaFrame = furiganaFrameByLocation[nsRange.location]
                     if let furiganaFrame {
                         let envelopeMinX = min(segmentRect.minX, furiganaFrame.minX)
-                        let envelopeMaxX = max(headwordEnvelopeMaxX, furiganaFrame.maxX)
+                        let envelopeMaxX = max(segmentRect.maxX, furiganaFrame.maxX)
                         debugEnvelopeRectsList.append(CGRect(
                             x: envelopeMinX,
                             y: furiganaFrame.minY,
@@ -448,13 +408,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                             height: segmentRect.maxY - furiganaFrame.minY
                         ))
                     } else {
-                        // No furigana — envelope is the headword advance-box with baseline kern.
-                        debugEnvelopeRectsList.append(CGRect(
-                            x: segmentRect.minX,
-                            y: segmentRect.minY,
-                            width: headwordEnvelopeMaxX - segmentRect.minX,
-                            height: segmentRect.height
-                        ))
+                        debugEnvelopeRectsList.append(segmentRect)
                     }
                 }
             }
