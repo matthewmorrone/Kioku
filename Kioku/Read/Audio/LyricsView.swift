@@ -117,6 +117,7 @@ struct LyricsView: View {
                         furiganaBySegmentLocation: rendererData?.localFurigana ?? [:],
                         furiganaLengthBySegmentLocation: rendererData?.localFuriganaLength ?? [:],
                         isVisualEnhancementsEnabled: true,
+                        isRubySpacingEnabled: true,
                         isColorAlternationEnabled: true,
                         isHighlightUnknownEnabled: false,
                         unknownSegmentLocations: [],

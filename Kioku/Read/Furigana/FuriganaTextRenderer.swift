@@ -17,6 +17,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let furiganaBySegmentLocation: [Int: String]
     let furiganaLengthBySegmentLocation: [Int: Int]
     let isVisualEnhancementsEnabled: Bool
+    // User-controlled gate for all ruby-spacing adjustments — pre-layout envelope padding,
+    // post-layout kern, and line-start exclusions. Kept independent of visual enhancements so
+    // toggling spacing does not drop color alternation, highlighting, etc.
+    let isRubySpacingEnabled: Bool
     let isColorAlternationEnabled: Bool
     let isHighlightUnknownEnabled: Bool
     let unknownSegmentLocations: Set<Int>
@@ -158,6 +162,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             kerning: kerning,
             isLineWrappingEnabled: isLineWrappingEnabled,
             isVisualEnhancementsEnabled: isVisualEnhancementsEnabled,
+            isRubySpacingEnabled: isRubySpacingEnabled,
             isColorAlternationEnabled: isColorAlternationEnabled,
             isHighlightUnknownEnabled: isHighlightUnknownEnabled,
             unknownSegmentLocations: unknownSegmentLocations,
@@ -196,15 +201,16 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // Doing this inside the text-change branch avoids blocking the main thread on every
             // scroll-driven updateUIView call (which would cause gesture-gate timeouts on large notes).
             ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
-            // Post-layout kern pass: resolves any remaining furigana overlap that pre-layout
-            // envelope padding could not prevent (e.g. segments at soft-wrapped line starts).
+            // Post-layout kern pass: resolves furigana overlap that pre-layout envelope padding
+            // could not prevent (e.g. segments at soft-wrapped line starts). Single pass only —
+            // iterating was proven to not converge and the added complexity wasn't worth it.
             if applyPostLayoutRubyKern(to: textView, furiganaFont: furiganaFont) {
                 ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
             }
-            // Line-start inset pass: adds exclusion paths on any line whose first segment has
-            // ruby wider than its kanji, so the envelope's left edge aligns with the container
-            // inset instead of overflowing past it. Requires a relayout because the exclusions
-            // reflow glyphs on affected lines.
+            // Line-start inset pass: adds exclusion paths for any line whose first segment's
+            // ruby overhangs left. Called unconditionally — when isRubySpacingEnabled is false
+            // the helper itself skips work and clears any lingering exclusions, so flipping
+            // the toggle off removes prior spacing corrections instead of leaving them stuck.
             if applyLeftInsetExclusionsForWideRuby(to: textView, furiganaFont: furiganaFont) {
                 ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
             }
@@ -422,10 +428,19 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 }
 
                 if debugEnvelopeRects {
+                    // Match the post-layout kern pass's envelope formula: the right edge is the
+                    // last character's glyph advance plus baseline kerning (where the next segment
+                    // naturally starts), not segmentRect.maxX which would include leftover internal
+                    // layout width and produce false overlaps against tight-kerned neighbors.
+                    let lastCharLoc = nsRange.location + nsRange.length - 1
+                    let lastCharNSRange = NSRange(location: lastCharLoc, length: 1)
+                    let lastCharGlyphMaxX = segmentRectInTextView(textView: textView, nsRange: lastCharNSRange)?.maxX
+                        ?? rawSegmentRect.maxX
+                    let headwordEnvelopeMaxX = lastCharGlyphMaxX + cumulativeLineKernShift + CGFloat(kerning)
                     let furiganaFrame = furiganaFrameByLocation[nsRange.location]
                     if let furiganaFrame {
                         let envelopeMinX = min(segmentRect.minX, furiganaFrame.minX)
-                        let envelopeMaxX = max(segmentRect.maxX, furiganaFrame.maxX)
+                        let envelopeMaxX = max(headwordEnvelopeMaxX, furiganaFrame.maxX)
                         debugEnvelopeRectsList.append(CGRect(
                             x: envelopeMinX,
                             y: furiganaFrame.minY,
@@ -433,8 +448,13 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                             height: segmentRect.maxY - furiganaFrame.minY
                         ))
                     } else {
-                        // No furigana — envelope is just the headword rect.
-                        debugEnvelopeRectsList.append(segmentRect)
+                        // No furigana — envelope is the headword advance-box with baseline kern.
+                        debugEnvelopeRectsList.append(CGRect(
+                            x: segmentRect.minX,
+                            y: segmentRect.minY,
+                            width: headwordEnvelopeMaxX - segmentRect.minX,
+                            height: segmentRect.height
+                        ))
                     }
                 }
             }
@@ -690,6 +710,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(kerning)
         hasher.combine(furiganaGap)
         hasher.combine(isActive)
+        hasher.combine(isRubySpacingEnabled)
         hasher.combine(isColorAlternationEnabled)
         hasher.combine(isHighlightUnknownEnabled)
         for location in unknownSegmentLocations.sorted() {
@@ -730,6 +751,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         }
         hasher.combine(isLineWrappingEnabled)
         hasher.combine(isVisualEnhancementsEnabled)
+        hasher.combine(isRubySpacingEnabled)
         hasher.combine(isColorAlternationEnabled)
         hasher.combine(isHighlightUnknownEnabled)
         for location in unknownSegmentLocations.sorted() {

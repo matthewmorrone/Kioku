@@ -33,6 +33,7 @@ struct ReadView: View {
     @AppStorage("kioku.settings.highlightUnknown") var isHighlightUnknownEnabled = false
     @AppStorage("kioku.settings.applyGlobally") var shouldApplyChangesGlobally = true
     @AppStorage("kioku.settings.lineWrapping") var isLineWrappingEnabled = true
+    @AppStorage("kioku.settings.rubySpacing") var isRubySpacingEnabled = true
     @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
     @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
@@ -302,11 +303,17 @@ struct ReadView: View {
                     }
                 }
                 if isEditMode {
-                    // Clear stale segmentation state before scheduling persistence so the
-                    // debounce snapshot captures the post-edit state (segments = nil).
-                    // Without this ordering the snapshot captures pre-edit segments, then
-                    // the nil assignment below causes the staleness guard to reject the write.
-                    segments = nil
+                    // Preserve user customizations (splits/merges/furigana) in segments whose
+                    // surfaces still match a prefix/suffix of the edited content. Only the
+                    // diverging middle becomes an unsegmented stub; the segmenter will revisit
+                    // it when edit mode exits.
+                    let reconciled: [SegmentRange]?
+                    if let existing = segments {
+                        reconciled = reconcileSegments(existing, to: newText)
+                    } else {
+                        reconciled = nil
+                    }
+                    segments = reconciled
                     illegalMergeBoundaryLocation = nil
                     illegalMergeFlashTask?.cancel()
                     segmentationRefreshTask?.cancel()
@@ -318,8 +325,17 @@ struct ReadView: View {
                     selectedHighlightRangeOverride = nil
                     selectedBounds = nil
                     SegmentLookupSheet.shared.dismissPopover()
-                    furiganaBySegmentLocation = [:]
-                    furiganaLengthBySegmentLocation = [:]
+                    // Rebuild the runtime furigana map from the reconciled segments so annotations
+                    // in surviving regions are not dropped and their absolute offsets reflect any
+                    // shift caused by length changes in the edited region.
+                    if let reconciled {
+                        let restored = furiganaFromSegmentRanges(reconciled)
+                        furiganaBySegmentLocation = restored.byLocation
+                        furiganaLengthBySegmentLocation = restored.lengthByLocation
+                    } else {
+                        furiganaBySegmentLocation = [:]
+                        furiganaLengthBySegmentLocation = [:]
+                    }
                     scheduleCurrentNotePersistenceIfNeeded()
                     return
                 }
@@ -527,6 +543,7 @@ struct ReadView: View {
                     furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
                     furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
                     isVisualEnhancementsEnabled: readResourcesReady,
+                    isRubySpacingEnabled: isRubySpacingEnabled,
                     isColorAlternationEnabled: isColorAlternationEnabled,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                     unknownSegmentLocations: unknownSegmentLocations,

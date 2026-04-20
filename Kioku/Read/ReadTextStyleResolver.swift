@@ -10,6 +10,10 @@ struct ReadTextStyleResolver {
     let kerning: Double
     let isLineWrappingEnabled: Bool
     let isVisualEnhancementsEnabled: Bool
+    // User-controlled gate for all ruby-spacing adjustments (envelope padding + post-layout kern
+    // + line-start exclusions). When false, TextKit renders with no spacing corrections so the
+    // reader can verify the un-nudged baseline or turn off the feature if it misbehaves.
+    let isRubySpacingEnabled: Bool
     let isColorAlternationEnabled: Bool
     let isHighlightUnknownEnabled: Bool
     let unknownSegmentLocations: Set<Int>
@@ -105,7 +109,7 @@ struct ReadTextStyleResolver {
         // Envelope padding: when a segment's furigana is wider than its headword, add trailing kern
         // to the current segment and the previous segment so the reading has room to breathe without
         // visually overlapping its neighbors.
-        if isVisualEnhancementsEnabled && !furiganaBySegmentLocation.isEmpty {
+        if isVisualEnhancementsEnabled && isRubySpacingEnabled && !furiganaBySegmentLocation.isEmpty {
             applyEnvelopePadding(to: attributedText, baseFont: baseFont)
         }
 
@@ -218,8 +222,7 @@ struct ReadTextStyleResolver {
     }
 
     // Glow shadow for segments changed by a pending LLM correction.
-    // shadowOffset = .zero centers the blur around the glyphs, creating a bloom effect.
-    // Using the same color as the foreground makes the glow visibly tied to the tinted text.
+    // shadowOffset = .zero centers the blur around the glyphs, creating a bloom effect. Using the same color as the foreground makes the glow visibly tied to the tinted text.
     private var changedSegmentGlow: NSShadow {
         let shadow = NSShadow()
         shadow.shadowColor = changedSegmentColor.withAlphaComponent(0.9)
@@ -229,8 +232,7 @@ struct ReadTextStyleResolver {
     }
 
     // Foreground color for segments changed by a pending LLM correction.
-    // Mint is distinct from the alternating orange/cyan/red/indigo palette and
-    // the yellow selection rect drawn by FuriganaOverlayView.
+    // Mint is distinct from the alternating orange/cyan/red/indigo palette and the yellow selection rect drawn by FuriganaOverlayView.
     private var changedSegmentColor: UIColor {
         UIColor.systemGreen
     }
@@ -240,8 +242,7 @@ struct ReadTextStyleResolver {
         return segmentText.unicodeScalars.allSatisfy { Self.nonLexicalScalars.contains($0) }
     }
 
-    // Character set covering whitespace, punctuation, and symbols — including CJK brackets and
-    // delimiters that Foundation's punctuationCharacters may not classify correctly.
+    // Character set covering whitespace, punctuation, and symbols — including CJK brackets and delimiters that Foundation's punctuationCharacters may not classify correctly.
     private static let nonLexicalScalars: CharacterSet = {
         var cs = CharacterSet.whitespacesAndNewlines
         cs.formUnion(.punctuationCharacters)

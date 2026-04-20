@@ -52,8 +52,9 @@ extension ReadView {
         return unknownLocations
     }
 
-    // Converts segment edges to explicit UTF-16 segment ranges for note persistence.
-    // When furigana maps are provided, each segment is annotated with its resolved readings.
+    // Converts segment edges to persistable order-only segment ranges for note persistence.
+    // When furigana maps are provided, each segment is annotated with its resolved readings
+    // using offsets relative to the segment's surface.
     func buildSegmentRanges(
         from edges: [LatticeEdge],
         furiganaByLocation: [Int: String] = [:],
@@ -65,55 +66,60 @@ extension ReadView {
                 return nil
             }
 
-            // Collect all furigana annotations whose range falls within this segment.
+            // Collect all furigana annotations whose absolute range falls within this segment,
+            // then rebase them to surface-relative offsets.
             let segStart = nsRange.location
             let segEnd = nsRange.location + nsRange.length
             let annotations: [FuriganaAnnotation] = furiganaByLocation.compactMap { location, reading in
                 guard let length = furiganaLengthByLocation[location],
                       location >= segStart, location + length <= segEnd else { return nil }
-                return FuriganaAnnotation(start: location, end: location + length, reading: reading)
+                let relativeStart = location - segStart
+                return FuriganaAnnotation(start: relativeStart, end: relativeStart + length, reading: reading)
             }.sorted { $0.start < $1.start }
 
             return SegmentRange(
-                start: segStart,
-                end: segEnd,
                 surface: edge.surface,
                 furigana: annotations.isEmpty ? nil : annotations
             )
         }
     }
 
-    // Rebuilds segmentation edges from persisted UTF-16 segment ranges.
+    // Rebuilds segmentation edges from persisted order-only segments by walking the source
+    // text with a cursor equal to the cumulative UTF-16 surface length.
+    // Returns nil if concatenated surfaces do not match the source text exactly.
     func edgesFromSegmentRanges(_ segments: [SegmentRange], in sourceText: String) -> [LatticeEdge]? {
         let utf16TotalLength = sourceText.utf16.count
-        guard utf16TotalLength > 0 else {
+        guard utf16TotalLength > 0, segments.isEmpty == false else {
             return nil
         }
 
         var rebuiltEdges: [LatticeEdge] = []
+        var cursor = 0
         for segmentRange in segments {
-            let startOffset = segmentRange.start
-            let endOffset = segmentRange.end
-            guard endOffset > startOffset else {
-                continue
-            }
+            let surfaceLength = segmentRange.surface.utf16.count
+            guard surfaceLength > 0 else { continue }
+            let startOffset = cursor
+            let endOffset = cursor + surfaceLength
+            guard endOffset <= utf16TotalLength else { return nil }
 
             let startIndex = String.Index(utf16Offset: startOffset, in: sourceText)
             let endIndex = String.Index(utf16Offset: endOffset, in: sourceText)
-            guard startIndex < endIndex else {
-                continue
-            }
+            guard startIndex < endIndex else { return nil }
 
-            let surface = String(sourceText[startIndex..<endIndex])
+            let actualSurface = String(sourceText[startIndex..<endIndex])
+            guard actualSurface == segmentRange.surface else { return nil }
+
             rebuiltEdges.append(
                 LatticeEdge(
                     start: startIndex,
                     end: endIndex,
-                    surface: surface
+                    surface: actualSurface
                 )
             )
+            cursor = endOffset
         }
 
+        guard cursor == utf16TotalLength else { return nil }
         return rebuiltEdges.isEmpty ? nil : rebuiltEdges
     }
 
@@ -143,60 +149,138 @@ extension ReadView {
         }
     }
 
-    // Normalizes persisted segment ranges from a note so only valid ranges are applied.
+    // Validates persisted order-only segments: concatenated surfaces must equal the source text.
+    // Empty or mismatched inputs return nil, signaling the segmenter should recompute from scratch.
     func normalizedSegmentRanges(_ segments: [SegmentRange]?, for sourceText: String) -> [SegmentRange]? {
-        guard let segments else {
-            return nil
-        }
+        guard let segments, segments.isEmpty == false else { return nil }
 
         let utf16TotalLength = sourceText.utf16.count
-        guard utf16TotalLength > 0 else {
-            return nil
-        }
+        guard utf16TotalLength > 0 else { return nil }
 
-        let normalizedRanges = segments
-            .filter { segmentRange in
-                segmentRange.start >= 0
-                    && segmentRange.end > segmentRange.start
-                    && segmentRange.end <= utf16TotalLength
-            }
-            .sorted { lhs, rhs in
-                if lhs.start != rhs.start {
-                    return lhs.start < rhs.start
-                }
-                return lhs.end < rhs.end
-            }
+        // Drop empty-surface entries while checking that remaining surfaces concatenate to source.
+        let filtered = segments.filter { $0.surface.isEmpty == false }
+        guard filtered.isEmpty == false else { return nil }
 
-        guard normalizedRanges.isEmpty == false else {
-            return nil
-        }
-
-        // Require exact contiguous coverage of the full text to keep range persistence deterministic.
         var cursor = 0
-        for segmentRange in normalizedRanges {
-            guard segmentRange.start == cursor else {
+        for segmentRange in filtered {
+            let surfaceLength = segmentRange.surface.utf16.count
+            guard cursor + surfaceLength <= utf16TotalLength else { return nil }
+            let startIndex = String.Index(utf16Offset: cursor, in: sourceText)
+            let endIndex = String.Index(utf16Offset: cursor + surfaceLength, in: sourceText)
+            guard startIndex < endIndex,
+                  String(sourceText[startIndex..<endIndex]) == segmentRange.surface else {
                 return nil
             }
-            cursor = segmentRange.end
+            cursor += surfaceLength
         }
+        guard cursor == utf16TotalLength else { return nil }
 
-        guard cursor == utf16TotalLength else {
-            return nil
-        }
-
-        return normalizedRanges
+        return filtered
     }
 
-    // Extracts furigana annotation maps from persisted segment ranges for direct restoration on load.
+    // Reconciles existing persisted segments against an updated note content by keeping the
+    // longest leading run of segments whose surfaces match a prefix of newContent, the longest
+    // trailing run whose surfaces match a suffix, and collapsing the diverging middle into a
+    // single stub segment. This preserves user splits/merges/furigana for every segment outside
+    // the edited region. Returns nil when newContent is empty.
+    func reconcileSegments(_ existing: [SegmentRange], to newContent: String) -> [SegmentRange]? {
+        let newUTF16 = newContent.utf16.count
+        guard newUTF16 > 0 else { return nil }
+
+        let lengths = existing.map { $0.surface.utf16.count }
+
+        // Walk from the front: accept each segment whose surface matches the corresponding
+        // UTF-16 slice of newContent starting at the current prefix cursor.
+        var prefixCount = 0
+        var prefixOffset = 0
+        for (index, segment) in existing.enumerated() {
+            let length = lengths[index]
+            guard length > 0, prefixOffset + length <= newUTF16 else { break }
+            let startIndex = String.Index(utf16Offset: prefixOffset, in: newContent)
+            let endIndex = String.Index(utf16Offset: prefixOffset + length, in: newContent)
+            guard startIndex < endIndex,
+                  String(newContent[startIndex..<endIndex]) == segment.surface else { break }
+            prefixCount += 1
+            prefixOffset += length
+        }
+
+        // If the entire existing array already matches new content exactly, pass through.
+        if prefixCount == existing.count, prefixOffset == newUTF16 {
+            return existing
+        }
+
+        // Walk from the back, halting before prefixCount so prefix and suffix cannot overlap.
+        var suffixCount = 0
+        var suffixStartInNew = newUTF16
+        var i = existing.count - 1
+        while i >= prefixCount {
+            let length = lengths[i]
+            let startOffset = suffixStartInNew - length
+            guard length > 0, startOffset >= prefixOffset else { break }
+            let startIndex = String.Index(utf16Offset: startOffset, in: newContent)
+            let endIndex = String.Index(utf16Offset: suffixStartInNew, in: newContent)
+            guard startIndex < endIndex,
+                  String(newContent[startIndex..<endIndex]) == existing[i].surface else { break }
+            suffixCount += 1
+            suffixStartInNew = startOffset
+            i -= 1
+        }
+
+        var reconciled: [SegmentRange] = []
+        reconciled.append(contentsOf: existing.prefix(prefixCount))
+        if suffixStartInNew > prefixOffset {
+            let startIndex = String.Index(utf16Offset: prefixOffset, in: newContent)
+            let endIndex = String.Index(utf16Offset: suffixStartInNew, in: newContent)
+            let middleSurface = String(newContent[startIndex..<endIndex])
+            // Retokenize the diverging middle in isolation so newly-typed text still gets
+            // lattice-based segmentation; customizations on either side remain pinned by the
+            // surrounding preserved segments. Context-sensitive merges across the splice are
+            // intentionally suppressed — neighbors are user-customized and must not shift.
+            let middleSegments = tokenizeSurfaceForReconcile(middleSurface)
+            reconciled.append(contentsOf: middleSegments)
+        }
+        reconciled.append(contentsOf: existing.suffix(suffixCount))
+
+        return reconciled.isEmpty ? nil : reconciled
+    }
+
+    // Runs the active segmenter against a substring and maps the resulting edges into
+    // order-only segment ranges. Falls back to a single-segment wrapper when the segmenter
+    // yields nothing usable (e.g. resources not ready), so concat-equals-content still holds.
+    private func tokenizeSurfaceForReconcile(_ surface: String) -> [SegmentRange] {
+        guard surface.isEmpty == false else { return [] }
+        let edges = segmenter.longestMatchEdges(for: surface)
+        guard edges.isEmpty == false else {
+            return [SegmentRange(surface: surface)]
+        }
+
+        let produced = edges.map { SegmentRange(surface: $0.surface) }
+        // Guard against a segmenter that fails to cover the full substring — preserve the
+        // original surface as one segment rather than corrupt the concat invariant.
+        guard produced.map(\.surface).joined() == surface else {
+            return [SegmentRange(surface: surface)]
+        }
+        return produced
+    }
+
+    // Extracts absolute-offset furigana maps from persisted order-only segments by walking
+    // the surface cursor. Annotations are stored segment-relative and rebased here.
     func furiganaFromSegmentRanges(_ segments: [SegmentRange]) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
         var byLocation: [Int: String] = [:]
         var lengthByLocation: [Int: Int] = [:]
+        var cursor = 0
         for segment in segments {
-            guard let annotations = segment.furigana else { continue }
-            for annotation in annotations {
-                byLocation[annotation.start] = annotation.reading
-                lengthByLocation[annotation.start] = annotation.end - annotation.start
+            let surfaceLength = segment.surface.utf16.count
+            if let annotations = segment.furigana {
+                for annotation in annotations {
+                    let absoluteStart = cursor + annotation.start
+                    let length = annotation.end - annotation.start
+                    guard length > 0 else { continue }
+                    byLocation[absoluteStart] = annotation.reading
+                    lengthByLocation[absoluteStart] = length
+                }
             }
+            cursor += surfaceLength
         }
         return (byLocation: byLocation, lengthByLocation: lengthByLocation)
     }

@@ -7,7 +7,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     private let deinflector: Deinflector?
     private let config: SegmenterConfig
     private let scoring: SegmenterScoring
-    private let boundaryCharacters: Set<Character> = [
+    // Shared set of characters that are always their own segment — single source of truth for
+    // every segmentation path (main segmenter, preview, anything else that needs to agree on
+    // where punctuation splits).
+    static let boundaryCharacters: Set<Character> = [
         " ", "\t", "\n", "\r", "　",
         ".", ",", "!", "?", ";", ":",
         "。", "、", "！", "？", "・",
@@ -16,6 +19,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         "[", "]", "{", "}",
         "-", "—", "…", "，", "．"
     ]
+    private var boundaryCharacters: Set<Character> { Self.boundaryCharacters }
 
     // Stores trie dependency used for prefix lookup when constructing lattices.
     init(

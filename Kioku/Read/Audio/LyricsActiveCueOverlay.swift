@@ -94,6 +94,7 @@ struct LyricsActiveCueOverlay: View {
                 furiganaBySegmentLocation: localFurigana,
                 furiganaLengthBySegmentLocation: localFuriganaLength,
                 isVisualEnhancementsEnabled: true,
+                isRubySpacingEnabled: true,
                 isColorAlternationEnabled: true,
                 isHighlightUnknownEnabled: false,
                 unknownSegmentLocations: [],

@@ -111,17 +111,10 @@ extension ReadView {
         _ response: LLMCorrectionResponse,
         originalText: String
     ) -> LLMCorrectionResult {
-        // Build UTF-16 SegmentRange values by walking the surfaces in order.
-        // This matches how export/import encodes segments.
-        var ranges: [SegmentRange] = []
-        var utf16Cursor = 0
-
-        for entry in response.segments {
-            let utf16Length = entry.surface.utf16.count
-            guard utf16Length > 0 else { continue }
-            ranges.append(SegmentRange(start: utf16Cursor, end: utf16Cursor + utf16Length, surface: entry.surface))
-            utf16Cursor += utf16Length
-        }
+        // Build order-only SegmentRange values from the response surfaces.
+        let ranges: [SegmentRange] = response.segments
+            .filter { $0.surface.isEmpty == false }
+            .map { SegmentRange(surface: $0.surface) }
 
         // Run the same contiguous-coverage validation used by loadSelectedNoteIfNeeded.
         guard let validatedRanges = normalizedSegmentRanges(ranges, for: originalText) else {
