@@ -15,6 +15,7 @@ extension FuriganaTextRenderer {
         furiganaFont: UIFont
     ) -> Bool {
         guard isVisualEnhancementsEnabled,
+              isRubySpacingEnabled,
               furiganaBySegmentLocation.isEmpty == false,
               let tlm = textView.textLayoutManager,
               let tcm = tlm.textContentManager else {

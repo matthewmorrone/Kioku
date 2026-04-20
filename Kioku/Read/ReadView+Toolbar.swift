@@ -211,6 +211,14 @@ extension ReadView {
             ) {
                 isLineWrappingEnabled.toggle()
             }
+
+            displayOptionRow(
+                title: "Ruby Spacing",
+                systemImage: isRubySpacingEnabled ? "arrow.left.and.right.text.vertical" : "arrow.left.and.right",
+                isEnabled: isRubySpacingEnabled
+            ) {
+                isRubySpacingEnabled.toggle()
+            }
         }
         .padding(12)
         .frame(width: 270)

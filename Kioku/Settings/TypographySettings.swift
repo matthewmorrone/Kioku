@@ -8,11 +8,11 @@ enum TypographySettings {
 
     static let defaultTextSize = 18.0
     static let defaultLineSpacing = 6.0
-    static let defaultKerning = 0.0
+    static let defaultKerning = 1.0
     static let defaultFuriganaGap = 2.0
 
     static let textSizeRange = 12.0...36.0
     static let lineSpacingRange = 0.0...24.0
-    static let kerningRange = 0.0...12.0
+    static let kerningRange = 1.0...12.0
     static let furiganaGapRange = 0.0...10.0
 }

@@ -51,15 +51,15 @@ struct SettingsPreviewRenderer: View {
         }
         ranges.sort { $0.location < $1.location }
 
-        // Fill gaps between furigana words with non-furigana segments.
+        // Fill gaps between furigana words with non-furigana segments. Split each gap on
+        // sentence punctuation so 、。！？ end up as their own segments instead of glued
+        // to the kana next to them — matches the read tab's segmentation where punctuation
+        // is always its own token.
         var result: [Range<String.Index>] = []
         var cursor = 0
         for r in ranges {
             if r.location > cursor {
-                let gapNS = NSRange(location: cursor, length: r.location - cursor)
-                if let gapRange = Range(gapNS, in: text) {
-                    result.append(gapRange)
-                }
+                appendGapSegments(from: cursor, to: r.location, in: text, into: &result)
             }
             let wordNS = NSRange(location: r.location, length: r.length)
             if let wordRange = Range(wordNS, in: text) {
@@ -68,12 +68,59 @@ struct SettingsPreviewRenderer: View {
             cursor = r.location + r.length
         }
         if cursor < nsText.length {
-            let tailNS = NSRange(location: cursor, length: nsText.length - cursor)
+            appendGapSegments(from: cursor, to: nsText.length, in: text, into: &result)
+        }
+        return result
+    }
+
+    // Breaks a UTF-16 gap range into segments, emitting each sentence-punctuation character as
+    // its own segment and grouping all other characters into contiguous text-run segments.
+    private func appendGapSegments(
+        from startOffset: Int,
+        to endOffset: Int,
+        in text: String,
+        into result: inout [Range<String.Index>]
+    ) {
+        let nsText = text as NSString
+        var runStart: Int? = startOffset
+        var cursor = startOffset
+
+        while cursor < endOffset {
+            let charRange = nsText.rangeOfComposedCharacterSequence(at: cursor)
+            let charText = nsText.substring(with: charRange)
+            let isPunctuation = Self.isStandaloneSegmentPunctuation(charText)
+
+            if isPunctuation {
+                if let runFrom = runStart, runFrom < charRange.location {
+                    let runNS = NSRange(location: runFrom, length: charRange.location - runFrom)
+                    if let runRange = Range(runNS, in: text) {
+                        result.append(runRange)
+                    }
+                }
+                if let punctRange = Range(charRange, in: text) {
+                    result.append(punctRange)
+                }
+                runStart = charRange.location + charRange.length
+            } else if runStart == nil {
+                runStart = charRange.location
+            }
+
+            cursor = charRange.location + charRange.length
+        }
+
+        if let runFrom = runStart, runFrom < endOffset {
+            let tailNS = NSRange(location: runFrom, length: endOffset - runFrom)
             if let tailRange = Range(tailNS, in: text) {
                 result.append(tailRange)
             }
         }
-        return result
+    }
+
+    // Defers to the read segmenter's shared boundary set so the preview splits on exactly the
+    // same characters as the real segmentation path — no parallel list to drift out of sync.
+    private static func isStandaloneSegmentPunctuation(_ grapheme: String) -> Bool {
+        guard grapheme.count == 1, let char = grapheme.first else { return false }
+        return Segmenter.boundaryCharacters.contains(char)
     }
 
     // Maps segment UTF-16 start locations to their furigana readings.
@@ -118,6 +165,7 @@ struct SettingsPreviewRenderer: View {
             furiganaBySegmentLocation: furiganaBySegmentLocation,
             furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
             isVisualEnhancementsEnabled: true,
+            isRubySpacingEnabled: true,
             isColorAlternationEnabled: true,
             isHighlightUnknownEnabled: false,
             unknownSegmentLocations: [],

@@ -1,6 +1,8 @@
 import Foundation
 
-// A single furigana (ruby) annotation within a segment, stored as absolute UTF-16 offsets in the note text.
+// A single furigana (ruby) annotation, stored as UTF-16 offsets relative to the
+// parent SegmentRange's surface, half-open [start, end). Relative offsets keep
+// annotations stable under text edits outside the segment.
 struct FuriganaAnnotation: Codable, Equatable, Hashable {
     var start: Int
     var end: Int

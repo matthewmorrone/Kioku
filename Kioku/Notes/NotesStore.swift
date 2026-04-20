@@ -259,7 +259,7 @@ final class NotesStore: ObservableObject {
         }
 
         // Guarantees at least one export segment for non-empty content even when no manual segmentation exists.
-        return [SegmentRange(start: 0, end: utf16Length, surface: note.content)]
+        return [SegmentRange(surface: note.content)]
     }
 
     // Persists the current notes array into user defaults immediately.
