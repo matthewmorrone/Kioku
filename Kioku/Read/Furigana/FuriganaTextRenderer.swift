@@ -277,6 +277,107 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             illegalBoundaryRect = boundaryRect
         }
 
+        // Ruby-spacing kern pass: before furigana frames are computed, measure each
+        // segment's envelope (kanji advance box ∪ predicted ruby frame), detect same-line
+        // neighbor overlaps, and apply the overlap as trailing kern on the last UTF-16
+        // unit of the first segment of each pair. Runs before furigana placement so the
+        // ruby frames computed below see the post-kern glyph positions.
+        if isRubySpacingEnabled {
+            let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+            let baseFont = UIFont.systemFont(ofSize: textSize)
+            struct EnvelopeEntry {
+                let text: String
+                let leftX: CGFloat
+                let rightX: CGFloat
+                let lineY: CGFloat
+                let nsRange: NSRange
+            }
+            // Recomputes every segment's envelope (kanji advance box ∪ predicted ruby frame)
+            // from current TextKit geometry. Called once before kern application and once
+            // after, so each pass sees live positions rather than stale measurements.
+            let computeEntries: () -> [EnvelopeEntry] = {
+                var result: [EnvelopeEntry] = []
+                for segmentRange in segmentationRanges {
+                    let segmentText = String(text[segmentRange])
+                    guard !segmentText.unicodeScalars.allSatisfy({ ignoredScalars.contains($0) }) else { continue }
+                    let nsRange = NSRange(segmentRange, in: text)
+                    guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+                    guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
+                    // Compute the envelope's right edge as segmentRect.minX + measured
+                    // surface width (with the configured global kerning). This pins the right
+                    // edge to the segment's intrinsic glyph run — no trailing ruby-spacing kern
+                    // baked in — so applying kern to A's last char moves only B's leftX, and
+                    // overlap reduces by the full kern amount.
+                    let surfaceString = String(text[segmentRange])
+                    let measuredWidth = measureTextWidth(surfaceString, font: UIFont.systemFont(ofSize: textSize), kerning: kerning)
+                    var envelopeMinX = segmentRect.minX
+                    var envelopeMaxX = segmentRect.minX + measuredWidth
+                    if let furigana = furiganaBySegmentLocation[nsRange.location],
+                       !furigana.isEmpty,
+                       let length = furiganaLengthBySegmentLocation[nsRange.location], length > 0,
+                       let surfaceRange = Range(NSRange(location: nsRange.location, length: length), in: text),
+                       let displayReading = FuriganaAttributedString.normalizedDisplayReading(
+                           surface: String(text[surfaceRange]), reading: furigana
+                       ) {
+                        let furiganaWidth = measureTextWidth(displayReading, font: UIFont.systemFont(ofSize: textSize * 0.5), kerning: 0)
+                        let visualHeadwordWidth = measureTextWidth(String(text[surfaceRange]), font: baseFont, kerning: 0)
+                        let kanjiVisualMidX = segmentRect.minX + visualHeadwordWidth / 2
+                        let furiganaMinX = kanjiVisualMidX - furiganaWidth / 2
+                        let furiganaMaxX = kanjiVisualMidX + furiganaWidth / 2
+                        envelopeMinX = min(envelopeMinX, furiganaMinX)
+                        envelopeMaxX = max(envelopeMaxX, furiganaMaxX)
+                    }
+                    result.append(EnvelopeEntry(text: segmentText, leftX: envelopeMinX, rightX: envelopeMaxX, lineY: segmentRect.midY, nsRange: nsRange))
+                }
+                return result
+            }
+
+            let entries = computeEntries()
+            var didApplyKern = false
+            let textStorage = textView.textStorage
+            for i in 0..<max(0, entries.count - 1) {
+                let a = entries[i]
+                let b = entries[i + 1]
+                guard abs(a.lineY - b.lineY) < 1.0 else { continue }
+                guard a.rightX > b.leftX else { continue }
+                let overlap = CGFloat(Int(ceil(a.rightX - b.leftX)))
+                print("[envelope-overlap] first=\(a.text) next=\(b.text) overlap=\(Int(overlap))")
+                let lastCharLocation = a.nsRange.location + a.nsRange.length - 1
+                let lastCharRange = NSRange(location: lastCharLocation, length: 1)
+                guard lastCharLocation >= 0,
+                      lastCharLocation + 1 <= textStorage.length else { continue }
+                let existingRaw = textStorage.attribute(.kern, at: lastCharLocation, effectiveRange: nil)
+                let existing = CGFloat((existingRaw as? NSNumber)?.doubleValue ?? kerning)
+                let newKern = existing + overlap
+                print("[kern-apply] seg=\(a.text) existing=\(existing) applied=\(newKern) delta=\(newKern - existing)")
+                textStorage.addAttribute(.kern, value: newKern, range: lastCharRange)
+                didApplyKern = true
+            }
+            if didApplyKern {
+                // Attribute-only edits don't always invalidate cached TextKit 2 layout
+                // fragments, so force invalidation of the full document range before
+                // re-running layout — otherwise the re-measure below reads stale glyph
+                // positions and the applied kern looks like it only partially shifted B.
+                if let tlm = textView.textLayoutManager,
+                   let docRange = tlm.textContentManager?.documentRange {
+                    tlm.invalidateLayout(for: docRange)
+                }
+                ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+                // Recompute envelopes against post-kern glyph positions and report any
+                // residual overlaps that escaped the first correction pass.
+                let postEntries = computeEntries()
+                for i in 0..<max(0, postEntries.count - 1) {
+                    let a = postEntries[i]
+                    let b = postEntries[i + 1]
+                    guard abs(a.lineY - b.lineY) < 1.0 else { continue }
+                    if a.rightX > b.leftX {
+                        let remaining = Int(ceil(a.rightX - b.leftX))
+                        print("[envelope-overlap-post] first=\(a.text) next=\(b.text) overlap=\(remaining)")
+                    }
+                }
+            }
+        }
+
         var furiganaStrings: [String] = []
         var furiganaFrames: [CGRect] = []
         var furiganaColors: [UIColor] = []
@@ -314,13 +415,16 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 }
 
                 let furiganaWidth = measureTextWidth(displayReading, font: furiganaFont, kerning: 0)
-                // segmentRect.maxX includes any trailing envelope-padding kern on the segment's
-                // last char, so segmentRect.midX is offset from the kanji's actual visual center
-                // by kern/2. Using the measured visual width instead centers the ruby over the
-                // glyphs you can see — which also makes the envelope's left edge land where the
-                // math predicts (e.g. on the container inset guide for line-start segments).
-                let visualHeadwordWidth = measureTextWidth(String(text[surfaceRange]), font: UIFont.systemFont(ofSize: textSize), kerning: 0)
-                let kanjiVisualMidX = segmentRect.minX + visualHeadwordWidth / 2
+                // Measure the kanji's visual width from TextKit's own last-char rect so the
+                // center accounts for global kerning between multi-char segments (嗚呼 etc.)
+                // without including the trailing kern we apply for ruby spacing — that kern
+                // sits AFTER the last char, so querying the last char's rect alone excludes it.
+                let kanjiLastCharLocation = nsRange.location + nsRange.length - 1
+                let kanjiLastCharRange = NSRange(location: kanjiLastCharLocation, length: 1)
+                let kanjiVisualMaxX = segmentRectInTextView(textView: textView, nsRange: kanjiLastCharRange)?.maxX
+                    ?? segmentRect.maxX
+                let kanjiVisualWidth = kanjiVisualMaxX - segmentRect.minX
+                let kanjiVisualMidX = segmentRect.minX + kanjiVisualWidth / 2
                 let furiganaX = kanjiVisualMidX - furiganaWidth / 2
                 let furiganaFrame = CGRect(
                     x: furiganaX,
@@ -378,14 +482,17 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                             let kanjiRect = segmentRectInTextView(
                                 textView: textView,
                                 nsRange: NSRange(location: kanjiLocation, length: kanjiLength)
-                            ),
-                            let kanjiSurfaceRange = Range(NSRange(location: kanjiLocation, length: kanjiLength), in: text)
+                            )
                         else { continue }
-                        // Use the kanji's visual midX (minX + measured width / 2) instead of
-                        // kanjiRect.midX, since the rect's right edge includes trailing kern and
-                        // would report a false-aligned reading when the ruby is actually offset.
-                        let kanjiVisualWidth = measureTextWidth(String(text[kanjiSurfaceRange]), font: UIFont.systemFont(ofSize: textSize), kerning: 0)
-                        let kanjiVisualMidX = kanjiRect.minX + kanjiVisualWidth / 2
+                        // Visual midX derived from TextKit's own last-char rect so the bisector
+                        // uses the same centering math as the furigana placement — otherwise
+                        // multi-char kanji whose global kerning widens the rendered width are
+                        // reported as misaligned even when the ruby is correctly centered.
+                        let kanjiLastCharLoc = kanjiLocation + kanjiLength - 1
+                        let kanjiLastCharRange = NSRange(location: kanjiLastCharLoc, length: 1)
+                        let kanjiVisualMaxX = segmentRectInTextView(textView: textView, nsRange: kanjiLastCharRange)?.maxX
+                            ?? kanjiRect.maxX
+                        let kanjiVisualMidX = kanjiRect.minX + (kanjiVisualMaxX - kanjiRect.minX) / 2
                         let furiganaFrame = furiganaFrameByLocation[kanjiLocation] ?? .zero
                         bisectorHeadwordMidXs.append(kanjiVisualMidX)
                         bisectorHeadwordRects.append(kanjiRect)
