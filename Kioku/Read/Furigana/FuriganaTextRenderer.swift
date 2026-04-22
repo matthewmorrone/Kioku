@@ -181,8 +181,15 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             left: 4, bottom: 8, right: 4
         )
 
-        if context.coordinator.shouldRenderText(for: baseTextRenderSignature) {
+        let didRenderText = context.coordinator.shouldRenderText(for: baseTextRenderSignature)
+        if didRenderText {
             context.coordinator.markFirstTextRenderIfNeeded()
+            // Clear stale exclusion paths before applying new attributed text. Without this,
+            // the existing exclusions shift line-start glyphs right during the fresh layout pass
+            // so applyLeftInsetExclusionsForWideRuby's `<= lineStartTolerance` check fails on
+            // the already-shifted segments, which then clears the exclusions and snaps glyphs
+            // back to x=0 — causing visible alignment jitter on every text-change render.
+            textView.textContainer.exclusionPaths = []
             // Use the external scroll target instead of the current UITextView offset so that
             // scroll-to-top on note switch (sharedScrollOffsetY = 0) takes effect when text changes.
             // During normal style updates the external offset stays in sync with the actual position.
@@ -277,12 +284,14 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             illegalBoundaryRect = boundaryRect
         }
 
-        // Ruby-spacing kern pass: before furigana frames are computed, measure each
-        // segment's envelope (kanji advance box ∪ predicted ruby frame), detect same-line
-        // neighbor overlaps, and apply the overlap as trailing kern on the last UTF-16
-        // unit of the first segment of each pair. Runs before furigana placement so the
-        // ruby frames computed below see the post-kern glyph positions.
-        if isRubySpacingEnabled {
+        // Ruby-spacing kern pass: measure each segment's envelope (kanji advance box ∪
+        // predicted ruby frame), detect same-line neighbor overlaps, and apply the overlap
+        // as trailing kern on the last UTF-16 unit of the first segment of each pair.
+        // Gated on didRenderText so scroll-driven renders skip it entirely — kerns are
+        // already committed to textStorage from the text-change pass and don't need
+        // recomputing. Re-running on every scroll would do O(N) firstRect queries per
+        // frame and, if any overlap is still detected, compound the kerns on each tick.
+        if didRenderText, isRubySpacingEnabled {
             let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
             let baseFont = UIFont.systemFont(ofSize: textSize)
             struct EnvelopeEntry {
@@ -341,7 +350,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 guard abs(a.lineY - b.lineY) < 1.0 else { continue }
                 guard a.rightX > b.leftX else { continue }
                 let overlap = CGFloat(Int(ceil(a.rightX - b.leftX)))
-                print("[envelope-overlap] first=\(a.text) next=\(b.text) overlap=\(Int(overlap))")
                 let lastCharLocation = a.nsRange.location + a.nsRange.length - 1
                 let lastCharRange = NSRange(location: lastCharLocation, length: 1)
                 guard lastCharLocation >= 0,
@@ -349,7 +357,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 let existingRaw = textStorage.attribute(.kern, at: lastCharLocation, effectiveRange: nil)
                 let existing = CGFloat((existingRaw as? NSNumber)?.doubleValue ?? kerning)
                 let newKern = existing + overlap
-                print("[kern-apply] seg=\(a.text) existing=\(existing) applied=\(newKern) delta=\(newKern - existing)")
                 textStorage.addAttribute(.kern, value: newKern, range: lastCharRange)
                 didApplyKern = true
             }
@@ -363,16 +370,19 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     tlm.invalidateLayout(for: docRange)
                 }
                 ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
-                // Recompute envelopes against post-kern glyph positions and report any
-                // residual overlaps that escaped the first correction pass.
-                let postEntries = computeEntries()
-                for i in 0..<max(0, postEntries.count - 1) {
-                    let a = postEntries[i]
-                    let b = postEntries[i + 1]
-                    guard abs(a.lineY - b.lineY) < 1.0 else { continue }
-                    if a.rightX > b.leftX {
-                        let remaining = Int(ceil(a.rightX - b.leftX))
-                        print("[envelope-overlap-post] first=\(a.text) next=\(b.text) overlap=\(remaining)")
+                // Post-kern diagnostic: recompute envelopes and log residuals. Only runs
+                // when envelope-rects debug flag is on — in production this is a full
+                // O(N) firstRect pass that blocks the main thread for no visual benefit.
+                if debugEnvelopeRects {
+                    let postEntries = computeEntries()
+                    for i in 0..<max(0, postEntries.count - 1) {
+                        let a = postEntries[i]
+                        let b = postEntries[i + 1]
+                        guard abs(a.lineY - b.lineY) < 1.0 else { continue }
+                        if a.rightX > b.leftX {
+                            NSLog("[envelope-overlap-post] first=%@ next=%@ overlap=%d",
+                                  a.text, b.text, Int(ceil(a.rightX - b.leftX)))
+                        }
                     }
                 }
             }
@@ -783,12 +793,12 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         for location in changedReadingLocations.sorted() {
             hasher.combine(location)
         }
+        // Only width affects text wrapping and glyph positions. Height and contentSize are derived
+        // outputs — including them would trigger re-renders on every layout-driven contentSize
+        // patch, and externalContentOffsetY changes on every scroll tick which would force O(N)
+        // firstRect queries per frame. The overlay is a subview in content-space so its drawn
+        // content is correct regardless of the current scroll position.
         hasher.combine(textView.bounds.width)
-        hasher.combine(textView.bounds.height)
-        hasher.combine(textView.contentSize.width)
-        hasher.combine(textView.contentSize.height)
-        // Keeps furigana geometry checks in sync with fine-grained scroll movement.
-        hasher.combine(Int((externalContentOffsetY * 10).rounded()))
         // Debug flag changes must invalidate the overlay so toggling takes effect immediately.
         hasher.combine(debugFuriganaRects)
         hasher.combine(debugHeadwordRects)
@@ -832,10 +842,11 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         // Custom token color changes affect ReadTextStyleResolver output; include them in the text signature.
         hasher.combine(customEvenSegmentColorHex)
         hasher.combine(customOddSegmentColorHex)
+        // Width affects text wrapping and therefore which segments sit at line-start positions.
+        // Height and contentSize are derived outputs: including them here causes re-renders every
+        // time the layout pass patches contentSize, creating an attribution→layout→patch→re-render
+        // oscillation that resets exclusion paths and produces visible alignment jitter.
         hasher.combine(textView.bounds.width)
-        hasher.combine(textView.bounds.height)
-        hasher.combine(textView.contentSize.width)
-        hasher.combine(textView.contentSize.height)
         return hasher.finalize()
     }
 
