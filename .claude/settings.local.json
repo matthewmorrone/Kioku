@@ -9,7 +9,9 @@
       "Grep(*)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "mcp__xcode__session_set_defaults",
-      "mcp__xcode__build_run_sim"
+      "mcp__xcode__build_run_sim",
+      "mcp__xcode__build_sim",
+      "mcp__xcode__list_sims"
     ]
   }
 }
