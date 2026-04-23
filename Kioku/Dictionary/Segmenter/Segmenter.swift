@@ -112,59 +112,35 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         return edges
     }
 
-    // Prints lattice edges with integer offsets and matched text for segmenter debugging.
+    // Prints lattice edges grouped by start position. Uses buildLattice as the single
+    // source of truth so the output reflects exactly what the segmenter reasons over —
+    // no duplicated traversal logic, no drift from kana filtering or maxMatchesPerPosition.
     func debugPrintLattice(for text: String) {
-        var index = text.startIndex
+        let edges = buildLattice(for: text)
 
-        while index < text.endIndex {
-            if boundaryCharacters.contains(text[index]) {
-                let nextIndex = text.index(after: index)
-                let boundarySurface = String(text[index..<nextIndex])
-                let startOffset = text.distance(from: text.startIndex, to: index)
-                let endOffset = text.distance(from: text.startIndex, to: nextIndex)
-                print("\(startOffset)→\(endOffset) \(boundarySurface) [lemma: \(boundarySurface)]")
-                index = nextIndex
-                continue
-            }
+        var byStart: [Int: [LatticeEdge]] = [:]
+        for edge in edges {
+            let offset = text.distance(from: text.startIndex, to: edge.start)
+            byStart[offset, default: []].append(edge)
+        }
 
-            var keptMatches = 0
-            var endIndex = index
-
-            while endIndex < text.endIndex {
-                let nextCharacter = text[endIndex]
-                if isLineBreakCharacter(nextCharacter) {
-                    break
-                }
-
-                endIndex = text.index(after: endIndex)
-                let surfaceRange = index..<endIndex
-                let surface = String(text[surfaceRange])
-                let characterLength = text.distance(from: surfaceRange.lowerBound, to: surfaceRange.upperBound)
-                if characterLength > config.maxMatchLength {
-                    break
-                }
-
-                let startOffset = text.distance(from: text.startIndex, to: surfaceRange.lowerBound)
-                let endOffset = text.distance(from: text.startIndex, to: surfaceRange.upperBound)
-
-                let matchedLemmas = resolvedTrieLemmas(for: surface).sorted()
-                if matchedLemmas.isEmpty == false {
-                    for lemma in matchedLemmas {
-                        let resolutionSummary = debugResolutionSummary(for: surface, lemma: lemma)
-                        print("\(startOffset)→\(endOffset) \(escapedForDebug(surface)) [lemma: \(escapedForDebug(lemma))] [\(resolutionSummary)]")
-                        keptMatches += 1
-
-                        if keptMatches >= config.maxMatchesPerPosition {
-                            break
-                        }
+        print("=== LATTICE (\(edges.count) edges) ===")
+        for startOffset in byStart.keys.sorted() {
+            print("\(startOffset):")
+            for edge in byStart[startOffset]!.sorted(by: { $0.surface < $1.surface }) {
+                let endOffset = text.distance(from: text.startIndex, to: edge.end)
+                let lemmas = resolvedTrieLemmas(for: edge.surface).sorted()
+                if lemmas.isEmpty {
+                    print("  [\(startOffset),\(endOffset)) \(escapedForDebug(edge.surface))")
+                } else {
+                    for lemma in lemmas {
+                        let summary = debugResolutionSummary(for: edge.surface, lemma: lemma)
+                        print("  [\(startOffset),\(endOffset)) \(escapedForDebug(edge.surface)) → \(escapedForDebug(lemma)) [\(summary)]")
                     }
                 }
-
-                if keptMatches >= config.maxMatchesPerPosition {break}
             }
-
-            index = text.index(after: index)
         }
+        print("================")
     }
 
     // Builds a greedy segmentation by selecting the farthest-reaching edge at each text index.
