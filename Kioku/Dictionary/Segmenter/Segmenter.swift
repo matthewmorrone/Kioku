@@ -7,6 +7,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     private let deinflector: Deinflector?
     private let config: SegmenterConfig
     private let scoring: SegmenterScoring
+    // Per-entry POS bitfields loaded from the dictionary; empty when built without metadata.
+    private let partOfSpeechByEntryID: [Int: UInt64]
+    // Set to true locally to print POS transition decisions during Viterbi runs.
+    private let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
     // every segmentation path (main segmenter, preview, anything else that needs to agree on
     // where punctuation splits).
@@ -25,11 +29,13 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     init(
         trie: DictionaryTrie,
         deinflector: Deinflector? = nil,
+        partOfSpeechByEntryID: [Int: UInt64] = [:],
         config: SegmenterConfig = SegmenterConfig(),
         scoring: SegmenterScoring = .default
     ) {
         self.trie = trie
         self.deinflector = deinflector
+        self.partOfSpeechByEntryID = partOfSpeechByEntryID
         self.config = config
         self.scoring = scoring
     }
@@ -308,6 +314,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
         return index..<currentIndex
     }
+
     // Applies unknown penalty to non-dictionary non-boundary edges so punctuation separators are not over-penalized.
     private func shouldApplyUnknownSegmentPenalty(_ edge: LatticeEdge) -> Bool {
         if isDictionaryEdge(edge) { return false }
@@ -508,6 +515,82 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             .replacingOccurrences(of: "\r", with: "\\r")
             .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
             .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+    }
+
+    // MARK: - Viterbi (not yet wired into the active segmentation path)
+
+    // Selects the minimum-cost lattice path using Viterbi DP with POS transition costs.
+    // To enable: replace longestMatchSegments body with viterbiBestPath(for:).map { $0.start..<$0.end }
+    func viterbiBestPath(for text: String) -> [LatticeEdge] {
+        runViterbiAndAnnotateEdges(for: text).path
+    }
+
+    // Runs Viterbi search while attaching per-edge diagnostic score and predecessor-start metadata.
+    private func runViterbiAndAnnotateEdges(for text: String) -> (edges: [LatticeEdge], path: [LatticeEdge]) {
+        var edges = buildLattice(for: text)
+        guard !edges.isEmpty else { return (edges: [], path: []) }
+
+        var edgesByEnd: [String.Index: [Int]] = [:]
+        for (i, edge) in edges.enumerated() { edgesByEnd[edge.end, default: []].append(i) }
+
+        let sortedIndices = edges.indices.sorted { li, ri in
+            let le = text.distance(from: text.startIndex, to: edges[li].end)
+            let re = text.distance(from: text.startIndex, to: edges[ri].end)
+            if le == re {
+                return text.distance(from: text.startIndex, to: edges[li].start)
+                     < text.distance(from: text.startIndex, to: edges[ri].start)
+            }
+            return le < re
+        }
+
+        var bestScore: [Int: Int] = [:]
+        var back: [Int: Int?] = [:]
+
+        for i in sortedIndices {
+            let edge = edges[i]
+            let nodeCost = SegmenterScoring.edgeCost(edge)
+
+            if edge.start == text.startIndex {
+                bestScore[i] = nodeCost
+                back[i] = nil
+                edges[i].viterbiScore = nodeCost
+                edges[i].viterbiPrevStart = text.distance(from: text.startIndex, to: edge.start)
+                continue
+            }
+
+            var bestT: Int?
+            var bestPrev: Int?
+
+            for prev in edgesByEnd[edge.start] ?? [] {
+                guard let prevScore = bestScore[prev] else { continue }
+                let t = SegmenterScoring.transitionCost(prev: edges[prev].partOfSpeech, next: edge.partOfSpeech)
+                if shouldLogPOSTransitions && t != 0 {
+                    print("POS transition \(edges[prev].surface) → \(edge.surface) \(t)")
+                }
+                let score = prevScore + nodeCost + t
+                if bestT == nil || score < bestT! { bestT = score; bestPrev = prev }
+            }
+
+            if let resolved = bestT {
+                bestScore[i] = resolved
+                back[i] = bestPrev
+                edges[i].viterbiScore = resolved
+                edges[i].viterbiPrevStart = bestPrev.map {
+                    text.distance(from: text.startIndex, to: edges[$0].start)
+                }
+            }
+        }
+
+        let terminals = edges.indices.filter { edges[$0].end == text.endIndex && bestScore[$0] != nil }
+        guard let best = terminals.min(by: { (bestScore[$0] ?? Int.max) < (bestScore[$1] ?? Int.max) }) else {
+            return (edges: edges, path: [])
+        }
+
+        var pathIndices: [Int] = []
+        var cur: Int? = best
+        while let idx = cur { pathIndices.append(idx); cur = back[idx] ?? nil }
+        let path = pathIndices.reversed().map { edges[$0] }
+        return (edges: edges, path: path)
     }
 
 }
