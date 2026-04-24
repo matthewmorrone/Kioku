@@ -38,6 +38,11 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let debugFuriganaLineBands: Bool
     let debugBisectors: Bool
     let debugEnvelopeRects: Bool
+    // Draws a vertical reference line at textContainerInset.left and dumps numerical
+    // positions for each line-start segment, so wide-ruby overhang and envelope
+    // alignment can be diagnosed without relying on visual eyeballing of the
+    // dashed envelope rects.
+    let debugLeftInsetGuide: Bool
     let externalContentOffsetY: CGFloat
     let onScrollOffsetYChanged: (CGFloat) -> Void
     let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
@@ -616,8 +621,11 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             debugBisectorHeadwordRects: bisectorHeadwordRects,
             debugBisectorFuriganaRects: bisectorFuriganaRects,
             debugEnvelopeRectsEnabled: debugEnvelopeRects,
-            debugEnvelopeRects: debugEnvelopeRectsList
+            debugEnvelopeRects: debugEnvelopeRectsList,
+            debugLeftInsetGuideX: debugLeftInsetGuide ? textView.textContainerInset.left : nil
         )
+
+        if debugLeftInsetGuide { logLeftInsetGuide(textView: textView) }
         context.coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
 
         // If furigana data was present but no frames were produced, the text layout wasn't ready
@@ -806,6 +814,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         hasher.combine(debugFuriganaLineBands)
         hasher.combine(debugBisectors)
         hasher.combine(debugEnvelopeRects)
+        hasher.combine(debugLeftInsetGuide)
         hasher.combine(customEvenSegmentColorHex)
         hasher.combine(customOddSegmentColorHex)
         return hasher.finalize()
@@ -883,6 +892,55 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         }
 
         return playbackHighlightRangeOverride
+    }
+
+    // Logs per-segment position data for every line-start segment near the left inset.
+    // Kept out of updateUIView so the hot path stays clean.
+    private func logLeftInsetGuide(textView: UITextView) {
+        let insetLeft = textView.textContainerInset.left
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        let overhangsByLocation = lineStartOverhangsByLocation(furiganaFont: furiganaFont)
+        NSLog("[inset-guide] insetLeft=%.2f", Double(insetLeft))
+        let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+        for segmentRange in segmentationRanges {
+            let segmentText = String(text[segmentRange])
+            guard !segmentText.unicodeScalars.allSatisfy({ ignoredScalars.contains($0) }) else { continue }
+            let nsRange = NSRange(segmentRange, in: text)
+            guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+            guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
+            let lastCharMaxX = segmentRectInTextView(
+                textView: textView,
+                nsRange: NSRange(location: nsRange.location + nsRange.length - 1, length: 1)
+            )?.maxX ?? segmentRect.maxX
+            var envelopeMinX = segmentRect.minX
+            var envelopeMaxX = lastCharMaxX
+            if let reading = furiganaBySegmentLocation[nsRange.location],
+               !reading.isEmpty,
+               let kanjiLength = furiganaLengthBySegmentLocation[nsRange.location], kanjiLength > 0,
+               let kanjiSurfaceRange = Range(NSRange(location: nsRange.location, length: kanjiLength), in: text),
+               let displayReading = FuriganaAttributedString.normalizedDisplayReading(
+                   surface: String(text[kanjiSurfaceRange]), reading: reading
+               ),
+               let kanjiRect = segmentRectInTextView(
+                   textView: textView,
+                   nsRange: NSRange(location: nsRange.location, length: kanjiLength)
+               ) {
+                let kanjiLastMaxX = segmentRectInTextView(
+                    textView: textView,
+                    nsRange: NSRange(location: nsRange.location + kanjiLength - 1, length: 1)
+                )?.maxX ?? kanjiRect.maxX
+                let kanjiMidX = kanjiRect.minX + (kanjiLastMaxX - kanjiRect.minX) / 2
+                let furiWidth = measureTextWidth(displayReading, font: furiganaFont, kerning: 0)
+                envelopeMinX = min(envelopeMinX, kanjiMidX - furiWidth / 2)
+                envelopeMaxX = max(envelopeMaxX, kanjiMidX + furiWidth / 2)
+            }
+            let overhang = overhangsByLocation[nsRange.location] ?? 0
+            guard min(abs(envelopeMinX - insetLeft), abs(segmentRect.minX - insetLeft)) < 15.0 else { continue }
+            NSLog("[inset-guide] seg=%@ loc=%d segMinX=%.2f envMinX=%.2f envMaxX=%.2f overhang=%.2f Δ(env-inset)=%.2f y=%.1f",
+                  segmentText, nsRange.location,
+                  Double(segmentRect.minX), Double(envelopeMinX), Double(envelopeMaxX),
+                  Double(overhang), Double(envelopeMinX - insetLeft), Double(segmentRect.midY))
+        }
     }
 
     // Measures text width for furigana label sizing so readings don't collapse into truncation glyphs.

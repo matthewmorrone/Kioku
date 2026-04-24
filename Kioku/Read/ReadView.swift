@@ -41,6 +41,7 @@ struct ReadView: View {
     @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
     @AppStorage(DebugSettings.bisectorsKey) private var debugBisectors: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
+    @AppStorage(DebugSettings.leftInsetGuideKey) private var debugLeftInsetGuide: Bool = false
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
 
     @State var customTitle = ""
@@ -557,6 +558,7 @@ struct ReadView: View {
                     debugFuriganaLineBands: debugFuriganaLineBands,
                     debugBisectors: debugBisectors,
                     debugEnvelopeRects: debugEnvelopeRects,
+                    debugLeftInsetGuide: debugLeftInsetGuide,
                     externalContentOffsetY: sharedScrollOffsetY,
                     onScrollOffsetYChanged: { newOffsetY in
                         sharedScrollOffsetY = newOffsetY

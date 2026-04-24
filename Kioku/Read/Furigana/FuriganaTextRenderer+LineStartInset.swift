@@ -106,6 +106,13 @@ extension FuriganaTextRenderer {
         return result
     }
 
+    // Thin wrapper exposed to the diagnostic logger so "[inset-guide]" lines can
+    // report the same overhang values this file uses to build exclusion paths.
+    func lineStartOverhangsByLocation(furiganaFont: UIFont) -> [Int: CGFloat] {
+        let baseFont = UIFont.systemFont(ofSize: textSize)
+        return computeOverhangsBySegmentLocation(baseFont: baseFont, furiganaFont: furiganaFont)
+    }
+
     // Returns the half-overhang (furiWidth - headwordWidth) / 2 for every segment whose ruby
     // extends past its headword. Only positive values are included so callers can treat a
     // missing key as "no overhang".
