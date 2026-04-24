@@ -90,8 +90,16 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     // Builds the read-mode text view with a furigana overlay that scrolls with text content.
     func makeUIView(context: Context) -> UITextView {
         context.coordinator.markMakeUIViewIfNeeded()
-        let textView = TextViewFactory.makeTextView()
+        let textView = TextViewFactory.makeFuriganaRendererTextView()
         textView.delegate = context.coordinator
+        // Replay the latest render pipeline once SwiftUI's first layout pass resolves bounds.width,
+        // because firstRect returns empty rects at width=0 so the initial updateUIView produces no
+        // furigana frames. Without this hook the overlay stays empty until an unrelated state change
+        // (e.g. adjusting a slider) happens to trigger another SwiftUI update pass.
+        textView.onFirstLayoutResolved = { [weak textView] in
+            guard let textView = textView else { return }
+            context.coordinator.pendingRender?(textView)
+        }
         textView.textLayoutManager?.delegate = context.coordinator
         textView.tag = 7_331
         textView.backgroundColor = .clear
@@ -124,36 +132,51 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
     // Syncs text-view typography and positions furigana overlays above segment rects from the same layout engine.
     func updateUIView(_ uiView: UITextView, context: Context) {
+        // Capture the current input snapshot so the custom text view can replay the render pipeline
+        // after SwiftUI's first layout pass resolves bounds. Without this, the initial updateUIView
+        // call runs at width=0 and produces no furigana frames.
+        let captured = self
+        let coordinator = context.coordinator
+        coordinator.pendingRender = { textView in
+            captured.applyRenderState(on: textView, coordinator: coordinator)
+        }
+        applyRenderState(on: uiView, coordinator: coordinator)
+    }
+
+    // Runs the render pipeline: syncs text-view typography and positions furigana overlays above
+    // segment rects from the same layout engine. Invoked directly from updateUIView and replayed
+    // by the custom text view once SwiftUI resolves the initial bounds.
+    private func applyRenderState(on uiView: UITextView, coordinator: FuriganaTextRendererCoordinator) {
         guard let overlayView = uiView.viewWithTag(7_332) as? FuriganaOverlayView else { return }
         let textView = uiView
 
         guard isActive else {
-            context.coordinator.updateActiveState(isActive: false)
+            coordinator.updateActiveState(isActive: false)
             return
         }
 
-        context.coordinator.markFirstActiveUpdateIfNeeded(
+        coordinator.markFirstActiveUpdateIfNeeded(
             textLength: text.utf16.count,
             segmentCount: segmentationRanges.count,
             furiganaCount: furiganaBySegmentLocation.count
         )
 
-        context.coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
-        context.coordinator.onSegmentTapped = onSegmentTapped
-        context.coordinator.configureTapSegmentationRanges(segmentationRanges, in: text)
+        coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
+        coordinator.onSegmentTapped = onSegmentTapped
+        coordinator.configureTapSegmentationRanges(segmentationRanges, in: text)
         configureWrapping(for: textView)
-        if context.coordinator.shouldApplyInitialExternalSync(isActive: true) {
-            context.coordinator.markStartupPhase("FuriganaTextRenderer applying initial external scroll sync")
-            context.coordinator.applyExternalScrollIfNeeded(to: textView, targetOffsetY: externalContentOffsetY)
+        if coordinator.shouldApplyInitialExternalSync(isActive: true) {
+            coordinator.markStartupPhase("FuriganaTextRenderer applying initial external scroll sync")
+            coordinator.applyExternalScrollIfNeeded(to: textView, targetOffsetY: externalContentOffsetY)
         }
 
         if isOverlayFrozen {
-            context.coordinator.markStartupPhase("FuriganaTextRenderer overlay frozen")
+            coordinator.markStartupPhase("FuriganaTextRenderer overlay frozen")
             return
         }
 
         let renderSignature = makeRenderSignature(for: textView)
-        guard context.coordinator.shouldRender(for: renderSignature, boundsWidth: textView.bounds.width) else {
+        guard coordinator.shouldRender(for: renderSignature, boundsWidth: textView.bounds.width) else {
             return
         }
 
@@ -186,9 +209,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             left: 4, bottom: 8, right: 4
         )
 
-        let didRenderText = context.coordinator.shouldRenderText(for: baseTextRenderSignature)
+        let didRenderText = coordinator.shouldRenderText(for: baseTextRenderSignature)
         if didRenderText {
-            context.coordinator.markFirstTextRenderIfNeeded()
+            coordinator.markFirstTextRenderIfNeeded()
             // Clear stale exclusion paths before applying new attributed text. Without this,
             // the existing exclusions shift line-start glyphs right during the fresh layout pass
             // so applyLeftInsetExclusionsForWideRuby's `<= lineStartTolerance` check fails on
@@ -203,24 +226,26 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // so glyph positions used by overlay drawing are correct before the view is displayed.
             // Doing this inside the text-change branch avoids blocking the main thread on every
             // scroll-driven updateUIView call (which would cause gesture-gate timeouts on large notes).
-            ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+            ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: true)
             // Line-start inset pass: adds exclusion paths for any line whose first segment's
             // ruby overhangs left. Called unconditionally — when isRubySpacingEnabled is false
             // the helper itself skips work and clears any lingering exclusions, so flipping
             // the toggle off removes prior spacing corrections instead of leaving them stuck.
             if applyLeftInsetExclusionsForWideRuby(to: textView, furiganaFont: furiganaFont) {
-                ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+                ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: true)
             }
             let minOffsetY = -textView.adjustedContentInset.top
             let maxOffsetY = max(minOffsetY, textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom)
             let clampedOffsetY = min(max(externalContentOffsetY, minOffsetY), maxOffsetY)
             textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedOffsetY), animated: false)
-            context.coordinator.markTextRendered(signature: baseTextRenderSignature)
+            coordinator.markTextRendered(signature: baseTextRenderSignature)
         } else {
-            // Text is unchanged; the full layout from the last text-change pass is still valid.
-            // Run the viewport-only layout so newly-scrolled-into-view fragments are ready for
-            // overlay drawing without re-laying out the entire document.
-            ensureTextLayout(for: textView, coordinator: context.coordinator)
+            // Text is unchanged; a viewport-only pass is enough when the view scrolls, but a
+            // non-scrolling preview sizes itself to fit all content, so exhaustive layout keeps
+            // the last wrapped line's fragments ready for firstRect queries. Otherwise the last
+            // line's furigana can drop out whenever this branch runs without a prior exhaustive
+            // pass (e.g. on debug-flag-only changes in Settings).
+            ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: !textView.isScrollEnabled)
         }
 
         let overlayFrame = CGRect(
@@ -269,13 +294,13 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     : UIColor.systemOrange.withAlphaComponent(0.22)
             }
             playbackHighlightRect = playbackRect.insetBy(dx: -10, dy: -4)
-            context.coordinator.applyPlaybackAutoscrollIfNeeded(
+            coordinator.applyPlaybackAutoscrollIfNeeded(
                 to: textView,
                 cueIndex: activePlaybackCueIndex,
                 targetRect: playbackRect
             )
         } else {
-            context.coordinator.clearPlaybackAutoscrollState()
+            coordinator.clearPlaybackAutoscrollState()
         }
 
         var illegalBoundaryRect: CGRect?
@@ -374,7 +399,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                    let docRange = tlm.textContentManager?.documentRange {
                     tlm.invalidateLayout(for: docRange)
                 }
-                ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+                ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: true)
                 // Post-kern diagnostic: recompute envelopes and log residuals. Only runs
                 // when envelope-rects debug flag is on — in production this is a full
                 // O(N) firstRect pass that blocks the main thread for no visual benefit.
@@ -626,21 +651,21 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         )
 
         if debugLeftInsetGuide { logLeftInsetGuide(textView: textView) }
-        context.coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
+        coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
 
         // If furigana data was present but no frames were produced, the text layout wasn't ready
-        // (e.g. bounds were zero on first render). Don't mark as rendered so the next updateUIView
-        // call retries with a real frame.
+        // (e.g. bounds were zero on first render). Don't mark as rendered so the replay triggered
+        // by FuriganaRendererTextView.onFirstLayoutResolved retries with a real frame.
         if !furiganaBySegmentLocation.isEmpty && furiganaStrings.isEmpty && textView.bounds.width == 0 {
             return
         }
 
         guard isVisualEnhancementsEnabled || selectedSegmentRect != nil || illegalBoundaryRect != nil else {
-            context.coordinator.markRendered(signature: renderSignature)
+            coordinator.markRendered(signature: renderSignature)
             return
         }
 
-        context.coordinator.markRendered(signature: renderSignature)
+        coordinator.markRendered(signature: renderSignature)
     }
 
     // Resolves the visual segment rectangle used to anchor furigana over the same glyph layout.

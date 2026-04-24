@@ -106,7 +106,11 @@ struct SettingsView: View {
                         debugLeftInsetGuide: debugLeftInsetGuide
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    // Match ReadView's outer padding so the text-container left edge sits at the
+                    // same distance from the rounded-rect chrome in both surfaces. The renderer
+                    // itself applies textContainerInset.left = 4, so both views end up with 12pt
+                    // from the chrome edge to the first glyph.
+                    .padding(8)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color(.secondarySystemBackground))
