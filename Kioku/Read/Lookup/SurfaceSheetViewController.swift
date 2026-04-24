@@ -310,8 +310,9 @@ final class SurfaceSheetViewController: UIViewController {
     // MARK: - Content and height
 
     // Delegates middle content rebuild to the sheet coordinator which holds shared data.
+    // Passes self so compound-component chips can present nested lookup sheets.
     func updateMiddleContent() {
-        sheet?.updateMiddleContent(in: middleContentStack)
+        sheet?.updateMiddleContent(in: middleContentStack, parent: self)
     }
 
     // Refreshes the save button icon and tint to reflect the current saved state.
