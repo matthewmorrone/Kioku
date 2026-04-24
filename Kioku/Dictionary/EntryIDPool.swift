@@ -24,6 +24,8 @@ nonisolated public final class EntryIDPool {
     // Returns the current number of interned unique id-slices for diagnostics.
     public var count: Int { pool.count }
 
+    // Deduplicates and sorts the input so order-insensitive id-slices intern to the same handle.
     private func normalized(_ ids: [Int]) -> [Int] { Array(Set(ids)).sorted() }
+    // Derives a stable dictionary key from a normalized id-slice so intern lookups are O(1).
     private func keyForIDs(_ ids: [Int]) -> String { ids.map { String($0) }.joined(separator: ",") }
 }

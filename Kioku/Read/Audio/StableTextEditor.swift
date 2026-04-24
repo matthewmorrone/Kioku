@@ -84,10 +84,12 @@ struct StableTextEditor: UIViewRepresentable {
         }
     }
 
+    // Creates the coordinator that bridges UITextView delegate callbacks back into the SwiftUI binding.
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
+    // Builds the underlying UITextView with timestamp-aware tap handling and initial highlighted text.
     func makeUIView(context: Context) -> UITextView {
         let tv = UITextView()
         tv.delegate = context.coordinator
@@ -152,6 +154,7 @@ struct StableTextEditor: UIViewRepresentable {
 
 // Allows the custom tap gesture to fire alongside UITextView's built-in gestures.
 extension StableTextEditor.Coordinator: UIGestureRecognizerDelegate {
+    // Permits the timestamp-tap recognizer to coexist with UITextView's selection and link gestures.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         true
     }

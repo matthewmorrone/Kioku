@@ -29,10 +29,13 @@ private func buildCostMatrix(lines: [String], segments: [AlignmentSegment]) -> [
     return lineBigrams.map { lb in segBigrams.map { sb in 1.0 - jaccard(lb, sb) } }
 }
 
+// Trims edge whitespace and canonicalizes Unicode so strings with equivalent characters compare equal.
 private func normalized(_ s: String) -> String {
     s.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
 }
 
+// Builds a multiset of adjacent-character pairs; bigrams capture local character context while
+// staying robust to insertions and deletions that would derail exact-match comparisons.
 private func characterBigrams(_ s: String) -> [String: Int] {
     let chars = Array(s)
     guard chars.count > 1 else { return chars.isEmpty ? [:] : [String(chars[0]): 1] }
@@ -43,6 +46,7 @@ private func characterBigrams(_ s: String) -> [String: Int] {
     return result
 }
 
+// Computes multiset Jaccard similarity between two bigram counts as the alignment-cost basis.
 private func jaccard(_ a: [String: Int], _ b: [String: Int]) -> Double {
     var intersection = 0, union = 0
     for key in Set(a.keys).union(b.keys) {
