@@ -6,6 +6,18 @@ struct LatticeEdge {
     let start: String.Index
     let end: String.Index
     let surface: String
+    // Best resolved lemma for this surface (empty string when no POS metadata is loaded).
+    var lemma: String = ""
+    // Entry IDs from the trie's EntryIDPool for this surface/lemma combination.
+    var indices: [Int] = []
+    // Bitfield of PartOfSpeech flags for this edge; 0 when trie was built without metadata.
+    var partOfSpeech: UInt64 = 0
+    // True when the surface resolves through the dictionary trie (including deinflection).
+    var isDictionaryMatch: Bool = false
+    // Accumulated Viterbi score for the best path ending at this edge; nil until Viterbi runs.
+    var viterbiScore: Int? = nil
+    // Character offset of the predecessor edge's start in the best Viterbi path; nil until Viterbi runs.
+    var viterbiPrevStart: Int? = nil
 
     // Enumerates all complete paths through the edge DAG, capped to avoid combinatorial explosion.
     // Paths containing single-kana segments not in the ParticleSettings allowlist are excluded.
