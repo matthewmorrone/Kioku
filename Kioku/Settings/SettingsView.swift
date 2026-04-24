@@ -44,6 +44,7 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
     @AppStorage(DebugSettings.bisectorsKey) private var debugBisectors: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
+    @AppStorage(DebugSettings.leftInsetGuideKey) private var debugLeftInsetGuide: Bool = false
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
 
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
@@ -101,7 +102,8 @@ struct SettingsView: View {
                         debugHeadwordLineBands: debugHeadwordLineBands,
                         debugFuriganaLineBands: debugFuriganaLineBands,
                         debugBisectors: debugBisectors,
-                        debugEnvelopeRects: debugEnvelopeRects
+                        debugEnvelopeRects: debugEnvelopeRects,
+                        debugLeftInsetGuide: debugLeftInsetGuide
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
@@ -309,6 +311,7 @@ struct SettingsView: View {
                     Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
                     Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
                     Toggle("Bisectors", isOn: $debugBisectors)
+                    Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)
                 }
                 #endif
 

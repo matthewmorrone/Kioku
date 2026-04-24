@@ -108,6 +108,7 @@ struct LyricsActiveCueOverlay: View {
                 debugFuriganaLineBands: false,
                 debugBisectors: false,
                 debugEnvelopeRects: false,
+                debugLeftInsetGuide: false,
                 externalContentOffsetY: 0,
                 onScrollOffsetYChanged: { _ in },
                 onSegmentTapped: { location, _, _ in

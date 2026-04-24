@@ -29,6 +29,10 @@ final class FuriganaOverlayView: UIView {
     private var debugBisectorHeadwordMidXs: [CGFloat] = []
     private var debugBisectorHeadwordRects: [CGRect] = []
     private var debugBisectorFuriganaRects: [CGRect] = []
+    // Left inset guide — a single vertical line at the container's left inset so the
+    // reader can visually verify whether line-start envelopes (especially wide-ruby
+    // ones) align with the canonical left edge of text. nil when disabled.
+    private var debugLeftInsetGuideX: CGFloat?
 
     // Creates the overlay surface used by the read renderer.
     override init(frame: CGRect) {
@@ -70,7 +74,8 @@ final class FuriganaOverlayView: UIView {
         debugBisectorHeadwordRects: [CGRect] = [],
         debugBisectorFuriganaRects: [CGRect] = [],
         debugEnvelopeRectsEnabled: Bool = false,
-        debugEnvelopeRects: [CGRect] = []
+        debugEnvelopeRects: [CGRect] = [],
+        debugLeftInsetGuideX: CGFloat? = nil
     ) {
         frame = overlayFrame
         self.selectedSegmentRect = selectedSegmentRect
@@ -99,6 +104,7 @@ final class FuriganaOverlayView: UIView {
         self.debugBisectorHeadwordMidXs = debugBisectorHeadwordMidXs
         self.debugBisectorHeadwordRects = debugBisectorHeadwordRects
         self.debugBisectorFuriganaRects = debugBisectorFuriganaRects
+        self.debugLeftInsetGuideX = debugLeftInsetGuideX
         setNeedsDisplay()
     }
 
@@ -123,6 +129,20 @@ final class FuriganaOverlayView: UIView {
                 guard bandRect.intersects(rect) else { continue }
                 UIBezierPath(rect: bandRect).fill()
             }
+        }
+
+        // Left inset guide: a single vertical line at the text container's left
+        // inset position in text-view coordinates. Drawn immediately after the
+        // bands so all dashed overlays render on top, and line-start segments
+        // with wide ruby can be visually compared against the canonical left
+        // edge of the text column.
+        if let guideX = debugLeftInsetGuideX {
+            UIColor.systemRed.withAlphaComponent(0.9).setStroke()
+            let guidePath = UIBezierPath()
+            guidePath.move(to: CGPoint(x: guideX, y: bounds.minY))
+            guidePath.addLine(to: CGPoint(x: guideX, y: bounds.maxY))
+            guidePath.lineWidth = 1
+            guidePath.stroke()
         }
 
         if let selectedSegmentRect, let selectedSegmentColor, selectedSegmentRect.intersects(rect) {
