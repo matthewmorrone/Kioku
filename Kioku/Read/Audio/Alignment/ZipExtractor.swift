@@ -115,6 +115,7 @@ private let Z_FINISH: Int32 = 4
 // windowBits = -MAX_WBITS = -15 → raw DEFLATE without zlib/gzip header.
 private let RAW_DEFLATE: Int32 = -15
 
+// Binds zlib's inflateInit2_ directly so raw-DEFLATE streams can be decoded without a Swift wrapper.
 @_silgen_name("inflateInit2_")
 private func _inflateInit2(
     _ stream: UnsafeMutablePointer<ZStream>,
@@ -123,9 +124,11 @@ private func _inflateInit2(
     _ streamSize: Int32
 ) -> Int32
 
+// Binds zlib's inflate so decompression can be driven one buffer at a time from Swift.
 @_silgen_name("inflate")
 private func _inflate(_ stream: UnsafeMutablePointer<ZStream>, _ flush: Int32) -> Int32
 
+// Binds zlib's inflateEnd so the stream state can be released after decompression completes.
 @_silgen_name("inflateEnd")
 private func _inflateEnd(_ stream: UnsafeMutablePointer<ZStream>) -> Int32
 
