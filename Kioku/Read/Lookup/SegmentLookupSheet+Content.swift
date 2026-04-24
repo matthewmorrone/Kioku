@@ -31,7 +31,8 @@ extension SegmentLookupSheet {
 
     // Rebuilds the middle content section with the most common definition gloss.
     // Hides the container when there is no content to display.
-    func updateMiddleContent(in middleContentStack: UIStackView) {
+    // The parent view controller is used to present nested component lookup sheets.
+    func updateMiddleContent(in middleContentStack: UIStackView, parent: UIViewController? = nil) {
         for subview in middleContentStack.arrangedSubviews {
             middleContentStack.removeArrangedSubview(subview)
             subview.removeFromSuperview()
@@ -90,7 +91,14 @@ extension SegmentLookupSheet {
                 chip.backgroundColor = .secondarySystemFill
                 chip.layer.cornerRadius = 8
                 chip.setContentHuggingPriority(.defaultLow, for: .horizontal)
-                // TODO: wire tap to open dictionary detail for this component
+                // Tapping a compound component opens a nested lookup sheet for that lemma,
+                // letting the user drill into the meaning of e.g. 消える within 消えてゆく.
+                let lemma = component.lemma
+                let gloss = component.gloss
+                chip.addAction(UIAction { [weak self, weak parent] _ in
+                    guard let self, let parent else { return }
+                    self.presentComponentSheet(surface: lemma, gloss: gloss, from: parent)
+                }, for: .touchUpInside)
                 componentsRow.addArrangedSubview(chip)
             }
 
