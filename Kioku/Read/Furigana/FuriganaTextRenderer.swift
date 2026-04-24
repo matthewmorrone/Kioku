@@ -90,8 +90,16 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     // Builds the read-mode text view with a furigana overlay that scrolls with text content.
     func makeUIView(context: Context) -> UITextView {
         context.coordinator.markMakeUIViewIfNeeded()
-        let textView = TextViewFactory.makeTextView()
+        let textView = TextViewFactory.makeFuriganaRendererTextView()
         textView.delegate = context.coordinator
+        // Replay the latest render pipeline once SwiftUI's first layout pass resolves bounds.width,
+        // because firstRect returns empty rects at width=0 so the initial updateUIView produces no
+        // furigana frames. Without this hook the overlay stays empty until an unrelated state change
+        // (e.g. adjusting a slider) happens to trigger another SwiftUI update pass.
+        textView.onFirstLayoutResolved = { [weak textView] in
+            guard let textView = textView else { return }
+            context.coordinator.pendingRender?(textView)
+        }
         textView.textLayoutManager?.delegate = context.coordinator
         textView.tag = 7_331
         textView.backgroundColor = .clear
@@ -124,36 +132,53 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
     // Syncs text-view typography and positions furigana overlays above segment rects from the same layout engine.
     func updateUIView(_ uiView: UITextView, context: Context) {
+        // Capture the current input snapshot so the custom text view can replay the render pipeline
+        // after SwiftUI's first layout pass resolves bounds. Without this, the initial updateUIView
+        // call runs at width=0 and produces no furigana frames. The coordinator owns pendingRender,
+        // so capture coordinator weakly to avoid a retain cycle through the stored closure.
+        let captured = self
+        let coordinator = context.coordinator
+        coordinator.pendingRender = { [weak coordinator] textView in
+            guard let coordinator = coordinator else { return }
+            captured.applyRenderState(on: textView, coordinator: coordinator)
+        }
+        applyRenderState(on: uiView, coordinator: coordinator)
+    }
+
+    // Runs the render pipeline: syncs text-view typography and positions furigana overlays above
+    // segment rects from the same layout engine. Invoked directly from updateUIView and replayed
+    // by the custom text view once SwiftUI resolves the initial bounds.
+    private func applyRenderState(on uiView: UITextView, coordinator: FuriganaTextRendererCoordinator) {
         guard let overlayView = uiView.viewWithTag(7_332) as? FuriganaOverlayView else { return }
         let textView = uiView
 
         guard isActive else {
-            context.coordinator.updateActiveState(isActive: false)
+            coordinator.updateActiveState(isActive: false)
             return
         }
 
-        context.coordinator.markFirstActiveUpdateIfNeeded(
+        coordinator.markFirstActiveUpdateIfNeeded(
             textLength: text.utf16.count,
             segmentCount: segmentationRanges.count,
             furiganaCount: furiganaBySegmentLocation.count
         )
 
-        context.coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
-        context.coordinator.onSegmentTapped = onSegmentTapped
-        context.coordinator.configureTapSegmentationRanges(segmentationRanges, in: text)
+        coordinator.onScrollOffsetYChanged = onScrollOffsetYChanged
+        coordinator.onSegmentTapped = onSegmentTapped
+        coordinator.configureTapSegmentationRanges(segmentationRanges, in: text)
         configureWrapping(for: textView)
-        if context.coordinator.shouldApplyInitialExternalSync(isActive: true) {
-            context.coordinator.markStartupPhase("FuriganaTextRenderer applying initial external scroll sync")
-            context.coordinator.applyExternalScrollIfNeeded(to: textView, targetOffsetY: externalContentOffsetY)
+        if coordinator.shouldApplyInitialExternalSync(isActive: true) {
+            coordinator.markStartupPhase("FuriganaTextRenderer applying initial external scroll sync")
+            coordinator.applyExternalScrollIfNeeded(to: textView, targetOffsetY: externalContentOffsetY)
         }
 
         if isOverlayFrozen {
-            context.coordinator.markStartupPhase("FuriganaTextRenderer overlay frozen")
+            coordinator.markStartupPhase("FuriganaTextRenderer overlay frozen")
             return
         }
 
         let renderSignature = makeRenderSignature(for: textView)
-        guard context.coordinator.shouldRender(for: renderSignature, boundsWidth: textView.bounds.width) else {
+        guard coordinator.shouldRender(for: renderSignature, boundsWidth: textView.bounds.width) else {
             return
         }
 
@@ -186,9 +211,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             left: 4, bottom: 8, right: 4
         )
 
-        let didRenderText = context.coordinator.shouldRenderText(for: baseTextRenderSignature)
+        let didRenderText = coordinator.shouldRenderText(for: baseTextRenderSignature)
         if didRenderText {
-            context.coordinator.markFirstTextRenderIfNeeded()
+            coordinator.markFirstTextRenderIfNeeded()
             // Clear stale exclusion paths before applying new attributed text. Without this,
             // the existing exclusions shift line-start glyphs right during the fresh layout pass
             // so applyLeftInsetExclusionsForWideRuby's `<= lineStartTolerance` check fails on
@@ -203,24 +228,26 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // so glyph positions used by overlay drawing are correct before the view is displayed.
             // Doing this inside the text-change branch avoids blocking the main thread on every
             // scroll-driven updateUIView call (which would cause gesture-gate timeouts on large notes).
-            ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+            ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: true)
             // Line-start inset pass: adds exclusion paths for any line whose first segment's
             // ruby overhangs left. Called unconditionally — when isRubySpacingEnabled is false
             // the helper itself skips work and clears any lingering exclusions, so flipping
             // the toggle off removes prior spacing corrections instead of leaving them stuck.
             if applyLeftInsetExclusionsForWideRuby(to: textView, furiganaFont: furiganaFont) {
-                ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+                ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: true)
             }
             let minOffsetY = -textView.adjustedContentInset.top
             let maxOffsetY = max(minOffsetY, textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom)
             let clampedOffsetY = min(max(externalContentOffsetY, minOffsetY), maxOffsetY)
             textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedOffsetY), animated: false)
-            context.coordinator.markTextRendered(signature: baseTextRenderSignature)
+            coordinator.markTextRendered(signature: baseTextRenderSignature)
         } else {
-            // Text is unchanged; the full layout from the last text-change pass is still valid.
-            // Run the viewport-only layout so newly-scrolled-into-view fragments are ready for
-            // overlay drawing without re-laying out the entire document.
-            ensureTextLayout(for: textView, coordinator: context.coordinator)
+            // Text is unchanged; a viewport-only pass is enough when the view scrolls, but a
+            // non-scrolling preview sizes itself to fit all content, so exhaustive layout keeps
+            // the last wrapped line's fragments ready for firstRect queries. Otherwise the last
+            // line's furigana can drop out whenever this branch runs without a prior exhaustive
+            // pass (e.g. on debug-flag-only changes in Settings).
+            ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: !textView.isScrollEnabled)
         }
 
         let overlayFrame = CGRect(
@@ -269,13 +296,13 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     : UIColor.systemOrange.withAlphaComponent(0.22)
             }
             playbackHighlightRect = playbackRect.insetBy(dx: -10, dy: -4)
-            context.coordinator.applyPlaybackAutoscrollIfNeeded(
+            coordinator.applyPlaybackAutoscrollIfNeeded(
                 to: textView,
                 cueIndex: activePlaybackCueIndex,
                 targetRect: playbackRect
             )
         } else {
-            context.coordinator.clearPlaybackAutoscrollState()
+            coordinator.clearPlaybackAutoscrollState()
         }
 
         var illegalBoundaryRect: CGRect?
@@ -374,7 +401,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                    let docRange = tlm.textContentManager?.documentRange {
                     tlm.invalidateLayout(for: docRange)
                 }
-                ensureTextLayout(for: textView, coordinator: context.coordinator, exhaustive: true)
+                ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: true)
                 // Post-kern diagnostic: recompute envelopes and log residuals. Only runs
                 // when envelope-rects debug flag is on — in production this is a full
                 // O(N) firstRect pass that blocks the main thread for no visual benefit.
@@ -626,331 +653,21 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         )
 
         if debugLeftInsetGuide { logLeftInsetGuide(textView: textView) }
-        context.coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
+        coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
 
         // If furigana data was present but no frames were produced, the text layout wasn't ready
-        // (e.g. bounds were zero on first render). Don't mark as rendered so the next updateUIView
-        // call retries with a real frame.
+        // (e.g. bounds were zero on first render). Don't mark as rendered so the replay triggered
+        // by FuriganaRendererTextView.onFirstLayoutResolved retries with a real frame.
         if !furiganaBySegmentLocation.isEmpty && furiganaStrings.isEmpty && textView.bounds.width == 0 {
             return
         }
 
         guard isVisualEnhancementsEnabled || selectedSegmentRect != nil || illegalBoundaryRect != nil else {
-            context.coordinator.markRendered(signature: renderSignature)
+            coordinator.markRendered(signature: renderSignature)
             return
         }
 
-        context.coordinator.markRendered(signature: renderSignature)
-    }
-
-    // Resolves the visual segment rectangle used to anchor furigana over the same glyph layout.
-    func segmentRectInTextView(textView: UITextView, nsRange: NSRange) -> CGRect? {
-        guard
-            nsRange.location != NSNotFound,
-            nsRange.length > 0,
-            let textRange = textRange(in: textView, nsRange: nsRange)
-        else {
-            return nil
-        }
-
-        ensureTextLayout(for: textView, coordinator: nil)
-        let segmentRect = textView.firstRect(for: textRange)
-        guard segmentRect.isNull == false, segmentRect.isInfinite == false, segmentRect.isEmpty == false else {
-            return nil
-        }
-
-        return segmentRect
-    }
-
-    // Keeps the text container in wrapped or horizontal-scroll layout based on the display option.
-    private func configureWrapping(for textView: UITextView) {
-        let contentInsets = textView.textContainerInset
-        let availableWidth = max(
-            textView.bounds.width - contentInsets.left - contentInsets.right,
-            0
-        )
-        textView.textContainer.widthTracksTextView = isLineWrappingEnabled
-        textView.textContainer.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping
-        textView.textContainer.size = CGSize(
-            width: isLineWrappingEnabled ? availableWidth : CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-    }
-
-    // Resolves a thin rect at a UTF-16 boundary for illegal-merge flash feedback.
-    private func boundaryIndicatorRectInTextView(textView: UITextView, boundaryUTF16Location: Int) -> CGRect? {
-        let textLength = (textView.text as NSString).length
-        guard boundaryUTF16Location > 0, boundaryUTF16Location < textLength else {
-            return nil
-        }
-
-        ensureTextLayout(for: textView, coordinator: nil)
-        guard
-            let previousTextRange = textRange(in: textView, nsRange: NSRange(location: boundaryUTF16Location - 1, length: 1)),
-            let nextTextRange = textRange(in: textView, nsRange: NSRange(location: boundaryUTF16Location, length: 1))
-        else {
-            return nil
-        }
-
-        let previousRect = textView.firstRect(for: previousTextRange)
-        let nextRect = textView.firstRect(for: nextTextRange)
-        guard
-            previousRect.isNull == false,
-            previousRect.isInfinite == false,
-            previousRect.isEmpty == false,
-            nextRect.isNull == false,
-            nextRect.isInfinite == false,
-            nextRect.isEmpty == false
-        else {
-            return nil
-        }
-
-        let lineTopY = min(previousRect.minY, nextRect.minY)
-        let lineBottomY = max(previousRect.maxY, nextRect.maxY)
-        return CGRect(
-            x: nextRect.minX - 1.5,
-            y: lineTopY - 3,
-            width: 3,
-            height: max((lineBottomY - lineTopY) + 6, 16)
-        )
-    }
-
-    // Forces lazy TextKit layout to complete before any geometry is queried for annotations.
-    private func ensureTextLayout(for textView: UITextView, coordinator: FuriganaTextRendererCoordinator?, exhaustive: Bool = false) {
-        coordinator?.markFirstLayoutIfNeeded(exhaustive: exhaustive)
-        if exhaustive {
-            StartupTimer.measure("FuriganaTextRenderer.ensureTextLayout.exhaustive") {
-                guard let textLayoutManager = textView.textLayoutManager,
-                      let documentRange = textLayoutManager.textContentManager?.documentRange else {
-                    return
-                }
-                textLayoutManager.ensureLayout(for: documentRange)
-                // TextKit 2 does not synchronously update UITextView.contentSize after ensureLayout,
-                // so user scroll physics are capped at the lazily-computed partial height. Fix by
-                // reading the last layout fragment's maxY and patching contentSize when it is too small.
-                var maxLayoutY: CGFloat = 0
-                textLayoutManager.enumerateTextLayoutFragments(from: documentRange.endLocation, options: [.reverse]) { fragment in
-                    maxLayoutY = fragment.layoutFragmentFrame.maxY
-                    return false
-                }
-                let requiredHeight = textView.textContainerInset.top + maxLayoutY + textView.textContainerInset.bottom
-                if requiredHeight > textView.contentSize.height {
-                    textView.contentSize = CGSize(width: textView.contentSize.width, height: requiredHeight)
-                }
-            }
-        } else {
-            textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
-        }
-        if exhaustive {
-            StartupTimer.mark("FuriganaTextRenderer exhaustive layout finished")
-        }
-        textView.layoutIfNeeded()
-    }
-
-    // Converts a UTF-16 range into the UITextInput range used by TextKit 2 geometry queries.
-    private func textRange(in textView: UITextView, nsRange: NSRange) -> UITextRange? {
-        let documentStart = textView.beginningOfDocument
-        guard
-            let rangeStart = textView.position(from: documentStart, offset: nsRange.location),
-            let rangeEnd = textView.position(from: rangeStart, offset: nsRange.length)
-        else {
-            return nil
-        }
-
-        return textView.textRange(from: rangeStart, to: rangeEnd)
-    }
-
-    // Builds a stable signature so expensive rendering only runs when visual inputs actually change.
-    private func makeRenderSignature(for textView: UITextView) -> Int {
-        var hasher = Hasher()
-        hasher.combine(text)
-        for segmentRange in segmentationRanges {
-            let nsRange = NSRange(segmentRange, in: text)
-            hasher.combine(nsRange.location)
-            hasher.combine(nsRange.length)
-        }
-        hasher.combine(isLineWrappingEnabled)
-        let furiganaLocations = furiganaBySegmentLocation.keys.sorted()
-        for location in furiganaLocations {
-            hasher.combine(location)
-            hasher.combine(furiganaBySegmentLocation[location])
-            hasher.combine(furiganaLengthBySegmentLocation[location] ?? 0)
-        }
-        hasher.combine(selectedSegmentLocation)
-        hasher.combine(blankSelectedSegmentLocation)
-        hasher.combine(selectedHighlightRangeOverride?.location)
-        hasher.combine(selectedHighlightRangeOverride?.length)
-        hasher.combine(playbackHighlightRangeOverride?.location)
-        hasher.combine(playbackHighlightRangeOverride?.length)
-        hasher.combine(activePlaybackCueIndex)
-        hasher.combine(illegalMergeBoundaryLocation)
-        hasher.combine(textSize)
-        hasher.combine(lineSpacing)
-        hasher.combine(kerning)
-        hasher.combine(furiganaGap)
-        hasher.combine(isActive)
-        hasher.combine(isRubySpacingEnabled)
-        hasher.combine(isColorAlternationEnabled)
-        hasher.combine(isHighlightUnknownEnabled)
-        for location in unknownSegmentLocations.sorted() {
-            hasher.combine(location)
-        }
-        for location in changedSegmentLocations.sorted() {
-            hasher.combine(location)
-        }
-        for location in changedReadingLocations.sorted() {
-            hasher.combine(location)
-        }
-        // Only width affects text wrapping and glyph positions. Height and contentSize are derived
-        // outputs — including them would trigger re-renders on every layout-driven contentSize
-        // patch, and externalContentOffsetY changes on every scroll tick which would force O(N)
-        // firstRect queries per frame. The overlay is a subview in content-space so its drawn
-        // content is correct regardless of the current scroll position.
-        hasher.combine(textView.bounds.width)
-        // Debug flag changes must invalidate the overlay so toggling takes effect immediately.
-        hasher.combine(debugFuriganaRects)
-        hasher.combine(debugHeadwordRects)
-        hasher.combine(debugHeadwordLineBands)
-        hasher.combine(debugFuriganaLineBands)
-        hasher.combine(debugBisectors)
-        hasher.combine(debugEnvelopeRects)
-        hasher.combine(debugLeftInsetGuide)
-        hasher.combine(customEvenSegmentColorHex)
-        hasher.combine(customOddSegmentColorHex)
-        return hasher.finalize()
-    }
-
-    // Builds a stable signature for read-mode base text styling changes.
-    private func makeBaseTextRenderSignature(for textView: UITextView) -> Int {
-        var hasher = Hasher()
-        hasher.combine(text)
-        for segmentRange in segmentationRanges {
-            let nsRange = NSRange(segmentRange, in: text)
-            hasher.combine(nsRange.location)
-            hasher.combine(nsRange.length)
-        }
-        hasher.combine(isLineWrappingEnabled)
-        hasher.combine(isVisualEnhancementsEnabled)
-        hasher.combine(isRubySpacingEnabled)
-        hasher.combine(isColorAlternationEnabled)
-        hasher.combine(isHighlightUnknownEnabled)
-        for location in unknownSegmentLocations.sorted() {
-            hasher.combine(location)
-        }
-        for location in changedSegmentLocations.sorted() {
-            hasher.combine(location)
-        }
-        for location in changedReadingLocations.sorted() {
-            hasher.combine(location)
-        }
-        hasher.combine(textSize)
-        hasher.combine(lineSpacing)
-        hasher.combine(kerning)
-        hasher.combine(furiganaGap)
-        hasher.combine(isActive)
-        // Custom token color changes affect ReadTextStyleResolver output; include them in the text signature.
-        hasher.combine(customEvenSegmentColorHex)
-        hasher.combine(customOddSegmentColorHex)
-        // Width affects text wrapping and therefore which segments sit at line-start positions.
-        // Height and contentSize are derived outputs: including them here causes re-renders every
-        // time the layout pass patches contentSize, creating an attribution→layout→patch→re-render
-        // oscillation that resets exclusion paths and produces visible alignment jitter.
-        hasher.combine(textView.bounds.width)
-        return hasher.finalize()
-    }
-
-    // Finds the selected segment NSRange so overlay highlighting can target the tapped segment.
-    private func selectedSegmentNSRange(in sourceText: String) -> NSRange? {
-        if let selectedHighlightRangeOverride,
-           selectedHighlightRangeOverride.location != NSNotFound,
-           selectedHighlightRangeOverride.length > 0,
-           selectedHighlightRangeOverride.upperBound <= (sourceText as NSString).length {
-            return selectedHighlightRangeOverride
-        }
-
-        guard let selectedSegmentLocation else {
-            return nil
-        }
-
-        for segmentRange in segmentationRanges {
-            let nsRange = NSRange(segmentRange, in: sourceText)
-            if nsRange.location == selectedSegmentLocation, nsRange.length > 0 {
-                return nsRange
-            }
-        }
-
-        return nil
-    }
-
-    // Validates and returns the playback highlight range, guarding against stale overrides that extend past the current text.
-    private func playbackHighlightNSRange(in sourceText: String) -> NSRange? {
-        guard let playbackHighlightRangeOverride,
-              playbackHighlightRangeOverride.location != NSNotFound,
-              playbackHighlightRangeOverride.length > 0,
-              playbackHighlightRangeOverride.upperBound <= (sourceText as NSString).length else {
-            return nil
-        }
-
-        return playbackHighlightRangeOverride
-    }
-
-    // Logs per-segment position data for every line-start segment near the left inset.
-    // Kept out of updateUIView so the hot path stays clean.
-    private func logLeftInsetGuide(textView: UITextView) {
-        let insetLeft = textView.textContainerInset.left
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
-        let overhangsByLocation = lineStartOverhangsByLocation(furiganaFont: furiganaFont)
-        NSLog("[inset-guide] insetLeft=%.2f", Double(insetLeft))
-        let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
-        for segmentRange in segmentationRanges {
-            let segmentText = String(text[segmentRange])
-            guard !segmentText.unicodeScalars.allSatisfy({ ignoredScalars.contains($0) }) else { continue }
-            let nsRange = NSRange(segmentRange, in: text)
-            guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
-            guard let segmentRect = segmentRectInTextView(textView: textView, nsRange: nsRange) else { continue }
-            let lastCharMaxX = segmentRectInTextView(
-                textView: textView,
-                nsRange: NSRange(location: nsRange.location + nsRange.length - 1, length: 1)
-            )?.maxX ?? segmentRect.maxX
-            var envelopeMinX = segmentRect.minX
-            var envelopeMaxX = lastCharMaxX
-            if let reading = furiganaBySegmentLocation[nsRange.location],
-               !reading.isEmpty,
-               let kanjiLength = furiganaLengthBySegmentLocation[nsRange.location], kanjiLength > 0,
-               let kanjiSurfaceRange = Range(NSRange(location: nsRange.location, length: kanjiLength), in: text),
-               let displayReading = FuriganaAttributedString.normalizedDisplayReading(
-                   surface: String(text[kanjiSurfaceRange]), reading: reading
-               ),
-               let kanjiRect = segmentRectInTextView(
-                   textView: textView,
-                   nsRange: NSRange(location: nsRange.location, length: kanjiLength)
-               ) {
-                let kanjiLastMaxX = segmentRectInTextView(
-                    textView: textView,
-                    nsRange: NSRange(location: nsRange.location + kanjiLength - 1, length: 1)
-                )?.maxX ?? kanjiRect.maxX
-                let kanjiMidX = kanjiRect.minX + (kanjiLastMaxX - kanjiRect.minX) / 2
-                let furiWidth = measureTextWidth(displayReading, font: furiganaFont, kerning: 0)
-                envelopeMinX = min(envelopeMinX, kanjiMidX - furiWidth / 2)
-                envelopeMaxX = max(envelopeMaxX, kanjiMidX + furiWidth / 2)
-            }
-            let overhang = overhangsByLocation[nsRange.location] ?? 0
-            guard min(abs(envelopeMinX - insetLeft), abs(segmentRect.minX - insetLeft)) < 15.0 else { continue }
-            NSLog("[inset-guide] seg=%@ loc=%d segMinX=%.2f envMinX=%.2f envMaxX=%.2f overhang=%.2f Δ(env-inset)=%.2f y=%.1f",
-                  segmentText, nsRange.location,
-                  Double(segmentRect.minX), Double(envelopeMinX), Double(envelopeMaxX),
-                  Double(overhang), Double(envelopeMinX - insetLeft), Double(segmentRect.midY))
-        }
-    }
-
-    // Measures text width for furigana label sizing so readings don't collapse into truncation glyphs.
-    func measureTextWidth(_ value: String, font: UIFont, kerning: Double) -> CGFloat {
-        guard !value.isEmpty else { return 0 }
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .kern: kerning,
-        ]
-        return ceil((value as NSString).size(withAttributes: attributes).width)
+        coordinator.markRendered(signature: renderSignature)
     }
 
 }

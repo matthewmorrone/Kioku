@@ -8,6 +8,11 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
     @Binding private var textSize: Double
     var onScrollOffsetYChanged: (CGFloat) -> Void
     var onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
+    // Closure supplied by FuriganaTextRenderer.updateUIView that replays the render pipeline with
+    // the most recent input snapshot. Invoked from FuriganaRendererTextView.layoutSubviews when
+    // SwiftUI's initial layout pass resolves a real bounds.width, so the overlay catches up even
+    // though SwiftUI does not schedule a second updateUIView call on its own.
+    var pendingRender: ((UITextView) -> Void)?
     private var lastRenderSignature: Int?
     private var lastTextRenderSignature: Int?
     private var lastKnownBoundsWidth: CGFloat = 0

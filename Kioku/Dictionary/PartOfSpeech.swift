@@ -89,11 +89,18 @@ public enum PartOfSpeech: UInt8, CaseIterable {
     }
 
     // Bit-check helpers — nonisolated so they're callable from any concurrency context.
+    // Returns true when the particle bit is set on the packed POS value.
     public nonisolated static func isParticle(_ bits: UInt64) -> Bool  { (bits & PartOfSpeech.particle.bit) != 0 }
+    // Returns true when the noun bit is set on the packed POS value.
     public nonisolated static func isNoun(_ bits: UInt64) -> Bool      { (bits & PartOfSpeech.noun.bit) != 0 }
+    // Returns true when the adjective bit is set on the packed POS value.
     public nonisolated static func isAdjective(_ bits: UInt64) -> Bool { (bits & PartOfSpeech.adjective.bit) != 0 }
+    // Returns true when the verb bit is set on the packed POS value.
     public nonisolated static func isVerb(_ bits: UInt64) -> Bool      { (bits & PartOfSpeech.verb.bit) != 0 }
+    // Returns true when the auxiliary bit is set on the packed POS value.
     public nonisolated static func isAuxiliary(_ bits: UInt64) -> Bool { (bits & PartOfSpeech.auxiliary.bit) != 0 }
+    // Returns true when the prefix bit is set on the packed POS value.
     public nonisolated static func isPrefix(_ bits: UInt64) -> Bool    { (bits & PartOfSpeech.prefix.bit) != 0 }
+    // Returns true when the counter bit is set on the packed POS value.
     public nonisolated static func isCounter(_ bits: UInt64) -> Bool   { (bits & PartOfSpeech.counter.bit) != 0 }
 }
