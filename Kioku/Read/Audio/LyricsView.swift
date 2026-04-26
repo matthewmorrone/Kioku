@@ -40,6 +40,14 @@ struct LyricsView: View {
     @State private var translationTrigger: TranslationSession.Configuration? = nil
     @StateObject private var translationCache = LyricsTranslationCache()
 
+    @AppStorage(LyricsDisplayStyle.storageKey) private var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
+
+    // Resolves the AppStorage raw string into the typed enum, falling back to the default when
+    // the persisted value pre-dates a new style being added.
+    private var displayStyle: LyricsDisplayStyle {
+        LyricsDisplayStyle(rawValue: lyricsDisplayStyleRaw) ?? LyricsDisplayStyle.defaultValue
+    }
+
     var body: some View {
         GeometryReader { geo in
             ZStack {
@@ -173,6 +181,9 @@ struct LyricsView: View {
                     }
                 }
                 .padding(.vertical, 8)
+                .background(activeCueBackground)
+                .overlay(alignment: .leading) { activeCueAccent }
+                .padding(.horizontal, displayStyle == .focusCard ? 8 : 0)
                 .translationTask(translationTrigger) { session in
                     // Batch-translate all untranslated cues up front so translations are ready during playback.
                     await translateAllCues(session: session)
@@ -233,16 +244,22 @@ struct LyricsView: View {
         }
     }
 
-    // Inactive cue row — plain text, scaled, faded, and blurred by distance from the active cue.
+    // Inactive cue row — plain text whose visual treatment depends on the selected lyrics style.
+    // Apple Music: bold weight, leading-aligned, opacity fade with mild scale, no blur.
+    // Accent Bar: center-aligned, scale + opacity + blur fall-off — the "karaoke depth" feel.
+    // Focus Card: center-aligned, opacity-only fade so the active card stands out without motion.
     @ViewBuilder
     private func inactiveCueRow(index: Int, distance: Int) -> some View {
-        let baseScale = max(0.6, 1.0 - Double(distance) * 0.12)
-        let opacity = max(0.3, 1.0 - Double(distance) * 0.12)
-        let blur = Double(distance) * 1.2
+        let style = displayStyle
+        let metrics = inactiveCueMetrics(distance: distance, style: style)
         let defaultSize = CGFloat(TypographySettings.defaultTextSize)
         let text = displayText(for: index)
         let scaleFactor = distance == 0 ? scaleFactorForActiveCue(text: text, availableWidth: 280, defaultFontSize: defaultSize) : 1.0
         let fontSize = defaultSize * scaleFactor
+        let leading = style == .appleMusic
+        let textAlignment: TextAlignment = leading ? .leading : .center
+        let frameAlignment: Alignment = leading ? .leading : .center
+        let scaleAnchor: UnitPoint = leading ? .leading : .center
 
         HStack(spacing: 4) {
             if hasMismatch(at: index) {
@@ -251,16 +268,70 @@ struct LyricsView: View {
                     .frame(width: 6, height: 6)
             }
             Text(text)
-                .font(.system(size: fontSize))
-                .multilineTextAlignment(.center)
+                .font(.system(size: fontSize, weight: leading ? .semibold : .regular))
+                .multilineTextAlignment(textAlignment)
                 .lineLimit(1)
+            if leading { Spacer(minLength: 0) }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: frameAlignment)
         .frame(height: activeCueRendererHeight)
         .padding(.horizontal, 16)
-        .scaleEffect(baseScale)
-        .opacity(opacity)
-        .blur(radius: blur)
+        .scaleEffect(metrics.scale, anchor: scaleAnchor)
+        .opacity(metrics.opacity)
+        .blur(radius: metrics.blur)
+    }
+
+    // Returns scale, opacity, and blur for an inactive cue based on its distance from the active cue and the active style.
+    private func inactiveCueMetrics(distance: Int, style: LyricsDisplayStyle) -> (scale: Double, opacity: Double, blur: Double) {
+        switch style {
+        case .appleMusic:
+            return (
+                scale: max(0.78, 1.0 - Double(distance) * 0.06),
+                opacity: max(0.25, 1.0 - Double(distance) * 0.18),
+                blur: 0
+            )
+        case .accentBar:
+            return (
+                scale: max(0.6, 1.0 - Double(distance) * 0.12),
+                opacity: max(0.3, 1.0 - Double(distance) * 0.12),
+                blur: Double(distance) * 1.2
+            )
+        case .focusCard:
+            return (
+                scale: 1.0,
+                opacity: max(0.32, 0.78 - Double(distance) * 0.14),
+                blur: 0
+            )
+        }
+    }
+
+    // Optional rounded background applied behind the active cue — only the focus-card style draws a card.
+    @ViewBuilder
+    private var activeCueBackground: some View {
+        switch displayStyle {
+        case .focusCard:
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+                )
+        case .appleMusic, .accentBar:
+            EmptyView()
+        }
+    }
+
+    // Vertical accent strip drawn at the leading edge of the active cue when the accent-bar style is active.
+    @ViewBuilder
+    private var activeCueAccent: some View {
+        if displayStyle == .accentBar {
+            Capsule()
+                .fill(Color.orange.opacity(0.85))
+                .frame(width: 3)
+                .padding(.vertical, 6)
+        } else {
+            EmptyView()
+        }
     }
 
     // Returns a body font size for the active cue renderer that keeps the text on a single line

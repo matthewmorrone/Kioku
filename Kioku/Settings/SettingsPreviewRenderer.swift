@@ -124,28 +124,55 @@ struct SettingsPreviewRenderer: View {
         return Segmenter.boundaryCharacters.contains(char)
     }
 
-    // Maps segment UTF-16 start locations to their furigana readings.
-    private var furiganaBySegmentLocation: [Int: String] {
+    // Computes per-kanji-run furigana entries from the word-level table so the renderer centers
+    // each reading over only its kanji glyphs — not over trailing okurigana. This matches the
+    // format produced by ReadView+Segmentation when applying reading overrides: each entry's key
+    // is the UTF-16 location of the kanji run, and the stored length covers only the kanji portion.
+    // Without this projection, a reading like "ふか" for the segment "深める" would be centered on
+    // the segment midpoint and visually drift onto the kana okurigana.
+    private var perRunFuriganaEntries: [(location: Int, length: Int, reading: String)] {
         let nsText = Self.previewText as NSString
-        var map: [Int: String] = [:]
+        var entries: [(location: Int, length: Int, reading: String)] = []
         for (word, reading) in Self.furigana {
-            let r = nsText.range(of: word)
-            if r.location != NSNotFound {
-                map[r.location] = reading
+            let wordRange = nsText.range(of: word)
+            guard wordRange.location != NSNotFound else { continue }
+            let chars = Array(word)
+            let runs = FuriganaAttributedString.kanjiRuns(in: word)
+            guard runs.isEmpty == false,
+                  let runReadings = FuriganaAttributedString.normalizedRunReadings(
+                      surface: word, reading: reading, runs: runs
+                  ),
+                  runReadings.count == runs.count else { continue }
+            for (index, run) in runs.enumerated() {
+                let runReading = runReadings[index]
+                let runSurface = String(chars[run.start..<run.end])
+                guard runReading.isEmpty == false, runReading != runSurface else { continue }
+                let prefixUTF16 = String(chars[..<run.start]).utf16.count
+                let runLength = runSurface.utf16.count
+                entries.append((
+                    location: wordRange.location + prefixUTF16,
+                    length: runLength,
+                    reading: runReading
+                ))
             }
+        }
+        return entries
+    }
+
+    // Maps kanji-run UTF-16 start locations to their readings.
+    private var furiganaBySegmentLocation: [Int: String] {
+        var map: [Int: String] = [:]
+        for entry in perRunFuriganaEntries {
+            map[entry.location] = entry.reading
         }
         return map
     }
 
-    // Maps segment UTF-16 start locations to their UTF-16 lengths.
+    // Maps kanji-run UTF-16 start locations to the run's UTF-16 length.
     private var furiganaLengthBySegmentLocation: [Int: Int] {
-        let nsText = Self.previewText as NSString
         var map: [Int: Int] = [:]
-        for (word, _) in Self.furigana {
-            let r = nsText.range(of: word)
-            if r.location != NSNotFound {
-                map[r.location] = r.length
-            }
+        for entry in perRunFuriganaEntries {
+            map[entry.location] = entry.length
         }
         return map
     }

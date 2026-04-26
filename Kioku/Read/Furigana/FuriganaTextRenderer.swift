@@ -675,6 +675,15 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             }
         }
 
+        // If furigana data was present but no frames were produced, the text layout wasn't ready
+        // (e.g. bounds were zero on first render or during a transient collapse while a SwiftUI
+        // Form scrolls a row offscreen). Skip the overlay update entirely so the prior valid
+        // overlay isn't clobbered with empty data, and don't mark as rendered so the replay
+        // triggered by FuriganaRendererTextView.onFirstLayoutResolved retries with a real frame.
+        if !furiganaBySegmentLocation.isEmpty && furiganaStrings.isEmpty && textView.bounds.width == 0 {
+            return
+        }
+
         overlayView.apply(
             overlayFrame: overlayFrame,
             selectedSegmentRect: selectedSegmentRect,
@@ -706,13 +715,6 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
         if debugLeftInsetGuide { logLeftInsetGuide(textView: textView) }
         coordinator.markFirstOverlayApplyIfNeeded(furiganaCount: furiganaStrings.count)
-
-        // If furigana data was present but no frames were produced, the text layout wasn't ready
-        // (e.g. bounds were zero on first render). Don't mark as rendered so the replay triggered
-        // by FuriganaRendererTextView.onFirstLayoutResolved retries with a real frame.
-        if !furiganaBySegmentLocation.isEmpty && furiganaStrings.isEmpty && textView.bounds.width == 0 {
-            return
-        }
 
         guard isVisualEnhancementsEnabled || selectedSegmentRect != nil || illegalBoundaryRect != nil else {
             coordinator.markRendered(signature: renderSignature)
