@@ -269,19 +269,33 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     ? UIColor.systemYellow.withAlphaComponent(0.26)
                     : UIColor.systemYellow.withAlphaComponent(0.32)
             }
-            // Use the visual glyph width (measured with no kern) so the highlight hugs the kanji
-            // instead of stretching across the trailing envelope-padding kern — otherwise the
-            // glyph appears left-aligned inside a too-wide highlight box.
-            let selectedVisualWidth = measureTextWidth(
-                String(text[selectedSurfaceRange]),
-                font: UIFont.systemFont(ofSize: textSize),
-                kerning: 0
-            )
+            // Highlight width must cover the segment envelope (max of headword and ruby widths)
+            // so a wider ruby like ちから over 力 isn't clipped on the right. Centering matches
+            // FuriganaAttributedString's ruby placement: ruby is centered on the headword's
+            // visual midpoint.
+            let baseFont = UIFont.systemFont(ofSize: textSize)
+            let surfaceString = String(text[selectedSurfaceRange])
+            let visualHeadwordWidth = measureTextWidth(surfaceString, font: baseFont, kerning: 0)
+            var envelopeMinX = selectedRect.minX
+            var envelopeMaxX = selectedRect.minX + visualHeadwordWidth
+            if let furigana = furiganaBySegmentLocation[selectedSegmentRange.location],
+               !furigana.isEmpty,
+               let length = furiganaLengthBySegmentLocation[selectedSegmentRange.location], length > 0,
+               let surfaceRange = Range(NSRange(location: selectedSegmentRange.location, length: length), in: text),
+               let displayReading = FuriganaAttributedString.normalizedDisplayReading(
+                   surface: String(text[surfaceRange]), reading: furigana
+               ) {
+                let furiganaWidth = measureTextWidth(displayReading, font: UIFont.systemFont(ofSize: textSize * 0.5), kerning: 0)
+                let headwordWidthForRuby = measureTextWidth(String(text[surfaceRange]), font: baseFont, kerning: 0)
+                let kanjiVisualMidX = selectedRect.minX + headwordWidthForRuby / 2
+                envelopeMinX = min(envelopeMinX, kanjiVisualMidX - furiganaWidth / 2)
+                envelopeMaxX = max(envelopeMaxX, kanjiVisualMidX + furiganaWidth / 2)
+            }
             let furiganaRowHeight = furiganaFont.lineHeight + CGFloat(furiganaGap)
             selectedSegmentRect = CGRect(
-                x: selectedRect.minX - 1,
+                x: envelopeMinX - 1,
                 y: selectedRect.minY - furiganaRowHeight,
-                width: selectedVisualWidth + 2,
+                width: (envelopeMaxX - envelopeMinX) + 2,
                 height: selectedRect.height + furiganaRowHeight
             )
         }
@@ -376,6 +390,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             let entries = computeEntries()
             var didApplyKern = false
             let textStorage = textView.textStorage
+            // Track the last-char ranges we mutated so a post-layout pass can revert any kern
+            // that pushed B onto a new line — without that revert, the trailing kern leaks
+            // visible whitespace before B's first glyph at the start of the wrapped line.
+            var appliedKernByPairIndex: [Int: NSRange] = [:]
             for i in 0..<max(0, entries.count - 1) {
                 let a = entries[i]
                 let b = entries[i + 1]
@@ -390,6 +408,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 let existing = CGFloat((existingRaw as? NSNumber)?.doubleValue ?? kerning)
                 let newKern = existing + overlap
                 textStorage.addAttribute(.kern, value: newKern, range: lastCharRange)
+                appliedKernByPairIndex[i] = lastCharRange
                 didApplyKern = true
             }
             if didApplyKern {
@@ -402,6 +421,28 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     tlm.invalidateLayout(for: docRange)
                 }
                 ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: true)
+                // Revert any kern that pushed B onto a different line: the trailing kern would
+                // otherwise leak visible whitespace before B at the start of the wrapped line.
+                let postEntriesForRevert = computeEntries()
+                if postEntriesForRevert.count == entries.count {
+                    var didRevert = false
+                    for (pairIndex, lastCharRange) in appliedKernByPairIndex {
+                        guard pairIndex + 1 < postEntriesForRevert.count else { continue }
+                        let aPost = postEntriesForRevert[pairIndex]
+                        let bPost = postEntriesForRevert[pairIndex + 1]
+                        if abs(aPost.lineY - bPost.lineY) >= 1.0 {
+                            textStorage.addAttribute(.kern, value: kerning, range: lastCharRange)
+                            didRevert = true
+                        }
+                    }
+                    if didRevert {
+                        if let tlm = textView.textLayoutManager,
+                           let docRange = tlm.textContentManager?.documentRange {
+                            tlm.invalidateLayout(for: docRange)
+                        }
+                        ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: true)
+                    }
+                }
                 // Post-kern diagnostic: recompute envelopes and log residuals. Only runs
                 // when envelope-rects debug flag is on — in production this is a full
                 // O(N) firstRect pass that blocks the main thread for no visual benefit.
