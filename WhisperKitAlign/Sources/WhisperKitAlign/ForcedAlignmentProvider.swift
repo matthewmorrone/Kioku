@@ -52,6 +52,12 @@ public final class ForcedAlignmentProvider {
         // Total audio duration in seconds (16 kHz sample rate).
         let audioDuration = Double(frames.count) / 16_000.0
 
+        // Silence whisper.cpp / ggml stderr chatter (e.g. repeated
+        // "ggml_gallocr_needs_realloc" during graph rebuilds). Installed once
+        // per alignment call; whisper_log_set routes both whisper and ggml logs
+        // through the same callback.
+        Self.installSilentLogger()
+
         // Create whisper context with DTW enabled for accurate per-token timestamps.
         // DTW extracts timing from cross-attention weights, which is far more precise
         // than relying on timestamp tokens alone under forced alignment.
@@ -70,122 +76,53 @@ public final class ForcedAlignmentProvider {
         }
         defer { whisper_free(ctx) }
 
-        // Build the forced alignment state (tokenizes each line).
-        let alignState = try ForcedAlignmentState(lines: input.lines, ctx: ctx)
-        let unmanagedState = Unmanaged.passRetained(alignState)
-        defer { unmanagedState.release() }
+        // Build the full forced-alignment state up front so we have the
+        // complete tokenSequence and lineBoundaries to map back to lines.
+        // The chunked driver below creates per-window states that hold just
+        // the remaining slice of tokens.
+        let fullState = try ForcedAlignmentState(lines: input.lines, ctx: ctx)
 
-        // Configure full params for forced alignment.
-        var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
+        // Drive forced alignment manually across 30 s audio windows.
+        // whisper.cpp's internal chunking drops tokens at window boundaries
+        // under forced alignment (decoder emits EOT before all lyrics are
+        // consumed). Running whisper_full once per window with the remaining
+        // tokens — and with no EOT allowed until every token of that window
+        // has been forced — guarantees the decoder can't "end early".
+        // Compute the non-speech interval list once up front; both the
+        // chunked driver (for leading-silence skips) and the final line-
+        // boundary pass (for silence suppression) consume it. Port of
+        // stable-ts's nonspeech_predictor pipeline in the non-VAD path.
+        //
+        // The audio passed to NonSpeechDetector is band-passed to 200–
+        // 5000 Hz so low-frequency bass and high-frequency cymbal energy
+        // stop masking vocal silence (stable-ts's only_voice_freq=True).
+        // The full-band `frames` array still feeds whisper.cpp inference
+        // unchanged — band-limiting would degrade DTW accuracy.
+        let vocalBandFrames = voiceFreqFilter(frames: frames)
+        let nonSpeech = NonSpeechDetector(frames: vocalBandFrames)
 
-        // Set language to Japanese.
-        let langCString = strdup("ja")!
-        defer { free(langCString) }
-        params.language = UnsafePointer(langCString)
+        let globalTimestamps = try await runChunkedAlignment(
+            ctx: ctx,
+            frames: frames,
+            fullTokens: fullState.tokenSequence,
+            nonSpeech: nonSpeech,
+            cancellationCheck: cancellationCheck,
+            onProgress: onProgress
+        )
 
-        // Enable token-level timestamps (used alongside DTW).
-        params.token_timestamps = true
-
-        // Attach the logits filter callback to force lyric tokens.
-        params.logits_filter_callback = forcedAlignmentLogitsFilter
-        params.logits_filter_callback_user_data = unmanagedState.toOpaque()
-
-        // Wire up progress via a boxed closure passed through user_data.
-        var progressBox: ProgressCallbackBox?
-        if let onProgress {
-            let box = ProgressCallbackBox(handler: onProgress)
-            progressBox = box
-            let unmanagedBox = Unmanaged.passRetained(box)
-            params.progress_callback_user_data = unmanagedBox.toOpaque()
-            params.progress_callback = { _, _, progress, userData in
-                guard let userData else { return }
-                let box = Unmanaged<ProgressCallbackBox>.fromOpaque(userData).takeUnretainedValue()
-                box.handler(Double(progress) / 100.0)
-            }
-        }
-        defer {
-            if let ptr = params.progress_callback_user_data {
-                Unmanaged<ProgressCallbackBox>.fromOpaque(ptr).release()
-            }
-        }
-
-        // Wire up new_segment_callback to report partial alignment results.
-        var segmentBox: SegmentCallbackBox?
-        if let onSegment {
-            let box = SegmentCallbackBox(
-                alignState: alignState,
-                inputLines: input.lines,
-                handler: onSegment
-            )
-            segmentBox = box
-            let unmanagedBox = Unmanaged.passRetained(box)
-            params.new_segment_callback_user_data = unmanagedBox.toOpaque()
-            params.new_segment_callback = { ctx, _, nNew, userData in
-                guard let ctx, let userData, nNew > 0 else { return }
-                let box = Unmanaged<SegmentCallbackBox>.fromOpaque(userData).takeUnretainedValue()
-                box.handleNewSegments(ctx: ctx, nNew: nNew)
-            }
-        }
-        defer {
-            if let ptr = params.new_segment_callback_user_data {
-                Unmanaged<SegmentCallbackBox>.fromOpaque(ptr).release()
-            }
-        }
-
-        // Wire up abort callback so the caller can cancel mid-inference.
-        var abortBox: AbortCallbackBox?
-        if let cancellationCheck {
-            let box = AbortCallbackBox(shouldAbort: cancellationCheck)
-            abortBox = box
-            let unmanagedBox = Unmanaged.passRetained(box)
-            params.abort_callback_user_data = unmanagedBox.toOpaque()
-            params.abort_callback = { userData in
-                guard let userData else { return false }
-                let box = Unmanaged<AbortCallbackBox>.fromOpaque(userData).takeUnretainedValue()
-                return box.shouldAbort()
-            }
-        }
-        defer {
-            if let ptr = params.abort_callback_user_data {
-                Unmanaged<AbortCallbackBox>.fromOpaque(ptr).release()
-            }
-        }
-
-        // Run inference on a background thread. whisper_full is synchronous.
-        let wasCancelled = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Bool, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let result = whisper_full(ctx, params, frames, Int32(frames.count))
-                if result != 0 {
-                    // Check if this was a cancellation (abort_callback returned true).
-                    if cancellationCheck?() == true {
-                        cont.resume(returning: true)
-                    } else {
-                        cont.resume(throwing: NSError(
-                            domain: "WhisperKitAlign.ForcedAlignment",
-                            code: 4,
-                            userInfo: [NSLocalizedDescriptionKey: "whisper_full failed with code \(result)."]
-                        ))
-                    }
-                } else {
-                    cont.resume(returning: false)
-                }
-            }
-        }
-        _ = abortBox
-
-        if wasCancelled {
-            throw CancellationError()
-        }
-        // Prevent premature deallocation of callback boxes.
-        _ = progressBox
-        _ = segmentBox
+        print("[ForcedAlign] model=\(modelURL.lastPathComponent) emitted=\(globalTimestamps.count) expected=\(fullState.tokenSequence.count) audio=\(String(format: "%.1f", audioDuration))s silences=\(nonSpeech.silentStarts.count)")
 
         // Extract per-token timestamps and map to lines.
         let lyricLines = extractAlignedLines(
-            ctx: ctx,
-            state: alignState,
-            inputLines: input.lines
+            tokenTimestamps: globalTimestamps,
+            lineBoundaries: fullState.lineBoundaries,
+            inputLines: input.lines,
+            frames: frames,
+            nonSpeech: nonSpeech
         )
+        // Surface the final aligned lines once (no mid-window partial results
+        // under the chunked driver).
+        onSegment?(lyricLines)
 
         // Insert ♪ cues for instrumental gaps.
         let combined = insertNonSpeechCues(
@@ -201,36 +138,38 @@ public final class ForcedAlignmentProvider {
     // and maps them back to lyric line boundaries. DTW timestamps come from
     // cross-attention weights and are far more accurate than decoder timestamp
     // tokens under forced alignment.
+    //
+    // Applies three post-processing passes that stable-ts does on the server
+    // but whisper.cpp does not provide out of the box:
+    //   1. Repair degenerate t_dtw values by interpolating from neighbors.
+    //   2. Cap each line's trailing silence at pauseCapSeconds so a line's
+    //      end does not get absorbed into the following silence when the
+    //      next line's first token is far away.
+    //   3. Clamp line edges to voiced audio via a small energy VAD so that
+    //      leading/trailing silence is excluded from the caption window.
     private func extractAlignedLines(
-        ctx: OpaquePointer,
-        state: ForcedAlignmentState,
-        inputLines: [String]
+        tokenTimestamps rawTimestamps: [Double],
+        lineBoundaries: [Int],
+        inputLines: [String],
+        frames: [Float],
+        nonSpeech: NonSpeechDetector
     ) -> [AlignedLine] {
-        let begToken = whisper_token_beg(ctx)
-        let eotToken = whisper_token_eot(ctx)
-        let segmentCount = whisper_full_n_segments(ctx)
+        var tokenTimestamps = Self.repairDegenerateTimestamps(rawTimestamps)
 
-        // Collect DTW timestamps for all text tokens across all segments.
-        var tokenTimestamps: [Double] = []
+        // Build a VAD mask once; each line boundary queries it.
+        let vad = VoiceActivityDetector(frames: frames)
 
-        for seg in 0..<segmentCount {
-            let tokenCount = whisper_full_n_tokens(ctx, seg)
-            for tok in 0..<tokenCount {
-                let data = whisper_full_get_token_data(ctx, seg, tok)
-                if data.id >= begToken || data.id == eotToken { continue }
-                // t_dtw is in centiseconds (10ms units).
-                let ts = Double(data.t_dtw) * 0.01
-                tokenTimestamps.append(ts)
-            }
-        }
+        // Maximum trailing silence to attribute to a line before capping.
+        // stable-ts uses ~160 ms; the same value keeps line ends close to the
+        // last sung syllable rather than drifting into the next beat.
+        let pauseCapSeconds = 0.16
 
-        // Map token timestamps to line boundaries.
         let lineCount = inputLines.count
         var lines: [AlignedLine] = []
 
         for i in 0..<lineCount {
-            let startIdx = state.lineBoundaries[i]
-            let endIdx = state.lineBoundaries[i + 1]
+            let startIdx = lineBoundaries[i]
+            let endIdx = lineBoundaries[i + 1]
 
             guard startIdx < tokenTimestamps.count else {
                 let fallbackStart = lines.last?.end ?? 0
@@ -238,24 +177,333 @@ public final class ForcedAlignmentProvider {
                 continue
             }
 
-            let lineStart = tokenTimestamps[startIdx]
+            let lastTokenIdx = min(endIdx - 1, tokenTimestamps.count - 1)
+            let lineStartRaw = tokenTimestamps[startIdx]
+            let lastTokenTs = tokenTimestamps[lastTokenIdx]
 
-            let lineEnd: Double
-            if i + 1 < lineCount && state.lineBoundaries[i + 1] < tokenTimestamps.count {
-                lineEnd = tokenTimestamps[state.lineBoundaries[i + 1]]
+            // Pause-cap: candidate end is min(next-line start, last token + cap).
+            let nextLineStart: Double? = (i + 1 < lineCount && lineBoundaries[i + 1] < tokenTimestamps.count)
+                ? tokenTimestamps[lineBoundaries[i + 1]]
+                : nil
+            let cappedEnd: Double
+            if let nextLineStart {
+                cappedEnd = min(nextLineStart, lastTokenTs + pauseCapSeconds)
             } else {
-                let lastTokenIdx = min(endIdx - 1, tokenTimestamps.count - 1)
-                lineEnd = tokenTimestamps[lastTokenIdx] + 0.5
+                cappedEnd = lastTokenTs + pauseCapSeconds
             }
 
-            lines.append(AlignedLine(
-                text: inputLines[i],
-                start: lineStart,
-                end: max(lineEnd, lineStart + 0.3)
-            ))
+            // stable-ts suppress_silence (keep_end=True default): if a silent
+            // interval straddles the line's start, push start forward to the
+            // silence end. This is the authoritative pass.
+            let (suppressedStart, suppressedEnd) = nonSpeech.suppressStartSilence(
+                start: lineStartRaw,
+                end: cappedEnd,
+                minWordDur: 0.1
+            )
+
+            // Secondary fine clamp via the energy VAD — useful when the
+            // NonSpeechDetector's 20 ms grid landed the boundary slightly
+            // inside a silent frame. Bounded so it cannot move the boundary
+            // more than 0.5 s past what suppress_silence already produced.
+            let clampedStart = vad.clampForwardToVoiced(seconds: suppressedStart, maxSearch: 0.5)
+            let clampedEnd = vad.clampBackwardToVoiced(seconds: suppressedEnd, maxSearch: 0.5)
+
+            // Guarantee a visible minimum duration even after clamping.
+            let lineStart = min(clampedStart, lastTokenTs)
+            let lineEnd = max(clampedEnd, lineStart + 0.3)
+
+            lines.append(AlignedLine(text: inputLines[i], start: lineStart, end: lineEnd))
         }
 
+        _ = tokenTimestamps
         return lines
+    }
+
+    // Ports the core loop of stable-ts's Aligner.align(). For each 30 s audio
+    // window we force a bounded batch (tokenStep) of the remaining lyric
+    // tokens, examine the per-token durations that DTW produced, and commit
+    // only the prefix of tokens whose durations look plausible. Any token
+    // past the first implausible duration is returned to the queue and
+    // retried in the next window with fresh audio context. The seek pointer
+    // advances by exactly the end time of the last committed token — not by
+    // a fixed window stride — which is how stable-ts survives chunk
+    // boundaries without losing tokens.
+    //
+    // Reference: stable_whisper/non_whisper/alignment.py, Aligner.align() and
+    // Aligner._fallback(). This port collapses stable-ts's per-word grouping
+    // because for Japanese (split_words_by_space=False) each whisper token
+    // is effectively its own word.
+    private func runChunkedAlignment(
+        ctx: OpaquePointer,
+        frames: [Float],
+        fullTokens: [whisper_token],
+        nonSpeech: NonSpeechDetector,
+        cancellationCheck: (() -> Bool)?,
+        onProgress: ((Double) -> Void)?
+    ) async throws -> [Double] {
+        let sampleRate = 16_000
+        let windowSamples = 30 * sampleRate
+        // Mirrors stable-ts's token_step=100 default. Longer batches
+        // accumulate timing drift; shorter batches pay more inference calls
+        // for little gain.
+        let tokenStep = 100
+        // stable-ts defaults: max 3 s per word, and locally at most 2 × the
+        // median committed duration — whichever is tighter.
+        let maxWordDurationGlobal: Double = 3.0
+        let wordDurationFactor: Double = 2.0
+        // stable-ts nonspeech_skip default: skip silent regions ≥ 5 s at
+        // the head of a window rather than forcing tokens into silence.
+        let nonspeechSkipSeconds: Double = 5.0
+
+        let totalFrames = frames.count
+        let totalTokens = fullTokens.count
+        var committedTimestamps: [Double] = []
+        committedTimestamps.reserveCapacity(totalTokens)
+        var cursor = 0
+        var audioStart = 0
+
+        // Reused across iterations — language is constant.
+        let langCString = strdup("ja")!
+        defer { free(langCString) }
+
+        // Hard safety net: the algorithm must make progress (either commit a
+        // token or advance the audio by a full window). Nothing in theory can
+        // stall it, but bugs in timing produce infinite loops instantly, so
+        // we guard explicitly.
+        var safetyIter = 0
+        let maxIterations = max(64, totalTokens * 4 + Int(Double(totalFrames) / Double(windowSamples)) * 2)
+
+        while audioStart < totalFrames && cursor < totalTokens && safetyIter < maxIterations {
+            safetyIter += 1
+            if cancellationCheck?() == true { throw CancellationError() }
+
+            // Leading-silence skip (stable-ts _skip_nonspeech). If audioStart
+            // falls inside a silent interval at least nonspeechSkipSeconds
+            // long, jump to the end of that interval rather than forcing
+            // tokens into music-only audio.
+            let audioStartSeconds = Double(audioStart) / Double(sampleRate)
+            let skipTo = nonSpeech.skipLeadingSilence(
+                fromSeconds: audioStartSeconds,
+                minSilence: nonspeechSkipSeconds
+            )
+            if skipTo > audioStartSeconds {
+                let newStart = min(totalFrames, Int(skipTo * Double(sampleRate)))
+                if newStart > audioStart {
+                    audioStart = newStart
+                    if audioStart >= totalFrames { break }
+                }
+            }
+
+            let audioEnd = min(audioStart + windowSamples, totalFrames)
+            let windowOffsetSeconds = Double(audioStart) / Double(sampleRate)
+            let windowEndSeconds = Double(audioEnd) / Double(sampleRate)
+            let windowFrames = Array(frames[audioStart..<audioEnd])
+
+            // Batch: take up to tokenStep of the remaining tokens. The
+            // callback suppresses EOT so the decoder emits exactly this batch
+            // before stopping, keeping drift bounded within a batch.
+            let batchSize = min(tokenStep, totalTokens - cursor)
+            let windowSlice = Array(fullTokens[cursor..<(cursor + batchSize)])
+
+            let windowState = ForcedAlignmentState(tokens: windowSlice, ctx: ctx)
+            let unmanagedState = Unmanaged.passRetained(windowState)
+
+            var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
+            params.language = UnsafePointer(langCString)
+            params.token_timestamps = true
+            params.print_progress = false
+            params.print_realtime = false
+            params.print_timestamps = false
+            params.print_special = false
+            params.logits_filter_callback = forcedAlignmentLogitsFilter
+            params.logits_filter_callback_user_data = unmanagedState.toOpaque()
+
+            let paramsForCall = params
+            let result: Int32 = await withCheckedContinuation { (cont: CheckedContinuation<Int32, Never>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let r = whisper_full(ctx, paramsForCall, windowFrames, Int32(windowFrames.count))
+                    cont.resume(returning: r)
+                }
+            }
+            unmanagedState.release()
+
+            guard result == 0 else {
+                throw NSError(
+                    domain: "WhisperKitAlign.ForcedAlignment",
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "whisper_full failed in window at \(String(format: "%.1f", windowOffsetSeconds))s (code \(result))"]
+                )
+            }
+
+            // Collect this window's per-token t_dtw, offset to global time.
+            let begToken = whisper_token_beg(ctx)
+            let eotToken = whisper_token_eot(ctx)
+            let segCount = whisper_full_n_segments(ctx)
+            var windowTokenStarts: [Double] = []
+            windowTokenStarts.reserveCapacity(batchSize)
+            for seg in 0..<segCount {
+                let tokCount = whisper_full_n_tokens(ctx, seg)
+                for tok in 0..<tokCount {
+                    let data = whisper_full_get_token_data(ctx, seg, tok)
+                    if data.id >= begToken || data.id == eotToken { continue }
+                    let globalTs = Double(data.t_dtw) * 0.01 + windowOffsetSeconds
+                    windowTokenStarts.append(globalTs)
+                }
+            }
+
+            // No tokens came out. Slide audio by a full window and retry the
+            // same batch — matches stable-ts's nothing-aligned branch where
+            // _seek_sample += segment_samples and nothing is committed.
+            if windowTokenStarts.isEmpty {
+                audioStart = audioEnd
+                continue
+            }
+
+            // Per-token durations: dur[i] = t[i+1] - t[i], last = window_end - t[last].
+            var durations: [Double] = []
+            durations.reserveCapacity(windowTokenStarts.count)
+            for i in 0..<windowTokenStarts.count {
+                if i + 1 < windowTokenStarts.count {
+                    durations.append(max(0, windowTokenStarts[i + 1] - windowTokenStarts[i]))
+                } else {
+                    durations.append(max(0, windowEndSeconds - windowTokenStarts[i]))
+                }
+            }
+
+            // Indices of tokens with non-zero duration.
+            var nonzeroIndices: [Int] = []
+            for (i, d) in durations.enumerated() where d > 0 {
+                nonzeroIndices.append(i)
+            }
+
+            // No word has any duration — treat as a failed window. Skip it.
+            guard let lastNonzero = nonzeroIndices.last else {
+                audioStart = audioEnd
+                continue
+            }
+
+            // stable-ts _fallback: if the last non-zero token's end is pinned
+            // to the window boundary (>= floor(window_end)), its duration is
+            // "ran out of audio" rather than "natural word end" — drop it and
+            // retry it next window.
+            var lastGood = lastNonzero
+            if nonzeroIndices.count > 1 {
+                let lastEnd = (lastGood + 1 < windowTokenStarts.count)
+                    ? windowTokenStarts[lastGood + 1]
+                    : windowEndSeconds
+                if lastEnd >= floor(windowEndSeconds) {
+                    nonzeroIndices.removeLast()
+                    lastGood = nonzeroIndices.last ?? lastGood
+                }
+            }
+            var redoIndex = lastGood + 1
+
+            // Local + global max-duration enforcement. A word whose duration
+            // exceeds either is considered unreliable; everything from that
+            // word onward goes back to the queue.
+            let committedSoFar = Array(durations.prefix(redoIndex))
+            let medDur = median(committedSoFar)
+            let localMax = medDur.isFinite && medDur > 0 ? medDur * wordDurationFactor : maxWordDurationGlobal
+            let effectiveMax = min(localMax, maxWordDurationGlobal)
+            // Only check from the second non-zero onward (matches stable-ts
+            // index_offset = first_nonzero + 1). The very first token
+            // frequently has an inflated duration because of pre-song silence
+            // and would otherwise always trip the cap.
+            let firstNonzero = nonzeroIndices.first ?? 0
+            if firstNonzero + 1 < redoIndex {
+                for i in (firstNonzero + 1)..<redoIndex where durations[i] > effectiveMax {
+                    redoIndex = i
+                    break
+                }
+            }
+
+            // Commit tokens [0..<redoIndex]; the rest re-enter the queue via
+            // not advancing cursor past them.
+            let commitCount = redoIndex
+            if commitCount == 0 {
+                audioStart = audioEnd
+                continue
+            }
+
+            for i in 0..<commitCount {
+                committedTimestamps.append(windowTokenStarts[i])
+            }
+            cursor += commitCount
+
+            // Advance audio to the end time of the last committed token.
+            let lastCommittedEnd: Double
+            if commitCount < windowTokenStarts.count {
+                lastCommittedEnd = windowTokenStarts[commitCount]
+            } else {
+                lastCommittedEnd = windowTokenStarts[commitCount - 1] + durations[commitCount - 1]
+            }
+            let newAudioStart = Int(round(lastCommittedEnd * Double(sampleRate)))
+
+            // Monotone guard: never rewind, always advance by at least a small
+            // amount so the loop cannot stall.
+            let minAdvance = sampleRate / 2   // 0.5 s
+            audioStart = max(newAudioStart, audioStart + minAdvance)
+            audioStart = min(audioStart, totalFrames)
+
+            onProgress?(min(1.0, Double(cursor) / Double(totalTokens)))
+        }
+
+        return committedTimestamps
+    }
+
+    // Median of a Double array. Returns 0 for empty input.
+    private func median(_ values: [Double]) -> Double {
+        guard values.isEmpty == false else { return 0 }
+        let sorted = values.sorted()
+        let mid = sorted.count / 2
+        if sorted.count % 2 == 0 {
+            return (sorted[mid - 1] + sorted[mid]) / 2
+        }
+        return sorted[mid]
+    }
+
+    // Repairs degenerate t_dtw values. Whisper sometimes emits t_dtw == 0
+    // (or a value equal to the segment's t0) when DTW fails on a token,
+    // producing runs of identical or out-of-order timestamps. We detect those
+    // runs and linearly interpolate from the nearest good values on each side.
+    private static func repairDegenerateTimestamps(_ input: [Double]) -> [Double] {
+        guard input.count >= 2 else { return input }
+        var ts = input
+
+        // Step 1: mark a timestamp as invalid when it is zero and not at the
+        // very start, or when it breaks monotonicity. Keep the first valid
+        // anchor to avoid losing genuine zero starts.
+        var valid = [Bool](repeating: true, count: ts.count)
+        for i in 0..<ts.count {
+            if i > 0 && ts[i] == 0 { valid[i] = false; continue }
+            if i > 0 && ts[i] < ts[i - 1] { valid[i] = false }
+        }
+
+        // Step 2: collapse runs of equal timestamps into "only the first is
+        // valid" — the rest were duplicated by DTW failure, not real data.
+        for i in 1..<ts.count where valid[i] && ts[i] == ts[i - 1] {
+            valid[i] = false
+        }
+
+        // Step 3: interpolate invalid runs from the nearest valid neighbors.
+        var i = 0
+        while i < ts.count {
+            if valid[i] { i += 1; continue }
+            var j = i
+            while j < ts.count && valid[j] == false { j += 1 }
+            let leftIdx = i - 1
+            let rightIdx = j
+            let leftVal = leftIdx >= 0 ? ts[leftIdx] : 0.0
+            let rightVal = rightIdx < ts.count ? ts[rightIdx] : (ts.last ?? leftVal) + 0.1
+            let span = max(1, rightIdx - leftIdx)
+            for k in i..<j {
+                let frac = Double(k - leftIdx) / Double(span)
+                ts[k] = leftVal + (rightVal - leftVal) * frac
+            }
+            i = j
+        }
+
+        return ts
     }
 
     // Returns the DTW alignment heads preset for the given model file.
@@ -279,6 +527,16 @@ public final class ForcedAlignmentProvider {
     // Instance method wrapper for the static preset lookup.
     private func dtwPreset(for modelURL: URL) -> whisper_alignment_heads_preset {
         Self.dtwPreset(for: modelURL)
+    }
+
+    // Routes whisper.cpp + ggml log output to a no-op. Installed lazily on
+    // the first alignment call so we don't silence logs globally until the
+    // aligner actually runs.
+    private static var loggerInstalled = false
+    private static func installSilentLogger() {
+        guard loggerInstalled == false else { return }
+        loggerInstalled = true
+        whisper_log_set({ _, _, _ in }, nil)
     }
 
     // Inserts ♪ cues for gaps between lyric lines that exceed the threshold.

@@ -13,6 +13,10 @@ import whisper_cpp
 //     values from the model, so Whisper inserts timing boundaries when it naturally
 //     predicts them.
 //   - Force the next expected text token by suppressing all other text tokens.
+//     EOT is suppressed while any lyric token remains — the chunked driver in
+//     ForcedAlignmentProvider owns window boundaries and the decoder must not
+//     exit a window early (which on a fresh 30 s chunk with no prior context
+//     it will otherwise do immediately, emitting zero lyric tokens).
 //   - Advance the cursor when the decoder emits the expected token (detected
 //     by inspecting the most recently emitted non-timestamp token in `tokens`).
 //   - Once all lyric tokens have been emitted, allow only the EOT token.
@@ -57,17 +61,18 @@ func forcedAlignmentLogitsFilter(
     if alignState.cursor < alignState.tokenSequence.count {
         let nextToken = Int(alignState.tokenSequence[alignState.cursor])
 
-        // Suppress all text tokens except the next expected one.
-        // Preserve EOT so the decoder can end the current segment naturally —
-        // without this, all lyrics get crammed into the first audio window.
-        // The forced token keeps its natural logit value so timestamp tokens
-        // can still win when the model hears non-speech audio — this lets
-        // the decoder advance time through instrumental sections before emitting text.
-        for i in 0..<begToken {
-            if i != nextToken && i != eotToken {
-                logits[i] = negInf
-            }
+        // Suppress all text tokens except the next expected one, and also
+        // suppress EOT. The chunked driver bounds how many lyric tokens land
+        // in each window by sizing tokenSequence to that window's budget;
+        // within a window the decoder must consume every token before it is
+        // allowed to stop. The forced token keeps its natural logit value so
+        // timestamp tokens can still win when the model hears non-speech
+        // audio, letting time advance through instrumental gaps before the
+        // next lyric token is emitted.
+        for i in 0..<begToken where i != nextToken {
+            logits[i] = negInf
         }
+        logits[eotToken] = negInf
         // Timestamp logits (begToken..<vocabSize) are left untouched — the model
         // decides when to insert timing boundaries based on audio content.
     } else {

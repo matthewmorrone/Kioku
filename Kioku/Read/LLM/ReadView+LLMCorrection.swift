@@ -111,14 +111,28 @@ extension ReadView {
         _ response: LLMCorrectionResponse,
         originalText: String
     ) -> LLMCorrectionResult {
-        // Build order-only SegmentRange values from the response surfaces.
-        let ranges: [SegmentRange] = response.segments
+        // LLMs occasionally swap a space for a newline, drop a stray space, or insert one —
+        // none of which change the underlying tokenization intent. Repair whitespace-only
+        // discrepancies against the original text before validating so the correction still
+        // applies. A non-whitespace divergence fails repair and surfaces as a mismatch.
+        let workingEntries: [LLMSegmentEntry] = {
+            let ranges = response.segments
+                .filter { $0.surface.isEmpty == false }
+                .map { SegmentRange(surface: $0.surface) }
+            if normalizedSegmentRanges(ranges, for: originalText) != nil {
+                return response.segments
+            }
+            return repairWhitespaceMismatches(response.segments, against: originalText) ?? response.segments
+        }()
+
+        // Build order-only SegmentRange values from the (possibly repaired) response surfaces.
+        let ranges: [SegmentRange] = workingEntries
             .filter { $0.surface.isEmpty == false }
             .map { SegmentRange(surface: $0.surface) }
 
         // Run the same contiguous-coverage validation used by loadSelectedNoteIfNeeded.
         guard let validatedRanges = normalizedSegmentRanges(ranges, for: originalText) else {
-            let reconstructed = response.segments.map(\.surface).joined()
+            let reconstructed = workingEntries.map(\.surface).joined()
             let msg = mismatchDescription(original: originalText, reconstructed: reconstructed)
             printMismatchReport(original: originalText, reconstructed: reconstructed, response: response)
             return .surfaceMismatch(msg)
@@ -202,7 +216,7 @@ extension ReadView {
         // Pair rebuilt edges with response entries by index to apply readings.
         // Both arrays derive from the same source so counts should match;
         // zip truncates silently if they differ, which would skip tail entries.
-        for (edge, entry) in zip(rebuiltEdges, response.segments) {
+        for (edge, entry) in zip(rebuiltEdges, workingEntries.filter { $0.surface.isEmpty == false }) {
             let nsRange = NSRange(edge.start..<edge.end, in: originalText)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
 
@@ -423,7 +437,83 @@ extension ReadView {
         }
     }
 
-    // Builds a concise user-facing mismatch description showing length delta and first differing character.
+    // Aligns response segment surfaces to the original text by tolerating whitespace-only
+    // discrepancies: substitutions (' ' ↔ '\n', tab, U+3000), insertions (response dropped a
+    // whitespace char), and deletions (response added a spurious whitespace char).
+    // Returns repaired entries whose concatenated surfaces exactly equal the original text,
+    // or nil when a non-whitespace mismatch is encountered. Readings are preserved.
+    private func repairWhitespaceMismatches(
+        _ entries: [LLMSegmentEntry],
+        against originalText: String
+    ) -> [LLMSegmentEntry]? {
+        let origNS = originalText as NSString
+        var origIdx = 0
+        var repaired: [LLMSegmentEntry] = []
+
+        for entry in entries {
+            let segNS = entry.surface as NSString
+            var segIdx = 0
+            var units: [unichar] = []
+
+            while segIdx < segNS.length {
+                let segCh = segNS.character(at: segIdx)
+                if origIdx >= origNS.length {
+                    // Response has extra trailing characters — accept only if whitespace.
+                    guard Self.isWhitespaceUnit(segCh) else { return nil }
+                    segIdx += 1
+                    continue
+                }
+                let origCh = origNS.character(at: origIdx)
+                if origCh == segCh {
+                    units.append(origCh)
+                    origIdx += 1
+                    segIdx += 1
+                } else if Self.isWhitespaceUnit(origCh) && Self.isWhitespaceUnit(segCh) {
+                    // Whitespace substitution — adopt the original's character.
+                    units.append(origCh)
+                    origIdx += 1
+                    segIdx += 1
+                } else if Self.isWhitespaceUnit(origCh) {
+                    // Response dropped an original whitespace char — reinsert it.
+                    units.append(origCh)
+                    origIdx += 1
+                } else if Self.isWhitespaceUnit(segCh) {
+                    // Response added a spurious whitespace char — drop it.
+                    segIdx += 1
+                } else {
+                    return nil
+                }
+            }
+
+            let surface = String(utf16CodeUnits: units, count: units.count)
+            repaired.append(LLMSegmentEntry(surface: surface, reading: entry.reading))
+        }
+
+        // Consume any trailing original whitespace the response never emitted by appending
+        // to the last non-empty repaired entry.
+        while origIdx < origNS.length {
+            let ch = origNS.character(at: origIdx)
+            guard Self.isWhitespaceUnit(ch) else { return nil }
+            guard let lastIdx = repaired.lastIndex(where: { $0.surface.isEmpty == false }) else { return nil }
+            let appended = repaired[lastIdx].surface + String(utf16CodeUnits: [ch], count: 1)
+            repaired[lastIdx] = LLMSegmentEntry(surface: appended, reading: repaired[lastIdx].reading)
+            origIdx += 1
+        }
+
+        guard origIdx == origNS.length else { return nil }
+        return repaired
+    }
+
+    // Recognized whitespace UTF-16 units for mismatch repair: ASCII space/tab/CR/LF and
+    // ideographic space (U+3000), which Japanese text commonly contains.
+    private static func isWhitespaceUnit(_ unit: unichar) -> Bool {
+        unit == 0x20 || unit == 0x0A || unit == 0x09 || unit == 0x0D || unit == 0x3000
+    }
+
+    // Builds a user-facing mismatch description listing every divergence with line/col,
+    // a printable form of the differing characters, and a small context window. Multiple
+    // issues matter because LLMs often produce a cluster of related mistakes; seeing only
+    // the first one hides the others and makes the failure feel opaque.
     private func mismatchDescription(original: String, reconstructed: String) -> String {
         let origUTF16 = original.utf16.count
         let reconUTF16 = reconstructed.utf16.count
@@ -431,21 +521,82 @@ extension ReadView {
         let origChars = Array(original)
         let reconChars = Array(reconstructed)
 
-        if let idx = zip(origChars, reconChars).enumerated().first(where: { $0.element.0 != $0.element.1 })?.offset {
-            var line = 1
-            var col = 1
-            for i in 0..<min(idx, origChars.count) {
-                if origChars[i] == "\n" { line += 1; col = 1 } else { col += 1 }
-            }
-            let expected = origChars[idx]
-            let got = reconChars[idx]
-            return "Segment mismatch at line \(line), col \(col): expected '\(expected)' but got '\(got)'. Original \(origUTF16) UTF-16 units, response \(reconUTF16)."
+        // Walk both sequences, emitting a numbered entry per contiguous run of
+        // divergence. A run ends when characters realign or one side is exhausted.
+        var issues: [String] = []
+        let maxIssues = 5
+        var i = 0
+        let common = min(origChars.count, reconChars.count)
+        while i < common && issues.count < maxIssues {
+            if origChars[i] == reconChars[i] { i += 1; continue }
+            let startIdx = i
+            var j = i
+            while j < common && origChars[j] != reconChars[j] { j += 1 }
+            let origRun = String(origChars[startIdx..<j])
+            let reconRun = String(reconChars[startIdx..<j])
+            let (line, col) = lineCol(for: startIdx, in: origChars)
+            issues.append("line \(line), col \(col): expected \(printable(origRun)) but got \(printable(reconRun))")
+            i = j
         }
+
+        // A run extending past the shared prefix shows as a trailing extra/missing tail.
+        if issues.count < maxIssues && origChars.count != reconChars.count {
+            let (line, col) = lineCol(for: common, in: origChars)
+            if origChars.count > reconChars.count {
+                let tail = String(origChars[common..<origChars.count])
+                issues.append("line \(line), col \(col): response is missing \(printable(tail))")
+            } else {
+                let tail = String(reconChars[common..<reconChars.count])
+                issues.append("line \(line), col \(col): response has extra \(printable(tail))")
+            }
+        }
+
+        if issues.isEmpty == false {
+            let header = "LLM response doesn't match the source text (\(origUTF16) vs \(reconUTF16) UTF-16 units, \(issues.count)\(issues.count >= maxIssues ? "+" : "") issue\(issues.count == 1 ? "" : "s")):"
+            return header + "\n\n• " + issues.joined(separator: "\n• ")
+        }
+
 
         // No character-level difference found — one is a prefix of the other.
         let delta = reconUTF16 - origUTF16
         let sign = delta > 0 ? "+" : ""
         return "Segment surfaces don't cover the full text (\(sign)\(delta) UTF-16 units). The response likely added or dropped characters."
+    }
+
+    // Computes 1-based line and column for a character index in a [Character] array.
+    // Used by the mismatch description so each reported issue points at a precise location.
+    private func lineCol(for charIndex: Int, in chars: [Character]) -> (line: Int, col: Int) {
+        var line = 1
+        var col = 1
+        let end = min(charIndex, chars.count)
+        for i in 0..<end {
+            if chars[i] == "\n" { line += 1; col = 1 } else { col += 1 }
+        }
+        return (line, col)
+    }
+
+    // Renders a run of characters as a human-readable token: whitespace and control chars
+    // become escape sequences (\n, \t, \u{3000}) so invisible differences are still legible
+    // in an alert, while normal characters are shown quoted.
+    private func printable(_ run: String) -> String {
+        guard run.isEmpty == false else { return "''" }
+        var result = ""
+        for scalar in run.unicodeScalars {
+            switch scalar.value {
+            case 0x0A: result += "\\n"
+            case 0x0D: result += "\\r"
+            case 0x09: result += "\\t"
+            case 0x20: result += "·"
+            case 0x3000: result += "\\u{3000}"
+            default:
+                if scalar.value < 0x20 || scalar.value == 0x7F {
+                    result += String(format: "\\u{%X}", scalar.value)
+                } else {
+                    result.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return "'\(result)'"
     }
 
     // Emits a structured mismatch report so the divergence is immediately actionable.
