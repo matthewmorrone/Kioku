@@ -106,11 +106,11 @@ struct SettingsView: View {
                         debugLeftInsetGuide: debugLeftInsetGuide
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    // Match ReadView's outer padding so the text-container left edge sits at the
-                    // same distance from the rounded-rect chrome in both surfaces. The renderer
-                    // itself applies textContainerInset.left = 4, so both views end up with 12pt
-                    // from the chrome edge to the first glyph.
-                    .padding(8)
+                    // Vertical padding for breathing room; negative horizontal padding cancels
+                    // the renderer's hardcoded textContainerInset.left = 4 so the first glyph
+                    // sits flush with the chrome's left edge inside the Form's already-inset row.
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, -4)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color(.secondarySystemBackground))
