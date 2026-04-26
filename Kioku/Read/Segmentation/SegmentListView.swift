@@ -477,7 +477,7 @@ struct SegmentListView: View {
         let cachedEntryIDs = canonicalEntryIDBySurface
 
         if unresolvedPairs.isEmpty {
-            commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: cachedEntryIDs, hydrated: [:])
+            commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: cachedEntryIDs)
             return
         }
 
@@ -486,7 +486,10 @@ struct SegmentListView: View {
             for (surface, entryID) in hydratedEntryIDs where lookup[surface] == nil {
                 lookup[surface] = entryID
             }
-            commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup, hydrated: hydratedEntryIDs)
+            if hydratedEntryIDs.isEmpty == false {
+                canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
+            }
+            commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
         }
     }
 
@@ -494,13 +497,8 @@ struct SegmentListView: View {
     // context as the rest of the view regardless of whether hydration was synchronous or happened on a background queue.
     private func commitAddAllVisibleWords(
         orderedSurfaces: [String],
-        lookup: [String: Int64],
-        hydrated: [String: Int64]
+        lookup: [String: Int64]
     ) {
-        if hydrated.isEmpty == false {
-            canonicalEntryIDBySurface.merge(hydrated) { current, _ in current }
-        }
-
         var entries = loadSavedWordEntriesFromStorage()
         // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
         var indexByEntryID: [Int64: Int] = [:]
@@ -698,6 +696,9 @@ struct SegmentListView: View {
 
     // Resolves canonical dictionary ids in the background and returns a surface-keyed map of successful matches.
     // For each pair, tries the surface form first and falls back to the lemma so conjugated forms resolve correctly.
+    // The completion handler is always invoked on the main thread (the early-return path runs synchronously on the
+    // caller's main-actor context, the async path hops back via DispatchQueue.main.async). Callers may therefore
+    // mutate @State and other MainActor-isolated view state directly inside `onComplete`.
     private func hydrateCanonicalEntryIDs(
         for pairs: [(surface: String, lemma: String)],
         onComplete: @escaping ([String: Int64]) -> Void
