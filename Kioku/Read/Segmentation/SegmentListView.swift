@@ -473,69 +473,83 @@ struct SegmentListView: View {
             }
         }
 
-        let commit: ([String: Int64]) -> Void = { hydratedEntryIDs in
+        // Snapshot the cache so the commit step's lookups don't depend on @State write-then-read semantics.
+        let cachedEntryIDs = canonicalEntryIDBySurface
+
+        if unresolvedPairs.isEmpty {
+            commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: cachedEntryIDs)
+            return
+        }
+
+        hydrateCanonicalEntryIDs(for: unresolvedPairs) { hydratedEntryIDs in
+            var lookup = cachedEntryIDs
+            for (surface, entryID) in hydratedEntryIDs where lookup[surface] == nil {
+                lookup[surface] = entryID
+            }
             if hydratedEntryIDs.isEmpty == false {
                 canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
             }
+            commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
+        }
+    }
 
-            var entries = loadSavedWordEntriesFromStorage()
-            // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
-            var indexByEntryID: [Int64: Int] = [:]
-            indexByEntryID.reserveCapacity(entries.count)
-            for (index, entry) in entries.enumerated() {
-                indexByEntryID[entry.canonicalEntryID] = index
+    // Persists the saved-word entries derived from one Add-All invocation. Split out so commit runs on the same MainActor
+    // context as the rest of the view regardless of whether hydration was synchronous or happened on a background queue.
+    private func commitAddAllVisibleWords(
+        orderedSurfaces: [String],
+        lookup: [String: Int64]
+    ) {
+        var entries = loadSavedWordEntriesFromStorage()
+        // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
+        var indexByEntryID: [Int64: Int] = [:]
+        indexByEntryID.reserveCapacity(entries.count)
+        for (index, entry) in entries.enumerated() {
+            indexByEntryID[entry.canonicalEntryID] = index
+        }
+
+        var addedCount = 0
+
+        for normalizedSurface in orderedSurfaces {
+            guard let entryID = lookup[normalizedSurface] else {
+                continue
             }
 
-            var addedCount = 0
-
-            for normalizedSurface in orderedSurfaces {
-                guard let entryID = canonicalEntryIDBySurface[normalizedSurface] else {
+            if let existingIndex = indexByEntryID[entryID] {
+                guard let noteID = sourceNoteID else {
                     continue
                 }
 
-                if let existingIndex = indexByEntryID[entryID] {
-                    guard let noteID = sourceNoteID else {
-                        continue
-                    }
-
-                    let existingEntry = entries[existingIndex]
-                    var noteIDs = Set(existingEntry.sourceNoteIDs)
-                    if noteIDs.contains(noteID) {
-                        continue
-                    }
-
-                    noteIDs.insert(noteID)
-                    entries[existingIndex] = SavedWord(
-                        canonicalEntryID: existingEntry.canonicalEntryID,
-                        surface: existingEntry.surface,
-                        sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString }
-                    )
-                } else {
-                    let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
-                    indexByEntryID[entryID] = entries.count
-                    entries.append(
-                        SavedWord(
-                            canonicalEntryID: entryID,
-                            surface: normalizedSurface,
-                            sourceNoteIDs: noteIDs
-                        )
-                    )
+                let existingEntry = entries[existingIndex]
+                var noteIDs = Set(existingEntry.sourceNoteIDs)
+                if noteIDs.contains(noteID) {
+                    continue
                 }
 
-                addedCount += 1
+                noteIDs.insert(noteID)
+                entries[existingIndex] = SavedWord(
+                    canonicalEntryID: existingEntry.canonicalEntryID,
+                    surface: existingEntry.surface,
+                    sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString }
+                )
+            } else {
+                let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
+                indexByEntryID[entryID] = entries.count
+                entries.append(
+                    SavedWord(
+                        canonicalEntryID: entryID,
+                        surface: normalizedSurface,
+                        sourceNoteIDs: noteIDs
+                    )
+                )
             }
 
-            let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
-            persistSavedWordEntriesToStorage(normalizedEntries)
-            applySavedWordState(entries: normalizedEntries)
-            showAddAllFeedback(addedCount: addedCount)
+            addedCount += 1
         }
 
-        if unresolvedPairs.isEmpty {
-            commit([:])
-        } else {
-            hydrateCanonicalEntryIDs(for: unresolvedPairs, onComplete: commit)
-        }
+        let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
+        persistSavedWordEntriesToStorage(normalizedEntries)
+        applySavedWordState(entries: normalizedEntries)
+        showAddAllFeedback(addedCount: addedCount)
     }
 
     // Shows a short-lived status message after attempting to favorite all visible words.
@@ -682,6 +696,9 @@ struct SegmentListView: View {
 
     // Resolves canonical dictionary ids in the background and returns a surface-keyed map of successful matches.
     // For each pair, tries the surface form first and falls back to the lemma so conjugated forms resolve correctly.
+    // The completion handler is always invoked on the main thread (the early-return path runs synchronously on the
+    // caller's main-actor context, the async path hops back via DispatchQueue.main.async). Callers may therefore
+    // mutate @State and other MainActor-isolated view state directly inside `onComplete`.
     private func hydrateCanonicalEntryIDs(
         for pairs: [(surface: String, lemma: String)],
         onComplete: @escaping ([String: Int64]) -> Void
