@@ -20,15 +20,6 @@ private enum FlashcardCardFace {
     case back
 }
 
-// Which words to include in a session.
-private enum FlashcardReviewScope: String, CaseIterable, Identifiable {
-    case all = "All"
-    case mostRecent = "Most Recent"
-    case markedWrong = "Marked Wrong"
-    case fromNote = "From Note"
-    var id: String { rawValue }
-}
-
 // Which side of each card is the prompt vs. the answer.
 private enum FlashcardCardDirection: String, CaseIterable, Identifiable {
     case kanjiToKana = "漢字 → かな"
@@ -61,10 +52,8 @@ struct FlashcardsView: View {
     @State private var reviewedCount: Int = 0
 
     @State private var showEndSessionConfirm: Bool = false
-    @State private var scope: FlashcardReviewScope = .all
     @State private var direction: FlashcardCardDirection = .kanjiToKana
-    @State private var mostRecentCount: Int = 20
-    @State private var selectedNoteID: UUID? = nil
+    @State private var selectedNoteIDs: Set<UUID> = []
     @State private var liveContentByEntryID: [Int64: FlashcardLiveContent] = [:]
     @State private var liveContentRequestToken: Int = 0
 
@@ -168,7 +157,7 @@ struct FlashcardsView: View {
                     liveContent: liveContentByEntryID[session[idx].canonicalEntryID],
                     isTop: idx == index,
                     direction: direction,
-                    preferredNoteID: scope == .fromNote ? selectedNoteID : nil,
+                    preferredNoteID: selectedNoteIDs.count == 1 ? selectedNoteIDs.first : nil,
                     showBack: $showBack,
                     dragOffset: $dragOffset,
                     isSwipingOut: $isSwipingOut,
@@ -257,16 +246,7 @@ struct FlashcardsView: View {
     private var reviewHome: some View {
         Form {
             Section {
-                Picker("Scope", selection: $scope) {
-                    ForEach(FlashcardReviewScope.allCases) { s in Text(s.rawValue).tag(s) }
-                }
-                .pickerStyle(.segmented)
-
-                if scope == .mostRecent {
-                    Stepper("Most recent: \u{200E}\(mostRecentCount)", value: $mostRecentCount, in: 5...200, step: 5)
-                } else if scope == .fromNote {
-                    FlashcardNotePicker(selectedNoteID: $selectedNoteID)
-                }
+                FlashcardNotePicker(selectedNoteIDs: $selectedNoteIDs)
             }
 
             Section {
@@ -361,23 +341,13 @@ struct FlashcardsView: View {
         sessionTotalCount = 0; reviewedCount = 0
     }
 
-    // Returns the subset of saved words that match the current scope and filter settings.
+    // Returns saved words filtered by the selected notes; an empty selection means no filter.
     private func wordsMatchingSelection() -> [SavedWord] {
-        var base = wordsStore.words
-        switch scope {
-        case .all:
-            break
-        case .mostRecent:
-            base = Array(base.sorted { $0.savedAt > $1.savedAt }.prefix(mostRecentCount))
-        case .markedWrong:
-            let wrong = reviewStore.markedWrong
-            base = base.filter { wrong.contains($0.canonicalEntryID) }
-        case .fromNote:
-            if let id = selectedNoteID {
-                base = base.filter { $0.sourceNoteIDs.contains(id) }
-            }
+        let base = wordsStore.words
+        guard selectedNoteIDs.isEmpty == false else { return base }
+        return base.filter { word in
+            word.sourceNoteIDs.contains(where: { selectedNoteIDs.contains($0) })
         }
-        return base
     }
 
     // Fetches headword/kana/meaning for every saved word from DictionaryStore, building a
@@ -414,24 +384,70 @@ struct FlashcardsView: View {
     }
 }
 
-// Note picker used inside the "From Note" scope row.
+// Multiselect dropdown scoping the session to saved words from one or more notes.
+// An empty selection ("None") means no note filter — all saved words are eligible.
+// Only notes that contain at least one saved word are listed.
 private struct FlashcardNotePicker: View {
     @EnvironmentObject private var notesStore: NotesStore
-    @Binding var selectedNoteID: UUID?
+    @EnvironmentObject private var wordsStore: WordsStore
+    @Binding var selectedNoteIDs: Set<UUID>
 
-    // Renders a menu picker listing available notes; shows a message when none exist.
     var body: some View {
-        if notesStore.notes.isEmpty {
-            Text("No notes available.").font(.footnote).foregroundStyle(.secondary)
+        let notes = notesWithSavedWords
+        if notes.isEmpty {
+            Text("No notes with saved words.").font(.footnote).foregroundStyle(.secondary)
         } else {
-            Picker("Note", selection: $selectedNoteID) {
-                Text("Any Note").tag(UUID?.none)
-                ForEach(notesStore.notes) { note in
-                    Text(note.title.isEmpty ? "Untitled" : note.title).tag(UUID?.some(note.id))
+            HStack {
+                Text("Note")
+                Spacer()
+                Menu(summary(from: notes)) {
+                    Button { selectedNoteIDs.removeAll() } label: {
+                        if selectedNoteIDs.isEmpty {
+                            Label("None", systemImage: "checkmark")
+                        } else {
+                            Text("None")
+                        }
+                    }
+                    Divider()
+                    ForEach(notes) { note in
+                        Button {
+                            if selectedNoteIDs.contains(note.id) {
+                                selectedNoteIDs.remove(note.id)
+                            } else {
+                                selectedNoteIDs.insert(note.id)
+                            }
+                        } label: {
+                            let title = note.title.isEmpty ? "Untitled" : note.title
+                            if selectedNoteIDs.contains(note.id) {
+                                Label(title, systemImage: "checkmark")
+                            } else {
+                                Text(title)
+                            }
+                        }
+                    }
                 }
             }
-            .pickerStyle(.menu)
         }
+    }
+
+    // Notes that contain at least one saved word — the only ones worth showing in the filter.
+    private var notesWithSavedWords: [Note] {
+        var ids: Set<UUID> = []
+        for word in wordsStore.words {
+            for id in word.sourceNoteIDs { ids.insert(id) }
+        }
+        return notesStore.notes.filter { ids.contains($0.id) }
+    }
+
+    // Short label describing the current selection for the menu's trigger text.
+    private func summary(from notes: [Note]) -> String {
+        if selectedNoteIDs.isEmpty { return "None" }
+        if selectedNoteIDs.count == 1,
+           let id = selectedNoteIDs.first,
+           let note = notes.first(where: { $0.id == id }) {
+            return note.title.isEmpty ? "Untitled" : note.title
+        }
+        return "\(selectedNoteIDs.count) notes"
     }
 }
 
