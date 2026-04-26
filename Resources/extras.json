@@ -1,5 +1,16 @@
 [
 	{
+		"kanji": "愛人",
+		"kana": "あいひと",
+		"sense": [
+			{
+				"partOfSpeech": ["noun (common) (futsuumeishi)"],
+				"misc": ["poetical term"],
+				"gloss": ["lover; beloved (poetic reading of 愛人)"]
+			}
+		]
+	},
+	{
 		"kanji": "夕映",
 		"kana": "ゆうばえ",
 		"sense": [
