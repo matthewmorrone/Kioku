@@ -390,10 +390,12 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             let entries = computeEntries()
             var didApplyKern = false
             let textStorage = textView.textStorage
-            // Track the last-char ranges we mutated so a post-layout pass can revert any kern
-            // that pushed B onto a new line — without that revert, the trailing kern leaks
-            // visible whitespace before B's first glyph at the start of the wrapped line.
-            var appliedKernByPairIndex: [Int: NSRange] = [:]
+            // Track the last-char ranges we mutated, paired with the prior kern attribute
+            // (raw NSNumber? so we can distinguish "absent" from "explicit value") so a
+            // post-layout pass can revert any kern that pushed B onto a new line. Without
+            // that revert, the trailing kern leaks visible whitespace before B's first
+            // glyph at the start of the wrapped line.
+            var appliedKernByPairIndex: [Int: (range: NSRange, priorKern: NSNumber?)] = [:]
             for i in 0..<max(0, entries.count - 1) {
                 let a = entries[i]
                 let b = entries[i + 1]
@@ -405,10 +407,11 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 guard lastCharLocation >= 0,
                       lastCharLocation + 1 <= textStorage.length else { continue }
                 let existingRaw = textStorage.attribute(.kern, at: lastCharLocation, effectiveRange: nil)
-                let existing = CGFloat((existingRaw as? NSNumber)?.doubleValue ?? kerning)
+                let priorKern = existingRaw as? NSNumber
+                let existing = CGFloat(priorKern?.doubleValue ?? kerning)
                 let newKern = existing + overlap
                 textStorage.addAttribute(.kern, value: newKern, range: lastCharRange)
-                appliedKernByPairIndex[i] = lastCharRange
+                appliedKernByPairIndex[i] = (lastCharRange, priorKern)
                 didApplyKern = true
             }
             if didApplyKern {
@@ -426,12 +429,20 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                 let postEntriesForRevert = computeEntries()
                 if postEntriesForRevert.count == entries.count {
                     var didRevert = false
-                    for (pairIndex, lastCharRange) in appliedKernByPairIndex {
+                    for (pairIndex, applied) in appliedKernByPairIndex {
                         guard pairIndex + 1 < postEntriesForRevert.count else { continue }
                         let aPost = postEntriesForRevert[pairIndex]
                         let bPost = postEntriesForRevert[pairIndex + 1]
                         if abs(aPost.lineY - bPost.lineY) >= 1.0 {
-                            textStorage.addAttribute(.kern, value: kerning, range: lastCharRange)
+                            // Restore the exact prior kern: re-apply the original NSNumber when
+                            // present, or remove the attribute entirely when it was absent —
+                            // overwriting with the global `kerning` would clobber any pre-existing
+                            // styling-applied kern on this character.
+                            if let priorKern = applied.priorKern {
+                                textStorage.addAttribute(.kern, value: priorKern, range: applied.range)
+                            } else {
+                                textStorage.removeAttribute(.kern, range: applied.range)
+                            }
                             didRevert = true
                         }
                     }
