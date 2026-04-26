@@ -444,67 +444,75 @@ struct SegmentListView: View {
         applySavedWordState(entries: normalizedEntries)
     }
 
-    // Saves every currently visible segment row to favorites while updating each star in real time.
+    // Saves every currently visible segment row to favorites in one batched pass so the action stays responsive on large lists.
     private func addAllVisibleWords() {
         let rows = displayRows
         guard rows.isEmpty == false else {
             return
         }
 
-        Task {
+        // Dedupe by normalized surface so the dictionary is only consulted once per distinct word.
+        var seenSurfaces = Set<String>()
+        var orderedSurfaces: [String] = []
+        var unresolvedPairs: [(surface: String, lemma: String)] = []
+        orderedSurfaces.reserveCapacity(rows.count)
+
+        for row in rows {
+            let normalizedSurface = normalizedSurfaceForFiltering(row.edge.surface)
+            guard normalizedSurface.isEmpty == false,
+                  seenSurfaces.contains(normalizedSurface) == false else {
+                continue
+            }
+            seenSurfaces.insert(normalizedSurface)
+            orderedSurfaces.append(normalizedSurface)
+            if canonicalEntryIDBySurface[normalizedSurface] == nil {
+                unresolvedPairs.append((
+                    surface: normalizedSurface,
+                    lemma: normalizedSurfaceForFiltering(lemmaForSurface(row.edge.surface) ?? "")
+                ))
+            }
+        }
+
+        let commit: ([String: Int64]) -> Void = { hydratedEntryIDs in
+            if hydratedEntryIDs.isEmpty == false {
+                canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
+            }
+
             var entries = loadSavedWordEntriesFromStorage()
+            // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
+            var indexByEntryID: [Int64: Int] = [:]
+            indexByEntryID.reserveCapacity(entries.count)
+            for (index, entry) in entries.enumerated() {
+                indexByEntryID[entry.canonicalEntryID] = index
+            }
+
             var addedCount = 0
 
-            for row in rows {
-                let normalizedSurface = normalizedSurfaceForFiltering(row.edge.surface)
-                guard normalizedSurface.isEmpty == false else {
+            for normalizedSurface in orderedSurfaces {
+                guard let entryID = canonicalEntryIDBySurface[normalizedSurface] else {
                     continue
                 }
 
-                let entryID: Int64
-                if let cached = canonicalEntryIDBySurface[normalizedSurface] {
-                    entryID = cached
-                } else if let store = dictionaryStore {
-                    let surface = normalizedSurface
-                    let lemma = normalizedSurfaceForFiltering(lemmaForSurface(row.edge.surface) ?? "")
-                    // Try the surface form first; fall back to the lemma so conjugated verbs resolve correctly.
-                    guard let resolved = await withCheckedContinuation({ continuation in
-                        DispatchQueue.global(qos: .userInitiated).async {
-                            let id = (try? store.lookup(surface: surface, mode: .kanjiAndKana).first?.entryId)
-                                ?? (lemma.isEmpty == false && lemma != surface
-                                    ? try? store.lookup(surface: lemma, mode: .kanjiAndKana).first?.entryId
-                                    : nil)
-                            continuation.resume(returning: id)
-                        }
-                    }) else {
-                        continue
-                    }
-                    entryID = resolved
-                    canonicalEntryIDBySurface[normalizedSurface] = entryID
-                } else {
-                    continue
-                }
-
-                if let existingIndex = entries.firstIndex(where: { $0.canonicalEntryID == entryID }) {
+                if let existingIndex = indexByEntryID[entryID] {
                     guard let noteID = sourceNoteID else {
                         continue
                     }
 
-                    var existingEntry = entries[existingIndex]
+                    let existingEntry = entries[existingIndex]
                     var noteIDs = Set(existingEntry.sourceNoteIDs)
                     if noteIDs.contains(noteID) {
                         continue
                     }
 
                     noteIDs.insert(noteID)
-                    existingEntry = SavedWord(
+                    entries[existingIndex] = SavedWord(
                         canonicalEntryID: existingEntry.canonicalEntryID,
                         surface: existingEntry.surface,
                         sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString }
                     )
-                    entries[existingIndex] = existingEntry
                 } else {
                     let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
+                    indexByEntryID[entryID] = entries.count
                     entries.append(
                         SavedWord(
                             canonicalEntryID: entryID,
@@ -515,14 +523,18 @@ struct SegmentListView: View {
                 }
 
                 addedCount += 1
-                savedWordSurfaces.insert(normalizedSurface)
-                savedWordEntryIDs.insert(entryID)
             }
 
             let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
             persistSavedWordEntriesToStorage(normalizedEntries)
             applySavedWordState(entries: normalizedEntries)
             showAddAllFeedback(addedCount: addedCount)
+        }
+
+        if unresolvedPairs.isEmpty {
+            commit([:])
+        } else {
+            hydrateCanonicalEntryIDs(for: unresolvedPairs, onComplete: commit)
         }
     }
 
