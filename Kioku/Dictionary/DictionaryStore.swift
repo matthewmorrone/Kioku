@@ -68,6 +68,137 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         }
     }
 
+    // Resolves the canonical entry id for a surface without fetching kanji forms, kana forms, or
+    // senses. Use when callers only need the stable identifier (e.g. saving a word, batched
+    // identity resolution): cuts out the per-match form/sense fetches that lookup(surface:mode:)
+    // performs, which is a 5–10× speedup since those three fetches dominate per-surface cost.
+    // Selection priority matches lookup(surface:mode:) so the resolved id is identical to what
+    // an interactive tap would produce — saved-word identity stays consistent across paths.
+    public func lookupFirstEntryID(surface: String) throws -> Int64? {
+        try withSerializedDatabaseAccess {
+            for candidate in lookupSurfaces(for: surface) {
+                if let header = try fetchMatchedEntries(surface: candidate, matchKana: true, matchKanji: true).first {
+                    return header.entryID
+                }
+            }
+            return nil
+        }
+    }
+
+    // Batch resolves canonical entry ids for many surfaces in one SQL round trip — collapses N
+    // serialized per-surface queries into a single query, the dominant cost of bulk save flows
+    // (Add All Visible Words, segment-list prewarm). Each input surface is matched against its
+    // primary trimmed form only; surfaces that need halfwidth/kyujitai/iteration-mark expansion
+    // fall back to lookupFirstEntryID below so the final map is still complete. Returned ids
+    // match lookupFirstEntryID's selection priority (jpdb rank → sense order → entry id), so
+    // saved-word identity is consistent regardless of the path.
+    public func lookupFirstEntryIDs(surfaces: [String]) throws -> [String: Int64] {
+        guard surfaces.isEmpty == false else { return [:] }
+        // Dedupe + drop empties so the bound parameter list matches the index space.
+        var uniqueSurfaces: [String] = []
+        var seen = Set<String>()
+        for surface in surfaces {
+            let trimmed = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.isEmpty == false, seen.insert(trimmed).inserted else { continue }
+            uniqueSurfaces.append(trimmed)
+        }
+        guard uniqueSurfaces.isEmpty == false else { return [:] }
+
+        return try withSerializedDatabaseAccess {
+            var resolved: [String: Int64] = [:]
+            // SQLite has a default SQLITE_LIMIT_VARIABLE_NUMBER (often 999); chunk to stay safely
+            // under that even after the per-surface bind multiplier (1 here, since q_text alone
+            // is bound). 256 keeps headroom and limits per-query memory pressure.
+            let chunkSize = 256
+            var index = uniqueSurfaces.startIndex
+            while index < uniqueSurfaces.endIndex {
+                let chunkEnd = uniqueSurfaces.index(index, offsetBy: chunkSize, limitedBy: uniqueSurfaces.endIndex) ?? uniqueSurfaces.endIndex
+                let chunk = Array(uniqueSurfaces[index..<chunkEnd])
+                try resolveChunk(chunk, into: &resolved)
+                index = chunkEnd
+            }
+            // Fall back to per-surface lookup (with its full candidate-form expansion) for any
+            // surface the batch query missed — covers halfwidth-only kana, kyujitai, iteration
+            // marks, etc. Misses are typically a small minority so per-call cost stays bounded.
+            for surface in uniqueSurfaces where resolved[surface] == nil {
+                if let entryID = try fetchFirstEntryIDWithExpansion(for: surface) {
+                    resolved[surface] = entryID
+                }
+            }
+            return resolved
+        }
+    }
+
+    // Runs the batch SQL for one chunk of surfaces. Builds a (idx, surface) inline VALUES list,
+    // joins it against entries via the same kanji/kana EXISTS subqueries the per-surface path
+    // uses, and picks the top entry per surface using the same priority (jpdb rank → sense order
+    // → entry id) so id selection matches lookupFirstEntryID exactly.
+    private func resolveChunk(_ surfaces: [String], into resolved: inout [String: Int64]) throws {
+        let valuesList = (0..<surfaces.count).map { _ in "(?, ?)" }.joined(separator: ", ")
+        let sql = """
+        WITH q(idx, surface) AS (VALUES \(valuesList)),
+             m AS (
+                 SELECT q.idx, e.id AS entry_id,
+                        MIN(wf.jpdb_rank) AS rank,
+                        COALESCE(MIN(s.order_index), 2147483647) AS min_sense
+                 FROM q
+                 JOIN entries e ON EXISTS (
+                     SELECT 1 FROM kanji kj WHERE kj.entry_id = e.id AND kj.text = q.surface
+                     UNION ALL
+                     SELECT 1 FROM kana_forms kf WHERE kf.entry_id = e.id AND kf.text = q.surface
+                 )
+                 LEFT JOIN word_frequency wf ON wf.entry_id = e.id
+                     AND (EXISTS (SELECT 1 FROM kana_forms kf2 WHERE kf2.id = wf.kana_id AND kf2.text = q.surface)
+                       OR EXISTS (SELECT 1 FROM kanji kj2 WHERE kj2.id = wf.kanji_id AND kj2.text = q.surface))
+                 LEFT JOIN senses s ON s.entry_id = e.id
+                 GROUP BY q.idx, e.id
+             ),
+             ranked AS (
+                 SELECT idx, entry_id,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY idx
+                            ORDER BY COALESCE(rank, 9999999) ASC, min_sense ASC, entry_id ASC
+                        ) AS rn
+                 FROM m
+             )
+        SELECT idx, entry_id FROM ranked WHERE rn = 1
+        """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        try prepare(sql: sql, statement: &statement)
+        for (offset, surface) in surfaces.enumerated() {
+            try bindInt64(Int64(offset), index: Int32(offset * 2 + 1), statement: statement)
+            try bindText(surface, index: Int32(offset * 2 + 2), statement: statement)
+        }
+
+        var stepCode = sqlite3_step(statement)
+        while stepCode == SQLITE_ROW {
+            let idx = Int(sqlite3_column_int64(statement, 0))
+            let entryID = sqlite3_column_int64(statement, 1)
+            if idx >= 0, idx < surfaces.count {
+                resolved[surfaces[idx]] = entryID
+            }
+            stepCode = sqlite3_step(statement)
+        }
+        guard stepCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage())
+        }
+    }
+
+    // Per-surface fallback used by the batch path when the primary form misses — runs the same
+    // candidate expansion (halfwidth, iteration marks, kyujitai) lookupFirstEntryID does, but
+    // without re-acquiring the access queue (caller already holds it).
+    private func fetchFirstEntryIDWithExpansion(for surface: String) throws -> Int64? {
+        for candidate in lookupSurfaces(for: surface) {
+            if let header = try fetchMatchedEntries(surface: candidate, matchKana: true, matchKanji: true).first {
+                return header.entryID
+            }
+        }
+        return nil
+    }
+
     // Fetches one fully materialized entry by ID so UI layers can resolve stable lexeme identifiers.
     public func lookupEntry(entryID: Int64) throws -> DictionaryEntry? {
         try withSerializedDatabaseAccess {

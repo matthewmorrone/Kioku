@@ -73,8 +73,14 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
         let isNonZero = boundsWidth > 0
         lastKnownBoundsWidth = boundsWidth
         // Invalidate when transitioning from zero to real width so a zero-frame first render doesn't permanently suppress furigana drawing.
+        // Reset both signatures together — the text-change branch (which rebuilds attributedText, runs
+        // exhaustive layout, and applies the line-start exclusion pass) is gated by lastTextRenderSignature.
+        // If only lastRenderSignature is reset, the replay falls into the lighter else-branch and the
+        // initial render never gets its real-bounds text pipeline, leaving the overlay empty until an
+        // unrelated state change happens to bump the signature.
         if wasZero && isNonZero {
             lastRenderSignature = nil
+            lastTextRenderSignature = nil
         }
         guard let lastRenderSignature else {
             return true

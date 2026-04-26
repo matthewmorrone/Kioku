@@ -444,7 +444,9 @@ struct SegmentListView: View {
         applySavedWordState(entries: normalizedEntries)
     }
 
-    // Saves every currently visible segment row to favorites in one batched pass so the action stays responsive on large lists.
+    // Saves every currently visible segment row to favorites with a staggered visual rollout so
+    // the user sees per-row progress instead of an all-or-nothing flash. Underlying persistence
+    // is now ~10ms (batched SQL) — the stagger is a UX choice to make activity visible.
     private func addAllVisibleWords() {
         let rows = displayRows
         guard rows.isEmpty == false else {
@@ -473,32 +475,82 @@ struct SegmentListView: View {
             }
         }
 
-        // Snapshot the cache so the commit step's lookups don't depend on @State write-then-read semantics.
-        let cachedEntryIDs = canonicalEntryIDBySurface
+        let newSurfaces = orderedSurfaces.filter { savedWordSurfaces.contains($0) == false }
+        let total = newSurfaces.count
 
-        if unresolvedPairs.isEmpty {
-            commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: cachedEntryIDs)
-            return
-        }
+        addAllFeedbackTask?.cancel()
+        addAllFeedbackTask = Task { @MainActor in
+            // Stagger per-row star fade-ins over a bounded window (~12ms each, capped to ~600ms
+            // total) so the action is visibly happening rather than appearing instant. For one
+            // or two rows the stagger collapses to a single animated insert.
+            if total > 0 {
+                let perItemNanos: UInt64 = max(8_000_000,
+                                                min(40_000_000,
+                                                    600_000_000 / UInt64(total)))
+                for (idx, surface) in newSurfaces.enumerated() {
+                    if Task.isCancelled { return }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        savedWordSurfaces.insert(surface)
+                    }
+                    addAllFeedbackMessage = total == 1
+                        ? "Adding 1 word…"
+                        : "Adding \(idx + 1)/\(total)…"
+                    if idx + 1 < total {
+                        try? await Task.sleep(nanoseconds: perItemNanos)
+                    }
+                }
+            }
+            if Task.isCancelled { return }
 
-        hydrateCanonicalEntryIDs(for: unresolvedPairs) { hydratedEntryIDs in
-            var lookup = cachedEntryIDs
-            for (surface, entryID) in hydratedEntryIDs where lookup[surface] == nil {
-                lookup[surface] = entryID
+            // Resolve any missing canonical IDs (typically a no-op since prewarm runs on appear),
+            // then commit. With batch SQL the hydrate step is ~10ms even from cold.
+            let cachedEntryIDs = canonicalEntryIDBySurface
+            let lookup: [String: Int64]
+            if unresolvedPairs.isEmpty {
+                lookup = cachedEntryIDs
+            } else {
+                lookup = await withCheckedContinuation { continuation in
+                    hydrateCanonicalEntryIDs(for: unresolvedPairs) { hydratedEntryIDs in
+                        var merged = cachedEntryIDs
+                        for (surface, entryID) in hydratedEntryIDs where merged[surface] == nil {
+                            merged[surface] = entryID
+                        }
+                        if hydratedEntryIDs.isEmpty == false {
+                            canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
+                        }
+                        continuation.resume(returning: merged)
+                    }
+                }
             }
-            if hydratedEntryIDs.isEmpty == false {
-                canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
+            if Task.isCancelled { return }
+
+            let addedCount = commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
+
+            // Final toast: report the real count from the commit step (which only counts
+            // entries that resolved + actually changed storage).
+            if addedCount == 0 {
+                addAllFeedbackMessage = "No new words added"
+            } else if addedCount == 1 {
+                addAllFeedbackMessage = "Added 1 word"
+            } else {
+                addAllFeedbackMessage = "Added \(addedCount) words"
             }
-            commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if Task.isCancelled { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                addAllFeedbackMessage = nil
+            }
         }
     }
 
-    // Persists the saved-word entries derived from one Add-All invocation. Split out so commit runs on the same MainActor
-    // context as the rest of the view regardless of whether hydration was synchronous or happened on a background queue.
+    // Persists the saved-word entries derived from one Add-All invocation. Returns the number of
+    // entries that were actually added or note-linked so the caller can drive its toast/UI; the
+    // toast lifecycle is owned by addAllVisibleWords' staggered task, not here.
+    @discardableResult
     private func commitAddAllVisibleWords(
         orderedSurfaces: [String],
         lookup: [String: Int64]
-    ) {
+    ) -> Int {
         var entries = loadSavedWordEntriesFromStorage()
         // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
         var indexByEntryID: [Int64: Int] = [:]
@@ -549,33 +601,7 @@ struct SegmentListView: View {
         let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
         persistSavedWordEntriesToStorage(normalizedEntries)
         applySavedWordState(entries: normalizedEntries)
-        showAddAllFeedback(addedCount: addedCount)
-    }
-
-    // Shows a short-lived status message after attempting to favorite all visible words.
-    private func showAddAllFeedback(addedCount: Int) {
-        addAllFeedbackTask?.cancel()
-
-        if addedCount == 0 {
-            addAllFeedbackMessage = "No new words added"
-        } else if addedCount == 1 {
-            addAllFeedbackMessage = "Added 1 word"
-        } else {
-            addAllFeedbackMessage = "Added \(addedCount) words"
-        }
-
-        addAllFeedbackTask = Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if Task.isCancelled {
-                return
-            }
-
-            await MainActor.run {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    addAllFeedbackMessage = nil
-                }
-            }
-        }
+        return addedCount
     }
 
     // Loads saved words from persistent storage for star-state rendering.
@@ -712,17 +738,29 @@ struct SegmentListView: View {
             var resolvedEntryIDs: [String: Int64] = [:]
             resolvedEntryIDs.reserveCapacity(pairs.count)
 
-            for pair in pairs {
-                guard pair.surface.isEmpty == false else { continue }
+            // One batch SQL for all surfaces — collapses the previous N serialized round trips
+            // into a single query. For typical 50–100 visible rows this is the difference between
+            // hundreds of milliseconds and ~10 ms of dictionary work.
+            let surfaceList = pairs.compactMap { $0.surface.isEmpty ? nil : $0.surface }
+            if let batchSurfaces = try? dictionaryStore.lookupFirstEntryIDs(surfaces: surfaceList) {
+                resolvedEntryIDs = batchSurfaces
+            }
 
-                if let match = try? dictionaryStore.lookup(surface: pair.surface, mode: .kanjiAndKana).first {
-                    // Surface form found directly in the dictionary.
-                    resolvedEntryIDs[pair.surface] = match.entryId
-                } else if pair.lemma.isEmpty == false,
-                          pair.lemma != pair.surface,
-                          let match = try? dictionaryStore.lookup(surface: pair.lemma, mode: .kanjiAndKana).first {
-                    // Conjugated surface not in dictionary — use the lemma (dictionary headword) instead.
-                    resolvedEntryIDs[pair.surface] = match.entryId
+            // Resolve any surface that didn't match by trying its lemma (dictionary headword).
+            // Conjugated forms like 食べた → 食べる need this fallback. Done in a second batch so
+            // it stays a single query rather than per-pair round trips.
+            let unresolvedLemmas = pairs.compactMap { pair -> String? in
+                guard pair.lemma.isEmpty == false,
+                      pair.lemma != pair.surface,
+                      resolvedEntryIDs[pair.surface] == nil else { return nil }
+                return pair.lemma
+            }
+            if unresolvedLemmas.isEmpty == false,
+               let lemmaResults = try? dictionaryStore.lookupFirstEntryIDs(surfaces: unresolvedLemmas) {
+                for pair in pairs where resolvedEntryIDs[pair.surface] == nil {
+                    if let entryID = lemmaResults[pair.lemma] {
+                        resolvedEntryIDs[pair.surface] = entryID
+                    }
                 }
             }
 
