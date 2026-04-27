@@ -74,9 +74,11 @@ struct WordsView: View {
             return nil
         }
 
-        let surface = entry.kanjiForms.first?.text
-            ?? entry.kanaForms.first?.text
-            ?? entry.matchedSurface
+        // matchedSurface reflects how the entry was reached, so prefer it over kanjiForms.first
+        // which would otherwise promote kana-routed lookups to kanji.
+        let surface = entry.matchedSurface.isEmpty == false
+            ? entry.matchedSurface
+            : (entry.kanaForms.first?.text ?? entry.kanjiForms.first?.text ?? "")
 
         guard surface.isEmpty == false else { return nil }
         return SavedWord(canonicalEntryID: entryID, surface: surface)

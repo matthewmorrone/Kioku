@@ -401,12 +401,9 @@ struct FlashcardsView: View {
                 }.value
                 guard let data else { continue }
 
-                let headword = data.entry.kanjiForms.first?.text
-                    ?? data.entry.kanaForms.first?.text
-                    ?? surface
                 let kana = data.entry.kanaForms.first?.text
                 let meaning = data.entry.senses.first?.glosses.first ?? ""
-                next[entryID] = FlashcardLiveContent(surface: headword, kana: kana, meaning: meaning)
+                next[entryID] = FlashcardLiveContent(surface: surface, kana: kana, meaning: meaning)
             }
 
             await MainActor.run {
