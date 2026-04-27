@@ -129,7 +129,6 @@ struct WordDetailView: View {
                             // Single entry: standard sense rows.
                             ForEach(sortedData, id: \.entry.entryId) { data in
                                 if data.entry.senses.isEmpty == false {
-                                    definitionSectionHeader(for: data.entry)
                                     let freqLabel = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel
                                     ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
                                         // Cross-references are fetched only for the saved entry; pass empty refs for other entries.
@@ -464,19 +463,6 @@ struct WordDetailView: View {
         .task {
             personalNoteText = word.personalNote ?? ""
             await loadDisplayData()
-        }
-    }
-
-    // Renders the entry label row showing the kanji form when it differs from the surface.
-    // Only rendered when there is a distinct title to show — e.g. 良い for the surface いい.
-    @ViewBuilder
-    private func definitionSectionHeader(for entry: DictionaryEntry) -> some View {
-        let entryTitle = entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text
-        if let title = entryTitle, title != word.surface {
-            Text(title)
-                .font(.subheadline.weight(.medium))
-                .listRowSeparator(.hidden)
-                .padding(.bottom, 2)
         }
     }
 
