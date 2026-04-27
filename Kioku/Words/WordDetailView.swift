@@ -157,10 +157,8 @@ struct WordDetailView: View {
 
                 // Forms section — shown for verbs only. Displays te-form / negative / past inline,
                 // with an "All conjugations" row that opens ConjugationSheetView.
-                if let vc = verbClass,
-                   let dictionaryForm = savedDisplayData?.entry.kanjiForms.first?.text
-                                     ?? savedDisplayData?.entry.kanaForms.first?.text {
-                    let keyForms = VerbConjugator.keyForms(for: dictionaryForm, verbClass: vc)
+                if let vc = verbClass {
+                    let keyForms = VerbConjugator.keyForms(for: word.surface, verbClass: vc)
                     if keyForms.isEmpty == false {
                         Section("Forms") {
                             ForEach(keyForms, id: \.label) { form in
@@ -445,11 +443,9 @@ struct WordDetailView: View {
             }
             .listStyle(.insetGrouped)
             .sheet(isPresented: $showingConjugations) {
-                if verbClass != nil,
-                   let dictionaryForm = savedDisplayData?.entry.kanjiForms.first?.text
-                                     ?? savedDisplayData?.entry.kanaForms.first?.text {
+                if verbClass != nil {
                     ConjugationSheetView(
-                        dictionaryForm: dictionaryForm,
+                        dictionaryForm: word.surface,
                         groups: conjugationGroups,
                         onLookup: { _ in
                             // Tapping a conjugated form — lookup integration is a future task.
@@ -653,11 +649,10 @@ struct WordDetailView: View {
         }.value
         senseReferences = refs
 
-        // Compute conjugation groups if this is a verb — uses the saved entry's primary kanji or kana form.
-        if let vc = verbClass,
-           let form = savedDisplayData?.entry.kanjiForms.first?.text
-                   ?? savedDisplayData?.entry.kanaForms.first?.text {
-            conjugationGroups = VerbConjugator.conjugationGroups(for: form, verbClass: vc)
+        // Compute conjugation groups if this is a verb — conjugates against the surface the user saved
+        // so kana-only saves (e.g., じゃない) don't get promoted to a canonical kanji form (じゃ無い).
+        if let vc = verbClass {
+            conjugationGroups = VerbConjugator.conjugationGroups(for: word.surface, verbClass: vc)
         }
     }
 
