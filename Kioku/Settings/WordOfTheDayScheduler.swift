@@ -24,12 +24,9 @@ enum WordOfTheDayScheduler {
     static let enabledKey = "wordOfTheDay.enabled"
     static let hourKey = "wordOfTheDay.hour"
     static let minuteKey = "wordOfTheDay.minute"
-    // v2 drops the dictionary-derived surface field; the saved word's surface is used directly.
-    private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v2"
+    private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v1"
     private static let scheduleStateKey = "wordOfTheDay.scheduleState.v1"
-    // Bumped to 2 to force a one-time reschedule so previously-queued notifications,
-    // which embedded a dictionary-derived kanji surface, are rebuilt using the saved surface.
-    private static let scheduleSignatureVersion = 2
+    private static let scheduleSignatureVersion = 1
 
     // Notification request identifiers use this prefix for batch filtering.
     static let requestPrefix = "wotd_"
