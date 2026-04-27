@@ -28,7 +28,9 @@ enum WordOfTheDayScheduler {
     static let minuteKey = "wordOfTheDay.minute"
     private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v1"
     private static let scheduleStateKey = "wordOfTheDay.scheduleState.v1"
-    private static let scheduleSignatureVersion = 1
+    // Bumped to 2 to force a one-time reschedule so previously-queued notifications,
+    // which embedded a dictionary-derived kanji surface, are rebuilt using the saved surface.
+    private static let scheduleSignatureVersion = 2
 
     // Notification request identifiers use this prefix for batch filtering.
     static let requestPrefix = "wotd_"
@@ -238,7 +240,11 @@ enum WordOfTheDayScheduler {
         let content = UNMutableNotificationContent()
         content.title = "Word of the Day"
 
-        let surface = liveContent.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Honor the surface the user actually saved — if they saved kana-only (e.g., じゃない),
+        // don't promote it to a kanji form (e.g., じゃ無い) just because the dictionary entry has one.
+        let savedSurface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let liveSurface = liveContent.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let surface = savedSurface.isEmpty ? liveSurface : savedSurface
         let meaning = liveContent.meaning.trimmingCharacters(in: .whitespacesAndNewlines)
         let kana = liveContent.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
 
