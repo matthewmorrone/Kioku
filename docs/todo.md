@@ -13,6 +13,7 @@
 - [x] Halfwidth katakana normalization in lookup (ｱｲｳｴｵ → アイウエオ)
 - [ ] Use frequency data to influence segmentation path selection
 - [ ] Provide meaning of verbs in the form they surface in
+- [ ] Lexicon lemma ranking should respect saved-word surfaces when scoring inflection candidates (Lexicon.swift:184, 241)
 
 ## Read View
 
@@ -30,6 +31,9 @@
 - [ ] Add advanced dictionary filters/sorting (JLPT, POS, frequency, commonness toggles)
 - [ ] Romaji display option
 - [ ] List conjugations in dictionary view
+- [ ] Variants section in WordDetail: list all kanji and kana forms of the entry, labeled, separate from the saved surface
+- [ ] alternateSpellings(): include kanji variants (currently kana-only, and only when the saved surface contains kanji)
+- [ ] CSV import: explicit option to fill kanji from the dictionary when the surface column is missing (today the importer silently substitutes kanji even when only kana was provided)
 
 ## Study & Review
 
