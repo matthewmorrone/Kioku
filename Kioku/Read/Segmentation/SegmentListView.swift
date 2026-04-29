@@ -438,9 +438,8 @@ struct SegmentListView: View {
             )
         }
 
-        let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
-        wordsStore.replaceAll(with: normalizedEntries)
-        applySavedWordState(entries: normalizedEntries)
+        wordsStore.replaceAll(with: entries)
+        applySavedWordState(entries: wordsStore.words)
     }
 
     // Saves every currently visible segment row to favorites with a staggered visual rollout so
@@ -486,7 +485,9 @@ struct SegmentListView: View {
             let staggerCutoff = 60
             if total > 0 && total <= staggerCutoff {
                 let totalWindowNanos: UInt64 = 1_200_000_000
-                let perItemNanos = max(UInt64(4_000_000), totalWindowNanos / UInt64(total))
+                // Cap per-item delay so a 2-row selection doesn't sleep ~600ms per row; the total
+                // window still tightens for larger batches because the divisor wins under the cap.
+                let perItemNanos = min(UInt64(40_000_000), totalWindowNanos / UInt64(total))
                 for (idx, surface) in newSurfaces.enumerated() {
                     if Task.isCancelled { return }
                     withAnimation(.easeOut(duration: 0.15)) {
@@ -536,7 +537,7 @@ struct SegmentListView: View {
             // Distinct "Saving…" indicator so the user knows persistence is running rather than
             // wondering why the previous "Adding N/N…" message has stalled.
             addAllFeedbackMessage = "Saving…"
-            let addedCount = await commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
+            let addedCount = commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
             if Task.isCancelled { return }
 
             // Final toast: report the real count from the commit step (which only counts
@@ -560,71 +561,65 @@ struct SegmentListView: View {
     // entries that were actually added or note-linked so the caller can drive its toast/UI; the
     // toast lifecycle is owned by addAllVisibleWords' staggered task, not here.
     //
-    // The merge runs on a detached task and the write goes through WordsStore.replaceAllAsync so
-    // the JSON encode + UserDefaults write happen off the main thread — for thousands of saved
-    // words the synchronous version was the source of the post-stagger UI freeze the user saw.
+    // The merge runs synchronously on the main actor (O(N+M) — fast even for tens of thousands of
+    // saved words) so concurrent edits like a single-tap toggle landing during the Saving… phase
+    // can't be lost; only the JSON encode + UserDefaults write defers to a background queue
+    // inside WordsStore.persist, which was the actual source of the post-stagger freeze.
     @discardableResult
     private func commitAddAllVisibleWords(
         orderedSurfaces: [String],
         lookup: [String: Int64]
-    ) async -> Int {
-        let currentEntries = wordsStore.words
-        let activeNoteID = sourceNoteID
+    ) -> Int {
+        var entries = wordsStore.words
+        // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
+        var indexByEntryID: [Int64: Int] = [:]
+        indexByEntryID.reserveCapacity(entries.count)
+        for (index, entry) in entries.enumerated() {
+            indexByEntryID[entry.canonicalEntryID] = index
+        }
 
-        let merged: (entries: [SavedWord], addedCount: Int) = await Task.detached(priority: .userInitiated) {
-            var entries = currentEntries
-            // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
-            var indexByEntryID: [Int64: Int] = [:]
-            indexByEntryID.reserveCapacity(entries.count)
-            for (index, entry) in entries.enumerated() {
-                indexByEntryID[entry.canonicalEntryID] = index
+        var addedCount = 0
+
+        for normalizedSurface in orderedSurfaces {
+            guard let entryID = lookup[normalizedSurface] else {
+                continue
             }
 
-            var addedCount = 0
-
-            for normalizedSurface in orderedSurfaces {
-                guard let entryID = lookup[normalizedSurface] else {
+            if let existingIndex = indexByEntryID[entryID] {
+                guard let noteID = sourceNoteID else {
                     continue
                 }
 
-                if let existingIndex = indexByEntryID[entryID] {
-                    guard let noteID = activeNoteID else {
-                        continue
-                    }
-
-                    let existingEntry = entries[existingIndex]
-                    var noteIDs = Set(existingEntry.sourceNoteIDs)
-                    if noteIDs.contains(noteID) {
-                        continue
-                    }
-
-                    noteIDs.insert(noteID)
-                    entries[existingIndex] = SavedWord(
-                        canonicalEntryID: existingEntry.canonicalEntryID,
-                        surface: existingEntry.surface,
-                        sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString }
-                    )
-                } else {
-                    let noteIDs: [UUID] = activeNoteID.map { [$0] } ?? []
-                    indexByEntryID[entryID] = entries.count
-                    entries.append(
-                        SavedWord(
-                            canonicalEntryID: entryID,
-                            surface: normalizedSurface,
-                            sourceNoteIDs: noteIDs
-                        )
-                    )
+                let existingEntry = entries[existingIndex]
+                var noteIDs = Set(existingEntry.sourceNoteIDs)
+                if noteIDs.contains(noteID) {
+                    continue
                 }
 
-                addedCount += 1
+                noteIDs.insert(noteID)
+                entries[existingIndex] = SavedWord(
+                    canonicalEntryID: existingEntry.canonicalEntryID,
+                    surface: existingEntry.surface,
+                    sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString }
+                )
+            } else {
+                let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
+                indexByEntryID[entryID] = entries.count
+                entries.append(
+                    SavedWord(
+                        canonicalEntryID: entryID,
+                        surface: normalizedSurface,
+                        sourceNoteIDs: noteIDs
+                    )
+                )
             }
 
-            return (SavedWordStorage.normalizedEntries(entries), addedCount)
-        }.value
+            addedCount += 1
+        }
 
-        await wordsStore.replaceAllAsync(with: merged.entries)
-        applySavedWordState(entries: merged.entries)
-        return merged.addedCount
+        wordsStore.replaceAll(with: entries)
+        applySavedWordState(entries: wordsStore.words)
+        return addedCount
     }
 
     // Refreshes star-state caches from the in-memory WordsStore snapshot, which already mirrors
