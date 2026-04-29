@@ -259,28 +259,26 @@ struct CSVImportView: View {
     }
 
     // Saves all importable items to the words store and resolves or creates any requested word lists.
-    // Dictionary resolution runs off the main thread because DictionaryStore serializes its SQLite
-    // queries on a private dispatch queue — calling it from the main actor in a per-row loop would
-    // block the UI for the duration of the import. The resolved entries are then written in one
-    // batched persist on the main actor instead of N single-item persists.
+    // Runs on a detached task so the dictionary lookups happen off the main thread — DictionaryStore
+    // serializes its SQLite queries on a private dispatch queue, so a per-row loop on the main actor
+    // would block the UI for the duration of the import. After resolution, awaits a single batched
+    // add on WordsStore (which is @MainActor), so the persist work is paid once instead of N times.
     private func performImport() {
         let listIDs = resolveListIDsCreatingIfNeeded()
         let store = dictionaryStore
         let items = importableItems
         let target = wordsStore
 
-        Task {
-            let resolved: [SavedWord] = await Task.detached(priority: .userInitiated) {
-                items.compactMap { item -> SavedWord? in
-                    guard let surface = item.finalSurface, surface.isEmpty == false else { return nil }
-                    var canonicalID = Int64(item.id.hashValue)
-                    if let store, let entry = Self.resolveEntry(surface: surface, kana: item.finalKana, store: store) {
-                        canonicalID = entry.entryId
-                    }
-                    return SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: listIDs)
+        Task.detached(priority: .userInitiated) {
+            let resolved: [SavedWord] = items.compactMap { item -> SavedWord? in
+                guard let surface = item.finalSurface, surface.isEmpty == false else { return nil }
+                var canonicalID = Int64(item.id.hashValue)
+                if let store, let entry = Self.resolveEntry(surface: surface, kana: item.finalKana, store: store) {
+                    canonicalID = entry.entryId
                 }
-            }.value
-            target.add(resolved)
+                return SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: listIDs)
+            }
+            await target.add(resolved)
         }
     }
 
