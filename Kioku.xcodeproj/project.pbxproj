@@ -143,7 +143,7 @@
 			buildPhases = (
 				E3070AE42F4DFDB6005FD323 /* Sources */,
 				E3070AE52F4DFDB6005FD323 /* Frameworks */,
-				F5A9C1D92F90000100ABCDEF /* Validate Copilot Invariants */,
+				F5A9C1D92F90000100ABCDEF /* Validate Invariants */,
 				F5A9C1DB2F90000300ABCDEF /* Rebuild Dictionary SQLite */,
 				E3070AE62F4DFDB6005FD323 /* Resources */,
 			);
@@ -296,7 +296,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		F5A9C1D92F90000100ABCDEF /* Validate Copilot Invariants */ = {
+		F5A9C1D92F90000100ABCDEF /* Validate Invariants */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -306,7 +306,7 @@
 			);
 			inputPaths = (
 			);
-			name = "Validate Copilot Invariants";
+			name = "Validate Invariants";
 			outputFileListPaths = (
 			);
 			outputPaths = (

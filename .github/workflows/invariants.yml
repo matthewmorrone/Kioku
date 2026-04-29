@@ -12,5 +12,5 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run Copilot invariant validator
+      - name: Run invariant validator
         run: bash scripts/validate_invariants.sh
