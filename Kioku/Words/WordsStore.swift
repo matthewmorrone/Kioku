@@ -116,6 +116,20 @@ final class WordsStore: ObservableObject {
         persist(words)
     }
 
+    // Same as replaceAll(with:) but moves the JSON encode and UserDefaults write off the main
+    // thread so the UI stays responsive while bulk paths (Add All Visible Words on a long
+    // passage, large CSV imports) finalize. The in-memory snapshot still publishes from the
+    // main actor so SwiftUI observers are updated atomically with the disk write.
+    func replaceAllAsync(with entries: [SavedWord]) async {
+        let key = storageKey
+        let normalized = await Task.detached(priority: .userInitiated) {
+            let normalized = SavedWordStorage.normalizedEntries(entries)
+            SavedWordStorage.writeNormalized(normalized, storageKey: key)
+            return normalized
+        }.value
+        words = normalized
+    }
+
     // Normalizes once, writes the canonical snapshot to storage, and assigns it directly to the
     // published array. The previous implementation re-read and re-decoded the just-written data
     // from UserDefaults on every mutation, which doubled the per-call cost for no benefit — the
