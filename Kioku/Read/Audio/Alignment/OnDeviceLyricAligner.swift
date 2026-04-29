@@ -3,14 +3,14 @@
 //   1. Ensure a GGML Whisper model + Core ML encoder are present,
 //      downloading them automatically if needed.
 //   2. Force-align input lyric lines to audio using whisper.cpp's
-//      logits_filter_callback (via WhisperKitAlign).
+//      logits_filter_callback (via SwiftWhisperAlign).
 //   3. Emit SRT text (SRTWriter).
 //
 // Models are downloaded from huggingface.co/ggerganov/whisper.cpp and stored
 // in the app support directory managed by WhisperModelManager.
 
 import Foundation
-import WhisperKitAlign
+import SwiftWhisperAlign
 
 // Entry point for on-device lyric alignment.
 enum OnDeviceLyricAligner {
@@ -180,7 +180,7 @@ enum OnDeviceLyricAligner {
         modelURL: URL,
         cancellationCheck: (() -> Bool)? = nil,
         onProgress: ((Double) -> Void)? = nil,
-        onSegment: (([WhisperKitAlign.AlignedLine]) -> Void)? = nil
+        onSegment: (([SwiftWhisperAlign.AlignedLine]) -> Void)? = nil
     ) async throws -> String {
 
         let lines = lyrics

@@ -1,6 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import WhisperKitAlign
+import SwiftWhisperAlign
 
 // Hosts the note-level lyric-alignment flow: transcribes audio on-device using SwiftWhisper,
 // aligns transcription segments to note text lines, and saves the resulting SRT.
@@ -155,8 +155,8 @@ extension ReadView {
                     let lastText = partialLines.last?.text ?? ""
                     // Build partial SRT from the lines aligned so far.
                     let partial = partialLines.enumerated().map { i, line in
-                        let startTs = WhisperKitAlign.SRTWriter.timestamp(line.start)
-                        let endTs = WhisperKitAlign.SRTWriter.timestamp(line.end)
+                        let startTs = SwiftWhisperAlign.SRTWriter.timestamp(line.start)
+                        let endTs = SwiftWhisperAlign.SRTWriter.timestamp(line.end)
                         return "\(i + 1)\n\(startTs) --> \(endTs)\n\(line.text)"
                     }.joined(separator: "\n\n")
                     Task { @MainActor in

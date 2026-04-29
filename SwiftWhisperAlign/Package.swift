@@ -2,24 +2,24 @@
 import PackageDescription
 
 let package = Package(
-    name: "WhisperKitAlign",
+    name: "SwiftWhisperAlign",
     platforms: [.macOS(.v13), .iOS(.v16)],
     products: [
-        .library(name: "WhisperKitAlign", targets: ["WhisperKitAlign"]),
+        .library(name: "SwiftWhisperAlign", targets: ["SwiftWhisperAlign"]),
     ],
     dependencies: [
         .package(path: "../Packages/SwiftWhisper"),
     ],
     targets: [
         .target(
-            name: "WhisperKitAlign",
+            name: "SwiftWhisperAlign",
             dependencies: [
                 .product(name: "SwiftWhisper", package: "SwiftWhisper"),
             ]
         ),
         .testTarget(
-            name: "WhisperKitAlignTests",
-            dependencies: ["WhisperKitAlign"]
+            name: "SwiftWhisperAlignTests",
+            dependencies: ["SwiftWhisperAlign"]
         ),
     ]
 )

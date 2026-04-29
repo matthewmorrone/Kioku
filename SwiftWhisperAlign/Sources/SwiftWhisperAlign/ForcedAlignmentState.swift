@@ -49,7 +49,7 @@ final class ForcedAlignmentState {
             let count = whisper_tokenize(ctx, line, &tokens, Int32(tokens.count))
             guard count > 0 else {
                 throw NSError(
-                    domain: "WhisperKitAlign.ForcedAlignment",
+                    domain: "SwiftWhisperAlign.ForcedAlignment",
                     code: 100,
                     userInfo: [NSLocalizedDescriptionKey: "Failed to tokenize line: \(line)"]
                 )
