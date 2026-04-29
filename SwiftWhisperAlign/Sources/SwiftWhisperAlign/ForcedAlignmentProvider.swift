@@ -34,7 +34,7 @@ public final class ForcedAlignmentProvider {
     ) async throws -> AlignmentResult {
         guard input.lines.isEmpty == false else {
             throw NSError(
-                domain: "WhisperKitAlign.ForcedAlignment",
+                domain: "SwiftWhisperAlign.ForcedAlignment",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "No lyric lines to align."]
             )
@@ -43,7 +43,7 @@ public final class ForcedAlignmentProvider {
         let frames = try await decodeAudioFrames(from: input.audioURL)
         guard frames.isEmpty == false else {
             throw NSError(
-                domain: "WhisperKitAlign.ForcedAlignment",
+                domain: "SwiftWhisperAlign.ForcedAlignment",
                 code: 2,
                 userInfo: [NSLocalizedDescriptionKey: "Audio decoded to zero frames."]
             )
@@ -69,7 +69,7 @@ public final class ForcedAlignmentProvider {
             whisper_init_from_file_with_params(path, cparams)
         }) else {
             throw NSError(
-                domain: "WhisperKitAlign.ForcedAlignment",
+                domain: "SwiftWhisperAlign.ForcedAlignment",
                 code: 3,
                 userInfo: [NSLocalizedDescriptionKey: "Failed to load Whisper model from \(modelURL.lastPathComponent)."]
             )
@@ -329,7 +329,7 @@ public final class ForcedAlignmentProvider {
 
             guard result == 0 else {
                 throw NSError(
-                    domain: "WhisperKitAlign.ForcedAlignment",
+                    domain: "SwiftWhisperAlign.ForcedAlignment",
                     code: 4,
                     userInfo: [NSLocalizedDescriptionKey: "whisper_full failed in window at \(String(format: "%.1f", windowOffsetSeconds))s (code \(result))"]
                 )
@@ -578,7 +578,7 @@ public final class ForcedAlignmentProvider {
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard let track = tracks.first else {
             throw NSError(
-                domain: "WhisperKitAlign.ForcedAlignment",
+                domain: "SwiftWhisperAlign.ForcedAlignment",
                 code: 10,
                 userInfo: [NSLocalizedDescriptionKey: "No audio track found in file."]
             )
@@ -600,7 +600,7 @@ public final class ForcedAlignmentProvider {
 
         guard reader.canAdd(output) else {
             throw NSError(
-                domain: "WhisperKitAlign.ForcedAlignment",
+                domain: "SwiftWhisperAlign.ForcedAlignment",
                 code: 11,
                 userInfo: [NSLocalizedDescriptionKey: "Could not configure audio reader."]
             )
@@ -608,7 +608,7 @@ public final class ForcedAlignmentProvider {
         reader.add(output)
         guard reader.startReading() else {
             throw reader.error ?? NSError(
-                domain: "WhisperKitAlign.ForcedAlignment",
+                domain: "SwiftWhisperAlign.ForcedAlignment",
                 code: 12,
                 userInfo: [NSLocalizedDescriptionKey: "Audio reader failed to start."]
             )
@@ -640,7 +640,7 @@ public final class ForcedAlignmentProvider {
 
         if reader.status == .failed {
             throw reader.error ?? NSError(
-                domain: "WhisperKitAlign.ForcedAlignment",
+                domain: "SwiftWhisperAlign.ForcedAlignment",
                 code: 13,
                 userInfo: [NSLocalizedDescriptionKey: "Audio reader failed while decoding."]
             )

@@ -1,6 +1,6 @@
 // AlignmentModels.swift
 // Core data types for the on-device lyric alignment pipeline.
-// Mirrors the WhisperKitAlign package types but lives directly in the
+// Mirrors the SwiftWhisperAlign package types but lives directly in the
 // Kioku target so no package dependency is required.
 
 import Foundation

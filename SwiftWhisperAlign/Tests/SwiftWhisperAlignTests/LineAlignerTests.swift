@@ -3,7 +3,7 @@
 // Mock segments are derived from the stable-ts reference run on sample.wav.
 
 import XCTest
-@testable import WhisperKitAlign
+@testable import SwiftWhisperAlign
 
 final class LineAlignerTests: XCTestCase {
 
