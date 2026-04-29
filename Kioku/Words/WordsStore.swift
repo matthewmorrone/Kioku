@@ -20,12 +20,29 @@ final class WordsStore: ObservableObject {
     func add(_ word: SavedWord) {
         var updated = words
         updated.append(word)
-        persist(SavedWordStorage.normalizedEntries(updated))
+        persist(updated)
+    }
+
+    // Adds many words in one persist cycle. Bulk callers (CSV import, batch saves) must use this
+    // instead of looping over add(_:) so they trigger one normalize + encode + UserDefaults write
+    // instead of N — a per-item loop blocks the main thread for hundreds of milliseconds on large
+    // imports because each iteration round-trips through JSON and UserDefaults.
+    func add(_ newWords: [SavedWord]) {
+        guard !newWords.isEmpty else { return }
+        persist(words + newWords)
     }
 
     // Removes a word by canonical entry id.
     func remove(id: Int64) {
         persist(words.filter { $0.canonicalEntryID != id })
+    }
+
+    // Removes many words in one persist cycle. Bulk callers (multi-select delete in WordsView)
+    // must use this instead of looping over remove(id:) so the persist work is paid once, not N
+    // times — the per-item loop is the source of the UI freeze when deleting many words.
+    func remove(ids: Set<Int64>) {
+        guard !ids.isEmpty else { return }
+        persist(words.filter { !ids.contains($0.canonicalEntryID) })
     }
 
     // Toggles membership of a word in a word list; adds if absent, removes if present.
@@ -96,12 +113,16 @@ final class WordsStore: ObservableObject {
 
     // Replaces the saved-word store with one canonical snapshot.
     func replaceAll(with words: [SavedWord]) {
-        persist(SavedWordStorage.normalizedEntries(words))
+        persist(words)
     }
 
-    // Writes normalized entries to storage and refreshes the published array.
+    // Normalizes once, writes the canonical snapshot to storage, and assigns it directly to the
+    // published array. The previous implementation re-read and re-decoded the just-written data
+    // from UserDefaults on every mutation, which doubled the per-call cost for no benefit — the
+    // normalized array we just computed is the same data the round-trip would return.
     private func persist(_ entries: [SavedWord]) {
-        SavedWordStorage.persist(entries: entries, storageKey: storageKey)
-        words = SavedWordStorage.loadSavedWords(storageKey: storageKey)
+        let normalized = SavedWordStorage.normalizedEntries(entries)
+        SavedWordStorage.writeNormalized(normalized, storageKey: storageKey)
+        words = normalized
     }
 }

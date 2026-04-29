@@ -37,6 +37,15 @@ final class HistoryStore: ObservableObject {
         persist()
     }
 
+    // Removes many entries in one persist cycle. Multi-select delete in WordsView must use this
+    // instead of looping over remove(id:) so the JSON encode + UserDefaults write happens once
+    // instead of N times — the per-item loop is what freezes the UI on bulk history clears.
+    func remove(ids: Set<Int64>) {
+        guard !ids.isEmpty else { return }
+        entries.removeAll { ids.contains($0.canonicalEntryID) }
+        persist()
+    }
+
     // Removes all history entries.
     func clear() {
         entries = []
