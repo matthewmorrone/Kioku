@@ -260,6 +260,14 @@ struct ContentView: View {
             }
             dictionaryStore = store
 
+            // Populate the surface → canonical entry id map before publishing so all later
+            // saved-word identity lookups (Add All, prewarm, CSV import) become hashtable
+            // hits instead of per-surface SQL — eliminates the fallback storm that used to
+            // dominate Add All latency.
+            do { try StartupTimer.measure("populateCanonicalEntryIDMap") {
+                try store.populateCanonicalEntryIDMap()
+            }} catch { print("populateCanonicalEntryIDMap failed: \(error)") }
+
             do { surfaceReadingData = try StartupTimer.measure("fetchSurfaceReadingData") {
                 try store.fetchSurfaceReadingData()
             }} catch { print("fetchSurfaceReadingData failed: \(error)") }
