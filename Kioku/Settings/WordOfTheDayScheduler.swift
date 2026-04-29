@@ -3,13 +3,11 @@ import UserNotifications
 
 // Notification content resolved from the live dictionary for a specific saved word.
 private struct WordOfTheDayLiveContent {
-    let surface: String
     let kana: String?
     let meaning: String
 }
 
 private struct WordOfTheDayCachedContent: Codable {
-    let surface: String
     let kana: String?
     let meaning: String
 }
@@ -230,7 +228,7 @@ enum WordOfTheDayScheduler {
         return words[idx]
     }
 
-    // Builds the notification content including surface, optional bracketed kana, and first gloss.
+    // Builds the notification content using the saved word's surface plus dictionary-derived kana and gloss.
     private static func makeContent(
         for word: SavedWord,
         liveContent: WordOfTheDayLiveContent
@@ -238,7 +236,7 @@ enum WordOfTheDayScheduler {
         let content = UNMutableNotificationContent()
         content.title = "Word of the Day"
 
-        let surface = liveContent.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
         let meaning = liveContent.meaning.trimmingCharacters(in: .whitespacesAndNewlines)
         let kana = liveContent.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -258,7 +256,7 @@ enum WordOfTheDayScheduler {
         return content
     }
 
-    // Fetches the preferred display surface, kana reading, and first gloss for each unique entry ID.
+    // Fetches the kana reading and first gloss for each unique entry ID.
     // Runs synchronously on the caller's thread; DictionaryStore serializes access internally.
     private static func resolveLiveContent(
         for words: [SavedWord],
@@ -273,7 +271,6 @@ enum WordOfTheDayScheduler {
         for entryID in uniqueIDs {
             if let cachedContent = cached[entryID] {
                 out[entryID] = WordOfTheDayLiveContent(
-                    surface: cachedContent.surface,
                     kana: cachedContent.kana,
                     meaning: cachedContent.meaning
                 )
@@ -288,27 +285,14 @@ enum WordOfTheDayScheduler {
         for entryID in missingIDs {
             guard let entry = try? dictionaryStore.lookupEntry(entryID: entryID) else { continue }
 
-            var surface = ""
-            for form in entry.kanjiForms {
-                let trimmed = form.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty == false { surface = trimmed; break }
-            }
-            if surface.isEmpty {
-                for form in entry.kanaForms {
-                    let trimmed = form.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmed.isEmpty == false { surface = trimmed; break }
-                }
-            }
-            guard surface.isEmpty == false else { continue }
-
             let kana = entry.kanaForms.first.flatMap { form -> String? in
                 let trimmed = form.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 return trimmed.isEmpty ? nil : trimmed
             }
 
             let meaning = entry.senses.first?.glosses.first ?? ""
-            out[entryID] = WordOfTheDayLiveContent(surface: surface, kana: kana, meaning: meaning)
-            cached[entryID] = WordOfTheDayCachedContent(surface: surface, kana: kana, meaning: meaning)
+            out[entryID] = WordOfTheDayLiveContent(kana: kana, meaning: meaning)
+            cached[entryID] = WordOfTheDayCachedContent(kana: kana, meaning: meaning)
         }
 
         persistCachedLiveContent(cached)

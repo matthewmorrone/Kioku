@@ -129,7 +129,6 @@ struct WordDetailView: View {
                             // Single entry: standard sense rows.
                             ForEach(sortedData, id: \.entry.entryId) { data in
                                 if data.entry.senses.isEmpty == false {
-                                    definitionSectionHeader(for: data.entry)
                                     let freqLabel = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel
                                     ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
                                         // Cross-references are fetched only for the saved entry; pass empty refs for other entries.
@@ -158,10 +157,8 @@ struct WordDetailView: View {
 
                 // Forms section — shown for verbs only. Displays te-form / negative / past inline,
                 // with an "All conjugations" row that opens ConjugationSheetView.
-                if let vc = verbClass,
-                   let dictionaryForm = savedDisplayData?.entry.kanjiForms.first?.text
-                                     ?? savedDisplayData?.entry.kanaForms.first?.text {
-                    let keyForms = VerbConjugator.keyForms(for: dictionaryForm, verbClass: vc)
+                if let vc = verbClass {
+                    let keyForms = VerbConjugator.keyForms(for: word.surface, verbClass: vc)
                     if keyForms.isEmpty == false {
                         Section("Forms") {
                             ForEach(keyForms, id: \.label) { form in
@@ -446,11 +443,9 @@ struct WordDetailView: View {
             }
             .listStyle(.insetGrouped)
             .sheet(isPresented: $showingConjugations) {
-                if verbClass != nil,
-                   let dictionaryForm = savedDisplayData?.entry.kanjiForms.first?.text
-                                     ?? savedDisplayData?.entry.kanaForms.first?.text {
+                if verbClass != nil {
                     ConjugationSheetView(
-                        dictionaryForm: dictionaryForm,
+                        dictionaryForm: word.surface,
                         groups: conjugationGroups,
                         onLookup: { _ in
                             // Tapping a conjugated form — lookup integration is a future task.
@@ -464,19 +459,6 @@ struct WordDetailView: View {
         .task {
             personalNoteText = word.personalNote ?? ""
             await loadDisplayData()
-        }
-    }
-
-    // Renders the entry label row showing the kanji form when it differs from the surface.
-    // Only rendered when there is a distinct title to show — e.g. 良い for the surface いい.
-    @ViewBuilder
-    private func definitionSectionHeader(for entry: DictionaryEntry) -> some View {
-        let entryTitle = entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text
-        if let title = entryTitle, title != word.surface {
-            Text(title)
-                .font(.subheadline.weight(.medium))
-                .listRowSeparator(.hidden)
-                .padding(.bottom, 2)
         }
     }
 
@@ -667,11 +649,10 @@ struct WordDetailView: View {
         }.value
         senseReferences = refs
 
-        // Compute conjugation groups if this is a verb — uses the saved entry's primary kanji or kana form.
-        if let vc = verbClass,
-           let form = savedDisplayData?.entry.kanjiForms.first?.text
-                   ?? savedDisplayData?.entry.kanaForms.first?.text {
-            conjugationGroups = VerbConjugator.conjugationGroups(for: form, verbClass: vc)
+        // Compute conjugation groups if this is a verb — conjugates against the surface the user saved
+        // so kana-only saves (e.g., じゃない) don't get promoted to a canonical kanji form (じゃ無い).
+        if let vc = verbClass {
+            conjugationGroups = VerbConjugator.conjugationGroups(for: word.surface, verbClass: vc)
         }
     }
 
