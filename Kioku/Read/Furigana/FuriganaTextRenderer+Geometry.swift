@@ -2,7 +2,7 @@ import UIKit
 
 // TextKit-geometry helpers extracted from FuriganaTextRenderer so the main renderer stays under the
 // 800-line warning threshold. All functions follow the one-coordinate-pipeline invariant in
-// CLAUDE.md §9: TextKit rect → convert using textContainerInset → render in text-view coordinates.
+// AGENTS.md §9: TextKit rect → convert using textContainerInset → render in text-view coordinates.
 extension FuriganaTextRenderer {
 
     // Resolves the visual segment rectangle used to anchor furigana over the same glyph layout.

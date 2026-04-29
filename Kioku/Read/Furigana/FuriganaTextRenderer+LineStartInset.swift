@@ -5,7 +5,7 @@ import UIKit
 // Y range, which causes TextKit to shift the line's glyphs right by the exclusion width so the
 // segment's envelope aligns with the container's left edge instead of overflowing past it.
 // All geometry is sourced directly from TextKit so it stays in text-container coordinates
-// end-to-end — no view-space round-trip (see CLAUDE.md §9).
+// end-to-end — no view-space round-trip (see AGENTS.md §9).
 extension FuriganaTextRenderer {
 
     // Builds and applies exclusion paths for each line whose first segment's ruby overhangs left.
@@ -52,7 +52,7 @@ extension FuriganaTextRenderer {
 
             // Query the TextKit line fragment containing this segment so the exclusion's Y/height
             // come straight from TextKit in container coords — no inset math, matching the
-            // coordinate-pipeline invariant in CLAUDE.md §9.
+            // coordinate-pipeline invariant in AGENTS.md §9.
             guard let lineGeometry = lineFragmentContainerGeometry(
                 for: location,
                 in: tlm,
