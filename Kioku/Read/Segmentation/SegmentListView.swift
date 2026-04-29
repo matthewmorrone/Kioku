@@ -29,7 +29,6 @@ struct SegmentListView: View {
     @State private var latticeBackedSplitOffsetsBySourceIndex: [Int: Set<Int>] = [:]
     @State private var addAllFeedbackMessage: String?
     @State private var addAllFeedbackTask: Task<Void, Never>?
-    private let savedWordsStorageKey = "kioku.words.v1"
     // Read at view init time so a settings change takes effect on the next sheet presentation.
     private let commonParticles = ParticleSettings.allowed()
 
@@ -400,7 +399,7 @@ struct SegmentListView: View {
 
     // Applies save or unsave state for one canonical dictionary entry id.
     private func toggleSavedWord(canonicalEntryID: Int64, normalizedSurface: String) {
-        var entries = loadSavedWordEntriesFromStorage()
+        var entries = wordsStore.words
         if let existingIndex = entries.firstIndex(where: { $0.canonicalEntryID == canonicalEntryID }) {
             var existingEntry = entries[existingIndex]
 
@@ -440,7 +439,7 @@ struct SegmentListView: View {
         }
 
         let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
-        persistSavedWordEntriesToStorage(normalizedEntries)
+        wordsStore.replaceAll(with: normalizedEntries)
         applySavedWordState(entries: normalizedEntries)
     }
 
@@ -480,13 +479,14 @@ struct SegmentListView: View {
 
         addAllFeedbackTask?.cancel()
         addAllFeedbackTask = Task { @MainActor in
-            // Stagger per-row star fade-ins over a bounded window (~12ms each, capped to ~600ms
-            // total) so the action is visibly happening rather than appearing instant. For one
-            // or two rows the stagger collapses to a single animated insert.
-            if total > 0 {
-                let perItemNanos: UInt64 = max(8_000_000,
-                                                min(40_000_000,
-                                                    600_000_000 / UInt64(total)))
+            // Stagger per-row star fade-ins for small batches so the action is visibly happening
+            // rather than appearing instant. The total stagger window is bounded so a 1000-row
+            // selection no longer drags for ~8s at the previous 8ms-per-item floor; large batches
+            // skip the stagger entirely and rely on the "Saving…" indicator during commit instead.
+            let staggerCutoff = 60
+            if total > 0 && total <= staggerCutoff {
+                let totalWindowNanos: UInt64 = 1_200_000_000
+                let perItemNanos = max(UInt64(4_000_000), totalWindowNanos / UInt64(total))
                 for (idx, surface) in newSurfaces.enumerated() {
                     if Task.isCancelled { return }
                     withAnimation(.easeOut(duration: 0.15)) {
@@ -499,6 +499,15 @@ struct SegmentListView: View {
                         try? await Task.sleep(nanoseconds: perItemNanos)
                     }
                 }
+            } else if total > 0 {
+                // Above the stagger cutoff: flip all stars at once and let the commit step's
+                // "Saving…" indicator carry the user feedback while persistence runs.
+                withAnimation(.easeOut(duration: 0.2)) {
+                    for surface in newSurfaces {
+                        savedWordSurfaces.insert(surface)
+                    }
+                }
+                addAllFeedbackMessage = "Adding \(total) words…"
             }
             if Task.isCancelled { return }
 
@@ -524,7 +533,11 @@ struct SegmentListView: View {
             }
             if Task.isCancelled { return }
 
-            let addedCount = commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
+            // Distinct "Saving…" indicator so the user knows persistence is running rather than
+            // wondering why the previous "Adding N/N…" message has stalled.
+            addAllFeedbackMessage = "Saving…"
+            let addedCount = await commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
+            if Task.isCancelled { return }
 
             // Final toast: report the real count from the commit step (which only counts
             // entries that resolved + actually changed storage).
@@ -546,68 +559,79 @@ struct SegmentListView: View {
     // Persists the saved-word entries derived from one Add-All invocation. Returns the number of
     // entries that were actually added or note-linked so the caller can drive its toast/UI; the
     // toast lifecycle is owned by addAllVisibleWords' staggered task, not here.
+    //
+    // The merge runs on a detached task and the write goes through WordsStore.replaceAllAsync so
+    // the JSON encode + UserDefaults write happen off the main thread — for thousands of saved
+    // words the synchronous version was the source of the post-stagger UI freeze the user saw.
     @discardableResult
     private func commitAddAllVisibleWords(
         orderedSurfaces: [String],
         lookup: [String: Int64]
-    ) -> Int {
-        var entries = loadSavedWordEntriesFromStorage()
-        // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
-        var indexByEntryID: [Int64: Int] = [:]
-        indexByEntryID.reserveCapacity(entries.count)
-        for (index, entry) in entries.enumerated() {
-            indexByEntryID[entry.canonicalEntryID] = index
-        }
+    ) async -> Int {
+        let currentEntries = wordsStore.words
+        let activeNoteID = sourceNoteID
 
-        var addedCount = 0
-
-        for normalizedSurface in orderedSurfaces {
-            guard let entryID = lookup[normalizedSurface] else {
-                continue
+        let merged: (entries: [SavedWord], addedCount: Int) = await Task.detached(priority: .userInitiated) {
+            var entries = currentEntries
+            // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
+            var indexByEntryID: [Int64: Int] = [:]
+            indexByEntryID.reserveCapacity(entries.count)
+            for (index, entry) in entries.enumerated() {
+                indexByEntryID[entry.canonicalEntryID] = index
             }
 
-            if let existingIndex = indexByEntryID[entryID] {
-                guard let noteID = sourceNoteID else {
+            var addedCount = 0
+
+            for normalizedSurface in orderedSurfaces {
+                guard let entryID = lookup[normalizedSurface] else {
                     continue
                 }
 
-                let existingEntry = entries[existingIndex]
-                var noteIDs = Set(existingEntry.sourceNoteIDs)
-                if noteIDs.contains(noteID) {
-                    continue
-                }
+                if let existingIndex = indexByEntryID[entryID] {
+                    guard let noteID = activeNoteID else {
+                        continue
+                    }
 
-                noteIDs.insert(noteID)
-                entries[existingIndex] = SavedWord(
-                    canonicalEntryID: existingEntry.canonicalEntryID,
-                    surface: existingEntry.surface,
-                    sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString }
-                )
-            } else {
-                let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
-                indexByEntryID[entryID] = entries.count
-                entries.append(
-                    SavedWord(
-                        canonicalEntryID: entryID,
-                        surface: normalizedSurface,
-                        sourceNoteIDs: noteIDs
+                    let existingEntry = entries[existingIndex]
+                    var noteIDs = Set(existingEntry.sourceNoteIDs)
+                    if noteIDs.contains(noteID) {
+                        continue
+                    }
+
+                    noteIDs.insert(noteID)
+                    entries[existingIndex] = SavedWord(
+                        canonicalEntryID: existingEntry.canonicalEntryID,
+                        surface: existingEntry.surface,
+                        sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString }
                     )
-                )
+                } else {
+                    let noteIDs: [UUID] = activeNoteID.map { [$0] } ?? []
+                    indexByEntryID[entryID] = entries.count
+                    entries.append(
+                        SavedWord(
+                            canonicalEntryID: entryID,
+                            surface: normalizedSurface,
+                            sourceNoteIDs: noteIDs
+                        )
+                    )
+                }
+
+                addedCount += 1
             }
 
-            addedCount += 1
-        }
+            return (SavedWordStorage.normalizedEntries(entries), addedCount)
+        }.value
 
-        let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
-        persistSavedWordEntriesToStorage(normalizedEntries)
-        applySavedWordState(entries: normalizedEntries)
-        return addedCount
+        await wordsStore.replaceAllAsync(with: merged.entries)
+        applySavedWordState(entries: merged.entries)
+        return merged.addedCount
     }
 
-    // Loads saved words from persistent storage for star-state rendering.
+    // Refreshes star-state caches from the in-memory WordsStore snapshot, which already mirrors
+    // persistent storage. Going through WordsStore avoids a redundant UserDefaults read + JSON
+    // decode + normalize on view appearance.
     private func loadSavedWordsFromStorage() {
-        let entries = loadSavedWordEntriesFromStorage()
-        applySavedWordState(entries: entries)
+        applySavedWordState(entries: wordsStore.words)
     }
 
     // Applies saved-word state used by star rendering from one canonical storage snapshot.
@@ -633,17 +657,6 @@ struct SegmentListView: View {
 
         savedWordSourceNoteIDsByEntryID = sourceNoteIDsByEntryID
         savedWordSourceNoteIDsBySurface = sourceNoteIDsBySurface
-    }
-
-    // Loads canonical saved-word entries from shared storage.
-    private func loadSavedWordEntriesFromStorage() -> [SavedWord] {
-        SavedWordStorage.loadSavedWords(storageKey: savedWordsStorageKey)
-    }
-
-    // Persists saved-word entries including optional source note references, then notifies WordsStore so WordsView reflects the change.
-    private func persistSavedWordEntriesToStorage(_ entries: [SavedWord]) {
-        SavedWordStorage.persist(entries: entries, storageKey: savedWordsStorageKey)
-        wordsStore.reload()
     }
 
     // Resolves star state from hydrated canonical ids to keep row rendering non-blocking.
