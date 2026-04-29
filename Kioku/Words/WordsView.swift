@@ -142,9 +142,7 @@ struct WordsView: View {
                 titleVisibility: .visible
             ) {
                 Button("Remove", role: .destructive) {
-                    for id in selectedWordIDs {
-                        wordsStore.remove(id: id)
-                    }
+                    wordsStore.remove(ids: selectedWordIDs)
                     selectedWordIDs.removeAll()
                     editMode = .inactive
                 }
@@ -156,9 +154,7 @@ struct WordsView: View {
                 titleVisibility: .visible
             ) {
                 Button("Remove", role: .destructive) {
-                    for id in selectedHistoryIDs {
-                        historyStore.remove(id: id)
-                    }
+                    historyStore.remove(ids: selectedHistoryIDs)
                     selectedHistoryIDs.removeAll()
                     editMode = .inactive
                 }

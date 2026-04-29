@@ -21,7 +21,13 @@ enum SavedWordStorage {
 
     // Persists saved words after coalescing duplicates by canonical entry id.
     static func persist(entries: [SavedWord], storageKey: String, userDefaults: UserDefaults = .standard) {
-        let normalized = normalizedEntries(entries)
+        writeNormalized(normalizedEntries(entries), storageKey: storageKey, userDefaults: userDefaults)
+    }
+
+    // Encodes and writes an already-normalized array, skipping the redundant dedup pass so callers
+    // that have just normalized do not pay the cost twice. Used by stores that publish the same
+    // snapshot to memory and disk in one step.
+    static func writeNormalized(_ normalized: [SavedWord], storageKey: String, userDefaults: UserDefaults = .standard) {
         if let encoded = try? JSONEncoder().encode(normalized) {
             userDefaults.set(encoded, forKey: storageKey)
         }

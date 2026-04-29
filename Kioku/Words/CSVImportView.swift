@@ -259,23 +259,35 @@ struct CSVImportView: View {
     }
 
     // Saves all importable items to the words store and resolves or creates any requested word lists.
+    // Dictionary resolution runs off the main thread because DictionaryStore serializes its SQLite
+    // queries on a private dispatch queue — calling it from the main actor in a per-row loop would
+    // block the UI for the duration of the import. The resolved entries are then written in one
+    // batched persist on the main actor instead of N single-item persists.
     private func performImport() {
         let listIDs = resolveListIDsCreatingIfNeeded()
-        for item in importableItems {
-            guard let surface = item.finalSurface, surface.isEmpty == false else { continue }
-            var word = SavedWord(canonicalEntryID: Int64(item.id.hashValue), surface: surface, wordListIDs: listIDs)
-            // Attempt to resolve the canonical entry ID from the dictionary for proper identity.
-            if let store = dictionaryStore,
-               let entry = resolveEntry(surface: surface, kana: item.finalKana, store: store) {
-                word = SavedWord(canonicalEntryID: entry.entryId, surface: surface, wordListIDs: listIDs)
-            }
-            wordsStore.add(word)
+        let store = dictionaryStore
+        let items = importableItems
+        let target = wordsStore
+
+        Task {
+            let resolved: [SavedWord] = await Task.detached(priority: .userInitiated) {
+                items.compactMap { item -> SavedWord? in
+                    guard let surface = item.finalSurface, surface.isEmpty == false else { return nil }
+                    var canonicalID = Int64(item.id.hashValue)
+                    if let store, let entry = Self.resolveEntry(surface: surface, kana: item.finalKana, store: store) {
+                        canonicalID = entry.entryId
+                    }
+                    return SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: listIDs)
+                }
+            }.value
+            target.add(resolved)
         }
     }
 
     // Performs a synchronous best-match lookup to find the canonical dictionary entry for one import row.
-    // Tries the kanji surface first, then falls back to the kana reading.
-    private func resolveEntry(surface: String, kana: String?, store: DictionaryStore) -> DictionaryEntry? {
+    // Tries the kanji surface first, then falls back to the kana reading. Static so the import task
+    // can call it from a detached context without capturing the SwiftUI view value.
+    private static func resolveEntry(surface: String, kana: String?, store: DictionaryStore) -> DictionaryEntry? {
         let mode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
         if let entry = try? store.lookup(surface: surface, mode: mode).first {
             return entry
