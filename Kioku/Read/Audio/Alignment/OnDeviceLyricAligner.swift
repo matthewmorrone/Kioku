@@ -16,15 +16,16 @@ import WhisperKitAlign
 enum OnDeviceLyricAligner {
 
     // The model downloaded automatically when none is present.
-    // "tiny" (75 MB) is used as the default because alignment already has the ground truth
-    // text — the model only needs to produce rough timestamps, not perfect transcription.
-    // Users can download larger models from Settings → Whisper Models for better accuracy.
+    // "base" (142 MB) gives meaningfully better DTW cross-attention structure than
+    // "tiny" (75 MB) — tiny's attention heads produce visibly noisier per-token
+    // timestamps under forced alignment. Users can still download larger models
+    // from Settings → Whisper Models for higher accuracy.
     private static let defaultModel = WhisperDownloadableModel(
-        id: "tiny",
-        displayName: "Tiny",
-        filename: "ggml-tiny.bin",
-        parameters: "39M",
-        sizeMB: 75
+        id: "base",
+        displayName: "Base",
+        filename: "ggml-base.bin",
+        parameters: "74M",
+        sizeMB: 142
     )
 
     // Returns the best available downloaded GGML model URL, preferring
@@ -181,6 +182,7 @@ enum OnDeviceLyricAligner {
         onProgress: ((Double) -> Void)? = nil,
         onSegment: (([WhisperKitAlign.AlignedLine]) -> Void)? = nil
     ) async throws -> String {
+
         let lines = lyrics
             .components(separatedBy: "\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

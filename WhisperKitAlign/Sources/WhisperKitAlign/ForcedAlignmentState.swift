@@ -24,6 +24,16 @@ final class ForcedAlignmentState {
     // Whisper context pointer, needed inside the callback for whisper_token_beg / whisper_n_vocab.
     let ctx: OpaquePointer
 
+    // Builds state from a pre-tokenized slice — used by the chunked driver
+    // to feed just the remaining tokens to each 30 s audio window without
+    // re-tokenizing. lineBoundaries is a trivial [0, tokens.count] since the
+    // chunked driver does line mapping globally on accumulated timestamps.
+    init(tokens: [whisper_token], ctx: OpaquePointer) {
+        self.ctx = ctx
+        self.tokenSequence = tokens
+        self.lineBoundaries = [0, tokens.count]
+    }
+
     // Builds state by tokenizing each line with whisper_tokenize.
     // Throws if any line fails to tokenize.
     init(lines: [String], ctx: OpaquePointer) throws {
