@@ -29,7 +29,6 @@ struct SegmentListView: View {
     @State private var latticeBackedSplitOffsetsBySourceIndex: [Int: Set<Int>] = [:]
     @State private var addAllFeedbackMessage: String?
     @State private var addAllFeedbackTask: Task<Void, Never>?
-    private let savedWordsStorageKey = "kioku.words.v1"
     // Read at view init time so a settings change takes effect on the next sheet presentation.
     private let commonParticles = ParticleSettings.allowed()
 
@@ -400,7 +399,7 @@ struct SegmentListView: View {
 
     // Applies save or unsave state for one canonical dictionary entry id.
     private func toggleSavedWord(canonicalEntryID: Int64, normalizedSurface: String) {
-        var entries = loadSavedWordEntriesFromStorage()
+        var entries = wordsStore.words
         if let existingIndex = entries.firstIndex(where: { $0.canonicalEntryID == canonicalEntryID }) {
             var existingEntry = entries[existingIndex]
 
@@ -439,9 +438,8 @@ struct SegmentListView: View {
             )
         }
 
-        let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
-        persistSavedWordEntriesToStorage(normalizedEntries)
-        applySavedWordState(entries: normalizedEntries)
+        wordsStore.replaceAll(with: entries)
+        applySavedWordState(entries: wordsStore.words)
     }
 
     // Saves every currently visible segment row to favorites with a staggered visual rollout so
@@ -480,13 +478,16 @@ struct SegmentListView: View {
 
         addAllFeedbackTask?.cancel()
         addAllFeedbackTask = Task { @MainActor in
-            // Stagger per-row star fade-ins over a bounded window (~12ms each, capped to ~600ms
-            // total) so the action is visibly happening rather than appearing instant. For one
-            // or two rows the stagger collapses to a single animated insert.
-            if total > 0 {
-                let perItemNanos: UInt64 = max(8_000_000,
-                                                min(40_000_000,
-                                                    600_000_000 / UInt64(total)))
+            // Stagger per-row star fade-ins for small batches so the action is visibly happening
+            // rather than appearing instant. The total stagger window is bounded so a 1000-row
+            // selection no longer drags for ~8s at the previous 8ms-per-item floor; large batches
+            // skip the stagger entirely and rely on the "Saving…" indicator during commit instead.
+            let staggerCutoff = 60
+            if total > 0 && total <= staggerCutoff {
+                let totalWindowNanos: UInt64 = 1_200_000_000
+                // Cap per-item delay so a 2-row selection doesn't sleep ~600ms per row; the total
+                // window still tightens for larger batches because the divisor wins under the cap.
+                let perItemNanos = min(UInt64(40_000_000), totalWindowNanos / UInt64(total))
                 for (idx, surface) in newSurfaces.enumerated() {
                     if Task.isCancelled { return }
                     withAnimation(.easeOut(duration: 0.15)) {
@@ -499,6 +500,15 @@ struct SegmentListView: View {
                         try? await Task.sleep(nanoseconds: perItemNanos)
                     }
                 }
+            } else if total > 0 {
+                // Above the stagger cutoff: flip all stars at once and let the commit step's
+                // "Saving…" indicator carry the user feedback while persistence runs.
+                withAnimation(.easeOut(duration: 0.2)) {
+                    for surface in newSurfaces {
+                        savedWordSurfaces.insert(surface)
+                    }
+                }
+                addAllFeedbackMessage = "Adding \(total) words…"
             }
             if Task.isCancelled { return }
 
@@ -524,7 +534,11 @@ struct SegmentListView: View {
             }
             if Task.isCancelled { return }
 
+            // Distinct "Saving…" indicator so the user knows persistence is running rather than
+            // wondering why the previous "Adding N/N…" message has stalled.
+            addAllFeedbackMessage = "Saving…"
             let addedCount = commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
+            if Task.isCancelled { return }
 
             // Final toast: report the real count from the commit step (which only counts
             // entries that resolved + actually changed storage).
@@ -546,12 +560,17 @@ struct SegmentListView: View {
     // Persists the saved-word entries derived from one Add-All invocation. Returns the number of
     // entries that were actually added or note-linked so the caller can drive its toast/UI; the
     // toast lifecycle is owned by addAllVisibleWords' staggered task, not here.
+    //
+    // The merge runs synchronously on the main actor (O(N+M) — fast even for tens of thousands of
+    // saved words) so concurrent edits like a single-tap toggle landing during the Saving… phase
+    // can't be lost; only the JSON encode + UserDefaults write defers to a background queue
+    // inside WordsStore.persist, which was the actual source of the post-stagger freeze.
     @discardableResult
     private func commitAddAllVisibleWords(
         orderedSurfaces: [String],
         lookup: [String: Int64]
     ) -> Int {
-        var entries = loadSavedWordEntriesFromStorage()
+        var entries = wordsStore.words
         // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
         var indexByEntryID: [Int64: Int] = [:]
         indexByEntryID.reserveCapacity(entries.count)
@@ -598,16 +617,16 @@ struct SegmentListView: View {
             addedCount += 1
         }
 
-        let normalizedEntries = SavedWordStorage.normalizedEntries(entries)
-        persistSavedWordEntriesToStorage(normalizedEntries)
-        applySavedWordState(entries: normalizedEntries)
+        wordsStore.replaceAll(with: entries)
+        applySavedWordState(entries: wordsStore.words)
         return addedCount
     }
 
-    // Loads saved words from persistent storage for star-state rendering.
+    // Refreshes star-state caches from the in-memory WordsStore snapshot, which already mirrors
+    // persistent storage. Going through WordsStore avoids a redundant UserDefaults read + JSON
+    // decode + normalize on view appearance.
     private func loadSavedWordsFromStorage() {
-        let entries = loadSavedWordEntriesFromStorage()
-        applySavedWordState(entries: entries)
+        applySavedWordState(entries: wordsStore.words)
     }
 
     // Applies saved-word state used by star rendering from one canonical storage snapshot.
@@ -633,17 +652,6 @@ struct SegmentListView: View {
 
         savedWordSourceNoteIDsByEntryID = sourceNoteIDsByEntryID
         savedWordSourceNoteIDsBySurface = sourceNoteIDsBySurface
-    }
-
-    // Loads canonical saved-word entries from shared storage.
-    private func loadSavedWordEntriesFromStorage() -> [SavedWord] {
-        SavedWordStorage.loadSavedWords(storageKey: savedWordsStorageKey)
-    }
-
-    // Persists saved-word entries including optional source note references, then notifies WordsStore so WordsView reflects the change.
-    private func persistSavedWordEntriesToStorage(_ entries: [SavedWord]) {
-        SavedWordStorage.persist(entries: entries, storageKey: savedWordsStorageKey)
-        wordsStore.reload()
     }
 
     // Resolves star state from hydrated canonical ids to keep row rendering non-blocking.
@@ -738,25 +746,21 @@ struct SegmentListView: View {
             var resolvedEntryIDs: [String: Int64] = [:]
             resolvedEntryIDs.reserveCapacity(pairs.count)
 
-            // One batch SQL for all surfaces — collapses the previous N serialized round trips
-            // into a single query. For typical 50–100 visible rows this is the difference between
-            // hundreds of milliseconds and ~10 ms of dictionary work.
+            // Hashtable hits over the preloaded canonical-id map — no SQL round-trips. The
+            // previous batch + per-surface fallback path used to dominate Add All latency.
             let surfaceList = pairs.compactMap { $0.surface.isEmpty ? nil : $0.surface }
-            if let batchSurfaces = try? dictionaryStore.lookupFirstEntryIDs(surfaces: surfaceList) {
-                resolvedEntryIDs = batchSurfaces
-            }
+            resolvedEntryIDs = dictionaryStore.lookupFirstEntryIDs(surfaces: surfaceList)
 
             // Resolve any surface that didn't match by trying its lemma (dictionary headword).
-            // Conjugated forms like 食べた → 食べる need this fallback. Done in a second batch so
-            // it stays a single query rather than per-pair round trips.
+            // Conjugated forms like 食べた → 食べる need this fallback; map lookup keeps it cheap.
             let unresolvedLemmas = pairs.compactMap { pair -> String? in
                 guard pair.lemma.isEmpty == false,
                       pair.lemma != pair.surface,
                       resolvedEntryIDs[pair.surface] == nil else { return nil }
                 return pair.lemma
             }
-            if unresolvedLemmas.isEmpty == false,
-               let lemmaResults = try? dictionaryStore.lookupFirstEntryIDs(surfaces: unresolvedLemmas) {
+            if unresolvedLemmas.isEmpty == false {
+                let lemmaResults = dictionaryStore.lookupFirstEntryIDs(surfaces: unresolvedLemmas)
                 for pair in pairs where resolvedEntryIDs[pair.surface] == nil {
                     if let entryID = lemmaResults[pair.lemma] {
                         resolvedEntryIDs[pair.surface] = entryID
