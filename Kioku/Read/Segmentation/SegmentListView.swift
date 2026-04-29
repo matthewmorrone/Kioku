@@ -746,25 +746,21 @@ struct SegmentListView: View {
             var resolvedEntryIDs: [String: Int64] = [:]
             resolvedEntryIDs.reserveCapacity(pairs.count)
 
-            // One batch SQL for all surfaces — collapses the previous N serialized round trips
-            // into a single query. For typical 50–100 visible rows this is the difference between
-            // hundreds of milliseconds and ~10 ms of dictionary work.
+            // Hashtable hits over the preloaded canonical-id map — no SQL round-trips. The
+            // previous batch + per-surface fallback path used to dominate Add All latency.
             let surfaceList = pairs.compactMap { $0.surface.isEmpty ? nil : $0.surface }
-            if let batchSurfaces = try? dictionaryStore.lookupFirstEntryIDs(surfaces: surfaceList) {
-                resolvedEntryIDs = batchSurfaces
-            }
+            resolvedEntryIDs = dictionaryStore.lookupFirstEntryIDs(surfaces: surfaceList)
 
             // Resolve any surface that didn't match by trying its lemma (dictionary headword).
-            // Conjugated forms like 食べた → 食べる need this fallback. Done in a second batch so
-            // it stays a single query rather than per-pair round trips.
+            // Conjugated forms like 食べた → 食べる need this fallback; map lookup keeps it cheap.
             let unresolvedLemmas = pairs.compactMap { pair -> String? in
                 guard pair.lemma.isEmpty == false,
                       pair.lemma != pair.surface,
                       resolvedEntryIDs[pair.surface] == nil else { return nil }
                 return pair.lemma
             }
-            if unresolvedLemmas.isEmpty == false,
-               let lemmaResults = try? dictionaryStore.lookupFirstEntryIDs(surfaces: unresolvedLemmas) {
+            if unresolvedLemmas.isEmpty == false {
+                let lemmaResults = dictionaryStore.lookupFirstEntryIDs(surfaces: unresolvedLemmas)
                 for pair in pairs where resolvedEntryIDs[pair.surface] == nil {
                     if let entryID = lemmaResults[pair.lemma] {
                         resolvedEntryIDs[pair.surface] = entryID
