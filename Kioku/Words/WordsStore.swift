@@ -116,10 +116,10 @@ final class WordsStore: ObservableObject {
         persist(words)
     }
 
-    // Normalizes once, writes the canonical snapshot to storage, and assigns it directly to the
-    // published array. The previous implementation re-read and re-decoded the just-written data
-    // from UserDefaults on every mutation, which doubled the per-call cost for no benefit — the
-    // normalized array we just computed is the same data the round-trip would return.
+    // Normalizes once, writes the canonical snapshot to storage, then publishes the same array
+    // to memory. The synchronous write closes the durability gap that an off-main write would
+    // open if the app is force-quit before the queue drains; the previous read-back via
+    // SavedWordStorage.loadSavedWords is gone, so this stays a single normalize + encode + write.
     private func persist(_ entries: [SavedWord]) {
         let normalized = SavedWordStorage.normalizedEntries(entries)
         SavedWordStorage.writeNormalized(normalized, storageKey: storageKey)
