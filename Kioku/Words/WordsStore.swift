@@ -8,10 +8,6 @@ final class WordsStore: ObservableObject {
     @Published private(set) var words: [SavedWord] = []
 
     private let storageKey = "kioku.words.v1"
-    // Serializes background writes so rapid sequential persists don't reorder on disk. The
-    // in-memory snapshot remains the source of truth (updated synchronously on the main actor);
-    // on-disk state catches up via this queue.
-    private static let writeQueue = DispatchQueue(label: "kioku.words.persist", qos: .utility)
 
     init() {
         let key = storageKey
@@ -120,17 +116,13 @@ final class WordsStore: ObservableObject {
         persist(words)
     }
 
-    // Normalizes once, publishes the snapshot to memory atomically on the main actor, and
-    // schedules the JSON encode + UserDefaults write on a background serial queue. The publish
-    // happens before any subsequent main-actor mutation has a chance to run, so concurrent edits
-    // compose correctly: each call sees the latest in-memory state. The serial write queue
-    // preserves write order so on-disk state matches the order of publishes.
+    // Normalizes once, writes the canonical snapshot to storage, then publishes the same array
+    // to memory. The synchronous write closes the durability gap that an off-main write would
+    // open if the app is force-quit before the queue drains; the previous read-back via
+    // SavedWordStorage.loadSavedWords is gone, so this stays a single normalize + encode + write.
     private func persist(_ entries: [SavedWord]) {
         let normalized = SavedWordStorage.normalizedEntries(entries)
+        SavedWordStorage.writeNormalized(normalized, storageKey: storageKey)
         words = normalized
-        let key = storageKey
-        Self.writeQueue.async {
-            SavedWordStorage.writeNormalized(normalized, storageKey: key)
-        }
     }
 }
