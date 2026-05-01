@@ -8,12 +8,18 @@ nonisolated public struct FrequencyData {
     public let wordfreqZipf: Double?
 
     // Unified frequency score on a ~0–7 Zipf-equivalent scale (higher = more frequent).
-    // jpdbRank is preferred; wordfreqZipf used as fallback. Matches the formula used in path enumeration.
+    // Takes the max of (a) the Zipf-mapped JPDB rank and (b) the raw wordfreq Zipf score
+    // so a word labeled common by either source surfaces as common. Picking only one signal
+    // mislabels words like ここ, where JPDB only ranks the rare kanji form 此処 while wordfreq
+    // captures the everyday kana spelling.
     public var normalizedScore: Double? {
-        if let rank = jpdbRank {
-            return max(0.0, 7.0 - log10(Double(rank)))
+        let jpdbScore: Double? = jpdbRank.map { max(0.0, 7.0 - log10(Double($0))) }
+        switch (jpdbScore, wordfreqZipf) {
+        case let (jp?, wf?): return max(jp, wf)
+        case let (jp?, nil): return jp
+        case let (nil, wf?): return wf
+        case (nil, nil):     return nil
         }
-        return wordfreqZipf
     }
 
     // Human-readable frequency tier derived from the normalized score.

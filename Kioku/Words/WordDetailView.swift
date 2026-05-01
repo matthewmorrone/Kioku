@@ -78,7 +78,17 @@ struct WordDetailView: View {
             // entry's own kanji or kana forms. Mirrors the lookup sheet's lemma visibility rule.
             let surfaceIsBaseForm = entry?.kanjiForms.contains(where: { $0.text == word.surface }) == true
                 || entry?.kanaForms.contains(where: { $0.text == word.surface }) == true
-            let lemma = surfaceIsBaseForm ? nil : entry?.kanjiForms.first?.text
+            // When the user's saved surface is pure kana, lemmatize to the entry's kana base
+            // form — surfacing a kanji lemma (e.g. 鳴る for the inflected なりたい) attaches
+            // script the user never wrote. When the surface contains kanji, prefer the first
+            // everyday kanji form (skip rK/oK/iK/sK so we don't show 此処 etc).
+            let lemma: String? = {
+                if surfaceIsBaseForm { return nil }
+                if ScriptClassifier.containsKanji(word.surface) == false {
+                    return entry?.kanaForms.first?.text
+                }
+                return entry?.firstEverydayKanji?.text
+            }()
             SegmentLookupSheetHeader(
                 surface: word.surface,
                 reading: surfaceReading,
@@ -90,8 +100,19 @@ struct WordDetailView: View {
 
             List {
                 // Single Definition section with all matching entries sorted most- to least-common.
-                // Each entry's senses are preceded by an entry label + frequency tier.
-                let sortedData = allDisplayData.sorted {
+                // Each entry's senses are preceded by an entry label + frequency tier. Non-saved
+                // entries that have no everyday kanji AND whose senses are all `uk` are dropped
+                // — these are kana-natural homonyms whose archive-only kanji forms add noise
+                // without helping the learner. The user's saved entry is always kept so they
+                // can manage selection on it.
+                let savedEntryID = word.canonicalEntryID
+                let filteredData = allDisplayData.filter { data in
+                    if data.entry.entryId == savedEntryID { return true }
+                    let kanjiHopeless = data.entry.hasNoEverydayKanji
+                    let allUK = data.entry.allSensesUsuallyKana
+                    return !(kanjiHopeless && allUK)
+                }
+                let sortedData = filteredData.sorted {
                     let a = FrequencyData(jpdbRank: $0.entry.jpdbRank, wordfreqZipf: $0.entry.wordfreqZipf).normalizedScore ?? -1
                     let b = FrequencyData(jpdbRank: $1.entry.jpdbRank, wordfreqZipf: $1.entry.wordfreqZipf).normalizedScore ?? -1
                     return a > b
@@ -126,17 +147,31 @@ struct WordDetailView: View {
                                 .padding(.vertical, 6)
                             }
                         } else {
-                            // Single entry: standard sense rows.
+                            // Hierarchical layout — entry > sense > gloss.
+                            // Each sense renders as its own bordered card. The header strip at
+                            // the top of the card aggregates POS, frequency tier, and any misc
+                            // tags (uk/arch/etc.) so all entry- and sense-level metadata sits
+                            // together. Tapping the header toggles the whole-sense selection.
+                            // Each gloss renders as a smaller bordered sub-card; tapping one
+                            // toggles a gloss-level selection. Mutual exclusion is enforced in
+                            // the toggle handlers (see toggleSenseSelection / toggleGlossSelection).
                             ForEach(sortedData, id: \.entry.entryId) { data in
                                 if data.entry.senses.isEmpty == false {
                                     let freqLabel = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel
+                                    let isSavedEntry = data.entry.entryId == word.canonicalEntryID
                                     ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
-                                        // Cross-references are fetched only for the saved entry; pass empty refs for other entries.
-                                        let senseRefs = data.entry.entryId == word.canonicalEntryID
+                                        let senseRefs = isSavedEntry
                                             ? senseReferences.filter { $0.senseOrderIndex == idx }
                                             : []
-                                        // Frequency label is shown inline in the first sense only — it is an entry-level attribute.
-                                        senseRow(number: idx + 1, sense: sense, refs: senseRefs, freqLabel: idx == 0 ? freqLabel : nil, showNumber: data.entry.senses.count > 1)
+                                        senseCard(
+                                            sense: sense,
+                                            isSavedEntry: isSavedEntry,
+                                            isFirstSenseInEntry: idx == 0,
+                                            freqLabel: freqLabel,
+                                            refs: senseRefs
+                                        )
+                                        .listRowSeparator(.hidden)
+                                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                     }
                                 }
                             }
@@ -384,7 +419,7 @@ struct WordDetailView: View {
                                 Text("Last reviewed")
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                Text(lastReviewed, style: .relative)
+                                Text(lastReviewed, format: .relative(presentation: .named))
                                     .foregroundStyle(.secondary)
                             }
                             .font(.caption)
@@ -462,57 +497,96 @@ struct WordDetailView: View {
         }
     }
 
-    // Renders one sense with POS label, gloss, metadata tags, and optional cross-references.
-    // showNumber: pass false when the entry has only one sense — the number adds no information.
-    // freqLabel is non-nil only for the first sense of an entry.
-    @ViewBuilder
-    private func senseRow(number: Int, sense: DictionaryEntrySense, refs: [SenseReference] = [], freqLabel: String? = nil, showNumber: Bool = true) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                if showNumber {
-                    Text("\(number).")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18, alignment: .trailing)
-                }
+    // Reads the live saved word from the store so the picker reflects toggled state immediately.
+    // Falls back to the SavedWord the view was opened with for the brief window before the store
+    // publish reaches @EnvironmentObject.
+    private var currentSavedWord: SavedWord {
+        wordsStore.words.first { $0.canonicalEntryID == word.canonicalEntryID } ?? word
+    }
+    private var currentSelectedSenseIDs: [Int64] { currentSavedWord.selectedSenseIDs }
+    private var currentSelectedGlosses: [GlossRef] { currentSavedWord.selectedGlosses }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        if let pos = sense.pos, pos.isEmpty == false {
-                            Text(JMdictTagExpander.expandAll(pos))
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.primary)
-                        }
-                        if let label = freqLabel {
-                            Text(label)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
-                        }
-                    }
-                    Text(sense.glosses.joined(separator: "; "))
-                        .font(.subheadline)
-                }
+    // Toggle the whole sense. Always strips any per-gloss selections of that sense — the two
+    // levels are mutually exclusive for one sense.
+    private func toggleSenseSelection(_ senseID: Int64) {
+        var senses = currentSelectedSenseIDs
+        var glosses = currentSelectedGlosses
+        if let idx = senses.firstIndex(of: senseID) {
+            senses.remove(at: idx)
+        } else {
+            senses.append(senseID)
+            glosses.removeAll { $0.senseID == senseID }
+        }
+        wordsStore.setSelection(id: word.canonicalEntryID, senseIDs: senses, glosses: glosses)
+    }
+
+    // Toggle one gloss. If the parent sense is currently whole-selected, narrow down: clear the
+    // sense, set just this gloss. If completing this gloss makes every gloss in the sense
+    // selected, promote: clear the per-gloss entries for this sense, add the whole sense.
+    private func toggleGlossSelection(senseID: Int64, glossIndex: Int, totalGlossesInSense: Int) {
+        var senses = currentSelectedSenseIDs
+        var glosses = currentSelectedGlosses
+        let ref = GlossRef(senseID: senseID, glossIndex: glossIndex)
+
+        if senses.contains(senseID) {
+            senses.removeAll { $0 == senseID }
+            glosses.removeAll { $0.senseID == senseID }
+            glosses.append(ref)
+        } else if let existingIdx = glosses.firstIndex(of: ref) {
+            glosses.remove(at: existingIdx)
+        } else {
+            glosses.append(ref)
+            let pickedForSense = glosses.filter { $0.senseID == senseID }
+            if pickedForSense.count == totalGlossesInSense {
+                glosses.removeAll { $0.senseID == senseID }
+                senses.append(senseID)
             }
+        }
+        wordsStore.setSelection(id: word.canonicalEntryID, senseIDs: senses, glosses: glosses)
+    }
 
-            let tags = [sense.misc, sense.field, sense.dialect]
-                .compactMap { $0 }
-                .filter { $0.isEmpty == false }
-                .map { JMdictTagExpander.expandAll($0) }
-            if tags.isEmpty == false {
-                HStack(spacing: 4) {
-                    ForEach(tags, id: \.self) { tag in
-                        Text(tag)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
-                    }
+    // Renders one sense card: tappable header strip carrying POS / frequency / misc tags above
+    // a stack of bordered gloss sub-cards. Header tap toggles the whole sense; gloss tap toggles
+    // that one gloss (with mutual-exclusion handling above).
+    @ViewBuilder
+    private func senseCard(sense: DictionaryEntrySense, isSavedEntry: Bool, isFirstSenseInEntry: Bool, freqLabel: String?, refs: [SenseReference]) -> some View {
+        let senseSelected = isSavedEntry && currentSelectedSenseIDs.contains(sense.senseID)
+        let selectedGlossIndices: Set<Int> = {
+            guard isSavedEntry else { return [] }
+            return Set(currentSelectedGlosses.filter { $0.senseID == sense.senseID }.map { $0.glossIndex })
+        }()
+
+        VStack(alignment: .leading, spacing: 10) {
+            senseHeaderStrip(sense: sense, isSavedEntry: isSavedEntry, isFirstSenseInEntry: isFirstSenseInEntry, freqLabel: freqLabel)
+                .contentShape(Rectangle())
+                .onTapGesture { if isSavedEntry { toggleSenseSelection(sense.senseID) } }
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(sense.glosses.enumerated()), id: \.offset) { gIdx, gloss in
+                    let glossSelected = selectedGlossIndices.contains(gIdx)
+                    Text(gloss)
+                        .font(.subheadline)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.white.opacity(0.04))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(
+                                    glossSelected ? Color.accentColor : Color.white.opacity(0.06),
+                                    lineWidth: glossSelected ? 2 : 0.5
+                                )
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if isSavedEntry {
+                                toggleGlossSelection(senseID: sense.senseID, glossIndex: gIdx, totalGlossesInSense: sense.glosses.count)
+                            }
+                        }
                 }
-                .padding(.leading, showNumber ? 24 : 0)
             }
 
             // Cross-references and antonyms for this sense.
@@ -520,29 +594,71 @@ struct WordDetailView: View {
             let ants  = refs.filter { $0.type == .ant  }.map(\.target)
             if xrefs.isEmpty == false {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("See also:")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(xrefs.joined(separator: "、"))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    Text("See also:").font(.caption2).foregroundStyle(.tertiary)
+                    Text(xrefs.joined(separator: "、")).font(.caption2).foregroundStyle(.secondary)
                 }
-                .padding(.leading, showNumber ? 24 : 0)
             }
             if ants.isEmpty == false {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("Antonym:")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(ants.joined(separator: "、"))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    Text("Antonym:").font(.caption2).foregroundStyle(.tertiary)
+                    Text(ants.joined(separator: "、")).font(.caption2).foregroundStyle(.secondary)
                 }
-                .padding(.leading, showNumber ? 24 : 0)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.tertiarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    senseSelected ? Color.accentColor : Color.white.opacity(0.05),
+                    lineWidth: senseSelected ? 2 : 1
+                )
+        )
     }
+
+    // Header strip: POS first, then frequency (only on first sense — entry-level), then any
+    // misc/field/dialect tags (uk, arch, etc.). Renders all sense-level metadata together so
+    // misc tags don't sit alone below the gloss list as before.
+    @ViewBuilder
+    private func senseHeaderStrip(sense: DictionaryEntrySense, isSavedEntry: Bool, isFirstSenseInEntry: Bool, freqLabel: String?) -> some View {
+        let posLabel: String? = (sense.pos?.isEmpty == false) ? JMdictTagExpander.expandAll(sense.pos ?? "") : nil
+        let metaTags: [String] = [sense.misc, sense.field, sense.dialect]
+            .compactMap { $0 }
+            .filter { $0.isEmpty == false }
+            .map { JMdictTagExpander.expandAll($0) }
+
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if let posLabel {
+                Text(posLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            if isFirstSenseInEntry, let freqLabel {
+                Text(freqLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
+            }
+            ForEach(metaTags, id: \.self) { tag in
+                Text(tag)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    // Returns spellings to surface as secondary display — excludes archaic and search-only forms.
 
     // Returns spellings to surface as secondary display — excludes archaic and search-only forms.
     // Kana surfaces are excluded entirely: a kana reading maps to many possible kanji, so
@@ -573,9 +689,11 @@ struct WordDetailView: View {
         let savedEntryID = word.canonicalEntryID
 
         let results = await Task { @MainActor in
-            // Look up all entries matching the surface.
-            let lookupMode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
-            let entries = (try? dictionaryStore.lookup(surface: surface, mode: lookupMode)) ?? []
+            // Look up all entries matching the surface in both kanji and kana columns. The
+            // earlier script-conditional mode was a no-op micro-optimization — a pure-kana
+            // surface can never match a kanji column, so .kanjiAndKana and .kanaOnly are
+            // functionally identical for kana surfaces. The conditional was misleading.
+            let entries = (try? dictionaryStore.lookup(surface: surface, mode: .kanjiAndKana)) ?? []
 
             // Build display data for each entry, saved entry first.
             var ordered: [WordDisplayData] = []
@@ -607,13 +725,17 @@ struct WordDetailView: View {
         if let segmenter {
             let result = segmenter.longestMatchResult(for: surface)
 
-            // Compound word breakdown uses the selected (best) path.
+            // Compound word breakdown uses the selected (best) path. Each component looks up
+            // by the segmenter-resolved lemma when one is available — `edge.surface` alone
+            // produces wrong defaults for short surfaces (e.g. 生 returns 生る/なる first
+            // even when the path resolved this position to 生きる).
             if result.selectedEdges.count > 1 {
                 let components = await Task { @MainActor in
                     result.selectedEdges.compactMap { edge -> (String, String?)? in
-                        let entries = try? store.lookup(surface: edge.surface, mode: .kanjiAndKana)
+                        let lookupSurface = edge.lemma.isEmpty ? edge.surface : edge.lemma
+                        let entries = try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana)
                         let gloss = entries?.first?.senses.first?.glosses.first
-                        return (edge.surface, gloss)
+                        return (lookupSurface, gloss)
                     }
                 }.value
                 wordComponents = components

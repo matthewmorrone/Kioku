@@ -99,6 +99,19 @@ final class WordsStore: ObservableObject {
         })
     }
 
+    // Replaces both selection arrays for one saved word in a single persist pass.
+    // Callers (the WordDetailView picker) compute the post-toggle state including any
+    // mutual-exclusion fold (whole sense vs. its glosses) before calling.
+    func setSelection(id: Int64, senseIDs: [Int64], glosses: [GlossRef]) {
+        persist(words.map { word in
+            guard word.canonicalEntryID == id else { return word }
+            var updated = word
+            updated.selectedSenseIDs = senseIDs
+            updated.selectedGlosses = glosses
+            return updated
+        })
+    }
+
     // Reorders words in response to a drag-and-drop move gesture from the list.
     func move(fromOffsets: IndexSet, toOffset: Int) {
         var updated = words

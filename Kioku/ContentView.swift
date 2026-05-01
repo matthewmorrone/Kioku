@@ -105,7 +105,7 @@ struct ContentView: View {
             }
 
             // Renders the Learn tab entry point, passing the dictionary store for flashcard lookups.
-            LearnView(dictionaryStore: readResources.dictionaryStore)
+            LearnView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter)
             .tag(ContentTab.learn)
             .tabItem {
                 Label("Learn", systemImage: "rectangle.on.rectangle.angled")

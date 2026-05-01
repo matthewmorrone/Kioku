@@ -102,13 +102,21 @@ struct LyricsView: View {
                 // Falls back to cue text when highlight range data is unavailable (e.g. ♪ cues).
                 let rendererData = buildRendererData(for: displayIndex)
                 let activeSurface = rendererData?.surface ?? (displayIndex < cues.count ? cues[displayIndex].text : "")
+                // Subtract any horizontal padding the active style adds — Focus Card inset is
+                // 8pt per side. Without this the size calculation thinks the renderer has the
+                // full panel width and undersized shrink results in wrapping (and the wrapped
+                // line gets clipped by the fixed renderer height).
+                let activeStyleHorizontalPadding: CGFloat = displayStyle == .focusCard ? 16 : 0
                 let activeTextSize = activeCueTextSize(
                     surface: activeSurface,
                     segmentRanges: rendererData?.localSegRanges ?? [],
                     furiganaBySegmentLocation: rendererData?.localFurigana ?? [:],
                     furiganaLengthBySegmentLocation: rendererData?.localFuriganaLength ?? [:],
-                    availableWidth: panelWidth
+                    availableWidth: panelWidth - activeStyleHorizontalPadding
                 )
+                // Active-cue alignment follows the same axis as the inactive rows for the style:
+                // appleMusic is leading-aligned everywhere, the others center.
+                let activeTextAlignment: NSTextAlignment = displayStyle == .appleMusic ? .natural : .center
                 VStack(spacing: 0) {
                     FuriganaTextRenderer(
                         isActive: true,
@@ -155,7 +163,7 @@ struct LyricsView: View {
                         lineSpacing: 0,
                         kerning: 0,
                         furiganaGap: TypographySettings.defaultFuriganaGap,
-                        textAlignment: .center,
+                        textAlignment: activeTextAlignment,
                         isScrollEnabled: false
                     )
                     .frame(maxWidth: .infinity)

@@ -5,6 +5,9 @@ struct SegmentListView: View {
     @Environment(\.dismiss) private var dismiss
     // Injected so that save/unsave operations trigger a refresh in WordsView without duplicating storage logic.
     @EnvironmentObject private var wordsStore: WordsStore
+    // Re-injected on the WordDetailView sheet below so list-membership UI inside the detail screen
+    // resolves correctly when presented from this sheet.
+    @EnvironmentObject private var wordListsStore: WordListsStore
 
     let text: String
     let edges: [LatticeEdge]
@@ -29,6 +32,7 @@ struct SegmentListView: View {
     @State private var latticeBackedSplitOffsetsBySourceIndex: [Int: Set<Int>] = [:]
     @State private var addAllFeedbackMessage: String?
     @State private var addAllFeedbackTask: Task<Void, Never>?
+    @State private var detailWord: SavedWord?
     // Read at view init time so a settings change takes effect on the next sheet presentation.
     private let commonParticles = ParticleSettings.allowed()
 
@@ -69,6 +73,12 @@ struct SegmentListView: View {
                         }
                         .padding(.vertical, 6)
                         .contextMenu {
+                            Button {
+                                openWordDetail(for: edge.surface, lemma: lemmaForSurface(edge.surface) ?? "")
+                            } label: {
+                                Label("Word Details", systemImage: "info.circle")
+                            }
+
                             if index > 0 {
                                 Button {
                                     onMergeLeft(index)
@@ -186,6 +196,50 @@ struct SegmentListView: View {
         .onDisappear {
             addAllFeedbackTask?.cancel()
             addAllFeedbackTask = nil
+        }
+        .sheet(item: $detailWord) { word in
+            WordDetailView(
+                word: word,
+                reading: nil,
+                dictionaryStore: dictionaryStore,
+                segmenter: nil
+            )
+            .environmentObject(wordsStore)
+            .environmentObject(wordListsStore)
+            .presentationDetents([.large])
+        }
+    }
+
+    // Resolves the canonical dictionary entry for a tapped surface and presents the word detail sheet.
+    // Reuses the canonical-id cache populated for star rendering, falling back to a hydrate pass when
+    // the row hasn't been resolved yet (e.g. fresh sheet, mid-scroll segment).
+    private func openWordDetail(for surface: String, lemma: String) {
+        let normalizedSurface = normalizedSurfaceForFiltering(surface)
+        guard normalizedSurface.isEmpty == false else { return }
+
+        if let entryID = canonicalEntryIDBySurface[normalizedSurface] {
+            presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+            return
+        }
+
+        let normalizedLemma = normalizedSurfaceForFiltering(lemma)
+        hydrateCanonicalEntryIDs(for: [(surface: normalizedSurface, lemma: normalizedLemma)]) { hydratedEntryIDs in
+            if hydratedEntryIDs.isEmpty == false {
+                canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
+            }
+            guard let entryID = hydratedEntryIDs[normalizedSurface] else { return }
+            presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+        }
+    }
+
+    // Picks the existing SavedWord for an entry id when present so list memberships and personal
+    // notes show through; otherwise builds a transient SavedWord that drives the detail screen
+    // without persisting anything.
+    private func presentWordDetail(canonicalEntryID: Int64, surface: String) {
+        if let existing = wordsStore.words.first(where: { $0.canonicalEntryID == canonicalEntryID }) {
+            detailWord = existing
+        } else {
+            detailWord = SavedWord(canonicalEntryID: canonicalEntryID, surface: surface)
         }
     }
 
@@ -420,7 +474,11 @@ struct SegmentListView: View {
                     existingEntry = SavedWord(
                         canonicalEntryID: existingEntry.canonicalEntryID,
                         surface: normalizedSurface,
-                        sourceNoteIDs: orderedNoteIDs
+                        sourceNoteIDs: orderedNoteIDs,
+                        wordListIDs: existingEntry.wordListIDs,
+                        personalNote: existingEntry.personalNote,
+                        savedAt: existingEntry.savedAt,
+                        selectedSenseIDs: existingEntry.selectedSenseIDs
                     )
                     entries[existingIndex] = existingEntry
                 }
@@ -429,11 +487,19 @@ struct SegmentListView: View {
             }
         } else {
             let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
+            let senseIDs: [Int64]
+            if let store = dictionaryStore,
+               let resolved = try? store.lookupEntry(entryID: canonicalEntryID) {
+                senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: resolved)
+            } else {
+                senseIDs = []
+            }
             entries.append(
                 SavedWord(
                     canonicalEntryID: canonicalEntryID,
                     surface: normalizedSurface,
-                    sourceNoteIDs: noteIDs
+                    sourceNoteIDs: noteIDs,
+                    selectedSenseIDs: senseIDs
                 )
             )
         }

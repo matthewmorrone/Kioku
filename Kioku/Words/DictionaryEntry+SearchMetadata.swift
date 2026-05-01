@@ -35,6 +35,33 @@ extension DictionaryEntry {
         return labels
     }
 
+    // JMdict ke_inf tags marking kanji forms that exist in the data but are essentially never
+    // used in modern writing: rare, outdated, irregular, or search-only. We treat these
+    // collectively as "non-everyday" and suppress them in display headers.
+    private static let nonEverydayKanjiTags: Set<String> = ["rK", "oK", "iK", "sK"]
+
+    // Returns true when the given kanji-form info string carries any non-everyday tag.
+    static func kanjiFormIsNonEveryday(info: String?) -> Bool {
+        guard let info, info.isEmpty == false else { return false }
+        let tags = info.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        return tags.contains { nonEverydayKanjiTags.contains(String($0)) }
+    }
+
+    // First kanji form whose ke_inf isn't tagged rare/outdated/irregular/search-only. Used by
+    // header rendering so a learner-facing display doesn't surface 此処/茲/爰 for ここ.
+    var firstEverydayKanji: KanjiForm? {
+        kanjiForms.first { !DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) }
+    }
+
+    // True when the entry has no kanji a learner would actually encounter — either it has none
+    // at all or every kanji form is tagged rare/outdated/irregular/search-only.
+    var hasNoEverydayKanji: Bool { firstEverydayKanji == nil }
+
+    // True when every sense carries the JMdict `uk` (usually-kana) misc tag.
+    var allSensesUsuallyKana: Bool {
+        senses.isEmpty == false && senses.allSatisfy { ($0.misc ?? "").contains("uk") }
+    }
+
     // Approximates common-word status from JMdict priority tags and the frequency datasets.
     var isCommonSearchEntry: Bool {
         let priorities = (kanjiForms.compactMap(\.priority) + kanaForms.compactMap(\.priority))

@@ -3,8 +3,30 @@ import UIKit
 
 // Segment data utilities: edge application, range construction, persistence helpers, and furigana extraction.
 extension ReadView {
+    // Punctuation that the segmenter emits as standalone tokens but is pure noise — never
+    // something a user wants to save or review. Surfaces whose every character is in this
+    // set, or is whitespace, are dropped at the segmentation ingest point.
+    private static let noiseSegmentCharacters: Set<Character> = ["―", "？", "！", "?", "!"]
+
+    // Returns true when the edge's surface is composed entirely of noise punctuation,
+    // whitespace, or both — and therefore shouldn't appear in the segment list.
+    static func isNoiseSegment(_ surface: String) -> Bool {
+        guard surface.isEmpty == false else { return false }
+        return surface.allSatisfy { c in
+            c.isWhitespace || noiseSegmentCharacters.contains(c)
+        }
+    }
+
+    // Drops every edge whose surface is pure noise. Use this on every code path that
+    // assigns to `segmentEdges` so persisted-segment restores share the filter that
+    // applySegmentEdges already uses.
+    static func filterNoiseEdges(_ edges: [LatticeEdge]) -> [LatticeEdge] {
+        edges.filter { isNoiseSegment($0.surface) == false }
+    }
+
     // Applies active segmentation edges to UI state and refreshes furigana using those exact segment boundaries.
     func applySegmentEdges(_ edges: [LatticeEdge], persistOverride: Bool) {
+        let edges = Self.filterNoiseEdges(edges)
         segmentEdges = edges
         segmentRanges = edges.map { edge in
             edge.start..<edge.end
@@ -26,11 +48,22 @@ extension ReadView {
         }
 
         if persistOverride {
-            let segments = buildSegmentRanges(from: edges)
+            // Persist with the in-memory furigana embedded so the synchronous disk write
+            // already carries every reading override that survived the segment-structure
+            // change. The async regen below will fill defaults for any newly-blank segment.
+            let segments = buildSegmentRanges(
+                from: edges,
+                furiganaByLocation: furiganaBySegmentLocation,
+                furiganaLengthByLocation: furiganaLengthBySegmentLocation
+            )
             self.segments = segments
             persistCurrentNoteIfNeeded()
         }
 
+        // Regenerate readings for newly-introduced segments (merge produced a new combined
+        // surface, split produced segments without their own annotations). The compute pass
+        // is filtered to skip any edge whose location already has a saved entry, so existing
+        // user overrides are not touched.
         scheduleFuriganaGeneration(for: text, edges: edges)
     }
 

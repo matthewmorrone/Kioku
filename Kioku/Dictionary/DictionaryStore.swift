@@ -466,8 +466,9 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
 
             if currentSenseID != senseID {
                 // Flush the previous sense before starting the next grouped row set.
-                if currentSenseID != nil {
+                if let id = currentSenseID {
                     senses.append(DictionaryEntrySense(
+                        senseID: id,
                         pos: currentPOS,
                         misc: currentMisc,
                         field: currentField,
@@ -495,8 +496,9 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         }
 
         // Flush the final grouped sense after stepping completes.
-        if currentSenseID != nil {
+        if let id = currentSenseID {
             senses.append(DictionaryEntrySense(
+                senseID: id,
                 pos: currentPOS,
                 misc: currentMisc,
                 field: currentField,

@@ -270,34 +270,39 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     : UIColor.systemYellow.withAlphaComponent(0.32)
             }
             // Highlight width must cover the segment envelope (max of headword and ruby widths)
-            // so a wider ruby like ちから over 力 isn't clipped on the right. Centering matches
-            // FuriganaAttributedString's ruby placement: ruby is centered on the headword's
-            // visual midpoint.
-            let baseFont = UIFont.systemFont(ofSize: textSize)
+            // so a wider ruby like ちから over 力 isn't clipped on the right. Resolution of the
+            // ruby string and the envelope math live in FuriganaSelectedSegmentGeometry so the
+            // formula is testable across text-size / spacing variations without standing up a
+            // UITextView in the test target.
             let surfaceString = String(text[selectedSurfaceRange])
-            let visualHeadwordWidth = measureTextWidth(surfaceString, font: baseFont, kerning: 0)
-            var envelopeMinX = selectedRect.minX
-            var envelopeMaxX = selectedRect.minX + visualHeadwordWidth
+            var rubyDisplayReading: String?
             if let furigana = furiganaBySegmentLocation[selectedSegmentRange.location],
                !furigana.isEmpty,
                let length = furiganaLengthBySegmentLocation[selectedSegmentRange.location], length > 0,
-               let surfaceRange = Range(NSRange(location: selectedSegmentRange.location, length: length), in: text),
-               let displayReading = FuriganaAttributedString.normalizedDisplayReading(
-                   surface: String(text[surfaceRange]), reading: furigana
-               ) {
-                let furiganaWidth = measureTextWidth(displayReading, font: UIFont.systemFont(ofSize: textSize * 0.5), kerning: 0)
-                let headwordWidthForRuby = measureTextWidth(String(text[surfaceRange]), font: baseFont, kerning: 0)
-                let kanjiVisualMidX = selectedRect.minX + headwordWidthForRuby / 2
-                envelopeMinX = min(envelopeMinX, kanjiVisualMidX - furiganaWidth / 2)
-                envelopeMaxX = max(envelopeMaxX, kanjiVisualMidX + furiganaWidth / 2)
+               let surfaceRange = Range(NSRange(location: selectedSegmentRange.location, length: length), in: text) {
+                rubyDisplayReading = FuriganaAttributedString.normalizedDisplayReading(
+                    surface: String(text[surfaceRange]), reading: furigana
+                )
             }
-            let furiganaRowHeight = furiganaFont.lineHeight + CGFloat(furiganaGap)
-            selectedSegmentRect = CGRect(
-                x: envelopeMinX - 1,
-                y: selectedRect.minY - furiganaRowHeight,
-                width: (envelopeMaxX - envelopeMinX) + 2,
-                height: selectedRect.height + furiganaRowHeight
+            let envelope = FuriganaSelectedSegmentGeometry.envelopeRect(
+                selectedRect: selectedRect,
+                surface: surfaceString,
+                furigana: rubyDisplayReading,
+                textSize: CGFloat(textSize),
+                furiganaGap: CGFloat(furiganaGap)
             )
+            // Sanity assertions catch envelope regressions immediately in debug builds.
+            // Floating-point round-trips through (selectedRect.minY − furiganaRowHeight) +
+            // (selectedRect.height + furiganaRowHeight) can drift by epsilon vs the algebraic
+            // identity, so the bottom-edge invariant is implied by the formula and isn't
+            // re-asserted here.
+            #if DEBUG
+            assert(envelope.width > 0 && envelope.height > 0,
+                   "selected-segment envelope is empty for surface=\(surfaceString)")
+            assert(envelope.minY <= selectedRect.minY + 0.001,
+                   "selected-segment envelope must extend above the headword for furigana row")
+            #endif
+            selectedSegmentRect = envelope
         }
 
         var playbackHighlightRect: CGRect?

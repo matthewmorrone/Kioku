@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftWhisperAlign
 import UIKit
 
 // Presents a raw SRT text editor for the subtitle cues attached to a note.
@@ -19,6 +20,16 @@ struct SubtitleEditorSheet: View {
     @State private var isShowingExporter = false
     @State private var timeStepSeconds: Double = 0.5
     @State private var editorSelection = NSRange(location: 0, length: 0)
+    @State private var isRetiming = false
+    @State private var retimeProgressMessage = ""
+    @State private var retimeError = ""
+    @State private var retimeTask: Task<Void, Never>?
+    @State private var pendingRetimedSRT: String?
+    @State private var isValidating = false
+    @State private var validationProgressMessage = ""
+    @State private var validationResult: ValidationResult?
+    @State private var validationError = ""
+    @State private var validationTask: Task<Void, Never>?
 
     // Parses the current editor text into cues for live mismatch detection.
     private var liveCues: [SubtitleCue] {
@@ -80,6 +91,38 @@ struct SubtitleEditorSheet: View {
                 Button("OK", role: .cancel) { parseError = "" }
             } message: {
                 Text(parseError)
+            }
+            .alert("Re-time Failed", isPresented: retimeErrorPresented) {
+                Button("OK", role: .cancel) { retimeError = "" }
+            } message: {
+                Text(retimeError)
+            }
+            .alert("Alignment Validation", isPresented: validationResultPresented) {
+                Button("OK", role: .cancel) { validationResult = nil }
+            } message: {
+                if let result = validationResult {
+                    Text("\(result.misses) of \(result.total) cues miss (\(result.percentage)%)")
+                } else {
+                    Text("")
+                }
+            }
+            .alert("Validation Failed", isPresented: validationErrorPresented) {
+                Button("OK", role: .cancel) { validationError = "" }
+            } message: {
+                Text(validationError)
+            }
+            .sheet(isPresented: retimeReviewPresented) {
+                if let proposed = pendingRetimedSRT {
+                    RetimeReviewSheet(
+                        oldSRT: srtText,
+                        newSRT: proposed,
+                        onApply: {
+                            srtText = proposed
+                            pendingRetimedSRT = nil
+                        },
+                        onCancel: { pendingRetimedSRT = nil }
+                    )
+                }
             }
         }
         .onAppear {
@@ -146,6 +189,63 @@ struct SubtitleEditorSheet: View {
                     .font(.system(size: 12, weight: .medium))
             }
             .buttonStyle(.bordered)
+            .disabled(isRetiming)
+
+            // Re-time: feed the current cues' text back through the on-device aligner so
+            // their timestamps match the audio. Cue text is preserved verbatim; only timings
+            // change. Disabled when there's no audio attached or no text to align.
+            Button {
+                if isRetiming {
+                    retimeTask?.cancel()
+                } else {
+                    retimeTask = Task { await retimeFromAudio() }
+                }
+            } label: {
+                if isRetiming {
+                    HStack(spacing: 4) {
+                        ProgressView().controlSize(.mini)
+                        if retimeProgressMessage.isEmpty == false {
+                            Text(retimeProgressMessage)
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
+                } else {
+                    Image(systemName: "waveform.path")
+                        .font(.system(size: 12, weight: .medium))
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(srtText.isEmpty || isValidating)
+
+            // Validate: run free Whisper transcription on the audio, compare each cue's
+            // text against what was transcribed in its time range, and report the miss
+            // percentage. Diagnostic — doesn't modify the SRT.
+            Button {
+                if isValidating {
+                    validationTask?.cancel()
+                } else {
+                    validationTask = Task { await validateAlignment() }
+                }
+            } label: {
+                if isValidating {
+                    HStack(spacing: 4) {
+                        ProgressView().controlSize(.mini)
+                        if validationProgressMessage.isEmpty == false {
+                            Text(validationProgressMessage)
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
+                } else {
+                    Image(systemName: "checkmark.seal")
+                        .font(.system(size: 12, weight: .medium))
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(srtText.isEmpty || isRetiming)
 
             // Match cue text to note text where they differ.
             if mismatchCount > 0 {
@@ -166,6 +266,172 @@ struct SubtitleEditorSheet: View {
 
     private var timeStepOptions: [Double] {
         [0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0]
+    }
+
+    // Result of an alignment-validation pass: how many cues had transcribed audio that
+    // didn't match their text after normalization, out of the total non-music cues checked.
+    struct ValidationResult {
+        let total: Int
+        let misses: Int
+        var percentage: Int {
+            guard total > 0 else { return 0 }
+            return Int((Double(misses) / Double(total) * 100).rounded())
+        }
+    }
+
+    // Runs free-form Whisper transcription over the audio and compares each cue's text to
+    // the Whisper output covering its time range. Reports a miss percentage so the user
+    // has a one-number signal for alignment quality. Doesn't change the SRT.
+    @MainActor
+    private func validateAlignment() async {
+        defer {
+            isValidating = false
+            validationProgressMessage = ""
+            validationTask = nil
+        }
+
+        guard let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else {
+            validationError = "No audio is attached to this note."
+            return
+        }
+
+        let cues = liveCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
+        guard cues.isEmpty == false else {
+            validationError = "No subtitle lines to validate."
+            return
+        }
+
+        isValidating = true
+        validationProgressMessage = "Preparing model…"
+
+        let modelURL: URL
+        do {
+            if let existing = OnDeviceLyricAligner.bestAvailableModelURL() {
+                modelURL = existing
+            } else {
+                modelURL = try await OnDeviceLyricAligner.downloadDefaultModel { message in
+                    Task { @MainActor in validationProgressMessage = message }
+                }
+            }
+        } catch {
+            validationError = "Couldn't prepare the model: \(error.localizedDescription)"
+            return
+        }
+
+        validationProgressMessage = "Transcribing audio…"
+
+        let segments: [TranscriptionValidator.Segment]
+        do {
+            segments = try await TranscriptionValidator.transcribe(
+                audioURL: audioURL,
+                modelURL: modelURL,
+                cancellationCheck: { Task.isCancelled }
+            )
+        } catch {
+            if Task.isCancelled { return }
+            validationError = "Validation failed: \(error.localizedDescription)"
+            return
+        }
+
+        // For each cue, concatenate Whisper segments overlapping its time range, normalize
+        // both sides (strip whitespace + ASCII/Japanese punctuation), and check equality.
+        var misses = 0
+        for cue in cues {
+            let cueStart = Double(cue.startMs) / 1000.0
+            let cueEnd = Double(cue.endMs) / 1000.0
+            let overlappingText = segments
+                .filter { $0.end > cueStart && $0.start < cueEnd }
+                .map(\.text)
+                .joined()
+            let cueNorm = Self.normalizeForCompare(cue.text)
+            let asrNorm = Self.normalizeForCompare(overlappingText)
+            if cueNorm.isEmpty == false, asrNorm.contains(cueNorm) || cueNorm.contains(asrNorm) {
+                continue
+            }
+            if cueNorm == asrNorm { continue }
+            misses += 1
+        }
+
+        validationResult = ValidationResult(total: cues.count, misses: misses)
+    }
+
+    // Strips whitespace and common punctuation so trivial differences (line breaks,
+    // commas, the difference between 「」 and 『』, etc.) don't count as misses.
+    private static func normalizeForCompare(_ s: String) -> String {
+        let punctuation: Set<Character> = [
+            " ", "\t", "\n", "\r", "　",
+            ".", ",", "!", "?", ";", ":", "-", "—", "…",
+            "。", "、", "！", "？", "・", "「", "」", "『", "』",
+            "(", ")", "（", "）", "[", "]", "{", "}", "／", "/", "～", "~"
+        ]
+        return String(s.filter { !punctuation.contains($0) })
+    }
+
+    // Re-runs forced alignment on the audio attached to this note, using the existing cue
+    // text as the script. Cue text is preserved verbatim; timings are recomputed by Whisper.
+    // After alignment, audio gaps without speech are scanned with the same NonSpeechDetector
+    // the aligner uses, and gaps with sustained non-silent audio are inserted as ♪ cues.
+    @MainActor
+    private func retimeFromAudio() async {
+        defer {
+            isRetiming = false
+            retimeProgressMessage = ""
+            retimeTask = nil
+        }
+
+        guard let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else {
+            retimeError = "No audio is attached to this note."
+            return
+        }
+
+        // Pull text-only lines out of the current SRT so we can hand them to the aligner.
+        // Existing ♪ cues are dropped — they aren't lyrics to align, and we'll re-derive
+        // music markers from the audio after the speech alignment completes.
+        let cues = liveCues
+        let speechCues = cues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
+        let lines = speechCues.map(\.text).filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+        guard lines.isEmpty == false else {
+            retimeError = "No subtitle lines to re-time."
+            return
+        }
+        let lyrics = lines.joined(separator: "\n")
+
+        isRetiming = true
+        retimeProgressMessage = "Preparing model…"
+
+        // Use an existing on-device model when available; otherwise download the default one.
+        let modelURL: URL
+        do {
+            if let existing = OnDeviceLyricAligner.bestAvailableModelURL() {
+                modelURL = existing
+            } else {
+                modelURL = try await OnDeviceLyricAligner.downloadDefaultModel { message in
+                    Task { @MainActor in retimeProgressMessage = message }
+                }
+            }
+        } catch {
+            retimeError = "Couldn't prepare the alignment model: \(error.localizedDescription)"
+            return
+        }
+
+        retimeProgressMessage = "Aligning \(lines.count) lines…"
+
+        do {
+            // The aligner now emits VAD-aware ♪ cues alongside speech lines, so the SRT
+            // returned here already includes music markers for non-silent gaps.
+            let srt = try await OnDeviceLyricAligner.align(
+                audioURL: audioURL,
+                lyrics: lyrics,
+                modelURL: modelURL,
+                cancellationCheck: { Task.isCancelled }
+            )
+            // Stage for the review sheet (Apply / Cancel) so the original SRT stays in
+            // the editor until the user confirms.
+            pendingRetimedSRT = srt
+        } catch {
+            if Task.isCancelled { return }
+            retimeError = "Re-timing failed: \(error.localizedDescription)"
+        }
     }
 
     // Formats a time step value for display (e.g. 0.5 → "0.5s").
@@ -314,6 +580,38 @@ struct SubtitleEditorSheet: View {
         Binding(
             get: { parseError.isEmpty == false },
             set: { if !$0 { parseError = "" } }
+        )
+    }
+
+    // Binds the re-time error alert.
+    private var retimeErrorPresented: Binding<Bool> {
+        Binding(
+            get: { retimeError.isEmpty == false },
+            set: { if !$0 { retimeError = "" } }
+        )
+    }
+
+    // Binds the re-time review sheet to whether a freshly aligned SRT is awaiting confirmation.
+    private var retimeReviewPresented: Binding<Bool> {
+        Binding(
+            get: { pendingRetimedSRT != nil },
+            set: { if !$0 { pendingRetimedSRT = nil } }
+        )
+    }
+
+    // Binds the validation result alert.
+    private var validationResultPresented: Binding<Bool> {
+        Binding(
+            get: { validationResult != nil },
+            set: { if !$0 { validationResult = nil } }
+        )
+    }
+
+    // Binds the validation error alert.
+    private var validationErrorPresented: Binding<Bool> {
+        Binding(
+            get: { validationError.isEmpty == false },
+            set: { if !$0 { validationError = "" } }
         )
     }
 

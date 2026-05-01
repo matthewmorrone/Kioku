@@ -223,6 +223,10 @@ struct ReadView: View {
                 Text("The subtitle text doesn't match the note for some lines. This can happen when alignment produces different characters than the original.")
             }
             .alert("AI Correction", isPresented: $isShowingLLMCorrectionError) {
+                Button("Retry") {
+                    llmCorrectionErrorMessage = ""
+                    requestLLMCorrection()
+                }
                 Button("OK", role: .cancel) {
                     llmCorrectionErrorMessage = ""
                 }
@@ -349,7 +353,12 @@ struct ReadView: View {
             }
             .onChange(of: isEditMode) { _, editing in
                 if editing {
-                    // Suspends furigana computation while editing text.
+                    // Suspends in-progress furigana / segmentation work and clears transient
+                    // selection state. Note: we deliberately do NOT clear furiganaBySegmentLocation
+                    // here. The renderer is gated by `isActive: isEditMode == false`, so it
+                    // doesn't read the map during editing, and keeping the user's chosen
+                    // readings in memory means we never have to "restore" them on exit.
+                    // onChange(of: text) handles real text edits via reconcileSegments.
                     illegalMergeBoundaryLocation = nil
                     illegalMergeFlashTask?.cancel()
                     segmentationRefreshTask?.cancel()
@@ -361,8 +370,6 @@ struct ReadView: View {
                     selectedHighlightRangeOverride = nil
                     selectedBounds = nil
                     SegmentLookupSheet.shared.dismissPopover()
-                    furiganaBySegmentLocation = [:]
-                    furiganaLengthBySegmentLocation = [:]
                 } else {
                     // Always flush pending edits when leaving edit mode so no changes are lost.
                     flushPendingNotePersistenceIfNeeded()

@@ -112,4 +112,4 @@ Deinflection must remain data-driven. Rules must live in `Resources/deinflection
 
 ## Architecture Non-Goals
 
-The system must never introduce: hard cuts, boundary-only segmentation, karaoke subsystem, layout persistence, surface-based word identity, mandatory cloud sync, mandatory network dependency.
+The system must never introduce: hard cuts, boundary-only segmentation, layout persistence, surface-based word identity, mandatory cloud sync, mandatory network dependency.
