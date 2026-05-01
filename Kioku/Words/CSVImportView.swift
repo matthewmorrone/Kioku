@@ -273,10 +273,12 @@ struct CSVImportView: View {
             let resolved: [SavedWord] = items.compactMap { item -> SavedWord? in
                 guard let surface = item.finalSurface, surface.isEmpty == false else { return nil }
                 var canonicalID = Int64(item.id.hashValue)
+                var senseIDs: [Int64] = []
                 if let store, let entry = Self.resolveEntry(surface: surface, kana: item.finalKana, store: store) {
                     canonicalID = entry.entryId
+                    senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
                 }
-                return SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: listIDs)
+                return SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: listIDs, selectedSenseIDs: senseIDs)
             }
             await target.add(resolved)
         }

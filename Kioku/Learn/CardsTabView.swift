@@ -27,6 +27,7 @@ struct CardsStudySessionActivePreferenceKey: PreferenceKey {
 // Major sections: page container, page-dot overlay, gesture lock during sessions.
 struct LearnPagerView: View {
     let dictionaryStore: DictionaryStore?
+    let segmenter: (any TextSegmenting)?
 
     @State private var pageIndex: Int = 0
     @State private var dragOffset: CGFloat = 0
@@ -42,7 +43,7 @@ struct LearnPagerView: View {
             let width = geo.size.width
 
             HStack(spacing: 0) {
-                FlashcardsView(dictionaryStore: dictionaryStore)
+                FlashcardsView(dictionaryStore: dictionaryStore, segmenter: segmenter)
                     .frame(width: width)
                 ClozeStudyHomeView()
                     .frame(width: width)

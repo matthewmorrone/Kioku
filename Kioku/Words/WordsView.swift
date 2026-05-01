@@ -627,7 +627,8 @@ struct WordsView: View {
         if isSaved(entry) {
             wordsStore.remove(id: entry.entryId)
         } else {
-            wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface))
+            let senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+            wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface, selectedSenseIDs: senseIDs))
         }
     }
 
@@ -636,7 +637,16 @@ struct WordsView: View {
         if isSavedByID(entry.canonicalEntryID) {
             wordsStore.remove(id: entry.canonicalEntryID)
         } else {
-            wordsStore.add(SavedWord(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface))
+            // History rows lack a resolved DictionaryEntry; resolve once so the smart-default
+            // picker can populate selectedSenseIDs at save time.
+            let senseIDs: [Int64]
+            if let store = dictionaryStore,
+               let resolved = try? store.lookupEntry(entryID: entry.canonicalEntryID) {
+                senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: resolved)
+            } else {
+                senseIDs = []
+            }
+            wordsStore.add(SavedWord(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface, selectedSenseIDs: senseIDs))
         }
     }
 

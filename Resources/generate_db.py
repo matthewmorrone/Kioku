@@ -97,6 +97,11 @@ def create_schema(conn):
             FOREIGN KEY(sense_id) REFERENCES senses(id)
         );
 
+        -- Always emit kana-form rows (alongside any kanji+kana rows). The earlier
+        -- "WHERE entry_id NOT IN kanji" filter dropped the kana zipf for any entry that
+        -- happened to have a kanji form, even when the kanji form is rare or never used —
+        -- so kana-dominant words like ここ inherited only their rare-kanji zipf and
+        -- mislabelled as Rare downstream.
         CREATE VIEW word_frequency AS
             SELECT k.entry_id, k.id AS kanji_id, kf.id AS kana_id,
                    kkl.jpdb_rank, k.wordfreq_zipf
@@ -106,8 +111,7 @@ def create_schema(conn):
             UNION ALL
             SELECT kf.entry_id, NULL AS kanji_id, kf.id AS kana_id,
                    NULL AS jpdb_rank, kf.wordfreq_zipf
-            FROM kana_forms kf
-            WHERE kf.entry_id NOT IN (SELECT entry_id FROM kanji);
+            FROM kana_forms kf;
 
         -- Sense-level application restrictions (stagk / stagr).
         -- type: 'stagk' restricts to a specific kanji form; 'stagr' restricts to a specific kana form.

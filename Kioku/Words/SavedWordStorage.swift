@@ -49,13 +49,18 @@ enum SavedWordStorage {
                 }
                 // Keep whichever personal note is non-empty; prefer the existing one.
                 let mergedNote = existing.personalNote ?? entry.personalNote
+                // Preserve existing sense / gloss selections; fall back to incoming when existing is empty.
+                let mergedSenseIDs = existing.selectedSenseIDs.isEmpty ? entry.selectedSenseIDs : existing.selectedSenseIDs
+                let mergedGlosses = existing.selectedGlosses.isEmpty ? entry.selectedGlosses : existing.selectedGlosses
                 existing = SavedWord(
                     canonicalEntryID: existing.canonicalEntryID,
                     surface: preferredSurface,
                     sourceNoteIDs: mergedSourceNoteIDs,
                     wordListIDs: mergedWordListIDs,
                     personalNote: mergedNote,
-                    savedAt: existing.savedAt
+                    savedAt: existing.savedAt,
+                    selectedSenseIDs: mergedSenseIDs,
+                    selectedGlosses: mergedGlosses
                 )
                 mergedByEntryID[entry.canonicalEntryID] = existing
                 continue

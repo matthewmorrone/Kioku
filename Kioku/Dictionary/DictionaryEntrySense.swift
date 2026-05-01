@@ -1,6 +1,9 @@
 import Foundation
 
 nonisolated public struct DictionaryEntrySense: Equatable {
+    // Stable per-sense database id; lets saved-word selections reference a sense without
+    // depending on its position in the senses array.
+    public let senseID: Int64
     public let pos: String?
     // Miscellaneous information about this sense (e.g. "uk", "col", "arch"), comma-joined.
     public let misc: String?
@@ -11,7 +14,8 @@ nonisolated public struct DictionaryEntrySense: Equatable {
     public let glosses: [String]
 
     // Stores a single ordered sense payload with part-of-speech, usage tags, and gloss lines.
-    public init(pos: String?, misc: String?, field: String?, dialect: String?, glosses: [String]) {
+    public init(senseID: Int64, pos: String?, misc: String?, field: String?, dialect: String?, glosses: [String]) {
+        self.senseID = senseID
         self.pos = pos
         self.misc = misc
         self.field = field

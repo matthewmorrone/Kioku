@@ -510,10 +510,10 @@ extension ReadView {
         unit == 0x20 || unit == 0x0A || unit == 0x09 || unit == 0x0D || unit == 0x3000
     }
 
-    // Builds a user-facing mismatch description listing every divergence with line/col,
-    // a printable form of the differing characters, and a small context window. Multiple
-    // issues matter because LLMs often produce a cluster of related mistakes; seeing only
-    // the first one hides the others and makes the failure feel opaque.
+    // Builds a user-facing mismatch description listing the first couple of divergences
+    // with line/col and a printable form of the differing characters. We deliberately cap
+    // at two issues — an alert dialog can't usefully display long quoted runs of mismatched
+    // text, and the user's actionable choice is always the same (retry or accept failure).
     private func mismatchDescription(original: String, reconstructed: String) -> String {
         let origUTF16 = original.utf16.count
         let reconUTF16 = reconstructed.utf16.count
@@ -521,10 +521,12 @@ extension ReadView {
         let origChars = Array(original)
         let reconChars = Array(reconstructed)
 
-        // Walk both sequences, emitting a numbered entry per contiguous run of
-        // divergence. A run ends when characters realign or one side is exhausted.
+        // Walk both sequences, emitting an entry per contiguous run of divergence. A run
+        // ends when characters realign or one side is exhausted. The per-run print uses a
+        // bounded context window so a single huge mismatch run doesn't fill the alert.
         var issues: [String] = []
-        let maxIssues = 5
+        let maxIssues = 2
+        let maxRunLength = 24
         var i = 0
         let common = min(origChars.count, reconChars.count)
         while i < common && issues.count < maxIssues {
@@ -532,10 +534,12 @@ extension ReadView {
             let startIdx = i
             var j = i
             while j < common && origChars[j] != reconChars[j] { j += 1 }
-            let origRun = String(origChars[startIdx..<j])
-            let reconRun = String(reconChars[startIdx..<j])
+            let runEnd = min(j, startIdx + maxRunLength)
+            let origRun = String(origChars[startIdx..<runEnd])
+            let reconRun = String(reconChars[startIdx..<runEnd])
+            let suffix = (j - startIdx) > maxRunLength ? "…" : ""
             let (line, col) = lineCol(for: startIdx, in: origChars)
-            issues.append("line \(line), col \(col): expected \(printable(origRun)) but got \(printable(reconRun))")
+            issues.append("line \(line), col \(col): expected \(printable(origRun))\(suffix) but got \(printable(reconRun))\(suffix)")
             i = j
         }
 

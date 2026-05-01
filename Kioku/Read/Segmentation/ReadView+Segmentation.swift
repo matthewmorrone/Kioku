@@ -131,11 +131,11 @@ extension ReadView {
         segmentationRefreshTask = nil
 
         if let segments, let edges = edgesFromSegmentRanges(segments, in: text) {
+            let edges = Self.filterNoiseEdges(edges)
             segmentEdges = edges
             segmentRanges = edges.map { $0.start..<$0.end }
             unknownSegmentLocations = []
             recordRuntimeSegmentationSnapshot(for: edges)
-            scheduleFuriganaGeneration(for: text, edges: edges)
             return
         }
 
@@ -206,12 +206,13 @@ extension ReadView {
                     refreshedEdges = baseEdges
                 }
 
-                segmentEdges = refreshedEdges
-                segmentRanges = refreshedEdges.map { edge in
+                let filteredEdges = Self.filterNoiseEdges(refreshedEdges)
+                segmentEdges = filteredEdges
+                segmentRanges = filteredEdges.map { edge in
                     edge.start..<edge.end
                 }
-                unknownSegmentLocations = unknownSegmentLocations(for: refreshedEdges)
-                recordRuntimeSegmentationSnapshot(for: refreshedEdges)
+                unknownSegmentLocations = unknownSegmentLocations(for: filteredEdges)
+                recordRuntimeSegmentationSnapshot(for: filteredEdges)
 
                 // Clears stale selection if the tapped segment no longer exists after recomputing ranges.
                 if let selectedSegmentLocation {
@@ -419,7 +420,8 @@ extension ReadView {
                         wordsStore.remove(id: entry.entryId)
                     } else {
                         let sourceIDs = activeNoteID.map { [$0] } ?? []
-                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface, sourceNoteIDs: sourceIDs))
+                        let senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface, sourceNoteIDs: sourceIDs, selectedSenseIDs: senseIDs))
                     }
                 },
                 sheetOpenWordDetail: {

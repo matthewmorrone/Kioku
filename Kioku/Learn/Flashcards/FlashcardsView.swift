@@ -1,10 +1,12 @@
 import SwiftUI
 
 // Live dictionary content for one flashcard, fetched asynchronously from DictionaryStore.
+// `meanings` carries one entry per selected sense so the back face can render them stacked;
+// it falls back to the entry's first sense when the saved word has no explicit selection.
 private struct FlashcardLiveContent {
     let surface: String
     let kana: String?
-    let meaning: String
+    let meanings: [String]
 }
 
 // Swipe vs. flip gesture disambiguation state for a card drag.
@@ -22,8 +24,11 @@ private enum FlashcardCardFace {
 
 // Which side of each card is the prompt vs. the answer.
 private enum FlashcardCardDirection: String, CaseIterable, Identifiable {
-    case kanjiToKana = "漢字 → かな"
+    // Front shows the form the user encountered in the source note (saved surface, possibly
+    // inflected) — useful for reading-comprehension drill.
+    case noteToEnglish = "原文 → English"
     case kanaToEnglish = "かな → English"
+    case kanjiToKana = "漢字 → かな"
     var id: String { rawValue }
 }
 
@@ -31,6 +36,7 @@ private enum FlashcardCardDirection: String, CaseIterable, Identifiable {
 // Major sections: toolbar, session header, card stack, grading controls, review home form, session complete state.
 struct FlashcardsView: View {
     let dictionaryStore: DictionaryStore?
+    let segmenter: (any TextSegmenting)?
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
@@ -52,10 +58,9 @@ struct FlashcardsView: View {
     @State private var reviewedCount: Int = 0
 
     @State private var showEndSessionConfirm: Bool = false
-    @State private var direction: FlashcardCardDirection = .kanjiToKana
+    @State private var direction: FlashcardCardDirection = .kanaToEnglish
     @State private var selectedNoteIDs: Set<UUID> = []
-    @State private var liveContentByEntryID: [Int64: FlashcardLiveContent] = [:]
-    @State private var liveContentRequestToken: Int = 0
+    @State private var detailWord: SavedWord?
 
     var body: some View {
         NavigationStack {
@@ -122,8 +127,11 @@ struct FlashcardsView: View {
                 Text("This will stop the current review session.")
             }
         }
-        .onAppear { refreshLiveContent(for: wordsStore.words) }
-        .onReceive(wordsStore.$words) { refreshLiveContent(for: $0) }
+        .sheet(item: $detailWord) { word in
+            WordDetailView(word: word, reading: nil, dictionaryStore: dictionaryStore, segmenter: segmenter)
+                .environmentObject(wordsStore)
+                .presentationDetents([.large])
+        }
         // Suppress the Cards tab page dots and swipe-between-modes while reviewing.
         .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: session.isEmpty == false)
         .preference(key: CardsStudySessionActivePreferenceKey.self, value: session.isEmpty == false)
@@ -148,14 +156,19 @@ struct FlashcardsView: View {
     }
 
     // Stacks up to three upcoming cards so the queue depth is visible.
+    // ForEach iterates words (not indices) so the dismissed card's view is removed by SwiftUI's
+    // diff rather than reused with a new word — that reuse caused dragOffset to interpolate from
+    // off-screen back to center, producing the visible "revert" between cards.
     private var cardStack: some View {
         let end = min(index + 3, session.count)
+        let visible = Array(session[index..<end])
+        let topID = session.indices.contains(index) ? session[index].canonicalEntryID : nil
         return ZStack {
-            ForEach(Array((index..<end)).reversed(), id: \.self) { idx in
+            ForEach(visible.reversed()) { word in
                 FlashcardCard(
-                    word: session[idx],
-                    liveContent: liveContentByEntryID[session[idx].canonicalEntryID],
-                    isTop: idx == index,
+                    word: word,
+                    dictionaryStore: dictionaryStore,
+                    isTop: word.canonicalEntryID == topID,
                     direction: direction,
                     preferredNoteID: selectedNoteIDs.count == 1 ? selectedNoteIDs.first : nil,
                     showBack: $showBack,
@@ -170,7 +183,7 @@ struct FlashcardsView: View {
         .frame(maxWidth: .infinity, maxHeight: 360)
     }
 
-    // Again / Know buttons shown while a session is active.
+    // Again / Detail / Know buttons shown while a session is active.
     private var controls: some View {
         HStack(spacing: 16) {
             Button { again() } label: {
@@ -178,6 +191,18 @@ struct FlashcardsView: View {
             }
             .buttonStyle(.bordered)
             .tint(.red)
+
+            Spacer()
+
+            Button {
+                guard session.isEmpty == false else { return }
+                detailWord = session[index]
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.title2)
+            }
+            .buttonStyle(.bordered)
+            .tint(.secondary)
 
             Spacer()
 
@@ -350,38 +375,6 @@ struct FlashcardsView: View {
         }
     }
 
-    // Fetches headword/kana/meaning for every saved word from DictionaryStore, building a
-    // lookup table so individual FlashcardCards don't each trigger their own DB calls.
-    @MainActor
-    private func refreshLiveContent(for words: [SavedWord]) {
-        guard let store = dictionaryStore else { liveContentByEntryID = [:]; return }
-
-        liveContentRequestToken &+= 1
-        let token = liveContentRequestToken
-
-        Task {
-            var next: [Int64: FlashcardLiveContent] = [:]
-            next.reserveCapacity(words.count)
-
-            for word in words {
-                let entryID = word.canonicalEntryID
-                let surface = word.surface
-                let data = await Task.detached(priority: .utility) {
-                    try? await store.fetchWordDisplayData(entryID: entryID, surface: surface)
-                }.value
-                guard let data else { continue }
-
-                let kana = data.entry.kanaForms.first?.text
-                let meaning = data.entry.senses.first?.glosses.first ?? ""
-                next[entryID] = FlashcardLiveContent(surface: surface, kana: kana, meaning: meaning)
-            }
-
-            await MainActor.run {
-                guard token == self.liveContentRequestToken else { return }
-                self.liveContentByEntryID = next
-            }
-        }
-    }
 }
 
 // Multiselect dropdown scoping the session to saved words from one or more notes.
@@ -455,7 +448,7 @@ private struct FlashcardNotePicker: View {
 // Major sections: card face (front/back with lighting gradients), gesture handler, swipe-out animation.
 private struct FlashcardCard: View {
     let word: SavedWord
-    let liveContent: FlashcardLiveContent?
+    let dictionaryStore: DictionaryStore?
     let isTop: Bool
     let direction: FlashcardCardDirection
     let preferredNoteID: UUID?
@@ -469,6 +462,7 @@ private struct FlashcardCard: View {
     @EnvironmentObject private var notesStore: NotesStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    @State private var liveContent: FlashcardLiveContent?
     @State private var gestureMode: FlashcardGestureMode = .undecided
     @State private var flipAngleDegrees: Double = 0
     @State private var flipStartAngleDegrees: Double = 0
@@ -507,6 +501,72 @@ private struct FlashcardCard: View {
                 guard isTop, gestureMode != .flip else { return }
                 flipAngleDegrees = newValue ? 180 : 0
             }
+            // Task id includes both selection arrays so the lookup re-fires whenever the user
+            // toggles a sense or a gloss from the word detail view.
+            .task(id: liveContentTaskID) {
+                liveContent = await resolveLiveContent()
+            }
+    }
+
+    // Stable identity for the task that resolves liveContent — entry id followed by every
+    // selected-sense id and every selected gloss ref. Recomputing fires .task again.
+    private var liveContentTaskID: [Int64] {
+        var key: [Int64] = [word.canonicalEntryID]
+        key.append(contentsOf: word.selectedSenseIDs)
+        for ref in word.selectedGlosses {
+            key.append(ref.senseID)
+            key.append(Int64(ref.glossIndex))
+        }
+        return key
+    }
+
+    // Resolves kana + glosses for this card's word directly from the dictionary store.
+    // Each card owns its own fetch so display state cannot drift from any sibling-keyed cache.
+    // The meanings list combines whole-sense selections (use sense's first gloss) with
+    // gloss-level selections (use that exact gloss text); duplicates are dropped so a sense
+    // selected and one of its glosses pinned doesn't render the same phrase twice.
+    private func resolveLiveContent() async -> FlashcardLiveContent? {
+        guard let store = dictionaryStore else { return nil }
+        let entryID = word.canonicalEntryID
+        let surface = word.surface
+        let selectedSenseIDs = word.selectedSenseIDs
+        let selectedGlosses = word.selectedGlosses
+        return await Task.detached(priority: .utility) {
+            guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
+                return nil
+            }
+            let kana = data.entry.kanaForms.first?.text
+
+            var sensesByID: [Int64: DictionaryEntrySense] = [:]
+            for sense in data.entry.senses { sensesByID[sense.senseID] = sense }
+
+            var meanings: [String] = []
+            var seen: Set<String> = []
+
+            func append(_ raw: String) {
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.isEmpty == false, seen.insert(trimmed).inserted else { return }
+                meanings.append(trimmed)
+            }
+
+            for senseID in selectedSenseIDs {
+                if let first = sensesByID[senseID]?.glosses.first { append(first) }
+            }
+            for ref in selectedGlosses {
+                if let sense = sensesByID[ref.senseID],
+                   ref.glossIndex >= 0, ref.glossIndex < sense.glosses.count {
+                    append(sense.glosses[ref.glossIndex])
+                }
+            }
+
+            // Fallback: nothing selected (or selections didn't survive a dictionary rebuild)
+            // — show the entry's first sense's first gloss, matching the original behavior.
+            if meanings.isEmpty, let first = data.entry.senses.first?.glosses.first {
+                append(first)
+            }
+
+            return FlashcardLiveContent(surface: surface, kana: kana, meanings: meanings)
+        }.value
     }
 
     private var dragProgress: CGFloat {
@@ -590,6 +650,7 @@ private struct FlashcardCard: View {
                     RoundedRectangle(cornerRadius: 16)
                         .strokeBorder(Color.white.opacity(0.06 + 0.10 * tilt), lineWidth: 1)
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 16))
 
             content()
                 .padding(24)
@@ -603,19 +664,26 @@ private struct FlashcardCard: View {
         let displayKana = displayKanaForCard(displaySurface: displaySurface)
         VStack(alignment: .center, spacing: 10) {
             Spacer(minLength: 0)
-            if liveContent == nil {
-                Text("Entry unavailable")
-                    .font(.title2.weight(.semibold)).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            } else {
-                switch direction {
-                case .kanjiToKana:
+            switch direction {
+            case .kanjiToKana:
+                Text(displaySurface)
+                    .font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
+            case .kanaToEnglish:
+                // Hold off rendering kanji as a fallback while the dictionary lookup is still
+                // in flight — flashing the kanji would defeat the kana → English drill.
+                if let displayKana, displayKana.isEmpty == false {
+                    Text(displayKana)
+                        .font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
+                } else if liveContent != nil {
                     Text(displaySurface)
                         .font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
-                case .kanaToEnglish:
-                    Text(displayKana?.isEmpty == false ? (displayKana ?? displaySurface) : displaySurface)
-                        .font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
                 }
+            case .noteToEnglish:
+                // Show the form the user saw in the source note exactly (kanji, kana, inflected
+                // — whatever the saved surface is). Drills recognition of the encountered form
+                // rather than the dictionary form.
+                Text(displaySurface)
+                    .font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
             }
             Spacer(minLength: 0)
         }
@@ -636,10 +704,16 @@ private struct FlashcardCard: View {
                 } else {
                     Text("—").font(.title2.weight(.semibold)).foregroundStyle(.secondary)
                 }
-            case .kanaToEnglish:
-                let meaning = liveContent?.meaning.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if meaning.isEmpty == false {
-                    Text(meaning).font(.title2.weight(.semibold)).multilineTextAlignment(.center)
+            case .kanaToEnglish, .noteToEnglish:
+                let meanings = liveContent?.meanings ?? []
+                if meanings.isEmpty == false {
+                    VStack(spacing: 8) {
+                        ForEach(meanings, id: \.self) { meaning in
+                            Text(meaning)
+                                .font(.title2.weight(.semibold))
+                                .multilineTextAlignment(.center)
+                        }
+                    }
                 } else {
                     Text("—").font(.title2.weight(.semibold)).foregroundStyle(.secondary)
                 }
@@ -649,9 +723,12 @@ private struct FlashcardCard: View {
     }
 
     // Prefers showing the form that appears in the source note to give reading context.
+    // Falls back to the SavedWord's stored surface so the card always shows something
+    // immediately, even before the dictionary lookup resolves.
     private func displaySurfaceForCard() -> String {
-        let surface = liveContent?.surface.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard surface.isEmpty == false else { return "Entry unavailable" }
+        let liveSurface = liveContent?.surface.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let surface = liveSurface.isEmpty ? word.surface : liveSurface
+        guard surface.isEmpty == false else { return word.surface }
 
         let noteID = preferredNoteID ?? word.sourceNoteIDs.first
         guard let noteID,
@@ -774,6 +851,9 @@ private struct FlashcardCard: View {
     }
 
     // Animates the card flying off screen, then fires the completion callback to update session state.
+    // The post-flight state swap (advance session, reset dragOffset) runs inside an animation-less
+    // Transaction so SwiftUI cannot interpolate dragOffset back to center — that interpolation was
+    // the visual "revert" between the dismissed card and the next card.
     private func swipeOut(direction dir: Int, completion: @escaping () -> Void) {
         let offX: CGFloat = CGFloat(dir) * 720
         let remaining = abs(offX - dragOffset.width)
@@ -783,9 +863,13 @@ private struct FlashcardCard: View {
             dragOffset = CGSize(width: offX, height: dragOffset.height * 0.2)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-            completion()
-            showBack = false; dragOffset = .zero
-            isSwipingOut = false; swipeDirection = 0
+            withTransaction(Transaction(animation: nil)) {
+                completion()
+                showBack = false
+                dragOffset = .zero
+            }
+            isSwipingOut = false
+            swipeDirection = 0
         }
     }
 }

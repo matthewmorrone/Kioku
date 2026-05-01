@@ -4,6 +4,9 @@ import UIKit
 // Hosts furigana computation and reading selection helpers for the read screen.
 extension ReadView {
     // Computes furigana off-main and applies only the latest result for the current editor text.
+    // The compute step skips any edge whose range already has saved furigana entries — the
+    // user's overrides are authoritative and we don't recompute over them. Only segments the
+    // user has never touched get freshly derived readings.
     func scheduleFuriganaGeneration(for sourceText: String, edges: [LatticeEdge]) {
         StartupTimer.mark("scheduleFuriganaGeneration called (\(edges.count) edges)")
         furiganaComputationTask?.cancel()
@@ -11,12 +14,28 @@ extension ReadView {
         let hasKanjiEdges = edges.contains { edge in
             ScriptClassifier.containsKanji(edge.surface)
         }
+        // Snapshot the saved entries so the off-main compute can recognize edges that already
+        // have a user-chosen reading. These edges are skipped — recomputing them would either
+        // reproduce the same value (waste) or produce a different default (would clobber).
+        let savedLocationsSnapshot = Set(furiganaBySegmentLocation.keys)
 
         furiganaComputationTask = Task(priority: .userInitiated) {
-            let furiganaResult = StartupTimer.measure("buildFuriganaBySegmentLocation (\(edges.count) edges)") {
+            let edgesToCompute = edges.filter { edge in
+                let nsRange = NSRange(edge.start..<edge.end, in: sourceText)
+                guard nsRange.location != NSNotFound, nsRange.length > 0 else { return false }
+                let upper = nsRange.location + nsRange.length
+                // Skip if any saved entry's location falls inside this edge — that means the
+                // user already pinned a reading for this segment.
+                let hasSaved = savedLocationsSnapshot.contains { loc in
+                    loc >= nsRange.location && loc < upper
+                }
+                return hasSaved == false
+            }
+
+            let furiganaResult = StartupTimer.measure("buildFuriganaBySegmentLocation (\(edgesToCompute.count) of \(edges.count) edges)") {
                 buildFuriganaBySegmentLocation(
                     for: sourceText,
-                    edges: edges,
+                    edges: edgesToCompute,
                     surfaceReadingData: currentSurfaceReadingData
                 )
             }
@@ -40,10 +59,14 @@ extension ReadView {
                     return
                 }
 
-                furiganaBySegmentLocation = furiganaResult.furiganaByLocation
-                furiganaLengthBySegmentLocation = furiganaResult.lengthByLocation
-
-                // Compact format logging disabled.
+                // Add (don't overwrite) the freshly computed entries. Compute already excluded
+                // any segment the user pinned, so existing entries are untouched here.
+                for (location, reading) in furiganaResult.furiganaByLocation {
+                    furiganaBySegmentLocation[location] = reading
+                }
+                for (location, length) in furiganaResult.lengthByLocation {
+                    furiganaLengthBySegmentLocation[location] = length
+                }
 
                 // Persist segments with furigana now that readings are fully resolved.
                 // Assign back to self.segments so persistCurrentNoteIfNeeded writes the annotated data.
