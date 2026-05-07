@@ -226,14 +226,14 @@ private enum SharedLexiconSurface {
 
         let baseResources = try TestReadResources.shared()
         let groupedRules = try TestReadResources.groupedDeinflectionRules()
-        let readingBySurface = try baseResources.dictionaryStore.fetchPreferredReadingsBySurface()
+        let surfaceReadingData = try baseResources.dictionaryStore.fetchSurfaceReadingData()
         let deinflector = Deinflector(groupedRules: groupedRules, trie: DictionaryTrie())
 
         let lexicalSurface = Lexicon(
             dictionaryStore: baseResources.dictionaryStore,
             segmenter: baseResources.segmenter,
             deinflector: deinflector,
-            readingBySurface: readingBySurface
+            surfaceReadingData: surfaceReadingData
         )
 
         cached = lexicalSurface
