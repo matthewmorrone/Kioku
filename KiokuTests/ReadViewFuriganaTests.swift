@@ -6,18 +6,27 @@ import XCTest
 final class ReadViewFuriganaTests: XCTestCase {
 
     // Builds a lightweight read view backed by the shared real segmenter so furigana helpers use production logic.
-    private func makeReadView() throws -> ReadView {
+    private func makeReadView(surfaceReadings: [String: [String]] = [:]) throws -> ReadView {
         let resources = try TestReadResources.shared()
+        let dataMap = surfaceReadings.mapValues { readings in
+            SurfaceReadingData(readings: readings, frequencyByReading: [:])
+        }
         return ReadView(
             selectedNote: .constant(nil),
             shouldActivateEditModeOnLoad: .constant(false),
             segmenter: resources.segmenter,
             dictionaryStore: resources.dictionaryStore,
-            readingBySurface: [:],
-            readingCandidatesBySurface: [:],
+            surfaceReadingData: SurfaceReadingDataMap(dataMap),
             segmenterRevision: 0,
             readResourcesReady: true
         )
+    }
+
+    private func makeSurfaceReadingData(_ entries: [String: [String]]) -> SurfaceReadingDataMap {
+        let mapped = entries.mapValues { readings in
+            SurfaceReadingData(readings: readings, frequencyByReading: [:])
+        }
+        return SurfaceReadingDataMap(mapped)
     }
 
     // Verifies voiced okurigana variants do not cause the entire lemma reading to attach to one kanji run.
@@ -38,11 +47,13 @@ final class ReadViewFuriganaTests: XCTestCase {
             surface: sourceText
         )
 
+        let surfaceReadingData = makeSurfaceReadingData([
+            "近づく": ["ちかずく", "ちかづく"]
+        ])
         let furigana = readView.buildFuriganaBySegmentLocation(
             for: sourceText,
             edges: [edge],
-            readingBySurface: ["近づく": "ちかずく"],
-            readingCandidatesBySurface: ["近づく": ["ちかずく", "ちかづく"]]
+            surfaceReadingData: surfaceReadingData
         )
 
         XCTAssertEqual(furigana.furiganaByLocation[0], "ちか")
@@ -68,14 +79,45 @@ final class ReadViewFuriganaTests: XCTestCase {
             surface: sourceText
         )
 
+        let surfaceReadingData = makeSurfaceReadingData([
+            "私": ["わたくし"]
+        ])
         let furigana = readView.buildFuriganaBySegmentLocation(
             for: sourceText,
             edges: [edge],
-            readingBySurface: ["私": "わたくし"],
-            readingCandidatesBySurface: [:]
+            surfaceReadingData: surfaceReadingData
         )
 
         XCTAssertTrue(furigana.furiganaByLocation.isEmpty)
         XCTAssertTrue(furigana.lengthByLocation.isEmpty)
+    }
+
+    // Regression: 抜け殻 has two kanji runs (抜 and 殻) separated by kana (け). Both runs must
+    // receive their projected readings (ぬ and がら) — earlier behaviour stopped producing the
+    // second run's annotation when partial entries were already in memory from a prior pass.
+    func testBuildFuriganaBySegmentLocationProjectsBothRunsForNukegara() throws {
+        let readView = try makeReadView()
+        let sourceText = "抜け殻"
+        let edge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText
+        )
+
+        let surfaceReadingData = makeSurfaceReadingData([
+            "抜け殻": ["ぬけがら"]
+        ])
+        let furigana = readView.buildFuriganaBySegmentLocation(
+            for: sourceText,
+            edges: [edge],
+            surfaceReadingData: surfaceReadingData
+        )
+
+        // 抜 sits at UTF-16 location 0, 殻 sits at location 2 (け is one UTF-16 unit between them).
+        XCTAssertEqual(furigana.furiganaByLocation[0], "ぬ")
+        XCTAssertEqual(furigana.lengthByLocation[0], 1)
+        XCTAssertEqual(furigana.furiganaByLocation[2], "がら")
+        XCTAssertEqual(furigana.lengthByLocation[2], 1)
+        XCTAssertNil(furigana.furiganaByLocation[1], "no annotation should attach to the kana け")
     }
 }
