@@ -42,7 +42,8 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
     @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
     @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
-    @AppStorage(DebugSettings.bisectorsKey) private var debugBisectors: Bool = false
+    @AppStorage(DebugSettings.bisectorHeadwordKey) private var debugBisectorHeadword: Bool = false
+    @AppStorage(DebugSettings.bisectorFuriganaKey) private var debugBisectorFurigana: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
     @AppStorage(DebugSettings.leftInsetGuideKey) private var debugLeftInsetGuide: Bool = false
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
@@ -101,7 +102,8 @@ struct SettingsView: View {
                         debugHeadwordRects: debugHeadwordRects,
                         debugHeadwordLineBands: debugHeadwordLineBands,
                         debugFuriganaLineBands: debugFuriganaLineBands,
-                        debugBisectors: debugBisectors,
+                        debugBisectorHeadword: debugBisectorHeadword,
+                        debugBisectorFurigana: debugBisectorFurigana,
                         debugEnvelopeRects: debugEnvelopeRects,
                         debugLeftInsetGuide: debugLeftInsetGuide
                     )
@@ -314,7 +316,8 @@ struct SettingsView: View {
                     Toggle("Envelope Rects", isOn: $debugEnvelopeRects)
                     Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
                     Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
-                    Toggle("Bisectors", isOn: $debugBisectors)
+                    Toggle("Headword Bisectors", isOn: $debugBisectorHeadword)
+                    Toggle("Furigana Bisectors", isOn: $debugBisectorFurigana)
                     Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)
                 }
                 #endif

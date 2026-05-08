@@ -36,7 +36,11 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let debugHeadwordRects: Bool
     let debugHeadwordLineBands: Bool
     let debugFuriganaLineBands: Bool
-    let debugBisectors: Bool
+    // Headword bisector = vertical line at the kanji-run geometric center.
+    // Furigana bisector = vertical line at the ruby string's geometric center.
+    // Independent toggles so misalignment between them is directly visible.
+    let debugBisectorHeadword: Bool
+    let debugBisectorFurigana: Bool
     let debugEnvelopeRects: Bool
     // Draws a vertical reference line at textContainerInset.left and dumps numerical
     // positions for each line-start segment, so wide-ruby overhang and envelope
@@ -532,7 +536,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
         var bisectorFuriganaRects: [CGRect] = []
         var debugEnvelopeRectsList: [CGRect] = []
         var debugEnvelopeTexts: [String] = []
-        let needsDebugSegmentPass = debugHeadwordRects || debugBisectors || debugEnvelopeRects
+        let needsDebugSegmentPass = debugHeadwordRects || debugBisectorHeadword || debugBisectorFurigana || debugEnvelopeRects
         if needsDebugSegmentPass {
             let ignoredScalars = CharacterSet.whitespacesAndNewlines
             for segmentRange in segmentationRanges {
@@ -548,7 +552,7 @@ struct FuriganaTextRenderer: UIViewRepresentable {
                     debugCollectedHeadwordColors.append(segmentColor)
                 }
 
-                if debugBisectors {
+                if debugBisectorHeadword || debugBisectorFurigana {
                     // The headword bisector must span only the kanji the furigana covers,
                     // not the entire segment — e.g. for "食べる" the bisector sits over "食",
                     // because that is what the furigana "た" is centered on.
@@ -730,7 +734,8 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             debugHeadwordColors: debugCollectedHeadwordColors,
             debugHeadwordLineBandRects: debugHeadwordLineBandRects,
             debugFuriganaLineBandRects: debugFuriganaLineBandRects,
-            debugBisectorsEnabled: debugBisectors,
+            debugBisectorHeadwordEnabled: debugBisectorHeadword,
+            debugBisectorFuriganaEnabled: debugBisectorFurigana,
             debugBisectorHeadwordMidXs: bisectorHeadwordMidXs,
             debugBisectorHeadwordRects: bisectorHeadwordRects,
             debugBisectorFuriganaRects: bisectorFuriganaRects,

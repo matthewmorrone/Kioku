@@ -32,7 +32,8 @@ struct SettingsPreviewRenderer: View {
     let debugHeadwordRects: Bool
     let debugHeadwordLineBands: Bool
     let debugFuriganaLineBands: Bool
-    let debugBisectors: Bool
+    let debugBisectorHeadword: Bool
+    let debugBisectorFurigana: Bool
     let debugEnvelopeRects: Bool
     let debugLeftInsetGuide: Bool
 
@@ -205,7 +206,8 @@ struct SettingsPreviewRenderer: View {
             debugHeadwordRects: debugHeadwordRects,
             debugHeadwordLineBands: debugHeadwordLineBands,
             debugFuriganaLineBands: debugFuriganaLineBands,
-            debugBisectors: debugBisectors,
+            debugBisectorHeadword: debugBisectorHeadword,
+            debugBisectorFurigana: debugBisectorFurigana,
             debugEnvelopeRects: debugEnvelopeRects,
             debugLeftInsetGuide: debugLeftInsetGuide,
             externalContentOffsetY: 0,
