@@ -18,6 +18,10 @@ struct ContentView: View {
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
     @StateObject private var reviewStore = ReviewStore()
+    // Lifetime tied to the app shell so Settings can start/stop the listener freely; the
+    // notes store is attached during onAppear because @StateObject initializers can't see
+    // each other.
+    @StateObject private var bridgeServer = KiokuBridgeServer()
     @State private var selectedReadNote: Note?
     @State private var shouldActivateReadEditMode = false
     @State private var readResources = ReadResources()
@@ -112,7 +116,7 @@ struct ContentView: View {
             }
 
             // Renders the Settings tab entry point.
-            SettingsView(dictionaryStore: readResources.dictionaryStore)
+            SettingsView(dictionaryStore: readResources.dictionaryStore, bridgeServer: bridgeServer)
             .tag(ContentTab.settings)
             .tabItem {
                 Label("Settings", systemImage: "gear")
@@ -129,6 +133,9 @@ struct ContentView: View {
             restoreLastActiveNote()
             loadReadResourcesIfNeeded()
             setupNotificationHandlerIfNeeded()
+            // Wires the live notes store into the bridge so any MCP-side mutations route
+            // through the same single-writer store the UI binds against.
+            bridgeServer.attach(notesStore: notesStore)
         }
         // Navigate to Words tab and open the word detail when a notification deep link arrives.
         .onChange(of: wotdNavigation.pendingEntryID) { _, entryID in
