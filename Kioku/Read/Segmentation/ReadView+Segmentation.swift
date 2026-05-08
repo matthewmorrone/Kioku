@@ -89,9 +89,19 @@ extension ReadView {
         persistCurrentNoteIfNeeded()
     }
 
-    // Removes the persisted reading for the currently selected segment and re-runs furigana computation.
+    // Removes the persisted reading for the currently selected segment and re-runs furigana
+    // computation so the auto-derived default refills the gap. The transient blanking flag
+    // is also set so the UI shows no ruby until the recompute finishes — without that, the
+    // user's old override would briefly remain visible during the async backfill.
     func clearReadingOverrideForCurrentSegment() {
-        transientBlankReadingSegmentLocation = selectedSegmentLocation
+        guard let location = selectedSegmentLocation else { return }
+        transientBlankReadingSegmentLocation = location
+        furiganaBySegmentLocation.removeValue(forKey: location)
+        furiganaLengthBySegmentLocation.removeValue(forKey: location)
+        // performScheduleFuriganaGeneration uses backfill semantics — it only writes a
+        // location if the current map has no entry there. Removing the entry first means
+        // the freshly computed default reading is the value that gets backfilled.
+        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
     }
 
     // Clears note-backed segment range overrides and restores computed segmentation from the segmenter.

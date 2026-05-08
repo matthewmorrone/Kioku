@@ -213,6 +213,14 @@ struct FuriganaTextRenderer: UIViewRepresentable {
 
         let didRenderText = coordinator.shouldRenderText(for: baseTextRenderSignature)
         if didRenderText {
+            // Gate scroll-publish callbacks for the duration of this branch AND one extra
+            // runloop after, so post-render contentSize fluctuations from the spacing-
+            // correction pass don't clamp contentOffset and republish the clamp into
+            // sharedScrollOffsetY. The deferred end runs on the next main-loop tick.
+            coordinator.beginTextRenderScrollGate()
+            DispatchQueue.main.async { [weak coordinator] in
+                coordinator?.endTextRenderScrollGate()
+            }
             coordinator.markFirstTextRenderIfNeeded()
             // Clear stale exclusion paths before applying new attributed text. Without this,
             // the existing exclusions shift line-start glyphs right during the fresh layout pass
@@ -220,9 +228,27 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             // the already-shifted segments, which then clears the exclusions and snaps glyphs
             // back to x=0 — causing visible alignment jitter on every text-change render.
             textView.textContainer.exclusionPaths = []
-            // Use the external scroll target instead of the current UITextView offset so that
-            // scroll-to-top on note switch (sharedScrollOffsetY = 0) takes effect when text changes.
-            // During normal style updates the external offset stays in sync with the actual position.
+            // Snapshot the current scroll position BEFORE reassigning attributedText so we can
+            // restore it after layout settles — UIScrollView clamps contentOffset.y to 0 during
+            // the transient contentSize=0 window between attributedText reassignment and the
+            // following ensureTextLayout. Using a local snapshot (not externalContentOffsetY)
+            // makes this robust even if a prior bad publish already corrupted sharedScrollOffsetY.
+            //
+            // Detect deliberate "scroll to top" requests (note load, sheet dismiss) as a
+            // *transition* from a non-zero externalContentOffsetY to 0 — NOT the static
+            // "value is currently 0" check, which fires every time the user is at the top
+            // and would force them back when editing a reading or running any other text-
+            // change render.
+            let preReassignmentOffsetY = textView.contentOffset.y
+            let isExplicitScrollToTop: Bool
+            if let last = coordinator.lastObservedExternalOffsetY,
+               externalContentOffsetY == 0,
+               last > 0.5 {
+                isExplicitScrollToTop = true
+            } else {
+                isExplicitScrollToTop = false
+            }
+            coordinator.lastObservedExternalOffsetY = externalContentOffsetY
             textView.attributedText = textStylePayload.attributedText
             // Run the exhaustive full-document layout here, immediately after setting attributedText,
             // so glyph positions used by overlay drawing are correct before the view is displayed.
@@ -236,18 +262,44 @@ struct FuriganaTextRenderer: UIViewRepresentable {
             if applyLeftInsetExclusionsForWideRuby(to: textView, furiganaFont: furiganaFont) {
                 ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: true)
             }
-            let minOffsetY = -textView.adjustedContentInset.top
-            let maxOffsetY = max(minOffsetY, textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom)
-            let clampedOffsetY = min(max(externalContentOffsetY, minOffsetY), maxOffsetY)
-            textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedOffsetY), animated: false)
+            // Restore scroll position. By default, restore the pre-reassignment snapshot —
+            // splits/merges and most edits should not move the user's view. The exception is
+            // a deliberate scroll-to-top from a note switch (externalContentOffsetY == 0 and
+            // we were scrolled), in which case we honor the external request. suppressPublish
+            // is true so the layout-driven setContentOffset can't republish a transient clamp.
+            let restoreTarget: CGFloat = isExplicitScrollToTop ? 0 : preReassignmentOffsetY
+            coordinator.applyExternalScrollIfNeeded(
+                to: textView,
+                targetOffsetY: restoreTarget,
+                suppressPublish: true
+            )
             coordinator.markTextRendered(signature: baseTextRenderSignature)
+            // The freshly assigned attributedText already carries the latest colors, so the
+            // style sig is in sync after a text-change render — record it to avoid a redundant
+            // in-place color reapply on the next pass.
+            coordinator.markStyleAttributesRendered(signature: makeStyleAttributesSignature())
         } else {
-            // Text is unchanged; a viewport-only pass is enough when the view scrolls, but a
-            // non-scrolling preview sizes itself to fit all content, so exhaustive layout keeps
-            // the last wrapped line's fragments ready for firstRect queries. Otherwise the last
-            // line's furigana can drop out whenever this branch runs without a prior exhaustive
-            // pass (e.g. on debug-flag-only changes in Settings).
-            ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: !textView.isScrollEnabled)
+            // Text is unchanged. If only segmentation / per-segment colors changed (split,
+            // merge, alternation/highlight toggle, custom color tweak), mutate textStorage's
+            // color attributes in place — no attributedText reassignment, no contentSize
+            // perturbation, no scroll-jump-to-top.
+            let styleSignature = makeStyleAttributesSignature()
+            let didApplyStyle = coordinator.shouldRenderStyleAttributes(for: styleSignature)
+            if didApplyStyle {
+                applyStyleAttributesInPlace(to: textView, payload: textStylePayload)
+                coordinator.markStyleAttributesRendered(signature: styleSignature)
+            }
+            // Layout strategy:
+            //   - Style-attributes change (split/merge/alternation toggle) → exhaustive. The
+            //     attribute mutation can shift TextKit's internal layout invariants enough that
+            //     viewport-only firstRect queries return stale Y values, which manifests as
+            //     ruby drifting vertically until the next exhaustive pass runs.
+            //   - Pure scroll-only update → viewport-only is enough; the overlay only needs
+            //     fresh rects for what's about to be drawn.
+            //   - Non-scrolling preview → always exhaustive so the last wrapped line's
+            //     fragments are realized for firstRect queries.
+            let shouldRunExhaustive = didApplyStyle || !textView.isScrollEnabled
+            ensureTextLayout(for: textView, coordinator: coordinator, exhaustive: shouldRunExhaustive)
         }
 
         let overlayFrame = CGRect(
