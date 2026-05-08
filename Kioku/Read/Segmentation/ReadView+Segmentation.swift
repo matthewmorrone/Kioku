@@ -124,14 +124,35 @@ extension ReadView {
         persistCurrentNoteIfNeeded()
     }
 
+    // Public entry point. Two paths:
+    //   - Fast path: persisted segments validate against current text → restore edges
+    //     synchronously, NO prompt. This is restoration, not automatic segmentation.
+    //   - Slow path: actually run the segmenter → queue a confirm prompt.
+    // Empty text is a no-op in either path.
+    func refreshSegmentationRanges(reason: String = #function) {
+        guard text.isEmpty == false else { return }
+
+        if let segments, let edges = edgesFromSegmentRanges(segments, in: text) {
+            segmentEdges = edges
+            segmentRanges = edges.map { $0.start..<$0.end }
+            unknownSegmentLocations = []
+            recordRuntimeSegmentationSnapshot(for: edges)
+            return
+        }
+
+        requestAutoSegConfirm(
+            reason: "refreshSegmentationRanges ← \(reason)",
+            action: .refreshSegmentationRanges
+        )
+    }
+
     // Rebuilds greedy segmentation ranges used by alternating segment colors in the editor.
     // Skips recomputation when persisted segments already cover the text — trusts them as ground truth.
-    func refreshSegmentationRanges() {
+    func performRefreshSegmentationRanges() {
         segmentationRefreshTask?.cancel()
         segmentationRefreshTask = nil
 
         if let segments, let edges = edgesFromSegmentRanges(segments, in: text) {
-            let edges = Self.filterNoiseEdges(edges)
             segmentEdges = edges
             segmentRanges = edges.map { $0.start..<$0.end }
             unknownSegmentLocations = []
@@ -206,13 +227,12 @@ extension ReadView {
                     refreshedEdges = baseEdges
                 }
 
-                let filteredEdges = Self.filterNoiseEdges(refreshedEdges)
-                segmentEdges = filteredEdges
-                segmentRanges = filteredEdges.map { edge in
+                segmentEdges = refreshedEdges
+                segmentRanges = refreshedEdges.map { edge in
                     edge.start..<edge.end
                 }
-                unknownSegmentLocations = unknownSegmentLocations(for: filteredEdges)
-                recordRuntimeSegmentationSnapshot(for: filteredEdges)
+                unknownSegmentLocations = unknownSegmentLocations(for: refreshedEdges)
+                recordRuntimeSegmentationSnapshot(for: refreshedEdges)
 
                 // Clears stale selection if the tapped segment no longer exists after recomputing ranges.
                 if let selectedSegmentLocation {
@@ -229,7 +249,14 @@ extension ReadView {
                 }
 
                 segmentationRefreshTask = nil
-                scheduleFuriganaGeneration(for: sourceText, edges: refreshedEdges)
+                // Direct call (not via the queueing public entry point) so the user only sees
+                // one confirm for the seg+furigana pair when refreshSegmentationRanges runs —
+                // furigana is a downstream of the segmentation refresh that just got approved.
+                // Skip entirely when no kanji edges exist; there's nothing to generate.
+                let hasKanjiEdges = refreshedEdges.contains { ScriptClassifier.containsKanji($0.surface) }
+                if hasKanjiEdges {
+                    performScheduleFuriganaGeneration(for: sourceText, edges: refreshedEdges)
+                }
             }
         }
     }
@@ -316,14 +343,12 @@ extension ReadView {
                             Task { @MainActor in
                                 await Task.yield()
                                 isSheetSwipeTransitionActive = false
-                                scheduleFuriganaGeneration(for: text, edges: segmentEdges)
                             }
                         }
                     } else {
                         Task { @MainActor in
                             await Task.yield()
                             isSheetSwipeTransitionActive = false
-                            scheduleFuriganaGeneration(for: text, edges: segmentEdges)
                         }
                     }
 
@@ -339,14 +364,12 @@ extension ReadView {
                             Task { @MainActor in
                                 await Task.yield()
                                 isSheetSwipeTransitionActive = false
-                                scheduleFuriganaGeneration(for: text, edges: segmentEdges)
                             }
                         }
                     } else {
                         Task { @MainActor in
                             await Task.yield()
                             isSheetSwipeTransitionActive = false
-                            scheduleFuriganaGeneration(for: text, edges: segmentEdges)
                         }
                     }
 

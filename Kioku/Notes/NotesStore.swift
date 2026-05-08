@@ -23,9 +23,12 @@ final class NotesStore: ObservableObject {
         }
     }
 
-    // Reloads notes from storage to reflect external updates.
+    // Reloads notes from storage to reflect external updates. Flushes any pending in-memory write
+    // first so an in-flight save (Task.detached scheduled by the notes didSet) doesn't get cancelled
+    // and replaced by a stale disk read — that race used to clobber recent edits when the Notes tab
+    // re-appeared between an edit and the detached save actually landing.
     func reload() {
-        saveTask?.cancel()
+        flushPendingSave()
         suppressSave = true
         notes = NotesStore.readNotes(for: storageKey)
         suppressSave = false

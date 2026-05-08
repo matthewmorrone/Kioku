@@ -65,7 +65,11 @@ extension FuriganaTextRenderer {
         return hasher.finalize()
     }
 
-    // Builds a stable signature for read-mode base text styling changes.
+    // Builds a stable signature for read-mode base text styling changes. Furigana entries are
+    // included because the base-text inset/exclusion pass that produces ruby spacing depends on
+    // their content — switching a reading to a longer one needs more left-inset to keep the
+    // wider ruby on-screen. Without these entries, reading overrides only updated the overlay
+    // (which uses makeRenderSignature) and ruby spacing stayed stale until a setting toggle.
     func makeBaseTextRenderSignature(for textView: UITextView) -> Int {
         var hasher = Hasher()
         hasher.combine(text)
@@ -79,6 +83,12 @@ extension FuriganaTextRenderer {
         hasher.combine(isRubySpacingEnabled)
         hasher.combine(isColorAlternationEnabled)
         hasher.combine(isHighlightUnknownEnabled)
+        let furiganaLocations = furiganaBySegmentLocation.keys.sorted()
+        for location in furiganaLocations {
+            hasher.combine(location)
+            hasher.combine(furiganaBySegmentLocation[location])
+            hasher.combine(furiganaLengthBySegmentLocation[location] ?? 0)
+        }
         for location in unknownSegmentLocations.sorted() {
             hasher.combine(location)
         }
