@@ -59,9 +59,6 @@ struct NotesView: View {
                 .onDelete(perform: store.deleteNotes)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                store.reload()
-            }
             .onChange(of: editMode) { _, newValue in
                 if newValue == .inactive {
                     selectedNoteIDs.removeAll()

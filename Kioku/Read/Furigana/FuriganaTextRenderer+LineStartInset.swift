@@ -124,7 +124,11 @@ extension FuriganaTextRenderer {
                   length > 0 else { continue }
             let nsRange = NSRange(location: location, length: length)
             guard let surfaceRange = Range(nsRange, in: text) else { continue }
-            let headwordWidth = measureTextWidth(String(text[surfaceRange]), font: baseFont, kerning: 0)
+            // Use the kerned headword extent so the overhang reflects what the textView actually
+            // renders. With kerning > 0, the unkerned width underestimates the headword by
+            // (charCount - 1) * kerning, which would over-report the overhang and add too much
+            // line-start inset, pushing the segment further right than necessary.
+            let headwordWidth = kernedVisualWidth(of: String(text[surfaceRange]), font: baseFont)
             let furiganaWidth = measureTextWidth(reading, font: furiganaFont, kerning: 0)
             let overhang = (furiganaWidth - headwordWidth) / 2
             if overhang > 0 {

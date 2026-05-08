@@ -120,6 +120,16 @@ struct ReadView: View {
     @State var llmChangePopoverLocation: Int? = nil
     @State var isShowingLLMChangePopover = false
     @State var isShowingLLMRerunConfirm = false
+    @State var pendingAutoSegQueue: [PendingAutoSegRequest] = []
+    // Records the value that loadSelectedNoteIfNeeded just wrote into `text` so the deferred
+    // SwiftUI .onChange(of: text) handler can recognize the load-assignment and skip its
+    // recompute/persist work. Without this guard every note open triggers a redundant second
+    // refreshSegmentationRanges right after the explicit one in the load path.
+    @State var lastLoadedTextSnapshot: String?
+    // Debug overlay: disk/mem segment + furigana counts shown for ~2s on every note load,
+    // so we can see at a glance whether persisted data round-trips correctly.
+    @State var loadInfoToastMessage: String?
+    @State var loadInfoToastClearTask: Task<Void, Never>?
     @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false 
     @AppStorage(LLMSettings.stubResponseKey) private var llmStubResponse = ""
     @AppStorage(LLMSettings.openAIKeyStorageKey) private var llmOpenAIKey = ""
@@ -256,6 +266,33 @@ struct ReadView: View {
             } message: {
                 Text("This note already has corrections applied. Re-running will replace them.")
             }
+            // Auto-segmentation confirm dialog disabled — see requestAutoSegConfirm in
+            // ReadView+Persistence.swift for re-enable instructions.
+            // .alert(
+            //     "Run automatic segmentation?",
+            //     isPresented: Binding(
+            //         get: { pendingAutoSegQueue.isEmpty == false },
+            //         set: { isPresented in
+            //             if isPresented == false, let head = pendingAutoSegQueue.first {
+            //                 cancelPendingAutoSeg(head)
+            //             }
+            //         }
+            //     ),
+            //     presenting: pendingAutoSegQueue.first
+            // ) { request in
+            //     Button("Confirm") { commitPendingAutoSeg(request) }
+            //     Button("Cancel", role: .cancel) { cancelPendingAutoSeg(request) }
+            // } message: { request in
+            //     let pendingNote = pendingAutoSegQueue.count > 1
+            //         ? "\n(\(pendingAutoSegQueue.count - 1) more queued)"
+            //         : ""
+            //     let diskNote = activeNoteID.flatMap { notesStore.note(withID: $0) }
+            //     let diskSegs = diskNote?.segments?.count ?? 0
+            //     let diskFuri = diskNote?.segments?.reduce(0) { $0 + ($1.furigana?.count ?? 0) } ?? 0
+            //     let memSegs = segments?.count ?? 0
+            //     let memFuri = furiganaBySegmentLocation.count
+            //     Text("\(request.reason)\ndisk: \(diskSegs)seg/\(diskFuri)furi  mem: \(memSegs)seg/\(memFuri)furi\(pendingNote)")
+            // }
     }
 
     private var lifecycleReadView: some View {
@@ -295,6 +332,13 @@ struct ReadView: View {
                 loadSelectedNoteIfNeeded()
             }
             .onChange(of: text) { oldText, newText in
+                // Suppress this handler when the change was the load-handler's own assignment.
+                // SwiftUI runs onChange after isLoadingSelectedNote has already been cleared, so
+                // a flag isn't enough — match the actual value the loader wrote.
+                if let snapshot = lastLoadedTextSnapshot, snapshot == newText {
+                    lastLoadedTextSnapshot = nil
+                    return
+                }
                 // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
                 // mapping is stable for in-line edits but shifts whenever lines are added or removed.
                 if audioAttachmentCues.isEmpty == false {
@@ -532,6 +576,14 @@ struct ReadView: View {
         }
     }
 
+    // True when persisted segmentation has been restored into memory, so the renderer can use it
+    // immediately instead of waiting for the trie/lexicon load that drives readResourcesReady.
+    // For new or un-segmented notes, segmentRanges is empty until the segmenter computes it, so
+    // this stays false and the original gating still applies.
+    private var hasRendererSegmentation: Bool {
+        segmentRanges.isEmpty == false
+    }
+
     // Keeps both read and edit renderers mounted so mode toggles are instant.
     private var editorView: some View {
         VStack(spacing: 8) {
@@ -541,16 +593,16 @@ struct ReadView: View {
                     isOverlayFrozen: isSheetSwipeTransitionActive,
                     text: text,
                     isLineWrappingEnabled: isLineWrappingEnabled,
-                    segmentationRanges: readResourcesReady ? segmentRanges : [],
+                    segmentationRanges: segmentRanges,
                     selectedSegmentLocation: selectedSegmentLocation,
                     blankSelectedSegmentLocation: transientBlankReadingSegmentLocation,
                     selectedHighlightRangeOverride: selectedHighlightRangeOverride,
                     playbackHighlightRangeOverride: playbackHighlightRangeOverride,
                     activePlaybackCueIndex: activePlaybackCueIndex,
                     illegalMergeBoundaryLocation: illegalMergeBoundaryLocation,
-                    furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
-                    furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
-                    isVisualEnhancementsEnabled: readResourcesReady,
+                    furiganaBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaBySegmentLocation : [:],
+                    furiganaLengthBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                    isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
                     isRubySpacingEnabled: isRubySpacingEnabled,
                     isColorAlternationEnabled: isColorAlternationEnabled,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,
@@ -590,9 +642,9 @@ struct ReadView: View {
                     text: $text,
                     isLineWrappingEnabled: isLineWrappingEnabled,
                     segmentationRanges: segmentRanges,
-                    furiganaBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaBySegmentLocation : [:],
-                    furiganaLengthBySegmentLocation: readResourcesReady && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
-                    isVisualEnhancementsEnabled: readResourcesReady,
+                    furiganaBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaBySegmentLocation : [:],
+                    furiganaLengthBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                    isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
                     isColorAlternationEnabled: isColorAlternationEnabled,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                     segmenter: segmenter,
@@ -630,6 +682,25 @@ struct ReadView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 8)
         .animation(.default, value: isEditMode)
+        // Disk/mem load-info toast disabled — re-enable by uncommenting this overlay and the
+        // showLoadInfoToast(for:) call in ReadView+Persistence.swift.
+        // .overlay(alignment: .top) {
+        //     if let message = loadInfoToastMessage {
+        //         Text(message)
+        //             .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        //             .foregroundStyle(.white)
+        //             .padding(.horizontal, 10)
+        //             .padding(.vertical, 5)
+        //             .background(Capsule().fill(Color.black.opacity(0.78)))
+        //             .padding(.top, 12)
+        //             .onTapGesture {
+        //                 loadInfoToastClearTask?.cancel()
+        //                 loadInfoToastMessage = nil
+        //             }
+        //             .transition(.opacity.combined(with: .move(edge: .top)))
+        //     }
+        // }
+        // .animation(.easeInOut(duration: 0.18), value: loadInfoToastMessage)
     }
 
 }

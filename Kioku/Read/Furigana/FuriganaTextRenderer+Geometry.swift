@@ -86,15 +86,32 @@ extension FuriganaTextRenderer {
                       let documentRange = textLayoutManager.textContentManager?.documentRange else {
                     return
                 }
+                // TextKit 2's textViewportLayoutController caps ensureLayout at the textView's
+                // current bounds.height (+ a small overscan). When new content needs more height
+                // than the prior layout — e.g. the Settings preview right after a font-size bump,
+                // where bounds is still the smaller pre-resize value — fragments past the cap
+                // never get laid out, firstRect returns nil for those ranges, and the trailing
+                // line's furigana silently drops out. Temporarily inflate bounds.height to a very
+                // large value so the viewport extends, force layout, then restore. After this,
+                // fragments exist and firstRect works regardless of the actual bounds.
+                let originalBounds = textView.bounds
+                textView.bounds = CGRect(
+                    x: originalBounds.origin.x,
+                    y: originalBounds.origin.y,
+                    width: originalBounds.width,
+                    height: 1_000_000
+                )
                 textLayoutManager.ensureLayout(for: documentRange)
-                // TextKit 2 does not synchronously update UITextView.contentSize after ensureLayout,
-                // so user scroll physics are capped at the lazily-computed partial height. Fix by
-                // reading the last layout fragment's maxY and patching contentSize when it is too small.
+                // With bounds.height inflated above, ensureLayout realizes every fragment.
+                // Read the last fragment's maxY in O(1) via a reverse-from-end walk that stops
+                // after the first hit — a forward walk over the whole document was the dominant
+                // cost on toggles (O(N) per call, multiple calls per toggle).
                 var maxLayoutY: CGFloat = 0
                 textLayoutManager.enumerateTextLayoutFragments(from: documentRange.endLocation, options: [.reverse]) { fragment in
                     maxLayoutY = fragment.layoutFragmentFrame.maxY
                     return false
                 }
+                textView.bounds = originalBounds
                 let requiredHeight = textView.textContainerInset.top + maxLayoutY + textView.textContainerInset.bottom
                 if requiredHeight > textView.contentSize.height {
                     textView.contentSize = CGSize(width: textView.contentSize.width, height: requiredHeight)
@@ -165,5 +182,17 @@ extension FuriganaTextRenderer {
             .kern: kerning,
         ]
         return ceil((value as NSString).size(withAttributes: attributes).width)
+    }
+
+    // Returns the visual extent of `value` as the textView actually renders it: glyph widths plus
+    // (n - 1) intra-character kerns, matching the user's configured kerning. Used by all
+    // ruby-centering / bisector / envelope math so positioning stays accurate when kerning > 0.
+    // Computed by measuring with kerning then subtracting the trailing kern that NSAttributedString
+    // includes after the last character (a known UIKit quirk that would otherwise inflate the width
+    // by one full kern unit beyond the rightmost glyph edge).
+    func kernedVisualWidth(of value: String, font: UIFont) -> CGFloat {
+        guard !value.isEmpty else { return 0 }
+        let kernedTotal = measureTextWidth(value, font: font, kerning: kerning)
+        return max(0, kernedTotal - CGFloat(kerning))
     }
 }

@@ -3,10 +3,23 @@ import UIKit
 
 // Hosts furigana computation and reading selection helpers for the read screen.
 extension ReadView {
+    // Public entry point: queues a furigana-generation request for user confirmation. The
+    // actual work happens in performScheduleFuriganaGeneration once the user taps Confirm.
+    // No-op when there's nothing to annotate — kana-only or empty edge sets never need a prompt.
+    func scheduleFuriganaGeneration(for sourceText: String, edges: [LatticeEdge], reason: String = #function) {
+        guard edges.contains(where: { ScriptClassifier.containsKanji($0.surface) }) else { return }
+        requestAutoSegConfirm(
+            reason: "scheduleFuriganaGeneration ← \(reason)",
+            action: .scheduleFuriganaGeneration(sourceText: sourceText, edges: edges)
+        )
+    }
+
     // Computes furigana off-main and applies only the latest result for the current editor text.
     // Apply uses backfill semantics: existing entries are never overwritten (so user pins and
     // already-correct annotations stay put), but missing per-run annotations get filled in.
-    func scheduleFuriganaGeneration(for sourceText: String, edges: [LatticeEdge]) {
+    // Renamed to performScheduleFuriganaGeneration because the public entry point above queues
+    // a confirm prompt (see requestAutoSegConfirm) before invoking this worker.
+    func performScheduleFuriganaGeneration(for sourceText: String, edges: [LatticeEdge]) {
         StartupTimer.mark("scheduleFuriganaGeneration called (\(edges.count) edges)")
         furiganaComputationTask?.cancel()
         let currentSurfaceReadingData = surfaceReadingData
@@ -28,7 +41,16 @@ extension ReadView {
             }
 
             await MainActor.run {
-                guard text == sourceText else {
+                // Match the safety guards used by refreshSegmentationRanges' MainActor.run:
+                // a cooperative-cancel hop can still land here after the user enters edit mode
+                // (which clears segmentEdges) — without these guards we'd overwrite `segments`
+                // with buildSegmentRanges(from: []) and persist the user's merges/splits away.
+                guard
+                    Task.isCancelled == false,
+                    text == sourceText,
+                    isEditMode == false,
+                    segmentEdges.isEmpty == false
+                else {
                     return
                 }
 
