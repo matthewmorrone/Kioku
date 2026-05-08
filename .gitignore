@@ -14,3 +14,4 @@ Resources/MeCab/unidic/
 .swiftpm
 .superpowers
 node_modules/
+.claude/scheduled_tasks.lock
