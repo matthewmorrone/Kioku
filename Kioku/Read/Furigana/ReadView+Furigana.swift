@@ -268,8 +268,14 @@ extension ReadView {
                     continue
                 }
 
-                // Reject per-run fallback readings that do not align with mixed-surface kana affixes.
-                if firstKanjiRunReading(in: segmentSurface, using: runReading) == nil {
+                // For single-run mixed surfaces (e.g. 私たち) the per-run reading must align
+                // with the surrounding kana (たち), otherwise the displayed ruby would contradict
+                // the okurigana. Multi-run surfaces (e.g. 抜け殻) have no contradiction risk —
+                // each run sits over its own kanji, so any valid per-kanji reading is acceptable
+                // and showing the dictionary default beats showing nothing when the compound's
+                // own surface reading is unavailable.
+                if runs.count == 1,
+                   firstKanjiRunReading(in: segmentSurface, using: runReading) == nil {
                     continue
                 }
 
