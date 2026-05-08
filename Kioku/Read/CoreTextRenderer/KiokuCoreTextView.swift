@@ -134,4 +134,70 @@ final class KiokuCoreTextView: UIView {
         guard let index = layoutEngine.characterIndex(at: point) else { return }
         onTap?(index, point)
     }
+
+    // MARK: - Accessibility
+
+    // Per-line UIAccessibilityElement exposure so VoiceOver and the rotor see meaningful
+    // structure. Built lazily and rebuilt only when the layout actually changes — line count
+    // and string-range fingerprint are the trigger.
+    private var cachedAccessibilityElements: [UIAccessibilityElement] = []
+    private var cachedAccessibilityFingerprint: Int = 0
+
+    override var accessibilityElements: [Any]? {
+        get { rebuildAccessibilityElementsIfNeeded() }
+        set { /* read-only */ }
+    }
+
+    override func accessibilityElementCount() -> Int {
+        rebuildAccessibilityElementsIfNeeded().count
+    }
+
+    override func accessibilityElement(at index: Int) -> Any? {
+        let elements = rebuildAccessibilityElementsIfNeeded()
+        guard elements.indices.contains(index) else { return nil }
+        return elements[index]
+    }
+
+    override func index(ofAccessibilityElement element: Any) -> Int {
+        let elements = rebuildAccessibilityElementsIfNeeded()
+        return elements.firstIndex(where: { $0 === (element as AnyObject) }) ?? NSNotFound
+    }
+
+    // Computes a cheap fingerprint of the current layout. Rebuilds elements only when this
+    // changes, so VO traversals over a steady-state view don't pay relayout cost.
+    private func rebuildAccessibilityElementsIfNeeded() -> [UIAccessibilityElement] {
+        var hasher = Hasher()
+        hasher.combine(layoutEngine.attributedString.string)
+        hasher.combine(layoutEngine.lines.count)
+        for line in layoutEngine.lines {
+            hasher.combine(line.stringRange.location)
+            hasher.combine(line.stringRange.length)
+            hasher.combine(Int(line.origin.y * 100))
+        }
+        let fingerprint = hasher.finalize()
+        guard fingerprint != cachedAccessibilityFingerprint else {
+            return cachedAccessibilityElements
+        }
+        cachedAccessibilityFingerprint = fingerprint
+        cachedAccessibilityElements = makeAccessibilityElements()
+        return cachedAccessibilityElements
+    }
+
+    private func makeAccessibilityElements() -> [UIAccessibilityElement] {
+        let sourceText = layoutEngine.attributedString.string as NSString
+        return layoutEngine.lines.compactMap { line -> UIAccessibilityElement? in
+            guard line.stringRange.length > 0,
+                  line.stringRange.location + line.stringRange.length <= sourceText.length else {
+                return nil
+            }
+            let lineText = sourceText.substring(with: line.stringRange)
+                .trimmingCharacters(in: .newlines)
+            guard lineText.isEmpty == false else { return nil }
+            let element = UIAccessibilityElement(accessibilityContainer: self)
+            element.accessibilityLabel = lineText
+            element.accessibilityFrameInContainerSpace = line.frame
+            element.accessibilityTraits = .staticText
+            return element
+        }
+    }
 }
