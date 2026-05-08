@@ -120,4 +120,36 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertEqual(furigana.lengthByLocation[2], 1)
         XCTAssertNil(furigana.furiganaByLocation[1], "no annotation should attach to the kana け")
     }
+
+    // Regression: when surface_readings is missing the compound (e.g. no 抜け殻 → ぬけがら entry),
+    // the per-run fallback must still produce dictionary readings for each individual kanji
+    // rather than silently skipping the whole segment. Showing per-kanji defaults is better
+    // than showing nothing above a kanji that has a known reading.
+    func testBuildFuriganaBySegmentLocationFallsBackToPerKanjiReadingsForMultiRunCompound() throws {
+        let readView = try makeReadView()
+        let sourceText = "抜け殻"
+        let edge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText
+        )
+
+        // Only the per-kanji entries are present — the compound 抜け殻 is intentionally missing
+        // so projection cannot succeed. Without a multi-run-aware fallback both runs would be
+        // dropped, which is exactly what the user reported.
+        let surfaceReadingData = makeSurfaceReadingData([
+            "抜": ["ぬ"],
+            "殻": ["から"]
+        ])
+        let furigana = readView.buildFuriganaBySegmentLocation(
+            for: sourceText,
+            edges: [edge],
+            surfaceReadingData: surfaceReadingData
+        )
+
+        XCTAssertEqual(furigana.furiganaByLocation[0], "ぬ")
+        XCTAssertEqual(furigana.lengthByLocation[0], 1)
+        XCTAssertEqual(furigana.furiganaByLocation[2], "から")
+        XCTAssertEqual(furigana.lengthByLocation[2], 1)
+    }
 }
