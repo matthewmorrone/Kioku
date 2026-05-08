@@ -34,14 +34,23 @@ extension ReadView {
         unknownSegmentLocations = unknownSegmentLocations(for: edges)
         recordRuntimeSegmentationSnapshot(for: edges)
 
-        // Remove furigana entries whose location no longer aligns with a valid segment boundary.
-        // Stale entries arise when a segment is split or merged — the old location becomes invalid.
-        let validLocations = Set(edges.compactMap { edge -> Int? in
+        // Remove furigana entries whose range no longer fits inside any segment.
+        // Stale entries arise when a segment is split or merged. Per-run annotations
+        // (e.g. がら over 殻 in the compound 抜け殻) sit at non-segment-start locations,
+        // so a segment-start-only check would wrongly drop them on merges and leave
+        // partially-annotated compounds in memory.
+        let validRanges: [(start: Int, end: Int)] = edges.compactMap { edge in
             let r = NSRange(edge.start..<edge.end, in: text)
-            return r.location != NSNotFound ? r.location : nil
-        })
+            guard r.location != NSNotFound else { return nil }
+            return (start: r.location, end: r.location + r.length)
+        }
         for location in Array(furiganaBySegmentLocation.keys) {
-            if validLocations.contains(location) == false {
+            let length = furiganaLengthBySegmentLocation[location] ?? 0
+            let entryEnd = location + length
+            let isInsideAnySegment = validRanges.contains { range in
+                location >= range.start && entryEnd <= range.end
+            }
+            if isInsideAnySegment == false {
                 furiganaBySegmentLocation.removeValue(forKey: location)
                 furiganaLengthBySegmentLocation.removeValue(forKey: location)
             }
@@ -62,8 +71,8 @@ extension ReadView {
 
         // Regenerate readings for newly-introduced segments (merge produced a new combined
         // surface, split produced segments without their own annotations). The compute pass
-        // is filtered to skip any edge whose location already has a saved entry, so existing
-        // user overrides are not touched.
+        // backfills missing entries without overwriting existing ones, so user overrides
+        // and already-correct annotations stay put while gaps get filled.
         scheduleFuriganaGeneration(for: text, edges: edges)
     }
 

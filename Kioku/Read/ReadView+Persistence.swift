@@ -102,12 +102,12 @@ extension ReadView {
             segmentRanges = edges.map { $0.start..<$0.end }
             unknownSegmentLocations = []
             let restoredFurigana = furiganaFromSegmentRanges(loadedSegments)
-            if restoredFurigana.byLocation.isEmpty == false {
-                furiganaBySegmentLocation = restoredFurigana.byLocation
-                furiganaLengthBySegmentLocation = restoredFurigana.lengthByLocation
-            } else {
-                scheduleFuriganaGeneration(for: text, edges: edges)
-            }
+            furiganaBySegmentLocation = restoredFurigana.byLocation
+            furiganaLengthBySegmentLocation = restoredFurigana.lengthByLocation
+            // Always schedule a compute pass — backfill semantics in scheduleFuriganaGeneration
+            // mean existing entries are preserved while gaps (e.g. a missing per-run annotation
+            // on the second kanji of 抜け殻) get filled in.
+            scheduleFuriganaGeneration(for: text, edges: edges)
         } else {
             refreshSegmentationRanges()
         }
