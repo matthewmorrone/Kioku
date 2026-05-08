@@ -87,6 +87,7 @@ struct RetimeReviewSheet: View {
         }
     }
 
+    // Renders one cue row with old/new timing ranges and shift annotation.
     @ViewBuilder
     private func retimeRowView(_ row: RetimeReviewRow) -> some View {
         VStack(alignment: .leading, spacing: 4) {

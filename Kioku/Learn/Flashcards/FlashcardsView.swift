@@ -543,6 +543,7 @@ private struct FlashcardCard: View {
             var meanings: [String] = []
             var seen: Set<String> = []
 
+            // Adds a meaning to the running list after trimming and de-duplicating.
             func append(_ raw: String) {
                 let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard trimmed.isEmpty == false, seen.insert(trimmed).inserted else { return }
