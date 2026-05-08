@@ -65,30 +65,55 @@ extension FuriganaTextRenderer {
         return hasher.finalize()
     }
 
-    // Builds a stable signature for read-mode base text styling changes. Furigana entries are
-    // included because the base-text inset/exclusion pass that produces ruby spacing depends on
-    // their content — switching a reading to a longer one needs more left-inset to keep the
-    // wider ruby on-screen. Without these entries, reading overrides only updated the overlay
-    // (which uses makeRenderSignature) and ruby spacing stayed stale until a setting toggle.
+    // Builds a stable signature for read-mode base text changes that require a full
+    // attributedText reassignment + relayout. Excludes anything that only affects per-segment
+    // foreground colors (segmentation, alternation, highlights, custom colors) — those go
+    // through makeStyleAttributesSignature and apply via in-place textStorage mutation, which
+    // doesn't perturb glyph layout or contentSize.
+    //
+    // Furigana entries STAY here because the base-text inset/exclusion pass that produces
+    // ruby spacing depends on their content — switching a reading to a longer one needs more
+    // left-inset to keep the wider ruby on-screen. Without these entries, reading overrides
+    // only updated the overlay (which uses makeRenderSignature) and ruby spacing stayed stale
+    // until a setting toggle.
     func makeBaseTextRenderSignature(for textView: UITextView) -> Int {
         var hasher = Hasher()
         hasher.combine(text)
-        for segmentRange in segmentationRanges {
-            let nsRange = NSRange(segmentRange, in: text)
-            hasher.combine(nsRange.location)
-            hasher.combine(nsRange.length)
-        }
         hasher.combine(isLineWrappingEnabled)
         hasher.combine(isVisualEnhancementsEnabled)
         hasher.combine(isRubySpacingEnabled)
-        hasher.combine(isColorAlternationEnabled)
-        hasher.combine(isHighlightUnknownEnabled)
         let furiganaLocations = furiganaBySegmentLocation.keys.sorted()
         for location in furiganaLocations {
             hasher.combine(location)
             hasher.combine(furiganaBySegmentLocation[location])
             hasher.combine(furiganaLengthBySegmentLocation[location] ?? 0)
         }
+        hasher.combine(textSize)
+        hasher.combine(lineSpacing)
+        hasher.combine(kerning)
+        hasher.combine(furiganaGap)
+        hasher.combine(isActive)
+        // Width affects text wrapping and therefore which segments sit at line-start positions.
+        // Height and contentSize are derived outputs: including them here causes re-renders every
+        // time the layout pass patches contentSize, creating an attribution→layout→patch→re-render
+        // oscillation that resets exclusion paths and produces visible alignment jitter.
+        hasher.combine(textView.bounds.width)
+        return hasher.finalize()
+    }
+
+    // Builds a signature for changes that only affect per-segment foreground colors and
+    // shadows — segmentation boundaries, color-alternation toggle, unknown/changed highlights,
+    // custom user colors. Triggers an in-place textStorage attribute mutation rather than a
+    // full attributedText reassignment, so split/merge no longer reflows the entire view.
+    func makeStyleAttributesSignature() -> Int {
+        var hasher = Hasher()
+        for segmentRange in segmentationRanges {
+            let nsRange = NSRange(segmentRange, in: text)
+            hasher.combine(nsRange.location)
+            hasher.combine(nsRange.length)
+        }
+        hasher.combine(isColorAlternationEnabled)
+        hasher.combine(isHighlightUnknownEnabled)
         for location in unknownSegmentLocations.sorted() {
             hasher.combine(location)
         }
@@ -98,19 +123,8 @@ extension FuriganaTextRenderer {
         for location in changedReadingLocations.sorted() {
             hasher.combine(location)
         }
-        hasher.combine(textSize)
-        hasher.combine(lineSpacing)
-        hasher.combine(kerning)
-        hasher.combine(furiganaGap)
-        hasher.combine(isActive)
-        // Custom token color changes affect ReadTextStyleResolver output; include them in the text signature.
         hasher.combine(customEvenSegmentColorHex)
         hasher.combine(customOddSegmentColorHex)
-        // Width affects text wrapping and therefore which segments sit at line-start positions.
-        // Height and contentSize are derived outputs: including them here causes re-renders every
-        // time the layout pass patches contentSize, creating an attribution→layout→patch→re-render
-        // oscillation that resets exclusion paths and produces visible alignment jitter.
-        hasher.combine(textView.bounds.width)
         return hasher.finalize()
     }
 }

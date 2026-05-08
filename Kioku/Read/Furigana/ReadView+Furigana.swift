@@ -41,14 +41,15 @@ extension ReadView {
             }
 
             await MainActor.run {
-                // Match the safety guards used by refreshSegmentationRanges' MainActor.run:
-                // a cooperative-cancel hop can still land here after the user enters edit mode
-                // (which clears segmentEdges) — without these guards we'd overwrite `segments`
-                // with buildSegmentRanges(from: []) and persist the user's merges/splits away.
+                // Bail when text changed mid-flight (load races, edits) or when segmentEdges
+                // got cleared (we'd otherwise rebuild segments from an empty edge list and
+                // wipe the user's merges/splits). Splits and merges happen IN edit mode, so
+                // the compute pass MUST be allowed to apply during edit mode — otherwise
+                // merging 抜け+殻 leaves the trailing 殻 with no per-run reading until the
+                // user exits edit mode and triggers another recompute.
                 guard
                     Task.isCancelled == false,
                     text == sourceText,
-                    isEditMode == false,
                     segmentEdges.isEmpty == false
                 else {
                     return
