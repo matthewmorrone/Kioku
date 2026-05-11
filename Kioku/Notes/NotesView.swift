@@ -13,6 +13,7 @@ struct NotesView: View {
     @State private var notePendingDelete: Note?
     @State private var renameDraft = ""
     @State private var isShowingSubtitleImportSheet = false
+    @State private var isShowingBulkImportSheet = false
     @State private var subtitleImportError = ""
 
     var body: some View {
@@ -92,6 +93,10 @@ struct NotesView: View {
                     handleSubtitleImport(cues: cues, audioURL: audioURL)
                 }
             }
+            .sheet(isPresented: $isShowingBulkImportSheet) {
+                BulkImportSheet(store: store)
+                    .environmentObject(store)
+            }
             .alert("Subtitle Import Failed", isPresented: subtitleImportErrorBinding) {
                 Button("OK", role: .cancel) { subtitleImportError = "" }
             } message: {
@@ -108,6 +113,17 @@ struct NotesView: View {
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("Import Subtitles")
+                }
+                // Opens the bulk import sheet so the user can pick multiple txt/srt/audio files at once.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isShowingBulkImportSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.down.on.square")
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
+                    }
+                    .accessibilityLabel("Import Multiple Files")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     // Shows bulk-delete action while edit mode is active.
