@@ -3,6 +3,7 @@
 ## Workflow Constraints
 
 - Never create git worktrees. Work directly on the current branch.
+- When you encounter pre-existing lint/invariant/test/CI failures while working in the repo, fix them as part of your current change. Do not flag them as "not introduced by me" or leave them for someone else — the codebase is shared, and if you found it broken you own fixing it.
 
 ## Coding Invariants
 
