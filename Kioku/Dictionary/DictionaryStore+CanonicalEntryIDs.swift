@@ -13,6 +13,11 @@ extension DictionaryStore {
     // before the window function trims to one row per surface.
     nonisolated func fetchCanonicalEntryIDMap() throws -> [String: Int64] {
         try withSerializedDatabaseAccess {
+            // Mirrors the ordering in DictionaryStore.fetchMatchedEntries so the canonical
+            // id resolved at app start matches what an interactive lookup would produce.
+            // Kana-only entries (no kanji form) fall back from a missing jpdb_rank to a
+            // wordfreq Zipf bucket; otherwise the particle の would resolve to 野 because
+            // 野 has a JPDB rank and the particle entry has none.
             let sql = """
             WITH surfaces_with_entries AS (
                 SELECT text AS surface, entry_id FROM kanji
@@ -22,6 +27,8 @@ extension DictionaryStore {
             m AS (
                 SELECT s.surface, s.entry_id,
                        MIN(wf.jpdb_rank) AS rank,
+                       MAX(wf.wordfreq_zipf) AS best_zipf,
+                       EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = s.entry_id) AS has_kanji,
                        COALESCE(MIN(sn.order_index), 2147483647) AS min_sense
                 FROM surfaces_with_entries s
                 LEFT JOIN word_frequency wf ON wf.entry_id = s.entry_id
@@ -34,7 +41,28 @@ extension DictionaryStore {
                 SELECT surface, entry_id,
                        ROW_NUMBER() OVER (
                            PARTITION BY surface
-                           ORDER BY COALESCE(rank, 9999999) ASC, min_sense ASC, entry_id ASC
+                           ORDER BY
+                               CASE
+                                   WHEN has_kanji = 1 THEN COALESCE(rank, 9999999)
+                                   ELSE COALESCE(
+                                       rank,
+                                       CASE
+                                           WHEN best_zipf >= 7.0 THEN 5
+                                           WHEN best_zipf >= 6.5 THEN 25
+                                           WHEN best_zipf >= 6.0 THEN 100
+                                           WHEN best_zipf >= 5.5 THEN 300
+                                           WHEN best_zipf >= 5.0 THEN 1000
+                                           WHEN best_zipf >= 4.5 THEN 3000
+                                           WHEN best_zipf >= 4.0 THEN 10000
+                                           WHEN best_zipf >= 3.5 THEN 30000
+                                           WHEN best_zipf >= 3.0 THEN 100000
+                                           ELSE 500000
+                                       END,
+                                       9999999
+                                   )
+                               END ASC,
+                               min_sense ASC,
+                               entry_id ASC
                        ) AS rn
                 FROM m
             )
