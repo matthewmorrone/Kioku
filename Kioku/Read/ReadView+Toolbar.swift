@@ -19,6 +19,21 @@ extension ReadView {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Lyrics")
             }
+            // Song Journey — only when the active note has an audio attachment, since the journey
+            // is structured around the song's audio and timed lyrics.
+            if selectedNote?.audioAttachmentID != nil {
+                Button {
+                    isShowingSongJourney = true
+                } label: {
+                    Image(systemName: "graduationcap.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color(.tertiarySystemFill)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Song Journey")
+            }
             Spacer()
             llmCorrectionButton
             resetButton

@@ -101,6 +101,7 @@ struct ReadView: View {
     @State var activeAudioAttachmentID: UUID? = nil
 
     @State var isShowingLyricsView = false
+    @State var isShowingSongJourney = false
     @AppStorage(LyricsDisplayStyle.storageKey) var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
     @State var isShowingSubtitleEditor = false
     @State var isShowingSubtitleMismatchDialog = false
@@ -533,6 +534,25 @@ struct ReadView: View {
             matching: .images,
             preferredItemEncoding: .automatic
         )
+        .sheet(isPresented: $isShowingSongJourney) {
+            if let note = selectedNote {
+                SongJourneyView(
+                    note: note,
+                    dictionaryStore: dictionaryStore,
+                    onRequestL1Listen: {
+                        isShowingSongJourney = false
+                        // Activate the existing karaoke overlay after the sheet dismissal animation
+                        // settles so SwiftUI doesn't fight a presented sheet with the overlay.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            isShowingLyricsView = true
+                        }
+                    },
+                    onDismiss: {
+                        isShowingSongJourney = false
+                    }
+                )
+            }
+        }
         .fileImporter(
             isPresented: $isShowingSubtitlePicker,
             allowedContentTypes: subtitlePickerTarget.contentTypes,

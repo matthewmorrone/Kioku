@@ -5,6 +5,9 @@ import SwiftUI
 // Major sections: toolbar, score header, sentence prompt, reveal/next controls.
 struct ClozeStudyView: View {
     @StateObject private var model: ClozeStudyViewModel
+    // Fires whenever the model's running score updates. Lets wrapping views (e.g. Song Journey
+    // stage views) read the current correct/total without owning the view model directly.
+    private let onScoreChange: ((_ correct: Int, _ total: Int) -> Void)?
 
     @State private var showingSettings = false
 
@@ -17,7 +20,8 @@ struct ClozeStudyView: View {
         note: Note,
         initialMode: ClozeMode = .random,
         initialBlanksPerSentence: Int = 1,
-        excludeDuplicateLines: Bool = true
+        excludeDuplicateLines: Bool = true,
+        onScoreChange: ((_ correct: Int, _ total: Int) -> Void)? = nil
     ) {
         _model = StateObject(wrappedValue: ClozeStudyViewModel(
             note: note,
@@ -25,6 +29,7 @@ struct ClozeStudyView: View {
             initialBlanksPerSentence: initialBlanksPerSentence,
             excludeDuplicateLines: excludeDuplicateLines
         ))
+        self.onScoreChange = onScoreChange
     }
 
     var body: some View {
@@ -58,6 +63,12 @@ struct ClozeStudyView: View {
                 }
             }
             .onAppear { model.start() }
+            .onChange(of: model.correctCount) { _, _ in
+                onScoreChange?(model.correctCount, model.totalCount)
+            }
+            .onChange(of: model.totalCount) { _, _ in
+                onScoreChange?(model.correctCount, model.totalCount)
+            }
         }
         .sheet(isPresented: $showingSettings) {
             settingsSheet
