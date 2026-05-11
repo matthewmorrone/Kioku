@@ -259,17 +259,48 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             """
         }
 
+        // JPDB ranks are only imported for entries that have both a kanji form and a kana
+        // reading (Shape B). Kana-only entries — particles like の, は, が, interjections,
+        // sound effects — get NULL jpdb_rank everywhere. Without a fallback, the previous
+        // ORDER BY would coalesce them to 9999999 and bury them under any kanji entry that
+        // happens to share the surface as a reading. That made tapping の return 野's
+        // "field; plain" instead of the particle's "indicates possessive". For kana-only
+        // entries, derive a pseudo-rank from the kana form's wordfreq Zipf so the particle
+        // (zipf ~7) outranks 野 (jpdb_rank in the thousands).
         let sql = """
         SELECT e.id,
                MIN(wf.jpdb_rank) AS best_jpdb,
                MAX(wf.wordfreq_zipf) AS best_zipf,
+               EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = e.id) AS has_kanji,
                COALESCE(MIN(s.order_index), 2147483647) AS min_sense
         FROM entries e
         \(frequencyJoin)
         LEFT JOIN senses s ON s.entry_id = e.id
         WHERE \(whereClause)
         GROUP BY e.id
-        ORDER BY MIN(COALESCE(wf.jpdb_rank, 9999999)) ASC, min_sense ASC, e.id ASC
+        ORDER BY
+            CASE
+                WHEN EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = e.id)
+                    THEN COALESCE(MIN(wf.jpdb_rank), 9999999)
+                ELSE COALESCE(
+                    MIN(wf.jpdb_rank),
+                    CASE
+                        WHEN MAX(wf.wordfreq_zipf) >= 7.0 THEN 5
+                        WHEN MAX(wf.wordfreq_zipf) >= 6.5 THEN 25
+                        WHEN MAX(wf.wordfreq_zipf) >= 6.0 THEN 100
+                        WHEN MAX(wf.wordfreq_zipf) >= 5.5 THEN 300
+                        WHEN MAX(wf.wordfreq_zipf) >= 5.0 THEN 1000
+                        WHEN MAX(wf.wordfreq_zipf) >= 4.5 THEN 3000
+                        WHEN MAX(wf.wordfreq_zipf) >= 4.0 THEN 10000
+                        WHEN MAX(wf.wordfreq_zipf) >= 3.5 THEN 30000
+                        WHEN MAX(wf.wordfreq_zipf) >= 3.0 THEN 100000
+                        ELSE 500000
+                    END,
+                    9999999
+                )
+            END ASC,
+            min_sense ASC,
+            e.id ASC
         """
 
         var statement: OpaquePointer?
