@@ -117,7 +117,7 @@ while IFS= read -r file_path; do
   }
   END {
     for (i = 1; i <= NR; i++) {
-      if (lines[i] ~ /\<func[[:space:]]+[A-Za-z_][A-Za-z0-9_]*/) {
+      if (lines[i] ~ /(^|[^A-Za-z0-9_])func[[:space:]]+[A-Za-z_][A-Za-z0-9_]*/) {
         j = i - 1
         while (j >= 1 && (is_blank(lines[j]) || is_attribute(lines[j]))) {
           j--
@@ -149,7 +149,7 @@ while IFS= read -r file_path; do
   }
   END {
     for (i = 1; i <= NR; i++) {
-      if (lines[i] ~ /^[[:space:]]*(struct|class|actor)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:[[:space:]]*.*\<(View|UIViewRepresentable)\>/) {
+      if (lines[i] ~ /^[[:space:]]*(struct|class|actor)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:[[:space:]]*.*(^|[^A-Za-z0-9_])(View|UIViewRepresentable)($|[^A-Za-z0-9_])/) {
         j = i - 1
         while (j >= 1 && is_blank(lines[j])) {
           j--

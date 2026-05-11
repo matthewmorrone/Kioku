@@ -198,6 +198,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
         isApplyingTextRender = true
     }
 
+    // Closes the scroll-publish gate once the text-render branch has finished, so user-driven scrolls publish offsets again.
     func endTextRenderScrollGate() {
         isApplyingTextRender = false
     }

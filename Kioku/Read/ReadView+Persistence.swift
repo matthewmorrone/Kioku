@@ -214,6 +214,7 @@ extension ReadView {
         dropPendingAutoSeg(request)
     }
 
+    // Removes the request from the queue by id — shared between cancellation and consumption paths.
     private func dropPendingAutoSeg(_ request: PendingAutoSegRequest) {
         if let index = pendingAutoSegQueue.firstIndex(where: { $0.id == request.id }) {
             pendingAutoSegQueue.remove(at: index)
