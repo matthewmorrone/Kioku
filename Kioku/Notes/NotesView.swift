@@ -103,8 +103,10 @@ struct NotesView: View {
                 Text(subtitleImportError)
             }
             .toolbar {
-                // Opens the subtitle import sheet so the user can create a note from subtitles.
-                ToolbarItem(placement: .topBarLeading) {
+                // Groups the two leading import entry points so SwiftUI renders both buttons
+                // (single ToolbarItems at the same placement can silently collapse to one).
+                ToolbarItemGroup(placement: .topBarLeading) {
+                    // Opens the subtitle import sheet so the user can create a note from subtitles.
                     Button {
                         isShowingSubtitleImportSheet = true
                     } label: {
@@ -113,13 +115,12 @@ struct NotesView: View {
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("Import Subtitles")
-                }
-                // Opens the bulk import sheet so the user can pick multiple txt/srt/audio files at once.
-                ToolbarItem(placement: .topBarLeading) {
+
+                    // Opens the bulk import sheet so the user can pick multiple txt/srt/audio files at once.
                     Button {
                         isShowingBulkImportSheet = true
                     } label: {
-                        Image(systemName: "square.and.arrow.down.on.square")
+                        Image(systemName: "tray.and.arrow.down")
                             .font(.system(size: 16))
                             .frame(width: 32, height: 32)
                     }
