@@ -13,6 +13,7 @@ struct NotesView: View {
     @State private var notePendingDelete: Note?
     @State private var renameDraft = ""
     @State private var isShowingSubtitleImportSheet = false
+    @State private var isShowingBulkImportSheet = false
     @State private var subtitleImportError = ""
 
     var body: some View {
@@ -92,14 +93,20 @@ struct NotesView: View {
                     handleSubtitleImport(cues: cues, audioURL: audioURL)
                 }
             }
+            .sheet(isPresented: $isShowingBulkImportSheet) {
+                BulkImportSheet(store: store)
+                    .environmentObject(store)
+            }
             .alert("Subtitle Import Failed", isPresented: subtitleImportErrorBinding) {
                 Button("OK", role: .cancel) { subtitleImportError = "" }
             } message: {
                 Text(subtitleImportError)
             }
             .toolbar {
-                // Opens the subtitle import sheet so the user can create a note from subtitles.
-                ToolbarItem(placement: .topBarLeading) {
+                // Groups the two leading import entry points so SwiftUI renders both buttons
+                // (single ToolbarItems at the same placement can silently collapse to one).
+                ToolbarItemGroup(placement: .topBarLeading) {
+                    // Opens the subtitle import sheet so the user can create a note from subtitles.
                     Button {
                         isShowingSubtitleImportSheet = true
                     } label: {
@@ -108,6 +115,16 @@ struct NotesView: View {
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("Import Subtitles")
+
+                    // Opens the bulk import sheet so the user can pick multiple txt/srt/audio files at once.
+                    Button {
+                        isShowingBulkImportSheet = true
+                    } label: {
+                        Image(systemName: "tray.and.arrow.down")
+                            .font(.system(size: 16))
+                            .frame(width: 32, height: 32)
+                    }
+                    .accessibilityLabel("Import Multiple Files")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     // Shows bulk-delete action while edit mode is active.

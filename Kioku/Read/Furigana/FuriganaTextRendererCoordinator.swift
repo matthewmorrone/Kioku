@@ -15,9 +15,25 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
     var pendingRender: ((UITextView) -> Void)?
     private var lastRenderSignature: Int?
     private var lastTextRenderSignature: Int?
+    // Tracks the last applied per-segment color/highlight state. Lets the renderer detect
+    // segmentation/color-only changes (e.g. split/merge) and apply them via an in-place
+    // textStorage mutation instead of reassigning attributedText (which forces a full reflow).
+    private var lastStyleAttributesSignature: Int?
     private var lastKnownBoundsWidth: CGFloat = 0
     private var pinchStartTextSize: Double?
     private var isApplyingExternalScroll = false
+    // Set to true around an entire text-change render branch (attributedText reassignment +
+    // exhaustive layout + spacing-correction layout-invalidate cycles). The spacing pass
+    // transiently shrinks contentSize, which causes UIScrollView to clamp contentOffset and
+    // fire scrollViewDidScroll — without this gate, the clamp value (often 0) gets published
+    // back through onScrollOffsetYChanged and overwrites the user's intended offset, visible
+    // as "scroll jumps to top after split/merge."
+    private var isApplyingTextRender = false
+    // Tracks the most recent externalContentOffsetY observed by the renderer's text-change
+    // branch. Used to detect a deliberate "scroll to top" — sharedScrollOffsetY transitioning
+    // from a non-zero value down to 0 (set by note load, sheet dismissal, etc.) — versus the
+    // common case of "user is at the top so the value is 0, and we shouldn't snap them back."
+    var lastObservedExternalOffsetY: CGFloat?
     private var segmentationNSRanges: [NSRange] = []
     private var wasActive = false
     private var lastPublishedScrollOffsetY: CGFloat?
@@ -111,6 +127,19 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
         lastTextRenderSignature = signature
     }
 
+    // Determines whether per-segment color/highlight attributes need to be reapplied.
+    // Independent of base text rendering — when only the style sig changed, the renderer
+    // should mutate textStorage's color attributes in place rather than reassigning
+    // attributedText (which would force a full reflow and the contentOffset clamp/jump).
+    func shouldRenderStyleAttributes(for signature: Int) -> Bool {
+        return lastStyleAttributesSignature != signature
+    }
+
+    // Persists the latest style-attributes signature after the in-place color update is applied.
+    func markStyleAttributesRendered(signature: Int) {
+        lastStyleAttributesSignature = signature
+    }
+
     // Emits a startup marker once per renderer lifecycle for the given phase.
     func markStartupPhase(_ label: String) {
         StartupTimer.mark(label)
@@ -153,11 +182,25 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
 
     // Publishes user-driven scroll offsets to the shared read/edit sync state.
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard isApplyingExternalScroll == false else {
+        guard isApplyingExternalScroll == false, isApplyingTextRender == false else {
             return
         }
 
         publishScrollOffsetIfNeeded(scrollView.contentOffset.y, force: false)
+    }
+
+    // Brackets the renderer's text-change branch so contentOffset clamps caused by transient
+    // contentSize shrinkage during layout-invalidate cycles don't republish back to the
+    // outer scroll state. Pair beginTextRenderScrollGate with endTextRenderScrollGate at the
+    // top and bottom of the branch — the gate must outlast both ensureTextLayout calls AND
+    // the spacing-correction pass.
+    func beginTextRenderScrollGate() {
+        isApplyingTextRender = true
+    }
+
+    // Closes the scroll-publish gate once the text-render branch has finished, so user-driven scrolls publish offsets again.
+    func endTextRenderScrollGate() {
+        isApplyingTextRender = false
     }
 
     // Publishes the final drag offset immediately so read/edit mode handoff stays accurate after user scrolling stops.
@@ -172,8 +215,13 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
         publishScrollOffsetIfNeeded(scrollView.contentOffset.y, force: true)
     }
 
-    // Applies external scroll offsets without triggering reciprocal updates.
-    func applyExternalScrollIfNeeded(to textView: UITextView, targetOffsetY: CGFloat) {
+    // Applies external scroll offsets without triggering reciprocal updates. When
+    // suppressPublish is true (used by text-change renders), we still move the textView
+    // but do NOT push the clamped value back through onScrollOffsetYChanged. Without this,
+    // a transient contentSize during attributedText reassignment clamps the offset toward
+    // 0; the published 0 then overwrites sharedScrollOffsetY and the scroll position is
+    // permanently lost — visible as "scroll jumps to top after split/merge."
+    func applyExternalScrollIfNeeded(to textView: UITextView, targetOffsetY: CGFloat, suppressPublish: Bool = false) {
         let minOffsetY = -textView.adjustedContentInset.top
         let maxOffsetY = max(minOffsetY, textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom)
         let clampedTargetY = min(max(targetOffsetY, minOffsetY), maxOffsetY)
@@ -186,6 +234,7 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
         textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedTargetY), animated: false)
         isApplyingExternalScroll = false
         lastPublishedScrollOffsetY = clampedTargetY
+        guard suppressPublish == false else { return }
         onScrollOffsetYChanged(clampedTargetY)
     }
 

@@ -174,6 +174,43 @@ extension FuriganaTextRenderer {
         return playbackHighlightRangeOverride
     }
 
+    // Mutates textStorage's per-segment foreground color and shadow attributes in place from
+    // the resolver-built payload, so segmentation-only changes (split, merge, alternation
+    // toggle, unknown highlight, custom color tweak) avoid the full attributedText reassign.
+    // Glyph layout, line breaks, and contentSize are untouched, so contentOffset doesn't
+    // get clamped — split/merge no longer scrolls to the top.
+    //
+    // Caller invariants:
+    //   • payload.attributedText.length must equal textStorage.length. The whole point of
+    //     this code path is "text content unchanged"; if the lengths differ the caller is
+    //     in the wrong branch and should reassign attributedText.
+    //   • Other attributes (font, kern, paragraphStyle) are assumed stable; this method only
+    //     overwrites .foregroundColor and .shadow.
+    func applyStyleAttributesInPlace(to textView: UITextView, payload: ReadTextStylePayload) {
+        let textStorage = textView.textStorage
+        let storageLength = textStorage.length
+        guard payload.attributedText.length == storageLength, storageLength > 0 else { return }
+        let fullRange = NSRange(location: 0, length: storageLength)
+        textStorage.beginEditing()
+        // Reset both attributes across the whole string so locations the new payload no
+        // longer styles fall back to the default UILabel color and unshadowed glyph.
+        textStorage.removeAttribute(.foregroundColor, range: fullRange)
+        textStorage.addAttribute(.foregroundColor, value: UIColor.label, range: fullRange)
+        textStorage.removeAttribute(.shadow, range: fullRange)
+        // Walk the payload's foreground colors and copy each run to textStorage.
+        payload.attributedText.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, range, _ in
+            if let color = value as? UIColor {
+                textStorage.addAttribute(.foregroundColor, value: color, range: range)
+            }
+        }
+        payload.attributedText.enumerateAttribute(.shadow, in: fullRange, options: []) { value, range, _ in
+            if let shadow = value as? NSShadow {
+                textStorage.addAttribute(.shadow, value: shadow, range: range)
+            }
+        }
+        textStorage.endEditing()
+    }
+
     // Measures text width for furigana label sizing so readings don't collapse into truncation glyphs.
     func measureTextWidth(_ value: String, font: UIFont, kerning: Double) -> CGFloat {
         guard !value.isEmpty else { return 0 }
