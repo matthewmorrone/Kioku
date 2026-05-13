@@ -152,4 +152,86 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertEqual(furigana.furiganaByLocation[2], "から")
         XCTAssertEqual(furigana.lengthByLocation[2], 1)
     }
+
+    // Regression: merging single-kanji segments (物 + 語 → 物語) into a compound with a single
+    // contiguous kanji run must clear the prior per-character furigana entries so the recompute
+    // can install one span-wide reading. Without the prune both per-character entries linger
+    // (backfill never overwrites) and the compound renders with two ruby frames instead of one.
+    func testPruneFuriganaForSegmentationDropsPerCharacterEntriesAfterMergingContiguousKanji() throws {
+        let readView = try makeReadView()
+        let sourceText = "物語"
+        let mergedEdge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText
+        )
+
+        // Prior segmentation: 物 and 語 as two separate segments, each carrying its own per-kanji
+        // furigana entry at UTF-16 location 0 (length 1) and location 1 (length 1).
+        let priorByLocation: [Int: String] = [0: "もの", 1: "がたり"]
+        let priorLengthByLocation: [Int: Int] = [0: 1, 1: 1]
+
+        let pruned = readView.pruneFuriganaForSegmentation(
+            furiganaByLocation: priorByLocation,
+            furiganaLengthByLocation: priorLengthByLocation,
+            edges: [mergedEdge],
+            sourceText: sourceText
+        )
+
+        XCTAssertTrue(pruned.byLocation.isEmpty, "per-character entries must be cleared on merge of contiguous kanji")
+        XCTAssertTrue(pruned.lengthByLocation.isEmpty)
+    }
+
+    // Regression: pruning must NOT drop per-run entries on multi-run compounds. 抜け殻 has two
+    // kanji runs separated by kana (抜 at [0,1), 殻 at [2,3)), and the per-run entries at those
+    // exact ranges remain valid — each entry matches its kanji run boundaries.
+    func testPruneFuriganaForSegmentationPreservesPerRunEntriesOnMultiRunCompound() throws {
+        let readView = try makeReadView()
+        let sourceText = "抜け殻"
+        let edge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText
+        )
+
+        let priorByLocation: [Int: String] = [0: "ぬ", 2: "がら"]
+        let priorLengthByLocation: [Int: Int] = [0: 1, 2: 1]
+
+        let pruned = readView.pruneFuriganaForSegmentation(
+            furiganaByLocation: priorByLocation,
+            furiganaLengthByLocation: priorLengthByLocation,
+            edges: [edge],
+            sourceText: sourceText
+        )
+
+        XCTAssertEqual(pruned.byLocation[0], "ぬ")
+        XCTAssertEqual(pruned.lengthByLocation[0], 1)
+        XCTAssertEqual(pruned.byLocation[2], "がら")
+        XCTAssertEqual(pruned.lengthByLocation[2], 1)
+    }
+
+    // A segment-wide entry (the fallback case in buildFuriganaBySegmentLocation) must survive
+    // pruning because its UTF-16 range matches the segment exactly.
+    func testPruneFuriganaForSegmentationPreservesSegmentWideFallbackEntry() throws {
+        let readView = try makeReadView()
+        let sourceText = "物語"
+        let edge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText
+        )
+
+        let priorByLocation: [Int: String] = [0: "ものがたり"]
+        let priorLengthByLocation: [Int: Int] = [0: 2]
+
+        let pruned = readView.pruneFuriganaForSegmentation(
+            furiganaByLocation: priorByLocation,
+            furiganaLengthByLocation: priorLengthByLocation,
+            edges: [edge],
+            sourceText: sourceText
+        )
+
+        XCTAssertEqual(pruned.byLocation[0], "ものがたり")
+        XCTAssertEqual(pruned.lengthByLocation[0], 2)
+    }
 }

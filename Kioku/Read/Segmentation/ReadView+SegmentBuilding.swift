@@ -29,27 +29,14 @@ extension ReadView {
         unknownSegmentLocations = unknownSegmentLocations(for: edges)
         recordRuntimeSegmentationSnapshot(for: edges)
 
-        // Remove furigana entries whose range no longer fits inside any segment.
-        // Stale entries arise when a segment is split or merged. Per-run annotations
-        // (e.g. がら over 殻 in the compound 抜け殻) sit at non-segment-start locations,
-        // so a segment-start-only check would wrongly drop them on merges and leave
-        // partially-annotated compounds in memory.
-        let validRanges: [(start: Int, end: Int)] = edges.compactMap { edge in
-            let r = NSRange(edge.start..<edge.end, in: text)
-            guard r.location != NSNotFound else { return nil }
-            return (start: r.location, end: r.location + r.length)
-        }
-        for location in Array(furiganaBySegmentLocation.keys) {
-            let length = furiganaLengthBySegmentLocation[location] ?? 0
-            let entryEnd = location + length
-            let isInsideAnySegment = validRanges.contains { range in
-                location >= range.start && entryEnd <= range.end
-            }
-            if isInsideAnySegment == false {
-                furiganaBySegmentLocation.removeValue(forKey: location)
-                furiganaLengthBySegmentLocation.removeValue(forKey: location)
-            }
-        }
+        let pruned = pruneFuriganaForSegmentation(
+            furiganaByLocation: furiganaBySegmentLocation,
+            furiganaLengthByLocation: furiganaLengthBySegmentLocation,
+            edges: edges,
+            sourceText: text
+        )
+        furiganaBySegmentLocation = pruned.byLocation
+        furiganaLengthBySegmentLocation = pruned.lengthByLocation
 
         if persistOverride {
             // Persist with the in-memory furigana embedded so the synchronous disk write
@@ -298,6 +285,69 @@ extension ReadView {
             return [SegmentRange(surface: surface)]
         }
         return produced
+    }
+
+    // Drops furigana entries that don't align with the new segmentation's structure. An entry
+    // is valid when its UTF-16 range matches a segment exactly or matches one of that segment's
+    // contiguous kanji runs exactly. Merging per-kanji segments (e.g. 物 + 語 → 物語) collapses
+    // two single-kanji runs into one — the prior per-character entries (もの at 物, がたり at 語)
+    // no longer align with the merged single run [0, 2) and must be cleared here.
+    // performScheduleFuriganaGeneration uses backfill semantics and never overwrites existing
+    // entries, so without this prune the stale per-character readings linger and render as two
+    // ruby frames over a compound that should show one. Per-run annotations on multi-run
+    // compounds like 抜け殻 (ぬ over 抜, がら over 殻) remain valid because each entry matches a
+    // kanji run exactly.
+    func pruneFuriganaForSegmentation(
+        furiganaByLocation: [Int: String],
+        furiganaLengthByLocation: [Int: Int],
+        edges: [LatticeEdge],
+        sourceText: String
+    ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
+        var validEntryRanges: Set<NSRange> = []
+        for edge in edges {
+            let segmentNSRange = NSRange(edge.start..<edge.end, in: sourceText)
+            guard segmentNSRange.location != NSNotFound, segmentNSRange.length > 0 else {
+                continue
+            }
+            validEntryRanges.insert(segmentNSRange)
+
+            let segmentSurface = edge.surface
+            for run in kanjiRuns(in: segmentSurface) {
+                guard
+                    let runStartIdx = segmentSurface.index(
+                        segmentSurface.startIndex,
+                        offsetBy: run.start,
+                        limitedBy: segmentSurface.endIndex
+                    ),
+                    let runEndIdx = segmentSurface.index(
+                        segmentSurface.startIndex,
+                        offsetBy: run.end,
+                        limitedBy: segmentSurface.endIndex
+                    )
+                else {
+                    continue
+                }
+                let runRangeInSurface = NSRange(runStartIdx..<runEndIdx, in: segmentSurface)
+                validEntryRanges.insert(
+                    NSRange(
+                        location: segmentNSRange.location + runRangeInSurface.location,
+                        length: runRangeInSurface.length
+                    )
+                )
+            }
+        }
+
+        var prunedByLocation = furiganaByLocation
+        var prunedLengthByLocation = furiganaLengthByLocation
+        for location in furiganaByLocation.keys {
+            let length = furiganaLengthByLocation[location] ?? 0
+            let entryRange = NSRange(location: location, length: length)
+            if validEntryRanges.contains(entryRange) == false {
+                prunedByLocation.removeValue(forKey: location)
+                prunedLengthByLocation.removeValue(forKey: location)
+            }
+        }
+        return (byLocation: prunedByLocation, lengthByLocation: prunedLengthByLocation)
     }
 
     // Extracts absolute-offset furigana maps from persisted order-only segments by walking
