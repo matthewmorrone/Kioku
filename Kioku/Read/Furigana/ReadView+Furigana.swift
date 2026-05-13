@@ -57,28 +57,47 @@ extension ReadView {
 
                 StartupTimer.mark("applying furigana result to UI")
 
-                let shouldKeepExistingFurigana = hasKanjiEdges
+                // Skip backfill when the recompute returns nothing but in-memory entries still
+                // exist (typically resources-not-ready races). Synthesis still runs below so a
+                // user merge can collapse per-character fragments into one ruby span even when
+                // the recompute had nothing new to contribute.
+                let shouldRunBackfill = !(hasKanjiEdges
                     && furiganaResult.furiganaByLocation.isEmpty
-                    && furiganaBySegmentLocation.isEmpty == false
+                    && furiganaBySegmentLocation.isEmpty == false)
 
-                if shouldKeepExistingFurigana {
-                    return
+                let intermediate: (byLocation: [Int: String], lengthByLocation: [Int: Int])
+                if shouldRunBackfill {
+                    // Replace-on-overlap backfill: a new annotation that strictly contains existing
+                    // entries (e.g. ものがたり at [L, L+2) covering prior per-character entries from
+                    // a pre-merge segmentation of 物 + 語) supersedes those fragments. Otherwise
+                    // additive backfill — existing entries at same range are kept (preserves user
+                    // pins and prior-correct annotations) and gaps are filled.
+                    intermediate = furiganaAfterApplyingNewAnnotations(
+                        existingByLocation: furiganaBySegmentLocation,
+                        existingLengthByLocation: furiganaLengthBySegmentLocation,
+                        newByLocation: furiganaResult.furiganaByLocation,
+                        newLengthByLocation: furiganaResult.lengthByLocation
+                    )
+                } else {
+                    intermediate = (
+                        byLocation: furiganaBySegmentLocation,
+                        lengthByLocation: furiganaLengthBySegmentLocation
+                    )
                 }
 
-                // Backfill only — never overwrite existing entries. Existing entries may be
-                // user-pinned readings (must be preserved) or annotations from a prior compute
-                // pass (already correct). New entries fill gaps such as the second kanji run
-                // in mixed compounds like 抜け殻 when an earlier merge wiped its annotation.
-                for (location, reading) in furiganaResult.furiganaByLocation {
-                    if furiganaBySegmentLocation[location] == nil {
-                        furiganaBySegmentLocation[location] = reading
-                    }
-                }
-                for (location, length) in furiganaResult.lengthByLocation {
-                    if furiganaLengthBySegmentLocation[location] == nil {
-                        furiganaLengthBySegmentLocation[location] = length
-                    }
-                }
+                // Synthesis fallback: when the recompute has no compound reading for a merged
+                // surface (e.g. a coined name like 月色) but per-character entries (つき + いろ)
+                // tile the kanji run completely, concatenate them into a single span "つきいろ".
+                // No-op when a span-wide annotation already exists — the dictionary compound
+                // reading always wins over a synthesized concatenation.
+                let synthesized = furiganaAfterSynthesizingCompoundReadings(
+                    furiganaByLocation: intermediate.byLocation,
+                    furiganaLengthByLocation: intermediate.lengthByLocation,
+                    edges: segmentEdges,
+                    sourceText: sourceText
+                )
+                furiganaBySegmentLocation = synthesized.byLocation
+                furiganaLengthBySegmentLocation = synthesized.lengthByLocation
 
                 // Persist segments with furigana now that readings are fully resolved.
                 // Assign back to self.segments so persistCurrentNoteIfNeeded writes the annotated data.
@@ -495,5 +514,132 @@ extension ReadView {
         surfaceReadingData: SurfaceReadingDataMap
     ) -> String? {
         surfaceReadingData[segmentSurface]?.readings.first
+    }
+
+    // Applies recompute output to the in-memory furigana maps with replace-on-overlap semantics.
+    // A new annotation that strictly contains existing entries (e.g. ものがたり at [L, L+2)
+    // covering prior per-character entries もの at [L, L+1) and がたり at [L+1, L+2)) supersedes
+    // those fragments — they're removed and the new span is installed. Otherwise backfill is
+    // additive: the new entry fills empty locations without overwriting same-range entries
+    // (preserving user pins and prior-correct annotations).
+    func furiganaAfterApplyingNewAnnotations(
+        existingByLocation: [Int: String],
+        existingLengthByLocation: [Int: Int],
+        newByLocation: [Int: String],
+        newLengthByLocation: [Int: Int]
+    ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
+        var resultByLocation = existingByLocation
+        var resultLengthByLocation = existingLengthByLocation
+
+        for (newLocation, newReading) in newByLocation {
+            let newLength = newLengthByLocation[newLocation] ?? 0
+            guard newLength > 0 else { continue }
+            let newEnd = newLocation + newLength
+
+            let coveredLocations: [Int] = resultByLocation.keys.filter { existingLocation in
+                let existingLength = resultLengthByLocation[existingLocation] ?? 0
+                let existingEnd = existingLocation + existingLength
+                let isContained = existingLocation >= newLocation && existingEnd <= newEnd
+                let isSameRange = existingLocation == newLocation && existingLength == newLength
+                return isContained && !isSameRange
+            }
+
+            if coveredLocations.isEmpty {
+                if resultByLocation[newLocation] == nil {
+                    resultByLocation[newLocation] = newReading
+                    resultLengthByLocation[newLocation] = newLength
+                }
+            } else {
+                for location in coveredLocations {
+                    resultByLocation.removeValue(forKey: location)
+                    resultLengthByLocation.removeValue(forKey: location)
+                }
+                resultByLocation[newLocation] = newReading
+                resultLengthByLocation[newLocation] = newLength
+            }
+        }
+
+        return (byLocation: resultByLocation, lengthByLocation: resultLengthByLocation)
+    }
+
+    // Synthesizes a single-span concatenated reading for kanji runs that are tiled by per-
+    // character fragments but lack a span-wide annotation. Used after the recompute as a
+    // fallback for merged compounds whose surface has no compound reading in surfaceReadingData
+    // (e.g. a coined name like 月色): if the prior per-character entries (つき + いろ) cover the
+    // merged kanji run without gaps, they're collapsed into one ruby span "つきいろ" over the
+    // compound. When a span-wide annotation already exists at the run's range, this is a no-op
+    // — the dictionary compound reading always wins over a synthesized concatenation.
+    func furiganaAfterSynthesizingCompoundReadings(
+        furiganaByLocation: [Int: String],
+        furiganaLengthByLocation: [Int: Int],
+        edges: [LatticeEdge],
+        sourceText: String
+    ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
+        var resultByLocation = furiganaByLocation
+        var resultLengthByLocation = furiganaLengthByLocation
+
+        for edge in edges {
+            let segmentNSRange = NSRange(edge.start..<edge.end, in: sourceText)
+            guard segmentNSRange.location != NSNotFound else { continue }
+
+            let segmentSurface = edge.surface
+            for run in kanjiRuns(in: segmentSurface) {
+                guard run.end - run.start > 1 else { continue }
+                guard
+                    let runStartIdx = segmentSurface.index(
+                        segmentSurface.startIndex,
+                        offsetBy: run.start,
+                        limitedBy: segmentSurface.endIndex
+                    ),
+                    let runEndIdx = segmentSurface.index(
+                        segmentSurface.startIndex,
+                        offsetBy: run.end,
+                        limitedBy: segmentSurface.endIndex
+                    )
+                else {
+                    continue
+                }
+                let runRangeInSurface = NSRange(runStartIdx..<runEndIdx, in: segmentSurface)
+                let runLocation = segmentNSRange.location + runRangeInSurface.location
+                let runLength = runRangeInSurface.length
+                let runEnd = runLocation + runLength
+
+                if resultLengthByLocation[runLocation] == runLength {
+                    continue
+                }
+
+                let entriesInRun = resultByLocation.keys.filter { entryLocation in
+                    let entryLength = resultLengthByLocation[entryLocation] ?? 0
+                    return entryLocation >= runLocation && entryLocation + entryLength <= runEnd
+                }.sorted()
+
+                var cursor = runLocation
+                var pieces: [String] = []
+                var coversFully = true
+                for entryLocation in entriesInRun {
+                    guard entryLocation == cursor,
+                          let entryLength = resultLengthByLocation[entryLocation],
+                          entryLength > 0,
+                          let entryReading = resultByLocation[entryLocation]
+                    else {
+                        coversFully = false
+                        break
+                    }
+                    pieces.append(entryReading)
+                    cursor = entryLocation + entryLength
+                }
+
+                guard coversFully, cursor == runEnd, pieces.count > 1 else { continue }
+
+                for entryLocation in entriesInRun {
+                    resultByLocation.removeValue(forKey: entryLocation)
+                    resultLengthByLocation.removeValue(forKey: entryLocation)
+                }
+                resultByLocation[runLocation] = pieces.joined()
+                resultLengthByLocation[runLocation] = runLength
+            }
+        }
+
+        return (byLocation: resultByLocation, lengthByLocation: resultLengthByLocation)
     }
 }

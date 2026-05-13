@@ -287,62 +287,34 @@ extension ReadView {
         return produced
     }
 
-    // Drops furigana entries that don't align with the new segmentation's structure. An entry
-    // is valid when its UTF-16 range matches a segment exactly or matches one of that segment's
-    // contiguous kanji runs exactly. Merging per-kanji segments (e.g. 物 + 語 → 物語) collapses
-    // two single-kanji runs into one — the prior per-character entries (もの at 物, がたり at 語)
-    // no longer align with the merged single run [0, 2) and must be cleared here.
-    // performScheduleFuriganaGeneration uses backfill semantics and never overwrites existing
-    // entries, so without this prune the stale per-character readings linger and render as two
-    // ruby frames over a compound that should show one. Per-run annotations on multi-run
-    // compounds like 抜け殻 (ぬ over 抜, がら over 殻) remain valid because each entry matches a
-    // kanji run exactly.
+    // Drops furigana entries whose UTF-16 range no longer fits inside any segment. This is the
+    // gentle structural prune used after splits — a wide entry spanning the pre-split surface
+    // (e.g. ものがたり at [0, 2) over the pre-split 物語) does not fit any narrower successor
+    // segment and is dropped here. Entries that DO fit inside their segment are kept, even if
+    // they fragment a kanji run — replace-on-overlap backfill collapses those into a single
+    // span when the recompute produces a wider compound reading, and synthesizeCompoundReadings
+    // concatenates them when the recompute has no compound reading to offer.
     func pruneFuriganaForSegmentation(
         furiganaByLocation: [Int: String],
         furiganaLengthByLocation: [Int: Int],
         edges: [LatticeEdge],
         sourceText: String
     ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
-        var validEntryRanges: Set<NSRange> = []
-        for edge in edges {
-            let segmentNSRange = NSRange(edge.start..<edge.end, in: sourceText)
-            guard segmentNSRange.location != NSNotFound, segmentNSRange.length > 0 else {
-                continue
-            }
-            validEntryRanges.insert(segmentNSRange)
-
-            let segmentSurface = edge.surface
-            for run in kanjiRuns(in: segmentSurface) {
-                guard
-                    let runStartIdx = segmentSurface.index(
-                        segmentSurface.startIndex,
-                        offsetBy: run.start,
-                        limitedBy: segmentSurface.endIndex
-                    ),
-                    let runEndIdx = segmentSurface.index(
-                        segmentSurface.startIndex,
-                        offsetBy: run.end,
-                        limitedBy: segmentSurface.endIndex
-                    )
-                else {
-                    continue
-                }
-                let runRangeInSurface = NSRange(runStartIdx..<runEndIdx, in: segmentSurface)
-                validEntryRanges.insert(
-                    NSRange(
-                        location: segmentNSRange.location + runRangeInSurface.location,
-                        length: runRangeInSurface.length
-                    )
-                )
-            }
+        let validRanges: [(start: Int, end: Int)] = edges.compactMap { edge in
+            let r = NSRange(edge.start..<edge.end, in: sourceText)
+            guard r.location != NSNotFound else { return nil }
+            return (start: r.location, end: r.location + r.length)
         }
 
         var prunedByLocation = furiganaByLocation
         var prunedLengthByLocation = furiganaLengthByLocation
         for location in furiganaByLocation.keys {
             let length = furiganaLengthByLocation[location] ?? 0
-            let entryRange = NSRange(location: location, length: length)
-            if validEntryRanges.contains(entryRange) == false {
+            let entryEnd = location + length
+            let isInsideAnySegment = validRanges.contains { range in
+                location >= range.start && entryEnd <= range.end
+            }
+            if isInsideAnySegment == false {
                 prunedByLocation.removeValue(forKey: location)
                 prunedLengthByLocation.removeValue(forKey: location)
             }
