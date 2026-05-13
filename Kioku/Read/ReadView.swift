@@ -43,6 +43,8 @@ struct ReadView: View {
     @AppStorage(DebugSettings.bisectorFuriganaKey) private var debugBisectorFurigana: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
     @AppStorage(DebugSettings.leftInsetGuideKey) private var debugLeftInsetGuide: Bool = false
+    // CoreText renderer is now the only path; gate hard-wired below.
+    // @AppStorage(DebugSettings.useCoreTextRendererKey) private var useCoreTextRenderer: Bool = true
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
 
     @State var customTitle = ""
@@ -585,10 +587,81 @@ struct ReadView: View {
         segmentRanges.isEmpty == false
     }
 
+    // Mirrors FuriganaTextRenderer+Geometry.selectedSegmentNSRange for the CoreText path:
+    // prefers the explicit override (set during merge/split previews) over the simple
+    // location-based lookup so behavior matches between renderers when an override is active.
+    private func resolveSelectedHighlightRange() -> NSRange? {
+        let ns = text as NSString
+        if let override = selectedHighlightRangeOverride,
+           override.location != NSNotFound,
+           override.length > 0,
+           override.upperBound <= ns.length {
+            return override
+        }
+        guard let location = selectedSegmentLocation else { return nil }
+        for range in segmentRanges {
+            let ns = NSRange(range, in: text)
+            if ns.location == location, ns.length > 0 {
+                return ns
+            }
+        }
+        return nil
+    }
+
     // Keeps both read and edit renderers mounted so mode toggles are instant.
     private var editorView: some View {
         VStack(spacing: 8) {
             ZStack {
+                if true /* useCoreTextRenderer — toggle disabled; CT is the only path */ {
+                    KiokuCoreTextRendererView(
+                        text: text,
+                        segmentationRanges: segmentRanges,
+                        furiganaBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaBySegmentLocation : [:],
+                        furiganaLengthBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                        isFuriganaVisible: isFuriganaVisible,
+                        isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
+                        isColorAlternationEnabled: isColorAlternationEnabled,
+                        textSize: $textSize,
+                        lineSpacing: lineSpacing,
+                        kerning: kerning,
+                        evenSegmentColor: customTokenColorsEnabled
+                            ? (UIColor(hexString: tokenColorAHex) ?? .label)
+                            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed },
+                        oddSegmentColor: customTokenColorsEnabled
+                            ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
+                            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo },
+                        isLineWrappingEnabled: isLineWrappingEnabled,
+                        isRubySpacingEnabled: isRubySpacingEnabled,
+                        selectedHighlightRange: resolveSelectedHighlightRange(),
+                        playbackHighlightRange: playbackHighlightRangeOverride,
+                        selectionHighlightColor: UIColor.systemYellow.withAlphaComponent(0.35),
+                        playbackHighlightColor: UIColor.systemBlue.withAlphaComponent(0.20),
+                        unknownSegmentLocations: unknownSegmentLocations,
+                        isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                        unknownSegmentColor: .label,
+                        debugFlags: KiokuDebugOverlayView.Flags(
+                            headwordRects: debugHeadwordRects,
+                            furiganaRects: debugFuriganaRects,
+                            envelopeRects: debugEnvelopeRects,
+                            headwordBisectors: debugBisectorHeadword,
+                            furiganaBisectors: debugBisectorFurigana,
+                            headwordLineBands: debugHeadwordLineBands,
+                            furiganaLineBands: debugFuriganaLineBands,
+                            pixelRuler: debugPixelRuler,
+                            leftInsetGuide: debugLeftInsetGuide
+                        ),
+                        illegalMergeLocation: illegalMergeBoundaryLocation,
+                        onSegmentTapped: { location, rect in
+                            // The CoreText path doesn't ship a UITextView reference; lookup-sheet
+                            // popover anchoring will fall back to a default. Selection state and
+                            // dismissal still route through the shared handler unchanged.
+                            handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: nil)
+                        }
+                    )
+                    .opacity(isEditMode ? 0 : 1)
+                    .allowsHitTesting(isEditMode == false)
+                    .animation(.default, value: isEditMode)
+                } else {
                 FuriganaTextRenderer(
                     isActive: isEditMode == false,
                     isOverlayFrozen: isSheetSwipeTransitionActive,
@@ -639,6 +712,7 @@ struct ReadView: View {
                 .opacity(isEditMode ? 0 : 1)
                 .allowsHitTesting(isEditMode == false)
                 .animation(.default, value: isEditMode)
+                }
 
                 RichTextEditor(
                     text: $text,

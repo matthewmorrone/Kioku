@@ -31,6 +31,24 @@ final class KiokuCoreTextView: UIView {
     }
     private var tapGesture: UITapGestureRecognizer?
 
+    // Highlight bands drawn under the text. The selection band sits below the playback band
+    // so an actively-playing tapped segment shows the playback color on top. Ranges are
+    // UTF-16 against the current attributed string.
+    struct HighlightBand {
+        var range: NSRange
+        var color: UIColor
+        // Padding around the typographic bounds. Use a small negative inset to bleed past
+        // glyph extents the way TextKit 2's selection rect does, or positive to inset.
+        var verticalInset: CGFloat = -2
+        var cornerRadius: CGFloat = 4
+    }
+
+    // The order is significant — painted back-to-front, so the last entry overlays earlier
+    // ones. Callers responsible for ordering selection vs. playback.
+    var highlightBands: [HighlightBand] = [] {
+        didSet { setNeedsDisplay() }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         commonInit()
@@ -41,6 +59,8 @@ final class KiokuCoreTextView: UIView {
         commonInit()
     }
 
+    // Shared init for both `init(frame:)` and `init?(coder:)` so styling stays
+    // consistent regardless of how the view is instantiated.
     private func commonInit() {
         backgroundColor = .clear
         isOpaque = false
@@ -62,6 +82,22 @@ final class KiokuCoreTextView: UIView {
         setNeedsDisplay()
     }
 
+    // Sets extra inter-line padding. Pass the ruby font height when CTRubyAnnotation is in
+    // play so consecutive lines don't overlap on the kanji row.
+    func setLineSpacing(_ value: CGFloat) {
+        layoutEngine.setLineSpacing(value)
+        invalidateIntrinsicContentSize()
+        setNeedsDisplay()
+    }
+
+    // Sets per-line X-origin shifts. Used by the wide-ruby line-start inset replacement.
+    // Indices are 0-based against the engine's `lines`.
+    func setLineOriginShifts(_ shifts: [Int: CGFloat]) {
+        layoutEngine.setLineOriginShifts(shifts)
+        setNeedsDisplay()
+    }
+
+    // Forwards bounds.width to the engine so the layout reflows on rotation / split-view.
     override func layoutSubviews() {
         super.layoutSubviews()
         let priorHeight = layoutEngine.contentSize.height
@@ -76,6 +112,8 @@ final class KiokuCoreTextView: UIView {
         return CGSize(width: UIView.noIntrinsicMetric, height: layoutEngine.contentSize.height)
     }
 
+    // Reports the height the engine would produce at the given width. Lets host scroll
+    // views ask "how tall do you need to be" without a full relayout cycle.
     override func sizeThatFits(_ size: CGSize) -> CGSize {
         if size.width > 0 {
             layoutEngine.setWidthConstraint(size.width)
@@ -83,8 +121,14 @@ final class KiokuCoreTextView: UIView {
         return CGSize(width: size.width, height: layoutEngine.contentSize.height)
     }
 
+    // Paints highlight bands first (in UIKit coords), then flips the context and draws each
+    // CTLine. Clipping to dirty rect skips off-screen lines on partial redraws.
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
+
+        // Draw highlight bands BEFORE flipping into CT coordinates — bands live in UIKit
+        // top-down space, which lets us use the engine's rects directly.
+        drawHighlightBands(in: context, dirtyRect: rect)
 
         // Flip into CoreText's bottom-up coordinate space once at the view boundary so all
         // layout math elsewhere can stay in UIKit's top-down convention.
@@ -116,8 +160,29 @@ final class KiokuCoreTextView: UIView {
         context.restoreGState()
     }
 
+    // MARK: - Highlight bands
+
+    // Paints each band's union-of-line rects with rounded corners. Skips bands fully outside
+    // the dirty rect for cheap partial redraws.
+    private func drawHighlightBands(in context: CGContext, dirtyRect: CGRect) {
+        guard highlightBands.isEmpty == false else { return }
+        for band in highlightBands {
+            guard band.range.location != NSNotFound, band.range.length > 0 else { continue }
+            let rects = layoutEngine.boundingRects(forCharacterRange: band.range)
+            for rect in rects {
+                let padded = rect.insetBy(dx: 0, dy: band.verticalInset)
+                guard padded.intersects(dirtyRect) else { continue }
+                let path = UIBezierPath(roundedRect: padded, cornerRadius: band.cornerRadius)
+                context.setFillColor(band.color.cgColor)
+                context.addPath(path.cgPath)
+                context.fillPath()
+            }
+        }
+    }
+
     // MARK: - Tap handling
 
+    // Installs or removes the tap recognizer to match whether `onTap` is set.
     private func configureTapGesture() {
         if let existing = tapGesture {
             removeGestureRecognizer(existing)
@@ -129,6 +194,8 @@ final class KiokuCoreTextView: UIView {
         tapGesture = recognizer
     }
 
+    // Routes the tap location through the engine's hit-test and forwards the resulting
+    // UTF-16 character index to the host via the `onTap` closure.
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
         let point = recognizer.location(in: self)
         guard let index = layoutEngine.characterIndex(at: point) else { return }
@@ -148,16 +215,19 @@ final class KiokuCoreTextView: UIView {
         set { /* read-only */ }
     }
 
+    // Number of per-line accessibility elements VoiceOver should expose.
     override func accessibilityElementCount() -> Int {
         rebuildAccessibilityElementsIfNeeded().count
     }
 
+    // Element at the given index (per-line, in document order). Nil when out of range.
     override func accessibilityElement(at index: Int) -> Any? {
         let elements = rebuildAccessibilityElementsIfNeeded()
         guard elements.indices.contains(index) else { return nil }
         return elements[index]
     }
 
+    // Reverse lookup: position of a given accessibility element in the per-line array.
     override func index(ofAccessibilityElement element: Any) -> Int {
         let elements = rebuildAccessibilityElementsIfNeeded()
         return elements.firstIndex(where: { $0 === (element as AnyObject) }) ?? NSNotFound
@@ -183,6 +253,8 @@ final class KiokuCoreTextView: UIView {
         return cachedAccessibilityElements
     }
 
+    // Builds one UIAccessibilityElement per non-empty laid-out line, anchored at the
+    // line's frame in container space, with the line's text as the a11y label.
     private func makeAccessibilityElements() -> [UIAccessibilityElement] {
         let sourceText = layoutEngine.attributedString.string as NSString
         return layoutEngine.lines.compactMap { line -> UIAccessibilityElement? in

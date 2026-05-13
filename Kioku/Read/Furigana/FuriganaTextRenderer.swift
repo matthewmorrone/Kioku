@@ -36,9 +36,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let debugHeadwordRects: Bool
     let debugHeadwordLineBands: Bool
     let debugFuriganaLineBands: Bool
-    // Headword bisector = vertical line at the kanji-run geometric center.
-    // Furigana bisector = vertical line at the ruby string's geometric center.
-    // Independent toggles so misalignment between them is directly visible.
+    // Headword bisector: vertical line at the kanji-run geometric center.
+    // Furigana bisector: vertical line at the ruby string geometric center.
+    // Independent toggles so any misalignment between the two is directly visible.
     let debugBisectorHeadword: Bool
     let debugBisectorFurigana: Bool
     let debugEnvelopeRects: Bool

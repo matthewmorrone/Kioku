@@ -18,7 +18,7 @@ struct KiokuLineLayout {
     let line: CTLine
     // Top-left origin of this line's typographic box in UIKit (Y-down) coordinates, relative
     // to the renderer's content origin.
-    let origin: CGPoint
+    var origin: CGPoint
     let ascent: CGFloat
     let descent: CGFloat
     let leading: CGFloat
@@ -42,6 +42,18 @@ final class KiokuTextLayoutEngine {
     private(set) var lines: [KiokuLineLayout] = []
     // Total content size (line block + content inset). Drives scroll-view contentSize parity.
     private(set) var contentSize: CGSize = .zero
+
+    // Optional inter-line padding added to every line's height. Useful when the attributed
+    // string carries CTRubyAnnotation: stock CT typographic bounds reserve only the kanji-row
+    // height, so consecutive rubied lines collide. Callers compensate by adding the ruby font
+    // height here.
+    private(set) var lineSpacing: CGFloat = 0
+
+    // Per-line horizontal origin shift, indexed by line. Used by the wide-ruby line-start
+    // inset replacement: instead of feeding the typesetter exclusion paths (which TextKit 2
+    // forces to relayout), we lay out at the natural origin and then offset specific lines.
+    // The shift moves the line origin and therefore every glyph and every rect query.
+    private var lineOriginShifts: [Int: CGFloat] = [:]
 
     init(
         attributedString: NSAttributedString = NSAttributedString(),
@@ -77,6 +89,50 @@ final class KiokuTextLayoutEngine {
         rebuildLayout()
     }
 
+    // Sets extra inter-line padding. Reflows Y origins; line shaping is unchanged.
+    func setLineSpacing(_ newValue: CGFloat) {
+        let clamped = max(0, newValue)
+        guard abs(clamped - lineSpacing) >= 0.5 else { return }
+        lineSpacing = clamped
+        rebuildLayout()
+    }
+
+    // Sets per-line X-origin shifts. Keys are line indices (0-based, matching `lines`); values
+    // are the X delta to apply. Lines absent from the dictionary are not shifted.
+    //
+    // We avoid relayout entirely — only origins move — but contentSize.width is recomputed.
+    func setLineOriginShifts(_ shifts: [Int: CGFloat]) {
+        guard shifts != lineOriginShifts else { return }
+        lineOriginShifts = shifts
+        applyOriginShifts()
+    }
+
+    // Auto-derives per-line shifts from CTLineGetImageBounds.minX, so a line whose first
+    // glyph (or first glyph's ruby annotation) extends past the line origin is shifted right
+    // by exactly that amount. This is the correct fix for wide-ruby line-start: it uses CT's
+    // own measurement of where the ruby actually renders, so the visible ruby left edge
+    // lands precisely at the content inset.
+    //
+    // Returns the dict for callers who want to inspect / combine with other shifts.
+    @discardableResult
+    func applyLeftBearingAutoShifts(context: CGContext? = nil) -> [Int: CGFloat] {
+        var shifts: [Int: CGFloat] = [:]
+        // CTLineGetImageBounds needs a CGContext (it queries graphics state for proper
+        // bearing measurement when font hinting / kerning is active). We can pass nil and
+        // CT will fall back to a default context, which is good enough for our purposes.
+        for (index, line) in lines.enumerated() {
+            let bounds = CTLineGetImageBounds(line.line, context)
+            // bounds.minX < 0 means the line's first glyph (or its ruby) extends LEFT of
+            // the line origin. Shift the line right by that amount so the leftmost rendered
+            // pixel sits at the original origin instead.
+            if bounds.minX < 0 {
+                shifts[index] = ceil(-bounds.minX)
+            }
+        }
+        setLineOriginShifts(shifts)
+        return shifts
+    }
+
     // MARK: - Geometry queries
 
     // Returns the smallest rectangle covering every glyph in the given UTF-16 range. Matches
@@ -104,6 +160,29 @@ final class KiokuTextLayoutEngine {
             width: rightX - leftX,
             height: line.height
         )
+    }
+
+    // Returns the index of the line containing the given UTF-16 character index, or nil if
+    // the index is out of bounds. The lookup is linear in line count, which is fine for the
+    // small note sizes Kioku targets; switch to binary search if profiling shows hot spots.
+    func lineIndex(forCharacterIndex characterIndex: Int) -> Int? {
+        guard characterIndex >= 0 else { return nil }
+        return lines.firstIndex { line in
+            characterIndex >= line.stringRange.location &&
+            characterIndex < line.stringRange.location + line.stringRange.length
+        }
+    }
+
+    // Returns one rect per line spanned by the range. Empty array for out-of-bounds or empty
+    // ranges. This is the multi-line analogue of `firstRect(forCharacterRange:)` and is what
+    // segment overlays use for ranges that wrap.
+    func boundingRects(forCharacterRange range: NSRange) -> [CGRect] {
+        guard range.location != NSNotFound, range.length > 0 else { return [] }
+        return lines.compactMap { line in
+            let intersection = NSIntersectionRange(line.stringRange, range)
+            guard intersection.length > 0 else { return nil }
+            return rect(in: line, forCharacterRange: intersection)
+        }
     }
 
     // Maps a point in renderer coordinates to its UTF-16 character index. Returns nil when
@@ -161,14 +240,32 @@ final class KiokuTextLayoutEngine {
             )
             lines.append(layout)
 
-            penY += layout.height
+            penY += layout.height + lineSpacing
             startIndex += lineLength
         }
 
-        let lineBlockWidth = lines.map(\.width).max() ?? 0
+        applyOriginShifts()
+
+        let lineBlockHeight = (lines.last.map { $0.origin.y + $0.height } ?? contentInset.top) - contentInset.top
         contentSize = CGSize(
-            width: lineBlockWidth + contentInset.left + contentInset.right,
-            height: penY + contentInset.bottom
+            width: maxLineRightEdge() + contentInset.right,
+            height: contentInset.top + lineBlockHeight + contentInset.bottom
         )
+    }
+
+    // Applies the current `lineOriginShifts` map to the existing `lines`. Called both after
+    // a fresh layout (to re-apply known shifts) and from `setLineOriginShifts` (no relayout).
+    private func applyOriginShifts() {
+        for index in lines.indices {
+            let baseX = contentInset.left
+            let shift = lineOriginShifts[index] ?? 0
+            lines[index].origin.x = baseX + shift
+        }
+        contentSize.width = maxLineRightEdge() + contentInset.right
+    }
+
+    // Right edge of the widest laid-out line, used to compute contentSize.width.
+    private func maxLineRightEdge() -> CGFloat {
+        lines.map { $0.origin.x + $0.width }.max() ?? contentInset.left
     }
 }

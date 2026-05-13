@@ -9,9 +9,10 @@ enum DebugSettings {
     // Separate band keys so headword and furigana rows can be visualised independently.
     static let headwordLineBandsKey = "debug.lineBands"
     static let furiganaLineBandsKey = "debug.furiganaLineBands"
-    // Bisectors are split into two keys so headword (kanji geometric center) and furigana
-    // (ruby geometric center) vertical lines can be toggled independently. When both are on,
-    // they color-code by alignment; when only one is on, that single line draws in yellow.
+    // Bisector toggles split into two so misalignment between the headword center
+    // (kanji glyph midX) and the ruby center is directly visible. When only one is
+    // enabled, the toggle's vertical line draws in that toggle's color; when both
+    // are enabled, they coincide for properly-centered ruby.
     static let bisectorHeadwordKey = "debug.bisector.headword"
     static let bisectorFuriganaKey = "debug.bisector.furigana"
     // Draws a vertical line at the text container's left inset so line-start
@@ -19,4 +20,8 @@ enum DebugSettings {
     // numerical positions for every line-start segment to the unified log.
     static let leftInsetGuideKey = "debug.leftInsetGuide"
     static let startupSegmentationDiffsKey = "debug.startupSegmentationDiffs"
+    // Toggles the experimental CoreText-backed Read renderer (`KiokuCoreTextView`) in place
+    // of the TextKit 2 UITextView path. Off by default while the new renderer is being
+    // brought up; flip in Settings to A/B against the production renderer.
+    static let useCoreTextRendererKey = "debug.useCoreTextRenderer"
 }

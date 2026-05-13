@@ -24,10 +24,7 @@ final class FuriganaOverlayView: UIView {
     // Envelope debug data — bounding box spanning both headword and furigana.
     private var debugEnvelopeRectsEnabled = false
     private var debugEnvelopeRects: [CGRect] = []
-    // Bisector debug data — vertical center lines for headword (kanji geometric center)
-    // and furigana (ruby string geometric center). Independent toggles so misalignment
-    // between them is directly visible. When both are on, line color encodes alignment;
-    // when only one is on, that lone line draws yellow.
+    // Bisector debug data — vertical center lines showing headword/furigana alignment.
     private var debugBisectorHeadwordEnabled = false
     private var debugBisectorFuriganaEnabled = false
     private var debugBisectorHeadwordMidXs: [CGFloat] = []
@@ -226,32 +223,30 @@ final class FuriganaOverlayView: UIView {
             }
         }
 
-        // Bisectors: two independent toggles so misalignment between the kanji geometric
-        // center and the ruby geometric center is directly visible.
-        //  - Headword bisector = vertical line at headword.midX (kanji-run center).
-        //  - Furigana bisector = vertical line at ruby.midX (ruby string center).
-        // When both are enabled, color encodes alignment within 0.75pt: yellow = aligned,
-        // green = misaligned. When only one is enabled, that lone line draws yellow so it
-        // stays usable as a single-axis reference.
-        let drawAnyBisectors = debugBisectorHeadwordEnabled || debugBisectorFuriganaEnabled
-        if drawAnyBisectors {
+        // Bisectors: each toggle draws independently. Headword line through the kanji-run
+        // center, furigana line through the ruby center. When both toggles are on, the
+        // pair color-codes by alignment (yellow=aligned within 0.75pt, green=misaligned).
+        // When only one is on, that lone line is yellow so it remains visible against any
+        // backdrop.
+        let drawAnyBisector = debugBisectorHeadwordEnabled || debugBisectorFuriganaEnabled
+        if drawAnyBisector {
             let tolerance: CGFloat = 0.75
             for index in debugBisectorHeadwordMidXs.indices {
                 let headwordRect = debugBisectorHeadwordRects[index]
                 let furiganaRect = debugBisectorFuriganaRects[index]
                 let headwordMidX = debugBisectorHeadwordMidXs[index]
                 let hasFurigana = furiganaRect != .zero
-                let bothActive = debugBisectorHeadwordEnabled && debugBisectorFuriganaEnabled && hasFurigana
-                let alignmentColor: UIColor
-                if bothActive {
+
+                let pairColor: UIColor
+                if hasFurigana, debugBisectorHeadwordEnabled, debugBisectorFuriganaEnabled {
                     let aligned = abs(headwordMidX - furiganaRect.midX) <= tolerance
-                    alignmentColor = aligned
+                    pairColor = aligned
                         ? UIColor.systemYellow.withAlphaComponent(0.9)
                         : UIColor.systemGreen.withAlphaComponent(0.9)
                 } else {
-                    alignmentColor = UIColor.systemYellow.withAlphaComponent(0.9)
+                    pairColor = UIColor.systemYellow.withAlphaComponent(0.9)
                 }
-                alignmentColor.setStroke()
+                pairColor.setStroke()
 
                 if debugBisectorHeadwordEnabled {
                     let headwordPath = UIBezierPath()
@@ -260,7 +255,6 @@ final class FuriganaOverlayView: UIView {
                     headwordPath.lineWidth = 2
                     headwordPath.stroke()
                 }
-
                 if debugBisectorFuriganaEnabled, hasFurigana {
                     let furiganaPath = UIBezierPath()
                     furiganaPath.move(to: CGPoint(x: furiganaRect.midX, y: furiganaRect.minY))

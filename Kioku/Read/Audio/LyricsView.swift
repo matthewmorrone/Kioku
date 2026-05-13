@@ -98,77 +98,51 @@ struct LyricsView: View {
                     controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
                 }
 
-                // Active cue renderer — always mounted, never torn down between cue changes.
-                // Falls back to cue text when highlight range data is unavailable (e.g. ♪ cues).
-                let rendererData = buildRendererData(for: displayIndex)
-                let activeSurface = rendererData?.surface ?? (displayIndex < cues.count ? cues[displayIndex].text : "")
-                // Subtract any horizontal padding the active style adds — Focus Card inset is
-                // 8pt per side. Without this the size calculation thinks the renderer has the
-                // full panel width and undersized shrink results in wrapping (and the wrapped
-                // line gets clipped by the fixed renderer height).
-                let activeStyleHorizontalPadding: CGFloat = displayStyle == .focusCard ? 16 : 0
-                let activeTextSize = activeCueTextSize(
-                    surface: activeSurface,
-                    segmentRanges: rendererData?.localSegRanges ?? [],
-                    furiganaBySegmentLocation: rendererData?.localFurigana ?? [:],
-                    furiganaLengthBySegmentLocation: rendererData?.localFuriganaLength ?? [:],
-                    availableWidth: panelWidth - activeStyleHorizontalPadding
-                )
-                // Active-cue alignment follows the same axis as the inactive rows for the style:
-                // appleMusic is leading-aligned everywhere, the others center.
-                let activeTextAlignment: NSTextAlignment = displayStyle == .appleMusic ? .natural : .center
+                // Active cue renderer — uses the SAME CoreText renderer as ReadView, fed the
+                // FULL noteText + segments + furigana, then auto-scrolled to the active cue's
+                // line via `playbackHighlightRange`. No data slicing — what ReadView shows
+                // (segment colors, ruby) renders identically here. The cue's NSRange acts as
+                // the scroll target; the highlight color is transparent so the band itself is
+                // invisible. Falls back to nil when the cue is non-speech (♪) or unresolved.
+                let cueRange: NSRange? = (displayIndex < highlightRanges.count) ? highlightRanges[displayIndex] : nil
                 VStack(spacing: 0) {
-                    FuriganaTextRenderer(
-                        isActive: true,
-                        isOverlayFrozen: false,
-                        text: activeSurface,
-                        isLineWrappingEnabled: true,
-                        segmentationRanges: rendererData?.localSegRanges ?? [],
-                        selectedSegmentLocation: nil,
-                        blankSelectedSegmentLocation: nil,
-                        selectedHighlightRangeOverride: nil,
-                        playbackHighlightRangeOverride: nil,
-                        activePlaybackCueIndex: nil,
-                        illegalMergeBoundaryLocation: nil,
-                        furiganaBySegmentLocation: rendererData?.localFurigana ?? [:],
-                        furiganaLengthBySegmentLocation: rendererData?.localFuriganaLength ?? [:],
+                    KiokuCoreTextRendererView(
+                        text: noteText,
+                        segmentationRanges: segmentationRanges,
+                        furiganaBySegmentLocation: furiganaBySegmentLocation,
+                        furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+                        isFuriganaVisible: true,
                         isVisualEnhancementsEnabled: true,
-                        isRubySpacingEnabled: true,
                         isColorAlternationEnabled: true,
-                        isHighlightUnknownEnabled: false,
-                        unknownSegmentLocations: [],
-                        changedSegmentLocations: [],
-                        changedReadingLocations: [],
-                        customEvenSegmentColorHex: "",
-                        customOddSegmentColorHex: "",
-                        debugFuriganaRects: false,
-                        debugHeadwordRects: false,
-                        debugHeadwordLineBands: false,
-                        debugFuriganaLineBands: false,
-                        debugBisectorHeadword: false,
-                        debugBisectorFurigana: false,
-                        debugEnvelopeRects: false,
-                        debugLeftInsetGuide: false,
-                        externalContentOffsetY: 0,
-                        onScrollOffsetYChanged: { _ in },
-                        onSegmentTapped: { localLocation, rect, sourceView in
-                            // Convert local cue location back to global noteText location.
-                            let globalLocation: Int? = localLocation.flatMap { loc in
-                                guard displayIndex < highlightRanges.count,
-                                      let range = highlightRanges[displayIndex] else { return nil }
-                                return loc + range.location
-                            }
-                            onSegmentTapped(globalLocation, rect, sourceView)
-                        },
-                        textSize: Binding(get: { activeTextSize }, set: { _ in }),
+                        textSize: Binding(get: { TypographySettings.defaultTextSize }, set: { _ in }),
                         lineSpacing: 0,
                         kerning: 0,
-                        furiganaGap: TypographySettings.defaultFuriganaGap,
-                        textAlignment: activeTextAlignment,
+                        evenSegmentColor: UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed },
+                        oddSegmentColor: UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo },
+                        isLineWrappingEnabled: true,
+                        isRubySpacingEnabled: true,
+                        selectedHighlightRange: nil,
+                        playbackHighlightRange: cueRange,
+                        selectionHighlightColor: .clear,
+                        // Transparent — the cue range is used purely to drive auto-scroll, not
+                        // to paint a highlight band on the active line.
+                        playbackHighlightColor: .clear,
+                        unknownSegmentLocations: [],
+                        isHighlightUnknownEnabled: false,
+                        unknownSegmentColor: .label,
+                        debugFlags: KiokuDebugOverlayView.Flags(),
+                        illegalMergeLocation: nil,
+                        onSegmentTapped: { globalLocation, rect in
+                            // Locations are already in noteText UTF-16 coords — no translation
+                            // needed. sourceView is nil because the CT path doesn't expose a
+                            // UITextView; popover anchoring falls back to a default.
+                            onSegmentTapped(globalLocation, rect, nil)
+                        },
                         isScrollEnabled: false
                     )
                     .frame(maxWidth: .infinity)
                     .frame(height: rendererHeight)
+                    .clipped()
                     if let translation = translationCache.translations[displayIndex] {
                         Text(translation)
                             .font(.system(size: 12))
@@ -343,88 +317,6 @@ struct LyricsView: View {
         }
     }
 
-    // Returns a body font size for the active cue renderer that keeps the text on a single line
-    // within availableWidth. Shrinks from the preferred 1.3x base size down toward 0.3x as needed.
-    // A segment's effective width is the max of its headword width and its furigana-run width
-    // (furigana sits at 0.5x the body size) because the renderer widens the envelope to whichever
-    // is larger — that's the real dimension that drives wrapping.
-    private func activeCueTextSize(
-        surface: String,
-        segmentRanges: [Range<String.Index>],
-        furiganaBySegmentLocation: [Int: String],
-        furiganaLengthBySegmentLocation: [Int: Int],
-        availableWidth: CGFloat
-    ) -> CGFloat {
-        let preferred = TypographySettings.defaultTextSize * 1.3
-        let minimum = TypographySettings.defaultTextSize * 0.3
-        guard surface.isEmpty == false, availableWidth > 0 else { return preferred }
-
-        // Account for the 4pt textContainerInset on each side, plus a small slack margin so
-        // minor measurement discrepancies (kerning rounding, TextKit layout padding) can't push
-        // the line into wrapping territory.
-        let horizontalInset: CGFloat = 8
-        let slack: CGFloat = 6
-        let usable = max(1, availableWidth - horizontalInset - slack)
-
-        let requiredAtPreferred = singleLineWidth(
-            surface: surface,
-            segmentRanges: segmentRanges,
-            furiganaBySegmentLocation: furiganaBySegmentLocation,
-            furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
-            bodySize: preferred
-        )
-        guard requiredAtPreferred > usable else { return preferred }
-
-        // Widths scale linearly with font size — derive the exact size that fits.
-        let scaled = preferred * (usable / requiredAtPreferred)
-        return max(minimum, scaled)
-    }
-
-    // Sums per-segment envelope widths (max of body-text width and furigana width) to produce
-    // the single-line width that wrap detection needs to compare against the available width.
-    private func singleLineWidth(
-        surface: String,
-        segmentRanges: [Range<String.Index>],
-        furiganaBySegmentLocation: [Int: String],
-        furiganaLengthBySegmentLocation: [Int: Int],
-        bodySize: CGFloat
-    ) -> CGFloat {
-        let bodyFont = UIFont.systemFont(ofSize: bodySize)
-        let furiganaFont = UIFont.systemFont(ofSize: bodySize * 0.5)
-        let bodyAttrs: [NSAttributedString.Key: Any] = [.font: bodyFont]
-        let furiganaAttrs: [NSAttributedString.Key: Any] = [.font: furiganaFont]
-
-        // Fall back to a plain body measurement when segmentation isn't available yet.
-        guard segmentRanges.isEmpty == false else {
-            return (surface as NSString).size(withAttributes: bodyAttrs).width
-        }
-
-        var total: CGFloat = 0
-        var covered: String.Index = surface.startIndex
-        for segRange in segmentRanges {
-            if covered < segRange.lowerBound {
-                let gap = String(surface[covered ..< segRange.lowerBound])
-                total += (gap as NSString).size(withAttributes: bodyAttrs).width
-            }
-            let segText = String(surface[segRange])
-            let bodyWidth = (segText as NSString).size(withAttributes: bodyAttrs).width
-            let location = surface.utf16.distance(from: surface.startIndex, to: segRange.lowerBound)
-            var furiganaWidth: CGFloat = 0
-            if let reading = furiganaBySegmentLocation[location],
-               let length = furiganaLengthBySegmentLocation[location],
-               length > 0 {
-                furiganaWidth = (reading as NSString).size(withAttributes: furiganaAttrs).width
-            }
-            total += max(bodyWidth, furiganaWidth)
-            covered = segRange.upperBound
-        }
-        if covered < surface.endIndex {
-            let tail = String(surface[covered ..< surface.endIndex])
-            total += (tail as NSString).size(withAttributes: bodyAttrs).width
-        }
-        return total
-    }
-
     // Calculates the scale factor needed to fit the active cue on a single line without wrapping.
     // Measures the text at default size and scales down if necessary to fit within available width.
     private func scaleFactorForActiveCue(text: String, availableWidth: CGFloat, defaultFontSize: CGFloat) -> CGFloat {
@@ -475,43 +367,6 @@ struct LyricsView: View {
             return cueIndex < cues.count ? cues[cueIndex].text : ""
         }
         return String(noteText[swiftRange])
-    }
-
-    // Extracts the note text slice and per-segment furigana for a cue so the active-cue renderer can display it with readings.
-    private func buildRendererData(for cueIndex: Int) -> (surface: String, localSegRanges: [Range<String.Index>], localFurigana: [Int: String], localFuriganaLength: [Int: Int])? {
-        guard cueIndex < highlightRanges.count,
-              let highlightRange = highlightRanges[cueIndex],
-              let swiftRange = Range(highlightRange, in: noteText) else { return nil }
-
-        let surface = String(noteText[swiftRange])
-        let surfaceBase = highlightRange.location
-
-        var localSegRanges: [Range<String.Index>] = []
-        for segRange in segmentationRanges {
-            let nsRange = NSRange(segRange, in: noteText)
-            let clipped = NSIntersectionRange(nsRange, highlightRange)
-            guard clipped.length > 0 else { continue }
-            let localOffset = clipped.location - surfaceBase
-            if let localRange = Range(NSRange(location: localOffset, length: clipped.length), in: surface) {
-                localSegRanges.append(localRange)
-            }
-        }
-
-        var localFurigana: [Int: String] = [:]
-        for (location, reading) in furiganaBySegmentLocation {
-            guard location >= highlightRange.location,
-                  location < highlightRange.location + highlightRange.length else { continue }
-            localFurigana[location - surfaceBase] = reading
-        }
-
-        var localFuriganaLength: [Int: Int] = [:]
-        for (location, length) in furiganaLengthBySegmentLocation {
-            guard location >= highlightRange.location,
-                  location < highlightRange.location + highlightRange.length else { continue }
-            localFuriganaLength[location - surfaceBase] = length
-        }
-
-        return (surface: surface, localSegRanges: localSegRanges, localFurigana: localFurigana, localFuriganaLength: localFuriganaLength)
     }
 
     private var controls: some View {
