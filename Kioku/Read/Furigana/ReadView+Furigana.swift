@@ -532,12 +532,25 @@ extension ReadView {
         var resultLengthByLocation = existingLengthByLocation
 
         for (newLocation, newReading) in newByLocation {
-            let newLength = newLengthByLocation[newLocation] ?? 0
-            guard newLength > 0 else { continue }
+            guard let newLength = newLengthByLocation[newLocation] else {
+                // buildFuriganaBySegmentLocation always pairs reading with length — a missing
+                // length here means the recompute produced inconsistent output. Skip and warn
+                // rather than silently install a degenerate zero-length entry.
+                print("furiganaAfterApplyingNewAnnotations: missing length for reading '\(newReading)' at location \(newLocation); skipping")
+                continue
+            }
+            guard newLength > 0 else {
+                // Zero-length entries are filtered by buildFuriganaBySegmentLocation at source;
+                // reaching here implies corrupted persisted data or a producer bug.
+                print("furiganaAfterApplyingNewAnnotations: zero-length entry at location \(newLocation) (reading '\(newReading)'); skipping")
+                continue
+            }
             let newEnd = newLocation + newLength
 
             let coveredLocations: [Int] = resultByLocation.keys.filter { existingLocation in
-                let existingLength = resultLengthByLocation[existingLocation] ?? 0
+                guard let existingLength = resultLengthByLocation[existingLocation], existingLength > 0 else {
+                    return false
+                }
                 let existingEnd = existingLocation + existingLength
                 let isContained = existingLocation >= newLocation && existingEnd <= newEnd
                 let isSameRange = existingLocation == newLocation && existingLength == newLength
@@ -578,11 +591,7 @@ extension ReadView {
         var resultByLocation = furiganaByLocation
         var resultLengthByLocation = furiganaLengthByLocation
 
-        for edge in edges {
-            let segmentNSRange = NSRange(edge.start..<edge.end, in: sourceText)
-            guard segmentNSRange.location != NSNotFound else { continue }
-
-            let segmentSurface = edge.surface
+        for (segmentNSRange, segmentSurface) in segmentNSRangesAndSurfaces(for: edges, in: sourceText) {
             for run in kanjiRuns(in: segmentSurface) {
                 guard run.end - run.start > 1 else { continue }
                 guard
@@ -608,9 +617,19 @@ extension ReadView {
                     continue
                 }
 
-                let entriesInRun = resultByLocation.keys.filter { entryLocation in
-                    let entryLength = resultLengthByLocation[entryLocation] ?? 0
-                    return entryLocation >= runLocation && entryLocation + entryLength <= runEnd
+                let entriesInRun = resultByLocation.keys.compactMap { entryLocation -> Int? in
+                    guard let entryLength = resultLengthByLocation[entryLocation] else {
+                        print("furiganaAfterSynthesizingCompoundReadings: missing length for entry at location \(entryLocation); skipping")
+                        return nil
+                    }
+                    guard entryLength > 0 else {
+                        print("furiganaAfterSynthesizingCompoundReadings: zero-length entry at location \(entryLocation); skipping")
+                        return nil
+                    }
+                    guard entryLocation >= runLocation, entryLocation + entryLength <= runEnd else {
+                        return nil
+                    }
+                    return entryLocation
                 }.sorted()
 
                 var cursor = runLocation

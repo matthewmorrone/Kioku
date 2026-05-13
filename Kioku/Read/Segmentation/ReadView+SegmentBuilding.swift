@@ -287,6 +287,21 @@ extension ReadView {
         return produced
     }
 
+    // Resolves segmentation edges to (UTF-16 NSRange, surface) pairs in sourceText, skipping
+    // edges that don't round-trip to a valid NSRange. Shared by pruneFuriganaForSegmentation
+    // and the furigana helpers that walk the same edge list — keeps the NSRange/String.Index
+    // boundary math in one place.
+    func segmentNSRangesAndSurfaces(
+        for edges: [LatticeEdge],
+        in sourceText: String
+    ) -> [(range: NSRange, surface: String)] {
+        edges.compactMap { edge in
+            let range = NSRange(edge.start..<edge.end, in: sourceText)
+            guard range.location != NSNotFound else { return nil }
+            return (range: range, surface: edge.surface)
+        }
+    }
+
     // Drops furigana entries whose UTF-16 range no longer fits inside any segment. This is the
     // gentle structural prune used after splits — a wide entry spanning the pre-split surface
     // (e.g. ものがたり at [0, 2) over the pre-split 物語) does not fit any narrower successor
@@ -300,19 +315,27 @@ extension ReadView {
         edges: [LatticeEdge],
         sourceText: String
     ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
-        let validRanges: [(start: Int, end: Int)] = edges.compactMap { edge in
-            let r = NSRange(edge.start..<edge.end, in: sourceText)
-            guard r.location != NSNotFound else { return nil }
-            return (start: r.location, end: r.location + r.length)
-        }
+        let validRanges = segmentNSRangesAndSurfaces(for: edges, in: sourceText).map(\.range)
 
         var prunedByLocation = furiganaByLocation
         var prunedLengthByLocation = furiganaLengthByLocation
         for location in furiganaByLocation.keys {
-            let length = furiganaLengthByLocation[location] ?? 0
+            guard let length = furiganaLengthByLocation[location] else {
+                // No matching length entry means the maps drifted apart (corrupted persisted
+                // data or producer bug). Drop the orphan reading and warn.
+                print("pruneFuriganaForSegmentation: missing length for entry at location \(location); dropping")
+                prunedByLocation.removeValue(forKey: location)
+                continue
+            }
+            guard length > 0 else {
+                print("pruneFuriganaForSegmentation: zero-length entry at location \(location); dropping")
+                prunedByLocation.removeValue(forKey: location)
+                prunedLengthByLocation.removeValue(forKey: location)
+                continue
+            }
             let entryEnd = location + length
             let isInsideAnySegment = validRanges.contains { range in
-                location >= range.start && entryEnd <= range.end
+                location >= range.location && entryEnd <= range.location + range.length
             }
             if isInsideAnySegment == false {
                 prunedByLocation.removeValue(forKey: location)
