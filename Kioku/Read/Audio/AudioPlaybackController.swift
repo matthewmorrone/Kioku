@@ -17,9 +17,22 @@ final class AudioPlaybackController: NSObject, ObservableObject {
 
     override init() {
         super.init()
-        // .playback ignores the ringer/silent switch and is the category required for
-        // background audio under the UIBackgroundModes "audio" entitlement.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        configureAudioSession()
+    }
+
+    // Picks the session category based on the user's Background Audio setting.
+    // .playback ignores the ringer/silent switch and keeps playing in the background (the
+    // UIBackgroundModes "audio" entitlement is set in Info.plist); .ambient does neither.
+    // Mode must match the category: .spokenAudio is only valid with .playback, so the
+    // .ambient branch uses .default. Called fresh on each play() so toggling the setting
+    // takes effect without an app restart.
+    private func configureAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        if AudioSettings.backgroundPlaybackEnabled {
+            try? session.setCategory(.playback, mode: .spokenAudio)
+        } else {
+            try? session.setCategory(.ambient, mode: .default)
+        }
     }
 
     // Loads audio from a URL and stores the cue list for highlight resolution.
@@ -50,6 +63,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Starts from position 0 if not already mid-song (currentTimeMs == 0), otherwise resumes.
     func play() {
         guard let player else { return }
+        configureAudioSession()
         try? AVAudioSession.sharedInstance().setActive(true)
         player.play()
         isPlaying = true
@@ -59,6 +73,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Starts playback from the beginning regardless of current position.
     func playFromStart() {
         guard let player else { return }
+        configureAudioSession()
         try? AVAudioSession.sharedInstance().setActive(true)
         player.currentTime = 0
         currentTimeMs = 0
