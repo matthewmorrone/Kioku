@@ -65,12 +65,114 @@ struct LyricsView: View {
         }
     }
 
-    // Height that fits one line of text with furigana above, matching sizeThatFits in FuriganaTextRenderer.
+    // Active-cue render input — slices noteText to ONLY the active cue's text and rebases
+    // the furigana table to cue-local coordinates. The renderer then has exactly one cue's
+    // worth of content, so adjacent cues cannot bleed in. Falls back to the cue's raw text
+    // when no noteText range is available (e.g., non-speech cue, alignment didn't resolve).
+    private struct ActiveCueRenderInput {
+        let text: String
+        let furiganaBySegmentLocation: [Int: String]
+        let furiganaLengthBySegmentLocation: [Int: Int]
+        let segmentationRanges: [Range<String.Index>]
+    }
+
+    // Builds the sliced render input for the cue at `index`. Strategy:
+    //   1. Resolve the cue's NSRange in noteText. Try `highlightRanges[index]` first; fall
+    //      back to a substring search if that lookup is nil (non-speech cue, alignment not
+    //      yet resolved, etc.) so the cue still renders with full furigana.
+    //   2. Filter furigana entries to those whose kanji-run start sits inside the cue and
+    //      rebase locations to cue-local UTF-16 coords.
+    //   3. Clip each segmentation range to the cue's bounds (don't drop boundary-crossing
+    //      segments — that would leave their characters uncolored). Classic CT layout
+    //      tolerates clipped sub-segments, so this is safe.
+    //   4. If no noteText match exists at all, fall back to the raw cue text without
+    //      furigana — the user still sees the line.
+    private func activeCueRenderInput(for index: Int) -> ActiveCueRenderInput {
+        guard index >= 0, index < cues.count else {
+            return ActiveCueRenderInput(text: "", furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:], segmentationRanges: [])
+        }
+
+        // Resolve cue range in noteText — prefer the matched highlight range, but also
+        // probe by substring so a missing/nil highlight still finds the cue text when it
+        // appears verbatim in noteText.
+        let resolvedRange: NSRange? = {
+            if index < highlightRanges.count, let r = highlightRanges[index] { return r }
+            let cueText = cues[index].text
+            guard cueText.isEmpty == false else { return nil }
+            let probe = (noteText as NSString).range(of: cueText)
+            return probe.location == NSNotFound ? nil : probe
+        }()
+
+        guard let cueRange = resolvedRange,
+              let swiftRange = Range(cueRange, in: noteText) else {
+            let fallback = cues[index].text
+            let wholeRange = fallback.startIndex..<fallback.endIndex
+            return ActiveCueRenderInput(
+                text: fallback,
+                furiganaBySegmentLocation: [:],
+                furiganaLengthBySegmentLocation: [:],
+                segmentationRanges: fallback.isEmpty ? [] : [wholeRange]
+            )
+        }
+
+        let cueText = String(noteText[swiftRange])
+        let cueStart = cueRange.location
+        let cueEnd = cueRange.location + cueRange.length
+
+        // Furigana: keep entries whose kanji-run UTF-16 start sits inside the cue and
+        // rebase the location to the cue substring's coords (so location 0 = first char).
+        var rebasedFurigana: [Int: String] = [:]
+        var rebasedFuriganaLength: [Int: Int] = [:]
+        for (loc, reading) in furiganaBySegmentLocation where loc >= cueStart && loc < cueEnd {
+            let rebased = loc - cueStart
+            rebasedFurigana[rebased] = reading
+            if let length = furiganaLengthBySegmentLocation[loc] {
+                rebasedFuriganaLength[rebased] = length
+            }
+        }
+
+        // One whole-cue segment for the active-cue card. We don't slice the parent's
+        // `segmentationRanges` here because they're `Range<String.Index>` typed against
+        // the parent's String state, which can race with `noteText` during note loads —
+        // ANY index operation across two non-identical Strings is undefined in Swift and
+        // traps inside StringUTF16View. The cue card is small enough that losing per-word
+        // color alternation inside it is an acceptable trade for crash safety; the main
+        // read view below still shows the full alternated rendering.
+        let rebasedSegments: [Range<String.Index>] = cueText.isEmpty
+            ? []
+            : [cueText.startIndex..<cueText.endIndex]
+
+        return ActiveCueRenderInput(
+            text: cueText,
+            furiganaBySegmentLocation: rebasedFurigana,
+            furiganaLengthBySegmentLocation: rebasedFuriganaLength,
+            segmentationRanges: rebasedSegments
+        )
+    }
+
+    // Returns a font-size scale factor that fits `text` on a single line within
+    // `availableWidth` at the given default font size. Clamped to [0.5, 1.0] so the cue
+    // never shrinks below half its default — beyond that, clipping is preferable.
+    private func activeCueFontScale(text: String, availableWidth: CGFloat) -> CGFloat {
+        guard text.isEmpty == false, availableWidth > 0 else { return 1.0 }
+        let baseFont = UIFont.systemFont(ofSize: TypographySettings.defaultTextSize)
+        let measured = (text as NSString).size(withAttributes: [.font: baseFont]).width
+        guard measured > availableWidth else { return 1.0 }
+        return max(0.5, min(1.0, availableWidth / measured))
+    }
+
+    // Height for the active-cue card — sized to fit one visual line (ruby reserve at top
+    // + body line + small bottom margin). Since the renderer now receives only the active
+    // cue's text, this height bounds the card; the renderer's contentInset (topInset =
+    // rubyReserve + 4) reserves space for ruby above the body line.
     private var activeCueRendererHeight: CGFloat {
         let textSize = TypographySettings.defaultTextSize
-        let bodyFont = UIFont.systemFont(ofSize: textSize)
+        let bodyHeight = UIFont.systemFont(ofSize: textSize).lineHeight
         let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
-        return furiganaFont.lineHeight + CGFloat(TypographySettings.defaultFuriganaGap) + 4 + bodyFont.lineHeight + 8
+        let rubyReserve = furiganaFont.lineHeight + CGFloat(TypographySettings.defaultFuriganaGap)
+        // 4pt top inset + ruby reserve + body line + 4pt bottom margin matches the geometry
+        // RenderGeometry produces with userLineSpacing=0.
+        return rubyReserve + 4 + bodyHeight + 4
     }
 
     // Builds the main lyrics panel showing the scrollable cue history above the active-cue renderer.
@@ -80,11 +182,18 @@ struct LyricsView: View {
         let rendererHeight = activeCueRendererHeight
         let displayIndex = dragDisplayIndex ?? activeIndex
 
+        // Clamp range upper bounds against lower bounds — `ForEach(a..<b)` traps when `b < a`,
+        // and that can happen here when an audio note has zero cues (transcription returned
+        // nothing, the .srt was empty) but `audioAttachmentID` is still set so this view
+        // mounts. Without the clamps, opening such a note crashes during body evaluation.
+        let aboveUpper = max(0, displayIndex)
+        let belowLower = displayIndex + 1
+        let belowUpper = max(belowLower, cues.count)
         return VStack(spacing: 0) {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
-                        ForEach(0 ..< displayIndex, id: \.self) { index in
+                        ForEach(0 ..< aboveUpper, id: \.self) { index in
                             let distance = displayIndex - index
                             inactiveCueRow(index: index, distance: distance)
                         }
@@ -95,48 +204,59 @@ struct LyricsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    guard cues.isEmpty == false else { return }
                     controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
                 }
 
-                // Active cue renderer — uses the SAME CoreText renderer as ReadView, fed the
-                // FULL noteText + segments + furigana, then auto-scrolled to the active cue's
-                // line via `playbackHighlightRange`. No data slicing — what ReadView shows
-                // (segment colors, ruby) renders identically here. The cue's NSRange acts as
-                // the scroll target; the highlight color is transparent so the band itself is
-                // invisible. Falls back to nil when the cue is non-speech (♪) or unresolved.
-                let cueRange: NSRange? = (displayIndex < highlightRanges.count) ? highlightRanges[displayIndex] : nil
+                // Active cue renderer — fed ONLY the active cue's substring (with furigana
+                // and clipped segmentation rebased to cue-local UTF-16 coords). The font is
+                // scaled down when the cue is too wide for the card to keep it on a single
+                // line, mirroring the inactive-cue scaling behavior.
+                let cueInput = activeCueRenderInput(for: displayIndex)
+                let cueOriginInNote: Int = (displayIndex < highlightRanges.count
+                    ? highlightRanges[displayIndex]?.location : nil) ?? 0
+                // Width budget: the panel's width minus the card's horizontal padding.
+                // (Focus-card style adds 8pt each side; other styles 0pt — but inset 8pt of
+                // safety margin so glyph edges don't kiss the card.)
+                let activeCueAvailableWidth = panelWidth - 16
+                let activeCueScale = activeCueFontScale(text: cueInput.text, availableWidth: activeCueAvailableWidth)
+                let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
                 VStack(spacing: 0) {
                     KiokuCoreTextRendererView(
-                        text: noteText,
-                        segmentationRanges: segmentationRanges,
-                        furiganaBySegmentLocation: furiganaBySegmentLocation,
-                        furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+                        text: cueInput.text,
+                        segmentationRanges: cueInput.segmentationRanges,
+                        furiganaBySegmentLocation: cueInput.furiganaBySegmentLocation,
+                        furiganaLengthBySegmentLocation: cueInput.furiganaLengthBySegmentLocation,
                         isFuriganaVisible: true,
                         isVisualEnhancementsEnabled: true,
                         isColorAlternationEnabled: true,
-                        textSize: Binding(get: { TypographySettings.defaultTextSize }, set: { _ in }),
+                        textSize: Binding(get: { scaledTextSize }, set: { _ in }),
                         lineSpacing: 0,
                         kerning: 0,
                         furiganaGap: CGFloat(TypographySettings.defaultFuriganaGap),
                         evenSegmentColor: UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed },
                         oddSegmentColor: UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo },
-                        isLineWrappingEnabled: true,
-                        isRubySpacingEnabled: true,
+                        // Single-line render: scaling above keeps text within the card;
+                        // disabling wrapping prevents any residual long cue from breaking
+                        // onto a second visible line (it would clip instead).
+                        isLineWrappingEnabled: false,
+                        // Classic CT layout for the active-cue card — packing requires
+                        // word-level segments which we no longer provide; clipped segments
+                        // are fine for classic layout, which still alternates colors.
+                        isRubySpacingEnabled: false,
                         selectedHighlightRange: nil,
-                        playbackHighlightRange: cueRange,
+                        playbackHighlightRange: nil,
                         selectionHighlightColor: .clear,
-                        // Transparent — the cue range is used purely to drive auto-scroll, not
-                        // to paint a highlight band on the active line.
                         playbackHighlightColor: .clear,
                         unknownSegmentLocations: [],
                         isHighlightUnknownEnabled: false,
                         unknownSegmentColor: .label,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
-                        onSegmentTapped: { globalLocation, rect in
-                            // Locations are already in noteText UTF-16 coords — no translation
-                            // needed. sourceView is nil because the CT path doesn't expose a
-                            // UITextView; popover anchoring falls back to a default.
+                        onSegmentTapped: { localLocation, rect in
+                            // Renderer hands back a cue-local UTF-16 location; translate to
+                            // global noteText coords for parent consumers.
+                            let globalLocation = localLocation.map { $0 + cueOriginInNote }
                             onSegmentTapped(globalLocation, rect, nil)
                         },
                         isScrollEnabled: false,
@@ -179,7 +299,7 @@ struct LyricsView: View {
 
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
-                        ForEach((displayIndex + 1) ..< cues.count, id: \.self) { index in
+                        ForEach(belowLower ..< belowUpper, id: \.self) { index in
                             let distance = index - displayIndex
                             inactiveCueRow(index: index, distance: distance)
                         }
@@ -190,6 +310,7 @@ struct LyricsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    guard cues.isEmpty == false else { return }
                     controller.seek(toMs: cues[min(cues.count - 1, activeIndex + 1)].startMs)
                 }
             } // end lyric VStack
@@ -205,6 +326,7 @@ struct LyricsView: View {
                         isDragging = true
                         dragStartIndex = activeIndex
                     }
+                    guard cues.isEmpty == false else { return }
                     let steps = Int(-value.translation.height / rendererHeight)
                     let raw = dragStartIndex + steps
                     dragOverscrolledToStart = raw < 0

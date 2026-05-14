@@ -1,7 +1,9 @@
 import Foundation
 
 // Bundles all display data for one dictionary entry so callers make one fetch, not three.
-public struct WordDisplayData: Equatable {
+// `nonisolated` so the bundle (and its DictionaryEntry-typed `entry`) can move freely across
+// actor boundaries — flashcards and detached fetch tasks rely on this.
+nonisolated public struct WordDisplayData: Equatable {
     // The full dictionary entry including senses, kanji forms, and kana forms.
     public let entry: DictionaryEntry
     // Pitch accent records for the entry's primary word+kana pair. Empty when not in DB.

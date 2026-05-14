@@ -308,14 +308,50 @@ final class KiokuTextLayoutEngine {
 
     // Returns one rect per line spanned by the range. Empty array for out-of-bounds or empty
     // ranges. This is the multi-line analogue of `firstRect(forCharacterRange:)` and is what
-    // segment overlays use for ranges that wrap.
+    // segment overlays and highlight bands use for ranges that wrap.
     func boundingRects(forCharacterRange range: NSRange) -> [CGRect] {
         guard range.location != NSNotFound, range.length > 0 else { return [] }
+        // In segment-packed mode the line's CTLine has CT's natural-advance X positions,
+        // NOT the packer's segment-footprint X positions — so deriving rects via
+        // `rect(in: line:)` would paint highlight bands at the wrong horizontal place
+        // (compressed toward the line's left edge). Route through packed placements
+        // instead so band X positions match what the user actually sees on screen.
+        if isSegmentPackingEnabled {
+            return packedBoundingRects(forCharacterRange: range)
+        }
         return lines.compactMap { line in
             let intersection = NSIntersectionRange(line.stringRange, range)
             guard intersection.length > 0 else { return nil }
             return rect(in: line, forCharacterRange: intersection)
         }
+    }
+
+    // Packed-mode rect lookup: walks every segment placement that intersects `range` and
+    // emits one rect per intersection using the segment's footprint-aware origin. Output
+    // matches `firstRect`'s coordinate system so highlight bands sit exactly where the
+    // segment renders.
+    private func packedBoundingRects(forCharacterRange range: NSRange) -> [CGRect] {
+        var rects: [CGRect] = []
+        for placement in segmentPlacements {
+            let segRange = NSRange(location: placement.location, length: placement.length)
+            let intersection = NSIntersectionRange(segRange, range)
+            guard intersection.length > 0 else { continue }
+            guard let line = packedLines.first(where: { $0.lineIndex == placement.lineIndex }) else { continue }
+            let segAttr = attributedString.attributedSubstring(from: segRange)
+            let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
+            let localStart = intersection.location - placement.location
+            let localEnd = localStart + intersection.length
+            let xStart = CTLineGetOffsetForStringIndex(segLine, localStart, nil)
+            let xEnd = CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
+            let headwordOriginX = placement.originX + placement.leftOverhang
+            rects.append(CGRect(
+                x: headwordOriginX + min(xStart, xEnd),
+                y: line.originY,
+                width: abs(xEnd - xStart),
+                height: line.height
+            ))
+        }
+        return rects
     }
 
     // Maps a point in renderer coordinates to its UTF-16 character index. Returns nil when

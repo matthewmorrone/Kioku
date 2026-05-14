@@ -318,6 +318,22 @@ extension ReadView {
             }
         }
 
+        // Pull every kana form from every dictionary entry that matches this surface — JMdict
+        // can list 二人 as both ふたり and ににん via separate entries, but the surface_readings
+        // table cache may only retain the primary. Looking up entries directly surfaces every
+        // historically-attested reading so the prev/next arrows show whenever real alternates
+        // exist (not just when the cache happened to capture them).
+        if let dictionaryStore {
+            let mode: LookupMode = ScriptClassifier.containsKanji(mergedSurface) ? .kanjiAndKana : .kanaOnly
+            if let entries = try? dictionaryStore.lookup(surface: mergedSurface, mode: mode) {
+                for entry in entries {
+                    for kanaForm in entry.kanaForms {
+                        appendReading(kanaForm.text)
+                    }
+                }
+            }
+        }
+
         // For multi-edge merges, include per-edge surface readings as additional fallback candidates.
         for edge in selectedEdges where edge.surface != mergedSurface {
             if let lexicon {
@@ -391,7 +407,6 @@ extension ReadView {
         guard let start = selectedEdges.first?.start, let end = selectedEdges.last?.end else { return nil }
         let surface = String(text[start..<end])
         let info = lexicon.inflectionInfo(surface: surface)
-        // print("[lemmaInfo] surface=\(surface) info=\(info.map { "\($0.lemma) chain=\($0.chain)" } ?? "nil")")
         guard let info, info.lemma != surface else { return nil }
         return (lemma: info.lemma, chain: info.chain)
     }

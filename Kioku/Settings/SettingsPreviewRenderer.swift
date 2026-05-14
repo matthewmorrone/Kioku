@@ -37,6 +37,9 @@ struct SettingsPreviewRenderer: View {
     let debugBisectorFurigana: Bool
     let debugEnvelopeRects: Bool
     let debugLeftInsetGuide: Bool
+    let debugPixelRuler: Bool
+    let debugHeadwordLineNumbers: Bool
+    let debugRubyLineNumbers: Bool
 
     // Builds segmentation ranges that treat each furigana word as its own segment,
     // with non-furigana runs as separate segments so every character is covered.
@@ -215,8 +218,10 @@ struct SettingsPreviewRenderer: View {
                 furiganaBisectors: debugBisectorFurigana,
                 headwordLineBands: debugHeadwordLineBands,
                 furiganaLineBands: debugFuriganaLineBands,
-                pixelRuler: false,
-                leftInsetGuide: debugLeftInsetGuide
+                pixelRuler: debugPixelRuler,
+                leftInsetGuide: debugLeftInsetGuide,
+                headwordLineNumbers: debugHeadwordLineNumbers,
+                rubyLineNumbers: debugRubyLineNumbers
             ),
             illegalMergeLocation: nil,
             onSegmentTapped: { _, _ in },

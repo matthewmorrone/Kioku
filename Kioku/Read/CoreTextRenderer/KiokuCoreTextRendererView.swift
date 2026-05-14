@@ -81,6 +81,14 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // centering — centering already gives the ruby's left tail plenty of room.
     var textAlignment: NSTextAlignment = .natural
 
+    // Where to position the playback-highlighted range vertically within the viewport,
+    // as a fraction (0 = top, 0.5 = middle, 1 = bottom). Default 0.32 anchors the active
+    // line in the upper third — comfortable for the read tab where users want to see
+    // some context below the cursor. The LyricsView active-cue card passes 0.5 so the
+    // active cue stays centered in the small clipped viewport; otherwise the next cue's
+    // line peeks below the active one.
+    var scrollAnchorFraction: CGFloat = 0.32
+
     // Coordinator holds the textSize captured at the start of a pinch so each .changed
     // delta computes against the original, not the live (already-mutated) value. Also
     // forwards SwiftUI bindings to the UIView's closures.
@@ -98,27 +106,11 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         let view = KiokuScrollingTextView()
         view.alwaysBounceVertical = isScrollEnabled
         view.isScrollEnabled = isScrollEnabled
-        // Cache the per-tap segment ranges on the view so updates and tap callbacks share
-        // the same NSRange snapshot — converting Range<String.Index> on every tap is wasteful
-        // and races with the text update.
-        view.onCharacterTapped = { [weak view] characterIndex in
-            guard let view else { return }
-            // Empty-space tap → no character index → tell the host to clear selection.
-            guard let characterIndex else {
-                onSegmentTapped(nil, nil)
-                return
-            }
-            guard let match = KiokuCoreTextSegmentResolver.segmentRange(
-                forCharacterIndex: characterIndex,
-                in: view.cachedSegmentNSRanges
-            ) else {
-                onSegmentTapped(nil, nil)
-                return
-            }
-            let rect = view.contentView.layoutEngine.firstRect(forCharacterRange: match)
-                .map { view.convertContentRectToHost($0) }
-            onSegmentTapped(match.location, rect)
-        }
+        // Tap callback wiring lives in `updateUIView` (not here) so each SwiftUI body
+        // re-evaluation captures the freshest `onSegmentTapped` closure — without that
+        // re-wire, the closure would lock in the FIRST struct instance's view of state
+        // (e.g. `dictionaryStore = nil` before `readResources` finishes loading) and
+        // every tap thereafter would route through the stale snapshot.
         // Pinch → text-size binding. The coordinator captures the starting size on
         // .began so each .changed multiplies a stable base by the cumulative scale.
         let coordinator = context.coordinator
@@ -142,6 +134,30 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // when the host re-evaluates with a different value (e.g. dismiss vs. active).
         uiView.isScrollEnabled = isScrollEnabled
         uiView.alwaysBounceVertical = isScrollEnabled
+
+        // Re-wire the tap callback on every body re-evaluation. The closure captures the
+        // CURRENT SwiftUI struct's `onSegmentTapped`, so callers see the latest state
+        // (text, segmentRanges, dictionaryStore, etc.). Wiring this once in makeUIView
+        // would lock in the first struct instance's snapshot — a real footgun because
+        // SwiftUI structs are recreated on every re-render but the closure they captured
+        // is not.
+        uiView.onCharacterTapped = { [weak uiView, onSegmentTapped] characterIndex in
+            guard let uiView else { return }
+            guard let characterIndex else {
+                onSegmentTapped(nil, nil)
+                return
+            }
+            guard let match = KiokuCoreTextSegmentResolver.segmentRange(
+                forCharacterIndex: characterIndex,
+                in: uiView.cachedSegmentNSRanges
+            ) else {
+                onSegmentTapped(nil, nil)
+                return
+            }
+            let rect = uiView.contentView.layoutEngine.firstRect(forCharacterRange: match)
+                .map { uiView.convertContentRectToHost($0) }
+            onSegmentTapped(match.location, rect)
+        }
         let font = UIFont.systemFont(ofSize: textSize)
         let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
         let output = KiokuCoreTextAttributedStringBuilder.build(
@@ -320,61 +336,28 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
             }
         }
 
-        // Feed the debug overlay. Computing geometry here (not in the overlay view's
-        // draw pass) so the overlay can stay a pure renderer of pre-computed rects —
-        // makes it easy to unit test and cheap to redraw on flag toggles.
-        let engineLines = uiView.contentView.layoutEngine.lines
+        // Build the lexical segment list and hand it to the scroll view. Non-lexical
+        // segments (whitespace, newlines, pure punctuation) are dropped — they exist
+        // in cachedSegmentNSRanges because the concat-equals-content invariant requires
+        // every character to belong to a segment, but they have no headword or ruby and
+        // would otherwise render as empty envelopes. The scroll view's
+        // `recomputeDebugGeometry` runs both now AND on layoutSubviews, so a view that
+        // first laid out with width=0 (preview) still gets accurate geometry once the
+        // real width arrives.
         let nsText = text as NSString
         let baseFont = UIFont.systemFont(ofSize: textSize)
-
-        // Build the segment list the debug overlay should iterate. Non-lexical segments
-        // (whitespace, newlines, pure punctuation) are dropped here — they exist in
-        // `cachedSegmentNSRanges` because the concat-equals-content invariant requires
-        // every character to belong to a segment, but they have no headword or ruby and
-        // would otherwise render as empty envelopes at the end of every line that ends
-        // with a newline. (Wrapped lines don't show this because their break point
-        // doesn't materialize a newline character — only explicit `\n` segments do.)
         let lexicalSegmentNSRanges: [NSRange] = uiView.cachedSegmentNSRanges.filter { range in
             let surface = nsText.substring(with: range)
             return SegmentClassifier.isNonLexical(surface) == false
         }
-
-        // Segment rects span the FULL typographic advance from CTLine (no glyph-width
-        // clipping). That way adjacent segments' envelopes touch edge-to-edge — the
-        // trailing kern that pushes the next segment away stays INSIDE the current
-        // segment's envelope, not as empty space between two envelopes.
-        var firstRectByRange: [NSRange: CGRect] = [:]
-        for range in lexicalSegmentNSRanges {
-            guard let r = uiView.contentView.layoutEngine.firstRect(forCharacterRange: range) else { continue }
-            firstRectByRange[range] = r
-        }
-
-        // Tight kanji-run rects, one per ruby entry. Drives headword + bisector.
-        var kanjiRunRectByLocation: [Int: CGRect] = [:]
-        for (kanjiLoc, _) in furiganaBySegmentLocation {
-            guard let kLen = furiganaLengthBySegmentLocation[kanjiLoc], kLen > 0 else { continue }
-            let kRange = NSRange(location: kanjiLoc, length: kLen)
-            guard let r = uiView.contentView.layoutEngine.firstRect(forCharacterRange: kRange) else { continue }
-            let kanjiSurface = nsText.substring(with: kRange)
-            let glyphWidth = ceil((kanjiSurface as NSString).size(withAttributes: [.font: baseFont]).width)
-            kanjiRunRectByLocation[kanjiLoc] = CGRect(x: r.origin.x, y: r.origin.y, width: min(r.width, glyphWidth), height: r.height)
-        }
-
-        let geometryInputs = KiokuDebugOverlayGeometry.Inputs(
-            firstRectByNSRange: firstRectByRange,
-            segmentNSRanges: lexicalSegmentNSRanges,
-            kanjiRunRectByLocation: kanjiRunRectByLocation,
-            kanjiRunLengthByLocation: furiganaLengthBySegmentLocation,
-            readingByLocation: furiganaBySegmentLocation,
+        uiView.debugGeometryInputs = KiokuScrollingTextView.DebugGeometryInputs(
+            lexicalSegmentNSRanges: lexicalSegmentNSRanges,
+            furiganaByLocation: furiganaBySegmentLocation,
+            furiganaLengthByLocation: furiganaLengthBySegmentLocation,
             baseFont: baseFont,
             furiganaFont: furiganaFont,
-            lineFrames: engineLines.map { $0.frame },
-            furiganaBandHeight: ceil(furiganaFont.lineHeight),
             isFuriganaVisible: isFuriganaVisible
         )
-        uiView.debugOverlay.segmentGeometry = KiokuDebugOverlayGeometry.segments(geometryInputs)
-        uiView.debugOverlay.lineGeometry = KiokuDebugOverlayGeometry.lines(geometryInputs)
-        uiView.debugOverlay.leftInsetX = uiView.contentView.layoutEngine.contentInset.left
         uiView.debugOverlay.illegalMergeLocation = illegalMergeLocation
         uiView.debugOverlay.flags = debugFlags
 
@@ -389,9 +372,10 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         uiView.contentView.highlightBands = bands
 
         // Auto-scroll the playback range into view so the active cue stays visible during
-        // audio playback. Targets ~32% from the top of the viewport to mirror the TK2 path.
+        // audio playback. The anchor fraction is configurable so LyricsView can center
+        // the active cue in its small viewport without bleeding the next cue's line.
         if let range = playbackHighlightRange, range.length > 0 {
-            uiView.scrollRangeIntoView(range, anchorFraction: 0.32)
+            uiView.scrollRangeIntoView(range, anchorFraction: scrollAnchorFraction)
         }
 
         uiView.setNeedsLayout()
@@ -479,8 +463,72 @@ final class KiokuScrollingTextView: UIScrollView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    // Snapshot of the inputs needed to rebuild the debug overlay's geometry. Stored on
+    // the scroll view so `layoutSubviews` can refresh the overlay after a width change
+    // (which causes the engine to relayout); otherwise the overlay would keep stale
+    // geometry from the first `updateUIView` call — which is the case for any
+    // representable whose initial bounds are zero (e.g. SettingsPreviewRenderer).
+    struct DebugGeometryInputs {
+        var lexicalSegmentNSRanges: [NSRange] = []
+        var furiganaByLocation: [Int: String] = [:]
+        var furiganaLengthByLocation: [Int: Int] = [:]
+        var baseFont: UIFont = UIFont.systemFont(ofSize: 18)
+        var furiganaFont: UIFont = UIFont.systemFont(ofSize: 9)
+        var isFuriganaVisible: Bool = true
+    }
+    var debugGeometryInputs = DebugGeometryInputs() {
+        didSet { recomputeDebugGeometry() }
+    }
+
+    // Rebuilds the debug overlay's segment + line geometry from the stored inputs and
+    // the engine's current layout state. Called from `updateUIView` (when inputs
+    // arrive) AND from `layoutSubviews` (so width-driven engine relayouts propagate
+    // to the overlay without needing SwiftUI to re-evaluate the parent body).
+    func recomputeDebugGeometry() {
+        let inputs = debugGeometryInputs
+        let nsText = contentView.layoutEngine.attributedString.string as NSString
+        var firstRectByRange: [NSRange: CGRect] = [:]
+        for range in inputs.lexicalSegmentNSRanges {
+            guard let r = contentView.layoutEngine.firstRect(forCharacterRange: range) else { continue }
+            firstRectByRange[range] = r
+        }
+        var kanjiRunRectByLocation: [Int: CGRect] = [:]
+        for (kanjiLoc, _) in inputs.furiganaByLocation {
+            guard let kLen = inputs.furiganaLengthByLocation[kanjiLoc], kLen > 0 else { continue }
+            guard kanjiLoc + kLen <= nsText.length else { continue }
+            let kRange = NSRange(location: kanjiLoc, length: kLen)
+            guard let r = contentView.layoutEngine.firstRect(forCharacterRange: kRange) else { continue }
+            let kanjiSurface = nsText.substring(with: kRange)
+            let glyphWidth = ceil((kanjiSurface as NSString).size(withAttributes: [.font: inputs.baseFont]).width)
+            kanjiRunRectByLocation[kanjiLoc] = CGRect(
+                x: r.origin.x,
+                y: r.origin.y,
+                width: min(r.width, glyphWidth),
+                height: r.height
+            )
+        }
+        let engineLines = contentView.layoutEngine.lines
+        let geometryInputs = KiokuDebugOverlayGeometry.Inputs(
+            firstRectByNSRange: firstRectByRange,
+            segmentNSRanges: inputs.lexicalSegmentNSRanges,
+            kanjiRunRectByLocation: kanjiRunRectByLocation,
+            kanjiRunLengthByLocation: inputs.furiganaLengthByLocation,
+            readingByLocation: inputs.furiganaByLocation,
+            baseFont: inputs.baseFont,
+            furiganaFont: inputs.furiganaFont,
+            lineFrames: engineLines.map { $0.frame },
+            furiganaBandHeight: ceil(inputs.furiganaFont.lineHeight),
+            isFuriganaVisible: inputs.isFuriganaVisible
+        )
+        debugOverlay.segmentGeometry = KiokuDebugOverlayGeometry.segments(geometryInputs)
+        debugOverlay.lineGeometry = KiokuDebugOverlayGeometry.lines(geometryInputs)
+        debugOverlay.leftInsetX = contentView.layoutEngine.contentInset.left
+    }
+
     // Sizes the content view to fill the width and grow to natural height; overlay tracks
-    // the same frame so its rect math stays aligned with the engine output.
+    // the same frame so its rect math stays aligned with the engine output. ALSO triggers
+    // a debug-geometry refresh — the engine relayouts when width changes, and the
+    // overlay's geometry depends on engine state, so it has to refresh in lockstep.
     override func layoutSubviews() {
         super.layoutSubviews()
         let width = bounds.width
@@ -488,6 +536,11 @@ final class KiokuScrollingTextView: UIScrollView {
         contentView.frame = CGRect(x: 0, y: 0, width: width, height: height)
         debugOverlay.frame = contentView.frame
         contentSize = CGSize(width: width, height: height)
+        // Recompute debug geometry from the engine's now-current layout state. Without
+        // this, a view whose first `updateUIView` ran with width=0 (e.g. a representable
+        // inside a Form Section) would keep an empty `segmentGeometry` even after layout
+        // populated valid placements.
+        recomputeDebugGeometry()
     }
 
     // Translates a rect from the content view's coordinate space to this scroll-view-relative

@@ -109,7 +109,10 @@ struct SettingsView: View {
                         debugBisectorHeadword: debugBisectorHeadword,
                         debugBisectorFurigana: debugBisectorFurigana,
                         debugEnvelopeRects: debugEnvelopeRects,
-                        debugLeftInsetGuide: debugLeftInsetGuide
+                        debugLeftInsetGuide: debugLeftInsetGuide,
+                        debugPixelRuler: debugPixelRuler,
+                        debugHeadwordLineNumbers: debugHeadwordLineNumbers,
+                        debugRubyLineNumbers: debugRubyLineNumbers
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Vertical padding for breathing room; negative horizontal padding cancels
