@@ -4,8 +4,16 @@ import SwiftUI
 
 // Caches generated SongBreakdowns keyed by Note ID. Derived data per AGENTS.md — never
 // written into Note. On disk as one JSON file per note under Application Support so an
-// individual breakdown can be dropped without touching others. In-memory cache builds
-// lazily on access so app startup doesn't pay for breakdowns the user isn't studying.
+// individual breakdown can be dropped without touching others.
+//
+// Two in-memory tiers:
+//   1. `breakdownsByNoteID` — @Published, owned by user-driven set/clear operations.
+//   2. `diskMemoCache` — non-published memo populated by lazy disk reads on access.
+//
+// The split exists so the read accessor can fault a disk-backed breakdown into memory
+// during SwiftUI body evaluation (SongsHomeView rows do this on relaunch) without
+// triggering `objectWillChange` mid-render, which produces SwiftUI's "Publishing changes
+// from within view updates" runtime warning and can destabilise row diffing.
 //
 // Cache is hash-aware but not auto-invalidating: when the note's current text hash
 // disagrees with the stored breakdown's sourceTextHash, callers see `isStale == true`
@@ -14,10 +22,15 @@ import SwiftUI
 @MainActor
 final class SongBreakdownStore: ObservableObject {
 
-    // Publishes the in-memory cache. Views observe this to react when a breakdown lands or
-    // gets cleared. May be sparse — a missing entry could be "never generated" or "on disk
-    // but not yet faulted in"; use `hasBreakdownOnDisk` for the latter distinction.
+    // Publishes only entries written via set/clear — i.e. user-initiated changes since
+    // launch. Views observe this to react to generations and regenerations. May be sparse
+    // (a disk-backed entry isn't published until/unless something writes to it).
     @Published private(set) var breakdownsByNoteID: [UUID: SongBreakdown] = [:]
+
+    // Non-published memo for lazy disk reads. Mutated by `breakdown(forNoteID:)` so the
+    // accessor stays safe to call during SwiftUI body evaluation — the field is not
+    // observed, so the mutation doesn't invalidate views.
+    private var diskMemoCache: [UUID: SongBreakdown] = [:]
 
     private let directoryURL: URL
     private let fileManager: FileManager
@@ -31,18 +44,23 @@ final class SongBreakdownStore: ObservableObject {
         self.knownNoteIDsOnDisk = scanDirectoryForNoteIDs()
     }
 
-    // Returns the cached breakdown for the note, faulting in from disk if needed. Returns nil
-    // when no breakdown has ever been generated (or the on-disk file is corrupt).
+    // Returns the cached breakdown for the note. Looks in the @Published cache first, then
+    // the non-published memo, then disk (faulting into memo on hit). Never mutates the
+    // @Published cache so it can be called from SwiftUI view bodies without producing the
+    // "publishing changes from within view updates" warning.
     func breakdown(forNoteID id: UUID) -> SongBreakdown? {
-        if let cached = breakdownsByNoteID[id] {
-            return cached
+        if let published = breakdownsByNoteID[id] {
+            return published
+        }
+        if let memo = diskMemoCache[id] {
+            return memo
         }
         guard knownNoteIDsOnDisk.contains(id) else { return nil }
         guard let loaded = readFromDisk(noteID: id) else {
             knownNoteIDsOnDisk.remove(id)
             return nil
         }
-        breakdownsByNoteID[id] = loaded
+        diskMemoCache[id] = loaded
         return loaded
     }
 
@@ -60,43 +78,44 @@ final class SongBreakdownStore: ObservableObject {
         return existing.sourceTextHash == currentTextHash
     }
 
-    // Replaces (or installs) the breakdown for a note. Encodes synchronously on the main
-    // actor (JSON is tiny — under 100 KB even for long songs) so the Codable conformance
-    // stays in its inferred isolation; only the file I/O is detached so UI doesn't block.
+    // Replaces (or installs) the breakdown for a note. Writes synchronously: a regenerate
+    // flow calls clearBreakdown then immediately setBreakdown, so any background-scheduled
+    // delete would race with the new write and could wipe fresh JSON before relaunch.
+    // JSON for a typical breakdown is well under 100 KB; the main-thread cost is negligible.
     func setBreakdown(_ breakdown: SongBreakdown) {
+        diskMemoCache.removeValue(forKey: breakdown.noteID)
         breakdownsByNoteID[breakdown.noteID] = breakdown
         knownNoteIDsOnDisk.insert(breakdown.noteID)
-        let url = fileURL(for: breakdown.noteID)
 
+        let url = fileURL(for: breakdown.noteID)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        let data: Data
         do {
-            data = try encoder.encode(breakdown)
-        } catch {
-            print("[SongBreakdownStore] encode failed for \(breakdown.noteID): \(error)")
-            return
-        }
-
-        let directory = directoryURL
-        let manager = fileManager
-        Task.detached(priority: .utility) {
-            if manager.fileExists(atPath: directory.path) == false {
-                try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
+            let data = try encoder.encode(breakdown)
+            if fileManager.fileExists(atPath: directoryURL.path) == false {
+                try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
             }
-            try? data.write(to: url, options: .atomic)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            print("[SongBreakdownStore] write failed for \(breakdown.noteID): \(error)")
         }
     }
 
-    // Removes the breakdown for a note. Used by the Regenerate flow before invoking the
-    // service so the cache reflects "nothing here" while the new call is in flight.
+    // Removes the breakdown for a note. Synchronous on disk so a follow-up setBreakdown
+    // (Regenerate flow) cannot race a still-pending delete and have its fresh JSON wiped.
     func clearBreakdown(forNoteID id: UUID) {
         breakdownsByNoteID.removeValue(forKey: id)
+        diskMemoCache.removeValue(forKey: id)
         knownNoteIDsOnDisk.remove(id)
+
         let url = fileURL(for: id)
-        Task.detached(priority: .utility) { [fileManager] in
-            try? fileManager.removeItem(at: url)
+        if fileManager.fileExists(atPath: url.path) {
+            do {
+                try fileManager.removeItem(at: url)
+            } catch {
+                print("[SongBreakdownStore] delete failed for \(id): \(error)")
+            }
         }
     }
 
