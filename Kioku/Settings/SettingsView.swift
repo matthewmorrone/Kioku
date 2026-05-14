@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage(TypographySettings.kerningKey) private var kerning = TypographySettings.defaultKerning
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
     @AppStorage(LyricsDisplayStyle.storageKey) private var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
+    @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
 
     @AppStorage(LLMSettings.providerKey) private var llmProviderRaw: String = LLMSettings.defaultProvider
@@ -167,6 +168,11 @@ struct SettingsView: View {
                             Text(style.displayName).tag(style.rawValue)
                         }
                     }
+                    Toggle("Background Audio", isOn: $backgroundPlayback)
+                } header: {
+                    Text("Audio")
+                } footer: {
+                    Text("When on, audio keeps playing when the phone is silenced or the app is backgrounded.")
                 }
 
                 // Inline chip editor for the single-kana allowlist used during lattice path filtering.
