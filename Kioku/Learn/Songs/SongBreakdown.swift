@@ -36,12 +36,15 @@ struct SongBreakdown: Codable, Equatable, Sendable {
 // dictionary reading (e.g. 愛人 written, "hito" sung). When the user taps the chip to save,
 // `surface` is resolved against the dictionary to obtain a canonical_entry_id —
 // the (surface, sungRomaji) pair is a lookup key, not authoritative identity.
-struct SongWord: Codable, Equatable, Identifiable, Sendable {
+//
+// Deliberately NOT Identifiable: a single line can list the same word more than once
+// (chorus refrains, repeated particles), so any identity derived from the value alone
+// collides and breaks SwiftUI ForEach. Consumers iterate with positional identity instead
+// (e.g. ForEach over enumerated() with id: \.offset).
+struct SongWord: Codable, Equatable, Sendable {
     let surface: String
     let sungRomaji: String
     let definition: String
-
-    var id: String { "\(surface)|\(sungRomaji)" }
 }
 
 // Encodes "this line repeats an earlier one" so the stepper can render a chip linking back

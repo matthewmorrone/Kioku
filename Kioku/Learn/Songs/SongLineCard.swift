@@ -145,10 +145,12 @@ struct SongLineCard: View {
 
     // Word entries as a vertical list with surface, sungRomaji, and the LLM definition.
     // Non-interactive in v1; a tap-to-lookup follow-up will wire each entry to the
-    // existing dictionary lookup card.
+    // existing dictionary lookup card. Identifies rows by positional offset because a
+    // single line can repeat the same word (chorus, refrain) and value-based identity
+    // would collide and break SwiftUI's row diffing.
     private var wordsList: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(line.words) { word in
+            ForEach(Array(line.words.enumerated()), id: \.offset) { _, word in
                 wordEntryRow(word)
             }
         }
