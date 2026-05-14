@@ -18,6 +18,7 @@ struct ContentView: View {
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
     @StateObject private var reviewStore = ReviewStore()
+    @StateObject private var songBreakdownStore = SongBreakdownStore()
     @State private var selectedReadNote: Note?
     @State private var shouldActivateReadEditMode = false
     @State private var readResources = ReadResources()
@@ -123,6 +124,7 @@ struct ContentView: View {
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
         .environmentObject(reviewStore)
+        .environmentObject(songBreakdownStore)
         .environmentObject(wotdNavigation)
         .onAppear {
             StartupTimer.mark("onAppear fired")
