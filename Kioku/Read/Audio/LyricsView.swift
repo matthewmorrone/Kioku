@@ -117,6 +117,7 @@ struct LyricsView: View {
                         textSize: Binding(get: { TypographySettings.defaultTextSize }, set: { _ in }),
                         lineSpacing: 0,
                         kerning: 0,
+                        furiganaGap: CGFloat(TypographySettings.defaultFuriganaGap),
                         evenSegmentColor: UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed },
                         oddSegmentColor: UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo },
                         isLineWrappingEnabled: true,
@@ -138,7 +139,8 @@ struct LyricsView: View {
                             // UITextView; popover anchoring falls back to a default.
                             onSegmentTapped(globalLocation, rect, nil)
                         },
-                        isScrollEnabled: false
+                        isScrollEnabled: false,
+                        textAlignment: .center
                     )
                     .frame(maxWidth: .infinity)
                     .frame(height: rendererHeight)

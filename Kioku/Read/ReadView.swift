@@ -39,6 +39,8 @@ struct ReadView: View {
     @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
     @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
     @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
+    @AppStorage(DebugSettings.headwordLineNumbersKey) private var debugHeadwordLineNumbers: Bool = false
+    @AppStorage(DebugSettings.rubyLineNumbersKey) private var debugRubyLineNumbers: Bool = false
     @AppStorage(DebugSettings.bisectorHeadwordKey) private var debugBisectorHeadword: Bool = false
     @AppStorage(DebugSettings.bisectorFuriganaKey) private var debugBisectorFurigana: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
@@ -433,14 +435,18 @@ struct ReadView: View {
                     }
                 }
 
-                // When segments are persisted and furigana is already loaded, nothing to do.
-                // When segments exist but furigana is missing, generate it now that surfaceReadingData is ready.
-                // Otherwise recompute full segmentation.
+                // When segments are persisted, schedule furigana generation unconditionally
+                // so the now-loaded surfaceReadingData has a chance to upgrade per-character
+                // fragments to the compound reading (e.g. もの+ご at 物+語 → ものがたり covering
+                // both kanji). The previous "skip when already populated" guard let stale
+                // per-character entries from disk persist forever once resources loaded
+                // post-note-open. The recompute uses replace-on-overlap semantics — exact-
+                // range entries survive (user pins, prior-correct annotations) while
+                // fragmented narrow entries get superseded by wider compound spans.
+                // Otherwise (no persisted segments) recompute full segmentation.
                 if segments != nil {
-                    if furiganaBySegmentLocation.isEmpty {
-                        StartupTimer.mark("scheduling furigana for persisted segments (furigana missing)")
-                        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
-                    }
+                    StartupTimer.mark("scheduling furigana now that surfaceReadingData is ready")
+                    scheduleFuriganaGeneration(for: text, edges: segmentEdges)
                 } else {
                     StartupTimer.mark("no persisted segments, running full segmentation")
                     refreshSegmentationRanges()
@@ -624,6 +630,7 @@ struct ReadView: View {
                         textSize: $textSize,
                         lineSpacing: lineSpacing,
                         kerning: kerning,
+                        furiganaGap: CGFloat(furiganaGap),
                         evenSegmentColor: customTokenColorsEnabled
                             ? (UIColor(hexString: tokenColorAHex) ?? .label)
                             : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed },
@@ -648,7 +655,9 @@ struct ReadView: View {
                             headwordLineBands: debugHeadwordLineBands,
                             furiganaLineBands: debugFuriganaLineBands,
                             pixelRuler: debugPixelRuler,
-                            leftInsetGuide: debugLeftInsetGuide
+                            leftInsetGuide: debugLeftInsetGuide,
+                            headwordLineNumbers: debugHeadwordLineNumbers,
+                            rubyLineNumbers: debugRubyLineNumbers
                         ),
                         illegalMergeLocation: illegalMergeBoundaryLocation,
                         onSegmentTapped: { location, rect in

@@ -26,7 +26,14 @@ extension ReadView {
         segmentRanges = edges.map { edge in
             edge.start..<edge.end
         }
-        unknownSegmentLocations = unknownSegmentLocations(for: edges)
+        // Manual edits (split/merge) intentionally produce surfaces that won't resolve in
+        // the trie — the user just carved them. Computing unknownSegmentLocations here
+        // would mark every fresh fragment as "unknown," and with Highlight Unknown on the
+        // renderer would paint them all in `unknownSegmentColor` (= .label, invisible
+        // against the base text). That manifests to the user as "all segment colors went
+        // away after the split." Mirror refreshSegmentationRanges' fast path here and let
+        // the next full segmenter pass repopulate unknowns from real lookup misses.
+        unknownSegmentLocations = []
         recordRuntimeSegmentationSnapshot(for: edges)
 
         let pruned = pruneFuriganaForSegmentation(

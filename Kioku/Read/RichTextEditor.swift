@@ -163,15 +163,20 @@ struct RichTextEditor: UIViewRepresentable {
     }
 
     // Applies font, kerning, and paragraph spacing to both content and typing attributes.
+    // Geometry comes from `RenderGeometry.resolve` so this path always agrees with the CT
+    // view-mode renderer on top inset and inter-line gap. Without that shared resolver,
+    // characters drift vertically when toggling between edit and view (~6pt per line at
+    // default settings) — a regression the user explicitly called out.
     private func applyTypography(to textView: UITextView, text: String) {
         let font = UIFont.systemFont(ofSize: textSize)
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
-        textView.textContainerInset = UIEdgeInsets(
-            top: furiganaFont.lineHeight + CGFloat(furiganaGap) + 4,
-            left: 4, bottom: 8, right: 4
+        let geometry = RenderGeometry.resolve(
+            textSize: textSize,
+            userLineSpacing: lineSpacing,
+            furiganaGap: furiganaGap
         )
+        textView.textContainerInset = geometry.contentInset
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineSpacing = lineSpacing + (font.lineHeight * 0.5)
+        paragraphStyle.lineSpacing = geometry.interLineGap
         paragraphStyle.lineBreakMode = isLineWrappingEnabled ? .byWordWrapping : .byClipping
         paragraphStyle.alignment = .natural
 

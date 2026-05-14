@@ -36,6 +36,11 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     @Binding var textSize: Double
     let lineSpacing: CGFloat
     let kerning: CGFloat
+    // Vertical pixel gap between the kanji line-box top and the ruby's baseline. Drives the
+    // user-tunable "furigana gap" slider. The renderer reserves room for ruby above each
+    // line via the engine's `topRubyReserve`, and this value controls where inside that
+    // reserve the ruby glyphs land.
+    let furiganaGap: CGFloat
     let evenSegmentColor: UIColor
     let oddSegmentColor: UIColor
     let isLineWrappingEnabled: Bool
@@ -69,6 +74,13 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // them drift the card off the active line.
     var isScrollEnabled: Bool = true
 
+    // Horizontal alignment of laid-out lines within the available width. `.natural`/`.left`
+    // = engine default (origins at the content inset). `.center` = each line gets a per-
+    // line origin shift so it sits centered in the available width; used by LyricsView's
+    // active-cue card. Wide-ruby line-start insets are NOT additionally applied under
+    // centering — centering already gives the ruby's left tail plenty of room.
+    var textAlignment: NSTextAlignment = .natural
+
     // Coordinator holds the textSize captured at the start of a pinch so each .changed
     // delta computes against the original, not the live (already-mutated) value. Also
     // forwards SwiftUI bindings to the UIView's closures.
@@ -91,6 +103,11 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // and races with the text update.
         view.onCharacterTapped = { [weak view] characterIndex in
             guard let view else { return }
+            // Empty-space tap → no character index → tell the host to clear selection.
+            guard let characterIndex else {
+                onSegmentTapped(nil, nil)
+                return
+            }
             guard let match = KiokuCoreTextSegmentResolver.segmentRange(
                 forCharacterIndex: characterIndex,
                 in: view.cachedSegmentNSRanges
@@ -125,9 +142,9 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // when the host re-evaluates with a different value (e.g. dismiss vs. active).
         uiView.isScrollEnabled = isScrollEnabled
         uiView.alwaysBounceVertical = isScrollEnabled
-        NSLog("[kioku.ct] updateUIView text.count=%d segments=%d furi=%d", text.count, segmentationRanges.count, furiganaBySegmentLocation.count)
         let font = UIFont.systemFont(ofSize: textSize)
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        let output = KiokuCoreTextAttributedStringBuilder.build(
             .init(
                 text: text,
                 segmentationRanges: segmentationRanges,
@@ -145,20 +162,51 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                 oddSegmentColor: oddSegmentColor,
                 unknownSegmentLocations: unknownSegmentLocations,
                 isHighlightUnknownEnabled: isHighlightUnknownEnabled,
-                unknownSegmentColor: unknownSegmentColor
+                unknownSegmentColor: unknownSegmentColor,
+                isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible
             )
         )
-        uiView.contentView.setAttributedString(attributed)
-        // CTRubyAnnotation already inflates the line's ascent to include the ruby row, so
-        // we only add the user-configured extra spacing here — adding more would double-
-        // reserve space above each line and visibly stretch the layout vs. TK2.
-        uiView.contentView.setLineSpacing(lineSpacing)
-        // Match TK2's UITextView.textContainerInset so layout origin and margins agree
-        // between renderers (8pt top/bottom, 4pt left/right, lineFragmentPadding = 0).
-        uiView.contentView.setContentInset(UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4))
+        uiView.contentView.setAttributedString(output.attributedString)
+        // Hand the ruby entries + per-glyph metrics to the view so its draw pass can render
+        // each reading manually above its kanji rect.
+        uiView.contentView.baseTextSize = CGFloat(textSize)
+        uiView.contentView.furiganaGap = isFuriganaVisible ? furiganaGap : 0
+        uiView.contentView.rubyEntries = isFuriganaVisible ? output.rubyEntries : []
+        // Geometry is resolved by the SHARED RenderGeometry helper so this path produces
+        // the same line origins as RichTextEditor — toggling edit↔view never moves a
+        // character. The reserve for ruby is baked into the top inset (line 0) and the
+        // inter-line gap (line 1+); we no longer apply a per-line ruby reserve in the
+        // engine because it would be additive on top of the geometry-supplied gap and
+        // recreate the divergence we just removed.
+        let geometry = RenderGeometry.resolve(
+            textSize: textSize,
+            userLineSpacing: lineSpacing,
+            furiganaGap: furiganaGap
+        )
+        uiView.contentView.setTopRubyReserve(0)
+        uiView.contentView.setLineSpacing(geometry.interLineGap)
+        // Same geometry as RichTextEditor so character positions match across edit↔view.
+        uiView.contentView.setContentInset(geometry.contentInset)
         uiView.cachedSegmentNSRanges = segmentationRanges
             .map { NSRange($0, in: text) }
             .filter { $0.location != NSNotFound && $0.length > 0 }
+        // Hand the same ranges to the engine so it can forbid mid-segment line breaks.
+        // TK2's `shouldBreakLineBefore:hyphenating:` delegate did this implicitly; the CT
+        // path post-processes CT's break suggestion against this list instead. Without
+        // this, a long compound (抜け殻, 思い出) at the right margin would be bisected
+        // mid-character; with it, the whole compound wraps to the next line as a unit.
+        uiView.contentView.setSegmentNSRanges(uiView.cachedSegmentNSRanges)
+        // Toggle segment-packed layout based on the ruby-spacing user setting. When on,
+        // the engine packs segments by max(headword, ruby) footprint with zero inter-
+        // segment gap and atomic seg+ruby wrapping. When off, the engine uses CT's
+        // word-wrap and the renderer's existing per-line draw path (no behavior change).
+        uiView.contentView.layoutEngine.setSegmentPacking(
+            enabled: isRubySpacingEnabled && isFuriganaVisible,
+            furiganaByLocation: isFuriganaVisible ? furiganaBySegmentLocation : [:],
+            furiganaLengthByLocation: isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+            bodyFont: font,
+            furiganaFont: furiganaFont
+        )
 
         // Apply per-line origin shifts for wide-ruby line-starts. Replacement for TextKit
         // 2's textContainer.exclusionPaths. CTLineGetImageBounds doesn't include ruby
@@ -170,7 +218,22 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // allowed to overhang past the inset guide (matching TK2's behavior with the
         // same toggle off).
         var shifts: [Int: CGFloat] = [:]
-        if isFuriganaVisible && isRubySpacingEnabled && furiganaBySegmentLocation.isEmpty == false {
+        // Centering takes precedence over wide-ruby line-start insets — when text is centered
+        // there's already room on the left for ruby overhang. The shifts dict is the union of
+        // (centering | wide-ruby), with whichever the active mode dictates winning.
+        if textAlignment == .center {
+            let engineLinesForCentering = uiView.contentView.layoutEngine.lines
+            let inset = uiView.contentView.layoutEngine.contentInset
+            let availableWidth = uiView.bounds.width - inset.left - inset.right
+            if availableWidth > 0 {
+                for (index, line) in engineLinesForCentering.enumerated() {
+                    let extra = availableWidth - line.width
+                    if extra > 0.5 {
+                        shifts[index] = extra / 2
+                    }
+                }
+            }
+        } else if isFuriganaVisible && isRubySpacingEnabled && furiganaBySegmentLocation.isEmpty == false {
             let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
             let widthShifts = KiokuWideRubyLineInset.shifts(
                 for: .init(
@@ -199,7 +262,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // inset guide so it doesn't spam logs in normal use.
         // Dump segment-by-segment envelope heights so we can verify the standardization
         // is actually taking effect. Gated by envelopeRects toggle.
-        if debugFlags.envelopeRects {
+        if debugFlags.envelopeRects && isRubySpacingEnabled {
             for seg in uiView.debugOverlay.segmentGeometry.prefix(8) {
                 NSLog("[kioku.ct.geom] loc=%d envelope=(%.1f,%.1f,%.1f,%.1f) headword.h=%.1f furi.h=%.1f",
                       seg.location,
@@ -211,7 +274,9 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         }
         // Mirror TK2's `[envelope-gap]` log so we can compare gaps side-by-side. Gated
         // by the same debug toggle TK2 uses (envelopeRects), so the two emit in lockstep.
-        if debugFlags.envelopeRects {
+        // Also gated on isRubySpacingEnabled — these logs only make sense when the
+        // spacing pipeline is actually active.
+        if debugFlags.envelopeRects && isRubySpacingEnabled {
             let nsText = text as NSString
             let ranges = uiView.cachedSegmentNSRanges
             for i in 0..<max(0, ranges.count - 1) {
@@ -225,7 +290,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                 NSLog("[kioku.ct envelope-gap] %@ → %@ gap=%.1fpt", nsText.substring(with: a), nsText.substring(with: b), Double(gap))
             }
         }
-        if debugFlags.leftInsetGuide {
+        if debugFlags.leftInsetGuide && isRubySpacingEnabled {
             let inset = uiView.contentView.layoutEngine.contentInset.left
             for (lineIndex, line) in uiView.contentView.layoutEngine.lines.enumerated() {
                 guard let firstSeg = uiView.cachedSegmentNSRanges.first(where: { $0.location == line.stringRange.location }),
@@ -258,17 +323,28 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // Feed the debug overlay. Computing geometry here (not in the overlay view's
         // draw pass) so the overlay can stay a pure renderer of pre-computed rects —
         // makes it easy to unit test and cheap to redraw on flag toggles.
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
         let engineLines = uiView.contentView.layoutEngine.lines
         let nsText = text as NSString
         let baseFont = UIFont.systemFont(ofSize: textSize)
+
+        // Build the segment list the debug overlay should iterate. Non-lexical segments
+        // (whitespace, newlines, pure punctuation) are dropped here — they exist in
+        // `cachedSegmentNSRanges` because the concat-equals-content invariant requires
+        // every character to belong to a segment, but they have no headword or ruby and
+        // would otherwise render as empty envelopes at the end of every line that ends
+        // with a newline. (Wrapped lines don't show this because their break point
+        // doesn't materialize a newline character — only explicit `\n` segments do.)
+        let lexicalSegmentNSRanges: [NSRange] = uiView.cachedSegmentNSRanges.filter { range in
+            let surface = nsText.substring(with: range)
+            return SegmentClassifier.isNonLexical(surface) == false
+        }
 
         // Segment rects span the FULL typographic advance from CTLine (no glyph-width
         // clipping). That way adjacent segments' envelopes touch edge-to-edge — the
         // trailing kern that pushes the next segment away stays INSIDE the current
         // segment's envelope, not as empty space between two envelopes.
         var firstRectByRange: [NSRange: CGRect] = [:]
-        for range in uiView.cachedSegmentNSRanges {
+        for range in lexicalSegmentNSRanges {
             guard let r = uiView.contentView.layoutEngine.firstRect(forCharacterRange: range) else { continue }
             firstRectByRange[range] = r
         }
@@ -286,14 +362,15 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
 
         let geometryInputs = KiokuDebugOverlayGeometry.Inputs(
             firstRectByNSRange: firstRectByRange,
-            segmentNSRanges: uiView.cachedSegmentNSRanges,
+            segmentNSRanges: lexicalSegmentNSRanges,
             kanjiRunRectByLocation: kanjiRunRectByLocation,
             kanjiRunLengthByLocation: furiganaLengthBySegmentLocation,
             readingByLocation: furiganaBySegmentLocation,
             baseFont: baseFont,
             furiganaFont: furiganaFont,
             lineFrames: engineLines.map { $0.frame },
-            furiganaBandHeight: ceil(furiganaFont.lineHeight)
+            furiganaBandHeight: ceil(furiganaFont.lineHeight),
+            isFuriganaVisible: isFuriganaVisible
         )
         uiView.debugOverlay.segmentGeometry = KiokuDebugOverlayGeometry.segments(geometryInputs)
         uiView.debugOverlay.lineGeometry = KiokuDebugOverlayGeometry.lines(geometryInputs)
@@ -319,6 +396,28 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
 
         uiView.setNeedsLayout()
     }
+
+    // Tells SwiftUI what size this representable wants. ONLY the non-scrolling case is
+    // sized to content here — that's the SettingsPreviewRenderer pattern, where the host
+    // (a Form Section row) doesn't constrain height and a bare UIScrollView would
+    // collapse to ~0 height ("just a little red dot").
+    //
+    // For the scrollable case (ReadView), we return nil so SwiftUI uses the parent's
+    // proposed size — i.e., the safe-area-bounded read tab area. Reporting the full
+    // content height there would cause the parent container to expand to that height,
+    // pushing the nav bar and tab bar offscreen (which is the bug this method created
+    // when it returned content height unconditionally).
+    //
+    // LyricsView's call site sets isScrollEnabled: false but also pins an explicit
+    // .frame(height:) above this view — that explicit frame wins regardless of what we
+    // return here, so the centering card behaves the same in either branch.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: KiokuScrollingTextView, context: Context) -> CGSize? {
+        guard isScrollEnabled == false else { return nil }
+        let width = proposal.width ?? uiView.bounds.width
+        guard width > 0 else { return nil }
+        let height = uiView.contentView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        return CGSize(width: width, height: height)
+    }
 }
 
 // UIScrollView host for the CoreText content view. Owns layout passing — the content
@@ -337,8 +436,10 @@ final class KiokuScrollingTextView: UIScrollView {
     // re-bridging Swift Range<String.Index> on every tap.
     var cachedSegmentNSRanges: [NSRange] = []
 
-    // Forwarded from the content view's tap recognizer. UTF-16 character index of the tap.
-    var onCharacterTapped: ((Int) -> Void)? {
+    // Forwarded from the content view's tap recognizer. UTF-16 character index of the tap,
+    // or nil when the tap landed in empty space (no glyph under the point) — callers
+    // route nil into the "clear selection" branch.
+    var onCharacterTapped: ((Int?) -> Void)? {
         didSet { wireContentTap() }
     }
 

@@ -25,8 +25,11 @@ final class KiokuCoreTextView: UIView {
     private(set) var layoutEngine = KiokuTextLayoutEngine()
 
     // Tap handling: parent installs this closure to be notified of UTF-16 character indices
-    // under tap points. Nil means no tap recognizer is attached.
-    var onTap: ((Int, CGPoint) -> Void)? {
+    // under tap points. The Int? is nil when the tap lands in empty space (past a line's
+    // content, in margins, below the last line) — that's how callers tell "tapped a
+    // character" from "tapped nothing" so they can clear selection on the latter. A nil
+    // closure means no tap recognizer is attached at all.
+    var onTap: ((Int?, CGPoint) -> Void)? {
         didSet { configureTapGesture() }
     }
     private var tapGesture: UITapGestureRecognizer?
@@ -46,6 +49,29 @@ final class KiokuCoreTextView: UIView {
     // The order is significant — painted back-to-front, so the last entry overlays earlier
     // ones. Callers responsible for ordering selection vs. playback.
     var highlightBands: [HighlightBand] = [] {
+        didSet { setNeedsDisplay() }
+    }
+
+    // Per-kanji-run ruby (furigana) to draw above the base text. Each entry is the kanji
+    // range in UTF-16 and the reading string to render centered above that range. The view
+    // draws ruby manually in `draw(_:)` — CoreText's CTRubyAnnotation is intentionally not
+    // used here because it gives no public knob for the kanji↔ruby gap. See the builder
+    // header for the full rationale.
+    var rubyEntries: [KiokuCoreTextAttributedStringBuilder.RubyEntry] = [] {
+        didSet { setNeedsDisplay() }
+    }
+
+    // Vertical pixel offset between the top of the kanji's line box and the ruby's BASELINE.
+    // Larger values push ruby further up. The space for ruby is reserved by the layout
+    // engine's `topRubyReserve`; this property only controls where inside that reserve the
+    // glyphs land.
+    var furiganaGap: CGFloat = 0 {
+        didSet { setNeedsDisplay() }
+    }
+
+    // Base text point size. Used to derive the ruby font (half-size, system) at draw time.
+    // Set by the host alongside `setAttributedString`.
+    var baseTextSize: CGFloat = UIFont.systemFontSize {
         didSet { setNeedsDisplay() }
     }
 
@@ -82,10 +108,27 @@ final class KiokuCoreTextView: UIView {
         setNeedsDisplay()
     }
 
-    // Sets extra inter-line padding. Pass the ruby font height when CTRubyAnnotation is in
-    // play so consecutive lines don't overlap on the kanji row.
+    // Sets extra inter-line padding. The host now passes ONLY the user-configured line
+    // spacing here — room for ruby is reserved separately via `setTopRubyReserve`.
     func setLineSpacing(_ value: CGFloat) {
         layoutEngine.setLineSpacing(value)
+        invalidateIntrinsicContentSize()
+        setNeedsDisplay()
+    }
+
+    // Sets the per-line space above each line reserved for manually drawn ruby. Pass
+    // `furiganaFont.lineHeight + furiganaGap` to match what TK2's top inset used to give.
+    func setTopRubyReserve(_ value: CGFloat) {
+        layoutEngine.setTopRubyReserve(value)
+        invalidateIntrinsicContentSize()
+        setNeedsDisplay()
+    }
+
+    // Passes segment NSRanges to the engine so it can forbid line breaks mid-segment. The
+    // host should call this every time segments change so the layout reflows with atomic
+    // segment wrapping. Empty array = no constraint.
+    func setSegmentNSRanges(_ ranges: [NSRange]) {
+        layoutEngine.setSegmentNSRanges(ranges)
         invalidateIntrinsicContentSize()
         setNeedsDisplay()
     }
@@ -136,28 +179,227 @@ final class KiokuCoreTextView: UIView {
         context.translateBy(x: 0, y: bounds.height)
         context.scaleBy(x: 1, y: -1)
 
-        for line in layoutEngine.lines {
-            // Skip lines outside the dirty rect — cheap clipping for partial redraws.
-            let flippedFrame = CGRect(
-                x: line.origin.x,
-                y: bounds.height - (line.origin.y + line.height),
-                width: line.width,
-                height: line.height
-            )
-            let dirtyInFlipped = CGRect(
-                x: rect.minX,
-                y: bounds.height - rect.maxY,
-                width: rect.width,
-                height: rect.height
-            )
-            guard flippedFrame.intersects(dirtyInFlipped) else { continue }
+        if layoutEngine.isSegmentPackingEnabled {
+            // Per-segment draw: walk placements and render each segment's headword and
+            // ruby at the X position the packer assigned. The base CTLine path is bypassed
+            // because its X positions are CT's natural advance, not the packer's
+            // footprint placement.
+            drawSegmentPacked(in: context, dirtyRect: rect)
+        } else {
+            for line in layoutEngine.lines {
+                // Skip lines outside the dirty rect — cheap clipping for partial redraws.
+                let flippedFrame = CGRect(
+                    x: line.origin.x,
+                    y: bounds.height - (line.origin.y + line.height),
+                    width: line.width,
+                    height: line.height
+                )
+                let dirtyInFlipped = CGRect(
+                    x: rect.minX,
+                    y: bounds.height - rect.maxY,
+                    width: rect.width,
+                    height: rect.height
+                )
+                guard flippedFrame.intersects(dirtyInFlipped) else { continue }
 
-            let baselineYBottomUp = bounds.height - line.baselineY
-            context.textPosition = CGPoint(x: line.origin.x, y: baselineYBottomUp)
-            CTLineDraw(line.line, context)
+                let baselineYBottomUp = bounds.height - line.baselineY
+                context.textPosition = CGPoint(x: line.origin.x, y: baselineYBottomUp)
+                CTLineDraw(line.line, context)
+            }
+
+            // Ruby pass: walk entries and draw each reading centered over its kanji rect, with
+            // its baseline `furiganaGap` pixels above the kanji's line-box top. Done after the
+            // base text so ruby paints on top of any glyphs it touches (it shouldn't, but the
+            // ordering keeps that safe). Still inside the flipped (CT bottom-up) coord space.
+            drawRuby(in: context, dirtyRect: rect)
         }
 
         context.restoreGState()
+    }
+
+    // Per-segment renderer used when the engine is in segment-packed mode. For each
+    // placement, draws (1) the segment's headword CTLine at its centered X within the
+    // footprint, and (2) the segment's ruby CTLine centered above the headword. Adjacent
+    // placements have zero gap between footprints by construction (the packer placed
+    // them that way), so visually segments touch and ruby never crosses footprint edges.
+    private func drawSegmentPacked(in context: CGContext, dirtyRect: CGRect) {
+        let baseFontSize = baseTextSize
+        let furiganaFont = UIFont.systemFont(ofSize: max(1, baseFontSize * 0.5))
+        var rubyAscent: CGFloat = 0
+        var rubyDescent: CGFloat = 0
+        var rubyLeading: CGFloat = 0
+        let probeRubyLine = CTLineCreateWithAttributedString(
+            NSAttributedString(string: "あ", attributes: [.font: furiganaFont]) as CFAttributedString
+        )
+        _ = CGFloat(CTLineGetTypographicBounds(probeRubyLine, &rubyAscent, &rubyDescent, &rubyLeading))
+
+        let dirtyInFlipped = CGRect(
+            x: dirtyRect.minX,
+            y: bounds.height - dirtyRect.maxY,
+            width: dirtyRect.width,
+            height: dirtyRect.height
+        )
+        let placementsByLine = Dictionary(grouping: layoutEngine.segmentPlacements, by: \.lineIndex)
+        for line in layoutEngine.packedLines {
+            // Cull off-screen lines.
+            let lineFlipped = CGRect(
+                x: 0,
+                y: bounds.height - (line.originY + line.height),
+                width: bounds.width,
+                height: line.height
+            )
+            guard lineFlipped.intersects(dirtyInFlipped) else { continue }
+            let baselineY = line.originY + line.ascent
+            let baselineYBottomUp = bounds.height - baselineY
+            for placement in placementsByLine[line.lineIndex] ?? [] {
+                let segNSRange = NSRange(location: placement.location, length: placement.length)
+                let segAttr = layoutEngine.attributedString.attributedSubstring(from: segNSRange)
+                let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
+                let headwordOriginX = placement.originX + placement.leftOverhang
+                context.textPosition = CGPoint(x: headwordOriginX, y: baselineYBottomUp)
+                CTLineDraw(segLine, context)
+            }
+        }
+
+        // Per-segment ruby pass. We use the per-segment placements directly rather than
+        // the rubyEntries list so positioning matches the packer's geometry exactly.
+        guard rubyEntries.isEmpty == false else { return }
+        let rubyByLocation = Dictionary(uniqueKeysWithValues: rubyEntries.map { ($0.location, $0) })
+        for line in layoutEngine.packedLines {
+            let lineFlipped = CGRect(
+                x: 0,
+                y: bounds.height - (line.originY + line.height),
+                width: bounds.width,
+                height: line.height
+            )
+            guard lineFlipped.intersects(dirtyInFlipped) else { continue }
+            for placement in placementsByLine[line.lineIndex] ?? [] {
+                // Ruby entries may live at a kanji-run location inside the segment, not at
+                // the segment's start. Iterate every ruby entry whose location falls in
+                // the segment range and draw each centered over its kanji-run rect.
+                for kanjiLoc in rubyByLocation.keys
+                where kanjiLoc >= placement.location && kanjiLoc < placement.location + placement.length {
+                    guard let entry = rubyByLocation[kanjiLoc] else { continue }
+                    // Compute kanji-run X within the segment by measuring its position in
+                    // the segment's CTLine. Segment-local indices into the headword.
+                    let segNSRange = NSRange(location: placement.location, length: placement.length)
+                    let segAttr = layoutEngine.attributedString.attributedSubstring(from: segNSRange)
+                    let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
+                    let localStart = entry.location - placement.location
+                    let localEnd = localStart + entry.length
+                    let xStart = CTLineGetOffsetForStringIndex(segLine, localStart, nil)
+                    let xEnd = CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
+                    let headwordOriginX = placement.originX + placement.leftOverhang
+                    let kanjiMidXInHeadword = (xStart + xEnd) / 2
+                    let kanjiMidX = headwordOriginX + kanjiMidXInHeadword
+                    let rubyAttr = NSAttributedString(
+                        string: entry.reading,
+                        attributes: [.font: furiganaFont, .foregroundColor: rubyForegroundColor(at: entry.location)]
+                    )
+                    let rubyLine = CTLineCreateWithAttributedString(rubyAttr as CFAttributedString)
+                    var ra: CGFloat = 0
+                    var rd: CGFloat = 0
+                    var rl: CGFloat = 0
+                    let rubyWidth = CGFloat(CTLineGetTypographicBounds(rubyLine, &ra, &rd, &rl))
+                    let rubyOriginX = kanjiMidX - rubyWidth / 2
+                    // Place ruby's bottom `furiganaGap` above the kanji's visual top.
+                    // kanji visual top ≈ line.originY (line box top in Japanese-dominant lines).
+                    let rubyBaselineTopDown = line.originY - furiganaGap - rd
+                    let rubyBaselineBottomUp = bounds.height - rubyBaselineTopDown
+                    context.textPosition = CGPoint(x: rubyOriginX, y: rubyBaselineBottomUp)
+                    CTLineDraw(rubyLine, context)
+                }
+            }
+        }
+    }
+
+    // Reads the foreground color from the attributed string at the given location, falling
+    // back to .label. Mirrors the lookup used by the classic-mode drawRuby pass.
+    private func rubyForegroundColor(at location: Int) -> UIColor {
+        let attrs = layoutEngine.attributedString.attributes(at: location, effectiveRange: nil)
+        return (attrs[.foregroundColor] as? UIColor) ?? .label
+    }
+
+    // Builds a CTLine for each ruby entry and draws it above the corresponding kanji rect.
+    // Splits ruby positioning into two pieces, matching what TextKit-era code did:
+    //   - reserve = furiganaFont.lineHeight + furiganaGap  (carried by engine.topRubyReserve)
+    //   - placement = `kanjiRect.minY - furiganaGap - rubyAscent` (UIKit top-down)
+    // The reserve is set by the host; the placement is what the slider tunes.
+    private func drawRuby(in context: CGContext, dirtyRect: CGRect) {
+        guard rubyEntries.isEmpty == false else { return }
+        let furiganaFont = UIFont.systemFont(ofSize: max(1, baseTextSize * 0.5))
+        let ctFuriganaFont = furiganaFont as CTFont
+        let nsString = layoutEngine.attributedString.string as NSString
+
+        // Dirty rect in flipped (CT bottom-up) space so we can cull cheaply.
+        let dirtyInFlipped = CGRect(
+            x: dirtyRect.minX,
+            y: bounds.height - dirtyRect.maxY,
+            width: dirtyRect.width,
+            height: dirtyRect.height
+        )
+
+        for entry in rubyEntries {
+            let range = NSRange(location: entry.location, length: entry.length)
+            guard range.location >= 0, range.length > 0,
+                  range.location + range.length <= nsString.length else { continue }
+            guard let kanjiRect = layoutEngine.firstRect(forCharacterRange: range) else { continue }
+
+            // Foreground color: read the kanji's foregroundColor attribute so the ruby
+            // matches its kanji's segment-alternation color. Falls back to `.label`.
+            let fgColor: UIColor = {
+                let attrs = layoutEngine.attributedString.attributes(at: range.location, effectiveRange: nil)
+                if let color = attrs[.foregroundColor] as? UIColor { return color }
+                return .label
+            }()
+
+            // Build the ruby line. Attributes mirror the base build except sized to the ruby
+            // font; no paragraph style needed for a single-line CTLine.
+            let rubyAttributed = NSAttributedString(
+                string: entry.reading,
+                attributes: [
+                    .font: furiganaFont,
+                    .foregroundColor: fgColor,
+                ]
+            )
+            let rubyLine = CTLineCreateWithAttributedString(rubyAttributed)
+            var rubyAscent: CGFloat = 0
+            var rubyDescent: CGFloat = 0
+            var rubyLeading: CGFloat = 0
+            let rubyWidth = CGFloat(CTLineGetTypographicBounds(rubyLine, &rubyAscent, &rubyDescent, &rubyLeading))
+            _ = ctFuriganaFont  // suppress unused-binding warning; kept for potential future per-glyph work
+
+            // Center the ruby horizontally over the kanji rect. When ruby is wider than its
+            // kanji, the inter-segment kern compensation in the builder has already pushed
+            // the neighbors away to make room.
+            let x = kanjiRect.midX - rubyWidth / 2
+            // "furiganaGap" = pixels between the ruby's VISIBLE BOTTOM and the kanji's
+            // VISIBLE TOP — that's what a user means when they reach for the slider. Solve
+            // for the ruby baseline:
+            //   rubyVisibleBottom = baseline + rubyDescent
+            //   kanjiVisibleTop   ≈ kanjiRect.minY      (Japanese-dominant lines)
+            //   gap = kanjiVisibleTop - rubyVisibleBottom = furiganaGap
+            //   → baseline = kanjiRect.minY - furiganaGap - rubyDescent
+            //
+            // Prior version subtracted rubyAscent here, which placed the ruby's TOP (not
+            // bottom) `furiganaGap` above the kanji — visually offset by ~rubyAscent + the
+            // gap, i.e. way too far up. With default gap=2 the visible regression was a
+            // ~7pt jump, matching the reported "way too much space" symptom.
+            let baselineTopDown = kanjiRect.minY - furiganaGap - rubyDescent
+            let baselineBottomUp = bounds.height - baselineTopDown
+
+            // Coarse dirty-rect cull on the ruby's typographic box.
+            let rubyBox = CGRect(
+                x: x,
+                y: baselineBottomUp - rubyAscent,
+                width: rubyWidth,
+                height: rubyAscent + rubyDescent
+            )
+            guard rubyBox.intersects(dirtyInFlipped) else { continue }
+
+            context.textPosition = CGPoint(x: x, y: baselineBottomUp)
+            CTLineDraw(rubyLine, context)
+        }
     }
 
     // MARK: - Highlight bands
@@ -195,10 +437,11 @@ final class KiokuCoreTextView: UIView {
     }
 
     // Routes the tap location through the engine's hit-test and forwards the resulting
-    // UTF-16 character index to the host via the `onTap` closure.
+    // UTF-16 character index to the host. Forwards `nil` for empty-space taps so the
+    // host can clear selection instead of pinning to the nearest character.
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
         let point = recognizer.location(in: self)
-        guard let index = layoutEngine.characterIndex(at: point) else { return }
+        let index = layoutEngine.characterIndex(at: point)
         onTap?(index, point)
     }
 

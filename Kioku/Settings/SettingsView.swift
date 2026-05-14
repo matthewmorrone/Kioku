@@ -42,6 +42,8 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
     @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
     @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
+    @AppStorage(DebugSettings.headwordLineNumbersKey) private var debugHeadwordLineNumbers: Bool = false
+    @AppStorage(DebugSettings.rubyLineNumbersKey) private var debugRubyLineNumbers: Bool = false
     @AppStorage(DebugSettings.bisectorHeadwordKey) private var debugBisectorHeadword: Bool = false
     @AppStorage(DebugSettings.bisectorFuriganaKey) private var debugBisectorFurigana: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
@@ -318,6 +320,8 @@ struct SettingsView: View {
                     Toggle("Envelope Rects", isOn: $debugEnvelopeRects)
                     Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
                     Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
+                    Toggle("Headword Line Numbers (L#)", isOn: $debugHeadwordLineNumbers)
+                    Toggle("Ruby Line Numbers (R#)", isOn: $debugRubyLineNumbers)
                     Toggle("Headword Bisectors", isOn: $debugBisectorHeadword)
                     Toggle("Furigana Bisectors", isOn: $debugBisectorFurigana)
                     Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)

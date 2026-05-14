@@ -1,15 +1,39 @@
 import UIKit
 import CoreText
 
-// Builds the NSAttributedString consumed by KiokuCoreTextView. Unlike the TextKit 2 path,
-// which keeps the base text plain and overlays ruby via a separate subview, the CoreText
-// path bakes CTRubyAnnotation directly into the attributed string so CTLineDraw renders
-// kanji + furigana in a single pass.
+// Builds the NSAttributedString consumed by KiokuCoreTextView along with the list of ruby
+// entries to draw above it. The renderer used to bake CTRubyAnnotation into the attributed
+// string, which let CoreText position ruby for us but gave away vertical-gap control — Apple
+// gives no public knob to set the kanji-to-ruby gap on a CTRubyAnnotation. The TK2-style
+// `furiganaGap` slider went silently dead as a result.
+//
+// We now emit ruby as DATA (RubyEntry list) and the view draws each reading itself in its
+// draw pass, using the layout engine's `firstRect(forCharacterRange:)` for kanji-run rects.
+// This matches the architecture sketched in docs/custom-renderer-plan.md ("existing overlay
+// code draws ruby ... at coordinates from CTLine offsets") and restores per-pixel control of
+// the kanji↔ruby gap. The vertical room reserved for ruby above each line is set on the
+// engine via `topRubyReserve`.
 //
 // Inputs mirror the subset of ReadTextStyleResolver inputs that affect either the base
-// glyphs or the ruby annotations. Selection envelopes, debug overlays, and playback
-// highlights remain the responsibility of the overlay layer (still TBD on the CT path).
+// glyphs or the ruby entries. Selection envelopes, debug overlays, and playback highlights
+// stay on the overlay layer.
 enum KiokuCoreTextAttributedStringBuilder {
+
+    // A single furigana run: location/length in UTF-16 against the source `text`, and the
+    // reading string to draw centered above that run. Emitted by `build` and consumed by the
+    // view's draw pass — the layout engine resolves each entry's screen rect at draw time, so
+    // entries survive reflow on text-size / width changes without needing recomputation here.
+    struct RubyEntry: Equatable {
+        let location: Int
+        let length: Int
+        let reading: String
+    }
+
+    // Output bundle: the base attributed string (no CTRubyAnnotation) plus the ruby entries.
+    struct Output {
+        let attributedString: NSAttributedString
+        let rubyEntries: [RubyEntry]
+    }
 
     struct Inputs {
         let text: String
@@ -39,12 +63,20 @@ enum KiokuCoreTextAttributedStringBuilder {
         var unknownSegmentLocations: Set<Int> = []
         var isHighlightUnknownEnabled: Bool = false
         var unknownSegmentColor: UIColor = .label
+        // When true, the renderer is in segment-packed mode and handles inter-segment
+        // spacing via per-segment X placement. The builder must NOT inject its
+        // ruby-overhang kerning compensation in that case — the kern bump would inflate
+        // each headword's measured CTLine advance, the packer would read that inflated
+        // value as the headword width, and footprint centering would put the headword
+        // off-center inside its footprint. Default false to preserve classic behavior.
+        var isSegmentPacked: Bool = false
     }
 
     // Composes the renderer-ready NSAttributedString: base font + paragraph style,
-    // per-segment foreground color (with unknown-segment override), and per-kanji-run
-    // CTRubyAnnotation with optional inter-segment kern compensation for ruby overhang.
-    static func build(_ inputs: Inputs) -> NSAttributedString {
+    // per-segment foreground color (with unknown-segment override), and inter-segment kern
+    // compensation for ruby overhang. Ruby itself is returned as data — the view draws each
+    // entry manually so the kanji↔ruby gap is tunable (see file header for the rationale).
+    static func build(_ inputs: Inputs) -> Output {
         let baseFont = UIFont.systemFont(ofSize: inputs.textSize)
         let paragraph = NSMutableParagraphStyle()
         // Don't set paragraph.lineSpacing here: with CoreText, CTRubyAnnotation already
@@ -63,7 +95,9 @@ enum KiokuCoreTextAttributedStringBuilder {
             ]
         )
 
-        guard inputs.isVisualEnhancementsEnabled else { return result }
+        guard inputs.isVisualEnhancementsEnabled else {
+            return Output(attributedString: result, rubyEntries: [])
+        }
 
         let nsTextForSegments = result.string as NSString
         var alternationIndex = 0
@@ -92,9 +126,9 @@ enum KiokuCoreTextAttributedStringBuilder {
 
         // Ruby application. The furiganaBySegmentLocation dictionary is keyed by each
         // KANJI RUN'S UTF-16 location (often inside a segment, not at the segment start),
-        // so iterate the dict directly and attach CTRubyAnnotation to each entry's range.
-        // This is what the TK2 path does too — see FuriganaTextRenderer's enumeration over
-        // the same dict.
+        // so iterate the dict directly and emit one RubyEntry per run. The view's draw pass
+        // consumes these and positions each reading using the layout engine's kanji rect.
+        var rubyEntries: [RubyEntry] = []
         if inputs.isVisualEnhancementsEnabled, inputs.isFuriganaVisible {
             let furiganaFont = UIFont.systemFont(ofSize: inputs.textSize * 0.5)
             // Cache segment NSRanges so spacing compensation can route the trailing .kern
@@ -113,16 +147,11 @@ enum KiokuCoreTextAttributedStringBuilder {
                 let kanjiText = (result.string as NSString).substring(with: kanjiRange)
                 // Skip when the reading is identical to the surface (no annotation needed).
                 if reading == kanjiText { continue }
-                let annotation = CTRubyAnnotationCreateWithAttributes(
-                    .center, .auto, .before,
-                    reading as CFString,
-                    [kCTRubyAnnotationSizeFactorAttributeName: 0.5] as CFDictionary
-                )
-                result.addAttribute(
-                    NSAttributedString.Key(kCTRubyAnnotationAttributeName as String),
-                    value: annotation,
-                    range: kanjiRange
-                )
+                rubyEntries.append(RubyEntry(
+                    location: kanjiLoc,
+                    length: kanjiLen,
+                    reading: reading
+                ))
 
                 // Inter-segment spacing: when ruby is wider than its kanji, BOTH sides
                 // overhang the kanji. Push gap into the adjacent segment boundaries so
@@ -131,7 +160,11 @@ enum KiokuCoreTextAttributedStringBuilder {
                 //   - left  overhang → kern on the LAST CHARACTER of the PRIOR segment
                 //     (visible only when the kanji sits at the start of its segment, so the
                 //     ruby's left tail actually crosses the segment boundary)
-                if inputs.isRubySpacingEnabled {
+                //
+                // SKIPPED in segment-packed mode: the packer handles inter-segment spacing
+                // via per-segment footprint placement, so adding kern here would inflate
+                // the measured CTLine advance and break the packer's footprint math.
+                if inputs.isRubySpacingEnabled && inputs.isSegmentPacked == false {
                     let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
                     let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
                     let overhang = max(0, ceil((rubyW - kanjiW) / 2))
@@ -189,7 +222,7 @@ enum KiokuCoreTextAttributedStringBuilder {
             }
         }
 
-        return result
+        return Output(attributedString: result, rubyEntries: rubyEntries)
     }
 
     // Returns ceil((rubyWidth - kanjiWidth)/2) when the LAST kanji run in the segment

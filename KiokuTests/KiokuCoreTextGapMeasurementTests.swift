@@ -142,7 +142,7 @@ final class KiokuCoreTextGapMeasurementTests: XCTestCase {
     // first glyph overhangs the inset (visible clipping risk).
     func test_insetToFirstSegmentGap_perLine() {
         let inputs = makeBuilderInputs()
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs).attributedString
         let engine = KiokuTextLayoutEngine(
             attributedString: attributed,
             widthConstraint: 380,
@@ -201,7 +201,7 @@ final class KiokuCoreTextGapMeasurementTests: XCTestCase {
     // between them; ≈ 0 = touching; negative = overlap.
     func test_segmentToNextSegmentGap_perPair() {
         let inputs = makeBuilderInputs()
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs).attributedString
         let engine = KiokuTextLayoutEngine(
             attributedString: attributed,
             widthConstraint: 380,

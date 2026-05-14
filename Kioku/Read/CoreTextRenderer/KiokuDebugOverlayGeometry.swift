@@ -60,7 +60,9 @@ enum KiokuDebugOverlayGeometry {
     struct Inputs {
         // First-line rect for each segment by NSRange (segment-level — used for envelope).
         let firstRectByNSRange: [NSRange: CGRect]
-        // UTF-16 NSRange for each segment in document order.
+        // UTF-16 NSRange for each segment in document order. Caller is responsible for
+        // filtering out non-lexical segments (whitespace, newlines, punctuation-only) so
+        // the overlay doesn't draw zero-content envelopes at line ends.
         let segmentNSRanges: [NSRange]
         // First-line rect for each KANJI-RUN inside a segment, keyed by run location.
         // Drives headword rect and bisector positioning so they hug the kanji glyphs
@@ -73,6 +75,11 @@ enum KiokuDebugOverlayGeometry {
         let furiganaFont: UIFont
         let lineFrames: [CGRect]
         let furiganaBandHeight: CGFloat
+        // Whether to reserve a ruby row above each segment in its envelope. False means
+        // furigana is currently hidden (or globally disabled), so the envelope should
+        // collapse to just the headword height — otherwise toggling furigana off leaves
+        // visually misleading "empty ruby band" space at the top of every envelope.
+        var isFuriganaVisible: Bool = true
     }
 
     // Builds the segment-level debug geometry. Headword rect targets the kanji-run
@@ -84,7 +91,10 @@ enum KiokuDebugOverlayGeometry {
     // Heights are standardized to font lineHeight so all rects on a line look uniform.
     static func segments(_ inputs: Inputs) -> [SegmentGeometry] {
         let headwordHeight = ceil(inputs.baseFont.lineHeight)
-        let rubyHeight = ceil(inputs.furiganaFont.lineHeight)
+        // Reserve a ruby row only when furigana is visible. Otherwise the envelope
+        // collapses to headword height — toggling furigana OFF visually shrinks every
+        // envelope, instead of leaving an empty ruby band that no longer matches reality.
+        let rubyHeight = inputs.isFuriganaVisible ? ceil(inputs.furiganaFont.lineHeight) : 0
         return inputs.segmentNSRanges.compactMap { segRange -> SegmentGeometry? in
             guard let segRect = inputs.firstRectByNSRange[segRange] else { return nil }
             // Find a kanji-run contained inside this segment (first match wins; segments
@@ -114,8 +124,10 @@ enum KiokuDebugOverlayGeometry {
 
             // Build the furigana rect (centered above the kanji-run, NOT above the
             // segment — okurigana to the right of the kanji shouldn't shift the ruby).
+            // Skipped entirely when furigana is hidden: there's no ruby being drawn, so
+            // the debug rect would be a phantom marker for content that isn't on screen.
             let furiganaRect: CGRect?
-            if let entry = kanjiRunEntry {
+            if inputs.isFuriganaVisible, let entry = kanjiRunEntry {
                 let rubyWidth = ceil((entry.reading as NSString).size(withAttributes: [.font: inputs.furiganaFont]).width)
                 furiganaRect = CGRect(
                     x: bisectorX - rubyWidth / 2,
@@ -127,14 +139,25 @@ enum KiokuDebugOverlayGeometry {
                 furiganaRect = nil
             }
 
-            // Envelope = segment width × (ruby height + headword height), anchored so the
-            // headword baseline matches segRect.maxY. Heights are constant across all
-            // segments on a line — segments without ruby get the same total height as
-            // segments with ruby — so the overlay looks visually uniform.
+            // Envelope = horizontal bounding box of (segment ∪ furigana) × (ruby height +
+            // headword height). When ruby is wider than its kanji (ものがたり over 物語,
+            // ちから over 力), it overhangs the segment on both sides; the envelope grows
+            // to contain it. Without this, the debug rect lies about the visible footprint
+            // of the ruby and breaks any consumer that uses the envelope for hit-testing
+            // or visual emphasis.
+            let envelopeMinX: CGFloat
+            let envelopeMaxX: CGFloat
+            if let furigana = furiganaRect {
+                envelopeMinX = min(segRect.minX, furigana.minX)
+                envelopeMaxX = max(segRect.maxX, furigana.maxX)
+            } else {
+                envelopeMinX = segRect.minX
+                envelopeMaxX = segRect.maxX
+            }
             let envelope = CGRect(
-                x: segRect.origin.x,
+                x: envelopeMinX,
                 y: segRect.maxY - headwordHeight - rubyHeight,
-                width: segRect.width,
+                width: envelopeMaxX - envelopeMinX,
                 height: headwordHeight + rubyHeight
             )
 

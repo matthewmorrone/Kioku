@@ -88,14 +88,23 @@ extension ReadView {
                 // Synthesis fallback: when the recompute has no compound reading for a merged
                 // surface (e.g. a coined name like 月色) but per-character entries (つき + いろ)
                 // tile the kanji run completely, concatenate them into a single span "つきいろ".
-                // No-op when a span-wide annotation already exists — the dictionary compound
-                // reading always wins over a synthesized concatenation.
-                let synthesized = furiganaAfterSynthesizingCompoundReadings(
-                    furiganaByLocation: intermediate.byLocation,
-                    furiganaLengthByLocation: intermediate.lengthByLocation,
-                    edges: segmentEdges,
-                    sourceText: sourceText
-                )
+                // Gated on shouldRunBackfill to avoid the cold-start pollution where synthesis
+                // ran with empty resources and concatenated per-character fragments into bogus
+                // wide entries (e.g. ものご for 物語) that then got persisted and resisted
+                // replacement. When backfill is skipped (resources unloaded → recompute empty),
+                // synthesis is skipped too; the next recompute (after resources load) re-runs
+                // both passes against fresh dict data.
+                let synthesized: (byLocation: [Int: String], lengthByLocation: [Int: Int])
+                if shouldRunBackfill {
+                    synthesized = furiganaAfterSynthesizingCompoundReadings(
+                        furiganaByLocation: intermediate.byLocation,
+                        furiganaLengthByLocation: intermediate.lengthByLocation,
+                        edges: segmentEdges,
+                        sourceText: sourceText
+                    )
+                } else {
+                    synthesized = intermediate
+                }
                 furiganaBySegmentLocation = synthesized.byLocation
                 furiganaLengthBySegmentLocation = synthesized.lengthByLocation
 

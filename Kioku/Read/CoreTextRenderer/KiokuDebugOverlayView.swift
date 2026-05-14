@@ -25,6 +25,12 @@ final class KiokuDebugOverlayView: UIView {
         var furiganaLineBands: Bool = false
         var pixelRuler: Bool = false
         var leftInsetGuide: Bool = false
+        // Show "L0", "L1", ... labels at the left edge of each headword line so the
+        // visual line index matches up with what tap-routing / engine logs report.
+        var headwordLineNumbers: Bool = false
+        // Show "R0", "R1", ... labels at the left edge of each ruby (furigana) line.
+        // Useful when chasing per-line ruby drift or atomic-wrap regressions.
+        var rubyLineNumbers: Bool = false
     }
 
     var flags = Flags() { didSet { if oldValue != flags { setNeedsDisplay() } } }
@@ -67,6 +73,47 @@ final class KiokuDebugOverlayView: UIView {
         if flags.furiganaLineBands {
             UIColor.systemPink.withAlphaComponent(0.10).setFill()
             for line in lineGeometry { UIBezierPath(rect: line.furiganaBandRect).fill() }
+        }
+
+        // 2. Line-number labels. "L#" pill at the left edge of each headword baseline;
+        //    "R#" pill at the left edge of each ruby baseline. Each label gets an opaque
+        //    dark background so it stays readable over kanji glyphs (the labels overlap
+        //    the first character of every line by design — there's no gutter). The
+        //    label's BASELINE is aligned with the ROW it annotates so the eye can scan
+        //    across to the actual headword / ruby content.
+        if flags.headwordLineNumbers || flags.rubyLineNumbers {
+            let labelFont = UIFont.monospacedSystemFont(ofSize: 11, weight: .bold)
+            let padX: CGFloat = 3
+            let padY: CGFloat = 1
+            let corner: CGFloat = 3
+            for (index, line) in lineGeometry.enumerated() {
+                if flags.headwordLineNumbers {
+                    drawLineNumberPill(
+                        text: "L\(index)",
+                        font: labelFont,
+                        textColor: .white,
+                        backgroundColor: UIColor.systemBlue.withAlphaComponent(0.92),
+                        topLeft: CGPoint(x: 0, y: line.headwordBandRect.minY),
+                        padX: padX,
+                        padY: padY,
+                        cornerRadius: corner,
+                        in: ctx
+                    )
+                }
+                if flags.rubyLineNumbers {
+                    drawLineNumberPill(
+                        text: "R\(index)",
+                        font: labelFont,
+                        textColor: .white,
+                        backgroundColor: UIColor.systemPink.withAlphaComponent(0.92),
+                        topLeft: CGPoint(x: 0, y: line.furiganaBandRect.minY),
+                        padX: padX,
+                        padY: padY,
+                        cornerRadius: corner,
+                        in: ctx
+                    )
+                }
+            }
         }
 
         // Left-inset guide. Matches TK2's FuriganaOverlayView style (solid red, 1pt)
@@ -180,5 +227,36 @@ final class KiokuDebugOverlayView: UIView {
             }
             ctx.strokePath()
         }
+    }
+
+    // Draws a label string inside a rounded-rect pill with high-contrast text. Used for
+    // the L# / R# line-number annotations so they stay readable when overlapping kanji.
+    private func drawLineNumberPill(
+        text: String,
+        font: UIFont,
+        textColor: UIColor,
+        backgroundColor: UIColor,
+        topLeft: CGPoint,
+        padX: CGFloat,
+        padY: CGFloat,
+        cornerRadius: CGFloat,
+        in ctx: CGContext
+    ) {
+        let textSize = (text as NSString).size(withAttributes: [.font: font])
+        let pillRect = CGRect(
+            x: topLeft.x,
+            y: topLeft.y,
+            width: ceil(textSize.width) + padX * 2,
+            height: ceil(textSize.height) + padY * 2
+        )
+        let pillPath = UIBezierPath(roundedRect: pillRect, cornerRadius: cornerRadius)
+        ctx.setFillColor(backgroundColor.cgColor)
+        ctx.addPath(pillPath.cgPath)
+        ctx.fillPath()
+        let textOrigin = CGPoint(x: pillRect.minX + padX, y: pillRect.minY + padY)
+        (text as NSString).draw(
+            at: textOrigin,
+            withAttributes: [.font: font, .foregroundColor: textColor]
+        )
     }
 }

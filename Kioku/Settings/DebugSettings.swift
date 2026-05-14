@@ -9,6 +9,11 @@ enum DebugSettings {
     // Separate band keys so headword and furigana rows can be visualised independently.
     static let headwordLineBandsKey = "debug.lineBands"
     static let furiganaLineBandsKey = "debug.furiganaLineBands"
+    // Per-line index labels ("L0"/"R0" etc.) at the left edge of each headword / ruby
+    // band. Useful when correlating visible line numbers with engine logs and segment-
+    // packing decisions.
+    static let headwordLineNumbersKey = "debug.headwordLineNumbers"
+    static let rubyLineNumbersKey = "debug.rubyLineNumbers"
     // Bisector toggles split into two so misalignment between the headword center
     // (kanji glyph midX) and the ruby center is directly visible. When only one is
     // enabled, the toggle's vertical line draws in that toggle's color; when both

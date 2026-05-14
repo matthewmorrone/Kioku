@@ -3,10 +3,14 @@ import UIKit
 import CoreText
 @testable import Kioku
 
-// Guards the contract between segmentation data and the CoreText attributed string:
-// ruby annotations land on kanji runs, color alternation respects toggles, and gate
-// flags suppress effects cleanly. These prevent silent feature loss when the experimental
-// CoreText path is enabled.
+// Guards the contract between segmentation data and the CoreText builder output:
+// ruby entries land on kanji runs, color alternation respects toggles, and gate flags
+// suppress effects cleanly. These prevent silent feature loss as the renderer evolves.
+//
+// History note: the builder used to bake CTRubyAnnotation into the attributed string and
+// the tests asserted on `kCTRubyAnnotationAttributeName` runs. After the manual-ruby
+// migration the builder emits ruby as data (`Output.rubyEntries`) and the view draws it
+// in its own pass — assertions now target the entry list directly.
 final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
 
     private func segmentRange(_ text: String, _ substring: String) -> Range<String.Index>? {
@@ -27,16 +31,12 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
         // length implied as the full segment surface — what most tests want.
         var lengths = furiganaLength
         if lengths.isEmpty && furigana.isEmpty == false {
-            let nsText = text as NSString
             for range in ranges {
                 let ns = NSRange(range, in: text)
                 if furigana[ns.location] != nil {
                     lengths[ns.location] = ns.length
                 }
             }
-            // Also handle the case where the test points furigana at location 0 spanning the
-            // whole text. Falls out of the loop above.
-            _ = nsText
         }
         return .init(
             text: text,
@@ -52,16 +52,6 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
             evenSegmentColor: .systemRed,
             oddSegmentColor: .systemBlue
         )
-    }
-
-    // Counts NSAttributedString runs carrying a CTRubyAnnotation attribute.
-    private func countRubyRuns(_ attributed: NSAttributedString) -> Int {
-        var count = 0
-        let key = NSAttributedString.Key(kCTRubyAnnotationAttributeName as String)
-        attributed.enumerateAttribute(key, in: NSRange(location: 0, length: attributed.length)) { value, _, _ in
-            if value != nil { count += 1 }
-        }
-        return count
     }
 
     // Returns the unique foreground colors applied across the attributed string, in source order.
@@ -80,17 +70,17 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
 
     func test_baseAttributes_alwaysSetOnEntireString() {
         let inputs = makeInputs(text: "hello")
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        XCTAssertEqual(attributed.string, "hello")
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        XCTAssertEqual(output.attributedString.string, "hello")
         // The first run carries .font and .paragraphStyle.
-        let attrs = attributed.attributes(at: 0, effectiveRange: nil)
+        let attrs = output.attributedString.attributes(at: 0, effectiveRange: nil)
         XCTAssertNotNil(attrs[.font])
         XCTAssertNotNil(attrs[.paragraphStyle])
     }
 
-    // MARK: - Ruby application
+    // MARK: - Ruby entries
 
-    func test_rubyAnnotation_appliedWhenFuriganaVisibleAndReadingPresent() throws {
+    func test_rubyEntry_emittedWhenFuriganaVisibleAndReadingPresent() throws {
         let text = "猫"
         let range = try XCTUnwrap(segmentRange(text, text))
         let nsLocation = NSRange(range, in: text).location
@@ -100,12 +90,13 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
             furigana: [nsLocation: "ねこ"],
             isFuriganaVisible: true
         )
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        XCTAssertEqual(countRubyRuns(attributed), 1,
-            "Single-kanji segment with reading must produce exactly one ruby run.")
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        XCTAssertEqual(output.rubyEntries.count, 1,
+            "Single-kanji segment with reading must produce exactly one ruby entry.")
+        XCTAssertEqual(output.rubyEntries.first?.reading, "ねこ")
     }
 
-    func test_rubyAnnotation_skippedWhenFuriganaInvisible() throws {
+    func test_rubyEntry_skippedWhenFuriganaInvisible() throws {
         let text = "猫"
         let range = try XCTUnwrap(segmentRange(text, text))
         let nsLocation = NSRange(range, in: text).location
@@ -115,12 +106,12 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
             furigana: [nsLocation: "ねこ"],
             isFuriganaVisible: false
         )
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        XCTAssertEqual(countRubyRuns(attributed), 0,
-            "Furigana-off must not emit ruby annotations.")
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        XCTAssertTrue(output.rubyEntries.isEmpty,
+            "Furigana-off must not emit ruby entries.")
     }
 
-    func test_rubyAnnotation_skippedWhenVisualEnhancementsDisabled() throws {
+    func test_rubyEntry_skippedWhenVisualEnhancementsDisabled() throws {
         let text = "猫"
         let range = try XCTUnwrap(segmentRange(text, text))
         let inputs = makeInputs(
@@ -129,15 +120,15 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
             furigana: [0: "ねこ"],
             isVisualEnhancementsEnabled: false
         )
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        XCTAssertEqual(countRubyRuns(attributed), 0,
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        XCTAssertTrue(output.rubyEntries.isEmpty,
             "Visual-enhancements-off short-circuits the whole segment pass.")
     }
 
-    func test_rubyAnnotation_okuriganaNotInsideRuby() throws {
+    func test_rubyEntry_okuriganaNotInsideRange() throws {
         // 食べる: ruby "た" attaches only to 食 (location 0, length 1). The data model
-        // already projects per-kanji-run readings — the builder just attaches each entry
-        // at its provided range, so the test verifies the range is honored.
+        // already projects per-kanji-run readings — the builder just emits each entry
+        // at its provided location/length.
         let text = "食べる"
         let range = try XCTUnwrap(segmentRange(text, text))
         let inputs = makeInputs(
@@ -146,22 +137,19 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
             furigana: [0: "た"],
             furiganaLength: [0: 1]
         )
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        let key = NSAttributedString.Key(kCTRubyAnnotationAttributeName as String)
-        var rubyRange: NSRange = NSRange(location: NSNotFound, length: 0)
-        attributed.enumerateAttribute(key, in: NSRange(location: 0, length: attributed.length)) { value, range, _ in
-            if value != nil { rubyRange = range }
-        }
-        XCTAssertNotEqual(rubyRange.location, NSNotFound, "Expected a ruby run on 食.")
-        XCTAssertEqual(rubyRange.location, 0)
-        XCTAssertEqual(rubyRange.length, ("食" as NSString).length,
-            "Ruby must cover only the kanji, not the okurigana べる.")
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        XCTAssertEqual(output.rubyEntries.count, 1, "Expected one ruby entry on 食.")
+        let entry = try XCTUnwrap(output.rubyEntries.first)
+        XCTAssertEqual(entry.location, 0)
+        XCTAssertEqual(entry.length, ("食" as NSString).length,
+            "Ruby range must cover only the kanji, not the okurigana べる.")
+        XCTAssertEqual(entry.reading, "た")
     }
 
-    func test_rubyAnnotation_multiRunCompoundGetsPerRunReadings() throws {
+    func test_rubyEntry_multiRunCompoundGetsPerRunReadings() throws {
         // 抜け殻: two separate kanji runs at locations 0 and 2 (け sits at index 1).
-        // The upstream data model already projects per-run readings into furigana
-        // entries; the builder attaches each at its range.
+        // The upstream data model already projects per-run readings; the builder
+        // surfaces each as its own RubyEntry.
         let text = "抜け殻"
         let range = try XCTUnwrap(segmentRange(text, text))
         let inputs = makeInputs(
@@ -170,9 +158,33 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
             furigana: [0: "ぬ", 2: "がら"],
             furiganaLength: [0: 1, 2: 1]
         )
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        XCTAssertEqual(countRubyRuns(attributed), 2,
-            "Two-run compound must produce two CTRubyAnnotation runs, not one spanning okurigana.")
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        XCTAssertEqual(output.rubyEntries.count, 2,
+            "Two-run compound must produce two ruby entries, not one spanning okurigana.")
+        let locations = Set(output.rubyEntries.map(\.location))
+        XCTAssertEqual(locations, [0, 2])
+    }
+
+    // Sanity: the attributed string itself should never carry CTRubyAnnotation under the
+    // manual-ruby architecture. If this assertion fails, someone re-introduced the
+    // CTRubyAnnotation shortcut and `furiganaGap` will be silently broken again.
+    func test_attributedString_neverCarriesCTRubyAnnotation() throws {
+        let text = "食べる"
+        let range = try XCTUnwrap(segmentRange(text, text))
+        let inputs = makeInputs(
+            text: text,
+            segmentRanges: [range],
+            furigana: [0: "た"],
+            furiganaLength: [0: 1]
+        )
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        let key = NSAttributedString.Key(kCTRubyAnnotationAttributeName as String)
+        var rubyRunCount = 0
+        output.attributedString.enumerateAttribute(key, in: NSRange(location: 0, length: output.attributedString.length)) { value, _, _ in
+            if value != nil { rubyRunCount += 1 }
+        }
+        XCTAssertEqual(rubyRunCount, 0,
+            "Manual-ruby architecture must not bake CTRubyAnnotation into the attributed string.")
     }
 
     // MARK: - Color alternation
@@ -189,8 +201,8 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
             segmentRanges: [r1, r2, r3],
             isColorAlternationEnabled: true
         )
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        let colors = foregroundColors(attributed)
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        let colors = foregroundColors(output.attributedString)
         XCTAssertTrue(colors.contains(.systemRed), "Even-index color must be present.")
         XCTAssertTrue(colors.contains(.systemBlue), "Odd-index color must be present.")
     }
@@ -205,8 +217,8 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
             segmentRanges: [r1, r2],
             isColorAlternationEnabled: false
         )
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        let colors = foregroundColors(attributed)
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        let colors = foregroundColors(output.attributedString)
         XCTAssertFalse(colors.contains(.systemRed))
         XCTAssertFalse(colors.contains(.systemBlue))
     }
@@ -230,8 +242,8 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
         inputs.unknownSegmentLocations = [secondLocation]
         inputs.isHighlightUnknownEnabled = true
         inputs.unknownSegmentColor = .systemGreen
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        let colors = foregroundColors(attributed)
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        let colors = foregroundColors(output.attributedString)
         XCTAssertTrue(colors.contains(.systemGreen),
             "Unknown-flagged segment must use unknown color.")
         XCTAssertFalse(colors.contains(.systemBlue),
@@ -249,8 +261,8 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
         inputs.unknownSegmentLocations = [0]
         inputs.isHighlightUnknownEnabled = false
         inputs.unknownSegmentColor = .systemGreen
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        let colors = foregroundColors(attributed)
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        let colors = foregroundColors(output.attributedString)
         XCTAssertFalse(colors.contains(.systemGreen),
             "Disabled flag must suppress unknown coloring even when locations are populated.")
     }
@@ -265,9 +277,9 @@ final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
             isVisualEnhancementsEnabled: false,
             isColorAlternationEnabled: true
         )
-        let attributed = KiokuCoreTextAttributedStringBuilder.build(inputs)
-        XCTAssertEqual(countRubyRuns(attributed), 0)
-        let colors = foregroundColors(attributed)
+        let output = KiokuCoreTextAttributedStringBuilder.build(inputs)
+        XCTAssertTrue(output.rubyEntries.isEmpty)
+        let colors = foregroundColors(output.attributedString)
         XCTAssertFalse(colors.contains(.systemRed))
     }
 }
