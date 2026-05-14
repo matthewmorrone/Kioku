@@ -1,9 +1,10 @@
 import SwiftUI
 
-// The two swipeable pages in the Learn tab.
+// The swipeable pages in the Learn tab.
 enum LearnPage: Int, CaseIterable, Identifiable {
     case flashcards
     case cloze
+    case songs
     var id: Int { rawValue }
 }
 
@@ -47,6 +48,8 @@ struct LearnPagerView: View {
                     .frame(width: width)
                 ClozeStudyHomeView()
                     .frame(width: width)
+                SongsHomeView()
+                    .frame(width: width)
             }
             .frame(width: width, alignment: .leading)
             .offset(x: -CGFloat(pageIndex) * width + dragOffset)
@@ -77,7 +80,10 @@ struct LearnPagerView: View {
         .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHidden = $0 }
         .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActive = $0 }
         .overlay(alignment: .bottom) {
-            if !(currentPage == .flashcards && dotsHidden) {
+            // Any active session (flashcard, song stepper) bubbles up dotsHidden so the
+            // overlay disappears during study. Page-specific suppression isn't needed:
+            // the active session also locks the swipe gesture via sessionActive.
+            if dotsHidden == false {
                 LearnPageDotsOverlay(selectedPage: currentPage)
                     .allowsHitTesting(false)
                     .padding(.bottom, 14)
