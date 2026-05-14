@@ -29,27 +29,14 @@ extension ReadView {
         unknownSegmentLocations = unknownSegmentLocations(for: edges)
         recordRuntimeSegmentationSnapshot(for: edges)
 
-        // Remove furigana entries whose range no longer fits inside any segment.
-        // Stale entries arise when a segment is split or merged. Per-run annotations
-        // (e.g. がら over 殻 in the compound 抜け殻) sit at non-segment-start locations,
-        // so a segment-start-only check would wrongly drop them on merges and leave
-        // partially-annotated compounds in memory.
-        let validRanges: [(start: Int, end: Int)] = edges.compactMap { edge in
-            let r = NSRange(edge.start..<edge.end, in: text)
-            guard r.location != NSNotFound else { return nil }
-            return (start: r.location, end: r.location + r.length)
-        }
-        for location in Array(furiganaBySegmentLocation.keys) {
-            let length = furiganaLengthBySegmentLocation[location] ?? 0
-            let entryEnd = location + length
-            let isInsideAnySegment = validRanges.contains { range in
-                location >= range.start && entryEnd <= range.end
-            }
-            if isInsideAnySegment == false {
-                furiganaBySegmentLocation.removeValue(forKey: location)
-                furiganaLengthBySegmentLocation.removeValue(forKey: location)
-            }
-        }
+        let pruned = pruneFuriganaForSegmentation(
+            furiganaByLocation: furiganaBySegmentLocation,
+            furiganaLengthByLocation: furiganaLengthBySegmentLocation,
+            edges: edges,
+            sourceText: text
+        )
+        furiganaBySegmentLocation = pruned.byLocation
+        furiganaLengthBySegmentLocation = pruned.lengthByLocation
 
         if persistOverride {
             // Persist with the in-memory furigana embedded so the synchronous disk write
@@ -298,6 +285,64 @@ extension ReadView {
             return [SegmentRange(surface: surface)]
         }
         return produced
+    }
+
+    // Resolves segmentation edges to (UTF-16 NSRange, surface) pairs in sourceText, skipping
+    // edges that don't round-trip to a valid NSRange. Shared by pruneFuriganaForSegmentation
+    // and the furigana helpers that walk the same edge list — keeps the NSRange/String.Index
+    // boundary math in one place.
+    func segmentNSRangesAndSurfaces(
+        for edges: [LatticeEdge],
+        in sourceText: String
+    ) -> [(range: NSRange, surface: String)] {
+        edges.compactMap { edge in
+            let range = NSRange(edge.start..<edge.end, in: sourceText)
+            guard range.location != NSNotFound else { return nil }
+            return (range: range, surface: edge.surface)
+        }
+    }
+
+    // Drops furigana entries whose UTF-16 range no longer fits inside any segment. This is the
+    // gentle structural prune used after splits — a wide entry spanning the pre-split surface
+    // (e.g. ものがたり at [0, 2) over the pre-split 物語) does not fit any narrower successor
+    // segment and is dropped here. Entries that DO fit inside their segment are kept, even if
+    // they fragment a kanji run — replace-on-overlap backfill collapses those into a single
+    // span when the recompute produces a wider compound reading, and synthesizeCompoundReadings
+    // concatenates them when the recompute has no compound reading to offer.
+    func pruneFuriganaForSegmentation(
+        furiganaByLocation: [Int: String],
+        furiganaLengthByLocation: [Int: Int],
+        edges: [LatticeEdge],
+        sourceText: String
+    ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
+        let validRanges = segmentNSRangesAndSurfaces(for: edges, in: sourceText).map(\.range)
+
+        var prunedByLocation = furiganaByLocation
+        var prunedLengthByLocation = furiganaLengthByLocation
+        for location in furiganaByLocation.keys {
+            guard let length = furiganaLengthByLocation[location] else {
+                // No matching length entry means the maps drifted apart (corrupted persisted
+                // data or producer bug). Drop the orphan reading and warn.
+                print("pruneFuriganaForSegmentation: missing length for entry at location \(location); dropping")
+                prunedByLocation.removeValue(forKey: location)
+                continue
+            }
+            guard length > 0 else {
+                print("pruneFuriganaForSegmentation: zero-length entry at location \(location); dropping")
+                prunedByLocation.removeValue(forKey: location)
+                prunedLengthByLocation.removeValue(forKey: location)
+                continue
+            }
+            let entryEnd = location + length
+            let isInsideAnySegment = validRanges.contains { range in
+                location >= range.location && entryEnd <= range.location + range.length
+            }
+            if isInsideAnySegment == false {
+                prunedByLocation.removeValue(forKey: location)
+                prunedLengthByLocation.removeValue(forKey: location)
+            }
+        }
+        return (byLocation: prunedByLocation, lengthByLocation: prunedLengthByLocation)
     }
 
     // Extracts absolute-offset furigana maps from persisted order-only segments by walking
