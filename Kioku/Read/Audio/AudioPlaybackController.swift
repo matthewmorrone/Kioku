@@ -23,11 +23,16 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Picks the session category based on the user's Background Audio setting.
     // .playback ignores the ringer/silent switch and keeps playing in the background (the
     // UIBackgroundModes "audio" entitlement is set in Info.plist); .ambient does neither.
-    // Called fresh on each play() so toggling the setting takes effect without an app restart.
+    // Mode must match the category: .spokenAudio is only valid with .playback, so the
+    // .ambient branch uses .default. Called fresh on each play() so toggling the setting
+    // takes effect without an app restart.
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
-        let category: AVAudioSession.Category = AudioSettings.backgroundPlaybackEnabled ? .playback : .ambient
-        try? session.setCategory(category, mode: .spokenAudio)
+        if AudioSettings.backgroundPlaybackEnabled {
+            try? session.setCategory(.playback, mode: .spokenAudio)
+        } else {
+            try? session.setCategory(.ambient, mode: .default)
+        }
     }
 
     // Loads audio from a URL and stores the cue list for highlight resolution.
