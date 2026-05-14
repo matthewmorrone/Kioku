@@ -15,6 +15,13 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     var cues: [SubtitleCue] = []
     private var timer: Timer?
 
+    override init() {
+        super.init()
+        // .playback ignores the ringer/silent switch and is the category required for
+        // background audio under the UIBackgroundModes "audio" entitlement.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+    }
+
     // Loads audio from a URL and stores the cue list for highlight resolution.
     // Throws if AVAudioPlayer cannot open the file.
     func load(audioURL: URL, cues: [SubtitleCue]) throws {
@@ -36,12 +43,14 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         duration = 0
         currentTimeMs = 0
         activeCueIndex = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     // Starts or resumes playback. Begins polling for the current cue.
     // Starts from position 0 if not already mid-song (currentTimeMs == 0), otherwise resumes.
     func play() {
         guard let player else { return }
+        try? AVAudioSession.sharedInstance().setActive(true)
         player.play()
         isPlaying = true
         startTimer()
@@ -50,6 +59,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Starts playback from the beginning regardless of current position.
     func playFromStart() {
         guard let player else { return }
+        try? AVAudioSession.sharedInstance().setActive(true)
         player.currentTime = 0
         currentTimeMs = 0
         player.play()
