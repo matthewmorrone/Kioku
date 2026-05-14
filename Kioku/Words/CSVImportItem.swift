@@ -3,7 +3,9 @@ import Foundation
 // One parsed row from a CSV/delimited import.
 // Tracks user-provided values separately from dictionary-enriched values so
 // the UI can distinguish what the user supplied vs what was inferred.
-struct CSVImportItem: Identifiable, Hashable {
+// `nonisolated` so the CSV import's `Task.detached` resolution loop can read the row's
+// computed properties (finalSurface, finalKana, …) without crossing actor boundaries.
+nonisolated struct CSVImportItem: Identifiable, Hashable {
     let id: UUID
     let lineNumber: Int
 

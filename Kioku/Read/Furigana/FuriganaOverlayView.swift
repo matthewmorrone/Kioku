@@ -25,7 +25,8 @@ final class FuriganaOverlayView: UIView {
     private var debugEnvelopeRectsEnabled = false
     private var debugEnvelopeRects: [CGRect] = []
     // Bisector debug data — vertical center lines showing headword/furigana alignment.
-    private var debugBisectorsEnabled = false
+    private var debugBisectorHeadwordEnabled = false
+    private var debugBisectorFuriganaEnabled = false
     private var debugBisectorHeadwordMidXs: [CGFloat] = []
     private var debugBisectorHeadwordRects: [CGRect] = []
     private var debugBisectorFuriganaRects: [CGRect] = []
@@ -69,7 +70,8 @@ final class FuriganaOverlayView: UIView {
         debugHeadwordColors: [UIColor],
         debugHeadwordLineBandRects: [CGRect],
         debugFuriganaLineBandRects: [CGRect],
-        debugBisectorsEnabled: Bool = false,
+        debugBisectorHeadwordEnabled: Bool = false,
+        debugBisectorFuriganaEnabled: Bool = false,
         debugBisectorHeadwordMidXs: [CGFloat] = [],
         debugBisectorHeadwordRects: [CGRect] = [],
         debugBisectorFuriganaRects: [CGRect] = [],
@@ -100,7 +102,8 @@ final class FuriganaOverlayView: UIView {
         self.debugHeadwordLineBandsEnabled = debugHeadwordLineBandsEnabled
         self.debugFuriganaLineBands = debugFuriganaLineBandRects
         self.debugFuriganaLineBandsEnabled = debugFuriganaLineBandsEnabled
-        self.debugBisectorsEnabled = debugBisectorsEnabled
+        self.debugBisectorHeadwordEnabled = debugBisectorHeadwordEnabled
+        self.debugBisectorFuriganaEnabled = debugBisectorFuriganaEnabled
         self.debugBisectorHeadwordMidXs = debugBisectorHeadwordMidXs
         self.debugBisectorHeadwordRects = debugBisectorHeadwordRects
         self.debugBisectorFuriganaRects = debugBisectorFuriganaRects
@@ -220,10 +223,13 @@ final class FuriganaOverlayView: UIView {
             }
         }
 
-        // Bisectors: vertical center line(s) per segment.
-        // Segments with furigana get two lines — yellow when aligned (within 0.75pt), green when not.
-        // Segments without furigana get a single grey headword line.
-        if debugBisectorsEnabled {
+        // Bisectors: each toggle draws independently. Headword line through the kanji-run
+        // center, furigana line through the ruby center. When both toggles are on, the
+        // pair color-codes by alignment (yellow=aligned within 0.75pt, green=misaligned).
+        // When only one is on, that lone line is yellow so it remains visible against any
+        // backdrop.
+        let drawAnyBisector = debugBisectorHeadwordEnabled || debugBisectorFuriganaEnabled
+        if drawAnyBisector {
             let tolerance: CGFloat = 0.75
             for index in debugBisectorHeadwordMidXs.indices {
                 let headwordRect = debugBisectorHeadwordRects[index]
@@ -231,32 +237,30 @@ final class FuriganaOverlayView: UIView {
                 let headwordMidX = debugBisectorHeadwordMidXs[index]
                 let hasFurigana = furiganaRect != .zero
 
-                if hasFurigana {
-                    let furiganaMidX = furiganaRect.midX
-                    let aligned = abs(headwordMidX - furiganaMidX) <= tolerance
-                    let color = aligned
+                let pairColor: UIColor
+                if hasFurigana, debugBisectorHeadwordEnabled, debugBisectorFuriganaEnabled {
+                    let aligned = abs(headwordMidX - furiganaRect.midX) <= tolerance
+                    pairColor = aligned
                         ? UIColor.systemYellow.withAlphaComponent(0.9)
                         : UIColor.systemGreen.withAlphaComponent(0.9)
-                    color.setStroke()
+                } else {
+                    pairColor = UIColor.systemYellow.withAlphaComponent(0.9)
+                }
+                pairColor.setStroke()
 
+                if debugBisectorHeadwordEnabled {
                     let headwordPath = UIBezierPath()
                     headwordPath.move(to: CGPoint(x: headwordMidX, y: headwordRect.minY))
                     headwordPath.addLine(to: CGPoint(x: headwordMidX, y: headwordRect.maxY))
                     headwordPath.lineWidth = 2
                     headwordPath.stroke()
-
+                }
+                if debugBisectorFuriganaEnabled, hasFurigana {
                     let furiganaPath = UIBezierPath()
-                    furiganaPath.move(to: CGPoint(x: furiganaMidX, y: furiganaRect.minY))
-                    furiganaPath.addLine(to: CGPoint(x: furiganaMidX, y: furiganaRect.maxY))
+                    furiganaPath.move(to: CGPoint(x: furiganaRect.midX, y: furiganaRect.minY))
+                    furiganaPath.addLine(to: CGPoint(x: furiganaRect.midX, y: furiganaRect.maxY))
                     furiganaPath.lineWidth = 2
                     furiganaPath.stroke()
-                } else {
-                    UIColor.systemYellow.withAlphaComponent(0.9).setStroke()
-                    let path = UIBezierPath()
-                    path.move(to: CGPoint(x: headwordMidX, y: headwordRect.minY))
-                    path.addLine(to: CGPoint(x: headwordMidX, y: headwordRect.maxY))
-                    path.lineWidth = 2
-                    path.stroke()
                 }
             }
         }

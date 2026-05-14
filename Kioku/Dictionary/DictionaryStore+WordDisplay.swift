@@ -6,7 +6,9 @@ extension DictionaryStore {
     // Searches for example sentences matching the surface and all lemma kanji/kana forms so
     // inflected surfaces still find sentences that use the dictionary form.
     // Returns nil when the entry ID is not in the database.
-    public func fetchWordDisplayData(entryID: Int64, surface: String) throws -> WordDisplayData? {
+    // `nonisolated` because the underlying SQLite calls serialize on the store's private
+    // access queue — the method is safe to invoke from any context (e.g. flashcard detached tasks).
+    nonisolated public func fetchWordDisplayData(entryID: Int64, surface: String) throws -> WordDisplayData? {
         guard let entry = try lookupEntry(entryID: entryID) else { return nil }
         let primaryKana = entry.kanaForms.first?.text ?? surface
         // Try the inflected surface first; fall back to dictionary kanji/kana forms when the

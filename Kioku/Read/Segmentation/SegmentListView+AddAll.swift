@@ -51,7 +51,7 @@ extension SegmentListView {
                 let perItemNanos = min(UInt64(40_000_000), totalWindowNanos / UInt64(total))
                 for (idx, surface) in newSurfaces.enumerated() {
                     if Task.isCancelled { return }
-                    withAnimation(.easeOut(duration: 0.15)) {
+                    _ = withAnimation(.easeOut(duration: 0.15)) {
                         savedWordSurfaces.insert(surface)
                     }
                     addAllFeedbackMessage = total == 1

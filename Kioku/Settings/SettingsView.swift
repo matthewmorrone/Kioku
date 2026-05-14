@@ -43,9 +43,14 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
     @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
     @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
-    @AppStorage(DebugSettings.bisectorsKey) private var debugBisectors: Bool = false
+    @AppStorage(DebugSettings.headwordLineNumbersKey) private var debugHeadwordLineNumbers: Bool = false
+    @AppStorage(DebugSettings.rubyLineNumbersKey) private var debugRubyLineNumbers: Bool = false
+    @AppStorage(DebugSettings.bisectorHeadwordKey) private var debugBisectorHeadword: Bool = false
+    @AppStorage(DebugSettings.bisectorFuriganaKey) private var debugBisectorFurigana: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
     @AppStorage(DebugSettings.leftInsetGuideKey) private var debugLeftInsetGuide: Bool = false
+    // CoreText renderer is now the only path; toggle hidden, key kept for migration.
+    // @AppStorage(DebugSettings.useCoreTextRendererKey) private var useCoreTextRenderer: Bool = true
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
 
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
@@ -102,9 +107,13 @@ struct SettingsView: View {
                         debugHeadwordRects: debugHeadwordRects,
                         debugHeadwordLineBands: debugHeadwordLineBands,
                         debugFuriganaLineBands: debugFuriganaLineBands,
-                        debugBisectors: debugBisectors,
+                        debugBisectorHeadword: debugBisectorHeadword,
+                        debugBisectorFurigana: debugBisectorFurigana,
                         debugEnvelopeRects: debugEnvelopeRects,
-                        debugLeftInsetGuide: debugLeftInsetGuide
+                        debugLeftInsetGuide: debugLeftInsetGuide,
+                        debugPixelRuler: debugPixelRuler,
+                        debugHeadwordLineNumbers: debugHeadwordLineNumbers,
+                        debugRubyLineNumbers: debugRubyLineNumbers
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Vertical padding for breathing room; negative horizontal padding cancels
@@ -320,8 +329,13 @@ struct SettingsView: View {
                     Toggle("Envelope Rects", isOn: $debugEnvelopeRects)
                     Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
                     Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
-                    Toggle("Bisectors", isOn: $debugBisectors)
+                    Toggle("Headword Line Numbers (L#)", isOn: $debugHeadwordLineNumbers)
+                    Toggle("Ruby Line Numbers (R#)", isOn: $debugRubyLineNumbers)
+                    Toggle("Headword Bisectors", isOn: $debugBisectorHeadword)
+                    Toggle("Furigana Bisectors", isOn: $debugBisectorFurigana)
                     Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)
+                    // Toggle hidden — CoreText is now the only renderer.
+                    // Toggle("Use CoreText Renderer (experimental)", isOn: $useCoreTextRenderer)
                 }
                 #endif
 

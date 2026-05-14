@@ -104,7 +104,10 @@ extension ReadView {
         scheduleFuriganaGeneration(for: text, edges: segmentEdges)
     }
 
-    // Clears note-backed segment range overrides and restores computed segmentation from the segmenter.
+    // Clears note-backed segment range overrides AND user-edited furigana readings,
+    // then restores computed segmentation from the segmenter. The furigana clear is
+    // done unconditionally so the reset button visibly drops manual reading edits
+    // (otherwise the post-segmenter backfill leaves stale overrides in place).
     func resetSegmentationToComputed() {
         segments = nil
         illegalMergeBoundaryLocation = nil
@@ -118,6 +121,10 @@ extension ReadView {
         pendingLLMChangesByLocation = [:]
         preLLMSegmentEntries = []
         hasPendingLLMChanges = false
+        // Always drop user-edited readings so the reset is total. Re-segmentation will
+        // backfill defaults from the lexicon below.
+        furiganaBySegmentLocation = [:]
+        furiganaLengthBySegmentLocation = [:]
         SegmentLookupSheet.shared.dismissPopover()
 
         if readResourcesReady && isEditMode == false {
@@ -127,8 +134,6 @@ extension ReadView {
             segmentEdges = []
             segmentRanges = []
             unknownSegmentLocations = []
-            furiganaBySegmentLocation = [:]
-            furiganaLengthBySegmentLocation = [:]
         }
 
         persistCurrentNoteIfNeeded()
