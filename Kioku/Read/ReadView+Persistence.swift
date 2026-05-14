@@ -139,6 +139,19 @@ extension ReadView {
             // already early-returns on kana-only edge sets, so kana notes don't trigger a prompt.
             scheduleFuriganaGeneration(for: text, edges: edges)
         } else {
+            // Clear stale segment state before kicking off async re-segmentation. The
+            // previous note's ranges hold `Range<String.Index>` values bound to the
+            // previous note's String, and `NSRange(range, in: text)` traps when an
+            // index isn't valid in the target — which is the case here while `text` is
+            // already the new note's content but `segmentRanges` still references the
+            // old. Resetting prevents downstream consumers (renderer, sheet) from
+            // seeing the mismatched pair.
+            segmentEdges = []
+            segmentRanges = []
+            segmentLatticeEdges = []
+            unknownSegmentLocations = []
+            furiganaBySegmentLocation = [:]
+            furiganaLengthBySegmentLocation = [:]
             refreshSegmentationRanges()
         }
 

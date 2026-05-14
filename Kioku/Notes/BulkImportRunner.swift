@@ -206,19 +206,13 @@ final class BulkImportRunner: ObservableObject {
         return cues
     }
 
-    // Computes the note title for new notes. Defaults to the filename basename so the user's
-    // file naming carries over; falls back to the first content line when the basename is empty.
-    private func preferredTitle(baseName: String, content: String) -> String {
+    // Computes the note title for new notes. The user's file naming is authoritative — the
+    // basename of the imported file always becomes the title. When the basename is empty
+    // (rare; would require a file with no name), we fall back to "Untitled" rather than the
+    // first content line, so a song's opening lyric never accidentally becomes its title.
+    private func preferredTitle(baseName: String, content _: String) -> String {
         let trimmedBase = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedBase.isEmpty == false {
-            return trimmedBase
-        }
-
-        return content
-            .components(separatedBy: "\n")
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            ?? ""
+        return trimmedBase.isEmpty ? "Untitled" : trimmedBase
     }
 
     // Reads a text file from a security-scoped URL, falling back to Latin-1 when the file

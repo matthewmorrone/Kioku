@@ -1,7 +1,10 @@
 import Foundation
 
 // Parses SRT subtitle file content into an ordered list of SubtitleCues and assembles note content.
-enum SubtitleParser {
+// Pure parsing/formatting — no UI or shared mutable state, so it's safe to call from background
+// contexts (bulk import's detached task, audio decoder pipelines). Marking the type nonisolated
+// opts every method out of the project's MainActor-default actor inference.
+nonisolated enum SubtitleParser {
     // Parses an SRT string into cues. Offsets into note content are not stored here;
     // call resolveHighlightRanges(for:in:) separately at playback time.
     static func parse(_ srtContent: String) -> [SubtitleCue] {

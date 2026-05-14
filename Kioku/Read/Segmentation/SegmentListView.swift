@@ -72,6 +72,15 @@ struct SegmentListView: View {
                             )
                         }
                         .padding(.vertical, 6)
+                        // Whole-row hit area: tapping the segment text opens the same Word
+                        // Details view the long-press context menu's primary action does.
+                        // Without this the rows are inert except for the star button and
+                        // the long-press menu, which doesn't match the read view's
+                        // "tap a word to see its definition" affordance.
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            openWordDetail(for: edge.surface, lemma: lemmaForSurface(edge.surface) ?? "")
+                        }
                         .contextMenu {
                             Button {
                                 openWordDetail(for: edge.surface, lemma: lemmaForSurface(edge.surface) ?? "")

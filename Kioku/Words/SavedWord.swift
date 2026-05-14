@@ -2,13 +2,14 @@ import Foundation
 
 // Points to a single gloss within a sense — used when the user wants a flashcard meaning to be
 // one specific synonym rather than the sense's first-gloss-as-representative.
-struct GlossRef: Codable, Hashable {
+nonisolated struct GlossRef: Codable, Hashable {
     let senseID: Int64
     let glossIndex: Int
 }
 
 // Represents one saved word that can belong to multiple note-linked lists and user-created word lists.
-struct SavedWord: Codable, Hashable, Identifiable {
+// `nonisolated` so import pipelines (CSV, bulk) can construct it from detached tasks.
+nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     static let currentSchemaVersion = 1
 
     let canonicalEntryID: Int64

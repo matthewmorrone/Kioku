@@ -5,7 +5,7 @@ import Foundation
 // often surfaces archaic / obscure / rare meanings before the everyday one. This filter
 // skips senses tagged with "low-priority" misc flags and returns the first remaining sense's
 // id. If every sense is tagged, the entry's first sense is used as a last-resort default.
-enum DefaultSenseSelection {
+nonisolated enum DefaultSenseSelection {
     private static let lowPriorityMiscTags: Set<String> = ["arch", "obs", "obsc", "rare", "dated"]
 
     // Returns one sense id wrapped in an array so the caller can drop it straight into

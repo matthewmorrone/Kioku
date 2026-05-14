@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 
 // Renders the live typography preview in the Settings typography section using the same
-// FuriganaTextRenderer that powers the read tab, eliminating rendering divergence.
+// CoreText renderer (KiokuCoreTextRendererView) that powers the read tab, so what users see
+// in Settings matches what they will see on the read page byte-for-byte.
 struct SettingsPreviewRenderer: View {
 
     // Preview text with hardcoded furigana readings.
@@ -32,9 +33,13 @@ struct SettingsPreviewRenderer: View {
     let debugHeadwordRects: Bool
     let debugHeadwordLineBands: Bool
     let debugFuriganaLineBands: Bool
-    let debugBisectors: Bool
+    let debugBisectorHeadword: Bool
+    let debugBisectorFurigana: Bool
     let debugEnvelopeRects: Bool
     let debugLeftInsetGuide: Bool
+    let debugPixelRuler: Bool
+    let debugHeadwordLineNumbers: Bool
+    let debugRubyLineNumbers: Bool
 
     // Builds segmentation ranges that treat each furigana word as its own segment,
     // with non-furigana runs as separate segments so every character is covered.
@@ -178,43 +183,48 @@ struct SettingsPreviewRenderer: View {
     }
 
     var body: some View {
-        FuriganaTextRenderer(
-            isActive: true,
-            isOverlayFrozen: false,
+        // Match the default segment colors ReadView uses when custom token colors are off,
+        // so the preview reads identically to the read tab in the common case.
+        let evenColor = UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed }
+        let oddColor = UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo }
+        KiokuCoreTextRendererView(
             text: Self.previewText,
-            isLineWrappingEnabled: true,
             segmentationRanges: segmentationRanges,
-            selectedSegmentLocation: nil,
-            blankSelectedSegmentLocation: nil,
-            selectedHighlightRangeOverride: nil,
-            playbackHighlightRangeOverride: nil,
-            activePlaybackCueIndex: nil,
-            illegalMergeBoundaryLocation: nil,
             furiganaBySegmentLocation: furiganaBySegmentLocation,
             furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+            isFuriganaVisible: true,
             isVisualEnhancementsEnabled: true,
-            isRubySpacingEnabled: true,
             isColorAlternationEnabled: true,
-            isHighlightUnknownEnabled: false,
-            unknownSegmentLocations: [],
-            changedSegmentLocations: [],
-            changedReadingLocations: [],
-            customEvenSegmentColorHex: "",
-            customOddSegmentColorHex: "",
-            debugFuriganaRects: debugFuriganaRects,
-            debugHeadwordRects: debugHeadwordRects,
-            debugHeadwordLineBands: debugHeadwordLineBands,
-            debugFuriganaLineBands: debugFuriganaLineBands,
-            debugBisectors: debugBisectors,
-            debugEnvelopeRects: debugEnvelopeRects,
-            debugLeftInsetGuide: debugLeftInsetGuide,
-            externalContentOffsetY: 0,
-            onScrollOffsetYChanged: { _ in },
-            onSegmentTapped: { _, _, _ in },
             textSize: $textSize,
             lineSpacing: lineSpacing,
             kerning: kerning,
-            furiganaGap: furiganaGap,
+            furiganaGap: CGFloat(furiganaGap),
+            evenSegmentColor: evenColor,
+            oddSegmentColor: oddColor,
+            isLineWrappingEnabled: true,
+            isRubySpacingEnabled: true,
+            selectedHighlightRange: nil,
+            playbackHighlightRange: nil,
+            selectionHighlightColor: .clear,
+            playbackHighlightColor: .clear,
+            unknownSegmentLocations: [],
+            isHighlightUnknownEnabled: false,
+            unknownSegmentColor: .label,
+            debugFlags: KiokuDebugOverlayView.Flags(
+                headwordRects: debugHeadwordRects,
+                furiganaRects: debugFuriganaRects,
+                envelopeRects: debugEnvelopeRects,
+                headwordBisectors: debugBisectorHeadword,
+                furiganaBisectors: debugBisectorFurigana,
+                headwordLineBands: debugHeadwordLineBands,
+                furiganaLineBands: debugFuriganaLineBands,
+                pixelRuler: debugPixelRuler,
+                leftInsetGuide: debugLeftInsetGuide,
+                headwordLineNumbers: debugHeadwordLineNumbers,
+                rubyLineNumbers: debugRubyLineNumbers
+            ),
+            illegalMergeLocation: nil,
+            onSegmentTapped: { _, _ in },
             isScrollEnabled: false
         )
     }

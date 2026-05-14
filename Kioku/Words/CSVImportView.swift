@@ -286,8 +286,9 @@ struct CSVImportView: View {
 
     // Performs a synchronous best-match lookup to find the canonical dictionary entry for one import row.
     // Tries the kanji surface first, then falls back to the kana reading. Static so the import task
-    // can call it from a detached context without capturing the SwiftUI view value.
-    private static func resolveEntry(surface: String, kana: String?, store: DictionaryStore) -> DictionaryEntry? {
+    // can call it from a detached context without capturing the SwiftUI view value. `nonisolated`
+    // because DictionaryStore serializes its SQL on a private queue — safe off the main actor.
+    nonisolated private static func resolveEntry(surface: String, kana: String?, store: DictionaryStore) -> DictionaryEntry? {
         let mode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
         if let entry = try? store.lookup(surface: surface, mode: mode).first {
             return entry

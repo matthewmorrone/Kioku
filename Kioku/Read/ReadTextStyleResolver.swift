@@ -158,20 +158,8 @@ struct ReadTextStyleResolver {
     }
 
     // Skips whitespace and punctuation so segment styling only affects lexical segments.
+    // Uses the shared classifier so TK2 and CT paths agree on what counts as stylable.
     private func shouldIgnoreSegmentStyling(for segmentText: String) -> Bool {
-        return segmentText.unicodeScalars.allSatisfy { Self.nonLexicalScalars.contains($0) }
+        SegmentClassifier.isNonLexical(segmentText)
     }
-
-    // Character set covering whitespace, punctuation, and symbols — including CJK brackets and delimiters that Foundation's punctuationCharacters may not classify correctly.
-    private static let nonLexicalScalars: CharacterSet = {
-        var cs = CharacterSet.whitespacesAndNewlines
-        cs.formUnion(.punctuationCharacters)
-        cs.formUnion(.symbols)
-        // Explicitly add common Japanese punctuation and brackets to guard against
-        // Foundation misclassifying CJK Symbols and Punctuation block characters.
-        for scalar in "「」『』【】〔〕〈〉《》（）、。・〜…―～".unicodeScalars {
-            cs.insert(scalar)
-        }
-        return cs
-    }()
 }
