@@ -206,7 +206,7 @@ struct SongLineCard: View {
     // revealed everything so the card stops nagging.
     @ViewBuilder
     private var advancePrompt: some View {
-        if revealStage < stageCap {
+        if revealStage < line.revealStageCap {
             HStack(spacing: 6) {
                 Image(systemName: "hand.tap")
                     .font(.footnote)
@@ -231,7 +231,8 @@ struct SongLineCard: View {
 
     // Stage indices that activate each layer. Computed so layers cleanly skip when a
     // line lacks content for that layer — e.g. a line with no words shifts gist from
-    // stage 3 down to stage 2.
+    // stage 3 down to stage 2. The maximum cap lives on SongLine.revealStageCap so the
+    // stepper and the card share one source of truth.
     private var romajiStage: Int { 1 }
 
     private var wordsStage: Int {
@@ -243,13 +244,5 @@ struct SongLineCard: View {
         if line.romaji != nil { stage += 1 }
         if line.words.isEmpty == false { stage += 1 }
         return stage
-    }
-
-    private var stageCap: Int {
-        var cap = 0
-        if line.romaji != nil { cap += 1 }
-        if line.words.isEmpty == false { cap += 1 }
-        if line.gist != nil || line.grammarNote != nil { cap += 1 }
-        return cap
     }
 }

@@ -31,21 +31,6 @@ struct SongBreakdown: Codable, Equatable, Sendable {
     }
 }
 
-// One parsed line in the breakdown. Lines are 1-indexed to match the prompt's "Line N" labels.
-// For repeated chorus lines, `reference` is non-nil and `words`/`gist`/`grammarNote` may be empty —
-// the consumer follows the reference to fetch the referenced line's content on demand.
-struct SongLine: Codable, Equatable, Identifiable, Sendable {
-    let index: Int
-    let original: String
-    let romaji: String?
-    let words: [SongWord]
-    let gist: String?
-    let grammarNote: String?
-    let reference: LineReference?
-
-    var id: Int { index }
-}
-
 // A single word entry within a line's breakdown.
 // `sungRomaji` captures the actually-sung pronunciation, which may differ from the canonical
 // dictionary reading (e.g. 愛人 written, "hito" sung). When the user taps the chip to save,

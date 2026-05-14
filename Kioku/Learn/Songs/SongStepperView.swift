@@ -252,25 +252,13 @@ struct SongStepperView: View {
         return breakdown.lines.first(where: { $0.index == target })
     }
 
-    // Advances the reveal stage for one line, capped by the number of populated stages.
-    // Lines without romaji/words/gist collapse to fewer stages so users aren't stuck
-    // tapping a card that has nothing more to show.
+    // Advances the reveal stage for one line, capped by the line's revealStageCap (defined
+    // on SongLine so the stepper and the card cannot drift on what counts as a stage).
     private func advance(for line: SongLine) {
-        let cap = stageCap(for: line)
         let current = revealByLineIndex[line.index] ?? 0
-        if current < cap {
+        if current < line.revealStageCap {
             revealByLineIndex[line.index] = current + 1
         }
-    }
-
-    // Maximum reveal stage for a line: counts each populated optional layer.
-    // Stages: 0=jp only; +1 if romaji; +1 if any words; +1 if gist or grammar.
-    private func stageCap(for line: SongLine) -> Int {
-        var cap = 0
-        if line.romaji != nil { cap += 1 }
-        if line.words.isEmpty == false { cap += 1 }
-        if line.gist != nil || line.grammarNote != nil { cap += 1 }
-        return cap
     }
 
     // Triggers a generation call. Replaces whatever was in the store on success so
