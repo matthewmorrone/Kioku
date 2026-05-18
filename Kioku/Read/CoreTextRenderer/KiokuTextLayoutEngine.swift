@@ -337,6 +337,13 @@ final class KiokuTextLayoutEngine {
     // emits one rect per intersection using the segment's footprint-aware origin. Output
     // matches `firstRect`'s coordinate system so highlight bands sit exactly where the
     // segment renders.
+    //
+    // The rect's X-range starts from the intersected headword glyph advance and is then
+    // widened to cover any ruby annotation whose kanji-run intersects `range`. Without
+    // that expansion, a band over a kanji with wider furigana (e.g. うつくしい over 美しい)
+    // is only as wide as the kanji glyph; the ruby above sits unhighlighted past either
+    // end. Including ruby in the X envelope matches the user-visible "this word is
+    // highlighted" semantic — the furigana is part of the word.
     private func packedBoundingRects(forCharacterRange range: NSRange) -> [CGRect] {
         var rects: [CGRect] = []
         for placement in segmentPlacements {
@@ -348,16 +355,39 @@ final class KiokuTextLayoutEngine {
             let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
             let localStart = intersection.location - placement.location
             let localEnd = localStart + intersection.length
-            let xStart = CTLineGetOffsetForStringIndex(segLine, localStart, nil)
-            let xEnd = CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
+            let xStart = CGFloat(CTLineGetOffsetForStringIndex(segLine, localStart, nil))
+            let xEnd = CGFloat(CTLineGetOffsetForStringIndex(segLine, localEnd, nil))
+            var minX = min(xStart, xEnd)
+            var maxX = max(xStart, xEnd)
+
+            // Extend the envelope by any ruby annotation whose kanji-run overlaps the
+            // highlight range. Ruby X positions are computed in the same segment-local
+            // CTLine coordinate system as the headword glyph positions, so they can be
+            // mixed into the same min/max without further translation.
+            for (rubyLoc, reading) in furiganaByLocation {
+                guard NSLocationInRange(rubyLoc, segRange) else { continue }
+                guard let rubyLen = furiganaLengthByLocation[rubyLoc], rubyLen > 0 else { continue }
+                guard rubyLoc + rubyLen <= placement.location + placement.length else { continue }
+                let rubyRange = NSRange(location: rubyLoc, length: rubyLen)
+                guard NSIntersectionRange(rubyRange, range).length > 0 else { continue }
+                let rubyLocalStart = rubyLoc - placement.location
+                let rubyLocalEnd = rubyLocalStart + rubyLen
+                let kanjiXStart = CGFloat(CTLineGetOffsetForStringIndex(segLine, rubyLocalStart, nil))
+                let kanjiXEnd = CGFloat(CTLineGetOffsetForStringIndex(segLine, rubyLocalEnd, nil))
+                let kanjiCenter = (kanjiXStart + kanjiXEnd) / 2
+                let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
+                minX = min(minX, kanjiCenter - rubyW / 2)
+                maxX = max(maxX, kanjiCenter + rubyW / 2)
+            }
+
             // Mirror the centering shift the draw passes apply so highlight-band rects
             // stay aligned with the glyphs they're meant to underline.
             let lineShift = lineOriginShifts[placement.lineIndex] ?? 0
             let headwordOriginX = placement.originX + placement.leftOverhang + lineShift
             rects.append(CGRect(
-                x: headwordOriginX + min(xStart, xEnd),
+                x: headwordOriginX + minX,
                 y: line.originY,
-                width: abs(xEnd - xStart),
+                width: maxX - minX,
                 height: line.height
             ))
         }
