@@ -605,28 +605,28 @@ nonisolated public final class Lexicon {
         // deinflection rule (ためぬ, classical negative of ためる), and without this guard the
         // depth>0 spurious match wins and the user sees ためぬ as the lemma.
         //
-        // The discriminator: does the surface have a direct JMdict entry whose POS is non-
-        // conjugating (expression, particle, adverb, conjunction, interjection, prefix,
-        // suffix, copula)? If yes, treat the surface as the lemma and discard deinflection
-        // candidates so the sort below can't reorder them above it.
-        let surfaceIsNonConjugatingLemma: Bool = {
+        // The discriminator is intentionally narrow: we only treat the surface as a set-
+        // phrase lemma when JMdict tags an entry as `exp` (expression — a multi-token
+        // idiom that, by convention, is not re-analyzed via deinflection rules). Codes
+        // like `prt`, `conj`, `adv`, `cop` are too broad here — many of them are
+        // homographs with valid verb conjugations (して is both a `conj` direct entry AND
+        // the te-form of する; で is both a `prt` AND the te-form of だ). Suppressing
+        // deinflection for those would lose the canonical verb lookup for the common case.
+        let surfaceIsExpressionLemma: Bool = {
             let surfaceEntries = lookupEntries(for: trimmedSurface)
             guard surfaceEntries.isEmpty == false else { return false }
-            let nonConjugatingCodes: Set<String> = [
-                "exp", "prt", "adv", "conj", "int", "pref", "suf", "cop"
-            ]
             return surfaceEntries.contains { entry in
                 entry.senses.contains { sense in
                     let posCodes = (sense.pos ?? "")
                         .lowercased()
                         .split(separator: ",")
                         .map { $0.trimmingCharacters(in: .whitespaces) }
-                    return posCodes.contains { nonConjugatingCodes.contains(String($0)) }
+                    return posCodes.contains("exp")
                 }
             }
         }()
 
-        if surfaceIsNonConjugatingLemma {
+        if surfaceIsExpressionLemma {
             entries.removeAll { $0.depth > 0 }
             if entries.contains(where: { $0.lemma == trimmedSurface }) == false {
                 entries.append((lemma: trimmedSurface, depth: 0))
