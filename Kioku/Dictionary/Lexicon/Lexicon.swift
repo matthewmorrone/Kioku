@@ -170,18 +170,51 @@ nonisolated public final class Lexicon {
         guard let transitions = deinflector.bestTransitions(from: pathsByLemma, targetLemma: best.lemma),
               transitions.isEmpty == false else { return nil }
 
-        // Walk transitions looking for auxiliary-stripping steps: kanaIn starts with kanaOut and has
-        // extra characters (the auxiliary surface). For example: kanaIn=てゆく kanaOut=て → auxiliary=ゆく.
+        // Walk transitions looking for auxiliary-stripping steps and recover the auxiliary
+        // surface for each. Three patterns to handle:
+        //
+        //   1. te-form compounds (kanaIn=てゆく, kanaOut=て): kanaIn has kanaOut as a prefix,
+        //      and the remainder is the auxiliary (ゆく).
+        //   2. ichidan i-stem compounds (kanaIn=つづける, kanaOut=る): the entire kanaIn IS
+        //      the auxiliary because v1 verbs have no stem change.
+        //   3. godan i-stem compounds (kanaIn=しつづける, kanaOut=す): the FIRST char of
+        //      kanaIn is the i-stem (し for す→し), the rest is the auxiliary (つづける).
+        //
+        // The previous implementation only handled case 1, so any compound built on a godan
+        // verb's i-stem (買い始める, 飛び込む, さがしつづける, etc.) silently produced no
+        // auxiliary chip in the lookup sheet. Try each strategy and take whichever resolves
+        // to a real dictionary entry.
         var auxiliaries: [(lemma: String, gloss: String?)] = []
         for transition in transitions {
-            guard transition.kanaIn.count > transition.kanaOut.count,
-                  transition.kanaIn.hasPrefix(transition.kanaOut) else { continue }
-            let auxSurface = String(transition.kanaIn.dropFirst(transition.kanaOut.count))
-            // Only include auxiliaries that resolve to a real dictionary entry.
-            let auxEntries = lookupEntries(for: auxSurface)
-            guard let auxEntry = auxEntries.first else { continue }
+            guard transition.kanaIn.count > transition.kanaOut.count else { continue }
+            // Candidate order matters: prefer the SHORTEST plausible auxiliary so that
+            // surfaces like しつづける don't get reported as the full し続ける entry (which
+            // also exists in JMdict) when the user actually wants just 続ける.
+            // 1. strip-first-char — godan i-stem compounds (しつづける→つづける) AND te-form
+            //    compounds (てゆく→ゆく), since the first char is the linker in both cases.
+            // 2. strip-prefix — fallback for te-form compounds where kanaOut is multi-char.
+            // 3. direct kanaIn — ichidan compounds (つづける with kanaOut=る) where there's
+            //    no linker char to strip; the entire kanaIn IS the auxiliary.
+            var candidates: [String] = []
+            if transition.kanaIn.count > 1 {
+                candidates.append(String(transition.kanaIn.dropFirst()))
+            }
+            if transition.kanaIn.hasPrefix(transition.kanaOut) {
+                candidates.append(String(transition.kanaIn.dropFirst(transition.kanaOut.count)))
+            }
+            candidates.append(transition.kanaIn)
+            var resolvedAux: DictionaryEntry?
+            var resolvedSurface = ""
+            for candidate in candidates where candidate.isEmpty == false {
+                if let entry = lookupEntries(for: candidate).first {
+                    resolvedAux = entry
+                    resolvedSurface = candidate
+                    break
+                }
+            }
+            guard let auxEntry = resolvedAux else { continue }
             let gloss = auxEntry.senses.first?.glosses.joined(separator: "; ")
-            let auxLemma = auxEntry.kanjiForms.first?.text ?? auxEntry.kanaForms.first?.text ?? auxSurface
+            let auxLemma = auxEntry.kanjiForms.first?.text ?? auxEntry.kanaForms.first?.text ?? resolvedSurface
             auxiliaries.append((lemma: auxLemma, gloss: gloss))
         }
 

@@ -16,7 +16,7 @@ struct SettingsView: View {
     @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
     @AppStorage(TypographySettings.kerningKey) private var kerning = TypographySettings.defaultKerning
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
-    @AppStorage(LyricsDisplayStyle.storageKey) private var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
+    @AppStorage(LyricsHighlightGranularity.storageKey) private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
 
@@ -172,11 +172,12 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("Lyrics Style", selection: $lyricsDisplayStyleRaw) {
-                        ForEach(LyricsDisplayStyle.allCases, id: \.rawValue) { style in
-                            Text(style.displayName).tag(style.rawValue)
+                    Picker("Highlight Granularity", selection: $lyricsHighlightGranularityRaw) {
+                        ForEach(LyricsHighlightGranularity.allCases, id: \.rawValue) { granularity in
+                            Text(granularity.displayName).tag(granularity.rawValue)
                         }
                     }
+                    .pickerStyle(.segmented)
                     Toggle("Background Audio", isOn: $backgroundPlayback)
                 } header: {
                     Text("Audio")

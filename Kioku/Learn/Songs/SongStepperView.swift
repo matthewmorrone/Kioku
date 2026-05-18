@@ -56,10 +56,6 @@ struct SongStepperView: View {
             // mid-song offset. Always start the stepper at line 1.
             currentIndex = 0
         }
-        .onDisappear {
-            generationTask?.cancel()
-            generationTask = nil
-        }
         .preference(key: CardsStudySessionActivePreferenceKey.self, value: true)
         .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: true)
     }

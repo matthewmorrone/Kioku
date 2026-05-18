@@ -177,6 +177,14 @@ final class NotesStore: ObservableObject {
         runtimeSegmentationByNoteID[noteID] = NotesRuntimeSegmentationSnapshot(content: content, segments: segments)
     }
 
+    // Drops the in-memory runtime segmentation snapshot for a note. Used by Reset Segmentation so
+    // a stale snapshot containing the old (buggy) per-segment furigana can't be served back by
+    // export or by any consumer that reads through `runtimeSegmentationByNoteID` before the next
+    // segmenter pass has installed a fresh one.
+    func clearRuntimeSegmentation(noteID: UUID) {
+        runtimeSegmentationByNoteID[noteID] = nil
+    }
+
     // Packages the current notes array into an export document using existing runtime or persisted segmentation ranges.
     func makeTransferDocument() -> NotesTransferDocument {
         let exportNotes = notes.map { note in

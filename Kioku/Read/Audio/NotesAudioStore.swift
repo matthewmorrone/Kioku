@@ -46,6 +46,42 @@ final class NotesAudioStore {
         try data.write(to: destination, options: .atomic)
     }
 
+    // Persists the TextGrid-derived per-cue character checkpoints for an attachment.
+    // Absence of the file is the canonical "no karaoke data" signal — readers must treat the
+    // missing file as a normal empty case, not an error. Empty input removes any existing file.
+    func saveCueTimings(_ timings: CueCharTimings, attachmentID: UUID) throws {
+        let destination = cueTimingsURL(for: attachmentID)
+        if timings.isEmpty {
+            try? FileManager.default.removeItem(at: destination)
+            KaraokeDebugLog.log("saveCueTimings: empty → removed file for attachment=\(attachmentID.uuidString.prefix(8))")
+            return
+        }
+        let data = try JSONEncoder().encode(timings)
+        try data.write(to: destination, options: .atomic)
+        let total = timings.values.reduce(0) { $0 + $1.count }
+        KaraokeDebugLog.log("saveCueTimings: wrote \(total) checkpoints across \(timings.count) cues for attachment=\(attachmentID.uuidString.prefix(8))")
+    }
+
+    // Loads checkpoints for an attachment, returning empty on any failure or missing file.
+    func loadCueTimings(for attachmentID: UUID) -> CueCharTimings {
+        let source = cueTimingsURL(for: attachmentID)
+        guard
+            let data = try? Data(contentsOf: source),
+            let timings = try? JSONDecoder().decode(CueCharTimings.self, from: data)
+        else {
+            KaraokeDebugLog.log("loadCueTimings: empty (no file or decode failed) for attachment=\(attachmentID.uuidString.prefix(8))")
+            return [:]
+        }
+        let total = timings.values.reduce(0) { $0 + $1.count }
+        KaraokeDebugLog.log("loadCueTimings: \(total) checkpoints across \(timings.count) cues for attachment=\(attachmentID.uuidString.prefix(8))")
+        return timings
+    }
+
+    // URL where the timings JSON is stored alongside cues for an attachment.
+    func cueTimingsURL(for attachmentID: UUID) -> URL {
+        audioDirectory.appendingPathComponent(attachmentID.uuidString + ".timings.json")
+    }
+
     // Persists the raw SRT response for one attachment so it can be copied or exported later.
     func saveSRT(_ srtText: String, attachmentID: UUID, preferredFilename: String? = nil) throws -> URL {
         if let existingURL = subtitleURL(for: attachmentID) {
@@ -105,12 +141,14 @@ final class NotesAudioStore {
         guard let audioData = try? Data(contentsOf: audioURL) else { return nil }
         let srtText = loadSRT(for: attachmentID)
         let cues = loadCues(for: attachmentID)
+        let timings = loadCueTimings(for: attachmentID)
         return AudioAttachmentBackup(
             attachmentID: attachmentID,
             audioFilename: readableFilename(fromStoredURL: audioURL, defaultExtension: audioURL.pathExtension),
             audioData: audioData,
             srtText: srtText,
-            cues: cues.isEmpty ? nil : cues
+            cues: cues.isEmpty ? nil : cues,
+            timings: timings.isEmpty ? nil : timings
         )
     }
 
@@ -137,6 +175,12 @@ final class NotesAudioStore {
         if let cues = backup.cues {
             try saveCues(cues, attachmentID: backup.attachmentID)
         }
+
+        // Always invoke saveCueTimings — when the backup carries no timings it removes any
+        // stale .timings.json on disk. Without this, restoring an older backup over an
+        // attachment that has karaoke checkpoints would leave the previous file in place
+        // and loadCueTimings would keep returning the old data.
+        try saveCueTimings(backup.timings ?? [:], attachmentID: backup.attachmentID)
     }
 
     // Loads the saved raw SRT text when present.
@@ -153,6 +197,15 @@ final class NotesAudioStore {
             return latin1
         }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    // Returns the original audio file's basename (no extension) so callers can match a stored
+    // attachment against an externally-supplied filename (e.g., a TextGrid sibling for the same song).
+    // Returns nil when no audio file is stored for the attachment.
+    func audioBaseName(for attachmentID: UUID) -> String? {
+        guard let url = audioURL(for: attachmentID) else { return nil }
+        let restored = readableFilename(fromStoredURL: url, defaultExtension: url.pathExtension)
+        return (restored as NSString).deletingPathExtension
     }
 
     // Produces the preferred user-facing export filename for one attachment's subtitle file.
@@ -199,6 +252,7 @@ final class NotesAudioStore {
         try? FileManager.default.removeItem(
             at: audioDirectory.appendingPathComponent(attachmentID.uuidString + ".cues.json")
         )
+        try? FileManager.default.removeItem(at: cueTimingsURL(for: attachmentID))
 
         // Clean up translation cache when the attachment is deleted
         UserDefaults.standard.removeObject(forKey: "kioku.lyricsTranslations.\(attachmentID.uuidString)")

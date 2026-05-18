@@ -251,11 +251,17 @@ final class KiokuCoreTextView: UIView {
             guard lineFlipped.intersects(dirtyInFlipped) else { continue }
             let baselineY = line.originY + line.ascent
             let baselineYBottomUp = bounds.height - baselineY
+            // Honor the renderer's centering shift on this line — the packer assigns
+            // placement.originX assuming the line starts at leftInset, but the line may have
+            // been shifted (centered/right-aligned) post-layout via lineOriginShifts. Without
+            // adding the shift here, packed glyphs ignore centering even when CTLine-drawn
+            // text wouldn't.
+            let lineShift = layoutEngine.lineOriginShifts[line.lineIndex] ?? 0
             for placement in placementsByLine[line.lineIndex] ?? [] {
                 let segNSRange = NSRange(location: placement.location, length: placement.length)
                 let segAttr = layoutEngine.attributedString.attributedSubstring(from: segNSRange)
                 let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
-                let headwordOriginX = placement.originX + placement.leftOverhang
+                let headwordOriginX = placement.originX + placement.leftOverhang + lineShift
                 context.textPosition = CGPoint(x: headwordOriginX, y: baselineYBottomUp)
                 CTLineDraw(segLine, context)
             }
@@ -273,6 +279,10 @@ final class KiokuCoreTextView: UIView {
                 height: line.height
             )
             guard lineFlipped.intersects(dirtyInFlipped) else { continue }
+            // Same per-line centering shift the headword pass applied above — ruby has to
+            // ride along, otherwise furigana floats independently of its kanji when the
+            // active card is centered.
+            let rubyLineShift = layoutEngine.lineOriginShifts[line.lineIndex] ?? 0
             for placement in placementsByLine[line.lineIndex] ?? [] {
                 // Ruby entries may live at a kanji-run location inside the segment, not at
                 // the segment's start. Iterate every ruby entry whose location falls in
@@ -289,7 +299,7 @@ final class KiokuCoreTextView: UIView {
                     let localEnd = localStart + entry.length
                     let xStart = CTLineGetOffsetForStringIndex(segLine, localStart, nil)
                     let xEnd = CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
-                    let headwordOriginX = placement.originX + placement.leftOverhang
+                    let headwordOriginX = placement.originX + placement.leftOverhang + rubyLineShift
                     let kanjiMidXInHeadword = (xStart + xEnd) / 2
                     let kanjiMidX = headwordOriginX + kanjiMidXInHeadword
                     let rubyAttr = NSAttributedString(
@@ -408,11 +418,23 @@ final class KiokuCoreTextView: UIView {
     // the dirty rect for cheap partial redraws.
     private func drawHighlightBands(in context: CGContext, dirtyRect: CGRect) {
         guard highlightBands.isEmpty == false else { return }
+        // Extend each band's top edge up over the ruby annotation zone so furigana above a
+        // highlighted kanji also sits on the band. Without this the band stops below the
+        // kanji's line box and the ruby floats unbanded above. Only applies when furigana
+        // is actually being drawn (rubyEntries non-empty) so plain-text highlights stay
+        // flush with the line.
+        let rubyExtraTop: CGFloat = rubyEntries.isEmpty ? 0 : (baseTextSize * 0.5 + max(0, furiganaGap))
         for band in highlightBands {
             guard band.range.location != NSNotFound, band.range.length > 0 else { continue }
             let rects = layoutEngine.boundingRects(forCharacterRange: band.range)
             for rect in rects {
-                let padded = rect.insetBy(dx: 0, dy: band.verticalInset)
+                let inset = rect.insetBy(dx: 0, dy: band.verticalInset)
+                let padded = CGRect(
+                    x: inset.minX,
+                    y: inset.minY - rubyExtraTop,
+                    width: inset.width,
+                    height: inset.height + rubyExtraTop
+                )
                 guard padded.intersects(dirtyRect) else { continue }
                 let path = UIBezierPath(roundedRect: padded, cornerRadius: band.cornerRadius)
                 context.setFillColor(band.color.cgColor)

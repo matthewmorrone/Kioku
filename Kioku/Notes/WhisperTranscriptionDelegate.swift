@@ -1,6 +1,6 @@
 import SwiftWhisper
 
-// Bridges WhisperDelegate callbacks into closures for use from SubtitleImportSheet.
+// Bridges WhisperDelegate callbacks into closures for use from BulkImportRunner.
 // Must be a class because WhisperDelegate requires AnyObject.
 final class WhisperTranscriptionDelegate: WhisperDelegate {
     // Called with a value 0–1 as inference progresses.

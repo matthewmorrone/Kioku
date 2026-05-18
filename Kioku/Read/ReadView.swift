@@ -101,12 +101,19 @@ struct ReadView: View {
     @State var audioController = AudioPlaybackController()
     @State var audioAttachmentCues: [SubtitleCue] = []
     @State var audioAttachmentHighlightRanges: [NSRange?] = []
+    @State var audioAttachmentCueTimings: CueCharTimings = [:]
     @State var playbackHighlightRangeOverride: NSRange?
     @State var activePlaybackCueIndex: Int? = nil
     @State var activeAudioAttachmentID: UUID? = nil
 
     @State var isShowingLyricsView = false
-    @AppStorage(LyricsDisplayStyle.storageKey) var lyricsDisplayStyleRaw = LyricsDisplayStyle.defaultValue.rawValue
+    @AppStorage(LyricsHighlightGranularity.storageKey) var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
+
+    // Typed view of the granularity AppStorage, falling back to the default when the persisted
+    // raw value pre-dates a new case being added.
+    var lyricsHighlightGranularity: LyricsHighlightGranularity {
+        LyricsHighlightGranularity(rawValue: lyricsHighlightGranularityRaw) ?? LyricsHighlightGranularity.defaultValue
+    }
     @State var isShowingSubtitleEditor = false
     @State var isShowingSubtitleMismatchDialog = false
     @State var subtitleMismatchCount = 0
@@ -468,7 +475,12 @@ struct ReadView: View {
         .background {
             AudioCueHighlightObserver(
                 controller: audioController,
+                cues: audioAttachmentCues,
                 highlightRanges: audioAttachmentHighlightRanges,
+                timings: audioAttachmentCueTimings,
+                granularity: lyricsHighlightGranularity,
+                segmentationRanges: segmentRanges,
+                noteText: text,
                 playbackHighlightRangeOverride: $playbackHighlightRangeOverride,
                 activePlaybackCueIndex: $activePlaybackCueIndex
             )
@@ -495,6 +507,9 @@ struct ReadView: View {
                     segmentationRanges: segmentRanges,
                     noteText: text,
                     attachmentID: activeAudioAttachmentID,
+                    playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : playbackHighlightRangeOverride,
+                    cueTimings: audioAttachmentCueTimings,
+                    granularity: lyricsHighlightGranularity,
                     onSegmentTapped: { location, rect, sourceView in
                         handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: sourceView)
                     },
@@ -569,7 +584,6 @@ struct ReadView: View {
 
             HStack {
                 Spacer()
-                generateSRTButton
                 ocrImportButton
                 newNoteButton
             }

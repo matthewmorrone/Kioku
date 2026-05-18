@@ -51,6 +51,23 @@
 
 - [ ] Expand karaoke alignment benchmark dataset and add CI evaluation job
 - [ ] Native human audio pronunciation dataset support (beyond TTS)
+- [ ] Vocal-vs-instrumental detection via Apple's Sound Analysis framework
+      (`SNClassifySoundRequest` with the built-in speech/music classifier). Tap audio via
+      `AVAudioEngine`, feed frames to the classifier, surface an `isVocalActive` published
+      property on `AudioPlaybackController`. Lyrics popup gates "in vocal cue" on this so
+      cues with bad SRT/TextGrid timing show the pulsing ♪ until the vocal actually arrives.
+      Self-correcting per-song, no manual data fixes required.
+- [ ] Audio-level silence detection (lightweight complement to vocal detection above).
+      Use the existing `AVAudioPlayer.averagePower` meter with a hysteresis-gated threshold
+      (e.g., level < 0.15 for > 300ms) to detect true silence between/before tracks. Cheaper
+      than Sound Analysis but only catches actual quiet, not "instrumental without vocal".
+- [ ] Unified ResolvedCue data model: replace the parallel `cues: [SubtitleCue]` +
+      `cueTimings: [Int: [CueCharTiming]]` pair with a single value type that owns SRT cue
+      boundaries AND optional TextGrid character checkpoints, with consistency validation at
+      load time (drop or shift stale checkpoints whose timestamps fall outside the SRT
+      cue's [startMs, endMs]). Consumers (AudioCueHighlightObserver, LyricsView) query a
+      single source instead of cross-referencing two. Solves the class of bugs where
+      hand-editing the SRT leaves stale TextGrid timings driving the per-word band.
 
 ## Settings
 

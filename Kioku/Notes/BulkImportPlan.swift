@@ -11,6 +11,9 @@ struct BulkImportPlanItem: Identifiable, Equatable {
     var textURL: URL?
     var subtitleURL: URL?
     var audioURL: URL?
+    // Praat TextGrid companion — when present, the runner parses it for per-cue character
+    // checkpoints and saves them alongside the cues for karaoke-style sub-line highlighting.
+    var textGridURL: URL?
     // Set when an audio file's basename matches an existing note's title, so the
     // runner attaches audio (and any companion subtitle) rather than creating a new note.
     var matchedExistingNoteID: UUID?
