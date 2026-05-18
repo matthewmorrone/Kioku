@@ -109,7 +109,18 @@ struct LyricsView: View {
     private func hasMismatch(at index: Int) -> Bool {
         guard let note = noteTextForCue(at: index) else { return false }
         let cue = cues[index].text
-        return note != cue && SubtitleParser.isNonSpeechCue(cue.trimmingCharacters(in: .whitespacesAndNewlines)) == false
+        // Cosmetic whitespace/newline differences (e.g. SRT cue is single-line but the
+        // matched note line has a trailing newline, or the cue carries an internal break
+        // the note doesn't) shouldn't fire the orange-dot indicator — that flag is for
+        // textual divergence, not formatting. Collapse runs of whitespace on both sides
+        // before comparing so only real content differences light it up.
+        let normalize: (String) -> String = { text in
+            text.components(separatedBy: .whitespacesAndNewlines)
+                .filter { $0.isEmpty == false }
+                .joined(separator: " ")
+        }
+        return normalize(note) != normalize(cue)
+            && SubtitleParser.isNonSpeechCue(cue.trimmingCharacters(in: .whitespacesAndNewlines)) == false
     }
 
     @State private var dragStartIndex: Int = 0
@@ -185,7 +196,12 @@ struct LyricsView: View {
 
         guard let cueRange = resolvedRange,
               let swiftRange = Range(cueRange, in: noteText) else {
-            let fallback = cues[index].text
+            // Fallback path (non-speech cue, alignment unresolved): use the raw cue text
+            // but still clip at the first newline so a multi-line SRT cue only shows the
+            // first sung line in the active card — same single-line contract as the
+            // resolved path below.
+            let raw = cues[index].text
+            let fallback = clipAtFirstNewline(raw)
             let wholeRange = fallback.startIndex..<fallback.endIndex
             return ActiveCueRenderInput(
                 text: fallback,
@@ -195,9 +211,16 @@ struct LyricsView: View {
             )
         }
 
-        let cueText = String(noteText[swiftRange])
+        // Clip at the first newline. The resolver occasionally maps a cue to a noteText
+        // range that crosses a line boundary (off-by-N alignment artifact, or a multi-line
+        // note section paired with a single-line cue). Without this clip the active card
+        // visibly bleeds the next song line in alongside the current one. cueEnd is
+        // recomputed against the clipped UTF-16 length so segment/furigana filtering below
+        // stays inside the visible slice.
+        let rawCueSlice = String(noteText[swiftRange])
+        let cueText = clipAtFirstNewline(rawCueSlice)
         let cueStart = cueRange.location
-        let cueEnd = cueRange.location + cueRange.length
+        let cueEnd = cueStart + cueText.utf16.count
 
         // Furigana: keep entries whose kanji-run UTF-16 start sits inside the cue and
         // rebase the location to the cue substring's coords (so location 0 = first char).
@@ -311,23 +334,14 @@ struct LyricsView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
-                        // Lead-in ♪ marker if the song starts with a long instrumental.
-                        if aboveUpper > 0, cues.isEmpty == false, cues[0].startMs >= 2500 {
-                            musicNoteSeparator(distance: displayIndex + 1)
-                        }
+                        // Each cue from the source SRT renders as either a vocal row or a ♪
+                        // separator based on its own text — we deliberately do NOT synthesize
+                        // markers from inter-cue timing gaps. The subtitle/TextGrid files are
+                        // already the source of truth for instrumental sections; gap-based
+                        // heuristics either miss real interludes (threshold too high) or
+                        // invent fake ones (threshold too low). Trust the data.
                         ForEach(0 ..< aboveUpper, id: \.self) { index in
                             let distance = displayIndex - index
-                            // ♪ cues are rendered as their own peer rows in the inactive list
-                            // (just like vocal cues) so the user can see when an interlude
-                            // happened in the past, not just at the moment of playback. The
-                            // active-card ♪ pulse handles the "current interlude" case
-                            // without overlap because the active cue is never in this loop.
-                            if index > 0,
-                               cues[index].startMs - cues[index - 1].endMs >= 2500,
-                               SubtitleParser.isNonSpeechCue(cues[index].text) == false,
-                               SubtitleParser.isNonSpeechCue(cues[index - 1].text) == false {
-                                musicNoteSeparator(distance: distance)
-                            }
                             if SubtitleParser.isNonSpeechCue(cues[index].text) {
                                 musicNoteSeparator(distance: distance)
                             } else {
@@ -343,21 +357,6 @@ struct LyricsView: View {
                 .onTapGesture {
                     guard cues.isEmpty == false else { return }
                     controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
-                }
-
-                // ♪ marker sitting directly above the active card. Fires when the active cue
-                // is adjacent to a long instrumental on either side. Suppressed when we're
-                // already in a no-vocal stretch — the active-card slot renders the pulsing ♪
-                // for that case, and a second separator on top of it reads as "two interludes
-                // in a row" which doesn't make sense.
-                if inNoVocalStretch == false {
-                    let hasGapBefore = displayIndex > 0 && displayIndex < cues.count
-                        && cues[displayIndex].startMs - cues[displayIndex - 1].endMs >= 2500
-                    let hasGapAfter = displayIndex >= 0 && displayIndex + 1 < cues.count
-                        && cues[displayIndex + 1].startMs - cues[displayIndex].endMs >= 2500
-                    if hasGapBefore || hasGapAfter {
-                        musicNoteSeparator(distance: 1)
-                    }
                 }
 
                 // Active cue renderer — fed ONLY the active cue's substring (with furigana
@@ -470,18 +469,10 @@ struct LyricsView: View {
 
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
+                        // Same data-driven contract as the above-scroll: render whatever the
+                        // SRT emits, don't synthesize ♪ markers from timing gaps.
                         ForEach(belowLower ..< belowUpper, id: \.self) { index in
                             let distance = index - displayIndex
-                            // Same treatment as above-scroll: ♪ cues render as peer rows so
-                            // upcoming interludes are visible in the list. Gap-marker between
-                            // consecutive vocal cues (not adjacent to a ♪ cue) is still drawn
-                            // for cases where the SRT didn't bother to mark the gap with ♪.
-                            if index > belowLower,
-                               cues[index].startMs - cues[index - 1].endMs >= 2500,
-                               SubtitleParser.isNonSpeechCue(cues[index].text) == false,
-                               SubtitleParser.isNonSpeechCue(cues[index - 1].text) == false {
-                                musicNoteSeparator(distance: distance)
-                            }
                             if SubtitleParser.isNonSpeechCue(cues[index].text) {
                                 musicNoteSeparator(distance: distance)
                             } else {
@@ -635,29 +626,31 @@ struct LyricsView: View {
         }
     }
 
-    // Returns info about a "no-vocal" stretch the user is currently in — the intro before the
-    // first vocal cue, a ♪ non-speech cue, or a >=2s gap between vocal cues. When non-nil, the
-    // active-cue card is replaced with the pulsing-dots indicator and the per-word band is
-    // suppressed so the lyrics popup doesn't pre-highlight the next vocal line while the singer
-    // hasn't started it yet. Threshold tuned to ignore short between-line gaps that feel
-    // continuous in real playback.
-    // Returns the ms until the next vocal cue starts when we're in a "no-vocal" stretch
-    // (intro before first vocal cue, ♪ non-speech cue, or a >=2s gap between vocal cues).
-    // nil means a vocal cue is currently playing — render the regular active card. Threshold
-    // tuned to ignore short between-line gaps that feel continuous in real playback.
+    // Returns ms remaining until the next vocal cue when the playhead is currently inside a
+    // non-speech (♪) cue from the source SRT, OR sitting in the intro before the first
+    // vocal cue. nil means a vocal cue is currently playing — render the regular active card.
+    //
+    // Data-driven: the source SRT/TextGrid marks instrumental sections as non-speech cues.
+    // We don't synthesize "no-vocal" state from inter-cue gap timing — heuristic thresholds
+    // either over-trigger (every routine line break flashes the pulsing dots) or under-trigger
+    // (real interludes get missed). If the source files didn't bother marking a section, we
+    // treat it as silence between vocal cues rather than as an interlude.
     private var noVocalStretchRemainingMs: Int? {
         guard cues.isEmpty == false else { return nil }
         let currentMs = controller.currentTimeMs
         let isVocal: (SubtitleCue) -> Bool = { !SubtitleParser.isNonSpeechCue($0.text) }
-        let nextVocalCue = cues.first { isVocal($0) && $0.startMs > currentMs }
-        let previousVocalCue = cues.last { isVocal($0) && $0.endMs <= currentMs }
-        let inVocalCue = cues.contains { isVocal($0) && $0.startMs <= currentMs && currentMs < $0.endMs }
-        if inVocalCue { return nil }
-        guard let next = nextVocalCue else { return nil }
-        let prevEnd = previousVocalCue?.endMs ?? 0
-        let stretchLength = next.startMs - max(prevEnd, 0)
-        guard stretchLength >= 2500 else { return nil }
-        return max(0, next.startMs - currentMs)
+        guard let nextVocalCue = cues.first(where: { isVocal($0) && $0.startMs > currentMs }) else {
+            return nil
+        }
+        // Inside a non-speech cue — show pulsing dots until the next vocal cue starts.
+        if cues.contains(where: { !isVocal($0) && $0.startMs <= currentMs && currentMs < $0.endMs }) {
+            return max(0, nextVocalCue.startMs - currentMs)
+        }
+        // Intro before the first cue of any kind.
+        if let firstCue = cues.first, currentMs < firstCue.startMs {
+            return max(0, nextVocalCue.startMs - currentMs)
+        }
+        return nil
     }
 
     // Returns the cue's raw SRT text — what the singer actually sang at that timecode.
@@ -669,6 +662,16 @@ struct LyricsView: View {
     // furigana via `activeCueRenderInput`.
     private func displayText(for cueIndex: Int) -> String {
         cueIndex < cues.count ? cues[cueIndex].text : ""
+    }
+
+    // Returns `text` truncated at the first newline scalar (\n or \r), or the original
+    // string when no newline is present. Used by the active-cue card to enforce a
+    // single-song-line contract regardless of multi-line cue text or resolver overshoot.
+    private func clipAtFirstNewline(_ text: String) -> String {
+        if let idx = text.firstIndex(where: { $0 == "\n" || $0 == "\r" }) {
+            return String(text[text.startIndex..<idx])
+        }
+        return text
     }
 
     private var controls: some View {

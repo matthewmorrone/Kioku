@@ -206,11 +206,25 @@ nonisolated public final class Lexicon {
             var resolvedAux: DictionaryEntry?
             var resolvedSurface = ""
             for candidate in candidates where candidate.isEmpty == false {
-                if let entry = lookupEntries(for: candidate).first {
-                    resolvedAux = entry
-                    resolvedSurface = candidate
-                    break
+                guard let entry = lookupEntries(for: candidate).first else { continue }
+                // Reject anything that isn't itself a verb. Without this filter the stripping
+                // candidates collide with unrelated JMdict entries — past-tense た (aux-v),
+                // 区 (noun, "ward"), って (particle, "you said") — and surface as bogus
+                // "compound components" in the lookup sheet. JMdict POS codes for verbs
+                // start with `v` (v1, v5k, v5s, v5k-s, vi/vt classifiers, …); auxiliary-only
+                // entries are tagged `aux`/`aux-v`/`aux-adj` and must not count. `vs*` codes
+                // mark suru-able nouns rather than standalone verbs, so they're excluded too.
+                let posCodes = entry.senses
+                    .compactMap { $0.pos?.lowercased() }
+                    .flatMap { $0.split(separator: ",") }
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                let hasVerbPOS = posCodes.contains { code in
+                    code.hasPrefix("v") && code.hasPrefix("vs") == false
                 }
+                guard hasVerbPOS else { continue }
+                resolvedAux = entry
+                resolvedSurface = candidate
+                break
             }
             guard let auxEntry = resolvedAux else { continue }
             let gloss = auxEntry.senses.first?.glosses.joined(separator: "; ")
@@ -581,8 +595,43 @@ nonisolated public final class Lexicon {
             (lemma: lemmaString, depth: pathsByLemma[lemmaString]?.map { $0.chain.count }.min() ?? 0)
         }
 
-        // When deinflected candidates exist the surface is an inflected form, not a lemma — remove it.
-        if entries.contains(where: { $0.depth > 0 }) {
+        // Decide whether the surface is "definitely an inflected form" (in which case its
+        // self-as-lemma candidate is noise) or "a lemma in its own right" (in which case any
+        // deinflected candidates are coincidental and must not shadow it).
+        //
+        // Concretely: surfaces like 食べました deinflect to 食べる and should drop the
+        // depth-0 self-entry — that's the intended behavior. But surfaces like ために are
+        // themselves JMdict expression entries; they also coincidentally satisfy a verb
+        // deinflection rule (ためぬ, classical negative of ためる), and without this guard the
+        // depth>0 spurious match wins and the user sees ためぬ as the lemma.
+        //
+        // The discriminator is intentionally narrow: we only treat the surface as a set-
+        // phrase lemma when JMdict tags an entry as `exp` (expression — a multi-token
+        // idiom that, by convention, is not re-analyzed via deinflection rules). Codes
+        // like `prt`, `conj`, `adv`, `cop` are too broad here — many of them are
+        // homographs with valid verb conjugations (して is both a `conj` direct entry AND
+        // the te-form of する; で is both a `prt` AND the te-form of だ). Suppressing
+        // deinflection for those would lose the canonical verb lookup for the common case.
+        let surfaceIsExpressionLemma: Bool = {
+            let surfaceEntries = lookupEntries(for: trimmedSurface)
+            guard surfaceEntries.isEmpty == false else { return false }
+            return surfaceEntries.contains { entry in
+                entry.senses.contains { sense in
+                    let posCodes = (sense.pos ?? "")
+                        .lowercased()
+                        .split(separator: ",")
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                    return posCodes.contains("exp")
+                }
+            }
+        }()
+
+        if surfaceIsExpressionLemma {
+            entries.removeAll { $0.depth > 0 }
+            if entries.contains(where: { $0.lemma == trimmedSurface }) == false {
+                entries.append((lemma: trimmedSurface, depth: 0))
+            }
+        } else if entries.contains(where: { $0.depth > 0 }) {
             entries.removeAll { $0.lemma == trimmedSurface }
         }
 
