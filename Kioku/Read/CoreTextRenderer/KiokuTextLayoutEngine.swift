@@ -65,7 +65,7 @@ final class KiokuTextLayoutEngine {
     // inset replacement: instead of feeding the typesetter exclusion paths (which TextKit 2
     // forces to relayout), we lay out at the natural origin and then offset specific lines.
     // The shift moves the line origin and therefore every glyph and every rect query.
-    private var lineOriginShifts: [Int: CGFloat] = [:]
+    private(set) var lineOriginShifts: [Int: CGFloat] = [:]
 
     // UTF-16 segment NSRanges, sorted by location. Used to forbid line breaks inside the
     // interior of any segment so multi-character compounds (e.g. 抜け殻) wrap to the next line
@@ -88,6 +88,11 @@ final class KiokuTextLayoutEngine {
     // True iff the engine is currently using the segment-packed layout. False = classic
     // CT-typesetter layout. Toggled by `setSegmentPackingEnabled`.
     private(set) var isSegmentPackingEnabled: Bool = false
+    // Mirrors the renderer's wrapping toggle into the segment-packed code path. Classic CT
+    // layout already honors `paragraph.lineBreakMode = .byClipping`; the packer doesn't read
+    // paragraph attributes, so we plumb the flag through explicitly. Default true preserves
+    // legacy behavior for hosts that don't override it.
+    var isLineWrappingEnabled: Bool = true
     // Per-kanji-run ruby data. Captured here (not just on the renderer) because the engine
     // needs it to measure footprints during segment packing.
     private var furiganaByLocation: [Int: String] = [:]
@@ -268,10 +273,12 @@ final class KiokuTextLayoutEngine {
         let localEnd = min(range.location + range.length, placement.location + placement.length) - placement.location
         let xStart = CTLineGetOffsetForStringIndex(segLine, localStart, nil)
         let xEnd = CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
-        // Headword's origin = footprint origin + leftOverhang. The headword is offset
+        // Headword's origin = footprint origin + leftOverhang + lineShift. The headword is offset
         // INTO the footprint by leftOverhang so ruby on the leftmost kanji-run sits at
-        // the footprint's left edge instead of overhanging into the margin.
-        let headwordOriginX = placement.originX + placement.leftOverhang
+        // the footprint's left edge instead of overhanging into the margin. lineShift mirrors
+        // the centering offset the draw passes apply, so geometry queries match what's drawn.
+        let lineShift = lineOriginShifts[placement.lineIndex] ?? 0
+        let headwordOriginX = placement.originX + placement.leftOverhang + lineShift
         return CGRect(
             x: headwordOriginX + min(xStart, xEnd),
             y: line.originY,
@@ -343,7 +350,10 @@ final class KiokuTextLayoutEngine {
             let localEnd = localStart + intersection.length
             let xStart = CTLineGetOffsetForStringIndex(segLine, localStart, nil)
             let xEnd = CTLineGetOffsetForStringIndex(segLine, localEnd, nil)
-            let headwordOriginX = placement.originX + placement.leftOverhang
+            // Mirror the centering shift the draw passes apply so highlight-band rects
+            // stay aligned with the glyphs they're meant to underline.
+            let lineShift = lineOriginShifts[placement.lineIndex] ?? 0
+            let headwordOriginX = placement.originX + placement.leftOverhang + lineShift
             rects.append(CGRect(
                 x: headwordOriginX + min(xStart, xEnd),
                 y: line.originY,
@@ -522,7 +532,8 @@ final class KiokuTextLayoutEngine {
             availableWidth: availableWidth,
             topInset: contentInset.top + topRubyReserve,
             interLineGap: lineSpacing + topRubyReserve,
-            leftInset: contentInset.left
+            leftInset: contentInset.left,
+            isLineWrappingEnabled: isLineWrappingEnabled
         ))
         segmentPlacements = result.placements
         packedLines = result.lines

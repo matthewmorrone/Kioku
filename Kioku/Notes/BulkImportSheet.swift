@@ -32,8 +32,21 @@ struct BulkImportSheet: View {
     // Computes the plan on the fly from the current picker state and store contents.
     // Done as a computed property rather than @State so adding/removing files immediately
     // updates the plan and the model-required indicator.
+    //
+    // The audio-basename map lets the planner match incoming files against notes whose titles
+    // differ from the original audio filename (single-import flow titles notes by first cue line).
     private var plan: [BulkImportPlanItem] {
-        BulkImportPlanner.plan(urls: pickedURLs, existingNotes: store.notes)
+        var audioBaseNames: [UUID: String] = [:]
+        for note in store.notes {
+            guard let attachmentID = note.audioAttachmentID else { continue }
+            guard let base = NotesAudioStore.shared.audioBaseName(for: attachmentID) else { continue }
+            audioBaseNames[note.id] = base
+        }
+        return BulkImportPlanner.plan(
+            urls: pickedURLs,
+            existingNotes: store.notes,
+            existingAudioBaseNamesByNoteID: audioBaseNames
+        )
     }
 
     private var needsTranscription: Bool {
@@ -321,6 +334,12 @@ struct BulkImportSheet: View {
             }
             if let wav = UTType(filenameExtension: "wav") {
                 types.append(wav)
+            }
+            if let textGridLower = UTType(filenameExtension: "textgrid") {
+                types.append(textGridLower)
+            }
+            if let textGridMixed = UTType(filenameExtension: "TextGrid") {
+                types.append(textGridMixed)
             }
             return types
         case .model:

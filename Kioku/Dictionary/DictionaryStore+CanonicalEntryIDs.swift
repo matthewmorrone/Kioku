@@ -29,6 +29,17 @@ extension DictionaryStore {
                        MIN(wf.jpdb_rank) AS rank,
                        MAX(wf.wordfreq_zipf) AS best_zipf,
                        EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = s.entry_id) AS has_kanji,
+                       -- Particle / copula / auxiliary detection — any sense tagged as
+                       -- functional grammar makes the entry a strong match for bare-kana
+                       -- lookups. Matches archaic-kanji-bearing particles (の:乃,之 etc.)
+                       -- that the has_kanji=0 tier alone would miss.
+                       EXISTS (
+                           SELECT 1 FROM senses sp WHERE sp.entry_id = s.entry_id
+                           AND (sp.pos = 'prt' OR sp.pos LIKE 'prt,%' OR sp.pos LIKE '%,prt,%' OR sp.pos LIKE '%,prt'
+                             OR sp.pos = 'cop' OR sp.pos LIKE 'cop,%' OR sp.pos LIKE '%,cop,%' OR sp.pos LIKE '%,cop'
+                             OR sp.pos = 'aux' OR sp.pos LIKE 'aux,%' OR sp.pos LIKE '%,aux,%' OR sp.pos LIKE '%,aux'
+                             OR sp.pos LIKE 'aux-%' OR sp.pos LIKE '%,aux-%')
+                       ) AS is_particle,
                        COALESCE(MIN(sn.order_index), 2147483647) AS min_sense
                 FROM surfaces_with_entries s
                 LEFT JOIN word_frequency wf ON wf.entry_id = s.entry_id
@@ -38,29 +49,40 @@ extension DictionaryStore {
                 GROUP BY s.surface, s.entry_id
             ),
             ranked AS (
+                -- Primary tier: kana-only entries (has_kanji=0) win over kanji entries
+                -- whose kana reading happens to match. For kanji surfaces this is a no-op
+                -- (kana_forms.text never holds a kanji character, so all candidates have
+                -- has_kanji=1). For kana surfaces this fixes the homophone collision —
+                -- tapping は returns the topic particle, not 派 "group; faction".
                 SELECT surface, entry_id,
                        ROW_NUMBER() OVER (
                            PARTITION BY surface
                            ORDER BY
-                               CASE
-                                   WHEN has_kanji = 1 THEN COALESCE(rank, 9999999)
-                                   ELSE COALESCE(
-                                       rank,
-                                       CASE
-                                           WHEN best_zipf >= 7.0 THEN 5
-                                           WHEN best_zipf >= 6.5 THEN 25
-                                           WHEN best_zipf >= 6.0 THEN 100
-                                           WHEN best_zipf >= 5.5 THEN 300
-                                           WHEN best_zipf >= 5.0 THEN 1000
-                                           WHEN best_zipf >= 4.5 THEN 3000
-                                           WHEN best_zipf >= 4.0 THEN 10000
-                                           WHEN best_zipf >= 3.5 THEN 30000
-                                           WHEN best_zipf >= 3.0 THEN 100000
-                                           ELSE 500000
-                                       END,
-                                       9999999
-                                   )
-                               END ASC,
+                               -- Particle/functional first, then kana-only, then by rank.
+                               -- See DictionaryStore.fetchMatchedEntries for the rationale.
+                               CASE WHEN is_particle = 1 THEN 0 ELSE 1 END ASC,
+                               has_kanji ASC,
+                               -- Effective rank applied uniformly to kanji and kana-only
+                               -- entries: JPDB rank if present, else a pseudo-rank from the
+                               -- wordfreq Zipf score, else the catch-all. Mirrors the live
+                               -- lookup query in DictionaryStore.fetchMatchedEntries so the
+                               -- canonical id at app start matches an interactive lookup.
+                               COALESCE(
+                                   rank,
+                                   CASE
+                                       WHEN best_zipf >= 7.0 THEN 5
+                                       WHEN best_zipf >= 6.5 THEN 25
+                                       WHEN best_zipf >= 6.0 THEN 100
+                                       WHEN best_zipf >= 5.5 THEN 300
+                                       WHEN best_zipf >= 5.0 THEN 1000
+                                       WHEN best_zipf >= 4.5 THEN 3000
+                                       WHEN best_zipf >= 4.0 THEN 10000
+                                       WHEN best_zipf >= 3.5 THEN 30000
+                                       WHEN best_zipf >= 3.0 THEN 100000
+                                       ELSE 500000
+                                   END,
+                                   9999999
+                               ) ASC,
                                min_sense ASC,
                                entry_id ASC
                        ) AS rn

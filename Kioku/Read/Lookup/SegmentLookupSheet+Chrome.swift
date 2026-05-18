@@ -24,18 +24,17 @@ extension SegmentLookupSheet {
         if #available(iOS 16.0, *) {
             let fittedDetentIdentifier = UISheetPresentationController.Detent.Identifier("surfaceFitted")
             let fittedDetent = UISheetPresentationController.Detent.custom(identifier: fittedDetentIdentifier) { context in
-                // Cap at half the available screen height so the sheet never dominates the reading surface.
-                let halfScreen = context.maximumDetentValue * 0.5
-                return min(preferredHeight(), halfScreen)
+                // Cap at the screen height so the sheet never overflows, but otherwise size to content.
+                min(preferredHeight(), context.maximumDetentValue)
             }
-            sheetPresentationController.detents = [fittedDetent, .medium(), .large()]
-            sheetPresentationController.selectedDetentIdentifier = .medium
-            sheetPresentationController.largestUndimmedDetentIdentifier = .large
+            sheetPresentationController.detents = [fittedDetent]
+            sheetPresentationController.selectedDetentIdentifier = fittedDetentIdentifier
+            sheetPresentationController.largestUndimmedDetentIdentifier = fittedDetentIdentifier
         } else {
             sheetPresentationController.detents = [.medium()]
             sheetPresentationController.largestUndimmedDetentIdentifier = .medium
         }
 
-        sheetPresentationController.prefersGrabberVisible = true
+        sheetPresentationController.prefersGrabberVisible = false
     }
 }

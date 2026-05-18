@@ -64,14 +64,39 @@ final class BulkImportRunner: ObservableObject {
                 audioURL: audioURL,
                 cues: subtitleData?.cues,
                 srtText: subtitleData?.rawText,
+                textGridURL: item.textGridURL,
                 preferredSubtitleFilename: item.baseName + ".srt"
             )
+            return
+        }
+
+        // TextGrid-only attach: user has the note already (and its cues), just wants to add the
+        // karaoke checkpoints. We load the note's existing cues and bind against them — no audio
+        // is replaced, no new note created.
+        if let existingNoteID = item.matchedExistingNoteID,
+           item.audioURL == nil,
+           item.subtitleURL == nil,
+           item.textURL == nil,
+           let textGridURL = item.textGridURL {
+            try attachTextGridToExistingNote(noteID: existingNoteID, textGridURL: textGridURL)
             return
         }
 
         var bodyContent: String? = textContent
         var cues: [SubtitleCue]? = subtitleData?.cues
         var srtText: String? = subtitleData?.rawText
+
+        // Try TextGrid-derived cues BEFORE requiring a Whisper model. A `.TextGrid` shipped
+        // alongside an audio file already encodes line boundaries; transcription is only
+        // necessary when nothing else supplies cues. Doing this first means MP3 + .TextGrid
+        // (no .srt/.txt) succeeds without forcing the user to select a Whisper model — the
+        // BulkImportPlanner's requiresTranscription check is updated to match.
+        if cues == nil, let textGridURL = item.textGridURL {
+            if let derived = try? Self.readDerivedCuesFromTextGrid(at: textGridURL) {
+                cues = derived
+                bodyContent = bodyContent ?? SubtitleParser.assembleNoteContent(from: derived)
+            }
+        }
 
         if bodyContent == nil, cues == nil, let audioURL = item.audioURL {
             guard let modelURL = whisperModelURL else {
@@ -92,7 +117,8 @@ final class BulkImportRunner: ObservableObject {
             content: bodyContent ?? "",
             audioURL: item.audioURL,
             cues: cues,
-            srtText: srtText
+            srtText: srtText,
+            textGridURL: item.textGridURL
         )
     }
 
@@ -104,7 +130,8 @@ final class BulkImportRunner: ObservableObject {
         content: String,
         audioURL: URL?,
         cues: [SubtitleCue]?,
-        srtText: String?
+        srtText: String?,
+        textGridURL: URL?
     ) throws {
         let title = preferredTitle(baseName: baseName, content: content)
         var attachmentID: UUID? = nil
@@ -118,6 +145,11 @@ final class BulkImportRunner: ObservableObject {
             }
             if let cues, cues.isEmpty == false {
                 try NotesAudioStore.shared.saveCues(cues, attachmentID: newID)
+                if let textGridURL,
+                   let timings = Self.bindTextGridCheckpoints(textGridURL: textGridURL, cues: cues),
+                   timings.isEmpty == false {
+                    try NotesAudioStore.shared.saveCueTimings(timings, attachmentID: newID)
+                }
             }
             if let srtText, srtText.isEmpty == false {
                 _ = try NotesAudioStore.shared.saveSRT(
@@ -140,6 +172,7 @@ final class BulkImportRunner: ObservableObject {
         audioURL: URL,
         cues: [SubtitleCue]?,
         srtText: String?,
+        textGridURL: URL?,
         preferredSubtitleFilename: String
     ) throws {
         let attachmentID = store.note(withID: noteID)?.audioAttachmentID ?? UUID()
@@ -147,6 +180,23 @@ final class BulkImportRunner: ObservableObject {
 
         if let cues, cues.isEmpty == false {
             try NotesAudioStore.shared.saveCues(cues, attachmentID: attachmentID)
+        }
+        // Bind TextGrid checkpoints whenever a .TextGrid is in the import. When the import
+        // also carried a fresh .srt the new cues are used; otherwise fall back to the cues
+        // already saved on the matched note's attachment — matching the TextGrid-only attach
+        // path. Without this fallback, dropping an .audio + .TextGrid pair onto a note that
+        // already has saved cues would silently skip binding even though the planner UI
+        // labeled the row "with karaoke timings."
+        if let textGridURL {
+            let cuesForBinding: [SubtitleCue] = {
+                if let cues, cues.isEmpty == false { return cues }
+                return NotesAudioStore.shared.loadCues(for: attachmentID)
+            }()
+            if cuesForBinding.isEmpty == false,
+               let timings = Self.bindTextGridCheckpoints(textGridURL: textGridURL, cues: cuesForBinding),
+               timings.isEmpty == false {
+                try NotesAudioStore.shared.saveCueTimings(timings, attachmentID: attachmentID)
+            }
         }
         if let srtText, srtText.isEmpty == false {
             _ = try NotesAudioStore.shared.saveSRT(
@@ -157,6 +207,29 @@ final class BulkImportRunner: ObservableObject {
         }
 
         store.updateAudioAttachment(id: noteID, attachmentID: attachmentID)
+    }
+
+    // Attaches TextGrid-derived checkpoints to an existing note's attachment.
+    // Fails if the note has no attachment or no saved cues — there's nothing to bind against.
+    private func attachTextGridToExistingNote(noteID: UUID, textGridURL: URL) throws {
+        KaraokeDebugLog.log("bulkAttach: start note=\(noteID.uuidString.prefix(8)) file=\(textGridURL.lastPathComponent)")
+        guard let attachmentID = store.note(withID: noteID)?.audioAttachmentID else {
+            KaraokeDebugLog.log("bulkAttach: FAIL note has no audio attachment")
+            throw BulkImportError.noAttachmentForTextGrid
+        }
+        let existingCues = NotesAudioStore.shared.loadCues(for: attachmentID)
+        KaraokeDebugLog.log("bulkAttach: existingCues=\(existingCues.count) sampleIndices=\(existingCues.prefix(5).map(\.index))")
+        guard existingCues.isEmpty == false else {
+            KaraokeDebugLog.log("bulkAttach: FAIL existing note has no cues")
+            throw BulkImportError.noCuesForTextGrid
+        }
+        guard let timings = Self.bindTextGridCheckpoints(textGridURL: textGridURL, cues: existingCues),
+              timings.isEmpty == false else {
+            KaraokeDebugLog.log("bulkAttach: FAIL binder returned 0 checkpoints")
+            throw BulkImportError.textGridYieldedNoCheckpoints
+        }
+        try NotesAudioStore.shared.saveCueTimings(timings, attachmentID: attachmentID)
+        KaraokeDebugLog.log("bulkAttach: OK saved timings for attachment=\(attachmentID.uuidString.prefix(8))")
     }
 
     // Runs Whisper transcription on a single audio file using the supplied model URL,
@@ -243,6 +316,41 @@ final class BulkImportRunner: ObservableObject {
         return (rawText, cues)
     }
 
+    // Parses a TextGrid file and binds checkpoints against the supplied cues. Returns nil only
+    // when the file is unreadable or unparseable so callers can silently skip — TextGrid is an
+    // optional companion, never a hard requirement.
+    private nonisolated static func bindTextGridCheckpoints(textGridURL: URL, cues: [SubtitleCue]) -> CueCharTimings? {
+        guard let content = try? readText(from: textGridURL) else { return nil }
+        guard let grid = try? TextGridParser.parse(content) else { return nil }
+        return TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+    }
+
+    // Derives line-level SubtitleCues from a TextGrid's lowest-resolution IntervalTier so a user
+    // can import a `.TextGrid`-only bundle (no SRT) and still get a playable note. Mirrors the
+    // single-import-sheet TextGrid-only path.
+    private nonisolated static func readDerivedCuesFromTextGrid(at url: URL) throws -> [SubtitleCue] {
+        let raw = try readText(from: url)
+        let grid = try TextGridParser.parse(raw)
+        let candidates = grid.tiers.filter { tier in
+            tier.intervals.contains { $0.text.isEmpty == false }
+        }
+        guard let lineTier = candidates.min(by: { $0.intervals.count < $1.intervals.count }) else {
+            return []
+        }
+        var cues: [SubtitleCue] = []
+        var index = 1
+        for interval in lineTier.intervals where interval.text.isEmpty == false {
+            cues.append(SubtitleCue(
+                index: index,
+                startMs: interval.startMs,
+                endMs: interval.endMs,
+                text: interval.text
+            ))
+            index += 1
+        }
+        return cues
+    }
+
     // Resamples the audio file to 16 kHz mono Float32 PCM via AVAssetReader. Whisper requires
     // this exact format and AVAssetReader handles all common source formats (mp3, wav, m4a, …).
     private nonisolated static func convertAudioTo16kHzMono(url: URL) async throws -> [Float] {
@@ -303,6 +411,9 @@ private enum BulkImportError: LocalizedError {
     case unreadableTextFile
     case emptySubtitleFile
     case transcriptionEmpty
+    case noAttachmentForTextGrid
+    case noCuesForTextGrid
+    case textGridYieldedNoCheckpoints
 
     var errorDescription: String? {
         switch self {
@@ -318,6 +429,12 @@ private enum BulkImportError: LocalizedError {
             return "The subtitle file contained no cues."
         case .transcriptionEmpty:
             return "Whisper returned no segments — the audio may be silent or the model incompatible."
+        case .noAttachmentForTextGrid:
+            return "Matching note has no audio attachment to bind karaoke timings to."
+        case .noCuesForTextGrid:
+            return "Matching note has no subtitle cues to bind karaoke timings against."
+        case .textGridYieldedNoCheckpoints:
+            return "TextGrid had no intervals that matched the note's cue text."
         }
     }
 }

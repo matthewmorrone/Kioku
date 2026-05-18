@@ -5,20 +5,19 @@ extension ReadView {
     // Renders action buttons for segmentation and display controls.
     var toolbarButtons: some View {
         HStack {
-            // ♪ button — only when audio and subtitles are both loaded.
-            if audioController.duration > 0 && audioAttachmentCues.isEmpty == false {
-                Button {
-                    isShowingLyricsView.toggle()
-                } label: {
-                    Image(systemName: "music.note")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(isShowingLyricsView ? Color(.systemOrange) : Color.secondary)
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(Color(.tertiarySystemFill)))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Lyrics")
+            // ♪ button is always present; the lyrics view silently handles missing audio/cues so
+            // a tap on a note without playback data simply shows an empty popup the user can close.
+            Button {
+                isShowingLyricsView.toggle()
+            } label: {
+                Image(systemName: "music.note")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(isShowingLyricsView ? Color(.systemOrange) : Color.secondary)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color(.tertiarySystemFill)))
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Lyrics")
             Spacer()
             llmCorrectionButton
             resetButton

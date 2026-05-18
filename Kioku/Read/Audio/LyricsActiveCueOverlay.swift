@@ -28,7 +28,7 @@ struct LyricsActiveCueOverlay: View {
             let cue = cues[index]
             VStack(spacing: 8) {
                 rendererView(cue: cue, cueIndex: index)
-                if let translation = translationCache.translations[index] {
+                if let translation = translationCache.translations[cue.text] {
                     Text(translation)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -63,11 +63,11 @@ struct LyricsActiveCueOverlay: View {
     // Translates a single cue using an already-prepared session.
     // Skips cues that are already cached.
     private func translateCurrent(session: TranslationSession, index: Int, text: String) async {
-        guard translationCache.needsTranslation(cueIndex: index, text: text) else { return }
+        guard translationCache.needsTranslation(text: text) else { return }
         do {
             try await session.prepareTranslation()
             let response = try await session.translate(text)
-            await MainActor.run { translationCache.store(cueIndex: index, result: response.targetText) }
+            await MainActor.run { translationCache.store(text: text, result: response.targetText) }
         } catch {
             // Failures are silent — the translation row simply won't appear.
         }

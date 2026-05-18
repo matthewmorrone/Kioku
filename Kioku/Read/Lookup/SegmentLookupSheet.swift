@@ -44,6 +44,10 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Provides compound verb component lemmas: (lemma, first gloss) pairs.
     var sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)?
     var currentSheetCompoundComponents: [(lemma: String, gloss: String?)] = []
+    // Called when the user taps a compound component row to drill into that lemma.
+    // ReadView installs this to present a nested full-chrome lookup sheet.
+    // Falls back to the legacy minimal popover when nil.
+    var onCompoundComponentTapped: ((_ lemma: String, _ gloss: String?) -> Void)?
     var currentSheetUniqueReadings: [String] = []
     var currentSheetSublatticeEdges: [LatticeEdge] = []
     var currentSheetLexiconDebugInfo: String = ""
@@ -66,8 +70,10 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         (() -> Void)?
     ) -> Void)?
 
-    // Prevents external construction so a single presenter coordinates popover lifecycle.
-    private override init() {
+    // The shared singleton coordinates the primary segment-anchored popover/sheet. Nested
+    // lookups (e.g. tapping a compound component) build their own instances so their state
+    // doesn't clobber the parent sheet sitting underneath them.
+    override init() {
         super.init()
     }
 
@@ -325,6 +331,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetWordComponentsProvider = nil
         sheetCompoundComponentsProvider = nil
         currentSheetCompoundComponents = []
+        // Note: onCompoundComponentTapped is intentionally NOT reset — it's installed once by
+        // ReadView and represents how the app drills into a compound component, regardless of
+        // which segment is currently presented.
         currentSheetUniqueReadings = []
         currentSheetSublatticeEdges = []
         currentSheetLexiconDebugInfo = ""

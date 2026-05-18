@@ -52,6 +52,11 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     let playbackHighlightRange: NSRange?
     let selectionHighlightColor: UIColor
     let playbackHighlightColor: UIColor
+    // Apple Music-style unplayed-tail dimming: glyphs at UTF-16 locations >= this index
+    // fade to `unplayedAlpha`, so the played portion of an active lyric line stays bright
+    // while the unplayed tail reads as faded. nil disables the effect (default).
+    var unplayedDimmingLocation: Int? = nil
+    var unplayedAlpha: CGFloat = 0.18
     // Unknown-segment highlight: locations whose surface isn't in the dictionary. Each gets
     // the unknown color overlaid on its NSRange. Empty = feature off.
     let unknownSegmentLocations: Set<Int>
@@ -179,7 +184,9 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                 unknownSegmentLocations: unknownSegmentLocations,
                 isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                 unknownSegmentColor: unknownSegmentColor,
-                isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible
+                isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
+                unplayedDimmingLocation: unplayedDimmingLocation,
+                unplayedAlpha: unplayedAlpha
             )
         )
         uiView.contentView.setAttributedString(output.attributedString)
@@ -212,6 +219,14 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // this, a long compound (抜け殻, 思い出) at the right margin would be bisected
         // mid-character; with it, the whole compound wraps to the next line as a unit.
         uiView.contentView.setSegmentNSRanges(uiView.cachedSegmentNSRanges)
+        // The packer doesn't read paragraph attributes, so mirror the wrap flag onto the
+        // engine BEFORE invoking setSegmentPacking — the packer reads this flag while it
+        // rebuilds the packed layout, and `isLineWrappingEnabled` is a plain stored
+        // property with no relayout trigger. Setting it after the rebuild meant the first
+        // packed layout used the previous/default `true` value and LyricsView's
+        // single-line active-cue card could wrap long cue segments until some unrelated
+        // update happened to trigger another rebuild.
+        uiView.contentView.layoutEngine.isLineWrappingEnabled = isLineWrappingEnabled
         // Toggle segment-packed layout based on the ruby-spacing user setting. When on,
         // the engine packs segments by max(headword, ruby) footprint with zero inter-
         // segment gap and atomic seg+ruby wrapping. When off, the engine uses CT's
@@ -243,8 +258,13 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
             let availableWidth = uiView.bounds.width - inset.left - inset.right
             if availableWidth > 0 {
                 for (index, line) in engineLinesForCentering.enumerated() {
+                    // Shift to center even when the line overflows (extra < 0). With
+                    // isRubySpacingEnabled, packed-layout line widths can exceed
+                    // availableWidth — without a negative-shift branch the line falls back
+                    // to left-aligned at inset.left, which reads as "centering broke." Sub-
+                    // pixel jitter is still filtered.
                     let extra = availableWidth - line.width
-                    if extra > 0.5 {
+                    if abs(extra) > 0.5 {
                         shifts[index] = extra / 2
                     }
                 }

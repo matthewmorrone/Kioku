@@ -12,9 +12,9 @@ struct NotesView: View {
     @State private var notePendingRename: Note?
     @State private var notePendingDelete: Note?
     @State private var renameDraft = ""
-    @State private var isShowingSubtitleImportSheet = false
     @State private var isShowingBulkImportSheet = false
-    @State private var subtitleImportError = ""
+    @State private var subtitleEditorAttachmentID: UUID?
+    @State private var subtitleEditorNoteTitle: String = ""
 
     var body: some View {
         NavigationStack {
@@ -88,35 +88,31 @@ struct NotesView: View {
             } message: {
                 Text("This permanently removes the note.")
             }
-            .sheet(isPresented: $isShowingSubtitleImportSheet) {
-                SubtitleImportSheet { cues, audioURL in
-                    handleSubtitleImport(cues: cues, audioURL: audioURL)
-                }
-            }
             .sheet(isPresented: $isShowingBulkImportSheet) {
                 BulkImportSheet(store: store)
                     .environmentObject(store)
             }
-            .alert("Subtitle Import Failed", isPresented: subtitleImportErrorBinding) {
-                Button("OK", role: .cancel) { subtitleImportError = "" }
-            } message: {
-                Text(subtitleImportError)
+            .sheet(item: Binding(
+                get: { subtitleEditorAttachmentID.map { SubtitleEditorPresentation(attachmentID: $0) } },
+                set: { newValue in subtitleEditorAttachmentID = newValue?.attachmentID }
+            )) { presentation in
+                let cues = NotesAudioStore.shared.loadCues(for: presentation.attachmentID)
+                SubtitleEditorSheet(
+                    attachmentID: presentation.attachmentID,
+                    initialCues: cues,
+                    noteText: subtitleEditorNoteTitle,
+                    onSave: { updated in
+                        try? NotesAudioStore.shared.saveCues(updated, attachmentID: presentation.attachmentID)
+                    }
+                )
             }
             .toolbar {
                 // Groups the two leading import entry points so SwiftUI renders both buttons
                 // (single ToolbarItems at the same placement can silently collapse to one).
-                ToolbarItemGroup(placement: .topBarLeading) {
-                    // Opens the subtitle import sheet so the user can create a note from subtitles.
-                    Button {
-                        isShowingSubtitleImportSheet = true
-                    } label: {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 16))
-                            .frame(width: 32, height: 32)
-                    }
-                    .accessibilityLabel("Import Subtitles")
-
-                    // Opens the bulk import sheet so the user can pick multiple txt/srt/audio files at once.
+                ToolbarItem(placement: .topBarLeading) {
+                    // Opens the bulk import sheet so the user can pick txt/srt/audio files. Single
+                    // and multi-file flows both run through here; audio-only items get Whisper
+                    // transcription via BulkImportRunner.
                     Button {
                         isShowingBulkImportSheet = true
                     } label: {
@@ -124,7 +120,7 @@ struct NotesView: View {
                             .font(.system(size: 16))
                             .frame(width: 32, height: 32)
                     }
-                    .accessibilityLabel("Import Multiple Files")
+                    .accessibilityLabel("Import Files")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     // Shows bulk-delete action while edit mode is active.
@@ -206,46 +202,6 @@ struct NotesView: View {
         )
     }
 
-    // Binds subtitle-import error alert to whether there is currently a failure message.
-    private var subtitleImportErrorBinding: Binding<Bool> {
-        Binding(
-            get: { subtitleImportError.isEmpty == false },
-            set: { isPresented in
-                if isPresented == false {
-                    subtitleImportError = ""
-                }
-            }
-        )
-    }
-
-    // Creates a note from parsed subtitle cues, optionally saving audio and cue timing data.
-    private func handleSubtitleImport(cues: [SubtitleCue], audioURL: URL?) {
-        let content = SubtitleParser.assembleNoteContent(from: cues)
-        let title = String(content.prefix(60)).components(separatedBy: "\n").first ?? ""
-
-        var attachmentID: UUID? = nil
-
-        if let audioURL {
-            let newID = UUID()
-            do {
-                _ = try NotesAudioStore.shared.saveAudio(from: audioURL, attachmentID: newID)
-                try NotesAudioStore.shared.saveCues(cues, attachmentID: newID)
-                attachmentID = newID
-            } catch {
-                subtitleImportError = error.localizedDescription
-                return
-            }
-        }
-
-        let newNote = Note(
-            title: title,
-            content: content,
-            audioAttachmentID: attachmentID
-        )
-        store.addNote(newNote)
-        onSelectNote?(newNote)
-    }
-
     // Binds rename-alert presentation directly to the currently pending note.
     private var renameAlertPresented: Binding<Bool> {
         Binding(
@@ -294,6 +250,21 @@ struct NotesView: View {
             Label("Share", systemImage: "square.and.arrow.up")
         }
 
+        if let attachmentID = note.audioAttachmentID {
+            Button {
+                subtitleEditorNoteTitle = note.content
+                subtitleEditorAttachmentID = attachmentID
+            } label: {
+                Label("Edit Subtitles", systemImage: "captions.bubble")
+            }
+
+            Button(role: .destructive) {
+                resetSubtitleAttachment(for: note)
+            } label: {
+                Label("Reset Subtitles", systemImage: "captions.bubble.fill")
+            }
+        }
+
         Button {
             store.resetNote(id: note.id)
             onUpdateSelectedNote?(store.note(withID: note.id))
@@ -306,6 +277,15 @@ struct NotesView: View {
         } label: {
             Label("Delete", systemImage: "trash")
         }
+    }
+
+    // Detaches the audio + subtitles from a note: deletes the on-disk attachment files and clears
+    // the audioAttachmentID. Selected-note state is refreshed via the onUpdateSelectedNote callback.
+    private func resetSubtitleAttachment(for note: Note) {
+        guard let attachmentID = note.audioAttachmentID else { return }
+        NotesAudioStore.shared.deleteAttachment(attachmentID)
+        store.updateAudioAttachment(id: note.id, attachmentID: nil)
+        onUpdateSelectedNote?(store.note(withID: note.id))
     }
 
     // Commits the rename request for the pending note and updates any active read selection.
@@ -358,6 +338,13 @@ struct NotesView: View {
 
         return "\(title)\n\n\(note.content)"
     }
+}
+
+// Identifiable wrapper so the SubtitleEditorSheet can be presented via .sheet(item:) from the
+// context menu — Identifiable conformance is required by the sheet-item modifier.
+private struct SubtitleEditorPresentation: Identifiable {
+    var attachmentID: UUID
+    var id: UUID { attachmentID }
 }
 
 #Preview {

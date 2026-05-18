@@ -1,13 +1,15 @@
 import Combine
 import Foundation
 
-// Caches on-device machine translations for subtitle cues, keyed by cue index.
+// Caches on-device machine translations for subtitle cues, keyed by the cue's source text.
+// Keying by text (not array index) means re-indexing the cue list — e.g., after splitting a
+// multi-line cue, removing the ♪ cue, or any reorder — never serves a stale translation under
+// the wrong line. Re-imports of the same lyrics also re-use existing translations.
 // Translation calls happen inside .translationTask closures in the view — the session never escapes.
 // Results are persisted to UserDefaults keyed by attachment ID so they survive app restarts.
-// Must be cleared (and a new attachmentID set) on note/attachment change.
 @MainActor
 final class LyricsTranslationCache: ObservableObject {
-    @Published private(set) var translations: [Int: String] = [:]
+    @Published private(set) var translations: [String: String] = [:]
 
     private var attachmentID: UUID?
 
@@ -16,10 +18,7 @@ final class LyricsTranslationCache: ObservableObject {
         self.attachmentID = attachmentID
         let key = userDefaultsKey(for: attachmentID)
         if let stored = UserDefaults.standard.dictionary(forKey: key) as? [String: String] {
-            translations = Dictionary(uniqueKeysWithValues: stored.compactMap { k, v in
-                guard let index = Int(k) else { return nil }
-                return (index, v)
-            })
+            translations = stored
         } else {
             translations = [:]
         }
@@ -31,14 +30,14 @@ final class LyricsTranslationCache: ObservableObject {
         translations = [:]
     }
 
-    // Returns true if this cue needs translation (not yet cached, non-empty text).
-    func needsTranslation(cueIndex: Int, text: String) -> Bool {
-        translations[cueIndex] == nil && text.isEmpty == false
+    // Returns true if this cue text has no cached translation yet.
+    func needsTranslation(text: String) -> Bool {
+        translations[text] == nil && text.isEmpty == false
     }
 
     // Persists a completed translation result so repeated view appearances skip the translation API.
-    func store(cueIndex: Int, result: String) {
-        translations[cueIndex] = result
+    func store(text: String, result: String) {
+        translations[text] = result
         persist()
     }
 
@@ -46,12 +45,13 @@ final class LyricsTranslationCache: ObservableObject {
     private func persist() {
         guard let attachmentID else { return }
         let key = userDefaultsKey(for: attachmentID)
-        let stringKeyed = Dictionary(uniqueKeysWithValues: translations.map { ("\($0.key)", $0.value) })
-        UserDefaults.standard.set(stringKeyed, forKey: key)
+        UserDefaults.standard.set(translations, forKey: key)
     }
 
     // Scopes the UserDefaults key to the attachment so different notes never share translation data.
+    // The "ByText" suffix differentiates from the legacy index-keyed format so old caches don't
+    // accidentally hydrate as if they were text-keyed.
     private func userDefaultsKey(for attachmentID: UUID) -> String {
-        "kioku.lyricsTranslations.\(attachmentID.uuidString)"
+        "kioku.lyricsTranslationsByText.\(attachmentID.uuidString)"
     }
 }

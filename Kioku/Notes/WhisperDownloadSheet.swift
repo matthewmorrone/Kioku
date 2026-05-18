@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Sheet presenting downloadable Whisper models with per-row progress and error state.
-// Rendered inside the model selection section of SubtitleImportSheet.
+// Rendered inside the model selection section of BulkImportSheet.
 struct WhisperDownloadSheet: View {
     @Bindable var manager: WhisperModelManager
 

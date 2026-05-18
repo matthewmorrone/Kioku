@@ -7,7 +7,7 @@ extension DictionaryStore {
     // Fetches pitch accent records for a word+kana pair from the UniDic-derived pitch_accent table.
     // The pitch_accent table stores readings in katakana (UniDic convention), so the incoming
     // kana is converted to katakana before querying to match regardless of script.
-    public func fetchPitchAccent(word: String, kana: String) throws -> [PitchAccent] {
+    nonisolated public func fetchPitchAccent(word: String, kana: String) throws -> [PitchAccent] {
         try withSerializedDatabaseAccess {
             let sql = """
             SELECT word, kana, kind, accent, morae
@@ -57,7 +57,7 @@ extension DictionaryStore {
     // Searches for the surface first, then any additional terms (e.g. lemma kanji forms)
     // so results favor the exact surface while still finding sentences that use the base form.
     // Uses FTS5 for fast substring search, deduplicates on Japanese text, sorted shortest first.
-    public func fetchSentencePairs(terms: [String]) throws -> [SentencePair] {
+    nonisolated public func fetchSentencePairs(terms: [String]) throws -> [SentencePair] {
         // Deduplicate and filter empty terms while preserving priority order.
         var uniqueTerms: [String] = []
         var seen = Set<String>()
@@ -110,7 +110,7 @@ extension DictionaryStore {
     }
 
     // Convenience overload that searches for a single surface string.
-    public func fetchSentencePairs(surface: String) throws -> [SentencePair] {
+    nonisolated public func fetchSentencePairs(surface: String) throws -> [SentencePair] {
         try fetchSentencePairs(terms: [surface])
     }
 

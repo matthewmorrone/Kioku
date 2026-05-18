@@ -93,6 +93,10 @@ enum KiokuSegmentPackedLayout {
         let interLineGap: CGFloat
         // Horizontal origin of every line (typically contentInset.left).
         let leftInset: CGFloat
+        // When false, segments past the right edge stay on the same line (overflowing) so
+        // the host can clip horizontally instead of wrapping — matches the classic CT path's
+        // `lineBreakMode = .byClipping` semantics. Default true preserves legacy behavior.
+        var isLineWrappingEnabled: Bool = true
     }
 
     // Walks segments left-to-right, packing each into the current line if its footprint
@@ -170,8 +174,10 @@ enum KiokuSegmentPackedLayout {
 
             // Wrap if this segment won't fit on the current line. First segment on any
             // line is always placed even when it overflows — otherwise an oversized
-            // single segment would loop forever.
-            if cursorX > inputs.leftInset && cursorX + footprintWidth > inputs.leftInset + inputs.availableWidth {
+            // single segment would loop forever. Wrapping is gated by isLineWrappingEnabled
+            // so single-line cards (LyricsView active card) get overflow + clip instead.
+            if inputs.isLineWrappingEnabled,
+               cursorX > inputs.leftInset && cursorX + footprintWidth > inputs.leftInset + inputs.availableWidth {
                 startNewLine()
             }
 

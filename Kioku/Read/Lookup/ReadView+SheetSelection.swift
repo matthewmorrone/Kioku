@@ -347,6 +347,17 @@ extension ReadView {
             }
         }
 
+        // Last-resort fallback: if neither the lexicon nor the dictionary surfaced a reading
+        // (common for kanji segments carved out of a larger inflected form — e.g. 眩 inside
+        // 眩しげに, where 眩 alone has no standalone JMdict/lexicon entry but the segmenter
+        // assigned it "み" from the inflected lemma 眩しい), use the reading already on screen
+        // so the sheet header never looks blanker than the text it came from.
+        if readingCandidates.isEmpty {
+            let mergedStartUTF16 = text.utf16.distance(from: text.startIndex, to: selectedStart)
+            let displayedReading = reconstructedReading(for: mergedSurface, at: mergedStartUTF16)
+            appendReading(displayedReading.isEmpty ? nil : displayedReading)
+        }
+
         return readingCandidates
     }
 

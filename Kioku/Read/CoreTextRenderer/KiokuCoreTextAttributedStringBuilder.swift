@@ -70,6 +70,12 @@ enum KiokuCoreTextAttributedStringBuilder {
         // value as the headword width, and footprint centering would put the headword
         // off-center inside its footprint. Default false to preserve classic behavior.
         var isSegmentPacked: Bool = false
+        // Apple Music-style "unplayed tail" dimming. When set, foreground colors at
+        // UTF-16 locations >= this index get their alpha multiplied by `unplayedAlpha`
+        // so the unplayed portion of an active lyric line reads as faded white while
+        // the played portion stays full-strength. nil disables the effect.
+        var unplayedDimmingLocation: Int? = nil
+        var unplayedAlpha: CGFloat = 0.18
     }
 
     // Composes the renderer-ready NSAttributedString: base font + paragraph style,
@@ -122,6 +128,15 @@ enum KiokuCoreTextAttributedStringBuilder {
             }
             alternationIndex += 1
 
+        }
+
+        if let dimFrom = inputs.unplayedDimmingLocation, dimFrom < result.length {
+            let dimRange = NSRange(location: dimFrom, length: result.length - dimFrom)
+            let alpha = inputs.unplayedAlpha
+            result.enumerateAttribute(.foregroundColor, in: dimRange, options: []) { value, subrange, _ in
+                let base = (value as? UIColor) ?? .label
+                result.addAttribute(.foregroundColor, value: base.withAlphaComponent(alpha), range: subrange)
+            }
         }
 
         // Ruby application. The furiganaBySegmentLocation dictionary is keyed by each

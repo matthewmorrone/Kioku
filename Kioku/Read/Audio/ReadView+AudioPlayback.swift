@@ -12,6 +12,7 @@ extension ReadView {
             audioController.unload()
             audioAttachmentCues = []
             audioAttachmentHighlightRanges = []
+            audioAttachmentCueTimings = [:]
             activeAudioAttachmentID = nil
             isShowingLyricsView = false
             playbackHighlightRangeOverride = nil
@@ -29,6 +30,9 @@ extension ReadView {
         audioAttachmentCues = cues
         audioAttachmentHighlightRanges = StartupTimer.measure("loadAudioAttachmentIfNeeded.resolveHighlightRanges") {
             SubtitleParser.resolveHighlightRanges(for: cues, in: text)
+        }
+        audioAttachmentCueTimings = StartupTimer.measure("loadAudioAttachmentIfNeeded.loadCueTimings") {
+            NotesAudioStore.shared.loadCueTimings(for: attachmentID)
         }
         playbackHighlightRangeOverride = nil
         activePlaybackCueIndex = nil
@@ -52,6 +56,7 @@ extension ReadView {
             StartupTimer.mark("loadAudioAttachmentIfNeeded failed: \(error.localizedDescription)")
             audioAttachmentCues = []
             audioAttachmentHighlightRanges = []
+            audioAttachmentCueTimings = [:]
             playbackHighlightRangeOverride = nil
             activePlaybackCueIndex = nil
         }

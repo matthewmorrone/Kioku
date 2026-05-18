@@ -10,6 +10,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     @Published var duration: TimeInterval = 0
     // Index into the cues array for the currently active subtitle; nil when between cues or stopped.
     @Published var activeCueIndex: Int? = nil
+    // Smoothed audio level in [0, 1], driven by AVAudioPlayer's average-power meter. Updated on
+    // every timer tick while playing. Consumers (e.g., the lyrics ♪ pulse) treat this as a coarse
+    // rhythm signal — louder samples pulse bigger. Set to 0 when paused/stopped so visuals can
+    // react to the playback state without an additional gate.
+    @Published var audioLevel: Double = 0
 
     private var player: AVAudioPlayer?
     var cues: [SubtitleCue] = []
@@ -40,6 +45,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     func load(audioURL: URL, cues: [SubtitleCue]) throws {
         stop()
         let newPlayer = try AVAudioPlayer(contentsOf: audioURL)
+        newPlayer.isMeteringEnabled = true
         newPlayer.prepareToPlay()
         player = newPlayer
         self.cues = cues
@@ -62,12 +68,16 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Starts or resumes playback. Begins polling for the current cue.
     // Starts from position 0 if not already mid-song (currentTimeMs == 0), otherwise resumes.
     func play() {
-        guard let player else { return }
+        guard let player else {
+            KaraokeDebugLog.log("controller.play: NO player loaded — early exit")
+            return
+        }
         configureAudioSession()
         try? AVAudioSession.sharedInstance().setActive(true)
         player.play()
         isPlaying = true
         startTimer()
+        KaraokeDebugLog.log("controller.play: started cuesCount=\(cues.count)")
     }
 
     // Starts playback from the beginning regardless of current position.
@@ -88,6 +98,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         player?.pause()
         isPlaying = false
         stopTimer()
+        audioLevel = 0
         syncTimeAndCue()
     }
 
@@ -98,6 +109,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         stopTimer()
         currentTimeMs = 0
         activeCueIndex = nil
+        audioLevel = 0
     }
 
     // Pauses playback and seeks back to the beginning. Called when the lyrics view is dismissed.
@@ -148,10 +160,31 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             isPlaying = false
             stopTimer()
             activeCueIndex = nil
+            audioLevel = 0
             return
         }
 
         syncTimeAndCue()
+        updateAudioLevel(player)
+    }
+
+    // Reads AVAudioPlayer's per-channel average-power meter, averages stereo channels into a
+    // single value, normalizes the -160…0 dB range into [0, 1], and exponentially smooths so
+    // the published `audioLevel` doesn't strobe on every 50ms tick. The smoothing time
+    // constant is tuned to feel beat-like without being twitchy — visible peaks on kick drums
+    // and snare hits, no jitter on sustained vowels.
+    private func updateAudioLevel(_ player: AVAudioPlayer) {
+        player.updateMeters()
+        let channelCount = max(1, player.numberOfChannels)
+        var sumDb: Float = 0
+        for ch in 0..<channelCount {
+            sumDb += player.averagePower(forChannel: ch)
+        }
+        let avgDb = sumDb / Float(channelCount)
+        // -50 dB → ~silence, 0 dB → peak. Clamp and normalize.
+        let normalized = max(0.0, min(1.0, Double((avgDb + 50) / 50)))
+        // Exponential smoothing — 0.35 of new sample, 0.65 retained.
+        audioLevel = audioLevel * 0.65 + normalized * 0.35
     }
 
     // Reads the current player position and resolves which cue is active at that time.
@@ -169,6 +202,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         let previousCue = cues.lastIndex { $0.endMs <= ms }
         let newActiveCueIndex = currentCue ?? nextCue ?? previousCue ?? activeCueIndex
         if activeCueIndex != newActiveCueIndex {
+            KaraokeDebugLog.log("controller.cue: \(activeCueIndex.map(String.init) ?? "nil") → \(newActiveCueIndex.map(String.init) ?? "nil") at t=\(ms)ms (cues.count=\(cues.count))")
             activeCueIndex = newActiveCueIndex
         }
     }

@@ -186,8 +186,23 @@ extension ReadView {
                 surfaceReadingData: surfaceReadingData,
                 sourceText: sourceText
                ) {
-                resolvedFurigana[segmentNSRange.location] = fallbackReading
-                resolvedFuriganaLengths[segmentNSRange.location] = segmentNSRange.length
+                // For a single-run kanji segment, place the cropped ruby exactly over the kanji
+                // sub-range so it doesn't get stretched across okurigana the reading no longer
+                // contains. For multi-run / non-kanji-prefix segments, fall back to segment-span
+                // placement (the cropping path didn't change shape there).
+                let segChars = Array(edge.surface)
+                let runs = kanjiRuns(in: edge.surface)
+                if runs.count == 1, runs[0].end <= segChars.count {
+                    let run = runs[0]
+                    let prefixUTF16 = String(segChars[..<run.start]).utf16.count
+                    let runUTF16 = String(segChars[run.start..<run.end]).utf16.count
+                    let runLocation = segmentNSRange.location + prefixUTF16
+                    resolvedFurigana[runLocation] = fallbackReading
+                    resolvedFuriganaLengths[runLocation] = runUTF16
+                } else {
+                    resolvedFurigana[segmentNSRange.location] = fallbackReading
+                    resolvedFuriganaLengths[segmentNSRange.location] = segmentNSRange.length
+                }
             }
         }
 
@@ -214,7 +229,18 @@ extension ReadView {
         return false
     }
 
-    // Synthesizes a segment-level reading when run-level furigana alignment fails for a kanji segment.
+    // Synthesizes a kanji-only fallback reading when run-level furigana alignment fails.
+    //
+    // For an inflected surface like 凛々しく with lemma 凛々しい (reading りりしい), the run-level
+    // alignment can fail because the surface's okurigana (しく) doesn't match the lemma reading's
+    // suffix (しい). The previous fallback returned the FULL lemma reading and the caller stored
+    // it over the entire segment span — painting "りりしい" across "凛々しく", four ruby
+    // characters over the two kanji plus stretching past them. Wrong shape and wrong content.
+    //
+    // The fix: crop the reading to just the kanji-run portion using the LEMMA's own structure
+    // (the lemma's okurigana matches the lemma reading's suffix by definition), then return the
+    // cropped reading. The caller writes it at the kanji-run's location/length, so the ruby sits
+    // exactly over the kanji ("りり" above 凛々).
     func fallbackSegmentFuriganaReading(
         for edge: LatticeEdge,
         surfaceReadingData: SurfaceReadingDataMap,
@@ -229,6 +255,11 @@ extension ReadView {
             edge.surface,
             surfaceReadingData: surfaceReadingData
         ), surfaceReading != edge.surface {
+            // Crop via the surface itself — its okurigana matches its own reading by construction
+            // for non-inflected entries, so this is a clean kanji-only extraction.
+            if let cropped = firstKanjiRunReading(in: edge.surface, using: surfaceReading) {
+                return cropped
+            }
             return surfaceReading
         }
 
@@ -239,6 +270,13 @@ extension ReadView {
             let isLemmaReadingCompatibleWithSurface = firstKanjiRunReading(in: edge.surface, using: lemmaReading) != nil
             if isLemmaReadingCompatibleWithSurface == false {
                 return nil
+            }
+
+            // Crop using the LEMMA's structure rather than the surface's — the lemma's okurigana
+            // (e.g. しい in 凛々しい) aligns cleanly to its own reading suffix, while the surface's
+            // okurigana (e.g. しく) is the inflected form that diverges from the reading.
+            if let cropped = firstKanjiRunReading(in: preferredLemmaReference, using: lemmaReading) {
+                return cropped
             }
 
             return lemmaReading
@@ -444,27 +482,22 @@ extension ReadView {
     }
 
     // Extracts the reading that maps to the first contiguous kanji run of a dictionary surface.
+    //
+    // Bug fix: previously this function did its OWN inline walk over `characters` that didn't
+    // recognize iteration marks (々) as part of a kanji run, while `kanjiRuns(in:)` does. The
+    // two walkers disagreed about where the run ends — for 凛々しい, the inline walk gave run
+    // (0,1) "just 凛", while kanjiRuns gave (0,2) "凛々". Result: suffix "々しい" couldn't be
+    // trimmed phonetically from "りりしい" and the untrimmed full reading was returned, but
+    // callers later stored it under length=runs[0].end-runs[0].start=2 — painting 4 ruby
+    // characters over 2 kanji. Use kanjiRuns as the single source of truth for the run bounds.
     func firstKanjiRunReading(in surface: String, using reading: String) -> String? {
         let characters = Array(surface)
         let runs = kanjiRuns(in: surface)
-        var runStart: Int?
-        var runEnd: Int?
-
-        for (index, character) in characters.enumerated() {
-            let isKanji = ScriptClassifier.containsKanji(String(character))
-            if isKanji {
-                if runStart == nil {
-                    runStart = index
-                }
-                runEnd = index + 1
-            } else if runStart != nil {
-                break
-            }
-        }
-
-        guard let runStart, let runEnd else {
+        guard let firstRun = runs.first else {
             return nil
         }
+        let runStart = firstRun.start
+        let runEnd = firstRun.end
 
         let allowsIsolatedRunReading = runs.count == 1
         let prefixSurface = String(characters[..<runStart])
