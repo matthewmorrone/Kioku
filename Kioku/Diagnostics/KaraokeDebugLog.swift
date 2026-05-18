@@ -22,8 +22,12 @@ enum KaraokeDebugLog {
     }()
 
     // Writes one timestamped line to the on-disk log and emits the same string to the unified log.
-    // Failures are swallowed — diagnostics must never crash the audio path.
+    // Failures are swallowed — diagnostics must never crash the audio path. Cue/note previews are
+    // logged with .public privacy, which would leak user subtitle and note content to device-log
+    // collection and the on-disk file in release builds. Compile this whole path out unless DEBUG
+    // is set so production builds emit nothing and never create the log file.
     static func log(_ message: @autoclosure () -> String) {
+        #if DEBUG
         let text = message()
         let stamp = formatter.string(from: Date())
         let line = "[\(stamp)] \(text)\n"
@@ -38,12 +42,16 @@ enum KaraokeDebugLog {
                 try? data.write(to: fileURL, options: .atomic)
             }
         }
+        #endif
     }
 
-    // Truncates the log file. Called at app start so each run starts clean.
+    // Truncates the log file. Called at app start so each run starts clean. No-op in release
+    // because release builds never write to the file in the first place.
     static func reset() {
+        #if DEBUG
         queue.async {
             try? Data().write(to: fileURL, options: .atomic)
         }
+        #endif
     }
 }

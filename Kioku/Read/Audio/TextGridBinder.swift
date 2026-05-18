@@ -76,17 +76,33 @@ nonisolated enum TextGridBinder {
         }
     }
 
-    // Returns the cue whose [startMs, endMs] contains t. Allows ±50 ms tolerance at boundaries.
-    // When t falls in two cues' tolerance bands (interval starts exactly on a boundary), the LATER
-    // cue wins — an interval beginning at a line transition belongs to the line that's just starting.
+    // Returns the cue whose [startMs, endMs] contains t.
+    //
+    // Two passes:
+    //   1. Strict containment — a word inside cue.startMs ... cue.endMs belongs to that cue
+    //      regardless of how close t sits to either boundary. When two adjacent cues share an
+    //      exact boundary at t (cue A ends at the same ms cue B starts), the later cue overwrites
+    //      `best` — an interval beginning on a transition belongs to the line just starting.
+    //   2. Tolerance fallback — only if strict containment found nothing. Picks the cue with the
+    //      closest boundary within ±50 ms, absorbing forced-aligner noise without pulling words
+    //      out of their true containing cue. The earlier "later cue wins for the whole pre-boundary
+    //      tolerance window" behavior misattributed a word at e.g. 995 ms in the 0–1000 ms cue to
+    //      the next cue starting at 1000 ms.
     private static func findContainingCue(timeMs t: Int, in sorted: [SubtitleCue]) -> SubtitleCue? {
         let tolerance = 50
         var best: SubtitleCue? = nil
         for cue in sorted {
-            if t + tolerance >= cue.startMs && t <= cue.endMs + tolerance {
+            if cue.startMs > t { break }
+            if t <= cue.endMs { best = cue }
+        }
+        if best != nil { return best }
+        var bestDelta = Int.max
+        for cue in sorted {
+            if cue.startMs > t + tolerance { break }
+            let delta = min(abs(t - cue.startMs), abs(t - cue.endMs))
+            if delta <= tolerance && delta < bestDelta {
+                bestDelta = delta
                 best = cue
-            } else if cue.startMs > t + tolerance {
-                break
             }
         }
         return best

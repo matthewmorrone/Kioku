@@ -90,7 +90,7 @@ extension SegmentLookupSheet {
                 row.alignment = .firstBaseline
                 row.isUserInteractionEnabled = true
 
-                let tap = SegmentLookupSheet.ClosureTapGesture { [weak self, weak parent] in
+                let tap = ClosureTapGesture { [weak self, weak parent] in
                     guard let self, let parent else { return }
                     self.presentComponentSheet(surface: component.lemma, gloss: component.gloss, from: parent)
                 }
@@ -100,19 +100,5 @@ extension SegmentLookupSheet {
         }
 
         middleContentStack.superview?.isHidden = false
-    }
-
-    // UITapGestureRecognizer wrapper that runs a closure instead of the target/action pattern.
-    // UIGestureRecognizer (unlike UIControl) has no built-in UIAction support, so we route the
-    // selector through a stored closure so call sites can stay closure-based.
-    final class ClosureTapGesture: UITapGestureRecognizer {
-        private let handler: () -> Void
-        init(handler: @escaping () -> Void) {
-            self.handler = handler
-            super.init(target: nil, action: nil)
-            addTarget(self, action: #selector(handleTap))
-        }
-        // Bridges UIGestureRecognizer's selector-based callback to the stored closure.
-        @objc private func handleTap() { handler() }
     }
 }

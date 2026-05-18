@@ -176,9 +176,11 @@ final class NotesAudioStore {
             try saveCues(cues, attachmentID: backup.attachmentID)
         }
 
-        if let timings = backup.timings, timings.isEmpty == false {
-            try saveCueTimings(timings, attachmentID: backup.attachmentID)
-        }
+        // Always invoke saveCueTimings — when the backup carries no timings it removes any
+        // stale .timings.json on disk. Without this, restoring an older backup over an
+        // attachment that has karaoke checkpoints would leave the previous file in place
+        // and loadCueTimings would keep returning the old data.
+        try saveCueTimings(backup.timings ?? [:], attachmentID: backup.attachmentID)
     }
 
     // Loads the saved raw SRT text when present.
