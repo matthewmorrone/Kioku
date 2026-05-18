@@ -356,6 +356,13 @@ extension ReadView {
 
             recordLookupHistory(surface: segmentSurface)
 
+            // Drilling into a compound component row spawns a stacked, full-chrome lookup sheet
+            // for the tapped lemma. Installed here so the closure captures the current ReadView
+            // value (its dictionaryStore/lexicon/wordsStore references are already there).
+            SegmentLookupSheet.shared.onCompoundComponentTapped = { lemma, gloss in
+                presentNestedLemmaLookup(lemma: lemma, gloss: gloss)
+            }
+
             preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: tappedSegmentRect)
             SegmentLookupSheet.shared.presentSheet(
                 surface: segmentSurface,

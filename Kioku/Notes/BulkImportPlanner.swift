@@ -83,9 +83,14 @@ enum BulkImportPlanner {
     // Returns true when running this item requires Whisper transcription, so the sheet can
     // require model selection before allowing import to start.
     static func requiresTranscription(_ item: BulkImportPlanItem) -> Bool {
+        // A .TextGrid alongside the audio supplies line cues without Whisper, so the
+        // sheet should not gate import on model selection in that case. The runner's
+        // `process` path mirrors this — TextGrid-derived cues are tried before the
+        // Whisper transcription branch.
         item.audioURL != nil
             && item.textURL == nil
             && item.subtitleURL == nil
+            && item.textGridURL == nil
             && item.matchedExistingNoteID == nil
     }
 

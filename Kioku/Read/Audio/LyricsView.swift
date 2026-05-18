@@ -88,9 +88,26 @@ struct LyricsView: View {
         )
     }
 
-    // Returns true when the cue text doesn't match the note text for this index.
+    // Returns the slice of noteText that the resolver mapped to this cue, if any.
+    // Used only for mismatch detection — `displayText(for:)` deliberately returns the
+    // raw cue text now to avoid bleeding past line boundaries on resolver overshoot,
+    // but mismatch detection still needs the resolver-mapped note range to know
+    // whether the cue text differs from what the note says at that timecode.
+    private func noteTextForCue(at index: Int) -> String? {
+        guard index < highlightRanges.count,
+              let range = highlightRanges[index],
+              let swiftRange = Range(range, in: noteText) else {
+            return nil
+        }
+        return String(noteText[swiftRange])
+    }
+
+    // Returns true when the cue text doesn't match the resolver-mapped note text for this
+    // index. Compares against the noteText slice — NOT `displayText(for:)`, which now
+    // returns the raw cue text and would always compare equal to itself, suppressing the
+    // orange-dot mismatch indicator that flags resolver-vs-cue divergence.
     private func hasMismatch(at index: Int) -> Bool {
-        let note = displayText(for: index)
+        guard let note = noteTextForCue(at: index) else { return false }
         let cue = cues[index].text
         return note != cue && SubtitleParser.isNonSpeechCue(cue.trimmingCharacters(in: .whitespacesAndNewlines)) == false
     }
@@ -778,24 +795,3 @@ private struct LyricsScrubber: View {
     }
 }
 
-// Beat-pulsing ♪ glyph shown during no-vocal stretches (intro, ♪ cues, long gaps). Scale and
-// opacity track the live audio level so the note pulses with whatever instrumental is playing;
-// when audio is paused the level drops to 0 and the glyph rests at its idle size. Sizes tuned
-// to read as a single discreet character — not a billboard — in the active-cue slot.
-private struct PulsingDotsIndicator: View {
-    @ObservedObject var controller: AudioPlaybackController
-
-    var body: some View {
-        // SwiftUI re-renders the body when controller.audioLevel changes (50ms tick) — that's
-        // close enough to a 20fps refresh that we don't need a separate TimelineView for the
-        // beat path. The implicit animation smooths the visual transitions between samples.
-        let level = controller.audioLevel
-        let scale = 0.85 + 0.45 * level
-        let opacity = 0.35 + 0.55 * level
-        Text("♪")
-            .font(.system(size: 22, weight: .regular))
-            .foregroundStyle(Color.white.opacity(opacity))
-            .scaleEffect(scale)
-            .animation(.easeOut(duration: 0.08), value: level)
-    }
-}

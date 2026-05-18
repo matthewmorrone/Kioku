@@ -110,11 +110,19 @@ final class SurfaceSheetViewController: UIViewController {
         updateOpenDetailButtonAppearance()
         updateReadingFurigana()
         updateLemmaChain()
-        splitButton.isEnabled = currentSurface.count > 1
+        splitButton.isEnabled = currentSurface.count > 1 && currentOnSplitApply != nil
         splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
         updateMergeButtonAvailability()
         // Views are now built — compute the real preferred height for the detent.
         currentSheetPreferredHeight = computePreferredSheetHeight()
+    }
+
+    // The detent resolver was registered with a 400pt placeholder before viewDidLoad ran.
+    // viewWillAppear runs after the view hierarchy is laid out, so invalidating here forces the
+    // sheet to size itself to the real measured content height on first presentation.
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        updateSheetPreferredHeight(animated: false)
     }
 
     // MARK: - Reading management
@@ -232,7 +240,7 @@ final class SurfaceSheetViewController: UIViewController {
         currentRightNeighborSurface = outcome.rightNeighborSurface
         // Clear the header reading until the new segment's providers refresh.
         rebuildHeaderRow(reading: nil)
-        splitButton.isEnabled = currentSurface.count > 1
+        splitButton.isEnabled = currentSurface.count > 1 && currentOnSplitApply != nil
         splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
         updateMergeButtonAvailability()
     }

@@ -86,6 +86,18 @@ final class BulkImportRunner: ObservableObject {
         var cues: [SubtitleCue]? = subtitleData?.cues
         var srtText: String? = subtitleData?.rawText
 
+        // Try TextGrid-derived cues BEFORE requiring a Whisper model. A `.TextGrid` shipped
+        // alongside an audio file already encodes line boundaries; transcription is only
+        // necessary when nothing else supplies cues. Doing this first means MP3 + .TextGrid
+        // (no .srt/.txt) succeeds without forcing the user to select a Whisper model — the
+        // BulkImportPlanner's requiresTranscription check is updated to match.
+        if cues == nil, let textGridURL = item.textGridURL {
+            if let derived = try? Self.readDerivedCuesFromTextGrid(at: textGridURL) {
+                cues = derived
+                bodyContent = bodyContent ?? SubtitleParser.assembleNoteContent(from: derived)
+            }
+        }
+
         if bodyContent == nil, cues == nil, let audioURL = item.audioURL {
             guard let modelURL = whisperModelURL else {
                 throw BulkImportError.noTranscriptionModel
@@ -94,15 +106,6 @@ final class BulkImportRunner: ObservableObject {
             cues = transcribed
             srtText = SubtitleParser.formatSRT(from: transcribed)
             bodyContent = SubtitleParser.assembleNoteContent(from: transcribed)
-        }
-
-        // A standalone TextGrid (no SRT/text) is itself a valid cue source — derive line cues from
-        // its line-resolution tier so the user gets a note with karaoke without needing an SRT.
-        if cues == nil, let textGridURL = item.textGridURL {
-            if let derived = try? Self.readDerivedCuesFromTextGrid(at: textGridURL) {
-                cues = derived
-                bodyContent = bodyContent ?? SubtitleParser.assembleNoteContent(from: derived)
-            }
         }
 
         if bodyContent == nil, let cues {

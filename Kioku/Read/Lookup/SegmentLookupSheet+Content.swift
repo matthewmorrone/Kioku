@@ -92,7 +92,12 @@ extension SegmentLookupSheet {
 
                 let tap = ClosureTapGesture { [weak self, weak parent] in
                     guard let self, let parent else { return }
-                    self.presentComponentSheet(surface: component.lemma, gloss: component.gloss, from: parent)
+                    if let handler = self.onCompoundComponentTapped {
+                        handler(component.lemma, component.gloss)
+                    } else {
+                        // Fallback for contexts that haven't wired the full-chrome handler.
+                        self.presentComponentSheet(surface: component.lemma, gloss: component.gloss, from: parent)
+                    }
                 }
                 row.addGestureRecognizer(tap)
                 middleContentStack.addArrangedSubview(row)
