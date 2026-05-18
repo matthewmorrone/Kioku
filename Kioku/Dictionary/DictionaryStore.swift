@@ -276,6 +276,34 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         // lookups), kana-only entries can't match a kanji surface either, so again a
         // no-op. Result: the tier only changes ordering for the kana-surface case where
         // the homophone collision actually occurs.
+        //
+        // Tier 1 (POS boost) is gated to `matchKana && !matchKanji` only. Particles like
+        // が / の have archaic kanji forms (我, 乃, 之), so when the user explicitly looks
+        // up a kanji surface — tap on 我 in text or search for "我" directly — the WHERE
+        // clause matches both the pronoun 我 (われ) AND the particle が entry. Without the
+        // gate, the particle entry's `prt` POS tag would promote it ahead of the actual
+        // kanji-word match for surfaces the user clearly intended in their kanji form.
+        let posBoostTier: String
+        if matchKana && !matchKanji {
+            posBoostTier = """
+                -- Tier 1: particle / functional-word entries first for kana surface lookups.
+                -- An entry whose POS tag list contains 'prt' (particle), 'cop' (copula), or
+                -- 'aux' (auxiliary) is functional grammar — exactly what users mean when they
+                -- tap bare hiragana like の, は, が, も. Many particles ALSO carry archaic
+                -- kanji forms (の: 乃/之; が: 我), so the has_kanji=0 test alone can't catch
+                -- them; the POS tag is the reliable signal. ',?' regex-ish matching via LIKE
+                -- since pos is a comma-joined tag list.
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM senses s2 WHERE s2.entry_id = e.id
+                    AND (s2.pos = 'prt' OR s2.pos LIKE 'prt,%' OR s2.pos LIKE '%,prt,%' OR s2.pos LIKE '%,prt'
+                      OR s2.pos = 'cop' OR s2.pos LIKE 'cop,%' OR s2.pos LIKE '%,cop,%' OR s2.pos LIKE '%,cop'
+                      OR s2.pos = 'aux' OR s2.pos LIKE 'aux,%' OR s2.pos LIKE '%,aux,%' OR s2.pos LIKE '%,aux'
+                      OR s2.pos LIKE 'aux-%' OR s2.pos LIKE '%,aux-%')
+                ) THEN 0 ELSE 1 END ASC,
+            """
+        } else {
+            posBoostTier = ""
+        }
         let sql = """
         SELECT e.id,
                MIN(wf.jpdb_rank) AS best_jpdb,
@@ -288,20 +316,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         WHERE \(whereClause)
         GROUP BY e.id
         ORDER BY
-            -- Tier 1: particle / functional-word entries first for kana surface lookups.
-            -- An entry whose POS tag list contains 'prt' (particle), 'cop' (copula), or
-            -- 'aux' (auxiliary) is functional grammar — exactly what users mean when they
-            -- tap bare hiragana like の, は, が, も. Many particles ALSO carry archaic
-            -- kanji forms (の: 乃/之; が: 我), so the has_kanji=0 test alone can't catch
-            -- them; the POS tag is the reliable signal. ',?' regex-ish matching via LIKE
-            -- since pos is a comma-joined tag list.
-            CASE WHEN EXISTS (
-                SELECT 1 FROM senses s2 WHERE s2.entry_id = e.id
-                AND (s2.pos = 'prt' OR s2.pos LIKE 'prt,%' OR s2.pos LIKE '%,prt,%' OR s2.pos LIKE '%,prt'
-                  OR s2.pos = 'cop' OR s2.pos LIKE 'cop,%' OR s2.pos LIKE '%,cop,%' OR s2.pos LIKE '%,cop'
-                  OR s2.pos = 'aux' OR s2.pos LIKE 'aux,%' OR s2.pos LIKE '%,aux,%' OR s2.pos LIKE '%,aux'
-                  OR s2.pos LIKE 'aux-%' OR s2.pos LIKE '%,aux-%')
-            ) THEN 0 ELSE 1 END ASC,
+            \(posBoostTier)
             -- Tier 2: kana-only entries (no kanji forms) before kanji-bearing ones. Catches
             -- truly kana-only headwords (interjections, sound effects, casual kana usages)
             -- and is a no-op for kanji-surface lookups (where kana-only entries can't match

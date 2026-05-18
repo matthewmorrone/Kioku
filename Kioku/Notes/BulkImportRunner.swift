@@ -177,8 +177,20 @@ final class BulkImportRunner: ObservableObject {
 
         if let cues, cues.isEmpty == false {
             try NotesAudioStore.shared.saveCues(cues, attachmentID: attachmentID)
-            if let textGridURL,
-               let timings = Self.bindTextGridCheckpoints(textGridURL: textGridURL, cues: cues),
+        }
+        // Bind TextGrid checkpoints whenever a .TextGrid is in the import. When the import
+        // also carried a fresh .srt the new cues are used; otherwise fall back to the cues
+        // already saved on the matched note's attachment — matching the TextGrid-only attach
+        // path. Without this fallback, dropping an .audio + .TextGrid pair onto a note that
+        // already has saved cues would silently skip binding even though the planner UI
+        // labeled the row "with karaoke timings."
+        if let textGridURL {
+            let cuesForBinding: [SubtitleCue] = {
+                if let cues, cues.isEmpty == false { return cues }
+                return NotesAudioStore.shared.loadCues(for: attachmentID)
+            }()
+            if cuesForBinding.isEmpty == false,
+               let timings = Self.bindTextGridCheckpoints(textGridURL: textGridURL, cues: cuesForBinding),
                timings.isEmpty == false {
                 try NotesAudioStore.shared.saveCueTimings(timings, attachmentID: attachmentID)
             }

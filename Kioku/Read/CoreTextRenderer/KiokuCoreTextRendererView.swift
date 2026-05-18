@@ -219,6 +219,14 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // this, a long compound (抜け殻, 思い出) at the right margin would be bisected
         // mid-character; with it, the whole compound wraps to the next line as a unit.
         uiView.contentView.setSegmentNSRanges(uiView.cachedSegmentNSRanges)
+        // The packer doesn't read paragraph attributes, so mirror the wrap flag onto the
+        // engine BEFORE invoking setSegmentPacking — the packer reads this flag while it
+        // rebuilds the packed layout, and `isLineWrappingEnabled` is a plain stored
+        // property with no relayout trigger. Setting it after the rebuild meant the first
+        // packed layout used the previous/default `true` value and LyricsView's
+        // single-line active-cue card could wrap long cue segments until some unrelated
+        // update happened to trigger another rebuild.
+        uiView.contentView.layoutEngine.isLineWrappingEnabled = isLineWrappingEnabled
         // Toggle segment-packed layout based on the ruby-spacing user setting. When on,
         // the engine packs segments by max(headword, ruby) footprint with zero inter-
         // segment gap and atomic seg+ruby wrapping. When off, the engine uses CT's
@@ -230,10 +238,6 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
             bodyFont: font,
             furiganaFont: furiganaFont
         )
-        // The packer doesn't read paragraph attributes, so mirror the wrap flag onto the
-        // engine. LyricsView's active-cue card sets this to false; the packer keeps overflow
-        // on one line and the host clips horizontally instead of wrapping.
-        uiView.contentView.layoutEngine.isLineWrappingEnabled = isLineWrappingEnabled
 
         // Apply per-line origin shifts for wide-ruby line-starts. Replacement for TextKit
         // 2's textContainer.exclusionPaths. CTLineGetImageBounds doesn't include ruby
