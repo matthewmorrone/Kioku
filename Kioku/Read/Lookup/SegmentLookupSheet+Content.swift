@@ -53,8 +53,10 @@ extension SegmentLookupSheet {
         glossLabel.textAlignment = .natural
         middleContentStack.addArrangedSubview(glossLabel)
 
-        // Compound verb components: shows each lemma as a tappable row when the surface
-        // contains a main verb + auxiliary (e.g. 消えてゆく → 消える + 行く).
+        // Compound verb components: shows each lemma + first gloss as a tappable row when the
+        // surface contains a main verb + auxiliary (e.g. 消えてゆく → 消える: to disappear /
+        // 行く: to go). Vertical list with lemma + definition inline so the user can see what
+        // each part means without drilling into a sub-sheet first.
         if currentSheetCompoundComponents.count > 1 {
             let separator = UIView()
             separator.backgroundColor = .separator
@@ -66,46 +68,51 @@ extension SegmentLookupSheet {
             let headerLabel = makeSheetSectionHeader("Compound")
             middleContentStack.addArrangedSubview(headerLabel)
 
-            let componentsRow = UIStackView()
-            componentsRow.axis = .horizontal
-            componentsRow.spacing = 6
-            componentsRow.alignment = .center
+            for component in currentSheetCompoundComponents {
+                let lemmaLabel = UILabel()
+                lemmaLabel.text = component.lemma
+                lemmaLabel.font = .systemFont(ofSize: 15, weight: .medium)
+                lemmaLabel.textColor = .label
+                lemmaLabel.setContentHuggingPriority(.required, for: .horizontal)
+                lemmaLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-            for (index, component) in currentSheetCompoundComponents.enumerated() {
-                if index > 0 {
-                    let plus = UILabel()
-                    plus.text = "+"
-                    plus.font = .systemFont(ofSize: 13, weight: .medium)
-                    plus.textColor = .tertiaryLabel
-                    plus.setContentHuggingPriority(.required, for: .horizontal)
-                    componentsRow.addArrangedSubview(plus)
-                }
+                let glossLabel = UILabel()
+                glossLabel.text = component.gloss?
+                    .components(separatedBy: ";").first?
+                    .trimmingCharacters(in: .whitespaces) ?? ""
+                glossLabel.font = .systemFont(ofSize: 14)
+                glossLabel.textColor = .secondaryLabel
+                glossLabel.numberOfLines = 0
 
-                let chip = UIButton(type: .system)
-                chip.setTitle(component.lemma, for: .normal)
-                chip.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
-                chip.setTitleColor(.label, for: .normal)
-                var config = UIButton.Configuration.plain()
-                config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
-                chip.configuration = config
-                chip.backgroundColor = .secondarySystemFill
-                chip.layer.cornerRadius = 8
-                chip.setContentHuggingPriority(.defaultLow, for: .horizontal)
-                // Tapping a compound component opens a nested lookup sheet for that lemma,
-                // letting the user drill into the meaning of e.g. 消える within 消えてゆく.
-                let lemma = component.lemma
-                let gloss = component.gloss
-                chip.addAction(UIAction { [weak self, weak parent] _ in
+                let row = UIStackView(arrangedSubviews: [lemmaLabel, glossLabel])
+                row.axis = .horizontal
+                row.spacing = 10
+                row.alignment = .firstBaseline
+                row.isUserInteractionEnabled = true
+
+                let tap = SegmentLookupSheet.ClosureTapGesture { [weak self, weak parent] in
                     guard let self, let parent else { return }
-                    self.presentComponentSheet(surface: lemma, gloss: gloss, from: parent)
-                }, for: .touchUpInside)
-                componentsRow.addArrangedSubview(chip)
+                    self.presentComponentSheet(surface: component.lemma, gloss: component.gloss, from: parent)
+                }
+                row.addGestureRecognizer(tap)
+                middleContentStack.addArrangedSubview(row)
             }
-
-            componentsRow.addArrangedSubview(UIView()) // trailing spacer
-            middleContentStack.addArrangedSubview(componentsRow)
         }
 
         middleContentStack.superview?.isHidden = false
+    }
+
+    // UITapGestureRecognizer wrapper that runs a closure instead of the target/action pattern.
+    // UIGestureRecognizer (unlike UIControl) has no built-in UIAction support, so we route the
+    // selector through a stored closure so call sites can stay closure-based.
+    final class ClosureTapGesture: UITapGestureRecognizer {
+        private let handler: () -> Void
+        init(handler: @escaping () -> Void) {
+            self.handler = handler
+            super.init(target: nil, action: nil)
+            addTarget(self, action: #selector(handleTap))
+        }
+        // Bridges UIGestureRecognizer's selector-based callback to the stored closure.
+        @objc private func handleTap() { handler() }
     }
 }

@@ -47,7 +47,7 @@ nonisolated enum SubtitleParser {
         var searchStart = noteText.startIndex
         var lineSearchIndex = 0
         let noteLineRanges = extractNoteLineRanges(from: noteText)
-        return cues.map { cue in
+        return cues.enumerated().map { (cueIdx, cue) in
             // Non-speech cues (♪) have no note line — skip.
             if isNonSpeechCue(cue.text) {
                 return nil
@@ -56,10 +56,12 @@ nonisolated enum SubtitleParser {
             // Tier 1: exact substring match.
             if let range = noteText.range(of: cue.text, range: searchStart..<noteText.endIndex) {
                 searchStart = range.upperBound
-                if let matchedLineIndex = noteLineRanges.firstIndex(where: { NSIntersectionRange($0, NSRange(range, in: noteText)).length > 0 }) {
+                let ns = NSRange(range, in: noteText)
+                if let matchedLineIndex = noteLineRanges.firstIndex(where: { NSIntersectionRange($0, ns).length > 0 }) {
                     lineSearchIndex = matchedLineIndex + 1
                 }
-                return NSRange(range, in: noteText)
+                KaraokeDebugLog.log("resolver[\(cueIdx)] tier=1 cueLen=\(cue.text.utf16.count) range=[\(ns.location),\(ns.length)] cueText=\"\(cue.text.prefix(20))\"")
+                return ns
             }
 
             // Tier 2: normalized line text comparison.
@@ -72,6 +74,7 @@ nonisolated enum SubtitleParser {
                 if let fallbackSwiftRange = Range(fallbackRange, in: noteText) {
                     searchStart = fallbackSwiftRange.upperBound
                 }
+                KaraokeDebugLog.log("resolver[\(cueIdx)] tier=2 cueLen=\(cue.text.utf16.count) range=[\(fallbackRange.location),\(fallbackRange.length)] cueText=\"\(cue.text.prefix(20))\"")
                 return fallbackRange
             }
 
@@ -83,9 +86,11 @@ nonisolated enum SubtitleParser {
                 let lineText = noteText[swiftRange].trimmingCharacters(in: .whitespacesAndNewlines)
                 guard lineText.isEmpty == false else { continue }
                 searchStart = swiftRange.upperBound
+                KaraokeDebugLog.log("resolver[\(cueIdx)] tier=3 cueLen=\(cue.text.utf16.count) range=[\(positionalRange.location),\(positionalRange.length)] cueText=\"\(cue.text.prefix(20))\"")
                 return positionalRange
             }
 
+            KaraokeDebugLog.log("resolver[\(cueIdx)] tier=nil cueLen=\(cue.text.utf16.count) cueText=\"\(cue.text.prefix(20))\"")
             return nil
         }
     }

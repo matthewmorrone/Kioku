@@ -136,7 +136,20 @@ extension ReadView {
             unknownSegmentLocations = []
         }
 
+        // Belt-and-braces persistence clear so a buggy furigana entry that's already on disk
+        // (or sitting in the in-memory runtime snapshot the store uses for export) can't sneak
+        // back into the view via load/export paths.
+        //   1. Drop the runtime snapshot for this note — exportSegmentRanges reads this first
+        //      and would otherwise serve the OLD furigana-embedded segments back.
+        //   2. Persist with segments=nil so the on-disk note has no embedded furigana either;
+        //      on next note open the load path sees segments=nil and re-runs the segmenter
+        //      against the current (fixed) furigana pipeline rather than restoring stale data.
+        //   3. Synchronously flush so the disk state matches before any async path runs.
+        if let activeNoteID {
+            notesStore.clearRuntimeSegmentation(noteID: activeNoteID)
+        }
         persistCurrentNoteIfNeeded()
+        notesStore.flushPendingSave()
     }
 
     // Public entry point. Two paths:

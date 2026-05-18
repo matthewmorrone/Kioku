@@ -12,6 +12,8 @@ struct KiokuApp: App {
     // Fires once when SwiftUI first evaluates the app body to signal launch timing.
     init() {
         StartupTimer.mark("KiokuApp.init")
+        KaraokeDebugLog.reset()
+        KaraokeDebugLog.log("=== app launch ===")
     }
 
     var body: some Scene {

@@ -169,10 +169,22 @@ extension ReadView {
         let trimmedTitle = customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         // Don't create a note when both content and title are blank.
         // For a brand-new note not yet in the store this avoids persisting a completely empty entry.
-        // For an existing saved note, allow blank saves so the user can intentionally clear content.
         if trimmedText.isEmpty && trimmedTitle.isEmpty {
             if activeNoteID == nil { return }
-            if notesStore.note(withID: activeNoteID!) == nil { return }
+            guard let storedNote = notesStore.note(withID: activeNoteID!) else { return }
+
+            // If the stored copy is ALSO blank, the note was just created and never typed into —
+            // delete it from the store so empty placeholders don't accumulate. If the stored copy
+            // has content, the user intentionally cleared it; allow the blank save to proceed.
+            let storedTextBlank = storedNote.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let storedTitleBlank = storedNote.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if storedTextBlank && storedTitleBlank {
+                // The deletion propagates via NotesStore.$notes; the parent's selection observer
+                // sees the note disappear from the list and clears its own selection state.
+                notesStore.deleteNote(id: storedNote.id)
+                activeNoteID = nil
+                return
+            }
         }
 
         // Prefer explicit titles; otherwise derive one from first content line.

@@ -136,7 +136,14 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             return []
         }
 
+        // Preserve the per-surface SQL ordering (which already encodes the kana-only-first
+        // tier and the zipf fallback for missing JPDB ranks). A previous version piped these
+        // through an unordered Dictionary and then re-sorted by jpdb_rank alone — silently
+        // discarding both tiers, so a kana surface like "も" would return 藻 (jpdb=26345)
+        // before the topic-particle entry (jpdb=nil → Int.max) despite the SQL ranking the
+        // particle first. We dedupe but keep first-seen order.
         var matchedEntriesByID: [Int64: (jpdbRank: Int?, wordfreqZipf: Double?, matchedSurface: String)] = [:]
+        var orderedEntryIDs: [Int64] = []
 
         for surface in surfaces {
             let matchedEntries = try fetchMatchedEntries(surface: surface, matchKana: matchKana, matchKanji: matchKanji)
@@ -147,21 +154,15 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
                         wordfreqZipf: header.wordfreqZipf,
                         matchedSurface: surface
                     )
+                    orderedEntryIDs.append(header.entryID)
                 }
             }
         }
 
-        // Sort by JPDB rank ascending (lower = more frequent), then entry insertion order.
-        let matchedEntries = matchedEntriesByID
-            .map { key, value in
-                (entryID: key, jpdbRank: value.jpdbRank, wordfreqZipf: value.wordfreqZipf, matchedSurface: value.matchedSurface)
-            }
-            .sorted { lhs, rhs in
-                let lRank = lhs.jpdbRank ?? Int.max
-                let rRank = rhs.jpdbRank ?? Int.max
-                if lRank != rRank { return lRank < rRank }
-                return lhs.entryID < rhs.entryID
-            }
+        let matchedEntries = orderedEntryIDs.compactMap { entryID -> (entryID: Int64, jpdbRank: Int?, wordfreqZipf: Double?, matchedSurface: String)? in
+            guard let value = matchedEntriesByID[entryID] else { return nil }
+            return (entryID: entryID, jpdbRank: value.jpdbRank, wordfreqZipf: value.wordfreqZipf, matchedSurface: value.matchedSurface)
+        }
 
         var results: [DictionaryEntry] = []
         results.reserveCapacity(matchedEntries.count)
@@ -259,14 +260,22 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             """
         }
 
-        // JPDB ranks are only imported for entries that have both a kanji form and a kana
-        // reading (Shape B). Kana-only entries — particles like の, は, が, interjections,
-        // sound effects — get NULL jpdb_rank everywhere. Without a fallback, the previous
-        // ORDER BY would coalesce them to 9999999 and bury them under any kanji entry that
-        // happens to share the surface as a reading. That made tapping の return 野's
-        // "field; plain" instead of the particle's "indicates possessive". For kana-only
-        // entries, derive a pseudo-rank from the kana form's wordfreq Zipf so the particle
-        // (zipf ~7) outranks 野 (jpdb_rank in the thousands).
+        // Ranking strategy for a kana surface lookup (matchKana && !matchKanji):
+        //   1. Kana-only entries first. An entry whose primary form IS the queried kana
+        //      (no kanji_forms rows) is by definition a more exact match than an entry
+        //      that merely lists that kana as a reading of a kanji headword. Particles
+        //      (の, は, が), interjections, and sound effects always live in kana-only
+        //      entries; without this tier they get buried under whatever kanji shares the
+        //      reading (eg tapping は returns 派 "group; faction" instead of the topic
+        //      particle, because wordfreq has no row for the particle so its zipf-based
+        //      pseudo-rank collapses to the catch-all bucket).
+        //   2. Within each tier, sort by JPDB rank, then a zipf-derived pseudo-rank for
+        //      kana-only entries that lack JPDB data, then by sense order and entry id.
+        // For matchKanji-only the WHERE clause already excludes kana-only entries, so
+        // the primary tier is a no-op there; for matchKana && matchKanji (kanji surface
+        // lookups), kana-only entries can't match a kanji surface either, so again a
+        // no-op. Result: the tier only changes ordering for the kana-surface case where
+        // the homophone collision actually occurs.
         let sql = """
         SELECT e.id,
                MIN(wf.jpdb_rank) AS best_jpdb,
@@ -279,26 +288,48 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         WHERE \(whereClause)
         GROUP BY e.id
         ORDER BY
-            CASE
-                WHEN EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = e.id)
-                    THEN COALESCE(MIN(wf.jpdb_rank), 9999999)
-                ELSE COALESCE(
-                    MIN(wf.jpdb_rank),
-                    CASE
-                        WHEN MAX(wf.wordfreq_zipf) >= 7.0 THEN 5
-                        WHEN MAX(wf.wordfreq_zipf) >= 6.5 THEN 25
-                        WHEN MAX(wf.wordfreq_zipf) >= 6.0 THEN 100
-                        WHEN MAX(wf.wordfreq_zipf) >= 5.5 THEN 300
-                        WHEN MAX(wf.wordfreq_zipf) >= 5.0 THEN 1000
-                        WHEN MAX(wf.wordfreq_zipf) >= 4.5 THEN 3000
-                        WHEN MAX(wf.wordfreq_zipf) >= 4.0 THEN 10000
-                        WHEN MAX(wf.wordfreq_zipf) >= 3.5 THEN 30000
-                        WHEN MAX(wf.wordfreq_zipf) >= 3.0 THEN 100000
-                        ELSE 500000
-                    END,
-                    9999999
-                )
-            END ASC,
+            -- Tier 1: particle / functional-word entries first for kana surface lookups.
+            -- An entry whose POS tag list contains 'prt' (particle), 'cop' (copula), or
+            -- 'aux' (auxiliary) is functional grammar — exactly what users mean when they
+            -- tap bare hiragana like の, は, が, も. Many particles ALSO carry archaic
+            -- kanji forms (の: 乃/之; が: 我), so the has_kanji=0 test alone can't catch
+            -- them; the POS tag is the reliable signal. ',?' regex-ish matching via LIKE
+            -- since pos is a comma-joined tag list.
+            CASE WHEN EXISTS (
+                SELECT 1 FROM senses s2 WHERE s2.entry_id = e.id
+                AND (s2.pos = 'prt' OR s2.pos LIKE 'prt,%' OR s2.pos LIKE '%,prt,%' OR s2.pos LIKE '%,prt'
+                  OR s2.pos = 'cop' OR s2.pos LIKE 'cop,%' OR s2.pos LIKE '%,cop,%' OR s2.pos LIKE '%,cop'
+                  OR s2.pos = 'aux' OR s2.pos LIKE 'aux,%' OR s2.pos LIKE '%,aux,%' OR s2.pos LIKE '%,aux'
+                  OR s2.pos LIKE 'aux-%' OR s2.pos LIKE '%,aux-%')
+            ) THEN 0 ELSE 1 END ASC,
+            -- Tier 2: kana-only entries (no kanji forms) before kanji-bearing ones. Catches
+            -- truly kana-only headwords (interjections, sound effects, casual kana usages)
+            -- and is a no-op for kanji-surface lookups (where kana-only entries can't match
+            -- anyway). For matchKanji-only the WHERE clause already excludes kana-only.
+            CASE WHEN EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = e.id) THEN 1 ELSE 0 END ASC,
+            -- Tier 3: effective rank — JPDB rank if present, else a pseudo-rank derived
+            -- from the wordfreq Zipf score (general-corpus log frequency). Applied
+            -- uniformly so a non-JPDB-ranked common word (e.g. a kanji entry JPDB didn't
+            -- catalog) can still outrank an obscure JPDB-ranked homophone instead of
+            -- crashing to 9999999. Zipf 7+ ≈ top-30 word, 6+ ≈ top-1k, etc.; bucket
+            -- boundaries are deliberately wider than JPDB's so a high-confidence corpus
+            -- signal beats a low-confidence JPDB ranking.
+            COALESCE(
+                MIN(wf.jpdb_rank),
+                CASE
+                    WHEN MAX(wf.wordfreq_zipf) >= 7.0 THEN 5
+                    WHEN MAX(wf.wordfreq_zipf) >= 6.5 THEN 25
+                    WHEN MAX(wf.wordfreq_zipf) >= 6.0 THEN 100
+                    WHEN MAX(wf.wordfreq_zipf) >= 5.5 THEN 300
+                    WHEN MAX(wf.wordfreq_zipf) >= 5.0 THEN 1000
+                    WHEN MAX(wf.wordfreq_zipf) >= 4.5 THEN 3000
+                    WHEN MAX(wf.wordfreq_zipf) >= 4.0 THEN 10000
+                    WHEN MAX(wf.wordfreq_zipf) >= 3.5 THEN 30000
+                    WHEN MAX(wf.wordfreq_zipf) >= 3.0 THEN 100000
+                    ELSE 500000
+                END,
+                9999999
+            ) ASC,
             min_sense ASC,
             e.id ASC
         """
