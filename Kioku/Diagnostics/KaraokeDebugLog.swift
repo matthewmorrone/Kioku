@@ -9,13 +9,16 @@ import os
 // Also routed through os.Logger for live Console.app inspection. Thread-safe via a serial queue
 // so the playback observer can call it from its publisher callbacks without ordering hazards.
 enum KaraokeDebugLog {
-    private static let queue = DispatchQueue(label: "kioku.karaoke.debuglog")
-    private static let logger = Logger(subsystem: "matthewmorrone.Kioku", category: "karaoke")
-    private static let fileURL: URL = {
+    // All four constants are referenced from `nonisolated` static methods, so they must also be
+    // nonisolated under the project's default-MainActor isolation. DispatchQueue, Logger, URL,
+    // and DateFormatter are all Sendable in this toolchain so plain `nonisolated` is enough.
+    private nonisolated static let queue = DispatchQueue(label: "kioku.karaoke.debuglog")
+    private nonisolated static let logger = Logger(subsystem: "matthewmorrone.Kioku", category: "karaoke")
+    private nonisolated static let fileURL: URL = {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         return docs.appendingPathComponent("karaoke-debug.log")
     }()
-    private static let formatter: DateFormatter = {
+    private nonisolated static let formatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss.SSS"
         return f
@@ -26,7 +29,7 @@ enum KaraokeDebugLog {
     // logged with .public privacy, which would leak user subtitle and note content to device-log
     // collection and the on-disk file in release builds. Compile this whole path out unless DEBUG
     // is set so production builds emit nothing and never create the log file.
-    static func log(_ message: @autoclosure () -> String) {
+    nonisolated static func log(_ message: @autoclosure () -> String) {
         #if DEBUG
         let text = message()
         let stamp = formatter.string(from: Date())
@@ -47,7 +50,7 @@ enum KaraokeDebugLog {
 
     // Truncates the log file. Called at app start so each run starts clean. No-op in release
     // because release builds never write to the file in the first place.
-    static func reset() {
+    nonisolated static func reset() {
         #if DEBUG
         queue.async {
             try? Data().write(to: fileURL, options: .atomic)
