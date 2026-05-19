@@ -12,6 +12,12 @@ import SwiftUI
 //   4. Vertical scroll of per-line cards
 struct SongStepperView: View {
     let note: Note
+    // Optional deps for per-line tap-to-toggle furigana. All three nil-able so the view
+    // still presents (without the toggle being functional) if a caller can't supply them
+    // — currently the only caller is the Read sheet, which has all three in scope.
+    let segmenter: (any TextSegmenting)?
+    let dictionaryStore: DictionaryStore?
+    let surfaceReadingData: SurfaceReadingDataMap
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     @State private var loadState: SongStepperLoadState = .idle
     @State private var wordsExpandedByLineIndex: Set<Int> = []
@@ -19,8 +25,26 @@ struct SongStepperView: View {
     @State private var generationStartedAt: Date? = nil
     @State private var generationProviderLabel: String = ""
     @State private var isRegenerateConfirmationPresented: Bool = false
+    // Per-line tap-to-toggle furigana state. Keyed by `line.index` (not array offset) to
+    // survive regenerate / breakdown rebuilds, matching how `wordsExpandedByLineIndex`
+    // already keys.
+    @State private var furiganaEnabledByLineIndex: Set<Int> = []
+    @State private var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
 
     private let service = SongBreakdownService()
+
+    // Convenience init for callers that don't (yet) supply the resolver deps — e.g. previews
+    // or any future surface that doesn't have the segmenter/dictionary in scope. The toggle
+    // becomes a visual no-op in that mode.
+    init(note: Note,
+         segmenter: (any TextSegmenting)? = nil,
+         dictionaryStore: DictionaryStore? = nil,
+         surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()) {
+        self.note = note
+        self.segmenter = segmenter
+        self.dictionaryStore = dictionaryStore
+        self.surfaceReadingData = surfaceReadingData
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -228,7 +252,10 @@ struct SongStepperView: View {
                         line: line,
                         referencedLine: referencedLine(for: line, in: breakdown),
                         wordsExpanded: wordsExpandedByLineIndex.contains(line.index),
-                        onToggleWords: { toggleWords(for: line) }
+                        furiganaEnabled: furiganaEnabledByLineIndex.contains(line.index),
+                        furiganaCache: furiganaCacheByLineIndex[line.index],
+                        onToggleWords: { toggleWords(for: line) },
+                        onToggleFurigana: { toggleFurigana(for: line) }
                     )
                 }
             }
@@ -245,6 +272,43 @@ struct SongStepperView: View {
         } else {
             wordsExpandedByLineIndex.insert(line.index)
         }
+    }
+
+    // Flips the per-line furigana toggle and lazily builds the reading cache on first
+    // enable. Cache is keyed by `line.index` so repeat toggles for the same line are O(1).
+    // Compute lives here (not in `SongLineCard`) because the segmenter, dictionary store,
+    // and surfaceReadingData stay scoped to the stepper; the card receives only the result.
+    private func toggleFurigana(for line: SongLine) {
+        if furiganaEnabledByLineIndex.contains(line.index) {
+            furiganaEnabledByLineIndex.remove(line.index)
+            return
+        }
+        if furiganaCacheByLineIndex[line.index] == nil {
+            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line.original)
+        }
+        furiganaEnabledByLineIndex.insert(line.index)
+    }
+
+    // Reuses the Read tab's resolver so the breakdown gets the exact same reading
+    // selection (okurigana cropping, lemma fallback, projection) as ReadView. When the
+    // segmenter is unavailable the cache resolves to "no readings" and the toggle becomes
+    // a visual no-op — which matches the "degrade gracefully on pure-kana lines" criterion.
+    private func buildFuriganaCache(for text: String) -> LineFuriganaCache {
+        guard let segmenter, text.isEmpty == false else {
+            return LineFuriganaCache(segmentationRanges: [], furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:])
+        }
+        let edges = segmenter.longestMatchEdges(for: text)
+        let segmentationRanges = edges.map { $0.start..<$0.end }
+        let resolved = FuriganaResolver(segmenter: segmenter).build(
+            for: text,
+            edges: edges,
+            surfaceReadingData: surfaceReadingData
+        )
+        return LineFuriganaCache(
+            segmentationRanges: segmentationRanges,
+            furiganaBySegmentLocation: resolved.byLocation,
+            furiganaLengthBySegmentLocation: resolved.lengthByLocation
+        )
     }
 
     // Resolves the line referenced by `= line N` or `Parallel to line N` so the card can
@@ -322,4 +386,14 @@ enum SongStepperLoadState: Equatable {
     case idle
     case loading
     case error(String)
+}
+
+// Pre-resolved per-line furigana payload. The three fields together are exactly the data
+// shape `FuriganaTextRenderer` consumes, so the card hands them straight through with no
+// further conversion. Built lazily on first toggle and held in the stepper's @State so
+// re-enabling furigana for the same line is instant.
+struct LineFuriganaCache: Equatable {
+    let segmentationRanges: [Range<String.Index>]
+    let furiganaBySegmentLocation: [Int: String]
+    let furiganaLengthBySegmentLocation: [Int: Int]
 }
