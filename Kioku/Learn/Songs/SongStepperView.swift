@@ -12,11 +12,12 @@ import SwiftUI
 //   4. Vertical scroll of per-line cards
 struct SongStepperView: View {
     let note: Note
-    // Optional deps for per-line tap-to-toggle furigana. All three nil-able so the view
-    // still presents (without the toggle being functional) if a caller can't supply them
-    // — currently the only caller is the Read sheet, which has all three in scope.
+    // Optional deps for per-line tap-to-toggle furigana. Nil segmenter degrades the toggle
+    // to a no-op (cache resolves empty); `surfaceReadingData` defaults to an empty map. The
+    // dictionary store was previously plumbed here too — it was carried over from an earlier
+    // direct-lookup design and is no longer needed now that `FuriganaResolver` reads through
+    // `surfaceReadingData`, so it's been removed to avoid dead state.
     let segmenter: (any TextSegmenting)?
-    let dictionaryStore: DictionaryStore?
     let surfaceReadingData: SurfaceReadingDataMap
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     @State private var loadState: SongStepperLoadState = .idle
@@ -34,15 +35,13 @@ struct SongStepperView: View {
     private let service = SongBreakdownService()
 
     // Convenience init for callers that don't (yet) supply the resolver deps — e.g. previews
-    // or any future surface that doesn't have the segmenter/dictionary in scope. The toggle
-    // becomes a visual no-op in that mode.
+    // or any future surface that doesn't have the segmenter in scope. The toggle becomes a
+    // visual no-op in that mode.
     init(note: Note,
          segmenter: (any TextSegmenting)? = nil,
-         dictionaryStore: DictionaryStore? = nil,
          surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()) {
         self.note = note
         self.segmenter = segmenter
-        self.dictionaryStore = dictionaryStore
         self.surfaceReadingData = surfaceReadingData
     }
 

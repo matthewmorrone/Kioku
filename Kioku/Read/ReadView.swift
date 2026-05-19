@@ -563,14 +563,13 @@ struct ReadView: View {
         .sheet(isPresented: $isShowingBreakdownSheet) {
             if let note = currentDisplayedNote {
                 NavigationStack {
-                    // Threading the segmenter + dictionary store + surfaceReadingData lets
-                    // the breakdown's per-line tap-to-toggle furigana reuse the same
-                    // FuriganaResolver as ReadView itself, so the readings shown in the
-                    // sheet match exactly what the user sees on the underlying page.
+                    // Threading the segmenter + surfaceReadingData lets the breakdown's
+                    // per-line tap-to-toggle furigana reuse the same FuriganaResolver as
+                    // ReadView itself, so the readings shown in the sheet match exactly
+                    // what the user sees on the underlying page.
                     SongStepperView(
                         note: note,
                         segmenter: segmenter,
-                        dictionaryStore: dictionaryStore,
                         surfaceReadingData: surfaceReadingData
                     )
                         .toolbar {

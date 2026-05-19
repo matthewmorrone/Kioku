@@ -41,6 +41,14 @@ struct FuriganaResolver {
                 lemmaReference: segmenter.preferredLemma(for: segmentSurface) ?? segmentSurface,
                 surfaceReadingData: surfaceReadingData
             )
+            // Preserve the original ReadView pipeline's early-continue semantics: when run-level
+            // projection produced no annotations, skip the fallback path entirely rather than
+            // letting `fallbackSegmentFuriganaReading` paint a span-wide reading that the original
+            // would never have produced. Behavioural parity with `buildFuriganaBySegmentLocation`
+            // pre-extraction is the contract we're holding to.
+            if annotations.isEmpty {
+                continue
+            }
 
             for annotation in annotations {
                 guard let localStart = sourceText.index(
