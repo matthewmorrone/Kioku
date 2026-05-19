@@ -1,7 +1,14 @@
 import SwiftUI
 import UIKit
 
-// Hosts furigana computation and reading selection helpers for the read screen.
+// Furigana orchestration on ReadView — schedules computation, applies recompute results to
+// in-memory state, and persists segments. The resolution algorithm itself (edge → reading)
+// now lives in `FuriganaResolver`; this extension keeps:
+//   • the throttle / confirm / cancel pipeline around generation,
+//   • the in-memory map merge passes (apply-overlap backfill and compound synthesis),
+//   • thin instance-method wrappers so `ReadView+LLMCorrection` and `ReadViewFuriganaTests`
+//     can keep calling `kanjiRuns(in:)` / `firstKanjiRunReading` / `buildFuriganaBySegmentLocation`
+//     directly on a ReadView.
 extension ReadView {
     // Public entry point: queues a furigana-generation request for user confirmation. The
     // actual work happens in performScheduleFuriganaGeneration once the user taps Confirm.
@@ -122,440 +129,32 @@ extension ReadView {
     }
 
     // Resolves per-segment furigana keyed by UTF-16 location so UIKit ranges can apply ruby text.
+    // Thin wrapper over `FuriganaResolver` kept for two reasons: the tuple-label shape
+    // (furiganaByLocation:) matches what `performScheduleFuriganaGeneration` consumes above, and
+    // `ReadViewFuriganaTests` calls this entry point directly on a ReadView instance.
     func buildFuriganaBySegmentLocation(
         for sourceText: String,
         edges: [LatticeEdge],
         surfaceReadingData: SurfaceReadingDataMap
     ) -> (furiganaByLocation: [Int: String], lengthByLocation: [Int: Int]) {
-        var resolvedFurigana: [Int: String] = [:]
-        var resolvedFuriganaLengths: [Int: Int] = [:]
-
-        for edge in edges {
-            let segmentRange = edge.start..<edge.end
-            let segmentSurface = edge.surface
-            // Skip non-kanji segments to avoid redundant ruby annotations.
-            guard ScriptClassifier.containsKanji(segmentSurface) else {
-                continue
-            }
-
-            let annotations = furiganaAnnotations(
-                for: segmentSurface,
-                segmentRange: segmentRange,
-                sourceText: sourceText,
-                lemmaReference: segmenter.preferredLemma(for: segmentSurface) ?? segmentSurface,
-                surfaceReadingData: surfaceReadingData
-            )
-            if annotations.isEmpty {
-                continue
-            }
-
-            for annotation in annotations {
-                guard let localStart = sourceText.index(
-                    segmentRange.lowerBound,
-                    offsetBy: annotation.localStartOffset,
-                    limitedBy: segmentRange.upperBound
-                ) else {
-                    continue
-                }
-
-                guard let localEnd = sourceText.index(
-                    localStart,
-                    offsetBy: annotation.localLength,
-                    limitedBy: segmentRange.upperBound
-                ) else {
-                    continue
-                }
-
-                let nsRange = NSRange(localStart..<localEnd, in: sourceText)
-                if nsRange.location == NSNotFound || nsRange.length == 0 {
-                    continue
-                }
-
-                resolvedFurigana[nsRange.location] = annotation.reading
-                resolvedFuriganaLengths[nsRange.location] = nsRange.length
-            }
-
-            let segmentNSRange = NSRange(segmentRange, in: sourceText)
-            if segmentHasAttachedFurigana(
-                segmentNSRange: segmentNSRange,
-                furiganaByLocation: resolvedFurigana,
-                lengthByLocation: resolvedFuriganaLengths
-            ) == false,
-               let fallbackReading = fallbackSegmentFuriganaReading(
-                for: edge,
-                surfaceReadingData: surfaceReadingData,
-                sourceText: sourceText
-               ) {
-                // For a single-run kanji segment, place the cropped ruby exactly over the kanji
-                // sub-range so it doesn't get stretched across okurigana the reading no longer
-                // contains. For multi-run / non-kanji-prefix segments, fall back to segment-span
-                // placement (the cropping path didn't change shape there).
-                let segChars = Array(edge.surface)
-                let runs = kanjiRuns(in: edge.surface)
-                if runs.count == 1, runs[0].end <= segChars.count {
-                    let run = runs[0]
-                    let prefixUTF16 = String(segChars[..<run.start]).utf16.count
-                    let runUTF16 = String(segChars[run.start..<run.end]).utf16.count
-                    let runLocation = segmentNSRange.location + prefixUTF16
-                    resolvedFurigana[runLocation] = fallbackReading
-                    resolvedFuriganaLengths[runLocation] = runUTF16
-                } else {
-                    resolvedFurigana[segmentNSRange.location] = fallbackReading
-                    resolvedFuriganaLengths[segmentNSRange.location] = segmentNSRange.length
-                }
-            }
-        }
-
-        return (furiganaByLocation: resolvedFurigana, lengthByLocation: resolvedFuriganaLengths)
-    }
-
-    // Verifies that a kanji-bearing segment has at least one ruby annotation overlapping its range.
-    func segmentHasAttachedFurigana(
-        segmentNSRange: NSRange,
-        furiganaByLocation: [Int: String],
-        lengthByLocation: [Int: Int]
-    ) -> Bool {
-        for location in furiganaByLocation.keys {
-            guard let length = lengthByLocation[location], length > 0 else {
-                continue
-            }
-
-            let annotationRange = NSRange(location: location, length: length)
-            if NSIntersectionRange(annotationRange, segmentNSRange).length > 0 {
-                return true
-            }
-        }
-
-        return false
-    }
-
-    // Synthesizes a kanji-only fallback reading when run-level furigana alignment fails.
-    //
-    // For an inflected surface like 凛々しく with lemma 凛々しい (reading りりしい), the run-level
-    // alignment can fail because the surface's okurigana (しく) doesn't match the lemma reading's
-    // suffix (しい). The previous fallback returned the FULL lemma reading and the caller stored
-    // it over the entire segment span — painting "りりしい" across "凛々しく", four ruby
-    // characters over the two kanji plus stretching past them. Wrong shape and wrong content.
-    //
-    // The fix: crop the reading to just the kanji-run portion using the LEMMA's own structure
-    // (the lemma's okurigana matches the lemma reading's suffix by definition), then return the
-    // cropped reading. The caller writes it at the kanji-run's location/length, so the ruby sits
-    // exactly over the kanji ("りり" above 凛々).
-    func fallbackSegmentFuriganaReading(
-        for edge: LatticeEdge,
-        surfaceReadingData: SurfaceReadingDataMap,
-        sourceText: String
-    ) -> String? {
-        let preferredLemmaReference = preferredFuriganaLemmaReference(
-            for: edge.surface,
-            lemmaReference: segmenter.preferredLemma(for: edge.surface) ?? edge.surface
+        let resolved = FuriganaResolver(segmenter: segmenter).build(
+            for: sourceText,
+            edges: edges,
+            surfaceReadingData: surfaceReadingData
         )
-
-        if let surfaceReading = readingForSegment(
-            edge.surface,
-            surfaceReadingData: surfaceReadingData
-        ), surfaceReading != edge.surface {
-            // Crop via the surface itself — its okurigana matches its own reading by construction
-            // for non-inflected entries, so this is a clean kanji-only extraction.
-            if let cropped = firstKanjiRunReading(in: edge.surface, using: surfaceReading) {
-                return cropped
-            }
-            return surfaceReading
-        }
-
-        if let lemmaReading = readingForSegment(
-            preferredLemmaReference,
-            surfaceReadingData: surfaceReadingData
-        ), lemmaReading != edge.surface, lemmaReading != preferredLemmaReference {
-            let isLemmaReadingCompatibleWithSurface = firstKanjiRunReading(in: edge.surface, using: lemmaReading) != nil
-            if isLemmaReadingCompatibleWithSurface == false {
-                return nil
-            }
-
-            // Crop using the LEMMA's structure rather than the surface's — the lemma's okurigana
-            // (e.g. しい in 凛々しい) aligns cleanly to its own reading suffix, while the surface's
-            // okurigana (e.g. しく) is the inflected form that diverges from the reading.
-            if let cropped = firstKanjiRunReading(in: preferredLemmaReference, using: lemmaReading) {
-                return cropped
-            }
-
-            return lemmaReading
-        }
-
-        return nil
+        return (furiganaByLocation: resolved.byLocation, lengthByLocation: resolved.lengthByLocation)
     }
 
-    // Produces kanji-run furigana annotations, including mixed forms with multiple kanji clusters.
-    func furiganaAnnotations(
-        for segmentSurface: String,
-        segmentRange: Range<String.Index>,
-        sourceText: String,
-        lemmaReference: String,
-        surfaceReadingData: SurfaceReadingDataMap
-    ) -> [(reading: String, localStartOffset: Int, localLength: Int)] {
-        let runs = kanjiRuns(in: segmentSurface)
-        guard runs.isEmpty == false else {
-            return []
-        }
-
-        let furiganaLemmaReference = preferredFuriganaLemmaReference(
-            for: segmentSurface,
-            lemmaReference: lemmaReference
-        )
-
-        if runs.count == 1,
-              let lemmaReading = readingForSegment(
-                     furiganaLemmaReference,
-                     surfaceReadingData: surfaceReadingData
-              ),
-           let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: lemmaReading) {
-            return [
-                (
-                    reading: lemmaCoreReading,
-                    localStartOffset: runs[0].start,
-                    localLength: runs[0].end - runs[0].start
-                )
-            ]
-        }
-
-        let lemmaRuns = kanjiRuns(in: furiganaLemmaReference)
-        var projectedReadings: [String]?
-        if let lemmaReading = readingForSegment(
-            furiganaLemmaReference,
-            surfaceReadingData: surfaceReadingData
-        ), lemmaRuns.count == runs.count {
-            projectedReadings = projectRunReadings(surface: furiganaLemmaReference, reading: lemmaReading)
-        }
-
-        if projectedReadings == nil,
-           let surfaceReading = readingForSegment(
-                segmentSurface,
-                surfaceReadingData: surfaceReadingData
-           ) {
-            projectedReadings = projectRunReadings(surface: segmentSurface, reading: surfaceReading)
-        }
-
-        var annotations: [(reading: String, localStartOffset: Int, localLength: Int)] = []
-        if let projectedReadings, projectedReadings.count == runs.count {
-            for (index, run) in runs.enumerated() {
-                let runSurface = String(Array(segmentSurface)[run.start..<run.end])
-                let runReading = projectedReadings[index]
-                if runReading.isEmpty || runReading == runSurface {
-                    continue
-                }
-                annotations.append((reading: runReading, localStartOffset: run.start, localLength: run.end - run.start))
-            }
-        }
-
-        if annotations.isEmpty {
-            for run in runs {
-                let runSurface = String(Array(segmentSurface)[run.start..<run.end])
-                guard let runReading = readingForSegment(
-                    runSurface,
-                    surfaceReadingData: surfaceReadingData
-                ), runReading != runSurface else {
-                    continue
-                }
-
-                // For single-run mixed surfaces (e.g. 私たち) the per-run reading must align
-                // with the surrounding kana (たち), otherwise the displayed ruby would contradict
-                // the okurigana. Multi-run surfaces (e.g. 抜け殻) have no contradiction risk —
-                // each run sits over its own kanji, so any valid per-kanji reading is acceptable
-                // and showing the dictionary default beats showing nothing when the compound's
-                // own surface reading is unavailable.
-                if runs.count == 1,
-                   firstKanjiRunReading(in: segmentSurface, using: runReading) == nil {
-                    continue
-                }
-
-                annotations.append((reading: runReading, localStartOffset: run.start, localLength: run.end - run.start))
-            }
-        }
-
-        return annotations
-    }
-
-    // Recovers a script-preserving lemma so kanji segments still receive furigana when edge lemmas fall back to kana.
-    func preferredFuriganaLemmaReference(for segmentSurface: String, lemmaReference: String) -> String {
-        guard ScriptClassifier.containsKanji(segmentSurface) else {
-            return lemmaReference
-        }
-
-        if let preferredLemma = segmenter.preferredLemma(for: segmentSurface) {
-            return preferredLemma
-        }
-
-        return lemmaReference
-    }
-
-    // Splits a surface reading into per-kanji-run readings using kana delimiters from the source surface.
-    func projectRunReadings(surface: String, reading: String) -> [String]? {
-        let runs = kanjiRuns(in: surface)
-        guard runs.isEmpty == false else {
-            return nil
-        }
-
-        let surfaceCharacters = Array(surface)
-        var readingCursor = reading.startIndex
-
-        let prefixSurface = runs[0].start > 0 ? String(surfaceCharacters[0..<runs[0].start]) : ""
-        if !prefixSurface.isEmpty, reading[readingCursor...].hasPrefix(prefixSurface) {
-            readingCursor = reading.index(readingCursor, offsetBy: prefixSurface.count)
-        }
-
-        var runReadings: [String] = []
-        for runIndex in runs.indices {
-            let run = runs[runIndex]
-            let separatorAfterRun: String
-            if runIndex + 1 < runs.count {
-                separatorAfterRun = String(surfaceCharacters[run.end..<runs[runIndex + 1].start])
-            } else {
-                separatorAfterRun = run.end < surfaceCharacters.count
-                    ? String(surfaceCharacters[run.end..<surfaceCharacters.count])
-                    : ""
-            }
-
-            if separatorAfterRun.isEmpty {
-                let remaining = String(reading[readingCursor...])
-                runReadings.append(remaining)
-                readingCursor = reading.endIndex
-                continue
-            }
-
-            // For the last run, trailing okurigana must match the end of the reading.
-            // Searching forward risks matching separator characters that appear inside
-            // the kanji reading itself (e.g. 占う: "う" in "うらなう" must be the last one).
-            if runIndex == runs.count - 1 {
-                guard String(reading[readingCursor...]).hasSuffix(separatorAfterRun) else { return nil }
-                let tail = reading[readingCursor...]
-                let endOffset = tail.index(tail.endIndex, offsetBy: -separatorAfterRun.count)
-                runReadings.append(String(tail[tail.startIndex..<endOffset]))
-                readingCursor = reading.endIndex
-                continue
-            }
-
-            guard let separatorRange = reading.range(of: separatorAfterRun, range: readingCursor..<reading.endIndex) else {
-                return nil
-            }
-
-            let runReading = String(reading[readingCursor..<separatorRange.lowerBound])
-            runReadings.append(runReading)
-            readingCursor = separatorRange.upperBound
-        }
-
-        if readingCursor < reading.endIndex {
-            if let last = runReadings.indices.last {
-                runReadings[last] += String(reading[readingCursor..<reading.endIndex])
-            }
-        }
-
-        return runReadings
-    }
-
-    // Detects contiguous kanji runs in a surface string and returns character-index ranges.
-    // Iteration marks (々) are treated as run continuations when they follow a kanji character.
-    func kanjiRuns(in surface: String) -> [(start: Int, end: Int)] {
-        let characters = Array(surface)
-        var runs: [(start: Int, end: Int)] = []
-        var runStart: Int?
-
-        for (index, character) in characters.enumerated() {
-            let isKanji = ScriptClassifier.containsKanji(String(character))
-            let isIterationMark = character.unicodeScalars.first?.value == 0x3005 // 々
-            // Iteration marks extend an active kanji run but cannot start one.
-            let continuesRun = isIterationMark && runStart != nil
-            if isKanji || continuesRun {
-                if runStart == nil {
-                    runStart = index
-                }
-            } else if let currentRunStart = runStart {
-                runs.append((start: currentRunStart, end: index))
-                runStart = nil
-            }
-        }
-
-        if let runStart {
-            runs.append((start: runStart, end: characters.count))
-        }
-
-        return runs
-    }
-
-    // Extracts the reading that maps to the first contiguous kanji run of a dictionary surface.
-    //
-    // Bug fix: previously this function did its OWN inline walk over `characters` that didn't
-    // recognize iteration marks (々) as part of a kanji run, while `kanjiRuns(in:)` does. The
-    // two walkers disagreed about where the run ends — for 凛々しい, the inline walk gave run
-    // (0,1) "just 凛", while kanjiRuns gave (0,2) "凛々". Result: suffix "々しい" couldn't be
-    // trimmed phonetically from "りりしい" and the untrimmed full reading was returned, but
-    // callers later stored it under length=runs[0].end-runs[0].start=2 — painting 4 ruby
-    // characters over 2 kanji. Use kanjiRuns as the single source of truth for the run bounds.
+    // Wrapper kept so existing tests (`ReadViewFuriganaTests.testFirstKanjiRunReading*`) keep
+    // calling on a ReadView. New callers should use FuriganaResolver directly.
     func firstKanjiRunReading(in surface: String, using reading: String) -> String? {
-        let characters = Array(surface)
-        let runs = kanjiRuns(in: surface)
-        guard let firstRun = runs.first else {
-            return nil
-        }
-        let runStart = firstRun.start
-        let runEnd = firstRun.end
-
-        let allowsIsolatedRunReading = runs.count == 1
-        let prefixSurface = String(characters[..<runStart])
-        let suffixSurface = runEnd < characters.count
-            ? String(characters[runEnd..<characters.count])
-            : ""
-        var trimmedReading = reading
-
-        if !prefixSurface.isEmpty {
-            if hasPhoneticPrefix(trimmedReading, matching: prefixSurface) {
-                trimmedReading.removeFirst(prefixSurface.count)
-            } else if allowsIsolatedRunReading == false {
-                return nil
-            }
-        }
-
-        if !suffixSurface.isEmpty {
-            if hasPhoneticSuffix(trimmedReading, matching: suffixSurface) {
-                trimmedReading.removeLast(suffixSurface.count)
-            } else if allowsIsolatedRunReading == false {
-                return nil
-            }
-        }
-
-        let kanjiRunSurface = String(characters[runStart..<runEnd])
-        guard !trimmedReading.isEmpty, trimmedReading != kanjiRunSurface else {
-            return nil
-        }
-
-        return trimmedReading
+        FuriganaResolver(segmenter: segmenter).firstKanjiRunReading(in: surface, using: reading)
     }
 
-    // Checks a reading prefix against surface okurigana using phonetic-normalized kana matching.
-    func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
-        guard reading.count >= surfacePrefix.count else {
-            return false
-        }
-
-        let readingPrefix = String(reading.prefix(surfacePrefix.count))
-        return KanaNormalizer.normalizeForFuriganaAlignment(readingPrefix) == KanaNormalizer.normalizeForFuriganaAlignment(surfacePrefix)
-    }
-
-    // Checks a reading suffix against surface okurigana using phonetic-normalized kana matching.
-    func hasPhoneticSuffix(_ reading: String, matching surfaceSuffix: String) -> Bool {
-        guard reading.count >= surfaceSuffix.count else {
-            return false
-        }
-
-        let readingSuffix = String(reading.suffix(surfaceSuffix.count))
-        return KanaNormalizer.normalizeForFuriganaAlignment(readingSuffix) == KanaNormalizer.normalizeForFuriganaAlignment(surfaceSuffix)
-    }
-
-    // Looks up the preferred reading for a segment surface from the unified surface reading map.
-    func readingForSegment(
-        _ segmentSurface: String,
-        surfaceReadingData: SurfaceReadingDataMap
-    ) -> String? {
-        surfaceReadingData[segmentSurface]?.readings.first
+    // Wrapper kept so `ReadView+LLMCorrection` keeps calling on a ReadView. Delegates to the
+    // canonical implementation in `FuriganaAttributedString`.
+    func kanjiRuns(in surface: String) -> [(start: Int, end: Int)] {
+        FuriganaAttributedString.kanjiRuns(in: surface)
     }
 
     // Applies recompute output to the in-memory furigana maps with replace-on-overlap semantics.
@@ -634,7 +233,7 @@ extension ReadView {
         var resultLengthByLocation = furiganaLengthByLocation
 
         for (segmentNSRange, segmentSurface) in segmentNSRangesAndSurfaces(for: edges, in: sourceText) {
-            for run in kanjiRuns(in: segmentSurface) {
+            for run in FuriganaAttributedString.kanjiRuns(in: segmentSurface) {
                 guard run.end - run.start > 1 else { continue }
                 guard
                     let runStartIdx = segmentSurface.index(

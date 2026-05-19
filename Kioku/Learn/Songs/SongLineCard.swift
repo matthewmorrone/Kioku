@@ -21,7 +21,16 @@ struct SongLineCard: View {
     let line: SongLine
     let referencedLine: SongLine?
     let wordsExpanded: Bool
+    // When true, the Japanese row renders via FuriganaTextRenderer using `furiganaCache`.
+    // When false, the row renders as plain SwiftUI Text — the original behaviour.
+    let furiganaEnabled: Bool
+    // Lazily-populated cache; nil before the first toggle for this line. Owned by the
+    // parent stepper so cache compute happens once per line per session.
+    let furiganaCache: LineFuriganaCache?
     let onToggleWords: () -> Void
+    let onToggleFurigana: () -> Void
+
+    @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
 
     // For each field, prefer the line's own value; fall back to the referenced line's
     // when this line is a reference and the field is empty. This is the load-bearing piece
@@ -138,13 +147,89 @@ struct SongLineCard: View {
             && line.index > 1
     }
 
+    // Big Japanese row. Tapping toggles furigana on/off for this line only. The two
+    // branches share size/leading-alignment so toggling does not shift the surrounding
+    // layout. The plain branch carries its own SwiftUI tap gesture; the renderer branch
+    // routes taps through `onSegmentTapped` because a UIViewRepresentable wrapping
+    // UITextView intercepts touches before SwiftUI sees them.
+    @ViewBuilder
     private var originalLine: some View {
-        Text(line.original)
-            .font(.system(size: 28, weight: .medium))
-            .lineSpacing(4)
-            .multilineTextAlignment(.leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel(line.original)
+        if furiganaEnabled, let cache = furiganaCache, cache.furiganaBySegmentLocation.isEmpty == false {
+            furiganaRow(cache: cache)
+                .accessibilityLabel(line.original)
+                .accessibilityHint("Tap to hide furigana")
+        } else {
+            Text(line.original)
+                .font(.system(size: 28, weight: .medium))
+                .lineSpacing(4)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { onToggleFurigana() }
+                .accessibilityLabel(line.original)
+                .accessibilityHint(furiganaLikelyAvailable ? "Tap to show furigana" : "")
+        }
+    }
+
+    // Renders the line via FuriganaTextRenderer at the same 28pt size as the plain Text
+    // branch. `isScrollEnabled` is false so the renderer's `sizeThatFits` reports a real
+    // multi-line height to SwiftUI. Color alternation, highlights, and debug overlays are
+    // all off — this is a passive reveal, not interactive read mode.
+    private func furiganaRow(cache: LineFuriganaCache) -> some View {
+        FuriganaTextRenderer(
+            isActive: true,
+            isOverlayFrozen: false,
+            text: line.original,
+            isLineWrappingEnabled: true,
+            segmentationRanges: cache.segmentationRanges,
+            selectedSegmentLocation: nil,
+            blankSelectedSegmentLocation: nil,
+            selectedHighlightRangeOverride: nil,
+            playbackHighlightRangeOverride: nil,
+            activePlaybackCueIndex: nil,
+            illegalMergeBoundaryLocation: nil,
+            furiganaBySegmentLocation: cache.furiganaBySegmentLocation,
+            furiganaLengthBySegmentLocation: cache.furiganaLengthBySegmentLocation,
+            isVisualEnhancementsEnabled: true,
+            isRubySpacingEnabled: true,
+            isColorAlternationEnabled: false,
+            isHighlightUnknownEnabled: false,
+            unknownSegmentLocations: [],
+            changedSegmentLocations: [],
+            changedReadingLocations: [],
+            customEvenSegmentColorHex: "",
+            customOddSegmentColorHex: "",
+            debugFuriganaRects: false,
+            debugHeadwordRects: false,
+            debugHeadwordLineBands: false,
+            debugFuriganaLineBands: false,
+            debugBisectorHeadword: false,
+            debugBisectorFurigana: false,
+            debugEnvelopeRects: false,
+            debugLeftInsetGuide: false,
+            externalContentOffsetY: 0,
+            onScrollOffsetYChanged: { _ in },
+            onSegmentTapped: { _, _, _ in onToggleFurigana() },
+            textSize: .constant(28),
+            lineSpacing: 4,
+            kerning: 0,
+            furiganaGap: furiganaGap,
+            textAlignment: .natural,
+            isScrollEnabled: false
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // Heuristic for the VoiceOver hint: suppress "Tap to show furigana" when the line
+    // clearly has no kanji to annotate. A tight CJK Unified Ideographs check avoids
+    // importing ScriptClassifier just for this string of accessibility text.
+    private var furiganaLikelyAvailable: Bool {
+        if let cache = furiganaCache {
+            return cache.furiganaBySegmentLocation.isEmpty == false
+        }
+        return line.original.contains(where: { ch in
+            ch.unicodeScalars.contains(where: { (0x4E00...0x9FFF).contains($0.value) })
+        })
     }
 
     // Gist only — italicised so it reads as interpretation/voice rather than continuation
