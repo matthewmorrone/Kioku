@@ -3,9 +3,12 @@ import SwiftUI
 import UIKit
 import Vision
 
-// Hosts OCR import controls and text-recognition helpers for the read screen.
-extension ReadView {
-    // Binds OCR error presentation to whether the read screen currently has an OCR failure message.
+// OCR import flow for the Notes tab. Owns everything from menu button to Vision
+// recognition; on success forwards the recognized Note up to ContentView via
+// `onOCRImportedNote`, which installs the note, sets it as the active Read note,
+// switches tabs, and arms edit mode (the previous Read-side end state).
+extension NotesView {
+    // Bool binding for `.alert(isPresented:)` reflecting OCR error message presence.
     var ocrImportErrorPresented: Binding<Bool> {
         Binding(
             get: { ocrImportErrorMessage.isEmpty == false },
@@ -17,15 +20,16 @@ extension ReadView {
         )
     }
 
-    // Renders the top-left OCR button that lets the user pick an image to recognize into a new note.
-    var ocrImportButton: some View {
+    // Toolbar menu offering Camera vs. Photo Library entry points. Shows a small spinner
+    // while OCR is running so the user knows the request is in flight and the picker
+    // shouldn't reopen.
+    var ocrImportToolbarButton: some View {
         Menu {
             Button {
                 presentCameraOCRIfAvailable()
             } label: {
                 Label("Camera", systemImage: "camera")
             }
-
             Button {
                 isShowingPhotoLibraryPicker = true
             } label: {
@@ -38,40 +42,32 @@ extension ReadView {
                         .controlSize(.small)
                 } else {
                     Image(systemName: "text.viewfinder")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 16))
                 }
             }
-            .foregroundStyle(isPerformingOCRImport ? Color.secondary : Color.accentColor)
-            .frame(width: 30, height: 30)
-            .background(
-                Capsule()
-                    .fill(Color(.tertiarySystemFill))
-            )
+            .frame(width: 32, height: 32)
         }
-        .buttonStyle(.plain)
         .disabled(isPerformingOCRImport)
         .accessibilityLabel("Import Text with OCR")
     }
 
-    // Loads the selected image, runs OCR, and routes the recognized text into a fresh note.
+    // Loads the picker-selected image, runs OCR, forwards the recognized text into a new Note.
     func importTextFromSelectedOCRImage(_ item: PhotosPickerItem) async {
         do {
             guard let imageData = try await item.loadTransferable(type: Data.self) else {
                 ocrImportErrorMessage = "The selected image could not be loaded."
                 return
             }
-
             await importTextFromOCRImageData(imageData)
         } catch {
             ocrImportErrorMessage = error.localizedDescription
         }
     }
 
-    // Runs OCR recognition for raw image data supplied by either the camera or the photo library.
+    // Runs Vision OCR on raw image data and, on success, calls the parent's import handler.
+    // Guarded against concurrent calls so a rapid-fire double-tap doesn't double-fire.
     func importTextFromOCRImageData(_ imageData: Data) async {
-        guard isPerformingOCRImport == false else {
-            return
-        }
+        guard isPerformingOCRImport == false else { return }
 
         isPerformingOCRImport = true
         defer {
@@ -81,7 +77,7 @@ extension ReadView {
 
         do {
             let recognizedText = try await Task.detached(priority: .userInitiated) {
-                try Self.recognizeText(in: imageData)
+                try NotesView.recognizeText(in: imageData)
             }.value
             let trimmedText = recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -90,33 +86,25 @@ extension ReadView {
                 return
             }
 
-            createOCRNote(with: trimmedText)
+            let recognizedNote = Note(content: trimmedText)
+            onOCRImportedNote?(recognizedNote)
         } catch {
             ocrImportErrorMessage = error.localizedDescription
         }
     }
 
-    // Presents the camera capture flow when the current device supports it.
+    // Presents the camera-capture flow when the device supports it; surfaces a clear error
+    // (rather than silently failing) on simulators / iPads without a back camera.
     func presentCameraOCRIfAvailable() {
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
             ocrImportErrorMessage = "Camera capture is not available on this device."
             return
         }
-
         isShowingCameraPicker = true
     }
 
-    // Creates and selects a new note populated from OCR so the current note remains untouched.
-    func createOCRNote(with recognizedText: String) {
-        flushPendingNotePersistenceIfNeeded()
-
-        let recognizedNote = Note(content: recognizedText)
-        notesStore.addNote(recognizedNote)
-        shouldActivateEditModeOnLoad = true
-        selectedNote = recognizedNote
-    }
-
-    // Runs Vision text recognition against image data and returns joined line output.
+    // Vision request: accurate level, JA + EN, language correction on. Lines joined by \n
+    // so the resulting note preserves the source line breaks.
     nonisolated static func recognizeText(in imageData: Data) throws -> String {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate

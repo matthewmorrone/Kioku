@@ -41,55 +41,33 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Renders the Read tab screen and keeps last-active note tracking in sync.
-            ReadView(selectedNote: $selectedReadNote, shouldActivateEditModeOnLoad: $shouldActivateReadEditMode, segmenter: readResources.segmenter, dictionaryStore: readResources.dictionaryStore, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, segmenterRevision: readResources.segmenterRevision, readResourcesReady: readResources.ready, onOpenWordDetail: { entryID, surface, reading, sublatticePaths in
-                selectedTab = .words
-                DispatchQueue.main.async {
-                    pendingWordsRoute = .detail(entryID: entryID, surface: surface, reading: reading, sublatticePaths: sublatticePaths)
-                }
-            }, onActiveNoteChanged: { id in
-                lastActiveNoteID = id.uuidString
-            })
+            ReadView(
+                selectedNote: $selectedReadNote,
+                shouldActivateEditModeOnLoad: $shouldActivateReadEditMode,
+                segmenter: readResources.segmenter,
+                dictionaryStore: readResources.dictionaryStore,
+                lexicon: readResources.lexicon,
+                surfaceReadingData: readResources.surfaceReadingData,
+                segmenterRevision: readResources.segmenterRevision,
+                readResourcesReady: readResources.ready,
+                onOpenWordDetail: handleOpenWordDetail,
+                onActiveNoteChanged: handleActiveNoteChanged
+            )
             .tag(ContentTab.read)
             .tabItem {
                 Label("Read", systemImage: "book")
             }
 
             // Renders the Notes tab list and routes selected/new notes into the Read tab.
-            NotesView(onSelectNote: { note in
-                selectedReadNote = note
-                lastActiveNoteID = note.id.uuidString
-                selectedTab = .read
-            }, onCreateNote: {
-                // Pass a fresh note directly without adding it to the store so that the note
-                // is only persisted once the user types content into the editor.
-                let newNote = Note()
-                shouldActivateReadEditMode = true
-                selectedReadNote = newNote
-                lastActiveNoteID = newNote.id.uuidString
-                selectedTab = .read
-            }, onUpdateSelectedNote: { updatedNote in
-                if let currentSelectedReadNote = selectedReadNote, let updatedNote, updatedNote.id == currentSelectedReadNote.id {
-                    selectedReadNote = updatedNote
-                    lastActiveNoteID = updatedNote.id.uuidString
-                    return
-                }
-
-                // When the updated note is the currently active note in the read view (selectedReadNote
-                // is nil after initial load), re-set it to trigger a reload so in-memory state stays in sync.
-                if let updatedNote, let activeNoteID = UUID(uuidString: lastActiveNoteID), updatedNote.id == activeNoteID {
-                    selectedReadNote = updatedNote
-                    return
-                }
-
-                if updatedNote == nil {
-                    if let currentSelectedReadNote = selectedReadNote, notesStore.note(withID: currentSelectedReadNote.id) == nil {
-                        selectedReadNote = nil
-                        lastActiveNoteID = ""
-                    } else if let activeNoteID = UUID(uuidString: lastActiveNoteID), notesStore.note(withID: activeNoteID) == nil {
-                        lastActiveNoteID = ""
-                    }
-                }
-            })
+            // Callback bodies are extracted to named methods so the constructor stays
+            // small — SwiftUI's type-checker times out when a single constructor accumulates
+            // too many inline closures.
+            NotesView(
+                onSelectNote: handleNoteSelected,
+                onCreateNote: handleNewNoteRequested,
+                onUpdateSelectedNote: handleNoteUpdated,
+                onOCRImportedNote: handleOCRImported
+            )
             .tag(ContentTab.notes)
             .tabItem {
                 Label("Notes", systemImage: "text.line.magnify")
@@ -158,6 +136,75 @@ struct ContentView: View {
             guard readResources.ready else { return }
             scheduleWotdRefresh(reason: "words changed", delayNanoseconds: 500_000_000, forceRefresh: true)
         }
+    }
+
+    // MARK: - ReadView / NotesView callback handlers
+    //
+    // Extracted from inline closures so the TabView body keeps a flat, type-checkable shape.
+    // SwiftUI's type inferencer chokes on view constructors that accumulate too many
+    // closures (each one a fresh `(some View) -> some View` to resolve).
+
+    // Open-word-detail callback from ReadView: switch to Words and push a detail route.
+    private func handleOpenWordDetail(entryID: Int64, surface: String, reading: String?, sublatticePaths: [[String]]) {
+        selectedTab = .words
+        DispatchQueue.main.async {
+            pendingWordsRoute = .detail(entryID: entryID, surface: surface, reading: reading, sublatticePaths: sublatticePaths)
+        }
+    }
+
+    // Active-note-changed callback from ReadView: persist for restoreLastActiveNote.
+    private func handleActiveNoteChanged(_ id: UUID) {
+        lastActiveNoteID = id.uuidString
+    }
+
+    // User tapped a row in the Notes list — select it in Read and jump there.
+    private func handleNoteSelected(_ note: Note) {
+        selectedReadNote = note
+        lastActiveNoteID = note.id.uuidString
+        selectedTab = .read
+    }
+
+    // User tapped New Note in Notes — hand Read a fresh unsaved Note (Read persists once
+    // content is typed) and jump there in edit mode.
+    private func handleNewNoteRequested() {
+        let newNote = Note()
+        shouldActivateReadEditMode = true
+        selectedReadNote = newNote
+        lastActiveNoteID = newNote.id.uuidString
+        selectedTab = .read
+    }
+
+    // Notes-store changes streamed up so the in-memory selectedReadNote stays in sync
+    // with on-disk edits / deletes initiated from the Notes tab.
+    private func handleNoteUpdated(_ updatedNote: Note?) {
+        if let currentSelectedReadNote = selectedReadNote, let updatedNote, updatedNote.id == currentSelectedReadNote.id {
+            selectedReadNote = updatedNote
+            lastActiveNoteID = updatedNote.id.uuidString
+            return
+        }
+        if let updatedNote, let activeNoteID = UUID(uuidString: lastActiveNoteID), updatedNote.id == activeNoteID {
+            selectedReadNote = updatedNote
+            return
+        }
+        if updatedNote == nil {
+            if let currentSelectedReadNote = selectedReadNote, notesStore.note(withID: currentSelectedReadNote.id) == nil {
+                selectedReadNote = nil
+                lastActiveNoteID = ""
+            } else if let activeNoteID = UUID(uuidString: lastActiveNoteID), notesStore.note(withID: activeNoteID) == nil {
+                lastActiveNoteID = ""
+            }
+        }
+    }
+
+    // OCR finished on Notes — install the recognized Note in the store, make it the
+    // active Read note, jump tabs, and arm edit mode so the user lands directly in the
+    // editor (mirrors the previous Read-side OCR end state).
+    private func handleOCRImported(_ recognizedNote: Note) {
+        notesStore.addNote(recognizedNote)
+        shouldActivateReadEditMode = true
+        selectedReadNote = recognizedNote
+        lastActiveNoteID = recognizedNote.id.uuidString
+        selectedTab = .read
     }
 
     // Restores the previously active note so users return to their last reading context.
@@ -300,6 +347,24 @@ struct ContentView: View {
             print("Deinflector initialization failed: \(error)")
         }
 
+        // Derives the lemma → best-Zipf map from the surface-reading data so
+        // Segmenter.preferredLemmaScore can break script-tied lemma choices
+        // by real-world frequency. We pick the max Zipf across a lemma's
+        // readings — for verbs with multiple kana forms, the highest-Zipf
+        // reading is the strongest "this is the common word" signal.
+        let wordfreqZipfByLemma: [String: Double] = StartupTimer.measure("wordfreqZipfByLemma build") {
+            var map: [String: Double] = [:]
+            map.reserveCapacity(surfaceReadingData.count)
+            for (surface, data) in surfaceReadingData {
+                var best: Double = 0
+                for case let zipf? in data.frequencyByReading.values.map(\.wordfreqZipf) where zipf > best {
+                    best = zipf
+                }
+                if best > 0 { map[surface] = best }
+            }
+            return map
+        }
+
         // Choose segmenter based on the user's backend preference.
         let segmenter: any TextSegmenting = StartupTimer.measure("Segmenter.init (backend: \(backend))") {
             if backend == SegmenterBackend.mecab.rawValue,
@@ -309,7 +374,7 @@ struct ContentView: View {
             } else if backend == SegmenterBackend.nlTokenizer.rawValue {
                 return NLTokenizerSegmenter()
             } else {
-                return Segmenter(trie: trie, deinflector: deinflector)
+                return Segmenter(trie: trie, deinflector: deinflector, wordfreqZipfByLemma: wordfreqZipfByLemma)
             }
         }
 

@@ -88,6 +88,34 @@ struct LyricsView: View {
         )
     }
 
+    // Decides whether the forced-alignment checkpoints for the cue at `displayIndex`
+    // cover the line densely enough that dimming the unplayed tail can be done
+    // reliably. Returns false (= suppress dim, show whole line at full alpha) when
+    // checkpoints are missing or the latest checkpoint stops well short of the cue
+    // end — in that case the band would otherwise freeze at a midpoint and chars
+    // past it would read as "unplayed" even though they're being sung right now.
+    //
+    // The 90% threshold is intentionally generous: forced alignment that genuinely
+    // covers the line lands with the last checkpoint within a couple characters of
+    // cue end (the last word's begin/end). Anything below 90% means we're missing
+    // the tail, and "no dim" is a more honest UI than a stuck dim line.
+    //
+    // Why suppression over linear interpolation: with sparse checkpoints the
+    // alignment data itself can't be trusted to localize a frontier, so a clock-
+    // based estimate would be guessing. Showing the whole line is the only honest
+    // option until alignment improves. Sentence-granularity cues already have
+    // override.upperBound == cueLength so they short-circuit this anyway.
+    private func cueHasReliableDimCoverage(forCueAtIndex displayIndex: Int, cueLength: Int) -> Bool {
+        guard displayIndex >= 0, displayIndex < cues.count, cueLength > 0 else { return false }
+        // Use the cue's `.index` field (its original SRT/numeric ID) as the timings
+        // dict key, matching the lookup convention in the karaokeDebugHUDText and the
+        // observer — array position alone would desync after a skipped/malformed cue.
+        let key = cues[displayIndex].index
+        guard let checkpoints = cueTimings[key], checkpoints.isEmpty == false else { return false }
+        let maxEnd = checkpoints.map { $0.charOffsetInCue + $0.charLength }.max() ?? 0
+        return Double(maxEnd) >= Double(cueLength) * 0.9
+    }
+
     // Returns the slice of noteText that the resolver mapped to this cue, if any.
     // Used only for mismatch detection — `displayText(for:)` deliberately returns the
     // raw cue text now to avoid bleeding past line boundaries on resolver overshoot,
@@ -133,6 +161,10 @@ struct LyricsView: View {
     // karaoke popup. AppStorage subscribes to the persisted key directly — no observation
     // plumbing needed for cross-view reactivity.
     @AppStorage("kioku.settings.rubySpacing") private var isRubySpacingEnabled = true
+    // Settings → Debug → "Karaoke HUD" controls whether the diagnostic strip
+    // overlays the active-cue card. Default off so the lyrics card reads clean;
+    // the binding is read-only here since the toggle lives in SettingsView.
+    @AppStorage(DebugSettings.karaokeDebugHUDKey) private var isKaraokeDebugHUDVisible: Bool = false
     @StateObject private var translationCache = LyricsTranslationCache()
 
     // Previously three variants (appleMusic / accentBar / focusCard) selectable from Settings.
@@ -322,15 +354,21 @@ struct LyricsView: View {
         let belowLower = inNoVocalStretch ? displayIndex : displayIndex + 1
         let belowUpper = max(belowLower, cues.count)
         return VStack(spacing: 0) {
-            Text(karaokeDebugHUDText)
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(4)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .frame(maxWidth: .infinity)
-                .background(Color.black.opacity(0.4))
+            // Karaoke diagnostics HUD — only laid out when the user has flipped
+            // Settings → Debug → "Karaoke HUD". `if`-gated rather than
+            // `.opacity(0)` so it consumes no vertical space when off; otherwise
+            // the active cue would still sit shifted down by the HUD's height.
+            if isKaraokeDebugHUDVisible {
+                Text(karaokeDebugHUDText)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.black.opacity(0.4))
+            }
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
@@ -419,7 +457,16 @@ struct LyricsView: View {
                         playbackHighlightRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                         selectionHighlightColor: .clear,
                         playbackHighlightColor: UIColor.label.withAlphaComponent(0.32),
-                        unplayedDimmingLocation: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count).map { $0.location + $0.length },
+                        // Dim is gated on alignment-coverage: when forced-alignment
+                        // checkpoints don't reach near the cue end, we pass nil
+                        // (renderer leaves the whole line at full alpha) rather than
+                        // freezing the dim frontier mid-line. The active band still
+                        // moves — only the "unplayed tail" visual disappears for
+                        // low-coverage cues. See `cueHasReliableDimCoverage` for the
+                        // 90%-of-cueLen threshold and its rationale.
+                        unplayedDimmingLocation: cueHasReliableDimCoverage(forCueAtIndex: displayIndex, cueLength: cueInput.text.utf16.count)
+                            ? cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count).map { $0.location + $0.length }
+                            : nil,
                         unknownSegmentLocations: [],
                         isHighlightUnknownEnabled: false,
                         unknownSegmentColor: .label,

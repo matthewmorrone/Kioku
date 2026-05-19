@@ -9,6 +9,12 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     private let scoring: SegmenterScoring
     // Per-entry POS bitfields loaded from the dictionary; empty when built without metadata.
     private let partOfSpeechByEntryID: [Int: UInt64]
+    // Lemma → best wordfreq Zipf among that lemma's readings. Used by
+    // `preferredLemmaScore` to break ties between equally-script-matched
+    // candidates by real-world frequency. Empty when the segmenter is built
+    // without the surface-reading map (e.g., test fixtures); in that case
+    // the scoring falls back to the prior script-only tiebreakers.
+    private let wordfreqZipfByLemma: [String: Double]
     // Set to true locally to print POS transition decisions during Viterbi runs.
     private let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -31,13 +37,15 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         deinflector: Deinflector? = nil,
         partOfSpeechByEntryID: [Int: UInt64] = [:],
         config: SegmenterConfig = SegmenterConfig(),
-        scoring: SegmenterScoring = .default
+        scoring: SegmenterScoring = .default,
+        wordfreqZipfByLemma: [String: Double] = [:]
     ) {
         self.trie = trie
         self.deinflector = deinflector
         self.partOfSpeechByEntryID = partOfSpeechByEntryID
         self.config = config
         self.scoring = scoring
+        self.wordfreqZipfByLemma = wordfreqZipfByLemma
     }
 
     // Generates all dictionary-backed lattice edges for every start position in the input text.
@@ -343,25 +351,51 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
     // Picks the highest-priority resolved lemma for a surface, preferring script-preserving kanji matches.
     func preferredLemma(for surface: String) -> String? {
-        let lemmas = resolvedTrieLemmas(for: surface)
-        guard lemmas.isEmpty == false else {
-            return nil
-        }
+        lemmaCandidates(for: surface).first
+    }
 
-        return lemmas.max { lhs, rhs in
+    // Returns the trie-backed lemma candidates for `surface`, sorted
+    // best-first by `preferredLemmaScore` with the same length / lexicographic
+    // tiebreakers `preferredLemma` used to fold into a single answer. The
+    // picker presents these to the user in this order, with the auto-picked
+    // candidate appearing first.
+    //
+    // POS gating: when `surface` differs from the candidate (i.e. the
+    // deinflector applied a transition), the candidate must have at least
+    // one dictionary entry whose POS bits indicate a verb or adjective —
+    // only those parts of speech actually conjugate. Without this filter
+    // the deinflector mechanically yields any 2-char noun ending in -う/-つ/-る
+    // for the past-tense なった (なつ, なう, etc.), polluting the picker
+    // with semantically impossible candidates. When `surface == candidate`
+    // the gate is skipped — the user typed the dictionary form directly,
+    // so all POS classes are legitimate.
+    func lemmaCandidates(for surface: String) -> [String] {
+        let lemmas = resolvedTrieLemmas(for: surface)
+        guard lemmas.isEmpty == false else { return [] }
+
+        let conjugating = lemmas.filter { lemma in
+            if lemma == surface { return true }
+            guard let meta = trie.hitMeta(for: lemma) else { return false }
+            return meta.entryIDs.contains { entryID in
+                let bits = partOfSpeechByEntryID[entryID] ?? 0
+                return PartOfSpeech.isVerb(bits) || PartOfSpeech.isAdjective(bits)
+            }
+        }
+        // Fall back to the unfiltered set when the filter eliminates
+        // everything — POS data might be sparse for some entries, and an
+        // imperfect candidate list is more useful than an empty one.
+        let pool = conjugating.isEmpty ? lemmas : conjugating
+
+        return pool.sorted { lhs, rhs in
             let lhsScore = preferredLemmaScore(for: lhs, sourceSurface: surface)
             let rhsScore = preferredLemmaScore(for: rhs, sourceSurface: surface)
-
             if lhsScore != rhsScore {
-                return lhsScore < rhsScore
+                return lhsScore > rhsScore
             }
-
-            // Prefer the shorter (more fully deinflected) lemma — e.g. する wins over しなう.
             if lhs.count != rhs.count {
-                return lhs.count > rhs.count
+                return lhs.count < rhs.count
             }
-
-            return lhs > rhs
+            return lhs < rhs
         }
     }
 
@@ -466,6 +500,15 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
 
     // Scores competing lemmas so furigana and segmentation can favor script-preserving dictionary forms.
+    //
+    // Frequency term (`wordfreqZipfByLemma`) breaks ties between candidates
+    // that the script-based rules above can't distinguish. The classic case
+    // is the past-tense collision なった ⇒ {なう, なる}: both are pure-kana
+    // lemmas of the same length, so without a frequency signal the prior
+    // Unicode-codepoint tiebreaker arbitrarily picked the rarer なう. Zipf
+    // is roughly 1 (very rare) to 7 (extremely common); scaling by 5 puts
+    // a Zipf-6 word ~30 points ahead of a Zipf-0 word, enough to dominate
+    // the existing ±40-point script signals when they're tied.
     private func preferredLemmaScore(for lemma: String, sourceSurface: String) -> Int {
         var score = 0
 
@@ -483,6 +526,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
         if ScriptClassifier.isPureKana(sourceSurface) && ScriptClassifier.isPureKana(lemma) {
             score += 10
+        }
+
+        if let zipf = wordfreqZipfByLemma[lemma], zipf > 0 {
+            score += Int(zipf * 5)
         }
 
         return score

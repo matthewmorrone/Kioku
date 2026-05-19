@@ -2,26 +2,15 @@ import SwiftUI
 
 // Toolbar buttons and display options popover for ReadView.
 extension ReadView {
-    // Renders action buttons for segmentation and display controls.
+    // Renders action buttons for segmentation and display controls. The lyrics (♪) and
+    // extract-words (list.bullet) buttons that used to live here moved up to the title
+    // row, so this row now hosts only the per-note correction / reset / furigana / edit
+    // controls.
     var toolbarButtons: some View {
         HStack {
-            // ♪ button is always present; the lyrics view silently handles missing audio/cues so
-            // a tap on a note without playback data simply shows an empty popup the user can close.
-            Button {
-                isShowingLyricsView.toggle()
-            } label: {
-                Image(systemName: "music.note")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(isShowingLyricsView ? Color(.systemOrange) : Color.secondary)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color(.tertiarySystemFill)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Lyrics")
             Spacer()
             llmCorrectionButton
             resetButton
-            segmentListButton
             furiganaButton
             editModeButton
         }
@@ -106,23 +95,6 @@ extension ReadView {
         .accessibilityLabel(hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
     }
 
-    // Opens the segment list screen for split/merge actions synced to the paste area.
-    var segmentListButton: some View {
-        Button {
-            isShowingSegmentList = true
-        } label: {
-            Image(systemName: "list.bullet")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(isEditMode ? Color.secondary.opacity(0.5) : Color.secondary)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(Color(.tertiarySystemFill)))
-        }
-        .buttonStyle(PlainButtonStyle())
-        .disabled(isEditMode)
-        .opacity(isEditMode ? 0.5 : 0.7)
-        .accessibilityLabel("Show Segment List")
-    }
-
     // Toggles whether furigana annotations render in the main paste area.
     // Long press opens display options popover.
     var furiganaButton: some View {
@@ -147,23 +119,54 @@ extension ReadView {
         }
     }
 
-    // Renders the title-row button that creates and selects a fresh note for immediate editing.
-    var newNoteButton: some View {
+    // Title-row buttons. New-note + OCR migrated to the Notes tab; this row hosts the
+    // per-note quick actions: open the lyrics view (♪), open the segment list / extract-words
+    // (list.bullet), and open the LLM breakdown sheet (sparkles in a circle). All three are
+    // visual peers — same capsule background, same accent treatment — so the row reads as
+    // "actions for the currently-open note."
+    var titleLyricsButton: some View {
         Button {
-            flushPendingNotePersistenceIfNeeded()
-            notesStore.addNote()
-            guard let createdNote = notesStore.notes.first else { return }
-            shouldActivateEditModeOnLoad = true
-            selectedNote = createdNote
+            isShowingLyricsView.toggle()
         } label: {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 30, height: 30)
-                .background(Capsule().fill(Color(.tertiarySystemFill)))
+            titleActionLabel(systemImage: "music.note", isActive: isShowingLyricsView)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("New Note")
+        .accessibilityLabel(isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
+    }
+
+    var titleExtractWordsButton: some View {
+        Button {
+            isShowingSegmentList = true
+        } label: {
+            titleActionLabel(systemImage: "list.bullet", isActive: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Extract Words")
+    }
+
+    var titleBreakdownButton: some View {
+        Button {
+            isShowingBreakdownSheet = true
+        } label: {
+            titleActionLabel(systemImage: "sparkles.rectangle.stack", isActive: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open Breakdown")
+    }
+
+    // Shared visual treatment for the three title-row action buttons. The visible pill
+    // stays compact (30×30 with the 14pt icon) but the tap region is widened to 44×44 —
+    // Apple's recommended minimum touch target — so a fingertip that lands a few points
+    // outside the pill still registers. Without this, a missed first tap reads as a
+    // perceived delay before the sheet appears.
+    private func titleActionLabel(systemImage: String, isActive: Bool) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(isActive ? Color(.systemOrange) : Color.accentColor)
+            .frame(width: 30, height: 30)
+            .background(Capsule().fill(Color(.tertiarySystemFill)))
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
     }
 
     // Renders the tappable furigana icon that also exposes display options on long press.

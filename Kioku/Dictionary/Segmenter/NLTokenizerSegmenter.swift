@@ -36,6 +36,11 @@ nonisolated final class NLTokenizerSegmenter: TextSegmenting, @unchecked Sendabl
         nil
     }
 
+    // NLTokenizer has no lemma pipeline — no candidates to offer.
+    func lemmaCandidates(for surface: String) -> [String] {
+        []
+    }
+
     // Checks whether NLTokenizer recognizes the surface as a single token rather than splitting it.
     func resolvesSurface(_ surface: String) -> Bool {
         guard surface.isEmpty == false else { return false }

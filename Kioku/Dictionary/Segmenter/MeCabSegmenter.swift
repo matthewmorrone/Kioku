@@ -52,6 +52,14 @@ nonisolated final class MeCabSegmenter: TextSegmenting, @unchecked Sendable {
         return baseForm
     }
 
+    // MeCab returns a single base form per surface — no ambiguity exposed at
+    // this layer — so the candidate list collapses to the preferred lemma
+    // alone. The picker will see one entry and short-circuit (no choice to
+    // present).
+    func lemmaCandidates(for surface: String) -> [String] {
+        preferredLemma(for: surface).map { [$0] } ?? []
+    }
+
     // Checks whether MeCab recognizes the surface as a known word (not an unknown-category token).
     func resolvesSurface(_ surface: String) -> Bool {
         guard surface.isEmpty == false else { return false }

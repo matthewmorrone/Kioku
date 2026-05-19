@@ -1,10 +1,12 @@
 import SwiftUI
 
-// The swipeable pages in the Learn tab.
+// The swipeable pages in the Learn tab. Breakdown (formerly `songs`) moved to the Read
+// tab as a per-note sheet, so Learn is back to Flashcards + Cloze. `LearnPagerView`'s
+// persisted page index clamps on read, so a stale `2` in UserDefaults from a previous
+// install snaps back into range on next launch without crashing.
 enum LearnPage: Int, CaseIterable, Identifiable {
     case flashcards
     case cloze
-    case songs
     var id: Int { rawValue }
 }
 
@@ -30,13 +32,31 @@ struct LearnPagerView: View {
     let dictionaryStore: DictionaryStore?
     let segmenter: (any TextSegmenting)?
 
-    @State private var pageIndex: Int = 0
+    // Persisted across navigations and launches so returning to the Learn tab puts you back
+    // on the page you were last using (Flashcards / Cloze / Breakdown). Defaults to 0
+    // (Flashcards) for new installs. Read access goes through `clampedPageIndex` so an
+    // out-of-range UserDefaults value from a future build with fewer pages can't crash.
+    @AppStorage("learn.pageIndex") private var storedPageIndex: Int = 0
+
     @State private var dragOffset: CGFloat = 0
     @State private var dotsHidden: Bool = false
     @State private var sessionActive: Bool = false
 
+    // Always in [0, LearnPage.allCases.count). Writes go through here so a snap also
+    // normalises the persisted value.
+    private var pageIndex: Int {
+        get { clampedPageIndex }
+        nonmutating set {
+            storedPageIndex = max(0, min(LearnPage.allCases.count - 1, newValue))
+        }
+    }
+
+    private var clampedPageIndex: Int {
+        max(0, min(LearnPage.allCases.count - 1, storedPageIndex))
+    }
+
     private var currentPage: LearnPage {
-        LearnPage.allCases[pageIndex]
+        LearnPage.allCases[clampedPageIndex]
     }
 
     var body: some View {
@@ -48,16 +68,22 @@ struct LearnPagerView: View {
                     .frame(width: width)
                 ClozeStudyHomeView()
                     .frame(width: width)
-                SongsHomeView()
-                    .frame(width: width)
             }
             .frame(width: width, alignment: .leading)
             .offset(x: -CGFloat(pageIndex) * width + dragOffset)
-            .highPriorityGesture(
+            // `.simultaneousGesture` (NOT `.highPriorityGesture`) so child ScrollViews and
+            // Lists keep their own pan recognisers. The axis filter in `onChanged` decides
+            // whether *we* care about a given drag: mostly-horizontal moves drive the pager;
+            // mostly-vertical ones leave `dragOffset` at 0 and let the child scroll. A
+            // high-priority gesture would starve the child even when we don't act, which
+            // is why vertical scrolling in the Breakdown screen wasn't working.
+            //
+            // `sessionActive` still nils the gesture entirely for in-session Flashcard / song
+            // study so a deliberate horizontal flick can't accidentally advance the page.
+            .simultaneousGesture(
                 sessionActive ? nil :
                 DragGesture(minimumDistance: 20)
                     .onChanged { value in
-                        // Only track horizontal drags; ignore mostly-vertical ones.
                         guard abs(value.translation.width) > abs(value.translation.height) else { return }
                         dragOffset = value.translation.width
                     }

@@ -16,6 +16,15 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     let surface: String
     // Provenance: which notes this word was saved from. Not used for list-membership UI.
     let sourceNoteIDs: [UUID]
+    // Every distinct surface string the user has actually saved for this card —
+    // 食べた, 食べる, 食べます, etc. for the same verb. Per-surface star state
+    // in the segment list reads this set: yellow only when the queried surface
+    // is a member. Stored cards normalize their `surface` field to the lemma,
+    // and add the user's clicked surface to this set; legacy cards (saved
+    // before this field existed) decode with `Set([surface])`, and the
+    // segment list adds the derived lemma in-memory at render time so they
+    // appear yellow on both surface and lemma rows without a write migration.
+    var encounteredSurfaces: Set<String>
     // User-created word list memberships, keyed by WordList.id.
     var wordListIDs: [UUID]
     // Free-form personal note attached by the user — mnemonic, context, etc.
@@ -35,7 +44,9 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     }
 
     // Creates a saved-word value with optional note-list and word-list memberships.
-    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = []) {
+    // `encounteredSurfaces` defaults to `[surface]` so call sites that already pass a
+    // surface get a sensible per-surface star state without having to spell it out.
+    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil) {
         self.canonicalEntryID = canonicalEntryID
         self.surface = surface
         self.sourceNoteIDs = sourceNoteIDs
@@ -44,6 +55,9 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         self.savedAt = savedAt
         self.selectedSenseIDs = selectedSenseIDs
         self.selectedGlosses = selectedGlosses
+        // nil → seed with the surface so a freshly-saved card has one encountered
+        // member and stars correctly without extra wiring at every call site.
+        self.encounteredSurfaces = encounteredSurfaces ?? Set([surface])
     }
 
     // Custom decoder so saves persisted before the selection fields existed load with [].
@@ -57,6 +71,11 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         savedAt = try c.decodeIfPresent(Date.self, forKey: .savedAt) ?? Date()
         selectedSenseIDs = try c.decodeIfPresent([Int64].self, forKey: .selectedSenseIDs) ?? []
         selectedGlosses = try c.decodeIfPresent([GlossRef].self, forKey: .selectedGlosses) ?? []
+        // Legacy cards (persisted before encounteredSurfaces existed) get seeded
+        // with the stored surface as the sole encountered form. The segment-list
+        // render path expands this in-memory with the derived lemma so legacy
+        // cards starr on both surface and lemma rows — without writing back.
+        encounteredSurfaces = try c.decodeIfPresent(Set<String>.self, forKey: .encounteredSurfaces) ?? Set([surface])
     }
 
     // Keeps saved-word identity stable across surface variants that map to the same dictionary entry.

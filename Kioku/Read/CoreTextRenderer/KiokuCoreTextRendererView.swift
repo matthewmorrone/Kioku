@@ -248,27 +248,21 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // Spacing off, line origins stay flush at the inset, and ruby annotations are
         // allowed to overhang past the inset guide (matching TK2's behavior with the
         // same toggle off).
+        // Mirror the requested alignment onto the UIView so `layoutSubviews` can re-run
+        // the centering math after bounds are known. Without this, the first updateUIView
+        // pass runs with bounds.width=0 and the lyrics card sits flush-left until some
+        // unrelated state change re-triggers updateUIView at a moment with valid bounds.
+        uiView.textAlignment = textAlignment
         var shifts: [Int: CGFloat] = [:]
         // Centering takes precedence over wide-ruby line-start insets — when text is centered
         // there's already room on the left for ruby overhang. The shifts dict is the union of
         // (centering | wide-ruby), with whichever the active mode dictates winning.
         if textAlignment == .center {
-            let engineLinesForCentering = uiView.contentView.layoutEngine.lines
-            let inset = uiView.contentView.layoutEngine.contentInset
-            let availableWidth = uiView.bounds.width - inset.left - inset.right
-            if availableWidth > 0 {
-                for (index, line) in engineLinesForCentering.enumerated() {
-                    // Shift to center even when the line overflows (extra < 0). With
-                    // isRubySpacingEnabled, packed-layout line widths can exceed
-                    // availableWidth — without a negative-shift branch the line falls back
-                    // to left-aligned at inset.left, which reads as "centering broke." Sub-
-                    // pixel jitter is still filtered.
-                    let extra = availableWidth - line.width
-                    if abs(extra) > 0.5 {
-                        shifts[index] = extra / 2
-                    }
-                }
-            }
+            // Centering is computed identically here and in `layoutSubviews`; the helper
+            // returns the dict so we can fold it into `shifts` and hand the merged map to
+            // `setLineOriginShifts` exactly once per update. The layout-time path bypasses
+            // updateUIView entirely and calls `applyCenteringShiftsIfNeeded` directly.
+            shifts = uiView.computeCenteringShifts()
         } else if isFuriganaVisible && isRubySpacingEnabled && furiganaBySegmentLocation.isEmpty == false {
             let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
             let widthShifts = KiokuWideRubyLineInset.shifts(
@@ -440,6 +434,18 @@ final class KiokuScrollingTextView: UIScrollView {
     // re-bridging Swift Range<String.Index> on every tap.
     var cachedSegmentNSRanges: [NSRange] = []
 
+    // Mirror of the representable's `textAlignment` so `layoutSubviews` can re-apply
+    // centering shifts after a width change without depending on SwiftUI to re-fire
+    // `updateUIView`. Set from `KiokuCoreTextRendererView.updateUIView` on every body
+    // re-evaluation.
+    //
+    // Why this exists: `updateUIView` reads `bounds.width` to compute centering, but
+    // it runs in the SwiftUI update phase — before the first `layoutSubviews`, when
+    // `bounds.width` is still 0. That left the shifts dict empty and the active cue
+    // in LyricsView flush-left inside its centered card. Re-running the shift block
+    // from `layoutSubviews` (where bounds.width is correct) fixes it.
+    var textAlignment: NSTextAlignment = .natural
+
     // Forwarded from the content view's tap recognizer. UTF-16 character index of the tap,
     // or nil when the tap landed in empty space (no glyph under the point) — callers
     // route nil into the "clear selection" branch.
@@ -556,11 +562,59 @@ final class KiokuScrollingTextView: UIScrollView {
         contentView.frame = CGRect(x: 0, y: 0, width: width, height: height)
         debugOverlay.frame = contentView.frame
         contentSize = CGSize(width: width, height: height)
+        // Re-apply centering shifts now that `bounds.width` (and therefore the engine's
+        // widthConstraint, set by contentView.layoutSubviews above) is correct. The
+        // updateUIView path may have run before any layout pass with bounds.width=0; in
+        // that case its shift dict was empty and lines fell back to left-aligned at
+        // contentInset.left. This call closes that window. Engine's
+        // `setLineOriginShifts` is a no-op when the dict is unchanged, so when bounds
+        // were already correct in updateUIView this costs nothing.
+        applyCenteringShiftsIfNeeded()
         // Recompute debug geometry from the engine's now-current layout state. Without
         // this, a view whose first `updateUIView` ran with width=0 (e.g. a representable
         // inside a Form Section) would keep an empty `segmentGeometry` even after layout
         // populated valid placements.
         recomputeDebugGeometry()
+    }
+
+    // Computes per-line X shifts that center each line within the available width
+    // (bounds.width minus the engine's horizontal contentInset). Returns an empty dict
+    // when bounds aren't yet valid (width ≤ inset) or when textAlignment isn't `.center`,
+    // so callers can fold the result into a broader shift map without an additional
+    // guard. Shared between `updateUIView` (initial path) and `layoutSubviews` (post-
+    // layout re-application).
+    func computeCenteringShifts() -> [Int: CGFloat] {
+        guard textAlignment == .center else { return [:] }
+        let engineLines = contentView.layoutEngine.lines
+        let inset = contentView.layoutEngine.contentInset
+        let availableWidth = bounds.width - inset.left - inset.right
+        guard availableWidth > 0 else { return [:] }
+        var shifts: [Int: CGFloat] = [:]
+        for (index, line) in engineLines.enumerated() {
+            // Shift to center even when the line overflows (extra < 0). With
+            // isRubySpacingEnabled, packed-layout line widths can exceed availableWidth —
+            // without a negative-shift branch the line falls back to left-aligned at
+            // inset.left, which reads as "centering broke." Sub-pixel jitter is filtered.
+            let extra = availableWidth - line.width
+            if abs(extra) > 0.5 {
+                shifts[index] = extra / 2
+            }
+        }
+        return shifts
+    }
+
+    // Layout-time entry point that recomputes and pushes centering shifts to the engine.
+    // Skipped when the view isn't using `.center` alignment so the wide-ruby shift map
+    // installed by updateUIView isn't clobbered. Safe to call repeatedly — the engine's
+    // `setLineOriginShifts` short-circuits when the dict is unchanged.
+    private func applyCenteringShiftsIfNeeded() {
+        guard textAlignment == .center else { return }
+        let shifts = computeCenteringShifts()
+        // When the engine has no lines yet (e.g. zero-width relayout hasn't run), shifts
+        // is empty — pushing an empty dict would erase a stale-but-valid map from a
+        // prior layout pass. Only push when we actually have something to apply.
+        guard shifts.isEmpty == false else { return }
+        contentView.setLineOriginShifts(shifts)
     }
 
     // Translates a rect from the content view's coordinate space to this scroll-view-relative
