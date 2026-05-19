@@ -38,7 +38,7 @@ final class ReadViewSheetVisibilityScrollTests: XCTestCase {
 
         let adjustment = try XCTUnwrap(ReadViewSheetVisibilityScrollPlanner.adjustment(for: context))
         XCTAssertEqual(adjustment.targetOffsetY, 136, accuracy: 0.001)
-        XCTAssertFalse(adjustment.usesTemporaryBottomOverscroll)
+        XCTAssertEqual(adjustment.temporaryBottomInset, 0, accuracy: 0.001)
     }
 
     func testAdjustmentScrollsUpWhenSegmentMovesAboveVisibleBand() throws {
@@ -58,7 +58,7 @@ final class ReadViewSheetVisibilityScrollTests: XCTestCase {
 
         let adjustment = try XCTUnwrap(ReadViewSheetVisibilityScrollPlanner.adjustment(for: context))
         XCTAssertEqual(adjustment.targetOffsetY, 148, accuracy: 0.001)
-        XCTAssertFalse(adjustment.usesTemporaryBottomOverscroll)
+        XCTAssertEqual(adjustment.temporaryBottomInset, 0, accuracy: 0.001)
     }
 
     func testAdjustmentAllowsTemporaryBottomOverscrollNearEndOfShortNote() throws {
@@ -78,7 +78,9 @@ final class ReadViewSheetVisibilityScrollTests: XCTestCase {
 
         let adjustment = try XCTUnwrap(ReadViewSheetVisibilityScrollPlanner.adjustment(for: context))
         XCTAssertEqual(adjustment.targetOffsetY, 336, accuracy: 0.001)
-        XCTAssertTrue(adjustment.usesTemporaryBottomOverscroll)
+        // 336 sits 16pt past maxOffsetY=320; the planner asks for exactly that much extra
+        // contentInset.bottom so the scroll view can rest at 336 without bouncing back.
+        XCTAssertEqual(adjustment.temporaryBottomInset, 16, accuracy: 0.001)
     }
 
     func testDismissalTargetTrimsOnlyTemporaryBottomOverscroll() throws {

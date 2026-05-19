@@ -71,7 +71,11 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // Reports tapped segment by NSRange location (UTF-16) and its first-line rect in
     // renderer-local coordinates. `nil` means the tap landed outside any selectable segment
     // and the caller should clear selection.
-    var onSegmentTapped: (Int?, CGRect?) -> Void = { _, _ in }
+    // Tap callback. Third argument is the underlying KiokuScrollingTextView so callers can
+    // hand it to the sheet-visibility scroll helpers (contentInset.bottom, contentOffset).
+    // Passing the scroll view from inside the renderer keeps the SwiftUI struct free of any
+    // imperative scroll-view reference plumbing.
+    var onSegmentTapped: (Int?, CGRect?, UIScrollView?) -> Void = { _, _, _ in }
 
     // When false, the host scroll view disables user scrolling. Used by the LyricsView
     // active-cue card, which renders the full noteText but pins the viewport to one cue
@@ -148,53 +152,98 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // is not.
         uiView.onCharacterTapped = { [weak uiView, onSegmentTapped] characterIndex in
             guard let uiView else { return }
+            TapDiagnostics.mark("onCharacterTapped entered")
             guard let characterIndex else {
-                onSegmentTapped(nil, nil)
+                onSegmentTapped(nil, nil, uiView)
                 return
             }
             guard let match = KiokuCoreTextSegmentResolver.segmentRange(
                 forCharacterIndex: characterIndex,
                 in: uiView.cachedSegmentNSRanges
             ) else {
-                onSegmentTapped(nil, nil)
+                onSegmentTapped(nil, nil, uiView)
                 return
             }
             let rect = uiView.contentView.layoutEngine.firstRect(forCharacterRange: match)
                 .map { uiView.convertContentRectToHost($0) }
-            onSegmentTapped(match.location, rect)
+            TapDiagnostics.mark("segment resolved (loc=\(match.location), len=\(match.length))")
+            onSegmentTapped(match.location, rect, uiView)
+            TapDiagnostics.mark("onSegmentTapped returned (back in KiokuCoreTextRendererView wiring)")
         }
         let font = UIFont.systemFont(ofSize: textSize)
         let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
-        let output = KiokuCoreTextAttributedStringBuilder.build(
-            .init(
-                text: text,
-                segmentationRanges: segmentationRanges,
-                furiganaBySegmentLocation: furiganaBySegmentLocation,
-                furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
-                textSize: textSize,
-                lineSpacing: lineSpacing,
-                kerning: kerning,
-                isVisualEnhancementsEnabled: isVisualEnhancementsEnabled,
-                isColorAlternationEnabled: isColorAlternationEnabled,
-                isFuriganaVisible: isFuriganaVisible,
-                isLineWrappingEnabled: isLineWrappingEnabled,
-                isRubySpacingEnabled: isRubySpacingEnabled,
-                evenSegmentColor: evenSegmentColor,
-                oddSegmentColor: oddSegmentColor,
-                unknownSegmentLocations: unknownSegmentLocations,
-                isHighlightUnknownEnabled: isHighlightUnknownEnabled,
-                unknownSegmentColor: unknownSegmentColor,
-                isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
-                unplayedDimmingLocation: unplayedDimmingLocation,
-                unplayedAlpha: unplayedAlpha
+
+        // Fingerprint the typography-affecting inputs. Selection state and highlight bands
+        // are NOT part of the build (they're drawn as overlays), so changing only those
+        // doesn't require re-typesetting the note. On long notes this avoids ~tens of ms
+        // of CT relayout work per tap.
+        var typographyHasher = Hasher()
+        typographyHasher.combine(text)
+        for range in segmentationRanges {
+            typographyHasher.combine(range.lowerBound.utf16Offset(in: text))
+            typographyHasher.combine(range.upperBound.utf16Offset(in: text))
+        }
+        for (key, value) in furiganaBySegmentLocation {
+            typographyHasher.combine(key)
+            typographyHasher.combine(value)
+        }
+        for (key, value) in furiganaLengthBySegmentLocation {
+            typographyHasher.combine(key)
+            typographyHasher.combine(value)
+        }
+        typographyHasher.combine(textSize)
+        typographyHasher.combine(lineSpacing)
+        typographyHasher.combine(kerning)
+        typographyHasher.combine(isVisualEnhancementsEnabled)
+        typographyHasher.combine(isColorAlternationEnabled)
+        typographyHasher.combine(isFuriganaVisible)
+        typographyHasher.combine(isLineWrappingEnabled)
+        typographyHasher.combine(isRubySpacingEnabled)
+        typographyHasher.combine(evenSegmentColor.description)
+        typographyHasher.combine(oddSegmentColor.description)
+        for location in unknownSegmentLocations { typographyHasher.combine(location) }
+        typographyHasher.combine(isHighlightUnknownEnabled)
+        typographyHasher.combine(unknownSegmentColor.description)
+        typographyHasher.combine(unplayedDimmingLocation ?? -1)
+        typographyHasher.combine(unplayedAlpha)
+        typographyHasher.combine(furiganaGap)
+        let typographyFingerprint = typographyHasher.finalize()
+
+        if uiView.lastTypographyFingerprint != typographyFingerprint {
+            let output = KiokuCoreTextAttributedStringBuilder.build(
+                .init(
+                    text: text,
+                    segmentationRanges: segmentationRanges,
+                    furiganaBySegmentLocation: furiganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
+                    textSize: textSize,
+                    lineSpacing: lineSpacing,
+                    kerning: kerning,
+                    isVisualEnhancementsEnabled: isVisualEnhancementsEnabled,
+                    isColorAlternationEnabled: isColorAlternationEnabled,
+                    isFuriganaVisible: isFuriganaVisible,
+                    isLineWrappingEnabled: isLineWrappingEnabled,
+                    isRubySpacingEnabled: isRubySpacingEnabled,
+                    evenSegmentColor: evenSegmentColor,
+                    oddSegmentColor: oddSegmentColor,
+                    unknownSegmentLocations: unknownSegmentLocations,
+                    isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                    unknownSegmentColor: unknownSegmentColor,
+                    isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
+                    unplayedDimmingLocation: unplayedDimmingLocation,
+                    unplayedAlpha: unplayedAlpha
+                )
             )
-        )
-        uiView.contentView.setAttributedString(output.attributedString)
-        // Hand the ruby entries + per-glyph metrics to the view so its draw pass can render
-        // each reading manually above its kanji rect.
+            uiView.contentView.setAttributedString(output.attributedString)
+            uiView.contentView.rubyEntries = isFuriganaVisible ? output.rubyEntries : []
+            uiView.lastTypographyFingerprint = typographyFingerprint
+        }
+
+        // baseTextSize / furiganaGap are cheap stored-property writes; they don't trigger
+        // a re-typeset on their own but downstream draw passes read them. Always set them
+        // so the renderer stays in sync even on the cached-typography path.
         uiView.contentView.baseTextSize = CGFloat(textSize)
         uiView.contentView.furiganaGap = isFuriganaVisible ? furiganaGap : 0
-        uiView.contentView.rubyEntries = isFuriganaVisible ? output.rubyEntries : []
         // Geometry is resolved by the SHARED RenderGeometry helper so this path produces
         // the same line origins as RichTextEditor — toggling edit↔view never moves a
         // character. The reserve for ruby is baked into the top inset (line 0) and the
@@ -263,27 +312,15 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
             // `setLineOriginShifts` exactly once per update. The layout-time path bypasses
             // updateUIView entirely and calls `applyCenteringShiftsIfNeeded` directly.
             shifts = uiView.computeCenteringShifts()
-        } else if isFuriganaVisible && isRubySpacingEnabled && furiganaBySegmentLocation.isEmpty == false {
-            let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
-            let widthShifts = KiokuWideRubyLineInset.shifts(
-                for: .init(
-                    lineStringStarts: uiView.contentView.layoutEngine.lines.map { $0.stringRange.location },
-                    segmentNSRanges: uiView.cachedSegmentNSRanges,
-                    readingByLocation: furiganaBySegmentLocation,
-                    baseFont: font,
-                    furiganaFont: furiganaFont,
-                    kanjiWidthOverrides: [:]
-                ),
-                sourceText: text
-            )
-            for (k, v) in widthShifts { shifts[k] = max(shifts[k] ?? 0, v) }
-            for (index, line) in uiView.contentView.layoutEngine.lines.enumerated() {
-                let bounds = CTLineGetImageBounds(line.line, nil)
-                if bounds.minX < 0 {
-                    shifts[index] = max(shifts[index] ?? 0, ceil(-bounds.minX))
-                }
-            }
         }
+        // Wide-ruby / envelope-vs-inset shifts were intentionally removed here. The previous
+        // logic pushed any line whose leading kanji had wider-than-kanji ruby to the right by
+        // the ruby's left overhang. Visually that created a gap between the kanji and the
+        // inset guide for every furigana-bearing line, while pure-kana lines (no overhang)
+        // continued to sit flush — an inconsistent and incorrect look. Standard Japanese
+        // typography sits the kanji at the inset and lets the ruby overhang into the margin
+        // (the debug inset-guide line is a visual aid; it does not bound the ruby annotation).
+        // Centering shifts above are unaffected.
         uiView.contentView.setLineOriginShifts(shifts)
 
         // Emit gap measurements to the unified log so the live app proves alignment
@@ -434,6 +471,12 @@ final class KiokuScrollingTextView: UIScrollView {
     // re-bridging Swift Range<String.Index> on every tap.
     var cachedSegmentNSRanges: [NSRange] = []
 
+    // Hash of the typography-affecting inputs handed to the attributed-string builder on the
+    // last successful build. updateUIView consults this to skip the build + setAttributedString
+    // chain (CT rebuilds the entire line block on every set) when only selection/highlight
+    // state changed — those don't enter the builder and don't need a re-typeset.
+    var lastTypographyFingerprint: Int?
+
     // Mirror of the representable's `textAlignment` so `layoutSubviews` can re-apply
     // centering shifts after a width change without depending on SwiftUI to re-fire
     // `updateUIView`. Set from `KiokuCoreTextRendererView.updateUIView` on every body
@@ -469,6 +512,12 @@ final class KiokuScrollingTextView: UIScrollView {
         addSubview(debugOverlay)
         backgroundColor = .clear
         contentInsetAdjustmentBehavior = .never
+        // UIScrollView defaults to delaying content touches by ~150ms so it can decide
+        // whether the gesture is a scroll. For the read view this turns every tap into
+        // a perceptible "lag" — the pan recognizer still claims real drags, so we lose
+        // nothing by delivering touches to the content view immediately.
+        delaysContentTouches = false
+        canCancelContentTouches = true
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         pinch.cancelsTouchesInView = false
         addGestureRecognizer(pinch)

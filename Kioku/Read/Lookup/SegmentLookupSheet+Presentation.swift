@@ -58,7 +58,15 @@ extension SegmentLookupSheet {
             self.segmentRangeProvider = segmentRangeProvider
             self.sheetLexiconDebugProvider = sheetLexiconDebugProvider
             self.sheetFrequencyProvider = sheetFrequencyProvider
-            self.refreshSheetSupplementalData()
+            // Initial supplemental data refresh runs ASYNC: the sheet presents immediately
+            // with whatever the providers haven't filled in yet (empty arrays / nil), and
+            // the per-section UI methods (updateMiddleContent etc.) run when the background
+            // refresh hops back to main. Visually: tap → sheet animates in instantly → a
+            // few hundred ms later the definitions/components populate. The previous
+            // synchronous path blocked the present for the full lookup duration (3–7s).
+            // We can't call sheetVC.update* here because sheetVC isn't constructed yet;
+            // the sheet's own viewDidLoad reads the current* properties at present time,
+            // and the async completion below re-runs the update methods once data arrives.
 
             let sheetVC = SurfaceSheetViewController(
                 surface: surface,
@@ -131,18 +139,30 @@ extension SegmentLookupSheet {
                     sheetVC.setSplitEditorVisible(false)
                 }
 
+                TapDiagnostics.mark("in-place update closure entered")
+                // Header text swaps synchronously so the user sees instant visual feedback
+                // (the tapped surface in the sheet header) while the dictionary lookups run.
                 sheetVC.updateCurrentSurface((
                     surface: updatedSurface,
                     leftNeighborSurface: updatedLeftNeighborSurface,
                     rightNeighborSurface: updatedRightNeighborSurface
                 ))
-                sheetVC.updateSheetPreferredHeight(animated: true)
-                self.refreshSheetSupplementalData()
-                sheetVC.updateReadingFurigana()
-                sheetVC.updateLemmaChain()
-                sheetVC.updateMiddleContent()
-                sheetVC.updateSaveButtonAppearance()
-                sheetVC.updateOpenDetailButtonAppearance()
+                TapDiagnostics.mark("updateCurrentSurface done (synchronous header update)")
+                // Heavy lookups run on a background queue. When they complete, hop back to
+                // main and refresh the rest of the sheet. We deliberately don't call
+                // updateSheetPreferredHeight here — detent animation reads like a dismiss/re-present.
+                self.refreshSheetSupplementalDataAsync { [weak sheetVC] in
+                    guard let sheetVC else { return }
+                    TapDiagnostics.mark("async refresh complete, applying to sheet UI")
+                    sheetVC.updateReadingFurigana()
+                    sheetVC.updateLemmaChain()
+                    sheetVC.updateMiddleContent()
+                    sheetVC.updateSaveButtonAppearance()
+                    sheetVC.updateOpenDetailButtonAppearance()
+                    TapDiagnostics.mark("sheet UI updates applied")
+                    TapDiagnostics.endTap("in-place update fully settled")
+                }
+                TapDiagnostics.mark("in-place update closure returning (refresh continues async)")
             }
 
             // Views aren't built yet (viewDidLoad fires on present); use fallback height.
@@ -153,6 +173,22 @@ extension SegmentLookupSheet {
             }
             presenter.present(sheetVC, animated: true)
             self.presentedSheetController = sheetVC
+
+            // Kick off the supplemental refresh AFTER present() so the sheet starts
+            // animating in immediately — the user sees motion ~16ms after the tap instead
+            // of waiting for dictionary work to finish. When the providers complete, the
+            // sheet's update* methods re-populate the dynamic sections.
+            self.refreshSheetSupplementalDataAsync { [weak sheetVC] in
+                guard let sheetVC else { return }
+                TapDiagnostics.mark("fresh-present: async refresh complete, applying to sheet UI")
+                sheetVC.updateReadingFurigana()
+                sheetVC.updateLemmaChain()
+                sheetVC.updateMiddleContent()
+                sheetVC.updateSaveButtonAppearance()
+                sheetVC.updateOpenDetailButtonAppearance()
+                TapDiagnostics.mark("fresh-present: sheet UI updates applied")
+                TapDiagnostics.endTap("fresh-present fully settled")
+            }
         }
     }
 }

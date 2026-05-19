@@ -73,6 +73,11 @@ struct ReadView: View {
     @State var isEditMode = false
     @State var isSheetSwipeTransitionActive = false
     @State var sharedScrollOffsetY: CGFloat = 0
+    // Extra contentInset.bottom currently injected into the read scroll view so the lookup
+    // sheet can keep the selected segment visible even when it sits past the natural bottom
+    // of the note. Tracked here so dismissal removes exactly what was added, regardless of
+    // any other inset changes the scroll view's owner might have made in the meantime.
+    @State var appliedSheetBottomInset: CGFloat = 0
     @State var isShowingSegmentList = false
     @State var isShowingDisplayOptions = false
     @State var isShowingFileImporter = false
@@ -692,11 +697,13 @@ struct ReadView: View {
                             rubyLineNumbers: debugRubyLineNumbers
                         ),
                         illegalMergeLocation: illegalMergeBoundaryLocation,
-                        onSegmentTapped: { location, rect in
-                            // The CoreText path doesn't ship a UITextView reference; lookup-sheet
-                            // popover anchoring will fall back to a default. Selection state and
-                            // dismissal still route through the shared handler unchanged.
-                            handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: nil)
+                        onSegmentTapped: { location, rect, scrollView in
+                            // The CoreText path forwards its underlying KiokuScrollingTextView so
+                            // the sheet-visibility scroll helpers (contentInset.bottom for
+                            // overscroll, contentOffset adjust) can run against the same scroll
+                            // view that owns the rendered text. UIScrollView is a superclass of
+                            // UITextView, so handleReadModeSegmentTap accepts either path.
+                            handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: scrollView)
                         }
                     )
                     .opacity(isEditMode ? 0 : 1)

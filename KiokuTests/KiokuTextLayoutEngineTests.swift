@@ -181,17 +181,46 @@ final class KiokuTextLayoutEngineTests: XCTestCase {
     }
 
     // Companion: the small tolerance still lets sub-pixel-edge taps on the LAST glyph
-    // hit through. Without this, taps that happen to land 0.5pt past the line's
-    // measured width would also drop, which would feel like dead zones on word ends.
+    // hit through. Without this, taps that happen to land just past the line's measured
+    // width would also drop, which would feel like dead zones on word ends.
     func test_characterIndex_atPoint_withinSlopOfRightEdgeStillReturnsIndex() {
         let engine = makeEngine("abc", width: 400)
         guard let line = engine.lines.first else { return XCTFail("Expected line") }
         let probe = CGPoint(
-            x: line.origin.x + line.width + 1,  // 1pt past width, within 2pt slop
+            x: line.origin.x + line.width + 4,  // within the horizontal slop band
             y: line.origin.y + line.height * 0.5
         )
         XCTAssertNotNil(engine.characterIndex(at: probe),
             "Sub-pixel slop beyond the right edge should still resolve to the last character.")
+    }
+
+    // Y-axis slop. With multiple lines the engine should snap a tap that lands in the
+    // inter-line gap to the closer line. Without this, taps in the gap silently fail and
+    // the user has to re-aim — the second-most-common cause of perceived unresponsiveness
+    // (the first being missed segment boundaries on the X axis).
+    func test_characterIndex_atPoint_inInterLineGapSnapsToNearestLine() {
+        let engine = makeEngine("the quick brown fox jumps over the lazy dog", width: 60)
+        guard engine.lines.count >= 2 else { return XCTFail("Expected ≥2 lines") }
+        let line0 = engine.lines[0]
+        let line1 = engine.lines[1]
+        let gapMidY = (line0.origin.y + line0.height + line1.origin.y) / 2
+        let probe = CGPoint(x: line0.origin.x + line0.width * 0.5, y: gapMidY)
+        XCTAssertNotNil(
+            engine.characterIndex(at: probe),
+            "Tap in the inter-line gap must snap to the nearest line, not return nil."
+        )
+    }
+
+    // Y-axis slop boundary. Taps far above the first line (well past the slop) must still
+    // return nil — the goal is to forgive sub-line slop, not to make all empty space tappable.
+    func test_characterIndex_atPoint_farAboveFirstLineReturnsNil() {
+        let engine = makeEngine("abc", width: 400)
+        guard let line = engine.lines.first else { return XCTFail("Expected line") }
+        let probe = CGPoint(x: line.origin.x + 4, y: line.origin.y - 50)
+        XCTAssertNil(
+            engine.characterIndex(at: probe),
+            "Tap well above the first line must not snap onto it."
+        )
     }
 
     // MARK: - Per-line origin shift (wide-ruby line-start inset replacement)

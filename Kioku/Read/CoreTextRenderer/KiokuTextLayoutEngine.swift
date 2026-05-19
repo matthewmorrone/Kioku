@@ -394,6 +394,40 @@ final class KiokuTextLayoutEngine {
         return rects
     }
 
+    // Tap target padding. The character resolver applies these symmetrically around each
+    // line's typographic box: 6pt horizontal soaks up segment-boundary slop on dense kana
+    // lines without re-introducing "tap empty margin, snap to the nearest word"; 6pt vertical
+    // catches taps that fall in the inter-line gap between consecutive lines. Both kept well
+    // under half the minimum inter-line distance so adjacent-line slop bands can't overlap.
+    private let hitTestHorizontalSlop: CGFloat = 6
+    private let hitTestVerticalSlop: CGFloat = 6
+
+    // Returns the line whose typographic box contains `y`, or the nearest one within
+    // `hitTestVerticalSlop`. Generic over the line-shaped collection because both the
+    // standard `lines` and the packed `packedLines` need the same selection logic.
+    private func nearestLine<Line>(
+        toY y: CGFloat,
+        in lines: [Line],
+        lineY: (Line) -> CGFloat,
+        lineHeight: (Line) -> CGFloat
+    ) -> Line? {
+        if let containing = lines.first(where: { y >= lineY($0) && y < lineY($0) + lineHeight($0) }) {
+            return containing
+        }
+        var bestLine: Line?
+        var bestDistance: CGFloat = .greatestFiniteMagnitude
+        for line in lines {
+            let top = lineY(line)
+            let bottom = top + lineHeight(line)
+            let distance: CGFloat = y < top ? (top - y) : (y - bottom)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestLine = line
+            }
+        }
+        return bestDistance <= hitTestVerticalSlop ? bestLine : nil
+    }
+
     // Maps a point in renderer coordinates to its UTF-16 character index. Returns nil when
     // the point falls outside the laid-out content area OR past a line's actual content
     // (right margin, indent area, etc.) — without this strict X clamp, CTLineGetStringIndex
@@ -401,26 +435,32 @@ final class KiokuTextLayoutEngine {
     // which makes selection-clearing impossible: the host can't tell "tapped a word" from
     // "tapped past the last word."
     //
-    // The 2pt tolerance on either side absorbs sub-pixel slop on the segment boundary
-    // gesture without re-introducing the "clicks empty space, selects nearest word" bug.
+    // X-axis slop absorbs sub-pixel boundary slop on the segment boundary gesture without
+    // re-introducing the "clicks empty space, selects nearest word" bug. Y-axis slop catches
+    // taps that land in the inter-line gap, snapping them to the nearest line — without it,
+    // every tap between lines silently fails and the user has to re-aim.
     func characterIndex(at point: CGPoint) -> Int? {
         // Segment-packed mode: hit-test against placements directly. Y picks the line, X
         // picks the placement whose footprint contains the point.
         if isSegmentPackingEnabled {
             return packedCharacterIndex(at: point)
         }
-        // Y must fall inside some line's typographic box.
-        guard let line = lines.first(where: { point.y >= $0.origin.y && point.y < $0.origin.y + $0.height }) else {
+        // Y: prefer a line whose typographic box contains the point; otherwise accept the
+        // closest line if the tap is within `hitTestVerticalSlop` of its top/bottom edge.
+        // Anything farther stays nil so taps far above/below the text don't select.
+        guard let line = nearestLine(toY: point.y, in: lines, lineY: { $0.origin.y }, lineHeight: { $0.height }) else {
             return nil
         }
-        // X must fall inside the line's actual content rectangle (origin → origin + width).
-        // CTLineGetStringIndexForPosition will happily return the last-glyph index for a
-        // point well past the right edge; that's the regression source.
-        let slop: CGFloat = 2
-        let minX = line.origin.x - slop
-        let maxX = line.origin.x + line.width + slop
+        // X must fall inside the line's actual content rectangle (origin → origin + width),
+        // with a small slop on either side. CTLineGetStringIndexForPosition will happily
+        // return the last-glyph index for a point well past the right edge; the clamp blocks
+        // that. We also clamp the point's X into the line interior before forwarding so a
+        // tap inside the slop band still resolves to the actual edge character.
+        let minX = line.origin.x - hitTestHorizontalSlop
+        let maxX = line.origin.x + line.width + hitTestHorizontalSlop
         guard point.x >= minX, point.x <= maxX else { return nil }
-        let localPoint = CGPoint(x: point.x - line.origin.x, y: point.y - line.origin.y)
+        let clampedX = min(max(point.x, line.origin.x), line.origin.x + line.width)
+        let localPoint = CGPoint(x: clampedX - line.origin.x, y: 0)
         let index = CTLineGetStringIndexForPosition(line.line, localPoint)
         guard index != kCFNotFound else { return nil }
         return index
@@ -430,13 +470,12 @@ final class KiokuTextLayoutEngine {
     // placement whose footprint X range contains `point.x`. Within the segment, returns
     // the character index at the local X via CTLineGetStringIndexForPosition.
     private func packedCharacterIndex(at point: CGPoint) -> Int? {
-        guard let line = packedLines.first(where: { point.y >= $0.originY && point.y < $0.originY + $0.height }) else {
+        guard let line = nearestLine(toY: point.y, in: packedLines, lineY: { $0.originY }, lineHeight: { $0.height }) else {
             return nil
         }
         let placementsOnLine = segmentPlacements.filter { $0.lineIndex == line.lineIndex }
-        let slop: CGFloat = 2
         guard let placement = placementsOnLine.first(where: {
-            point.x >= $0.originX - slop && point.x < $0.originX + $0.footprintWidth + slop
+            point.x >= $0.originX - hitTestHorizontalSlop && point.x < $0.originX + $0.footprintWidth + hitTestHorizontalSlop
         }) else { return nil }
         // Translate point.x into the segment's headword-local X. Headword sits offset
         // INTO the footprint by leftOverhang so ruby on the leftmost kanji fits.

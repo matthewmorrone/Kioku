@@ -11,6 +11,16 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     private weak var presentedController: UIViewController?
     weak var presentedSheetController: UIViewController?
     private var isPreparingSheetDismissal = false
+    // Serial queue dedicated to running the synchronous Lexicon / DictionaryStore providers
+    // off the main thread. Serial (not concurrent) so that we don't pile up overlapping
+    // dictionary traversals when the user taps in quick succession — each tap's work runs
+    // in order, and the generation counter lets late results detect that they're stale.
+    let providerQueue = DispatchQueue(label: "Kioku.SegmentLookupSheet.providers")
+    // Incremented on every refresh request. The background block captures the generation
+    // it was scheduled at and only writes `currentSheet*` properties when the captured
+    // value still matches — this is how a fast second tap throws away the first tap's
+    // results instead of letting them overwrite the now-correct sheet.
+    var refreshGeneration: Int = 0
     var onDismiss: (() -> Void)?
     var onWillDismiss: ((@escaping () -> Void) -> Void)?
     var onReadingSelected: ((String) -> Void)?
@@ -222,6 +232,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         onWillDismiss: ((@escaping () -> Void) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
+        TapDiagnostics.mark("presentSheet entered (hasActive=\(hasActivePresentedSheetController), hasUpdater=\(updatePresentedSheetSelection != nil))")
         if hasActivePresentedSheetController == false, updatePresentedSheetSelection != nil {
             presentedSheetController = nil
             isPreparingSheetDismissal = false
@@ -242,6 +253,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.sheetWordComponentsProvider = sheetWordComponentsProvider
         self.sheetCompoundComponentsProvider = sheetCompoundComponentsProvider
         if let updatePresentedSheetSelection, hasActivePresentedSheetController {
+            TapDiagnostics.mark("presentSheet: taking IN-PLACE update path")
             self.onDismiss = onDismiss
             self.onWillDismiss = onWillDismiss
             updatePresentedSheetSelection(
@@ -260,9 +272,11 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
                 sheetFrequencyProvider,
                 onDismiss
             )
+            TapDiagnostics.mark("presentSheet: in-place update returned")
             return
         }
 
+        TapDiagnostics.mark("presentSheet: taking FRESH-PRESENT path (this is normal on first tap)")
         self.onDismiss = onDismiss
         presentSurfaceSheet(
             surface: surface,

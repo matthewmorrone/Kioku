@@ -315,7 +315,9 @@ extension ReadView {
     }
 
     // Updates selection state and shows a UIKit popover with the highest-priority dictionary definition for the tapped segment.
-    func handleReadModeSegmentTap(_ tappedSegmentLocation: Int?, tappedSegmentRect: CGRect?, sourceView: UITextView?) {
+    func handleReadModeSegmentTap(_ tappedSegmentLocation: Int?, tappedSegmentRect: CGRect?, sourceView: UIScrollView?) {
+        TapDiagnostics.mark("handleReadModeSegmentTap entered")
+        defer { TapDiagnostics.mark("handleReadModeSegmentTap returning") }
         // If the tapped segment has a pending LLM change, show what changed instead of the lookup sheet.
         if let tappedSegmentLocation,
            let changeDescription = pendingLLMChangesByLocation[tappedSegmentLocation] {
@@ -363,7 +365,9 @@ extension ReadView {
                 presentNestedLemmaLookup(lemma: lemma, gloss: gloss)
             }
 
+            TapDiagnostics.mark("about to preScroll")
             preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: tappedSegmentRect)
+            TapDiagnostics.mark("preScroll returned, about to presentSheet")
             SegmentLookupSheet.shared.presentSheet(
                 surface: segmentSurface,
                 leftNeighborSurface: adjacentSurfaces.left,
@@ -371,9 +375,9 @@ extension ReadView {
                 onSelectPrevious: {
                     isSheetSwipeTransitionActive = true
                     let outcome = moveSelectedSegmentSelection(isMovingForward: false)
-                    if let sourceView,
+                    if let textView = sourceView as? UITextView,
                        let selectedSegmentLocation,
-                       let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: sourceView, selectedLocation: selectedSegmentLocation) {
+                       let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: textView, selectedLocation: selectedSegmentLocation) {
                         preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
                             Task { @MainActor in
                                 await Task.yield()
@@ -392,9 +396,9 @@ extension ReadView {
                 onSelectNext: {
                     isSheetSwipeTransitionActive = true
                     let outcome = moveSelectedSegmentSelection(isMovingForward: true)
-                    if let sourceView,
+                    if let textView = sourceView as? UITextView,
                        let selectedSegmentLocation,
-                       let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: sourceView, selectedLocation: selectedSegmentLocation) {
+                       let selectedSegmentRect = selectedSegmentRectInTextView(sourceView: textView, selectedLocation: selectedSegmentLocation) {
                         preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
                             Task { @MainActor in
                                 await Task.yield()
@@ -419,21 +423,36 @@ extension ReadView {
                 onSplitApply: { splitOffset in
                     applySplitSelection(offsetUTF16: splitOffset)
                 },
+                // Readings come from the in-memory `surfaceReadingData` map (built once at
+                // startup, no SQL). Inflected forms fall back to the segmenter's pre-computed
+                // lemma — also in-memory. No deinflection traversal at hit-test.
                 sheetReadingsProvider: {
-                    uniqueReadingsForCurrentSelectedKanjiSegment()
+                    let surface = currentSelectedSurface() ?? ""
+                    if let data = surfaceReadingData[surface], data.readings.isEmpty == false {
+                        return data.readings
+                    }
+                    if let lemma = segmenter.preferredLemma(for: surface),
+                       let lemmaData = surfaceReadingData[lemma] {
+                        return lemmaData.readings
+                    }
+                    return []
                 },
+                // Sublattice is from pre-computed in-memory lattice edges — fast.
                 sheetSublatticeProvider: {
                     sublatticeEdgesForCurrentSelectedSegment()
                 },
                 segmentRangeProvider: {
                     currentMergedSelectionNSRange()
                 },
-                sheetLexiconDebugProvider: {
-                    lexiconDebugInfoForCurrentSelectedSegment()
-                },
+                sheetLexiconDebugProvider: { "" },
+                // Frequency is keyed by surface in the pre-built in-memory map. Skip the
+                // Lexicon-based lemma fallback (deinflection) — Breakdown handles that.
                 sheetFrequencyProvider: {
-                    frequencyRankForCurrentSelectedSegment()
+                    guard let surface = currentSelectedSurface() else { return nil }
+                    return surfaceReadingData[surface]?.frequencyByReading
                 },
+                // Lemma info uses Lexicon.inflectionInfo which is now SQL-free thanks to
+                // the in-memory surface→POS-bits map. Restored from the deferred state.
                 sheetLemmaInfoProvider: {
                     lemmaInfoForCurrentSelectedSegment()
                 },
@@ -489,20 +508,9 @@ extension ReadView {
                     let paths = LatticeEdge.validPaths(from: SegmentLookupSheet.shared.currentSheetSublatticeEdges)
                     onOpenWordDetail?(entry.entryId, surface, reading, paths)
                 },
-                sheetWordComponentsProvider: {
-                    guard let surface = currentSelectedSurface() else { return nil }
-                    let edges = segmenter.longestMatchEdges(for: surface)
-                    guard edges.count > 1 else { return nil }
-                    return edges.compactMap { edge -> (String, String?)? in
-                        let entries = try? dictionaryStore?.lookup(surface: edge.surface, mode: .kanjiAndKana)
-                        let gloss = entries?.first?.senses.first?.glosses.first
-                        return (edge.surface, gloss)
-                    }
-                },
-                sheetCompoundComponentsProvider: {
-                    guard let surface = currentSelectedSurface() else { return nil }
-                    return lexicon?.compoundVerbComponents(surface: surface)
-                },
+                // Deferred to Breakdown expansion (see sheetReadingsProvider comment).
+                sheetWordComponentsProvider: { nil },
+                sheetCompoundComponentsProvider: { nil },
                 onWillDismiss: { completion in
                     restoreScrollAfterSheetDismissal(sourceView: sourceView, completion: completion)
                 },
@@ -611,15 +619,24 @@ extension ReadView {
     // as the Words-tab route so the sheet button state matches the actual open behavior.
     private func resolvedDictionaryEntryForCurrentSelectedSegment() -> DictionaryEntry? {
         guard let store = dictionaryStore else { return nil }
-
-        for candidate in currentSelectedLookupCandidates() {
-            let lookupMode: LookupMode = ScriptClassifier.containsKanji(candidate) ? .kanjiAndKana : .kanaOnly
-            if let entry = try? store.lookup(surface: candidate, mode: lookupMode).first {
-                return entry
-            }
+        guard let surface = currentSelectedSurface() else { return nil }
+        let lookupMode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
+        // Try the tapped surface directly — typically one logical lookup.
+        if let entry = try? store.lookup(surface: surface, mode: lookupMode).first {
+            return entry
         }
-
-        return nil
+        // Inflected-form fallback. Use Lexicon's deinflector, NOT the segmenter, because the
+        // segmenter is MeCab-based and picks a homograph lemma in cases like 合える
+        // (potential form of 合う): MeCab returns 和える "to dress (vegetables)" which is the
+        // wrong word entirely. Lexicon's deinflector follows JMdict-grounded inflection rules
+        // and correctly produces 合う. The expensive part of Lexicon was the per-candidate
+        // SQL gating; that's now backed by the in-memory POS-bits map, so this call is
+        // pure CPU + hashtable lookups.
+        guard let lemma = lexicon?.inflectionInfo(surface: surface)?.lemma, lemma != surface else {
+            return nil
+        }
+        let lemmaMode: LookupMode = ScriptClassifier.containsKanji(lemma) ? .kanjiAndKana : .kanaOnly
+        return (try? store.lookup(surface: lemma, mode: lemmaMode))?.first
     }
 
     // Builds de-duplicated lookup candidates in priority order: tapped surface first, then lemma fallback.

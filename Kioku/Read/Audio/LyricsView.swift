@@ -472,9 +472,11 @@ struct LyricsView: View {
                         unknownSegmentColor: .label,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
-                        onSegmentTapped: { localLocation, rect in
+                        onSegmentTapped: { localLocation, rect, _ in
                             // Renderer hands back a cue-local UTF-16 location; translate to
-                            // global noteText coords for parent consumers.
+                            // global noteText coords for parent consumers. The scroll-view ref
+                            // from the renderer is dropped because LyricsView routes through
+                            // its parent (which holds the UITextView it actually anchors to).
                             let globalLocation = localLocation.map { $0 + cueOriginInNote }
                             onSegmentTapped(globalLocation, rect, nil)
                         },

@@ -91,6 +91,22 @@ final class LexiconTests: XCTestCase {
         XCTAssertEqual(components?.map { $0.lemma }, ["夢", "を", "見る"])
     }
 
+    // Native verbs whose stems literally contain が or を (翻す ひるがえす, 流す ながす) must not
+    // be split into "phrase morphemes" by the case-particle decomposer. The guard checks that
+    // the surface's lemma is a known verb entry before falling through to phrasal splitting.
+    func testVerbContainingCaseParticleKanaIsNotPhrasallyDecomposed() throws {
+        let surface = try lexiconSurface()
+
+        XCTAssertNil(
+            surface.compoundVerbComponents(surface: "ひるがえして"),
+            "ひるがえして deinflects to the single verb 翻す/ひるがえす and must not be split on が"
+        )
+        XCTAssertNil(
+            surface.compoundVerbComponents(surface: "ひるがえす"),
+            "ひるがえす is a single dictionary verb; the embedded が is part of the stem"
+        )
+    }
+
     // Verifies lexeme lookup by lemma and reading returns at least one matching dictionary entry.
     func testLookupLexemeReturnsEntriesForLemmaAndReading() throws {
         let surface = try lexiconSurface()

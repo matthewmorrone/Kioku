@@ -13,6 +13,14 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     // hashtable hits over this map after Swift-side variant expansion.
     var canonicalEntryIDMap: [String: Int64] = [:]
 
+    // Surface → OR-ed POS bits across every sense of every entry that has this surface
+    // as either a kanji form or a kana form. Populated once at app start by
+    // populateSurfacePOSBitsMap() and read-only thereafter. Lets Lexicon's deinflection
+    // pruning (admittedLemmasAndPaths, compoundVerbComponents) run entirely in-memory
+    // instead of issuing SQL per candidate. Memory cost is tiny (~8 bytes per entry
+    // plus the shared keys with canonicalEntryIDMap).
+    var surfacePOSBitsMap: [String: UInt64] = [:]
+
     // Resolves and opens the bundled dictionary database by resource name.
     public convenience init(
         databaseName: String = "dictionary",
@@ -286,19 +294,26 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         let posBoostTier: String
         if matchKana && !matchKanji {
             posBoostTier = """
-                -- Tier 1: particle / functional-word entries first for kana surface lookups.
-                -- An entry whose POS tag list contains 'prt' (particle), 'cop' (copula), or
-                -- 'aux' (auxiliary) is functional grammar — exactly what users mean when they
-                -- tap bare hiragana like の, は, が, も. Many particles ALSO carry archaic
-                -- kanji forms (の: 乃/之; が: 我), so the has_kanji=0 test alone can't catch
-                -- them; the POS tag is the reliable signal. ',?' regex-ish matching via LIKE
-                -- since pos is a comma-joined tag list.
+                -- Tier 1: particle / functional-word / demonstrative entries first for kana
+                -- surface lookups. POS tags that qualify:
+                --   prt  (particle: は, が, を, …)
+                --   cop  (copula: だ)
+                --   aux  (auxiliary: ない, られる, …; also aux-v, aux-adj prefixes)
+                --   adj-pn (pre-noun adjectival: この, その, あの, どの, etc.)
+                -- adj-pn was added after a tap on その resolved to 園 ("garden; orchard; park")
+                -- because 園 has kana form その and adj-pn wasn't yet in the boost list. The
+                -- demonstrative その entry is kana-only (has_kanji=0) and would normally win
+                -- via the has_kanji tier — but only when the kanji entry doesn't share the
+                -- same reading. JMdict has many such collisions (この vs 此, その vs 園, あの
+                -- vs 彼の, etc.), and the user always wants the demonstrative.
+                -- ',?' regex-ish matching via LIKE since pos is a comma-joined tag list.
                 CASE WHEN EXISTS (
                     SELECT 1 FROM senses s2 WHERE s2.entry_id = e.id
                     AND (s2.pos = 'prt' OR s2.pos LIKE 'prt,%' OR s2.pos LIKE '%,prt,%' OR s2.pos LIKE '%,prt'
                       OR s2.pos = 'cop' OR s2.pos LIKE 'cop,%' OR s2.pos LIKE '%,cop,%' OR s2.pos LIKE '%,cop'
                       OR s2.pos = 'aux' OR s2.pos LIKE 'aux,%' OR s2.pos LIKE '%,aux,%' OR s2.pos LIKE '%,aux'
-                      OR s2.pos LIKE 'aux-%' OR s2.pos LIKE '%,aux-%')
+                      OR s2.pos LIKE 'aux-%' OR s2.pos LIKE '%,aux-%'
+                      OR s2.pos = 'adj-pn' OR s2.pos LIKE 'adj-pn,%' OR s2.pos LIKE '%,adj-pn,%' OR s2.pos LIKE '%,adj-pn')
                 ) THEN 0 ELSE 1 END ASC,
             """
         } else {
