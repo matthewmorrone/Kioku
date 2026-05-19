@@ -164,7 +164,13 @@ nonisolated public final class Lexicon {
     // steps. Returns the main lemma and each detected auxiliary as (lemma, first gloss) pairs, or nil
     // when the surface is not a compound verb.
     // For example, 消えてゆく → [(消える, "to disappear"), (行く, "to go")]
+    // For phrasal surfaces containing case particles (夢を見てる, 手が届く), returns a morpheme-level
+    // breakdown instead — the deinflection chain treating the trailing verb suffix as an auxiliary
+    // would otherwise misreport the phrase as a verb compound (夢を見る + る "verb-forming suffix").
     public func compoundVerbComponents(surface: String) -> [(lemma: String, gloss: String?)]? {
+        if let phrasal = phrasalComponentsForCaseParticleSurface(surface) {
+            return phrasal
+        }
         let (entries, pathsByLemma) = admittedLemmasAndPaths(for: surface)
         guard let best = entries.first else { return nil }
         guard let transitions = deinflector.bestTransitions(from: pathsByLemma, targetLemma: best.lemma),
@@ -239,6 +245,41 @@ nonisolated public final class Lexicon {
         var result: [(lemma: String, gloss: String?)] = [(lemma: best.lemma, gloss: mainGloss)]
         result.append(contentsOf: auxiliaries)
         return result
+    }
+
+    // Case particles を and が never appear inside a single-word verb conjugation; their presence
+    // signals the surface is a phrase (noun + particle + verb) being looked up as one segment.
+    // Splits the surface at these characters and returns morpheme-level components, deinflecting
+    // the verbal portion to its dictionary form (見てる → 見る). Returns nil when the surface
+    // contains no case particle so callers fall through to verb-compound detection.
+    private func phrasalComponentsForCaseParticleSurface(_ surface: String) -> [(lemma: String, gloss: String?)]? {
+        let caseParticles: Set<Character> = ["を", "が"]
+        guard surface.contains(where: { caseParticles.contains($0) }) else { return nil }
+
+        var tokens: [String] = []
+        var pendingToken = ""
+        for character in surface {
+            if caseParticles.contains(character) {
+                if pendingToken.isEmpty == false {
+                    tokens.append(pendingToken)
+                    pendingToken = ""
+                }
+                tokens.append(String(character))
+            } else {
+                pendingToken.append(character)
+            }
+        }
+        if pendingToken.isEmpty == false {
+            tokens.append(pendingToken)
+        }
+        guard tokens.count > 1 else { return nil }
+
+        let components: [(lemma: String, gloss: String?)] = tokens.map { token in
+            let lemma = inflectionInfo(surface: token)?.lemma ?? token
+            let gloss = lookupEntries(for: lemma).first?.senses.first?.glosses.first
+            return (lemma: lemma, gloss: gloss)
+        }
+        return components
     }
 
     // Returns lexeme candidates matching one lemma and optional reading filter.
@@ -492,6 +533,18 @@ nonisolated public final class Lexicon {
         return deinflector.inflectionChain(from: pathsByLemma, targetLemma: best.lemma)
     }
 
+    // Returns the union of JMdict POS bits across every sense of every entry matching the surface.
+    // Returns 0 when the surface has no dictionary entries.
+    private func posBits(for surface: String) -> UInt64 {
+        var bits: UInt64 = 0
+        for entry in lookupEntries(for: surface) {
+            for sense in entry.senses {
+                bits |= PartOfSpeech.bits(from: sense.pos)
+            }
+        }
+        return bits
+    }
+
     // Resolves dictionary entries for one surface using script-aware lookup mode selection.
     private func lookupEntries(for surface: String) -> [DictionaryEntry] {
         guard let dictionaryStore else {
@@ -595,6 +648,22 @@ nonisolated public final class Lexicon {
             (lemma: lemmaString, depth: pathsByLemma[lemmaString]?.map { $0.chain.count }.min() ?? 0)
         }
 
+        // POS-validity gate. Every deinflection rule's `kanaOut` terminates at a verb stem
+        // (う, く, つ, る, …) or an adj-i ending (い), so every depth>0 candidate must, by
+        // construction, be a verb or adjective in JMdict. When the candidate has JMdict
+        // entries but none carry a verb/adjective POS, the chain that produced it is a
+        // structural coincidence: the godan past rule kanaIn=った/kanaOut=う happens to
+        // produce たう, which JMdict knows only as the noun 多雨 ("heavy rain"). Drop those.
+        // Candidates with no JMdict entry at all are left alone — downstream lookup will
+        // fall back to surface display rather than misattribute meaning.
+        let validInflectableBits = PartOfSpeech.verb.bit | PartOfSpeech.adjective.bit
+        entries.removeAll { entry in
+            guard entry.depth > 0 else { return false }
+            let candidatePOSBits = posBits(for: entry.lemma)
+            guard candidatePOSBits != 0 else { return false }
+            return (candidatePOSBits & validInflectableBits) == 0
+        }
+
         // Decide whether the surface is "definitely an inflected form" (in which case its
         // self-as-lemma candidate is noise) or "a lemma in its own right" (in which case any
         // deinflected candidates are coincidental and must not shadow it).
@@ -626,26 +695,24 @@ nonisolated public final class Lexicon {
             }
         }()
 
+        let preferredLemma = segmenter.preferredLemma(for: trimmedSurface)
+        // The segmenter says the surface IS its own base form (e.g. adverbs たった, ずっと, きっと):
+        // preserve the surface against any surviving spurious deinflection candidates.
+        let surfaceIsItsOwnLemma = preferredLemma == trimmedSurface
+
         if surfaceIsExpressionLemma {
+            // JMdict marks the surface as an expression idiom — purge all deinflected candidates
+            // and ensure the surface itself is present as a depth-0 lemma.
             entries.removeAll { $0.depth > 0 }
             if entries.contains(where: { $0.lemma == trimmedSurface }) == false {
                 entries.append((lemma: trimmedSurface, depth: 0))
             }
-        } else if entries.contains(where: { $0.depth > 0 }) {
+        } else if entries.contains(where: { $0.depth > 0 }) && surfaceIsItsOwnLemma == false {
+            // Surface deinflects to something genuine and MeCab doesn't confirm it as a lemma —
+            // treat surface as inflected and drop its self-entry.
             entries.removeAll { $0.lemma == trimmedSurface }
         }
 
-        // Sort by preferredLemma first, then by depth descending.
-        let preferredLemma = segmenter.preferredLemma(for: trimmedSurface)
-
-        // When deinflected candidates exist the surface is typically an inflected form — remove it.
-        // EXCEPTION: when the segmenter confirms the surface IS its own base form (e.g. adverbs
-        // like たった, ずっと, きっと), preserve it. The godan past-tense rule kanaIn=った/kanaOut=う
-        // otherwise spuriously promotes たう (多雨, "heavy rain") above the genuine adverb entry.
-        let surfaceIsItsOwnLemma = preferredLemma == trimmedSurface
-        if entries.contains(where: { $0.depth > 0 }) && surfaceIsItsOwnLemma == false {
-            entries.removeAll { $0.lemma == trimmedSurface }
-        }
         entries.sort { lhs, rhs in
             if preferredLemma == lhs.lemma && preferredLemma != rhs.lemma { return true }
             if preferredLemma == rhs.lemma && preferredLemma != lhs.lemma { return false }

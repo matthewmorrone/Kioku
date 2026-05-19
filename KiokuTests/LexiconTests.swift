@@ -53,7 +53,8 @@ final class LexiconTests: XCTestCase {
     }
 
     // Adverbs whose surface happens to match a godan past-tense pattern (った→う) must not be
-    // displaced by spurious deinflection candidates like たう (多雨, "heavy rain").
+    // displaced by spurious deinflection candidates like たう (多雨, "heavy rain") — the lemma
+    // is a noun in JMdict and so cannot validly terminate a verb-deinflection chain.
     func testAdverbSurfaceWinsOverSpuriousDeinflection() throws {
         let surface = try lexiconSurface()
 
@@ -63,6 +64,31 @@ final class LexiconTests: XCTestCase {
             surface.compoundVerbComponents(surface: "たった"),
             "Adverb たった must not be reported as a compound verb"
         )
+    }
+
+    // Set-phrase いつだって ("anytime, always") must not be reanalyzed as a verb-conjugation
+    // chain, even if MeCab tokenizes it into multiple morphemes.
+    func testSetPhraseSurfaceWinsOverSpuriousDeinflection() throws {
+        let surface = try lexiconSurface()
+
+        let info = surface.inflectionInfo(surface: "いつだって")
+        XCTAssertEqual(info?.lemma, "いつだって")
+        XCTAssertNil(
+            surface.compoundVerbComponents(surface: "いつだって"),
+            "いつだって must not be reported as a compound verb"
+        )
+    }
+
+    // Phrasal surfaces containing case particles (夢を見てる) must decompose into noun + particle +
+    // verb-lemma rather than verb-compound + auxiliary suffix. The trailing てる happens to satisfy
+    // a te-form deinflection rule, so without this guard the lookup reports 夢を見る + る ("verb-
+    // forming suffix") as a compound — confusing because the actual structure is a phrase.
+    func testPhrasalSurfaceWithCaseParticleDecomposes() throws {
+        let surface = try lexiconSurface()
+
+        let components = surface.compoundVerbComponents(surface: "夢を見てる")
+        XCTAssertNotNil(components)
+        XCTAssertEqual(components?.map { $0.lemma }, ["夢", "を", "見る"])
     }
 
     // Verifies lexeme lookup by lemma and reading returns at least one matching dictionary entry.
