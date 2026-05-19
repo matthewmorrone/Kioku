@@ -23,13 +23,20 @@ enum SongBreakdownPrompt {
         - [repeat for each meaningful word/morpheme]
         - [skip pure case particles like を/が/に unless they do something interesting]
 
-        **Gist:** [natural English rendering of the whole line]
+        **Gist:** [natural English rendering of the whole line — interpreted IN CONTEXT of the entire song]
 
         [Optional: one short pattern-to-bank note if the line introduces a grammar pattern worth memorizing — literary negatives (〜ず), te-form chains, stem-form continuatives, mimetic + と, furigana mismatches, 〜ゆく vs 〜いく, classical attributive なる, etc. Skip if nothing new.]
 
         ---
 
         ## Rules
+
+        0. **Read the entire song before writing any gist.** Each gist must reflect the song's voice, addressee, established imagery, tense/aspect, and the meaning the line carries at *its specific position* in the narrative. Concretely:
+           - Resolve dropped subjects/objects against the participants the song has established by that point — not as a generic "someone/something."
+           - A bare noun-phrase line ("夕凪の時間", "化石ムーンフラグメント") is part of a longer thought continued by adjacent lines; render it as a clause that fits the surrounding sentence, not as an orphan fragment.
+           - Use proper nouns and loanword referents (e.g. Chénon, Aurore, Lumière) consistently across lines once introduced. Do not retranslate them differently in different gists.
+           - When a chorus line recurs with different surrounding imagery, the gist may shade differently the second time even if the Japanese is identical — note this in the optional pattern-bank line for that occurrence.
+           - Maintain tense/aspect and register across the song; a song that is consistently past-reflective should not flip to abstract present in one line.
 
         1. **Line splits**: Use the exact line breaks from the source. Do not split or merge lines.
 

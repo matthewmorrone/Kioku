@@ -48,6 +48,12 @@ final class SongBreakdownStore: ObservableObject {
     // the non-published memo, then disk (faulting into memo on hit). Never mutates the
     // @Published cache so it can be called from SwiftUI view bodies without producing the
     // "publishing changes from within view updates" warning.
+    //
+    // Self-heal: any value pulled from disk goes through `SongBreakdownRecovery` before it
+    // lands in the memo. Breakdowns produced by the pre-fix parser had the whole song
+    // collapsed into line 1; recovery splits the leaked headers back out and re-buckets the
+    // vocabulary against each line's text. Healed values are persisted back so the next
+    // read skips recovery entirely.
     func breakdown(forNoteID id: UUID) -> SongBreakdown? {
         if let published = breakdownsByNoteID[id] {
             return published
@@ -60,8 +66,12 @@ final class SongBreakdownStore: ObservableObject {
             knownNoteIDsOnDisk.remove(id)
             return nil
         }
-        diskMemoCache[id] = loaded
-        return loaded
+        let healed = SongBreakdownRecovery.recoverIfNeeded(loaded)
+        diskMemoCache[id] = healed
+        if healed != loaded {
+            writeToDisk(healed)
+        }
+        return healed
     }
 
     // Returns true when a breakdown exists (in cache or on disk) and its sourceTextHash
@@ -86,7 +96,14 @@ final class SongBreakdownStore: ObservableObject {
         diskMemoCache.removeValue(forKey: breakdown.noteID)
         breakdownsByNoteID[breakdown.noteID] = breakdown
         knownNoteIDsOnDisk.insert(breakdown.noteID)
+        writeToDisk(breakdown)
+    }
 
+    // Quietly persists a breakdown to disk without touching `breakdownsByNoteID`. Used by
+    // the recovery writeback so a self-heal during a SwiftUI body evaluation doesn't trip
+    // the "publishing changes from within view updates" runtime warning. setBreakdown
+    // mutates the published cache itself, then calls this to flush.
+    private func writeToDisk(_ breakdown: SongBreakdown) {
         let url = fileURL(for: breakdown.noteID)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

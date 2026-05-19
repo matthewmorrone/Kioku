@@ -49,6 +49,7 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.bisectorFuriganaKey) private var debugBisectorFurigana: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
     @AppStorage(DebugSettings.leftInsetGuideKey) private var debugLeftInsetGuide: Bool = false
+    @AppStorage(DebugSettings.karaokeDebugHUDKey) private var debugKaraokeHUD: Bool = false
     // CoreText renderer is now the only path; toggle hidden, key kept for migration.
     // @AppStorage(DebugSettings.useCoreTextRendererKey) private var useCoreTextRenderer: Bool = true
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
@@ -335,6 +336,7 @@ struct SettingsView: View {
                     Toggle("Headword Bisectors", isOn: $debugBisectorHeadword)
                     Toggle("Furigana Bisectors", isOn: $debugBisectorFurigana)
                     Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)
+                    Toggle("Karaoke HUD", isOn: $debugKaraokeHUD)
                     // Toggle hidden — CoreText is now the only renderer.
                     // Toggle("Use CoreText Renderer (experimental)", isOn: $useCoreTextRenderer)
                 }

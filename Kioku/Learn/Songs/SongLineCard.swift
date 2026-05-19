@@ -1,52 +1,65 @@
 import SwiftUI
 
-// One line of a song breakdown rendered as a card with progressive reveal.
-// Tap the card body to advance the reveal stage. Layers from bottom to top:
-//   stage 0: Japanese original line only
-//   stage 1: + romaji
-//   stage 2: + word entries
-//   stage 3: + gist and grammar note
+// One line of a song breakdown rendered as a card inside the per-note vertical scroll.
+// Layout (top → bottom):
+//   - header (line number)
+//   - reference chip (only for repeated/parallel chorus lines)
+//   - Japanese original
+//   - gist + grammar note  ← falls through to referenced line for chorus repeats
+//   - "Show / Hide word explanations" toggle, followed by the word list when expanded
 //
-// Stages that have no content are skipped so a vocalization-only line (no romaji, no
-// bullets, no gist) collapses to one tappable stage that shows the bracketed note.
+// Fall-through for `.sameAsLine` / `.parallelTo` lines: the prompt instructs the model to
+// skip the full breakdown on repeats and just emit "= line N". That leaves the SongLine's
+// own gist/words/grammar empty. We don't want a chorus line to render as a bare Japanese
+// string — the user still wants the explanation — so the card prefers the line's own
+// fields when present and falls back to the referenced line's fields when they're empty.
 //
-// Repeated chorus lines render a prominent "= line N" or "Parallel to line N: X → Y"
-// chip above the Japanese, plus the referenced line's content inline below so the
-// user can recall the original without leaving the card.
+// The word list is collapsed by default so a long song stays glanceable; the user opts
+// in per line. The card no longer owns a scroll view — the parent SongStepperView
+// scrolls the whole song, and nested same-axis ScrollViews fight each other.
 struct SongLineCard: View {
     let line: SongLine
     let referencedLine: SongLine?
-    let position: Int
-    let total: Int
-    let revealStage: Int
-    let onAdvance: () -> Void
+    let wordsExpanded: Bool
+    let onToggleWords: () -> Void
+
+    // For each field, prefer the line's own value; fall back to the referenced line's
+    // when this line is a reference and the field is empty. This is the load-bearing piece
+    // for "= line N" repeats: without fall-through they render as empty cards.
+    private var effectiveGist: String? {
+        if let g = line.gist, g.isEmpty == false { return g }
+        if line.reference != nil { return referencedLine?.gist }
+        return nil
+    }
+    private var effectiveGrammarNote: String? {
+        if let g = line.grammarNote, g.isEmpty == false { return g }
+        if line.reference != nil { return referencedLine?.grammarNote }
+        return nil
+    }
+    private var effectiveWords: [SongWord] {
+        if line.words.isEmpty == false { return line.words }
+        if line.reference != nil { return referencedLine?.words ?? [] }
+        return []
+    }
 
     var body: some View {
-        // Card content scrolls vertically when a line's words + gist + grammar note
-        // exceed the visible card height. Without the ScrollView, long entries (common
-        // for chorus-heavy songs with rich word definitions) were clipped at the bottom
-        // and the page-pager swallowed taps so users could not reach the missing content.
-        ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                referenceChipIfNeeded
-                originalLine
-                if revealStage >= romajiStage, let romaji = line.romaji {
-                    romajiText(romaji)
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            originalLine
+            gistSection
+            // Pattern note moved into the expanded explanations area below; gist stays
+            // up top as the headline. Toggle visibility tracks "anything to expand?" —
+            // words OR a pattern note qualifies.
+            if hasExpandableDetail {
+                expandableDetailToggle
+                if wordsExpanded {
+                    expandableDetailContent
                 }
-                if revealStage >= wordsStage, line.words.isEmpty == false {
-                    wordsList
-                }
-                if revealStage >= gistStage {
-                    gistAndGrammar
-                }
-                advancePrompt
-                    .padding(.top, 4)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(20)
+            recoveryStubNoticeIfNeeded
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 18)
                 .fill(Color(.secondarySystemBackground))
@@ -56,58 +69,31 @@ struct SongLineCard: View {
                 .stroke(Color(.separator), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .contentShape(RoundedRectangle(cornerRadius: 18))
-        // Tap fires on a quick touch; the ScrollView still owns drag gestures so vertical
-        // scrolling and horizontal pager swipes both keep working.
-        .onTapGesture {
-            onAdvance()
-        }
         .accessibilityElement(children: .contain)
-        .accessibilityHint("Tap to reveal more")
     }
 
-    // Position indicator. Sits above the Japanese so the user always knows where they are.
+    // Position indicator + (when this is a chorus repeat) an inline reference annotation.
+    // The annotation lives to the right of `Line N` rather than in a styled chip below it:
+    // the relationship is metadata about the line, not its own content block. The user
+    // sees "Same as line 1" and immediately reads this line's Japanese underneath.
     private var header: some View {
         HStack(spacing: 8) {
             Text("Line \(line.index)")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text("·")
-                .foregroundStyle(.secondary)
-            Text("\(position) / \(total)")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // Repeat indicator chip for chorus lines. For sameAsLine, shows "Same as line N";
-    // for parallelTo, shows "Parallel to line N · X → Y". The referenced line's Japanese
-    // is shown directly below so the user doesn't have to navigate back.
-    @ViewBuilder
-    private var referenceChipIfNeeded: some View {
-        if let reference = line.reference {
-            VStack(alignment: .leading, spacing: 8) {
-                referenceChipLabel(reference)
-                if let referenced = referencedLine {
-                    Text(referenced.original)
-                        .font(.callout.italic())
-                        .foregroundStyle(.secondary)
-                }
+            if let reference = line.reference {
+                inlineReferenceLabel(reference)
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.accentColor.opacity(0.08))
-            )
+            Spacer(minLength: 0)
         }
     }
 
-    // Builds the small accent-coloured label inside the reference chip; switches text based
-    // on whether the reference is a pure repeat or a parallel with a substitution clause.
-    private func referenceChipLabel(_ reference: LineReference) -> some View {
-        HStack(spacing: 6) {
+    // Compact reference label: small arrow icon + "Same as line N" or "Parallel to line N · X → Y".
+    // Accent-coloured so it reads as a link cue without needing its own background panel.
+    private func inlineReferenceLabel(_ reference: LineReference) -> some View {
+        HStack(spacing: 4) {
             Image(systemName: "arrow.uturn.backward")
-                .font(.footnote)
+                .font(.caption2)
             switch reference {
             case .sameAsLine(let n):
                 Text("Same as line \(n)")
@@ -117,12 +103,39 @@ struct SongLineCard: View {
                     Text("Parallel to line \(n)")
                         .font(.footnote.weight(.semibold))
                 } else {
-                    Text("Parallel to line \(n)  ·  \(sub)")
+                    Text("Parallel to line \(n) · \(sub)")
                         .font(.footnote.weight(.semibold))
                 }
             }
         }
         .foregroundStyle(Color.accentColor)
+    }
+
+    // Surfaces a note when the line has no gist, no grammar note, no words, and no reference
+    // — the shape produced by `SongBreakdownRecovery` for lines that survived as
+    // headers-only in a pre-fix cached breakdown. Without this, the user sees a line
+    // collapse to just the Japanese and reasonably wonders why it has no explanation.
+    @ViewBuilder
+    private var recoveryStubNoticeIfNeeded: some View {
+        if isRecoveryStub {
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.footnote)
+                Text("Recovered from older data — regenerate for full explanation.")
+                    .font(.footnote)
+            }
+            .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var isRecoveryStub: Bool {
+        let hasGist = (line.gist?.isEmpty == false)
+        let hasGrammar = (line.grammarNote?.isEmpty == false)
+        return hasGist == false
+            && hasGrammar == false
+            && line.words.isEmpty
+            && line.reference == nil
+            && line.index > 1
     }
 
     private var originalLine: some View {
@@ -134,26 +147,129 @@ struct SongLineCard: View {
             .accessibilityLabel(line.original)
     }
 
-    // Renders the romaji line in italic at a smaller size than the original so the eye still
-    // anchors on the Japanese; size matters for users practising read-aloud.
-    private func romajiText(_ romaji: String) -> some View {
-        Text(romaji)
-            .font(.title3.italic())
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    // Gist only — italicised so it reads as interpretation/voice rather than continuation
+    // of the Japanese line. No label: position (directly below the original) carries the
+    // semantic, and italic body text is the visual cue people already associate with
+    // "translation/commentary on the thing above."
+    @ViewBuilder
+    private var gistSection: some View {
+        if let gist = effectiveGist, gist.isEmpty == false {
+            Text(gist)
+                .font(.callout.italic())
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // True when expanding this card would reveal anything — words to drill into or a
+    // pattern note. Lines with neither don't show the toggle at all.
+    private var hasExpandableDetail: Bool {
+        effectiveWords.isEmpty == false || (effectiveGrammarNote?.isEmpty == false)
+    }
+
+    // Single per-line toggle for the drill-down detail (vocabulary + pattern note).
+    // Hidden by default so a long song reads as a clean list of lines.
+    private var expandableDetailToggle: some View {
+        Button {
+            onToggleWords()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: wordsExpanded ? "chevron.down" : "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                Text(wordsExpanded ? "Hide explanations" : "Show explanations")
+                    .font(.footnote.weight(.semibold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Color.accentColor)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(wordsExpanded ? "Hide explanations" : "Show explanations")
+    }
+
+    // Words first, then the pattern note at the bottom (matching the user's preferred
+    // ordering — vocab is the primary detail, the pattern is supplementary commentary).
+    @ViewBuilder
+    private var expandableDetailContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if effectiveWords.isEmpty == false {
+                wordsList
+            }
+            if let grammar = effectiveGrammarNote, grammar.isEmpty == false {
+                patternNote(grammar)
+            }
+        }
+        .padding(.top, 2)
     }
 
     // Word entries as a vertical list with surface, sungRomaji, and the LLM definition.
-    // Non-interactive in v1; a tap-to-lookup follow-up will wire each entry to the
-    // existing dictionary lookup card. Identifies rows by positional offset because a
-    // single line can repeat the same word (chorus, refrain) and value-based identity
-    // would collide and break SwiftUI's row diffing.
+    // Iterates `effectiveWords` so chorus repeats display the referenced line's vocabulary.
+    // Identifies rows by positional offset because a single line can repeat the same word
+    // (chorus, refrain) and value-based identity would collide and break SwiftUI's diffing.
     private var wordsList: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(line.words.enumerated()), id: \.offset) { _, word in
+            ForEach(Array(effectiveWords.enumerated()), id: \.offset) { _, word in
                 wordEntryRow(word)
             }
         }
+    }
+
+    // Pattern-to-bank note (the prompt's "optional grammar pattern worth memorizing").
+    // The body is stripped of inline-emphasis markers so `*foo*` / `**bar**` no longer
+    // leak literal asterisks, and any leading `Pattern to bank [note]:` prefix the model
+    // emitted is removed so the body doesn't repeat the section label above.
+    private func patternNote(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Pattern to Bank")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(SongLineCard.stripInlineMarkdown(SongLineCard.strippingPatternToBankPrefix(text)))
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // Strips inline-emphasis markup so the user doesn't see literal asterisks in body
+    // text. `**bold**` and `*italic*` markers are removed while the inner content stays.
+    // Bold pass first so the italic pass doesn't try to chew up either half of a bold pair.
+    fileprivate static func stripInlineMarkdown(_ raw: String) -> String {
+        var s = raw.replacingOccurrences(
+            of: #"\*\*([^*\n]+?)\*\*"#,
+            with: "$1",
+            options: .regularExpression
+        )
+        s = s.replacingOccurrences(
+            of: #"(?<!\*)\*([^*\n]+?)\*(?!\*)"#,
+            with: "$1",
+            options: .regularExpression
+        )
+        return s
+    }
+
+    // Strips any leading "Pattern to bank [note]:" prefix the model emitted, regardless of
+    // case, bold wrapping, hyphenation, or the presence of the word "note". The label
+    // above the body already says "Pattern to Bank" — repeating it inside is noise.
+    //
+    // Regex breakdown:
+    //   ^                              start of string
+    //   (?:\*{1,2})?                   optional `*` or `**`
+    //   \s*Pattern[\s-]+to[\s-]+bank   "Pattern to bank" or "Pattern-to-bank"
+    //   (?:\s+note)?                   optional " note"
+    //   \s*(?:\*{1,2})?                optional closing `*` or `**`
+    //   \s*:\s*                        the colon
+    //   (?:\*{1,2})?\s*                optional asterisks after the colon (e.g. `: **`)
+    fileprivate static func strippingPatternToBankPrefix(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = #"^(?:\*{1,2})?\s*Pattern[\s-]+to[\s-]+bank(?:\s+note)?\s*(?:\*{1,2})?\s*:\s*(?:\*{1,2})?\s*"#
+        if let range = trimmed.range(
+            of: pattern,
+            options: [.regularExpression, .caseInsensitive]
+        ) {
+            return String(trimmed[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return trimmed
     }
 
     // Renders one word entry: surface and sungRomaji on the same baseline, LLM definition
@@ -170,81 +286,14 @@ struct SongLineCard: View {
                 }
             }
             if word.definition.isEmpty == false {
-                Text(word.definition)
+                // Strip inline-emphasis markers so `*foo*` / `**bar**` don't leak literal
+                // asterisks into the rendered definition.
+                Text(SongLineCard.stripInlineMarkdown(word.definition))
                     .font(.footnote)
                     .foregroundStyle(.primary.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // Gist + optional grammar note. Grammar note is presented in italic with a margin so
-    // it reads as commentary rather than a continuation of the gist.
-    @ViewBuilder
-    private var gistAndGrammar: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let gist = line.gist, gist.isEmpty == false {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("Gist")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(gist)
-                        .font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            if let grammar = line.grammarNote, grammar.isEmpty == false {
-                Text(grammar)
-                    .font(.footnote.italic())
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    // Affordance prompt at the bottom of the card. Hidden once the user has fully
-    // revealed everything so the card stops nagging.
-    @ViewBuilder
-    private var advancePrompt: some View {
-        if revealStage < line.revealStageCap {
-            HStack(spacing: 6) {
-                Image(systemName: "hand.tap")
-                    .font(.footnote)
-                Text(advanceHintText)
-                    .font(.footnote)
-            }
-            .foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity, alignment: .center)
-        }
-    }
-
-    private var advanceHintText: String {
-        switch revealStage {
-        case 0 where line.romaji != nil: return "Tap to reveal romaji"
-        case 0 where line.words.isEmpty == false: return "Tap to reveal words"
-        case 0: return "Tap to reveal gist"
-        case 1 where line.words.isEmpty == false: return "Tap to reveal words"
-        case 1: return "Tap to reveal gist"
-        default: return "Tap to reveal gist"
-        }
-    }
-
-    // Stage indices that activate each layer. Computed so layers cleanly skip when a
-    // line lacks content for that layer — e.g. a line with no words shifts gist from
-    // stage 3 down to stage 2. The maximum cap lives on SongLine.revealStageCap so the
-    // stepper and the card share one source of truth.
-    private var romajiStage: Int { 1 }
-
-    private var wordsStage: Int {
-        line.romaji == nil ? 1 : 2
-    }
-
-    private var gistStage: Int {
-        var stage = 1
-        if line.romaji != nil { stage += 1 }
-        if line.words.isEmpty == false { stage += 1 }
-        return stage
     }
 }

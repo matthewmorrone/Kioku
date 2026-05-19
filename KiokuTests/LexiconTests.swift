@@ -52,6 +52,19 @@ final class LexiconTests: XCTestCase {
         XCTAssertFalse(info?.chain.isEmpty ?? true)
     }
 
+    // Adverbs whose surface happens to match a godan past-tense pattern (った→う) must not be
+    // displaced by spurious deinflection candidates like たう (多雨, "heavy rain").
+    func testAdverbSurfaceWinsOverSpuriousDeinflection() throws {
+        let surface = try lexiconSurface()
+
+        let info = surface.inflectionInfo(surface: "たった")
+        XCTAssertEqual(info?.lemma, "たった")
+        XCTAssertNil(
+            surface.compoundVerbComponents(surface: "たった"),
+            "Adverb たった must not be reported as a compound verb"
+        )
+    }
+
     // Verifies lexeme lookup by lemma and reading returns at least one matching dictionary entry.
     func testLookupLexemeReturnsEntriesForLemmaAndReading() throws {
         let surface = try lexiconSurface()

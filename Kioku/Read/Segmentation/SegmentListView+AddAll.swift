@@ -19,7 +19,12 @@ extension SegmentListView {
         orderedSurfaces.reserveCapacity(rows.count)
 
         for row in rows {
-            let normalizedSurface = normalizedSurfaceForFiltering(row.edge.surface)
+            // Add All persists each visible row using its identity string —
+            // lemma in lemma mode, raw surface otherwise. Matches what the
+            // user sees: lemma list saved as lemma entries, surface list saved
+            // as conjugated entries. The `lemma` field stays the dictionary
+            // form regardless so the metadata is correct in both modes.
+            let normalizedSurface = normalizedSurfaceForFiltering(resolvedRowSurface(for: row.edge))
             guard normalizedSurface.isEmpty == false,
                   seenSurfaces.contains(normalizedSurface) == false else {
                 continue
@@ -147,30 +152,46 @@ extension SegmentListView {
             }
 
             if let existingIndex = indexByEntryID[entryID] {
-                guard let noteID = sourceNoteID else {
-                    continue
-                }
-
                 let existingEntry = entries[existingIndex]
                 var noteIDs = Set(existingEntry.sourceNoteIDs)
-                if noteIDs.contains(noteID) {
+                var encountered = existingEntry.encounteredSurfaces
+                let needsNote = sourceNoteID.map { noteIDs.contains($0) == false } ?? false
+                let needsSurface = encountered.contains(normalizedSurface) == false
+                if needsNote == false && needsSurface == false {
                     continue
                 }
-
-                noteIDs.insert(noteID)
+                if let sourceNoteID, needsNote {
+                    noteIDs.insert(sourceNoteID)
+                }
+                if needsSurface {
+                    encountered.insert(normalizedSurface)
+                }
                 entries[existingIndex] = SavedWord(
                     canonicalEntryID: existingEntry.canonicalEntryID,
                     surface: existingEntry.surface,
-                    sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString }
+                    sourceNoteIDs: noteIDs.sorted { $0.uuidString < $1.uuidString },
+                    wordListIDs: existingEntry.wordListIDs,
+                    personalNote: existingEntry.personalNote,
+                    savedAt: existingEntry.savedAt,
+                    selectedSenseIDs: existingEntry.selectedSenseIDs,
+                    selectedGlosses: existingEntry.selectedGlosses,
+                    encounteredSurfaces: encountered
                 )
             } else {
                 let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
                 indexByEntryID[entryID] = entries.count
+                // Add All doesn't know the derived lemma here, so the stored
+                // surface is whatever row identity the user is viewing (lemma
+                // when toggle is on, surface otherwise). The encountered set
+                // is seeded with the same identity. New cards therefore satisfy
+                // the "storedSurface matches encountered" invariant the legacy
+                // detector relies on.
                 entries.append(
                     SavedWord(
                         canonicalEntryID: entryID,
                         surface: normalizedSurface,
-                        sourceNoteIDs: noteIDs
+                        sourceNoteIDs: noteIDs,
+                        encounteredSurfaces: [normalizedSurface]
                     )
                 )
             }

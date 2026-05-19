@@ -19,12 +19,12 @@ struct SongsHomeView: View {
                     ToolbarItem(placement: .principal) {
                         HStack(spacing: 6) {
                             Image(systemName: "music.note.list")
-                            Text("Songs")
+                            Text("Breakdowns")
                         }
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Songs")
+                        .accessibilityLabel("Breakdowns")
                     }
                 }
                 .navigationDestination(item: $selectedNote) { note in
@@ -42,18 +42,13 @@ struct SongsHomeView: View {
             emptyState
         } else {
             List {
-                Section {
-                    ForEach(candidates) { note in
-                        Button {
-                            selectedNote = note
-                        } label: {
-                            row(for: note)
-                        }
-                        .buttonStyle(.plain)
+                ForEach(candidates) { note in
+                    Button {
+                        selectedNote = note
+                    } label: {
+                        row(for: note)
                     }
-                } footer: {
-                    Text("Tap a note to study it line by line. The first time you open a song the app will generate the breakdown using the configured LLM provider.")
-                        .font(.footnote)
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -90,17 +85,17 @@ struct SongsHomeView: View {
         .contentShape(Rectangle())
     }
 
-    // Surfaces the breakdown state. Kept text-only so the list scans quickly; coloured chips
-    // would compete with the existing Notes-tab visual language.
+    // Surfaces the breakdown state. Only the abnormal states get a label — not-generated and
+    // stale are actionable, fresh is the default and needs no annotation. Dropping the
+    // "Generated X ago" timer also stops the row from re-rendering on a minute cadence.
     @ViewBuilder
     private func statusLabel(for status: SongBreakdownStatus) -> some View {
         switch status {
         case .notGenerated:
             Text("Not generated yet")
                 .foregroundStyle(.secondary)
-        case .fresh(let provider, let generatedAt):
-            Text("Generated \(generatedAt, style: .relative) ago · \(provider.displayName)")
-                .foregroundStyle(.secondary)
+        case .fresh:
+            EmptyView()
         case .stale:
             Text("Lyrics changed since generation")
                 .foregroundStyle(.orange)

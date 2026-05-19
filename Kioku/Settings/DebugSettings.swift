@@ -24,6 +24,11 @@ enum DebugSettings {
     // envelope alignment can be checked against a fixed reference, and dumps
     // numerical positions for every line-start segment to the unified log.
     static let leftInsetGuideKey = "debug.leftInsetGuide"
+    // Toggles the karaoke diagnostics HUD that overlays the LyricsView active-cue
+    // card — granularity, cue index, checkpoint count, override/highlight ranges,
+    // and the neighbor-cue strip. Off by default so the live lyrics card reads
+    // cleanly; flip in Settings → Debug when investigating dim/band alignment.
+    static let karaokeDebugHUDKey = "debug.karaokeDebugHUD"
     static let startupSegmentationDiffsKey = "debug.startupSegmentationDiffs"
     // Toggles the experimental CoreText-backed Read renderer (`KiokuCoreTextView`) in place
     // of the TextKit 2 UITextView path. Off by default while the new renderer is being

@@ -637,6 +637,15 @@ nonisolated public final class Lexicon {
 
         // Sort by preferredLemma first, then by depth descending.
         let preferredLemma = segmenter.preferredLemma(for: trimmedSurface)
+
+        // When deinflected candidates exist the surface is typically an inflected form — remove it.
+        // EXCEPTION: when the segmenter confirms the surface IS its own base form (e.g. adverbs
+        // like たった, ずっと, きっと), preserve it. The godan past-tense rule kanaIn=った/kanaOut=う
+        // otherwise spuriously promotes たう (多雨, "heavy rain") above the genuine adverb entry.
+        let surfaceIsItsOwnLemma = preferredLemma == trimmedSurface
+        if entries.contains(where: { $0.depth > 0 }) && surfaceIsItsOwnLemma == false {
+            entries.removeAll { $0.lemma == trimmedSurface }
+        }
         entries.sort { lhs, rhs in
             if preferredLemma == lhs.lemma && preferredLemma != rhs.lemma { return true }
             if preferredLemma == rhs.lemma && preferredLemma != lhs.lemma { return false }

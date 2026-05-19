@@ -236,5 +236,42 @@ final class SongBreakdownParserTests: XCTestCase {
         XCTAssertEqual(lines[0].words[0].sungRomaji, "hito")
         XCTAssertEqual(lines[0].words[1].sungRomaji, "kakera")
     }
+
+    // Regression: when the model omits horizontal-rule separators between lines and just
+    // stacks `**Line N:**` blocks back-to-back, each header must still start a new
+    // SongLine. Before this was fixed, only Line 1 was parsed and every subsequent line
+    // leaked into Line 1's grammar-note tail (visible to the user as a giant italic blob).
+    func testParsesMultipleLinesWithoutHorizontalRules() throws {
+        let markdown = """
+        **Line 1: 朽ちた花びらに黄昏の翅が**
+        *kuchita hanabira ni tasogare no hane ga*
+
+        **Gist:** Twilight wings on withered petals.
+
+        **Line 2: 冷んやりと流れてゆくビリジアン風ミステリアス**
+        *hiyari to nagarete yuku birijian fuu misuteriasu*
+
+        **Gist:** A cool viridian mystery flows.
+
+        **Line 3: もう触れられないあの日の命を**
+        *mou furerarenai ano hi no inochi wo*
+
+        **Gist:** The life of that day, no longer touchable.
+        """
+
+        let lines = try parser().parse(markdown: markdown)
+        XCTAssertEqual(lines.count, 3)
+        XCTAssertEqual(lines[0].index, 1)
+        XCTAssertEqual(lines[1].index, 2)
+        XCTAssertEqual(lines[2].index, 3)
+        XCTAssertEqual(lines[0].original, "朽ちた花びらに黄昏の翅が")
+        XCTAssertEqual(lines[1].original, "冷んやりと流れてゆくビリジアン風ミステリアス")
+        XCTAssertEqual(lines[2].original, "もう触れられないあの日の命を")
+        XCTAssertEqual(lines[0].gist, "Twilight wings on withered petals.")
+        XCTAssertEqual(lines[1].gist, "A cool viridian mystery flows.")
+        XCTAssertEqual(lines[2].gist, "The life of that day, no longer touchable.")
+        // The bug we're guarding against: subsequent line headers leaking into Line 1.
+        XCTAssertNil(lines[0].grammarNote)
+    }
 }
 

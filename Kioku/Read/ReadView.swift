@@ -75,16 +75,12 @@ struct ReadView: View {
     @State var sharedScrollOffsetY: CGFloat = 0
     @State var isShowingSegmentList = false
     @State var isShowingDisplayOptions = false
-    @State var isShowingPhotoLibraryPicker = false
-    @State var isShowingCameraPicker = false
     @State var isShowingFileImporter = false
     @State var isShowingSubtitlePopup = false
-    @State var selectedOCRImageItem: PhotosPickerItem?
-    @State var isPerformingOCRImport = false
+    @State var isShowingBreakdownSheet = false
     @State var isPerformingAudioTranscription = false
     @State var isGeneratingLyricAlignment = false
     @State var isCancellingAlignment = false
-    @State var ocrImportErrorMessage = ""
     @State var audioTranscriptionErrorMessage = ""
     @State var lyricAlignmentErrorMessage = ""
     @State var lyricAlignmentProgressMessage = ""
@@ -185,6 +181,24 @@ struct ReadView: View {
         }
     }
 
+    // The Note currently visible in Read, resolved against the canonical store. ReadView's
+    // load handler consumes the `selectedNote` binding (clears it once `activeNoteID` is
+    // populated), so anything that wants the displayed note has to look it up here. Used by
+    // the breakdown sheet so it shows the right note regardless of how it got loaded
+    // (selection from Notes, restored from `lastActiveNoteID`, fresh OCR import).
+    var currentDisplayedNote: Note? {
+        if let id = activeNoteID, let stored = notesStore.note(withID: id) {
+            return stored
+        }
+        // Unsaved buffer fallback: a fresh note created via "New Note" hasn't been added
+        // to the store yet. We still want the breakdown sheet to work against the typed
+        // text — synthesize a transient Note carrying whatever's in the editor right now.
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return Note(id: activeNoteID ?? UUID(), content: text)
+        }
+        return nil
+    }
+
     var body: some View {
         alertingReadView
     }
@@ -193,13 +207,6 @@ struct ReadView: View {
 
     private var alertingReadView: some View {
         lifecycleReadView
-            .alert("OCR Import Failed", isPresented: ocrImportErrorPresented) {
-                Button("OK", role: .cancel) {
-                    ocrImportErrorMessage = ""
-                }
-            } message: {
-                Text(ocrImportErrorMessage)
-            }
             .sheet(isPresented: $isShowingSubtitleEditor) {
                 if let attachmentID = activeAudioAttachmentID {
                     SubtitleEditorSheet(
@@ -309,16 +316,6 @@ struct ReadView: View {
 
     private var lifecycleReadView: some View {
         selectionLifecycleReadView
-            .onChange(of: selectedOCRImageItem) { _, newItem in
-                guard let newItem else {
-                    return
-                }
-
-                // Starts OCR import once the user has picked an image for recognition.
-                Task {
-                    await importTextFromSelectedOCRImage(newItem)
-                }
-            }
             .onDisappear {
                 // Flushes any pending edit persistence before leaving the read screen.
                 segmentationRefreshTask?.cancel()
@@ -530,6 +527,7 @@ struct ReadView: View {
                 dictionaryStore: dictionaryStore,
                 sourceNoteID: activeNoteID,
                 lemmaForSurface: { segmenter.preferredLemma(for: $0) },
+                lemmaCandidatesForSurface: { segmenter.lemmaCandidates(for: $0) },
                 onMergeLeft: { edgeIndex in
                     mergeSegmentFromSegmentList(at: edgeIndex, isMergingLeft: true)
                 },
@@ -544,19 +542,6 @@ struct ReadView: View {
                 }
             )
         }
-        .sheet(isPresented: $isShowingCameraPicker) {
-            CameraImagePicker(onImagePicked: { imageData in
-                Task {
-                    await importTextFromOCRImageData(imageData)
-                }
-            })
-        }
-        .photosPicker(
-            isPresented: $isShowingPhotoLibraryPicker,
-            selection: $selectedOCRImageItem,
-            matching: .images,
-            preferredItemEncoding: .automatic
-        )
         .fileImporter(
             isPresented: $isShowingSubtitlePicker,
             allowedContentTypes: subtitlePickerTarget.contentTypes,
@@ -565,6 +550,26 @@ struct ReadView: View {
             switch subtitlePickerTarget {
             case .audio: handleLyricAlignmentAudioSelection(result)
             case .subtitleFile: handleSubtitleFileSelection(result)
+            }
+        }
+        // Sheet entry point for the LLM breakdown — moved off the Learn tab. SongStepperView
+        // expects to live in a NavigationStack for its principal/trailing toolbar items, so
+        // we wrap it here at presentation time rather than at the call site.
+        //
+        // We resolve the displayed note via `activeNoteID + notesStore` rather than via the
+        // `selectedNote` binding: ReadView's load handler consumes `selectedNote` (sets it
+        // to nil) once the note has been loaded into `text` / `activeNoteID`, so reading
+        // the binding here would always see nil and render an empty sheet.
+        .sheet(isPresented: $isShowingBreakdownSheet) {
+            if let note = currentDisplayedNote {
+                NavigationStack {
+                    SongStepperView(note: note)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Done") { isShowingBreakdownSheet = false }
+                            }
+                        }
+                }
             }
         }
     }
@@ -582,10 +587,15 @@ struct ReadView: View {
                     isShowingTitleAlert = true
                 }
 
-            HStack {
+            // Title-row quick actions for the currently-open note. The new-note + OCR
+            // buttons moved to the Notes tab; this row now hosts the three per-note
+            // actions: open the lyrics view, open the segment-list (extract words), and
+            // open the LLM breakdown sheet for this note.
+            HStack(spacing: 10) {
                 Spacer()
-                ocrImportButton
-                newNoteButton
+                titleLyricsButton
+                titleExtractWordsButton
+                titleBreakdownButton
             }
         }
         .padding(.vertical, 8)

@@ -11,6 +11,13 @@ nonisolated protocol TextSegmenting: Sendable {
     // Picks the highest-priority resolved lemma for a surface.
     func preferredLemma(for surface: String) -> String?
 
+    // Returns all dictionary-backed lemma candidates for a surface, ordered
+    // best-first by the same scoring used to pick `preferredLemma`. Powers
+    // the "Choose lemma…" picker that lets the user override the segmenter's
+    // automatic pick when the surface is ambiguous (e.g. なった ⇒ なる or なう).
+    // Returns an empty array when no lemmas resolve through the pipeline.
+    func lemmaCandidates(for surface: String) -> [String]
+
     // Checks whether a surface resolves through the segmenter's resolution pipeline.
     func resolvesSurface(_ surface: String) -> Bool
 

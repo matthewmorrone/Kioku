@@ -23,18 +23,33 @@ final class SongBreakdownParser {
         return parsed
     }
 
-    // Splits the input on markdown horizontal rules so each section can be parsed independently.
-    // Recognizes ---, ***, ___ on their own line as separators.
+    // Splits the input into one section per line-header so each section can be parsed
+    // independently. Two split signals are honoured:
+    //   1. Markdown horizontal rules (---, ***, ___) on their own line — these always start
+    //      a fresh section.
+    //   2. A `**Line N:` header — when we encounter one while the current section already
+    //      holds a header, we split there too. This is the load-bearing case: models
+    //      frequently omit horizontal rules and just stack `**Line N:**` blocks one after
+    //      another, and without this implicit boundary every line after the first would
+    //      leak into Line 1's grammar-note tail.
     private func splitSections(_ markdown: String) -> [String] {
         let lines = markdown.components(separatedBy: "\n")
         var sections: [[String]] = [[]]
+        var currentHasHeader = false
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed == "---" || trimmed == "***" || trimmed == "___" {
                 sections.append([])
-            } else {
-                sections[sections.count - 1].append(line)
+                currentHasHeader = false
+                continue
             }
+            if parseHeader(trimmed) != nil {
+                if currentHasHeader {
+                    sections.append([])
+                }
+                currentHasHeader = true
+            }
+            sections[sections.count - 1].append(line)
         }
         return sections
             .map { $0.joined(separator: "\n") }

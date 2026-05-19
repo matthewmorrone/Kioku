@@ -1,10 +1,18 @@
+import PhotosUI
 import SwiftUI
 
 // Displays the notes list and supports selection, editing, and creation actions.
+//
+// OCR import is fully owned by this tab — button, picker, Vision recognition, and note
+// creation all live here. When OCR finishes a recognized note is forwarded via
+// `onOCRImportedNote` so ContentView can add it to the store, mark it the active Read
+// note, switch to the Read tab, and arm edit mode (mirroring the previous Read-side
+// flow's end state).
 struct NotesView: View {
     var onSelectNote: ((Note) -> Void)? = nil
     var onCreateNote: (() -> Void)? = nil
     var onUpdateSelectedNote: ((Note?) -> Void)? = nil
+    var onOCRImportedNote: ((Note) -> Void)? = nil
 
     @EnvironmentObject private var store: NotesStore
     @State private var editMode: EditMode = .inactive
@@ -15,6 +23,15 @@ struct NotesView: View {
     @State private var isShowingBulkImportSheet = false
     @State private var subtitleEditorAttachmentID: UUID?
     @State private var subtitleEditorNoteTitle: String = ""
+
+    // OCR state owned by NotesView. Declared here (not in the extension) because Swift
+    // extensions on structs cannot add stored properties — only the helpers and the
+    // toolbar button view go in NotesView+OCR.swift.
+    @State var isShowingPhotoLibraryPicker = false
+    @State var isShowingCameraPicker = false
+    @State var selectedOCRImageItem: PhotosPickerItem?
+    @State var isPerformingOCRImport = false
+    @State var ocrImportErrorMessage = ""
 
     var body: some View {
         NavigationStack {
@@ -107,9 +124,10 @@ struct NotesView: View {
                 )
             }
             .toolbar {
-                // Groups the two leading import entry points so SwiftUI renders both buttons
-                // (single ToolbarItems at the same placement can silently collapse to one).
-                ToolbarItem(placement: .topBarLeading) {
+                // Leading group: file-based and image-based import entry points sit together
+                // on the left so the user reads "import sources" → "selection/editing" → "new"
+                // from left to right across the toolbar.
+                ToolbarItemGroup(placement: .topBarLeading) {
                     // Opens the bulk import sheet so the user can pick txt/srt/audio files. Single
                     // and multi-file flows both run through here; audio-only items get Whisper
                     // transcription via BulkImportRunner.
@@ -121,6 +139,11 @@ struct NotesView: View {
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("Import Files")
+
+                    // OCR import (Camera or Photo Library). Runs Vision recognition locally
+                    // on Notes and hands the recognized Note to ContentView via
+                    // `onOCRImportedNote` for tab-switch + edit-mode activation.
+                    ocrImportToolbarButton
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     // Shows bulk-delete action while edit mode is active.
@@ -160,6 +183,36 @@ struct NotesView: View {
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityLabel("New Note")
+                }
+            }
+            // OCR plumbing. The error alert, camera sheet, photos picker, and the
+            // .onChange observer that reacts to the user picking an image — all anchored
+            // on the NavigationStack rather than inside the toolbar so the toolbar items
+            // don't need to host them.
+            .alert("OCR Import Failed", isPresented: ocrImportErrorPresented) {
+                Button("OK", role: .cancel) {
+                    ocrImportErrorMessage = ""
+                }
+            } message: {
+                Text(ocrImportErrorMessage)
+            }
+            .sheet(isPresented: $isShowingCameraPicker) {
+                CameraImagePicker(onImagePicked: { imageData in
+                    Task {
+                        await importTextFromOCRImageData(imageData)
+                    }
+                })
+            }
+            .photosPicker(
+                isPresented: $isShowingPhotoLibraryPicker,
+                selection: $selectedOCRImageItem,
+                matching: .images,
+                preferredItemEncoding: .automatic
+            )
+            .onChange(of: selectedOCRImageItem) { _, newItem in
+                guard let newItem else { return }
+                Task {
+                    await importTextFromSelectedOCRImage(newItem)
                 }
             }
             .environment(\.editMode, $editMode)
