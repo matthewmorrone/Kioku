@@ -125,6 +125,21 @@ final class SurfaceSheetViewController: UIViewController {
         updateSheetPreferredHeight(animated: false)
     }
 
+    // First real layout pass commits actual subview widths so multi-line UILabels finally
+    // know their wrapped height. systemLayoutSizeFitting in viewDidLoad/viewWillAppear runs
+    // before the view has a real width on screen and under-reports tall gloss content; this
+    // hook catches the corrected measurement and re-invalidates the detent. Guarded by a
+    // height-delta threshold so the detent change in turn doesn't re-trigger this hook.
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let measuredHeight = computePreferredSheetHeight()
+        guard abs(measuredHeight - currentSheetPreferredHeight) > 0.5 else { return }
+        currentSheetPreferredHeight = measuredHeight
+        if #available(iOS 16.0, *) {
+            sheetPresentationController?.invalidateDetents()
+        }
+    }
+
     // MARK: - Reading management
 
     // Returns the reading that should be displayed in the header right now.

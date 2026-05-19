@@ -45,12 +45,20 @@ extension SegmentLookupSheet {
             return
         }
 
+        // Multi-line UILabels need preferredMaxLayoutWidth set before the first systemLayoutSizeFitting
+        // pass so the detent resolver gets the wrapped height instead of single-line height. Without
+        // it, the sheet detent renders at single-line height and the wrapped definition is clipped.
+        // The lookup sheet is full-width; subtract container/stack padding to land on the label's
+        // actual rendered width.
+        let measuredContentWidth = max(200, activeScreenBounds().width) - (16 * 2) - (6 * 2)
+
         let glossLabel = UILabel()
         glossLabel.text = firstGloss
         glossLabel.font = .systemFont(ofSize: 15)
         glossLabel.textColor = .label
         glossLabel.numberOfLines = 0
         glossLabel.textAlignment = .natural
+        glossLabel.preferredMaxLayoutWidth = measuredContentWidth
         middleContentStack.addArrangedSubview(glossLabel)
 
         // Compound verb components: shows each lemma + first gloss as a tappable row when the
@@ -83,6 +91,9 @@ extension SegmentLookupSheet {
                 glossLabel.font = .systemFont(ofSize: 14)
                 glossLabel.textColor = .secondaryLabel
                 glossLabel.numberOfLines = 0
+                // The component row reserves the lemma label's intrinsic width plus 10pt spacing,
+                // so the gloss label wraps inside the remaining width — give Auto Layout a hint.
+                glossLabel.preferredMaxLayoutWidth = max(120, measuredContentWidth - 80)
 
                 let row = UIStackView(arrangedSubviews: [lemmaLabel, glossLabel])
                 row.axis = .horizontal
