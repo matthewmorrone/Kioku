@@ -224,7 +224,7 @@ struct SettingsPreviewRenderer: View {
                 rubyLineNumbers: debugRubyLineNumbers
             ),
             illegalMergeLocation: nil,
-            onSegmentTapped: { _, _ in },
+            onSegmentTapped: { _, _, _ in },
             isScrollEnabled: false
         )
     }

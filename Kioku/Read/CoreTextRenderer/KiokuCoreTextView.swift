@@ -462,9 +462,12 @@ final class KiokuCoreTextView: UIView {
     // UTF-16 character index to the host. Forwards `nil` for empty-space taps so the
     // host can clear selection instead of pinning to the nearest character.
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+        TapDiagnostics.beginTap()
         let point = recognizer.location(in: self)
         let index = layoutEngine.characterIndex(at: point)
+        TapDiagnostics.mark("layoutEngine.characterIndex returned (index=\(index.map(String.init) ?? "nil"))")
         onTap?(index, point)
+        TapDiagnostics.mark("onTap callback returned (KiokuCoreTextView.handleTap)")
     }
 
     // MARK: - Accessibility

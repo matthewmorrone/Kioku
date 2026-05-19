@@ -213,21 +213,7 @@ nonisolated public final class Lexicon {
             var resolvedSurface = ""
             for candidate in candidates where candidate.isEmpty == false {
                 guard let entry = lookupEntries(for: candidate).first else { continue }
-                // Reject anything that isn't itself a verb. Without this filter the stripping
-                // candidates collide with unrelated JMdict entries — past-tense た (aux-v),
-                // 区 (noun, "ward"), って (particle, "you said") — and surface as bogus
-                // "compound components" in the lookup sheet. JMdict POS codes for verbs
-                // start with `v` (v1, v5k, v5s, v5k-s, vi/vt classifiers, …); auxiliary-only
-                // entries are tagged `aux`/`aux-v`/`aux-adj` and must not count. `vs*` codes
-                // mark suru-able nouns rather than standalone verbs, so they're excluded too.
-                let posCodes = entry.senses
-                    .compactMap { $0.pos?.lowercased() }
-                    .flatMap { $0.split(separator: ",") }
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                let hasVerbPOS = posCodes.contains { code in
-                    code.hasPrefix("v") && code.hasPrefix("vs") == false
-                }
-                guard hasVerbPOS else { continue }
+                guard entryHasVerbPOS(entry) else { continue }
                 resolvedAux = entry
                 resolvedSurface = candidate
                 break
@@ -247,6 +233,38 @@ nonisolated public final class Lexicon {
         return result
     }
 
+    // JMdict POS codes for verbs start with `v` (v1, v5k, v5s, v5k-s, vi/vt, …); auxiliary-only
+    // entries are tagged `aux`/`aux-v`/`aux-adj` and don't count. `vs*` codes mark suru-able nouns
+    // rather than standalone verbs, so they're excluded too. Used to reject non-verb collisions
+    // like past-tense た (aux-v), 区 (noun "ward"), って (particle "you said").
+    private func entryHasVerbPOS(_ entry: DictionaryEntry) -> Bool {
+        posCodes(for: entry).contains { code in
+            code.hasPrefix("v") && code.hasPrefix("vs") == false
+        }
+    }
+
+    // Idioms / phrasal verbs (夢を見る, 手が届く) carry `exp` alongside their verb class in JMdict,
+    // marking them as multi-morpheme expressions rather than single-word verbs.
+    private func entryIsPhrasalExpression(_ entry: DictionaryEntry) -> Bool {
+        posCodes(for: entry).contains("exp")
+    }
+
+    // Returns lower-cased, comma-split, trimmed POS codes across every sense of the entry.
+    private func posCodes(for entry: DictionaryEntry) -> [String] {
+        entry.senses
+            .compactMap { $0.pos?.lowercased() }
+            .flatMap { $0.split(separator: ",") }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    // True when the lemma resolves to a single-word verb entry (verb POS, not a phrasal `exp`).
+    // Phrasal verb entries like 夢を見る are excluded so callers can still morpheme-split them.
+    private func entryIsSingleWordVerb(lemma: String) -> Bool {
+        lookupEntries(for: lemma).contains(where: { entry in
+            entryHasVerbPOS(entry) && entryIsPhrasalExpression(entry) == false
+        })
+    }
+
     // Case particles を and が never appear inside a single-word verb conjugation; their presence
     // signals the surface is a phrase (noun + particle + verb) being looked up as one segment.
     // Splits the surface at these characters and returns morpheme-level components, deinflecting
@@ -255,6 +273,16 @@ nonisolated public final class Lexicon {
     private func phrasalComponentsForCaseParticleSurface(_ surface: String) -> [(lemma: String, gloss: String?)]? {
         let caseParticles: Set<Character> = ["を", "が"]
         guard surface.contains(where: { caseParticles.contains($0) }) else { return nil }
+
+        // The "を/が never appear inside a single-word verb" assumption breaks for native verbs
+        // that literally contain these kana in their stem — 翻す (ひるがえす), 翻る (ひるがえる),
+        // 流す (ながす), etc. If the surface deinflects to a single-word verb entry, treat it as
+        // that verb rather than splitting it into morphemes around the embedded kana. Phrasal-verb
+        // entries (夢を見る, tagged `exp,v1` in JMdict) deliberately fall through to morpheme split.
+        let surfaceLemma = inflectionInfo(surface: surface)?.lemma ?? surface
+        if entryIsSingleWordVerb(lemma: surfaceLemma) {
+            return nil
+        }
 
         var tokens: [String] = []
         var pendingToken = ""
@@ -534,15 +562,13 @@ nonisolated public final class Lexicon {
     }
 
     // Returns the union of JMdict POS bits across every sense of every entry matching the surface.
-    // Returns 0 when the surface has no dictionary entries.
+    // Backed by the in-memory `surfacePOSBitsMap` populated at startup; no SQL at call time.
+    // Falls back to the old SQL path only when the store isn't available.
     private func posBits(for surface: String) -> UInt64 {
-        var bits: UInt64 = 0
-        for entry in lookupEntries(for: surface) {
-            for sense in entry.senses {
-                bits |= PartOfSpeech.bits(from: sense.pos)
-            }
+        if let bits = dictionaryStore?.posBits(forSurface: surface), bits != 0 {
+            return bits
         }
-        return bits
+        return 0
     }
 
     // Resolves dictionary entries for one surface using script-aware lookup mode selection.
@@ -681,19 +707,10 @@ nonisolated public final class Lexicon {
         // homographs with valid verb conjugations (して is both a `conj` direct entry AND
         // the te-form of する; で is both a `prt` AND the te-form of だ). Suppressing
         // deinflection for those would lose the canonical verb lookup for the common case.
-        let surfaceIsExpressionLemma: Bool = {
-            let surfaceEntries = lookupEntries(for: trimmedSurface)
-            guard surfaceEntries.isEmpty == false else { return false }
-            return surfaceEntries.contains { entry in
-                entry.senses.contains { sense in
-                    let posCodes = (sense.pos ?? "")
-                        .lowercased()
-                        .split(separator: ",")
-                        .map { $0.trimmingCharacters(in: .whitespaces) }
-                    return posCodes.contains("exp")
-                }
-            }
-        }()
+        // Expression-tagged surfaces (ために, 〜について, etc.) need the same in-memory POS
+        // bits map used by the verb/adjective gate above. Going through lookupEntries here
+        // re-issued SQL for every tap; the bit check is a single hashtable hit.
+        let surfaceIsExpressionLemma = (posBits(for: trimmedSurface) & PartOfSpeech.expression.bit) != 0
 
         let preferredLemma = segmenter.preferredLemma(for: trimmedSurface)
         // The segmenter says the surface IS its own base form (e.g. adverbs たった, ずっと, きっと):

@@ -18,8 +18,13 @@ struct ReadViewSheetVisibilityScrollContext: Equatable {
 
 // Describes one sheet-visibility scroll adjustment computed from pure geometry.
 struct ReadViewSheetVisibilityScrollAdjustment: Equatable {
+    // Desired contentOffset.y after the adjustment is applied.
     let targetOffsetY: CGFloat
-    let usesTemporaryBottomOverscroll: Bool
+    // Extra contentInset.bottom that must be added to the scroll view so `targetOffsetY` is
+    // a valid (non-bouncing) resting position. Zero when the tapped segment fits inside the
+    // natural scroll range; positive when the segment lives below `maxOffsetY` (typically a
+    // word near the end of a long note that would otherwise be hidden by the lookup sheet).
+    let temporaryBottomInset: CGFloat
 }
 
 // Computes scroll adjustments needed to keep the selected segment visible while the lookup sheet is active.
@@ -52,13 +57,14 @@ enum ReadViewSheetVisibilityScrollPlanner {
         }
 
         targetOffsetY = max(targetOffsetY, context.minOffsetY)
-        guard abs(targetOffsetY - context.currentOffsetY) > 0.5 else {
+        let temporaryBottomInset = max(0, targetOffsetY - context.maxOffsetY)
+        guard abs(targetOffsetY - context.currentOffsetY) > 0.5 || temporaryBottomInset > 0.5 else {
             return nil
         }
 
         return ReadViewSheetVisibilityScrollAdjustment(
             targetOffsetY: targetOffsetY,
-            usesTemporaryBottomOverscroll: targetOffsetY > context.maxOffsetY + 0.5
+            temporaryBottomInset: temporaryBottomInset
         )
     }
 
@@ -106,7 +112,7 @@ extension ReadView {
 
     // Animates content-offset changes with a completion callback so sheet presentation/dismissal can be sequenced cleanly.
     func animateContentOffset(
-        for sourceView: UITextView,
+        for sourceView: UIScrollView,
         targetOffsetY: CGFloat,
         animated: Bool,
         completion: (() -> Void)? = nil
@@ -128,9 +134,12 @@ extension ReadView {
         }
     }
 
-    // Scrolls only enough to keep the selected segment inside the visible band above the lookup sheet.
+    // Scrolls only enough to keep the selected segment inside the visible band above the lookup
+    // sheet. When the segment sits past the natural bottom of the note, also adds a temporary
+    // contentInset.bottom so the scroll offset can hold instead of bouncing back. The applied
+    // delta is tracked in `appliedSheetBottomInset` so dismissal removes exactly that much.
     func preScrollSegmentForSheetVisibility(
-        sourceView: UITextView?,
+        sourceView: UIScrollView?,
         tappedSegmentRect: CGRect?,
         animated: Bool = true,
         completion: (() -> Void)? = nil
@@ -140,10 +149,17 @@ extension ReadView {
             return
         }
 
+        // Compute the planner context against the SHALLOW (un-augmented) scroll geometry. The
+        // current contentInset.bottom may already contain an injected delta from a prior sheet
+        // present (e.g. swipe-to-next on the sheet); subtract it so the planner sees the same
+        // natural max we'd see if no sheet were currently driving overscroll. Without this,
+        // each tap would add the inset on top of the inset from the previous tap.
+        let priorAppliedInset = appliedSheetBottomInset
+        let naturalBottomInset = sourceView.adjustedContentInset.bottom - priorAppliedInset
         let minOffsetY = -sourceView.adjustedContentInset.top
         let maxContentOffsetY = max(
             minOffsetY,
-            sourceView.contentSize.height - sourceView.bounds.height + sourceView.adjustedContentInset.bottom
+            sourceView.contentSize.height - sourceView.bounds.height + naturalBottomInset
         )
         let context = ReadViewSheetVisibilityScrollContext(
             currentOffsetY: sourceView.contentOffset.y,
@@ -158,12 +174,21 @@ extension ReadView {
             topPadding: 24,
             bottomPadding: 16
         )
+
         guard let adjustment = ReadViewSheetVisibilityScrollPlanner.adjustment(for: context) else {
-            sharedScrollOffsetY = sourceView.contentOffset.y
+            // Already in a good spot. Drop any leftover injected inset (the only @State write
+            // we want here) and return — DO NOT touch `sharedScrollOffsetY` when no scroll is
+            // needed. Writing it triggers a SwiftUI body re-eval which makes the CoreText
+            // renderer's updateUIView re-build the entire attributed string for the note. On
+            // long notes that's the dominant per-tap cost.
+            if priorAppliedInset > 0 {
+                applyAdditionalBottomInset(0, on: sourceView, animated: animated)
+            }
             completion?()
             return
         }
 
+        applyAdditionalBottomInset(adjustment.temporaryBottomInset, on: sourceView, animated: animated)
         sharedScrollOffsetY = adjustment.targetOffsetY
         animateContentOffset(
             for: sourceView,
@@ -174,8 +199,10 @@ extension ReadView {
     }
 
     // Removes temporary sheet-induced overscroll once the segment action sheet is dismissed.
+    // First drops the injected contentInset, then animates the offset back into the post-
+    // shrink range so the scroll view comes to rest in its natural bounds.
     func restoreScrollAfterSheetDismissal(
-        sourceView: UITextView?,
+        sourceView: UIScrollView?,
         animated: Bool = true,
         completion: (() -> Void)? = nil
     ) {
@@ -183,6 +210,8 @@ extension ReadView {
             completion?()
             return
         }
+
+        applyAdditionalBottomInset(0, on: sourceView, animated: animated)
 
         let minOffsetY = -sourceView.adjustedContentInset.top
         let maxContentOffsetY = max(
@@ -194,7 +223,8 @@ extension ReadView {
             minOffsetY: minOffsetY,
             maxOffsetY: maxContentOffsetY
         ) else {
-            sharedScrollOffsetY = sourceView.contentOffset.y
+            // Same reasoning as the no-adjustment branch in preScroll: skip the @State write
+            // so dismissal doesn't pay a body re-eval / attributed-string-rebuild cost.
             completion?()
             return
         }
@@ -206,6 +236,44 @@ extension ReadView {
             animated: animated,
             completion: completion
         )
+    }
+
+    // Reconciles the read scroll view's bottom contentInset against `appliedSheetBottomInset`,
+    // adding or removing exactly the delta we previously injected. Sheet present/dismiss flow
+    // through here so the inset is symmetric — every byte we add gets reclaimed on dismissal.
+    private func applyAdditionalBottomInset(
+        _ desiredInset: CGFloat,
+        on sourceView: UIScrollView,
+        animated: Bool
+    ) {
+        let clampedDesired = max(0, desiredInset)
+        let delta = clampedDesired - appliedSheetBottomInset
+        guard abs(delta) > 0.5 else { return }
+
+        let newBottom = sourceView.contentInset.bottom + delta
+        let newScrollIndicatorBottom = sourceView.verticalScrollIndicatorInsets.bottom + delta
+
+        appliedSheetBottomInset = clampedDesired
+
+        let applyInsets: () -> Void = {
+            var inset = sourceView.contentInset
+            inset.bottom = newBottom
+            sourceView.contentInset = inset
+            var scrollIndicatorInset = sourceView.verticalScrollIndicatorInsets
+            scrollIndicatorInset.bottom = newScrollIndicatorBottom
+            sourceView.verticalScrollIndicatorInsets = scrollIndicatorInset
+        }
+
+        if animated {
+            UIView.animate(
+                withDuration: sheetVisibilityScrollAnimationDuration,
+                delay: 0,
+                options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut],
+                animations: applyInsets
+            )
+        } else {
+            applyInsets()
+        }
     }
 
     // Moves sheet selection to the previous or next selectable segment and returns refreshed sheet payload.

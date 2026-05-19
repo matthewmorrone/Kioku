@@ -1,8 +1,56 @@
 import UIKit
 
 extension SegmentLookupSheet {
-    // Refreshes all supplemental data for the current sheet from its registered providers.
+    // Runs every supplemental provider on a background queue, applies the results on main,
+    // then calls `completion` on main. The providers are synchronous and each can take many
+    // hundreds of ms (full deinflection traversal + dictionary index hits), so blocking the
+    // main thread on all six produced the multi-second pre-sheet stalls we observed in the
+    // TAP instrumentation. Stale results from a superseded tap are dropped via the
+    // generation counter, so the sheet never flashes back to old content after the user
+    // already moved to a new word.
+    func refreshSheetSupplementalDataAsync(completion: @escaping () -> Void) {
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let readingsProvider = sheetReadingsProvider
+        let sublatticeProvider = sheetSublatticeProvider
+        let frequencyProvider = sheetFrequencyProvider
+        let lemmaInfoProvider = sheetLemmaInfoProvider
+        let dictionaryEntryProvider = sheetDictionaryEntryProvider
+        let compoundComponentsProvider = sheetCompoundComponentsProvider
+
+        TapDiagnostics.mark("refreshSheetSupplementalDataAsync dispatched (gen=\(generation))")
+        providerQueue.async { [weak self] in
+            let readings = readingsProvider?() ?? []
+            let sublattice = sublatticeProvider?() ?? []
+            let frequency = frequencyProvider?()
+            let lemmaInfo = lemmaInfoProvider?()
+            let dictionaryEntry = dictionaryEntryProvider?()
+            let compoundComponents = compoundComponentsProvider?() ?? []
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard self.refreshGeneration == generation else {
+                    TapDiagnostics.mark("refresh: gen=\(generation) discarded as stale (current=\(self.refreshGeneration))")
+                    return
+                }
+                self.currentSheetUniqueReadings = readings
+                self.currentSheetSublatticeEdges = sublattice
+                self.currentSheetFrequencyByReading = frequency
+                self.currentSheetLemmaInfo = lemmaInfo
+                self.currentSheetDictionaryEntry = dictionaryEntry
+                self.currentSheetLexiconDebugInfo = ""
+                self.currentSheetWordComponents = []
+                self.currentSheetCompoundComponents = compoundComponents
+                TapDiagnostics.mark("refresh: applied to main (gen=\(generation))")
+                completion()
+            }
+        }
+    }
+
+    // Synchronous fallback retained for tests and any caller that genuinely needs the data
+    // to be in place before the function returns. NOT recommended for the hot tap path —
+    // prefer `refreshSheetSupplementalDataAsync` so the main thread can keep painting.
     func refreshSheetSupplementalData() {
+        refreshGeneration += 1
         currentSheetUniqueReadings = sheetReadingsProvider?() ?? []
         currentSheetSublatticeEdges = sheetSublatticeProvider?() ?? []
         currentSheetFrequencyByReading = sheetFrequencyProvider?()

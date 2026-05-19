@@ -38,7 +38,8 @@ extension DictionaryStore {
                            AND (sp.pos = 'prt' OR sp.pos LIKE 'prt,%' OR sp.pos LIKE '%,prt,%' OR sp.pos LIKE '%,prt'
                              OR sp.pos = 'cop' OR sp.pos LIKE 'cop,%' OR sp.pos LIKE '%,cop,%' OR sp.pos LIKE '%,cop'
                              OR sp.pos = 'aux' OR sp.pos LIKE 'aux,%' OR sp.pos LIKE '%,aux,%' OR sp.pos LIKE '%,aux'
-                             OR sp.pos LIKE 'aux-%' OR sp.pos LIKE '%,aux-%')
+                             OR sp.pos LIKE 'aux-%' OR sp.pos LIKE '%,aux-%'
+                             OR sp.pos = 'adj-pn' OR sp.pos LIKE 'adj-pn,%' OR sp.pos LIKE '%,adj-pn,%' OR sp.pos LIKE '%,adj-pn')
                        ) AS is_particle,
                        COALESCE(MIN(sn.order_index), 2147483647) AS min_sense
                 FROM surfaces_with_entries s

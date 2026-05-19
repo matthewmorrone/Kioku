@@ -317,6 +317,14 @@ struct ContentView: View {
                 try store.populateCanonicalEntryIDMap()
             }} catch { print("populateCanonicalEntryIDMap failed: \(error)") }
 
+            // Surface → POS bits map. Used by Lexicon's deinflection pruning to gate
+            // candidates without per-call SQL — the old hot path hit `posBits(for:)`
+            // hundreds of times during a single tap because every BFS-generated
+            // deinflection candidate needed an entry lookup just to check POS.
+            do { try StartupTimer.measure("populateSurfacePOSBitsMap") {
+                try store.populateSurfacePOSBitsMap()
+            }} catch { print("populateSurfacePOSBitsMap failed: \(error)") }
+
             do { surfaceReadingData = try StartupTimer.measure("fetchSurfaceReadingData") {
                 try store.fetchSurfaceReadingData()
             }} catch { print("fetchSurfaceReadingData failed: \(error)") }
