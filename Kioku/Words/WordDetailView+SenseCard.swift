@@ -44,9 +44,10 @@ extension WordDetailView {
 
     // Renders one sense card: tappable header strip carrying POS / frequency / misc tags above
     // a stack of bordered gloss sub-cards. Header tap toggles the whole sense; gloss tap toggles
-    // that one gloss (with mutual-exclusion handling above).
+    // that one gloss (with mutual-exclusion handling above). `sentences` are Tatoeba examples
+    // routed to this specific sense by SentenceSenseRouter.
     @ViewBuilder
-    func senseCard(sense: DictionaryEntrySense, isSavedEntry: Bool, isFirstSenseInEntry: Bool, freqLabel: String?, refs: [SenseReference]) -> some View {
+    func senseCard(sense: DictionaryEntrySense, isSavedEntry: Bool, isFirstSenseInEntry: Bool, freqLabel: String?, refs: [SenseReference], sentences: [SentencePair] = []) -> some View {
         let senseSelected = isSavedEntry && currentSelectedSenseIDs.contains(sense.senseID)
         let selectedGlossIndices: Set<Int> = {
             guard isSavedEntry else { return [] }
@@ -84,6 +85,29 @@ extension WordDetailView {
                             }
                         }
                 }
+            }
+
+            // Per-sense Tatoeba examples routed by SentenceSenseRouter.
+            if sentences.isEmpty == false {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(sentences, id: \.japanese) { pair in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(pair.japanese)
+                                .font(.footnote)
+                            Text(pair.english)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.white.opacity(0.025))
+                        )
+                    }
+                }
+                .padding(.top, 2)
             }
 
             // Cross-references and antonyms for this sense.

@@ -10,6 +10,21 @@ enum FlashcardCardDirection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+// Which slice of the saved-word collection feeds the next flashcard session.
+enum FlashcardScope: String, CaseIterable, Identifiable {
+    case all
+    case dueNow
+    case markedWrong
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .all: "All"
+        case .dueNow: "Due"
+        case .markedWrong: "Wrong"
+        }
+    }
+}
+
 // Renders the flashcard study mode: home configuration, active session, and session summary.
 // Major sections: toolbar, session header, card stack, grading controls, review home form, session complete state.
 struct FlashcardsView: View {
@@ -37,6 +52,7 @@ struct FlashcardsView: View {
 
     @State private var showEndSessionConfirm: Bool = false
     @State private var direction: FlashcardCardDirection = .kanaToEnglish
+    @State private var scope: FlashcardScope = .all
     @State private var selectedNoteIDs: Set<UUID> = []
     @State private var detailWord: SavedWord?
 
@@ -260,6 +276,15 @@ struct FlashcardsView: View {
             }
 
             Section {
+                Picker("Scope", selection: $scope) {
+                    ForEach(FlashcardScope.allCases) { s in
+                        Text(scopeLabel(s)).tag(s)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            Section {
                 let matchingCount = wordsMatchingSelection().count
 
                 Button {
@@ -344,13 +369,37 @@ struct FlashcardsView: View {
         sessionTotalCount = 0; reviewedCount = 0
     }
 
-    // Returns saved words filtered by the selected notes; an empty selection means no filter.
+    // Returns saved words filtered by the selected notes AND the active scope (all / due / wrong).
     private func wordsMatchingSelection() -> [SavedWord] {
-        let base = wordsStore.words
-        guard selectedNoteIDs.isEmpty == false else { return base }
-        return base.filter { word in
-            word.sourceNoteIDs.contains(where: { selectedNoteIDs.contains($0) })
+        var base = wordsStore.words
+        if selectedNoteIDs.isEmpty == false {
+            base = base.filter { word in
+                word.sourceNoteIDs.contains(where: { selectedNoteIDs.contains($0) })
+            }
         }
+        switch scope {
+        case .all:
+            return base
+        case .dueNow:
+            return base.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
+        case .markedWrong:
+            return base.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
+        }
+    }
+
+    // Builds the picker chip label, suffixing the count of words currently in that scope.
+    private func scopeLabel(_ s: FlashcardScope) -> String {
+        let base = wordsStore.words
+        let scoped: [SavedWord]
+        switch s {
+        case .all:
+            scoped = base
+        case .dueNow:
+            scoped = base.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
+        case .markedWrong:
+            scoped = base.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
+        }
+        return "\(s.label) (\(scoped.count))"
     }
 
 }

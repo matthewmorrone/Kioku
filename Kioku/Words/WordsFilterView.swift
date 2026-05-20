@@ -16,6 +16,7 @@ struct WordsFilterView: View {
     @State private var newListName = ""
     @State private var renamingListID: UUID?
     @State private var renameText = ""
+    @State private var listsEditMode: EditMode = .inactive
 
     var body: some View {
         NavigationStack {
@@ -33,11 +34,14 @@ struct WordsFilterView: View {
                     ForEach(wordListsStore.lists) { (list: WordList) in
                         listFilterRow(list)
                     }
+                    .onMove { source, destination in
+                        wordListsStore.move(from: source, to: destination)
+                    }
 
                     if isAddingList {
                         TextField("List name", text: $newListName)
                             .onSubmit { commitNewList() }
-                    } else {
+                    } else if listsEditMode != .active {
                         Button {
                             isAddingList = true
                         } label: {
@@ -46,9 +50,24 @@ struct WordsFilterView: View {
                     }
                 }
             }
+            .environment(\.editMode, $listsEditMode)
             .navigationTitle("Filter")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if wordListsStore.lists.count > 1 {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            withAnimation {
+                                listsEditMode = listsEditMode == .active ? .inactive : .active
+                            }
+                        } label: {
+                            Image(systemName: listsEditMode == .active ? "checkmark.circle" : "arrow.up.arrow.down")
+                                .font(.system(size: 16))
+                                .frame(width: 32, height: 32)
+                        }
+                        .accessibilityLabel(listsEditMode == .active ? "Done Reordering" : "Reorder Lists")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         dismiss()
@@ -61,6 +80,11 @@ struct WordsFilterView: View {
                 }
             }
         }
+    }
+
+    // Counts how many saved words belong to a given list — shown as a trailing badge on each row.
+    private func wordCount(for listID: UUID) -> Int {
+        wordsStore.words.reduce(0) { $0 + ($1.wordListIDs.contains(listID) ? 1 : 0) }
     }
 
     // Only notes that have at least one saved word in the store are shown.
@@ -97,9 +121,12 @@ struct WordsFilterView: View {
             Button {
                 toggleListFilter(list.id)
             } label: {
-                HStack {
+                HStack(spacing: 8) {
                     Text(list.name).foregroundStyle(.primary)
                     Spacer()
+                    Text("\(wordCount(for: list.id))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.tertiary)
                     if activeFilterListIDs.contains(list.id) {
                         Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
                     }

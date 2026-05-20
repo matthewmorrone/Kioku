@@ -9,7 +9,7 @@ extension DictionaryEntry {
     // Falls back to `kanaForms.first?.text` when nothing is selected or the intersection
     // would be empty (which only happens with inconsistent selections that aren't producible
     // through the UI today).
-    func preferredKana(
+    nonisolated func preferredKana(
         selectedSenseIDs: [Int64],
         selectedGlosses: [GlossRef],
         senseRestrictions: [SenseRestriction]

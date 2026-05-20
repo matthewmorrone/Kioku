@@ -1,13 +1,13 @@
 import Foundation
 
 // The two JMdict restriction variants: kanji-form (stagk) or kana-form (stagr).
-public enum SenseRestrictionKind: String, Equatable {
+nonisolated public enum SenseRestrictionKind: String, Equatable {
     case stagk
     case stagr
 }
 
 // A sense-level application restriction indicating which forms a sense applies to.
-public struct SenseRestriction: Equatable {
+nonisolated public struct SenseRestriction: Equatable {
     // Zero-based position of the owning sense within its entry, matching senses.order_index.
     public let senseOrderIndex: Int
     // Whether this restriction targets a kanji form or a kana form.

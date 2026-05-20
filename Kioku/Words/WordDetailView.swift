@@ -25,6 +25,7 @@ struct WordDetailView: View {
     @State private var allDisplayData: [WordDisplayData] = []
     @State private var personalNoteText: String = ""
     @State private var sentencesExpanded: Bool = false
+    @State private var presentedKanjiInfo: KanjiInfo? = nil
     @State private var wordComponents: [(surface: String, gloss: String?)] = []
     @State private var kanjiInfos: [KanjiInfo] = []
     @State private var loanwordSources: [LoanwordSource] = []
@@ -163,12 +164,14 @@ struct WordDetailView: View {
                                         let senseRefs = isSavedEntry
                                             ? senseReferences.filter { $0.senseOrderIndex == idx }
                                             : []
+                                        let senseSentences = data.sentencesBySenseID[sense.senseID] ?? []
                                         senseCard(
                                             sense: sense,
                                             isSavedEntry: isSavedEntry,
                                             isFirstSenseInEntry: idx == 0,
                                             freqLabel: freqLabel,
-                                            refs: senseRefs
+                                            refs: senseRefs,
+                                            sentences: senseSentences
                                         )
                                         .listRowSeparator(.hidden)
                                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
@@ -243,9 +246,10 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Examples — driven by saved entry only.
-                if let sentences = savedDisplayData?.sentences, sentences.isEmpty == false {
-                    let shown = sentencesExpanded ? sentences : Array(sentences.prefix(1))
+                // Examples — only the sentences that didn't route to a specific sense.
+                // Per-sense examples render inside each sense card via senseCard(sentences:).
+                if let unrouted = savedDisplayData?.unroutedSentences, unrouted.isEmpty == false {
+                    let shown = sentencesExpanded ? unrouted : Array(unrouted.prefix(1))
                     Section("Examples") {
                         ForEach(shown, id: \.japanese) { pair in
                             VStack(alignment: .leading, spacing: 3) {
@@ -257,8 +261,8 @@ struct WordDetailView: View {
                             }
                             .padding(.vertical, 2)
                         }
-                        if sentences.count > 1 {
-                            Button(sentencesExpanded ? "Show fewer" : "Show \(sentences.count - 1) more…") {
+                        if unrouted.count > 1 {
+                            Button(sentencesExpanded ? "Show fewer" : "Show \(unrouted.count - 1) more…") {
                                 sentencesExpanded.toggle()
                             }
                             .font(.caption)
@@ -287,54 +291,16 @@ struct WordDetailView: View {
                 }
 
                 // Kanji breakdown — one row per unique kanji character found in the surface.
+                // Tapping a row presents the full KanjiDetailView sheet.
                 if kanjiInfos.isEmpty == false {
                     Section("Kanji") {
                         ForEach(kanjiInfos, id: \.literal) { info in
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                    Text(info.literal)
-                                        .font(.system(size: 28, weight: .medium))
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(info.meanings.prefix(3).joined(separator: ", "))
-                                            .font(.subheadline)
-
-                                        HStack(spacing: 8) {
-                                            if let grade = info.grade {
-                                                metadataLabel(grade == 8 ? "Secondary" : "Grade \(grade)")
-                                            }
-                                            if let jlpt = info.jlptLevel {
-                                                metadataLabel("JLPT N\(jlpt)")
-                                            }
-                                            if let strokes = info.strokeCount {
-                                                metadataLabel("\(strokes) strokes")
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if info.onReadings.isEmpty == false {
-                                    HStack(spacing: 4) {
-                                        Text("ON")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(.tertiary)
-                                        Text(info.onReadings.joined(separator: "・"))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                if info.kunReadings.isEmpty == false {
-                                    HStack(spacing: 4) {
-                                        Text("KUN")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(.tertiary)
-                                        Text(info.kunReadings.joined(separator: "・"))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+                            Button {
+                                presentedKanjiInfo = info
+                            } label: {
+                                kanjiRowContent(info)
                             }
-                            .padding(.vertical, 4)
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -489,6 +455,11 @@ struct WordDetailView: View {
                     )
                     .presentationDetents([.large])
                 }
+            }
+            .sheet(item: $presentedKanjiInfo) { info in
+                KanjiDetailView(info: info, dictionaryStore: dictionaryStore)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
         }
         .task {
@@ -681,5 +652,63 @@ struct WordDetailView: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
+    }
+
+    // Compact tappable row content for one kanji character — extracted so the Kanji section
+    // can wrap it in a Button without duplicating the layout.
+    @ViewBuilder
+    private func kanjiRowContent(_ info: KanjiInfo) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(info.literal)
+                    .font(.system(size: 28, weight: .medium))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(info.meanings.prefix(3).joined(separator: ", "))
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+
+                    HStack(spacing: 8) {
+                        if let grade = info.grade {
+                            metadataLabel(grade == 8 ? "Secondary" : "Grade \(grade)")
+                        }
+                        if let jlpt = info.jlptLevel {
+                            metadataLabel("JLPT N\(jlpt)")
+                        }
+                        if let strokes = info.strokeCount {
+                            metadataLabel("\(strokes) strokes")
+                        }
+                    }
+                }
+
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            if info.onReadings.isEmpty == false {
+                HStack(spacing: 4) {
+                    Text("ON")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                    Text(info.onReadings.joined(separator: "・"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if info.kunReadings.isEmpty == false {
+                HStack(spacing: 4) {
+                    Text("KUN")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                    Text(info.kunReadings.joined(separator: "・"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
     }
 }

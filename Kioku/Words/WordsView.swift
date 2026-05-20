@@ -43,11 +43,15 @@ struct WordsView: View {
     @State private var isBatchRemoveHistoryConfirmPresented = false
     @State private var isBatchListSheetPresented = false
     @State private var isCSVImportPresented = false
+    @State private var isBrowseFrequencyPresented = false
+    @State private var isSentenceSearchPresented = false
+    @State private var isRadicalInputPresented = false
     @State private var selectedHistoryIDs: Set<Int64> = []
     @State private var activeTab: WordsTab = .saved
     @AppStorage("savedWordsSortOrder") private var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
     @AppStorage("historySortOrder") private var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
     @State private var searchText = ""
+    @State private var convertedKana: String? = nil
     @State private var searchMode: DictionarySearchMode = .japanese
     @State private var searchSortMode: DictionarySearchSortMode = .relevance
     @State private var searchCommonWordsOnly = false
@@ -135,6 +139,22 @@ struct WordsView: View {
                 .animation(.default, value: activeTab)
             }
             .searchable(text: $searchText, prompt: "Search dictionary…")
+            .searchSuggestions {
+                if let kana = convertedKana, kana != searchText {
+                    Label {
+                        HStack {
+                            Text(kana)
+                            Spacer()
+                            Text("Tap to search kana")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "arrow.right")
+                    }
+                    .searchCompletion(kana)
+                }
+            }
             .toolbar {
                 toolbarContent
             }
@@ -200,6 +220,29 @@ struct WordsView: View {
                 .presentationDragIndicator(.visible)
                 .interactiveDismissDisabled()
         }
+        .sheet(isPresented: $isBrowseFrequencyPresented) {
+            BrowseFrequencyView(
+                dictionaryStore: dictionaryStore,
+                isSaved: { entryID in wordsStore.words.contains(where: { $0.canonicalEntryID == entryID }) },
+                onToggleSave: handleBrowseToggleSave,
+                onSelectEntry: handleBrowseSelectEntry
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $isSentenceSearchPresented) {
+            SentenceSearchView(dictionaryStore: dictionaryStore)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $isRadicalInputPresented) {
+            RadicalInputView(
+                dictionaryStore: dictionaryStore,
+                onSelectKanji: handleRadicalSelectKanji
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .onChange(of: activeTab) { _, _ in
             editMode = .inactive
             selectedWordIDs.removeAll()
@@ -209,6 +252,7 @@ struct WordsView: View {
             editMode = .inactive
             selectedWordIDs.removeAll()
             selectedHistoryIDs.removeAll()
+            convertedKana = RomajiToKana.convert(newValue)?.kana
             startSearchTask(for: newValue)
         }
         .onChange(of: searchMode) { _, _ in
@@ -421,6 +465,40 @@ struct WordsView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        // Browse-by-frequency entrypoint available on both tabs when not actively searching/editing.
+        if editMode == .inactive && searchText.isEmpty {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isBrowseFrequencyPresented = true
+                } label: {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Browse by frequency")
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isSentenceSearchPresented = true
+                } label: {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Search example sentences")
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isRadicalInputPresented = true
+                } label: {
+                    Image(systemName: "square.grid.3x3")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Find kanji by radical")
+            }
+        }
+
         // CSV import floats to the leading side, separate from CRUD controls.
         if activeTab == .saved && editMode == .inactive && searchText.isEmpty {
             ToolbarItem(placement: .topBarLeading) {
@@ -729,6 +807,9 @@ struct WordsView: View {
             return
         }
 
+        let alternateKana = convertedKana?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isWildcardQuery = trimmedQuery.contains("*") || trimmedQuery.contains("?")
+
         searchTask = Task {
             do {
                 try await Task.sleep(nanoseconds: 300_000_000)
@@ -740,7 +821,22 @@ struct WordsView: View {
             let mode = searchMode
             let results = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
-                    let entries = (try? store.searchEntries(term: trimmedQuery, mode: mode)) ?? []
+                    if isWildcardQuery {
+                        var entries = (try? store.searchEntriesByPattern(trimmedQuery)) ?? []
+                        if let alt = alternateKana, alt.isEmpty == false, alt != trimmedQuery {
+                            let altEntries = (try? store.searchEntriesByPattern(alt)) ?? []
+                            let existing = Set(entries.map(\.entryId))
+                            entries += altEntries.filter { existing.contains($0.entryId) == false }
+                        }
+                        continuation.resume(returning: entries)
+                        return
+                    }
+                    var entries = (try? store.searchEntries(term: trimmedQuery, mode: mode)) ?? []
+                    if let alt = alternateKana, alt.isEmpty == false, alt != trimmedQuery {
+                        let altEntries = (try? store.searchEntries(term: alt, mode: .japanese)) ?? []
+                        let existing = Set(entries.map(\.entryId))
+                        entries += altEntries.filter { existing.contains($0.entryId) == false }
+                    }
                     continuation.resume(returning: entries)
                 }
             }
@@ -775,6 +871,31 @@ struct WordsView: View {
         searchCommonWordsOnly = false
         searchSortMode = .relevance
         searchSelectedPartsOfSpeech = []
+    }
+
+    // Toggles save/unsave for an entry surfaced in the browse-frequency sheet.
+    private func handleBrowseToggleSave(_ entry: DictionaryEntry) {
+        if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) {
+            wordsStore.remove(id: entry.entryId)
+        } else {
+            wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface))
+        }
+    }
+
+    // Routes a picked kanji from the radical input sheet into the search field on the Words tab.
+    private func handleRadicalSelectKanji(_ kanji: String) {
+        isRadicalInputPresented = false
+        searchText = kanji
+    }
+
+    // Opens one browse-frequency result in the detail sheet, dismissing the browse sheet first.
+    private func handleBrowseSelectEntry(_ entry: DictionaryEntry) {
+        isBrowseFrequencyPresented = false
+        historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
+        // Defer to next runloop so the sheet dismissal animation doesn't race the detail presentation.
+        DispatchQueue.main.async {
+            selectedDetailWord = detailWord(entryID: entry.entryId, surfaceHint: entry.primarySearchSurface)
+        }
     }
 
     // Opens one live search result in the detail sheet and records it in lookup history.

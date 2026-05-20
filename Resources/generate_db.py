@@ -13,6 +13,8 @@ JPDB_PATH = RESOURCES_DIR / "JPDB_v2.2_Frequency_Kana.json"
 KANJIDIC2_PATH = RESOURCES_DIR / "kanjidic2-all.json"
 PITCH_ACCENT_PATH = RESOURCES_DIR / "pitch-accent.tsv"
 SENTENCE_PAIRS_PATH = RESOURCES_DIR / "sentence-pairs.tsv"
+RADKFILE_PATH = RESOURCES_DIR / "radkfile2.utf8"
+KRADFILE_PATH = RESOURCES_DIR / "kradfile2.utf8"
 OUTPUT_DB = RESOURCES_DIR / "dictionary.sqlite"
 
 
@@ -246,6 +248,25 @@ def create_schema(conn):
             content_rowid=rowid,
             tokenize='unicode61'
         );
+
+        -- Multi-radical kanji decomposition data from EDRDG's RADKFILE/KRADFILE.
+        -- `radicals` is the inventory of radical components (e.g. 木, 心, 亻) with their stroke
+        -- counts. `kanji_radicals` is the many-to-many mapping populated from KRADFILE: one row
+        -- per (kanji, radical) pair. The Kangxi `radical` column on `kanji_characters` is the
+        -- character's INDEXING radical (one number 1–214); these tables capture all radical
+        -- COMPONENTS that compose a character, which is what multi-radical lookup needs.
+        CREATE TABLE radicals (
+            radical TEXT PRIMARY KEY,
+            stroke_count INTEGER NOT NULL
+        );
+        CREATE TABLE kanji_radicals (
+            kanji TEXT NOT NULL,
+            radical TEXT NOT NULL,
+            PRIMARY KEY (kanji, radical),
+            FOREIGN KEY (radical) REFERENCES radicals(radical)
+        );
+        CREATE INDEX idx_kanji_radicals_radical ON kanji_radicals(radical);
+        CREATE INDEX idx_kanji_radicals_kanji ON kanji_radicals(kanji);
         """
     )
 
@@ -716,6 +737,75 @@ def import_sentence_pairs(conn):
     print(f"  Done: {count} sentence pairs imported")
 
 
+def import_radicals(conn):
+    # Populates `radicals` and `kanji_radicals` from RADKFILE2 + KRADFILE2 (EDRDG).
+    # RADKFILE format: header lines start with '#' and are skipped. A '$' line introduces one
+    # radical and looks like "$ <radical> <stroke_count> [unicode_hex]". Subsequent non-$/non-#
+    # lines hold the kanji that contain that radical (space-separated). KRADFILE format: each
+    # data line is "<kanji> : <radical1> <radical2> ...". We use RADKFILE for stroke counts and
+    # KRADFILE for the kanji→radical edges (RADKFILE gives the same edges from the other direction
+    # but KRADFILE's per-kanji rows are simpler to parse).
+    if not RADKFILE_PATH.exists() and not KRADFILE_PATH.exists():
+        print(f"  Radical files not found in {RESOURCES_DIR} — skipping multi-radical input")
+        return
+
+    radical_strokes = {}
+    if RADKFILE_PATH.exists():
+        print(f"  Parsing radicals from {RADKFILE_PATH.name}...")
+        with open(RADKFILE_PATH, encoding="utf-8") as f:
+            for raw in f:
+                line = raw.rstrip("\n")
+                if line.startswith("#") or not line.strip():
+                    continue
+                if line.startswith("$"):
+                    # "$ <radical> <strokes> [...]"
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        radical = parts[1]
+                        try:
+                            strokes = int(parts[2])
+                        except ValueError:
+                            continue
+                        radical_strokes[radical] = strokes
+        print(f"  Done: {len(radical_strokes)} radicals indexed")
+    else:
+        print(f"  RADKFILE not found at {RADKFILE_PATH} — radicals table will be sparse")
+
+    edges = 0
+    if KRADFILE_PATH.exists():
+        print(f"  Parsing kanji decompositions from {KRADFILE_PATH.name}...")
+        with open(KRADFILE_PATH, encoding="utf-8") as f:
+            for raw in f:
+                line = raw.rstrip("\n")
+                if line.startswith("#") or ":" not in line:
+                    continue
+                left, _, right = line.partition(":")
+                kanji = left.strip()
+                if not kanji:
+                    continue
+                for radical in right.split():
+                    radical = radical.strip()
+                    if not radical:
+                        continue
+                    # Backfill the stroke count if RADKFILE didn't ship a $-record for this radical.
+                    if radical not in radical_strokes:
+                        radical_strokes[radical] = 0
+                    conn.execute(
+                        "INSERT OR IGNORE INTO kanji_radicals (kanji, radical) VALUES (?, ?)",
+                        (kanji, radical),
+                    )
+                    edges += 1
+        print(f"  Done: {edges} kanji→radical edges imported")
+    else:
+        print(f"  KRADFILE not found at {KRADFILE_PATH} — kanji_radicals table will be empty")
+
+    for radical, strokes in radical_strokes.items():
+        conn.execute(
+            "INSERT OR REPLACE INTO radicals (radical, stroke_count) VALUES (?, ?)",
+            (radical, strokes),
+        )
+
+
 def katakana_to_hiragana(text):
     # Converts full-width katakana to hiragana (subtract 96 from each katakana codepoint).
     return "".join(chr(ord(ch) - 96) if 0x30A1 <= ord(ch) <= 0x30F6 else ch for ch in text)
@@ -857,6 +947,9 @@ def build_database():
 
     print("Building sentence FTS index...")
     conn.execute("INSERT INTO sentence_pairs_fts(sentence_pairs_fts) VALUES('rebuild')")
+
+    print("Importing radical decomposition data...")
+    import_radicals(conn)
 
     print("Materializing surface_readings lookup table...")
     conn.executescript(
