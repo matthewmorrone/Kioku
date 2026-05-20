@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftUI
 
 // Owns word-list CRUD for the Words tab. Has no reference to WordsStore — cascade is caller responsibility.
 @MainActor
@@ -32,6 +33,12 @@ final class WordListsStore: ObservableObject {
     // Deletes a word list by id. Caller must strip orphan memberships from WordsStore.
     func delete(id: UUID) {
         lists.removeAll { $0.id == id }
+        persist()
+    }
+
+    // Moves one list from one index range to a new position; mirrors SwiftUI's onMove signature.
+    func move(from source: IndexSet, to destination: Int) {
+        lists.move(fromOffsets: source, toOffset: destination)
         persist()
     }
 

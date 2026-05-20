@@ -6,6 +6,8 @@ Resources/ggml-tiny.bin
 Resources/kanjidic2-all.json
 Resources/pitch-accent.tsv
 Resources/sentence-pairs.tsv
+Resources/radkfile2.utf8
+Resources/kradfile2.utf8
 .swiftpm/checkouts
 .remember
 Resources/MeCab/ipadic/
@@ -15,3 +17,4 @@ Resources/MeCab/unidic/
 .superpowers
 node_modules/
 .claude/scheduled_tasks.lock
+.superpowers/

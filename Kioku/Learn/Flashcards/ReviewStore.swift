@@ -26,12 +26,17 @@ final class ReviewStore: ObservableObject {
         }
     }
 
-    // Records a correct answer: increments the per-word correct counter, clears the wrong
-    // flag, and bumps the lifetime correct count.
+    // Records a correct answer: increments counters, clears the wrong flag, and reschedules
+    // the card via SRSScheduler so it reappears at the next interval up the ladder.
     func recordCorrect(for id: Int64) {
-        var st = stats[id] ?? ReviewWordStats(correct: 0, again: 0)
+        let prior = stats[id]
+        var st = prior ?? ReviewWordStats(correct: 0, again: 0)
         st.correct += 1
-        st.lastReviewedAt = Date()
+        let now = Date()
+        st.lastReviewedAt = now
+        let schedule = SRSScheduler.schedule(previous: prior, answer: .correct, now: now)
+        st.dueDate = schedule.dueDate
+        st.consecutiveCorrect = schedule.consecutiveCorrect
         stats[id] = st
         markedWrong.remove(id)
         lifetimeCorrect += 1
@@ -40,18 +45,35 @@ final class ReviewStore: ObservableObject {
         persistLifetime()
     }
 
-    // Records an "again" answer: increments the per-word again counter, adds the word to
-    // the wrong set so it shows up in the "Marked Wrong" scope, and bumps the lifetime again count.
+    // Records an "again" answer: increments counters, adds the word to the wrong set, resets
+    // the SRS streak, and reschedules the card to reappear after the short relearn step.
     func recordAgain(for id: Int64) {
-        var st = stats[id] ?? ReviewWordStats(correct: 0, again: 0)
+        let prior = stats[id]
+        var st = prior ?? ReviewWordStats(correct: 0, again: 0)
         st.again += 1
-        st.lastReviewedAt = Date()
+        let now = Date()
+        st.lastReviewedAt = now
+        let schedule = SRSScheduler.schedule(previous: prior, answer: .again, now: now)
+        st.dueDate = schedule.dueDate
+        st.consecutiveCorrect = schedule.consecutiveCorrect
         stats[id] = st
         markedWrong.insert(id)
         lifetimeAgain += 1
         persistStats()
         persistWrong()
         persistLifetime()
+    }
+
+    // True when the word is due — never reviewed (no stats) or its `dueDate` has elapsed.
+    func isDue(id: Int64, at date: Date = Date()) -> Bool {
+        guard let st = stats[id] else { return true }
+        guard let due = st.dueDate else { return true }
+        return due <= date
+    }
+
+    // Number of saved words currently due for review.
+    func dueCount(among words: [SavedWord], at date: Date = Date()) -> Int {
+        words.reduce(0) { $0 + (isDue(id: $1.canonicalEntryID, at: date) ? 1 : 0) }
     }
 
     // Overall correct / (correct + again) ratio across all sessions; nil when no reviews recorded.

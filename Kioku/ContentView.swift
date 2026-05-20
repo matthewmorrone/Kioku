@@ -27,6 +27,8 @@ struct ContentView: View {
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionarySetting = SegmenterSettings.defaultMeCabDictionary
     @StateObject private var wotdNavigation = WordOfTheDayNavigation()
+    @StateObject private var clipboardCoordinator = ClipboardLookupCoordinator()
+    @Environment(\.scenePhase) private var scenePhase
     // Retained for its delegate lifetime; nil until onAppear.
     @State private var notificationHandler: NotificationDeepLinkHandler?
     // Set by notification and read-tab actions; consumed by WordsView.
@@ -135,6 +137,32 @@ struct ContentView: View {
         .onChange(of: wordsStore.words) { _, _ in
             guard readResources.ready else { return }
             scheduleWotdRefresh(reason: "words changed", delayNanoseconds: 500_000_000, forceRefresh: true)
+        }
+        // Probe the pasteboard whenever the app becomes active; reads only the change counter.
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            clipboardCoordinator.checkClipboard()
+        }
+        .overlay(alignment: .bottom) {
+            if clipboardCoordinator.hasPendingClipboard {
+                ClipboardLookupBanner(
+                    onLookup: handleClipboardLookup,
+                    onDismiss: { clipboardCoordinator.dismiss() }
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 56)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: clipboardCoordinator.hasPendingClipboard)
+    }
+
+    // Reads the pasteboard, switches to Words, and populates the search field with the clipboard content.
+    private func handleClipboardLookup() {
+        guard let content = clipboardCoordinator.consumeClipboard() else { return }
+        selectedTab = .words
+        DispatchQueue.main.async {
+            pendingWordsRoute = .search(content)
         }
     }
 

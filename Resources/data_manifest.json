@@ -71,6 +71,26 @@
       "provenance": "Built from Tatoeba export: 'Sentence pairs in Japanese-English - 2026-01-20.tsv' and 'Sentence pairs in English-Japanese - 2026-01-20.tsv' via scripts/build_sentence_pairs_tsv.py"
     },
     {
+      "name": "radkfile2",
+      "type": "radical-decomposition",
+      "path": "Resources/radkfile2.utf8",
+      "required": false,
+      "derived": false,
+      "url": "http://ftp.edrdg.org/pub/Nihongo/radkfile2.gz",
+      "sha256": null,
+      "provenance": "EDRDG RADKFILE2 (radical→kanji index, extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/radkfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/radkfile2.gz | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/radkfile2.utf8"
+    },
+    {
+      "name": "kradfile2",
+      "type": "radical-decomposition",
+      "path": "Resources/kradfile2.utf8",
+      "required": false,
+      "derived": false,
+      "url": "http://ftp.edrdg.org/pub/Nihongo/kradfile2.gz",
+      "sha256": null,
+      "provenance": "EDRDG KRADFILE2 (kanji→radical index, extended radical set). License: CC BY-SA 4.0. Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/kradfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/kradfile2.gz | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/kradfile2.utf8"
+    },
+    {
       "name": "dictionary",
       "type": "sqlite",
       "path": "Kioku/Resources/dictionary.sqlite",

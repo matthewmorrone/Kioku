@@ -109,6 +109,46 @@ extension DictionaryStore {
         }
     }
 
+    // Free-form sentence search across the whole Tatoeba corpus.
+    // Treats the query as a single FTS5 phrase; returns up to `limit` shortest matches.
+    // Distinct from `fetchSentencePairs(terms:)` because that variant filters to lemma-specific
+    // priority terms for the per-entry detail view; this one is for browsing.
+    nonisolated public func searchSentences(query: String, limit: Int = 200) throws -> [SentencePair] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return [] }
+        // Escape any embedded double-quotes so they don't break the FTS5 phrase.
+        let escaped = trimmed.replacingOccurrences(of: "\"", with: "\"\"")
+
+        return try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT sp.japanese, sp.english
+            FROM sentence_pairs sp
+            JOIN sentence_pairs_fts ON sentence_pairs_fts.rowid = sp.rowid
+            WHERE sentence_pairs_fts MATCH ?1
+            ORDER BY LENGTH(sp.japanese) ASC
+            LIMIT ?2
+            """
+
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+
+            try prepare(sql: sql, statement: &statement)
+            try bindText("\"\(escaped)\"", index: 1, statement: statement)
+            try bindInt64(Int64(limit), index: 2, statement: statement)
+
+            return try stepRows(statement: statement) { stmt -> SentencePair? in
+                guard
+                    let japanesePointer = sqlite3_column_text(stmt, 0),
+                    let englishPointer = sqlite3_column_text(stmt, 1)
+                else { return nil }
+                return SentencePair(
+                    japanese: String(cString: japanesePointer),
+                    english: String(cString: englishPointer)
+                )
+            }
+        }
+    }
+
     // Convenience overload that searches for a single surface string.
     nonisolated public func fetchSentencePairs(surface: String) throws -> [SentencePair] {
         try fetchSentencePairs(terms: [surface])
@@ -116,7 +156,7 @@ extension DictionaryStore {
 
     // Fetches sense-level stagk/stagr application restrictions for one entry.
     // Each restriction identifies which kanji or kana form a particular sense applies to.
-    public func fetchSenseRestrictions(entryID: Int64) throws -> [SenseRestriction] {
+    nonisolated public func fetchSenseRestrictions(entryID: Int64) throws -> [SenseRestriction] {
         try withSerializedDatabaseAccess {
             let sql = """
             SELECT s.order_index, sr.type, sr.value
@@ -226,7 +266,7 @@ extension DictionaryStore {
     func fetchKanjiInfo(for literal: String) throws -> KanjiInfo? {
         try withSerializedDatabaseAccess {
             let charSQL = """
-            SELECT grade, stroke_count, jlpt_level
+            SELECT grade, stroke_count, jlpt_level, radical, freq_mainichi
             FROM kanji_characters
             WHERE literal = ?1
             LIMIT 1
@@ -248,6 +288,10 @@ extension DictionaryStore {
                 ? Int(sqlite3_column_int(charStatement, 1)) : nil
             let jlptLevel = sqlite3_column_type(charStatement, 2) != SQLITE_NULL
                 ? Int(sqlite3_column_int(charStatement, 2)) : nil
+            let radical = sqlite3_column_type(charStatement, 3) != SQLITE_NULL
+                ? Int(sqlite3_column_int(charStatement, 3)) : nil
+            let freqMainichi = sqlite3_column_type(charStatement, 4) != SQLITE_NULL
+                ? Int(sqlite3_column_int(charStatement, 4)) : nil
 
             let readingsSQL = """
             SELECT kr.reading, kr.type
@@ -298,6 +342,8 @@ extension DictionaryStore {
                 grade: grade,
                 strokeCount: strokeCount,
                 jlptLevel: jlptLevel,
+                radical: radical,
+                freqMainichi: freqMainichi,
                 onReadings: onReadings,
                 kunReadings: kunReadings,
                 meanings: meanings

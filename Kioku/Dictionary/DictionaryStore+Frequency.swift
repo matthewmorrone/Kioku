@@ -4,6 +4,45 @@ import SQLite3
 // Frequency query surface — builds the unified surface reading map used by segmentation, furigana, and frequency display.
 extension DictionaryStore {
 
+    // Fetches the top N dictionary entries by JPDB frequency rank, materialized for browse-view display.
+    // Entries with multiple readings collapse to their best-ranked reading (MIN(jpdb_rank)).
+    nonisolated func fetchTopFrequencyEntries(limit: Int) throws -> [DictionaryEntry] {
+        let entryIDs = try fetchTopFrequencyEntryIDs(limit: limit)
+        var entries: [DictionaryEntry] = []
+        entries.reserveCapacity(entryIDs.count)
+        for entryID in entryIDs {
+            if let entry = try lookupEntry(entryID: entryID) {
+                entries.append(entry)
+            }
+        }
+        return entries
+    }
+
+    // Returns entry ids ordered by ascending JPDB rank, capped at `limit`.
+    nonisolated private func fetchTopFrequencyEntryIDs(limit: Int) throws -> [Int64] {
+        try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT entry_id, MIN(jpdb_rank) AS best_rank
+            FROM word_frequency
+            WHERE jpdb_rank IS NOT NULL
+            GROUP BY entry_id
+            ORDER BY best_rank ASC
+            LIMIT ?1
+            """
+
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+
+            try prepare(sql: sql, statement: &statement)
+            try bindInt64(Int64(limit), index: 1, statement: statement)
+
+            return try stepRows(statement: statement) { stmt in
+                Int64(sqlite3_column_int64(stmt, 0))
+            }
+        }
+    }
+
+
     // Builds the unified per-surface reading and frequency map from the materialized surface_readings table.
     // Rows are pre-sorted by (surface ASC, best_rank ASC, reading ASC) at DB generation time,
     // so a single sequential scan produces correctly-ordered readings without runtime sorting.
