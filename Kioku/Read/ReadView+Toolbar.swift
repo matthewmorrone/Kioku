@@ -266,7 +266,12 @@ extension ReadView {
         .buttonStyle(.plain)
     }
 
-    // Uses one icon button whose visual treatment reflects active edit state.
+    // Uses one icon button whose visual treatment reflects active edit state. Locked while
+    // an LLM correction is in flight: entering edit mode mid-call would let the user mutate
+    // `text` out from under the apply pipeline, which validates the response against the
+    // text that was originally submitted. Cheaper than threading a background task across
+    // view transitions — the call only survives a couple of minutes, and the user can
+    // still navigate elsewhere; they just can't edit until the correction lands.
     var editModeButton: some View {
         Button {
             isEditMode.toggle()
@@ -278,7 +283,9 @@ extension ReadView {
                 .background(Circle().fill(isEditMode ? Color.accentColor : Color(.tertiarySystemFill)))
         }
         .buttonStyle(PlainButtonStyle())
-        .opacity(isEditMode ? 1 : 0.7)
+        .disabled(isRequestingLLMCorrection)
+        .opacity(isRequestingLLMCorrection ? 0.4 : (isEditMode ? 1 : 0.7))
         .accessibilityLabel(isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
+        .accessibilityHint(isRequestingLLMCorrection ? "Disabled while AI correction runs" : "")
     }
 }
