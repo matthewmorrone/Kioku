@@ -19,6 +19,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     private var player: AVAudioPlayer?
     var cues: [SubtitleCue] = []
     private var timer: Timer?
+    // When set, the timer tick pauses playback once `currentTimeMs` reaches this value.
+    // Used by `playRange(startMs:endMs:)` to play a single line/section of audio and stop
+    // automatically at its end. Cleared by any explicit seek/stop so it never leaks into
+    // subsequent unrelated playback.
+    private var stopAtMs: Int? = nil
 
     override init() {
         super.init()
@@ -110,6 +115,22 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         currentTimeMs = 0
         activeCueIndex = nil
         audioLevel = 0
+        stopAtMs = nil
+    }
+
+    // Plays a contiguous millisecond range, automatically pausing at `endMs`. Used by the
+    // breakdown stepper's "play this line" affordance — the SRT cue for a line gives the
+    // start/end ms and we want exactly that span to play, not a full-song scrub from the
+    // line's start.
+    //
+    // Order matters: seek first (which clears any prior `stopAtMs`), then install the new
+    // bound, then start playback. The 50 ms timer tick handles the auto-pause; AVFoundation
+    // doesn't have a native "play until X" primitive.
+    func playRange(startMs: Int, endMs: Int) {
+        guard player != nil else { return }
+        seek(toMs: startMs)
+        stopAtMs = endMs
+        play()
     }
 
     // Pauses playback and seeks back to the beginning. Called when the lyrics view is dismissed.
@@ -124,11 +145,14 @@ final class AudioPlaybackController: NSObject, ObservableObject {
 
     // Seeks to a specific millisecond offset without interrupting the play/pause state.
     // Resumes playback after seeking if we were playing, since AVAudioPlayer can
-    // momentarily stop during currentTime assignment.
+    // momentarily stop during currentTime assignment. Any pending `stopAtMs` watchdog is
+    // cleared — the user moved the cursor, so a previously-armed line-range stop no longer
+    // matches what they're listening to.
     func seek(toMs ms: Int) {
         guard let player else { return }
         let wasPlaying = player.isPlaying
         player.currentTime = TimeInterval(ms) / 1000.0
+        stopAtMs = nil
         if wasPlaying && player.isPlaying == false {
             player.play()
         }
@@ -166,6 +190,12 @@ final class AudioPlaybackController: NSObject, ObservableObject {
 
         syncTimeAndCue()
         updateAudioLevel(player)
+
+        // Auto-pause at the line-range upper bound when `playRange` armed one.
+        if let stopAt = stopAtMs, currentTimeMs >= stopAt {
+            stopAtMs = nil
+            pause()
+        }
     }
 
     // Reads AVAudioPlayer's per-channel average-power meter, averages stereo channels into a
