@@ -35,6 +35,12 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var sheetFrequencyProvider: (() -> [String: FrequencyData]?)?
     // Provides lemma and inflection chain when the current surface is an inflected form distinct from its base.
     var sheetLemmaInfoProvider: (() -> (lemma: String, chain: [String])?)?
+    // Provides a per-reading map of lemma + dictionary entry. The arrow controls cycle through
+    // currentSheetUniqueReadings; when the user lands on a reading that belongs to a different
+    // admitted lemma (e.g. cycling between さわる/触る and ふれる/触れる for 触れられない), the sheet
+    // uses this map to refresh currentSheetLemmaInfo and currentSheetDictionaryEntry so the lemma
+    // label and gloss panel follow the selected reading.
+    var sheetLemmaInfoByReadingProvider: (() -> [String: (lemma: String, chain: [String], entry: DictionaryEntry?)])?
     // Returns the currently persisted reading override for the selected segment, if any.
     var activeReadingOverrideProvider: (() -> String?)?
     // Looks up frequency data for any surface in the note — used to annotate sublattice paths.
@@ -63,6 +69,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var currentSheetLexiconDebugInfo: String = ""
     var currentSheetFrequencyByReading: [String: FrequencyData]? = nil
     var currentSheetLemmaInfo: (lemma: String, chain: [String])? = nil
+    var currentSheetLemmaInfoByReading: [String: (lemma: String, chain: [String], entry: DictionaryEntry?)] = [:]
     var updatePresentedSheetSelection: ((
         String,
         String?,
@@ -219,6 +226,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetLexiconDebugProvider: (() -> String)? = nil,
         sheetFrequencyProvider: (() -> [String: FrequencyData]?)? = nil,
         sheetLemmaInfoProvider: (() -> (lemma: String, chain: [String])?)? = nil,
+        sheetLemmaInfoByReadingProvider: (() -> [String: (lemma: String, chain: [String], entry: DictionaryEntry?)])? = nil,
         onReadingSelected: ((String) -> Void)? = nil,
         onReadingReset: (() -> Void)? = nil,
         activeReadingOverrideProvider: (() -> String?)? = nil,
@@ -246,6 +254,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.activeReadingOverrideProvider = activeReadingOverrideProvider
         self.pathSegmentFrequencyProvider = pathSegmentFrequencyProvider
         self.sheetLemmaInfoProvider = sheetLemmaInfoProvider
+        self.sheetLemmaInfoByReadingProvider = sheetLemmaInfoByReadingProvider
         self.sheetDictionaryEntryProvider = sheetDictionaryEntryProvider
         self.sheetIsSavedProvider = sheetIsSavedProvider
         self.sheetSaveToggle = sheetSaveToggle
@@ -336,6 +345,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetLexiconDebugProvider = nil
         sheetFrequencyProvider = nil
         sheetLemmaInfoProvider = nil
+        sheetLemmaInfoByReadingProvider = nil
         activeReadingOverrideProvider = nil
         pathSegmentFrequencyProvider = nil
         sheetDictionaryEntryProvider = nil
@@ -353,6 +363,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         currentSheetLexiconDebugInfo = ""
         currentSheetFrequencyByReading = nil
         currentSheetLemmaInfo = nil
+        currentSheetLemmaInfoByReading = [:]
         currentSheetDictionaryEntry = nil
         currentSheetWordComponents = []
         currentSheetCompoundComponents = []

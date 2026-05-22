@@ -366,8 +366,10 @@ extension SurfaceSheetViewController {
             guard total > 1 else { return }
             customReading = nil
             currentReadingIndex = (currentReadingIndex - 1 + total) % total
+            syncLemmaAndEntryToCurrentReading()
             syncFuriganaToCurrentIndex()
             applyCurrentReadingSelection()
+            updateLemmaChain()
             updateMiddleContent()
         }, for: .touchUpInside)
 
@@ -377,8 +379,10 @@ extension SurfaceSheetViewController {
             guard total > 1 else { return }
             customReading = nil
             currentReadingIndex = (currentReadingIndex + 1) % total
+            syncLemmaAndEntryToCurrentReading()
             syncFuriganaToCurrentIndex()
             applyCurrentReadingSelection()
+            updateLemmaChain()
             updateMiddleContent()
         }, for: .touchUpInside)
 

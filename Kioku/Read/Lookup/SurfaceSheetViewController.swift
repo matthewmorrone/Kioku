@@ -205,6 +205,22 @@ final class SurfaceSheetViewController: UIViewController {
         nextReadingButton.alpha = canCycleReadings ? 1 : 0.45
     }
 
+    // Repoints currentSheetLemmaInfo and currentSheetDictionaryEntry at whatever lemma owns
+    // the currently selected reading. Called by the arrow handlers so cycling between readings
+    // (e.g. さわる ↔ ふれる for 触れられない) refreshes the lemma label and the gloss panel to
+    // match the linguistically correct lemma for the chosen reading. No-op when the per-reading
+    // map is empty (single-reading surface) or doesn't contain an entry for the current reading.
+    func syncLemmaAndEntryToCurrentReading() {
+        guard let sheet else { return }
+        guard currentReadings.indices.contains(currentReadingIndex) else { return }
+        let reading = currentReadings[currentReadingIndex]
+        guard let info = sheet.currentSheetLemmaInfoByReading[reading] else { return }
+        sheet.currentSheetLemmaInfo = (lemma: info.lemma, chain: info.chain)
+        if let entry = info.entry {
+            sheet.currentSheetDictionaryEntry = entry
+        }
+    }
+
     // Updates the lemma label when the surface changes or supplemental data refreshes.
     func updateLemmaChain() {
         let lemma = sheet?.currentSheetLemmaInfo.map { $0.lemma }

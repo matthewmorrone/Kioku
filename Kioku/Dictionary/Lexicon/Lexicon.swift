@@ -125,6 +125,57 @@ nonisolated public final class Lexicon {
         return entries.filter { $0.depth == maxDepth }.map { $0.lemma }
     }
 
+    // Returns every admitted deinflection candidate for one surface, including intermediate
+    // forms that lemma(surface:) filters out. Use when a caller wants to expose all
+    // linguistically reachable lemmas to the UI (e.g. cycling readings via the lookup arrows
+    // for 触れられない, which is reached via both 触れる at depth 2 and 触る at depth 3 — both
+    // should be available even though lemma() returns only the deepest).
+    // Ordering preserves admittedLemmasAndPaths' picker sort (preferred lemma, then descending depth).
+    public func allAdmittedLemmas(surface: String) -> [String] {
+        let (entries, _) = admittedLemmasAndPaths(for: surface)
+        return entries.map { $0.lemma }
+    }
+
+    // Returns each admitted lemma paired with its inflection chain and the lemma's readings
+    // projected forward through the chain back onto the original surface. This is what the
+    // lookup sheet's reading-arrow cycle needs: for the surface 触れられない, the deinflector
+    // admits both 触る (depth 3, reading さわる) and 触れる (depth 2, reading ふれる). The bare
+    // lemma readings don't align with the inflected surface (the okurigana れられない is longer
+    // than ふれる itself), so the header renderer can't crop them to per-kanji ruby. Projecting
+    // each lemma reading forward via applySurfaceTransitions yields さわれられない and
+    // ふれられない — both of which DO align with the surface and crop cleanly to さわ / ふ over
+    // the kanji 触. Surfaces whose lemmas don't project (because no transitions are found) are
+    // omitted from the result. Ordering follows allAdmittedLemmas.
+    public func surfaceReadingsByLemma(surface: String) -> [(lemma: String, chain: [String], surfaceReadings: [String])] {
+        let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedSurface.isEmpty == false else { return [] }
+
+        let (entries, pathsByLemma) = admittedLemmasAndPaths(for: trimmedSurface)
+        var result: [(lemma: String, chain: [String], surfaceReadings: [String])] = []
+        for entry in entries {
+            let lemmaReadings = readingsForLemma(entry.lemma)
+            guard lemmaReadings.isEmpty == false else { continue }
+            let chain = deinflector.inflectionChain(from: pathsByLemma, targetLemma: entry.lemma)
+            var projected: [String] = []
+            var seen: Set<String> = []
+            if trimmedSurface == entry.lemma {
+                // Surface IS its own lemma — lemma readings ARE surface readings, no projection needed.
+                for reading in lemmaReadings where seen.insert(reading).inserted {
+                    projected.append(reading)
+                }
+            } else if let transitions = deinflector.bestTransitions(from: pathsByLemma, targetLemma: entry.lemma) {
+                for lemmaReading in lemmaReadings {
+                    guard let surfaceReading = applySurfaceTransitions(to: lemmaReading, transitions: transitions),
+                          seen.insert(surfaceReading).inserted else { continue }
+                    projected.append(surfaceReading)
+                }
+            }
+            guard projected.isEmpty == false else { continue }
+            result.append((lemma: entry.lemma, chain: chain, surfaceReadings: projected))
+        }
+        return result
+    }
+
     // Returns normalized lookup candidates by combining each admitted lemma with its preferred reading.
     public func normalize(surface: String) -> [(lemma: String, reading: String)] {
         let lemmas = lemma(surface: surface)

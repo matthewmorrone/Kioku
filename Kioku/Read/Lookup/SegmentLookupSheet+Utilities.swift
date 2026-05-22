@@ -15,6 +15,7 @@ extension SegmentLookupSheet {
         let sublatticeProvider = sheetSublatticeProvider
         let frequencyProvider = sheetFrequencyProvider
         let lemmaInfoProvider = sheetLemmaInfoProvider
+        let lemmaInfoByReadingProvider = sheetLemmaInfoByReadingProvider
         let dictionaryEntryProvider = sheetDictionaryEntryProvider
         let compoundComponentsProvider = sheetCompoundComponentsProvider
 
@@ -24,6 +25,7 @@ extension SegmentLookupSheet {
             let sublattice = sublatticeProvider?() ?? []
             let frequency = frequencyProvider?()
             let lemmaInfo = lemmaInfoProvider?()
+            let lemmaInfoByReading = lemmaInfoByReadingProvider?() ?? [:]
             let dictionaryEntry = dictionaryEntryProvider?()
             let compoundComponents = compoundComponentsProvider?() ?? []
             DispatchQueue.main.async {
@@ -36,6 +38,7 @@ extension SegmentLookupSheet {
                 self.currentSheetSublatticeEdges = sublattice
                 self.currentSheetFrequencyByReading = frequency
                 self.currentSheetLemmaInfo = lemmaInfo
+                self.currentSheetLemmaInfoByReading = lemmaInfoByReading
                 self.currentSheetDictionaryEntry = dictionaryEntry
                 self.currentSheetLexiconDebugInfo = ""
                 self.currentSheetWordComponents = []
@@ -55,6 +58,7 @@ extension SegmentLookupSheet {
         currentSheetSublatticeEdges = sheetSublatticeProvider?() ?? []
         currentSheetFrequencyByReading = sheetFrequencyProvider?()
         currentSheetLemmaInfo = sheetLemmaInfoProvider?()
+        currentSheetLemmaInfoByReading = sheetLemmaInfoByReadingProvider?() ?? [:]
         currentSheetDictionaryEntry = sheetDictionaryEntryProvider?()
         currentSheetLexiconDebugInfo = ""
         currentSheetWordComponents = []
