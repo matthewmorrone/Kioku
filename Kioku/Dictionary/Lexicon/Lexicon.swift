@@ -690,6 +690,53 @@ nonisolated public final class Lexicon {
             return (candidatePOSBits & validInflectableBits) == 0
         }
 
+        // Reject mechanical-deeper paths whose chain passes through a shallower admitted lemma
+        // that is itself a real JMdict entry. For 触れられない the deinflector reaches 触る at depth
+        // 2 via "られない→る" then "れる→る", treating 触れる as if it were a godan-potential form
+        // mid-chain — but 触れる is its own ichidan dictionary verb (`v1` posBits set), so the
+        // re-interpretation as a potential of 触る is spurious. Without this gate the deeper 触る
+        // wins by depth-descending sort and the lookup sheet shows さわ ruby plus no alternatives.
+        // The check stays conservative: intermediates only count when they have direct JMdict
+        // POS bits, so causative/passive chains like 食べさせられた → 食べる (whose 食べさせる /
+        // 食べさせられる midpoints are deinflection-reachable but not standalone JMdict entries)
+        // remain untouched.
+        let admittedLemmaSet = Set(entries.map(\.lemma))
+        var shadowedLemmas: Set<String> = []
+        for entry in entries where entry.depth >= 2 {
+            let candidateLemma = entry.lemma
+            guard let paths = pathsByLemma[candidateLemma] else { continue }
+
+            var isShadowed = false
+            for path in paths {
+                var intermediateSurface = trimmedSurface
+                // Each path's last transition lands on the candidate lemma itself, so iterate the
+                // prefix to inspect only the genuine intermediates.
+                for transition in path.transitions.dropLast() {
+                    guard intermediateSurface.hasSuffix(transition.kanaIn) else {
+                        intermediateSurface = ""
+                        break
+                    }
+                    let stem = intermediateSurface.dropLast(transition.kanaIn.count)
+                    intermediateSurface = String(stem) + transition.kanaOut
+
+                    if intermediateSurface != candidateLemma,
+                       admittedLemmaSet.contains(intermediateSurface),
+                       posBits(for: intermediateSurface) != 0 {
+                        isShadowed = true
+                        break
+                    }
+                }
+                if isShadowed { break }
+            }
+
+            if isShadowed {
+                shadowedLemmas.insert(candidateLemma)
+            }
+        }
+        if shadowedLemmas.isEmpty == false {
+            entries.removeAll { shadowedLemmas.contains($0.lemma) }
+        }
+
         // Decide whether the surface is "definitely an inflected form" (in which case its
         // self-as-lemma candidate is noise) or "a lemma in its own right" (in which case any
         // deinflected candidates are coincidental and must not shadow it).
