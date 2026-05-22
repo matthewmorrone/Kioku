@@ -91,6 +91,26 @@
       "provenance": "EDRDG KRADFILE2 (kanji→radical index, extended radical set). License: CC BY-SA 4.0. Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/kradfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/kradfile2.gz | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/kradfile2.utf8"
     },
     {
+      "name": "kanjivg",
+      "type": "stroke-data",
+      "path": "Resources/kanjivg.xml",
+      "required": false,
+      "derived": false,
+      "url": "https://github.com/KanjiVG/kanjivg/releases/download/r20220427/kanjivg-20220427-main.zip",
+      "sha256": null,
+      "provenance": "KanjiVG (Kanji Vector Graphics) by Ulrich Apel et al. License: CC BY-SA 3.0. Single-file XML distribution. Download, unzip, and save as Resources/kanjivg.xml. Example: curl -sL https://github.com/KanjiVG/kanjivg/releases/download/r20220427/kanjivg-20220427-main.zip -o /tmp/kvg.zip && unzip -p /tmp/kvg.zip 'kanjivg-20220427.xml' > Resources/kanjivg.xml"
+    },
+    {
+      "name": "tegaki-zinnia-japanese",
+      "type": "handwriting-model",
+      "path": "Resources/handwriting-ja.model",
+      "required": false,
+      "derived": false,
+      "url": "https://github.com/tegaki/tegaki/releases/download/v0.3/tegaki-zinnia-japanese-0.3.zip",
+      "sha256": null,
+      "provenance": "Tegaki Zinnia Japanese handwriting model (~26MB). License: LGPL v2.1+ for the model; BSD for Zinnia engine itself. Download, unzip, copy handwriting-ja.model into Resources/. Example: curl -sL https://github.com/tegaki/tegaki/releases/download/v0.3/tegaki-zinnia-japanese-0.3.zip -o /tmp/tegaki.zip && unzip -j /tmp/tegaki.zip 'tegaki-zinnia-japanese-0.3/handwriting-ja.model' -d Resources/"
+    },
+    {
       "name": "dictionary",
       "type": "sqlite",
       "path": "Kioku/Resources/dictionary.sqlite",
