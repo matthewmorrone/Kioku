@@ -100,16 +100,21 @@ extension ReadView {
         activeNoteID = noteToLoad.id
         sharedScrollOffsetY = 0
         onActiveNoteChanged?(noteToLoad.id)
-        // Load or unload the audio attachment whenever the active note changes.
-        loadAudioAttachmentIfNeeded(attachmentID: noteToLoad.audioAttachmentID)
+        // Update `text` BEFORE loading the audio attachment. loadAudioAttachmentIfNeeded resolves
+        // cue→text highlight ranges by reading `text`; if it ran first, those ranges would be
+        // computed against the previously-active note's content (best-fit matches into the wrong
+        // text) and every line would mismatch on reopen of the lyrics view.
+        // The snapshot lets the deferred .onChange(of: text) skip its own recompute path —
+        // without it, every note load fires segmentation twice.
+        lastLoadedTextSnapshot = noteToLoad.content
+        text = noteToLoad.content
         customTitle = noteToLoad.title
         fallbackTitle = noteToLoad.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? firstLineTitle(from: noteToLoad.content)
             : noteToLoad.title
-        // Mark the value we're about to assign so the deferred onChange(of: text) can skip
-        // its recompute path — without this, every note load fires segmentation twice.
-        lastLoadedTextSnapshot = noteToLoad.content
-        text = noteToLoad.content
+        // Load or unload the audio attachment whenever the active note changes — now that
+        // `text` reflects the new note, range resolution lines up with the actual content.
+        loadAudioAttachmentIfNeeded(attachmentID: noteToLoad.audioAttachmentID)
         let loadedSegments = normalizedSegmentRanges(
             noteToLoad.segments,
             for: noteToLoad.content
