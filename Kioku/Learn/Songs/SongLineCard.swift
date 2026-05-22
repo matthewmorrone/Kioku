@@ -20,19 +20,19 @@ import SwiftUI
 struct SongLineCard: View {
     let line: SongLine
     let referencedLine: SongLine?
-    let wordsExpanded: Bool
-    // When true, the Japanese row renders via FuriganaTextRenderer using `furiganaCache`.
-    // When false, the row renders as plain SwiftUI Text — the original behaviour.
-    let furiganaEnabled: Bool
-    // Lazily-populated cache; nil before the first toggle for this line. Owned by the
+    // Single per-line "expanded" flag controlling both the word/grammar explanations and
+    // whether the Japanese row renders with furigana via `FuriganaTextRenderer`. The two
+    // are bound on purpose: a user tapping either affordance opens (or closes) the same
+    // detail surface, which keeps the gesture model consistent across the card.
+    let isExpanded: Bool
+    // Lazily-populated cache; nil before the first expansion for this line. Owned by the
     // parent stepper so cache compute happens once per line per session.
     let furiganaCache: LineFuriganaCache?
     // The audio time-range matched to this line via the cue text-keyed lookup, or nil
     // when there's no audio attached, no SRT, or no cue matched this line's text. Nil
     // hides the play button entirely — "if available" semantics on the play affordance.
     let playbackRange: (startMs: Int, endMs: Int)?
-    let onToggleWords: () -> Void
-    let onToggleFurigana: () -> Void
+    let onToggleExpansion: () -> Void
     let onPlayLine: () -> Void
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
@@ -66,7 +66,7 @@ struct SongLineCard: View {
             // words OR a pattern note qualifies.
             if hasExpandableDetail {
                 expandableDetailToggle
-                if wordsExpanded {
+                if isExpanded {
                     expandableDetailContent
                 }
             }
@@ -179,10 +179,10 @@ struct SongLineCard: View {
     // UITextView intercepts touches before SwiftUI sees them.
     @ViewBuilder
     private var originalLine: some View {
-        if furiganaEnabled, let cache = furiganaCache, cache.furiganaBySegmentLocation.isEmpty == false {
+        if isExpanded, let cache = furiganaCache, cache.furiganaBySegmentLocation.isEmpty == false {
             furiganaRow(cache: cache)
                 .accessibilityLabel(line.original)
-                .accessibilityHint("Tap to hide furigana")
+                .accessibilityHint("Tap to hide furigana and explanations")
         } else {
             Text(line.original)
                 .font(.system(size: 28, weight: .medium))
@@ -190,9 +190,9 @@ struct SongLineCard: View {
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
-                .onTapGesture { onToggleFurigana() }
+                .onTapGesture { onToggleExpansion() }
                 .accessibilityLabel(line.original)
-                .accessibilityHint(furiganaLikelyAvailable ? "Tap to show furigana" : "")
+                .accessibilityHint(furiganaLikelyAvailable ? "Tap to show furigana and explanations" : "Tap to show explanations")
         }
     }
 
@@ -234,7 +234,7 @@ struct SongLineCard: View {
             debugLeftInsetGuide: false,
             externalContentOffsetY: 0,
             onScrollOffsetYChanged: { _ in },
-            onSegmentTapped: { _, _, _ in onToggleFurigana() },
+            onSegmentTapped: { _, _, _ in onToggleExpansion() },
             textSize: .constant(28),
             lineSpacing: 4,
             kerning: 0,
@@ -281,12 +281,12 @@ struct SongLineCard: View {
     // Hidden by default so a long song reads as a clean list of lines.
     private var expandableDetailToggle: some View {
         Button {
-            onToggleWords()
+            onToggleExpansion()
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: wordsExpanded ? "chevron.down" : "chevron.right")
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.footnote.weight(.semibold))
-                Text(wordsExpanded ? "Hide explanations" : "Show explanations")
+                Text(isExpanded ? "Hide explanations" : "Show explanations")
                     .font(.footnote.weight(.semibold))
                 Spacer(minLength: 0)
             }
@@ -294,7 +294,7 @@ struct SongLineCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(wordsExpanded ? "Hide explanations" : "Show explanations")
+        .accessibilityLabel(isExpanded ? "Hide explanations" : "Show explanations")
     }
 
     // Words first, then the pattern note at the bottom (matching the user's preferred

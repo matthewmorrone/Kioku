@@ -20,12 +20,11 @@ struct SongStepperView: View {
     let segmenter: (any TextSegmenting)?
     let surfaceReadingData: SurfaceReadingDataMap
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
-    @State private var wordsExpandedByLineIndex: Set<Int> = []
+    // Per-line expansion state. A line is "expanded" when its word/grammar explanations are
+    // visible AND furigana is rendered above its Japanese — the two move together. Keyed by
+    // `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
+    @State private var expandedByLineIndex: Set<Int> = []
     @State private var isRegenerateConfirmationPresented: Bool = false
-    // Per-line tap-to-toggle furigana state. Keyed by `line.index` (not array offset) to
-    // survive regenerate / breakdown rebuilds, matching how `wordsExpandedByLineIndex`
-    // already keys.
-    @State private var furiganaEnabledByLineIndex: Set<Int> = []
     @State private var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
     // Owns audio playback for "play this line" affordances. Stays nil-loaded when the
     // note has no audio attachment or no SRT — the matcher returns an empty map and the
@@ -54,7 +53,16 @@ struct SongStepperView: View {
                     .font(.headline)
                     .accessibilityLabel("Breakdown")
             }
-            if songBreakdownStore.breakdown(forNoteID: note.id) != nil {
+            if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id),
+               breakdown.lines.isEmpty == false {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        toggleAllExpansion(in: breakdown)
+                    } label: {
+                        Image(systemName: areAllLinesExpanded(in: breakdown) ? "eye.slash" : "eye")
+                    }
+                    .accessibilityLabel(areAllLinesExpanded(in: breakdown) ? "Hide all explanations" : "Show all explanations")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isRegenerateConfirmationPresented = true
@@ -91,8 +99,7 @@ struct SongStepperView: View {
         // memo and don't touch `breakdownsByNoteID`.
         .onChange(of: songBreakdownStore.breakdownsByNoteID[note.id]) { _, newBreakdown in
             guard newBreakdown != nil else { return }
-            wordsExpandedByLineIndex = []
-            furiganaEnabledByLineIndex = []
+            expandedByLineIndex = []
             furiganaCacheByLineIndex = [:]
         }
         // Lazily loads the audio + cues for this note (if it has any) so the per-line
@@ -288,12 +295,10 @@ struct SongStepperView: View {
                     SongLineCard(
                         line: line,
                         referencedLine: referencedLine(for: line, in: breakdown),
-                        wordsExpanded: wordsExpandedByLineIndex.contains(line.index),
-                        furiganaEnabled: furiganaEnabledByLineIndex.contains(line.index),
+                        isExpanded: expandedByLineIndex.contains(line.index),
                         furiganaCache: furiganaCacheByLineIndex[line.index],
                         playbackRange: lineRangesByIndex[line.index],
-                        onToggleWords: { toggleWords(for: line) },
-                        onToggleFurigana: { toggleFurigana(for: line) },
+                        onToggleExpansion: { toggleExpansion(for: line) },
                         onPlayLine: {
                             if let range = lineRangesByIndex[line.index] {
                                 audioController.playRange(startMs: range.startMs, endMs: range.endMs)
@@ -307,29 +312,44 @@ struct SongStepperView: View {
         }
     }
 
-    // Flips the per-line "show word explanations" toggle. Default state is collapsed
-    // so the page is glanceable; the user opts in per line.
-    private func toggleWords(for line: SongLine) {
-        if wordsExpandedByLineIndex.contains(line.index) {
-            wordsExpandedByLineIndex.remove(line.index)
-        } else {
-            wordsExpandedByLineIndex.insert(line.index)
-        }
-    }
-
-    // Flips the per-line furigana toggle and lazily builds the reading cache on first
-    // enable. Cache is keyed by `line.index` so repeat toggles for the same line are O(1).
-    // Compute lives here (not in `SongLineCard`) because the segmenter, dictionary store,
-    // and surfaceReadingData stay scoped to the stepper; the card receives only the result.
-    private func toggleFurigana(for line: SongLine) {
-        if furiganaEnabledByLineIndex.contains(line.index) {
-            furiganaEnabledByLineIndex.remove(line.index)
+    // Flips the per-line "expanded" state. Expanded means: word/grammar explanations are
+    // shown AND furigana is rendered above the Japanese — the two move together so that a
+    // user who taps either affordance gets a consistent "open this line" gesture.
+    // Lazily builds the furigana reading cache on first expand; cache is keyed by
+    // `line.index` so repeat toggles for the same line are O(1). The compute lives here
+    // (not in `SongLineCard`) because the segmenter and surfaceReadingData stay scoped to
+    // the stepper; the card receives only the resolved payload.
+    private func toggleExpansion(for line: SongLine) {
+        if expandedByLineIndex.contains(line.index) {
+            expandedByLineIndex.remove(line.index)
             return
         }
         if furiganaCacheByLineIndex[line.index] == nil {
             furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line.original)
         }
-        furiganaEnabledByLineIndex.insert(line.index)
+        expandedByLineIndex.insert(line.index)
+    }
+
+    // True when every line in the breakdown is currently expanded. Drives the toolbar
+    // eye / eye.slash icon and the "Show all" vs "Hide all" semantics — comparing counts
+    // is enough because `expandedByLineIndex` only ever holds valid line indices.
+    private func areAllLinesExpanded(in breakdown: SongBreakdown) -> Bool {
+        breakdown.lines.isEmpty == false && expandedByLineIndex.count >= breakdown.lines.count
+    }
+
+    // Global toolbar action: if any line is collapsed, expand them all (building any
+    // missing furigana caches on the fly); otherwise collapse everything. Building caches
+    // synchronously is fine here — songs are typically <60 lines and `buildFuriganaCache`
+    // is the same work a per-line tap would do, just batched.
+    private func toggleAllExpansion(in breakdown: SongBreakdown) {
+        if areAllLinesExpanded(in: breakdown) {
+            expandedByLineIndex.removeAll()
+            return
+        }
+        for line in breakdown.lines where furiganaCacheByLineIndex[line.index] == nil {
+            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line.original)
+        }
+        expandedByLineIndex = Set(breakdown.lines.map { $0.index })
     }
 
     // Reuses the Read tab's resolver so the breakdown gets the exact same reading
