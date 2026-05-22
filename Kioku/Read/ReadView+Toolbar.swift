@@ -154,18 +154,18 @@ extension ReadView {
         .accessibilityLabel("Open Breakdown")
     }
 
-    // Shared visual treatment for the three title-row action buttons. The visible pill
-    // stays compact (30×30 with the 14pt icon) but the tap region is widened to 44×44 —
-    // Apple's recommended minimum touch target — so a fingertip that lands a few points
-    // outside the pill still registers. Without this, a missed first tap reads as a
-    // perceived delay before the sheet appears.
+    // Shared visual treatment for the three title-row action buttons. Sized to match the
+    // bottom toolbar's furigana / reset / edit buttons (36×36 with a 16pt icon) so the
+    // two rows read as visual peers — same hit area, same inter-button gap when each row
+    // is laid out with default `HStack` spacing. Previously the visible pill was 30×30
+    // wrapped in a 44×44 hit frame, which made HStack measure ~14pt of invisible padding
+    // per button and pushed the top row's perceived spacing well past the bottom row's.
     private func titleActionLabel(systemImage: String, isActive: Bool) -> some View {
         Image(systemName: systemImage)
-            .font(.system(size: 14, weight: .semibold))
+            .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(isActive ? Color(.systemOrange) : Color.accentColor)
-            .frame(width: 30, height: 30)
+            .frame(width: 36, height: 36)
             .background(Capsule().fill(Color(.tertiarySystemFill)))
-            .frame(width: 44, height: 44)
             .contentShape(Rectangle())
     }
 

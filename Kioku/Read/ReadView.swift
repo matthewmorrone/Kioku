@@ -604,7 +604,7 @@ struct ReadView: View {
             // buttons moved to the Notes tab; this row now hosts the three per-note
             // actions: open the lyrics view, open the segment-list (extract words), and
             // open the LLM breakdown sheet for this note.
-            HStack(spacing: 10) {
+            HStack {
                 Spacer()
                 titleLyricsButton
                 titleExtractWordsButton
