@@ -27,17 +27,37 @@ final class SongBreakdownStore: ObservableObject {
     // (a disk-backed entry isn't published until/unless something writes to it).
     @Published private(set) var breakdownsByNoteID: [UUID: SongBreakdown] = [:]
 
+    // In-flight / failed generation state, keyed by Note ID. Lives here (not in the view)
+    // so dismissing the breakdown sheet doesn't tear down the running URLSession task;
+    // re-entering the sheet picks the same state back up and the user sees a still-running
+    // spinner or the last error verbatim. See `startGeneration(forNoteID:lyrics:)`.
+    @Published private(set) var generationStateByNoteID: [UUID: SongBreakdownGenerationState] = [:]
+
     // Non-published memo for lazy disk reads. Mutated by `breakdown(forNoteID:)` so the
     // accessor stays safe to call during SwiftUI body evaluation — the field is not
     // observed, so the mutation doesn't invalidate views.
     private var diskMemoCache: [UUID: SongBreakdown] = [:]
 
+    // Hold strong refs to running Tasks. Erasing the entry on completion is enough — the
+    // Task type wraps a structured-concurrency handle, not a cancellation channel, so the
+    // task continues until either it finishes naturally or `cancelGeneration` calls cancel.
+    private var generationTasksByNoteID: [UUID: Task<Void, Never>] = [:]
+
+    // One URLSession (inside the service) is reused across notes so we don't open a fresh
+    // long-timeout session per generate call. Injectable for tests.
+    private let service: SongBreakdownService
+
     private let directoryURL: URL
     private let fileManager: FileManager
     private var knownNoteIDsOnDisk: Set<UUID> = []
 
-    init(fileManager: FileManager = .default) {
+    // `service` is optional/injected rather than a default arg so the default construction
+    // runs inside this @MainActor init body — the SongBreakdownService initializer is
+    // (transitively) main-actor-isolated and evaluating it as a default argument at the
+    // caller's nonisolated context produces a strict-concurrency warning.
+    init(fileManager: FileManager = .default, service: SongBreakdownService? = nil) {
         self.fileManager = fileManager
+        self.service = service ?? SongBreakdownService()
         let base = SongBreakdownStore.applicationSupportDirectory(fileManager: fileManager)
         self.directoryURL = base.appendingPathComponent("SongBreakdowns", isDirectory: true)
         ensureDirectoryExists()
@@ -136,6 +156,77 @@ final class SongBreakdownStore: ObservableObject {
         }
     }
 
+    // MARK: - Background generation
+
+    // Returns true while there's an in-flight (running) generation Task for the note.
+    // Distinct from "is `failed`" — a failure remains in `generationStateByNoteID` until
+    // explicitly cleared (Retry or sheet dismiss), but no Task is associated with it.
+    func isGenerating(forNoteID id: UUID) -> Bool {
+        if case .running = generationStateByNoteID[id] { return true }
+        return false
+    }
+
+    // Kicks off a background generation. Idempotent on the noteID: if a Task is already
+    // running for this note, returns without scheduling another so two simultaneous taps
+    // (or a re-mount of the sheet) don't double-bill the user. The Task is owned by the
+    // store, not by the calling view — dismissing the sheet does not cancel it.
+    //
+    // `providerLabel` is supplied by the caller so the loading view can show "via Claude"
+    // / "via OpenAI" / "stub mode" using the same lookup it would have used inline. It is
+    // a UI-only label and has no effect on dispatch.
+    func startGeneration(forNoteID id: UUID, lyrics: String, providerLabel: String) {
+        if generationTasksByNoteID[id] != nil { return }
+        generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel)
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let breakdown = try await self.service.generate(noteID: id, lyrics: lyrics)
+                try Task.checkCancellation()
+                self.setBreakdown(breakdown)
+                self.generationStateByNoteID.removeValue(forKey: id)
+            } catch is CancellationError {
+                self.generationStateByNoteID.removeValue(forKey: id)
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                self.generationStateByNoteID[id] = .failed(message: message)
+            }
+            self.generationTasksByNoteID.removeValue(forKey: id)
+        }
+        generationTasksByNoteID[id] = task
+    }
+
+    // Cancels the in-flight Task for the note (no-op if there isn't one) and clears any
+    // running/failed state. Used by the explicit Cancel button in the loading view. Note:
+    // dismissing the sheet does NOT invoke this — that's the whole point of moving the
+    // Task here.
+    func cancelGeneration(forNoteID id: UUID) {
+        generationTasksByNoteID[id]?.cancel()
+        generationTasksByNoteID.removeValue(forKey: id)
+        generationStateByNoteID.removeValue(forKey: id)
+    }
+
+    // Clears a `.failed` entry without affecting any running task. Lets the Retry button
+    // transition the view back to the prompt/loading screen before re-firing the call.
+    func clearGenerationError(forNoteID id: UUID) {
+        if case .failed = generationStateByNoteID[id] {
+            generationStateByNoteID.removeValue(forKey: id)
+        }
+    }
+
+    // UI-only label resolution. Lives on the store so views and tests share one lookup
+    // instead of each surface re-deriving the same UserDefaults read. Reflects the same
+    // useLLM / activeProvider decision the service will make at dispatch time.
+    static func loadingProviderLabel() -> String {
+        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
+        if useLLM == false { return "stub mode" }
+        switch LLMSettings.activeProvider() {
+        case .none: return ""
+        case .openAI: return "OpenAI"
+        case .claude: return "Claude"
+        }
+    }
+
     // MARK: - Disk
 
     // Constructs the per-note JSON file URL so the cache layout stays predictable and
@@ -185,6 +276,7 @@ final class SongBreakdownStore: ObservableObject {
     // Builds the per-app Application Support root. SwiftUI's @StateObject and the existing
     // stores rely on the same conventional location, so this keeps the breakdown cache near
     // other derived data (audio attachments, lyric translations).
+
     nonisolated private static func applicationSupportDirectory(fileManager: FileManager) -> URL {
         if let url = try? fileManager.url(
             for: .applicationSupportDirectory,
@@ -197,4 +289,12 @@ final class SongBreakdownStore: ObservableObject {
         // Fallback to a temp directory so the app degrades gracefully on a permission failure.
         return fileManager.temporaryDirectory
     }
+}
+
+// Pure UI state for the breakdown generation pipeline. Owned by SongBreakdownStore so the
+// task lifetime decouples from any one screen; the stepper / future surfaces simply read
+// the current state for the note and render accordingly. Absence (no entry) = idle.
+enum SongBreakdownGenerationState: Equatable {
+    case running(startedAt: Date, providerLabel: String)
+    case failed(message: String)
 }

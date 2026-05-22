@@ -27,8 +27,13 @@ struct SongLineCard: View {
     // Lazily-populated cache; nil before the first toggle for this line. Owned by the
     // parent stepper so cache compute happens once per line per session.
     let furiganaCache: LineFuriganaCache?
+    // The audio time-range matched to this line via the cue text-keyed lookup, or nil
+    // when there's no audio attached, no SRT, or no cue matched this line's text. Nil
+    // hides the play button entirely — "if available" semantics on the play affordance.
+    let playbackRange: (startMs: Int, endMs: Int)?
     let onToggleWords: () -> Void
     let onToggleFurigana: () -> Void
+    let onPlayLine: () -> Void
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
 
@@ -85,6 +90,10 @@ struct SongLineCard: View {
     // The annotation lives to the right of `Line N` rather than in a styled chip below it:
     // the relationship is metadata about the line, not its own content block. The user
     // sees "Same as line 1" and immediately reads this line's Japanese underneath.
+    //
+    // The trailing play button appears only when a cue range matched this line. Tapping
+    // it seeks the audio to the line's start and auto-stops at its end via the
+    // controller's `stopAtMs` watchdog.
     private var header: some View {
         HStack(spacing: 8) {
             Text("Line \(line.index)")
@@ -94,7 +103,23 @@ struct SongLineCard: View {
                 inlineReferenceLabel(reference)
             }
             Spacer(minLength: 0)
+            if playbackRange != nil {
+                playButton
+            }
         }
+    }
+
+    // Small accent-coloured ▶︎ that triggers `onPlayLine`. Hidden entirely when there's no
+    // matched range — no "disabled" greyed-out state, since the typical case is "no audio
+    // at all for this note" and a row of disabled buttons would just be visual noise.
+    private var playButton: some View {
+        Button(action: onPlayLine) {
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(Color.accentColor)
+                .accessibilityLabel("Play line \(line.index)")
+        }
+        .buttonStyle(.plain)
     }
 
     // Compact reference label: small arrow icon + "Same as line N" or "Parallel to line N · X → Y".
