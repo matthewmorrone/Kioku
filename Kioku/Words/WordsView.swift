@@ -46,6 +46,7 @@ struct WordsView: View {
     @State private var isBrowseFrequencyPresented = false
     @State private var isSentenceSearchPresented = false
     @State private var isRadicalInputPresented = false
+    @State private var isHandwritingPresented = false
     @State private var selectedHistoryIDs: Set<Int64> = []
     @State private var activeTab: WordsTab = .saved
     @AppStorage("savedWordsSortOrder") private var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
@@ -139,6 +140,10 @@ struct WordsView: View {
                 .animation(.default, value: activeTab)
             }
             .searchable(text: $searchText, prompt: "Search dictionary…")
+            // Lowercase vs uppercase matters for dictionary search (romaji "shi" vs "SHI",
+            // gloss "us" vs "US"), so override the default sentence-style autocapitalization
+            // that would otherwise uppercase the first letter the user types.
+            .textInputAutocapitalization(.never)
             .searchSuggestions {
                 if let kana = convertedKana, kana != searchText {
                     Label {
@@ -242,6 +247,11 @@ struct WordsView: View {
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $isHandwritingPresented) {
+            HandwritingInputView(onSelectCharacter: handleHandwritingSelect)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .onChange(of: activeTab) { _, _ in
             editMode = .inactive
@@ -496,6 +506,16 @@ struct WordsView: View {
                         .frame(width: 32, height: 32)
                 }
                 .accessibilityLabel("Find kanji by radical")
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isHandwritingPresented = true
+                } label: {
+                    Image(systemName: "pencil.and.scribble")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Handwriting input")
             }
         }
 
@@ -886,6 +906,12 @@ struct WordsView: View {
     private func handleRadicalSelectKanji(_ kanji: String) {
         isRadicalInputPresented = false
         searchText = kanji
+    }
+
+    // Routes a recognized character from the handwriting sheet into the search field.
+    private func handleHandwritingSelect(_ character: String) {
+        isHandwritingPresented = false
+        searchText = character
     }
 
     // Opens one browse-frequency result in the detail sheet, dismissing the browse sheet first.
