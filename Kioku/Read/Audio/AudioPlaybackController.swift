@@ -20,10 +20,18 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     var cues: [SubtitleCue] = []
     private var timer: Timer?
     // When set, the timer tick pauses playback once `currentTimeMs` reaches this value.
-    // Used by `playRange(startMs:endMs:)` to play a single line/section of audio and stop
-    // automatically at its end. Cleared by any explicit seek/stop so it never leaks into
-    // subsequent unrelated playback.
+    // Used by `playRange(startMs:endMs:)` as a *backstop* — the primary stop signal is the
+    // `stopWorkItem` dispatched at the precise end time below. The timer-based check exists
+    // for the case where the work item is somehow dropped (it's a belt-and-braces guard).
+    // Cleared by any explicit seek/stop so it never leaks into subsequent unrelated playback.
     private var stopAtMs: Int? = nil
+    // Scheduled main-queue work item that pauses playback at the upper bound of an
+    // active `playRange(startMs:endMs:)` call. Unlike the polling timer, an
+    // `asyncAfter`-scheduled block fires regardless of run-loop mode — so a scroll
+    // gesture (which puts the run loop in `.tracking` and suspends default-mode timers)
+    // cannot delay the auto-pause. Cancelled and re-created by each `playRange` call;
+    // cancelled by any explicit seek/stop so it never lingers into unrelated playback.
+    private var stopWorkItem: DispatchWorkItem? = nil
 
     override init() {
         super.init()
@@ -103,6 +111,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         player?.pause()
         isPlaying = false
         stopTimer()
+        cancelStopWorkItem()
         audioLevel = 0
         syncTimeAndCue()
     }
@@ -112,6 +121,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         player?.stop()
         isPlaying = false
         stopTimer()
+        cancelStopWorkItem()
         currentTimeMs = 0
         activeCueIndex = nil
         audioLevel = 0
@@ -123,14 +133,49 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // start/end ms and we want exactly that span to play, not a full-song scrub from the
     // line's start.
     //
-    // Order matters: seek first (which clears any prior `stopAtMs`), then install the new
-    // bound, then start playback. The 50 ms timer tick handles the auto-pause; AVFoundation
-    // doesn't have a native "play until X" primitive.
+    // Order matters: seek first (which clears any prior `stopAtMs` and pending stop-work),
+    // then install the new bound, schedule the precise auto-pause work item, then start
+    // playback. AVFoundation doesn't have a native "play until X" primitive — the scheduled
+    // `DispatchWorkItem` is what reliably stops at `endMs` regardless of whether the
+    // polling timer is currently being suppressed by run-loop tracking mode.
     func playRange(startMs: Int, endMs: Int) {
         guard player != nil else { return }
+        let clampedEnd = max(startMs + 1, endMs)
         seek(toMs: startMs)
-        stopAtMs = endMs
+        stopAtMs = clampedEnd
+        scheduleStopWorkItem(durationMs: clampedEnd - startMs)
         play()
+    }
+
+    // Schedules the auto-pause for a `playRange` call. Cancels any previously-scheduled
+    // item so a rapid succession of line-play taps doesn't queue up multiple pauses. The
+    // block re-checks `stopWorkItem === self.stopWorkItem` semantics implicitly by being
+    // cancelled-and-replaced — once `cancel()` is called on the old item, its captured
+    // closure won't run even if it was already dispatched.
+    private func scheduleStopWorkItem(durationMs: Int) {
+        stopWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            // The body runs on the main queue (we dispatched it there), but the work-item
+            // closure itself isn't `@MainActor`-isolated by Swift concurrency's rules — so
+            // we hop onto a MainActor task for the actual state mutation, matching the
+            // pattern already used for `startTimer`'s tick callback.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.stopAtMs = nil
+                self.stopWorkItem = nil
+                self.pause()
+            }
+        }
+        stopWorkItem = item
+        let delay = DispatchTimeInterval.milliseconds(max(0, durationMs))
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    // Tears down any pending `playRange` auto-pause. Called from seek/pause/stop/unload so
+    // the work item never fires after the user has redirected playback.
+    private func cancelStopWorkItem() {
+        stopWorkItem?.cancel()
+        stopWorkItem = nil
     }
 
     // Pauses playback and seeks back to the beginning. Called when the lyrics view is dismissed.
@@ -153,6 +198,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         let wasPlaying = player.isPlaying
         player.currentTime = TimeInterval(ms) / 1000.0
         stopAtMs = nil
+        cancelStopWorkItem()
         if wasPlaying && player.isPlaying == false {
             player.play()
         }
