@@ -15,7 +15,11 @@
       "mcp__xcode__list_schemes",
       "mcp__xcode__snapshot_ui",
       "mcp__Macos__Snapshot",
-      "mcp__Macos__Click"
+      "mcp__Macos__Click",
+      "mcp__xcode__session_show_defaults",
+      "mcp__xcode__screenshot",
+      "mcp__Macos__Shell",
+      "mcp__Macos__Move"
     ]
   }
 }
