@@ -25,6 +25,7 @@ extension SegmentLookupSheet {
         let capturedOnReadingSelected = self.onReadingSelected
         let capturedPathSegmentFrequencyProvider = self.pathSegmentFrequencyProvider
         let capturedSheetLemmaInfoProvider = self.sheetLemmaInfoProvider
+        let capturedSheetLemmaInfoByReadingProvider = self.sheetLemmaInfoByReadingProvider
         let capturedSheetDictionaryEntryProvider = self.sheetDictionaryEntryProvider
         let capturedSheetIsSavedProvider = self.sheetIsSavedProvider
         let capturedSheetSaveToggle = self.sheetSaveToggle
@@ -44,6 +45,7 @@ extension SegmentLookupSheet {
             self.onReadingReset = capturedOnReadingReset
             self.pathSegmentFrequencyProvider = capturedPathSegmentFrequencyProvider
             self.sheetLemmaInfoProvider = capturedSheetLemmaInfoProvider
+            self.sheetLemmaInfoByReadingProvider = capturedSheetLemmaInfoByReadingProvider
             self.sheetDictionaryEntryProvider = capturedSheetDictionaryEntryProvider
             self.sheetIsSavedProvider = capturedSheetIsSavedProvider
             self.sheetSaveToggle = capturedSheetSaveToggle

@@ -424,18 +424,34 @@ extension ReadView {
                     applySplitSelection(offsetUTF16: splitOffset)
                 },
                 // Readings come from the in-memory `surfaceReadingData` map (built once at
-                // startup, no SQL). Inflected forms fall back to the segmenter's pre-computed
-                // lemma — also in-memory. No deinflection traversal at hit-test.
+                // startup, no SQL). Inflected forms fall back through every admitted
+                // deinflection candidate, not just the segmenter's single preferred lemma —
+                // this is what lets 触れられない expose both ふ (from 触れる) and さわ (from 触る)
+                // through the arrow controls. Crucially, lemma readings are projected
+                // FORWARD through the inflection chain to surface readings (さわる → さわれられない,
+                // ふれる → ふれられない) so the header renderer can align them against the inflected
+                // surface and crop to per-kanji ruby — bare lemma readings can't align because
+                // their length is shorter than the okurigana tail of the surface.
                 sheetReadingsProvider: {
                     let surface = currentSelectedSurface() ?? ""
                     if let data = surfaceReadingData[surface], data.readings.isEmpty == false {
                         return data.readings
                     }
-                    if let lemma = segmenter.preferredLemma(for: surface),
-                       let lemmaData = surfaceReadingData[lemma] {
-                        return lemmaData.readings
+                    guard let lexicon else {
+                        if let lemma = segmenter.preferredLemma(for: surface),
+                           let lemmaData = surfaceReadingData[lemma] {
+                            return lemmaData.readings
+                        }
+                        return []
                     }
-                    return []
+                    var combinedReadings: [String] = []
+                    var seenReadings: Set<String> = []
+                    for group in lexicon.surfaceReadingsByLemma(surface: surface) {
+                        for reading in group.surfaceReadings where seenReadings.insert(reading).inserted {
+                            combinedReadings.append(reading)
+                        }
+                    }
+                    return combinedReadings
                 },
                 // Sublattice is from pre-computed in-memory lattice edges — fast.
                 sheetSublatticeProvider: {
@@ -455,6 +471,31 @@ extension ReadView {
                 // the in-memory surface→POS-bits map. Restored from the deferred state.
                 sheetLemmaInfoProvider: {
                     lemmaInfoForCurrentSelectedSegment()
+                },
+                // Per-reading lemma map: lets the arrow controls cycle the lemma + gloss along
+                // with the reading. For 触れられない we admit both 触れる (depth 2) and 触る (depth 3);
+                // each contributes a surface-projected reading (ふれられない / さわれられない) and its
+                // dictionary entry, so arrowing between the projected readings also flips the
+                // lemma label and gloss panel. The projected reading is what currentReadings
+                // actually cycles through (see sheetReadingsProvider), so this map keys on the
+                // same string. Surfaces whose own surfaceReadingData has direct entries (i.e.
+                // dictionary surfaces, not inflected) get no map — the existing single-lemma
+                // path handles them.
+                sheetLemmaInfoByReadingProvider: {
+                    let surface = currentSelectedSurface() ?? ""
+                    guard surface.isEmpty == false, let lexicon, let store = dictionaryStore else { return [:] }
+                    if let data = surfaceReadingData[surface], data.readings.isEmpty == false {
+                        return [:]
+                    }
+                    var byReading: [String: (lemma: String, chain: [String], entry: DictionaryEntry?)] = [:]
+                    for group in lexicon.surfaceReadingsByLemma(surface: surface) {
+                        let lemmaMode: LookupMode = ScriptClassifier.containsKanji(group.lemma) ? .kanjiAndKana : .kanaOnly
+                        let entry = (try? store.lookup(surface: group.lemma, mode: lemmaMode))?.first
+                        for reading in group.surfaceReadings where byReading[reading] == nil {
+                            byReading[reading] = (lemma: group.lemma, chain: group.chain, entry: entry)
+                        }
+                    }
+                    return byReading
                 },
                 onReadingSelected: { reading in
                     applyReadingOverride(reading: reading)

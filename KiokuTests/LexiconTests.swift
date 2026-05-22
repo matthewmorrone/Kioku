@@ -257,6 +257,146 @@ final class LexiconTests: XCTestCase {
         }))
     }
 
+    // Prints a non-asserting survey table of (surface | current lemma | expected lemma | depth | ✓/✗).
+    // This is a characterization test for the deinflection picker: it documents what the current
+    // code returns for a curated set of ambiguous and control surfaces, so a fix can be evaluated
+    // by diffing this output before vs. after. Failures here do NOT fail the build.
+    func testDeinflectionSurveyTable() throws {
+        let surface = try lexiconSurface()
+
+        // (surface, expected lemma). "Expected" is the linguistically correct lemma — what the
+        // app *should* return — not necessarily what it returns today. Ambiguous pairs target
+        // the over-deinflection bias (longer chain wins past a valid lemma).
+        let cases: [(String, String)] = [
+            // Reported bug case
+            ("触れられない", "触れる"),
+            ("触れない", "触れる"),
+            ("触れた", "触れる"),
+            ("触った", "触る"),
+            ("触らない", "触る"),
+
+            // 見える / 見る
+            ("見えない", "見える"),
+            ("見えた", "見える"),
+            ("見ない", "見る"),
+            ("見られない", "見る"),
+
+            // 聞こえる / 聞く
+            ("聞こえない", "聞こえる"),
+            ("聞こえた", "聞こえる"),
+            ("聞かない", "聞く"),
+
+            // 切れる / 切る
+            ("切れない", "切れる"),
+            ("切れた", "切れる"),
+            ("切らない", "切る"),
+
+            // 焼ける / 焼く
+            ("焼けない", "焼ける"),
+            ("焼けた", "焼ける"),
+            ("焼かない", "焼く"),
+
+            // 解ける / 解く
+            ("解けない", "解ける"),
+            ("解けた", "解ける"),
+            ("解かない", "解く"),
+
+            // 出られる / 出る
+            ("出られない", "出る"),
+
+            // Standard controls (should already pass)
+            ("食べた", "食べる"),
+            ("食べない", "食べる"),
+            ("食べさせられた", "食べる"),
+            ("行った", "行く"),
+            ("行きました", "行く"),
+            ("した", "する"),
+            ("来た", "来る"),
+            ("飲んだ", "飲む"),
+
+            // Adjectives
+            ("寒くない", "寒い"),
+            ("大きかった", "大きい"),
+        ]
+
+        var lines: [String] = []
+        lines.append("=== DEINFLECTION SURVEY ===")
+        lines.append("surface\tcurrent\texpected\tdepth\tok\tchain")
+
+        var passed = 0
+        var failed = 0
+        for (input, expected) in cases {
+            let info = surface.inflectionInfo(surface: input)
+            let current = info?.lemma ?? "<nil>"
+            let depth = info?.chain.count ?? 0
+            let chain = info?.chain.joined(separator: "→") ?? ""
+            let ok = (current == expected)
+            if ok { passed += 1 } else { failed += 1 }
+            let mark = ok ? "OK" : "FAIL"
+            lines.append("\(input)\t\(current)\t\(expected)\t\(depth)\t\(mark)\t\(chain)")
+        }
+        lines.append("---")
+        lines.append("passed: \(passed)   failed: \(failed)   total: \(cases.count)")
+        lines.append("=== END SURVEY ===")
+
+        let table = lines.joined(separator: "\n")
+        let attachment = XCTAttachment(string: table)
+        attachment.name = "deinflection-survey.tsv"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    // Diagnostic for the 触れられない bug: dumps the full reading-cycle picture for a curated
+    // set of inflected surfaces — all admitted lemmas, each lemma's stored readings, the merged
+    // arrow list, and the reading→lemma map. Non-asserting; results land in an XCTAttachment.
+    func testAdmittedLemmaReadingDiagnostic() throws {
+        let surface = try lexiconSurface()
+        let baseResources = try TestReadResources.shared()
+        let surfaceReadingData = try baseResources.dictionaryStore.fetchSurfaceReadingData()
+
+        let diagnosticSurfaces = [
+            "触れられない", "触れない", "触れた", "触った",
+            "見られない", "見えない",
+            "聞こえない",
+            "切れない", "切れた",
+            "焼けない",
+            "解けない", "解けた",
+            "出られない",
+            "食べさせられた",
+        ]
+
+        var lines: [String] = []
+        lines.append("=== SURFACE-PROJECTED READING DIAGNOSTIC ===")
+        for input in diagnosticSurfaces {
+            lines.append("")
+            lines.append("SURFACE: \(input)  (surfaceReadingData[surface]?.readings = \(surfaceReadingData[input]?.readings ?? []))")
+            let admitted = surface.allAdmittedLemmas(surface: input)
+            lines.append("  admitted lemmas: \(admitted)")
+            let groups = surface.surfaceReadingsByLemma(surface: input)
+            var merged: [String] = []
+            var seen: Set<String> = []
+            var readingToLemma: [(reading: String, lemma: String)] = []
+            for group in groups {
+                lines.append("  \(group.lemma) → projected: \(group.surfaceReadings)  chain: \(group.chain)")
+                for reading in group.surfaceReadings where seen.insert(reading).inserted {
+                    merged.append(reading)
+                    readingToLemma.append((reading: reading, lemma: group.lemma))
+                }
+            }
+            lines.append("  merged readings (arrow cycle order): \(merged)")
+            lines.append("  reading→lemma map:")
+            for entry in readingToLemma {
+                lines.append("    \(entry.reading) → \(entry.lemma)")
+            }
+        }
+        lines.append("=== END DIAGNOSTIC ===")
+
+        let attachment = XCTAttachment(string: lines.joined(separator: "\n"))
+        attachment.name = "admitted-lemma-readings.tsv"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     // Returns a known lexeme identifier for 食べる-based assertions.
     private func firstLexemeIDForTaberu(from surface: Lexicon) throws -> String {
         let entries = surface.lookupLexeme("食べる", "たべる")
