@@ -3,6 +3,7 @@ Resources/dictionary.sqlite
 Resources/jmdict-eng-3.6.2.json
 Resources/JPDB_v2.2_Frequency_Kana.json
 Resources/ggml-tiny.bin
+Resources/handwriting-ja.model
 Resources/kanjidic2-all.json
 Resources/pitch-accent.tsv
 Resources/sentence-pairs.tsv
@@ -12,6 +13,11 @@ Resources/kradfile2.utf8
 .remember
 Resources/MeCab/ipadic/
 Resources/MeCab/unidic/
+# Local working copy of the Zinnia Swift package used by the feat/handwriting
+# branch. Wired as a proper git submodule on that branch (.gitmodules entry +
+# gitlink); ignored on main so the unmerged dir doesn't show up as a stray
+# untracked tree. Remove this line once feat/handwriting lands.
+Packages/zinnia-swift/
 .build/
 .swiftpm
 .superpowers

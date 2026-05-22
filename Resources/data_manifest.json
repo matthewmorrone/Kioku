@@ -91,6 +91,16 @@
       "provenance": "EDRDG KRADFILE2 (kanji→radical index, extended radical set). License: CC BY-SA 4.0. Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/kradfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/kradfile2.gz | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/kradfile2.utf8"
     },
     {
+      "name": "handwriting-ja",
+      "type": "handwriting-recognition-model",
+      "path": "Resources/handwriting-ja.model",
+      "required": false,
+      "derived": false,
+      "url": "https://tegaki.github.io",
+      "sha256": null,
+      "provenance": "Tegaki-Zinnia Japanese handwriting recognition model (~25MB). Consumed by the Zinnia recognizer via the Packages/zinnia-swift local Swift package (feat/handwriting branch). License: LGPL — see the Tegaki project for redistribution terms. Download the Japanese model from https://tegaki.github.io and save as Resources/handwriting-ja.model."
+    },
+    {
       "name": "dictionary",
       "type": "sqlite",
       "path": "Kioku/Resources/dictionary.sqlite",
