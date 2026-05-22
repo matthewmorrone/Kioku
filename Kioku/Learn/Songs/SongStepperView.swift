@@ -20,19 +20,17 @@ struct SongStepperView: View {
     let segmenter: (any TextSegmenting)?
     let surfaceReadingData: SurfaceReadingDataMap
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
-    @State private var loadState: SongStepperLoadState = .idle
     @State private var wordsExpandedByLineIndex: Set<Int> = []
-    @State private var generationTask: Task<Void, Never>? = nil
-    @State private var generationStartedAt: Date? = nil
-    @State private var generationProviderLabel: String = ""
     @State private var isRegenerateConfirmationPresented: Bool = false
     // Per-line tap-to-toggle furigana state. Keyed by `line.index` (not array offset) to
     // survive regenerate / breakdown rebuilds, matching how `wordsExpandedByLineIndex`
     // already keys.
     @State private var furiganaEnabledByLineIndex: Set<Int> = []
     @State private var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
-
-    private let service = SongBreakdownService()
+    // Owns audio playback for "play this line" affordances. Stays nil-loaded when the
+    // note has no audio attachment or no SRT — the matcher returns an empty map and the
+    // cards omit play buttons.
+    @StateObject private var audioController = AudioPlaybackController()
 
     // Convenience init for callers that don't (yet) supply the resolver deps — e.g. previews
     // or any future surface that doesn't have the segmenter in scope. The toggle becomes a
@@ -63,7 +61,7 @@ struct SongStepperView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
-                    .disabled(loadState == .loading)
+                    .disabled(songBreakdownStore.isGenerating(forNoteID: note.id))
                     .accessibilityLabel("Regenerate breakdown")
                 }
             }
@@ -87,27 +85,66 @@ struct SongStepperView: View {
         }
         .preference(key: CardsStudySessionActivePreferenceKey.self, value: true)
         .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: true)
+        // Reset per-line expansion / furigana caches when a fresh breakdown lands so a
+        // regenerate doesn't leave the previous lines visually mid-toggle. Fires only for
+        // explicit setBreakdown writes — disk-fault reads go through the non-published
+        // memo and don't touch `breakdownsByNoteID`.
+        .onChange(of: songBreakdownStore.breakdownsByNoteID[note.id]) { _, newBreakdown in
+            guard newBreakdown != nil else { return }
+            wordsExpandedByLineIndex = []
+            furiganaEnabledByLineIndex = []
+            furiganaCacheByLineIndex = [:]
+        }
+        // Lazily loads the audio + cues for this note (if it has any) so the per-line
+        // play buttons have something to seek into. Early-returns when there's no audio
+        // attachment, no resolvable file, or empty cue list — all three are normal "no
+        // playback available" cases, not errors.
+        .task {
+            guard let attachmentID = note.audioAttachmentID else { return }
+            guard let url = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
+            let cues = NotesAudioStore.shared.loadCues(for: attachmentID)
+            try? audioController.load(audioURL: url, cues: cues)
+        }
+        .onDisappear {
+            // Release the audio file + deactivate the session when the sheet/screen leaves.
+            // Without this, the controller would hold its `AVAudioPlayer` (and the audio
+            // session) until SwiftUI deallocates the @StateObject, which is non-deterministic.
+            audioController.unload()
+        }
     }
 
-    // Three-way state: have a breakdown → show scrollable list (with optional stale
-    // banner); mid-generation → spinner; idle/error with no breakdown → prompt or retry.
+    // Maps each breakdown line.index → its matched audio time range. Empty when the note
+    // has no audio or the SRT doesn't line up with the breakdown. Computed on each body
+    // pass; both inputs are tiny (~30 lines × ~30 cues) so the O(N·M) walk is cheap.
+    private var lineRangesByIndex: [Int: (startMs: Int, endMs: Int)] {
+        guard let breakdown = songBreakdownStore.breakdown(forNoteID: note.id),
+              audioController.cues.isEmpty == false else { return [:] }
+        return SongLineCueMatcher.computeRanges(lines: breakdown.lines, cues: audioController.cues)
+    }
+
+    // Three-way state: a running/failed generation in the store always wins (the user
+    // wants to see the spinner or the error verbatim, even if a previous breakdown is on
+    // disk); otherwise a cached breakdown renders the scroll list; otherwise the prompt.
+    // Reading the generation state from the store — not local @State — is what makes the
+    // task survive sheet dismissal: the spinner re-binds to the same in-flight Task on
+    // re-entry, with the original `startedAt` so the elapsed clock keeps counting.
     @ViewBuilder
     private var bodyContent: some View {
-        if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id),
-           breakdown.lines.isEmpty == false {
+        if let generationState = songBreakdownStore.generationStateByNoteID[note.id] {
+            switch generationState {
+            case .running(let startedAt, let providerLabel):
+                loadingView(startedAt: startedAt, providerLabel: providerLabel)
+            case .failed(let message):
+                errorView(message)
+            }
+        } else if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id),
+                  breakdown.lines.isEmpty == false {
             if isStale(breakdown) {
                 staleBanner
             }
             scrollList(breakdown: breakdown)
         } else {
-            switch loadState {
-            case .idle:
-                generatePrompt
-            case .loading:
-                loadingView
-            case .error(let message):
-                errorView(message)
-            }
+            generatePrompt
         }
     }
 
@@ -132,7 +169,7 @@ struct SongStepperView: View {
             .font(.footnote.weight(.semibold))
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .disabled(loadState == .loading)
+            .disabled(songBreakdownStore.isGenerating(forNoteID: note.id))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -171,17 +208,21 @@ struct SongStepperView: View {
     // Generation in flight. Shows elapsed time so the user knows the call is alive — a full
     // song breakdown commonly takes 60-180s; without a running counter the screen feels
     // frozen and people assume it's wedged. Cancellable mid-flight.
-    private var loadingView: some View {
+    //
+    // `startedAt` is sourced from the store, not local @State, so re-entering the sheet
+    // mid-generation shows the *same* elapsed clock that was running before dismissal — not
+    // a counter that resets to zero each time the sheet remounts.
+    private func loadingView(startedAt: Date, providerLabel: String) -> some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
-            let elapsed = generationStartedAt.map { context.date.timeIntervalSince($0) } ?? 0
+            let elapsed = context.date.timeIntervalSince(startedAt)
             VStack(spacing: 16) {
                 ProgressView()
                     .scaleEffect(1.4)
                 VStack(spacing: 4) {
                     Text("Generating breakdown…")
                         .font(.headline)
-                    if generationProviderLabel.isEmpty == false {
-                        Text("via \(generationProviderLabel)")
+                    if providerLabel.isEmpty == false {
+                        Text("via \(providerLabel)")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -189,16 +230,13 @@ struct SongStepperView: View {
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                Text("Full songs typically take 30–180 seconds. Tap Cancel to back out.")
+                Text("Full songs typically take 30–180 seconds. You can close this sheet — generation will continue in the background.")
                     .font(.caption)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 32)
                 Button("Cancel") {
-                    generationTask?.cancel()
-                    generationTask = nil
-                    loadState = .idle
-                    generationStartedAt = nil
+                    songBreakdownStore.cancelGeneration(forNoteID: note.id)
                 }
                 .padding(.top, 4)
             }
@@ -253,8 +291,14 @@ struct SongStepperView: View {
                         wordsExpanded: wordsExpandedByLineIndex.contains(line.index),
                         furiganaEnabled: furiganaEnabledByLineIndex.contains(line.index),
                         furiganaCache: furiganaCacheByLineIndex[line.index],
+                        playbackRange: lineRangesByIndex[line.index],
                         onToggleWords: { toggleWords(for: line) },
-                        onToggleFurigana: { toggleFurigana(for: line) }
+                        onToggleFurigana: { toggleFurigana(for: line) },
+                        onPlayLine: {
+                            if let range = lineRangesByIndex[line.index] {
+                                audioController.playRange(startMs: range.startMs, endMs: range.endMs)
+                            }
+                        }
                     )
                 }
             }
@@ -322,47 +366,17 @@ struct SongStepperView: View {
         return breakdown.lines.first(where: { $0.index == target })
     }
 
-    // Triggers a generation call. Replaces whatever was in the store on success so
-    // a re-run from a stale state cleanly overwrites the old breakdown.
+    // Triggers a generation call via the store. The store owns the Task, so dismissing
+    // this sheet does NOT cancel the work — the user can leave, come back, and find the
+    // spinner still ticking or the result already cached. Clearing any prior `.failed`
+    // entry transitions the view back to the loading state cleanly on Retry.
     private func startGeneration() {
-        generationTask?.cancel()
-        loadState = .loading
-        generationStartedAt = Date()
-        generationProviderLabel = providerLabelForLoading()
-        let noteID = note.id
-        let lyrics = note.content
-        generationTask = Task { @MainActor in
-            do {
-                let breakdown = try await service.generate(noteID: noteID, lyrics: lyrics)
-                try Task.checkCancellation()
-                songBreakdownStore.setBreakdown(breakdown)
-                loadState = .idle
-                wordsExpandedByLineIndex = []
-            } catch is CancellationError {
-                loadState = .idle
-            } catch {
-                let message = (error as? LocalizedError)?.errorDescription
-                    ?? error.localizedDescription
-                loadState = .error(message)
-            }
-            generationTask = nil
-            generationStartedAt = nil
-        }
-    }
-
-    // Labels which provider will handle the in-flight request. Reflects the same
-    // useLLM / active-provider decision the service will make, so the loading view
-    // can show "via Claude" or "via stub" without re-implementing the dispatch logic.
-    private func providerLabelForLoading() -> String {
-        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
-        if useLLM == false {
-            return "stub mode"
-        }
-        switch LLMSettings.activeProvider() {
-        case .none: return ""
-        case .openAI: return "OpenAI"
-        case .claude: return "Claude"
-        }
+        songBreakdownStore.clearGenerationError(forNoteID: note.id)
+        songBreakdownStore.startGeneration(
+            forNoteID: note.id,
+            lyrics: note.content,
+            providerLabel: SongBreakdownStore.loadingProviderLabel()
+        )
     }
 
     // Clears the cached breakdown and triggers a fresh generation. Used by the stale banner
@@ -376,15 +390,6 @@ struct SongStepperView: View {
     private func isStale(_ breakdown: SongBreakdown) -> Bool {
         breakdown.sourceTextHash != SongBreakdownService.sha256(note.content)
     }
-}
-
-// Pure data state held by SongStepperView. Kept as a top-level type so the file-scope rule
-// (no nested type declarations) is satisfied while still being conceptually owned by the
-// stepper. Pure-cases enum — grouping with related code here is allowed by AGENTS.md.
-enum SongStepperLoadState: Equatable {
-    case idle
-    case loading
-    case error(String)
 }
 
 // Pre-resolved per-line furigana payload. The three fields together are exactly the data
