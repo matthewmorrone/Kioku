@@ -35,6 +35,11 @@ extension NotesView {
             } label: {
                 Label("Photo Library", systemImage: "photo.on.rectangle")
             }
+            Button {
+                isShowingURLImportSheet = true
+            } label: {
+                Label("From URL", systemImage: "link")
+            }
         } label: {
             Group {
                 if isPerformingOCRImport {

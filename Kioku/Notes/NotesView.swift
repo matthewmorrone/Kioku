@@ -32,6 +32,7 @@ struct NotesView: View {
     @State var selectedOCRImageItem: PhotosPickerItem?
     @State var isPerformingOCRImport = false
     @State var ocrImportErrorMessage = ""
+    @State var isShowingURLImportSheet = false
 
     var body: some View {
         NavigationStack {
@@ -202,6 +203,13 @@ struct NotesView: View {
                         await importTextFromOCRImageData(imageData)
                     }
                 })
+            }
+            .sheet(isPresented: $isShowingURLImportSheet) {
+                URLImportSheet { note in
+                    onOCRImportedNote?(note)
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
             .photosPicker(
                 isPresented: $isShowingPhotoLibraryPicker,
