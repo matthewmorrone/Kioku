@@ -15,8 +15,9 @@ else
   echo "✓ core.hooksPath already set to .githooks"
 fi
 
-# 2. Make sure the hook is executable (some clones strip the bit).
-chmod +x .githooks/pre-commit scripts/validate_invariants.sh scripts/hook_check_invariants.sh
+# 2. Make sure the hooks are executable (some clones strip the bit).
+chmod +x .githooks/pre-commit .githooks/pre-push \
+         scripts/validate_invariants.sh scripts/hook_check_invariants.sh
 
 # 3. Verify the validator runs cleanly against the current tree.
 echo
