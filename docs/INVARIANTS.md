@@ -34,42 +34,41 @@ new SRT. It must be safe — never lose user-authored content — and predictabl
    - *Rationale*: dropping a line is unrecoverable data loss from the user's
      point of view — the line existed in their note and silently vanished
      from the SRT.
-   - *Status*: ❌ (`uniformDistribute` is the safety net but isn't covered
-     end-to-end).
+   - *Status*: ✅ (`SubtitleReconciliationTests.testReconcilePipelineDropsNoLinesOnTotalMismatch`,
+     plus `testUniformDistribute…` family for the force-fit safety net).
 
 2. **Monotonic order**: output cues' note-line indices are non-decreasing
    when sorted by start time.
    - *Rationale*: cue order out of sync with note order breaks karaoke
      highlighting — the wrong line lights up.
-   - *Status*: ❌ (the `MatchedAnchor` walker enforces this internally; no
-     test).
+   - *Status*: ✅ (`SubtitleReconciliationTests.testMatchAnchorsProducesMonotonicNoteLineIndices`).
 
 3. **Anchor non-disturbance**: when an input cue matches a note line by text
    and is not adjacent to a gap window, its start/end timings in the output
    differ from the input by ≤ 1ms.
    - *Rationale*: users learn cue positions; arbitrary shifts during a
      targeted fix erode trust in the tool.
-   - *Status*: ❌.
+   - *Status*: ✅ (`SubtitleReconciliationTests.testMergePreservesNonConsumedAnchorTimings`).
 
 4. **Idempotence on clean input**: when input SRT already has exactly one cue
    per note line with matching text and no gaps, reconcile produces a result
    identical to the input (same cues, same order, same timings).
    - *Rationale*: running reconcile on a finalized SRT should be a no-op;
      otherwise users can't trust it not to silently rewrite their work.
-   - *Status*: ❌.
+   - *Status*: ✅ (`SubtitleReconciliationTests.testBuildGapsReturnsEmptyForCompleteAnchorCoverage`).
 
 5. **Force-fit completeness**: when a gap window of length L holds N expected
    lines, `uniformDistribute` returns exactly N cues whose combined coverage
    spans `[windowStart, windowEnd)`.
    - *Rationale*: per #1, lines must not be dropped; per user requirement
      2026-05-23, force-fit is the fallback when the aligner can't help.
-   - *Status*: ❌.
+   - *Status*: ✅ (`SubtitleReconciliationTests.testUniformDistribute…` × 5).
 
 6. **Music preservation**: input cues recognized as non-speech (♪ markers)
    pass through to the output unchanged.
    - *Rationale*: ♪ markers reflect VAD-detected non-vocal audio; reconcile
      has no business adjusting them since it's working from text, not audio.
-   - *Status*: ❌.
+   - *Status*: ✅ (`SubtitleReconciliationTests.testMergePreservesMusicCuesUnchanged`).
 
 7. **Anchor consumption is contiguous**: when a gap window consumes its
    preceding anchor, that anchor's original cue does not appear in the
@@ -77,7 +76,9 @@ new SRT. It must be safe — never lose user-authored content — and predictabl
    output.
    - *Rationale*: keeping the original alongside the re-aligned version
      produces overlapping cues at the same range.
-   - *Status*: ❌.
+   - *Status*: ✅ (`SubtitleReconciliationTests.testMiddleGapConsumesPrecedingAnchor`,
+     `testTailGapConsumesLastAnchor`, `testHeadGapDoesNotConsumeAnyAnchor`,
+     `testMergeOmitsConsumedAnchors`).
 
 8. **Cancellation cleanliness**: when the alignment task is cancelled
    mid-run, no partial result is committed to disk and the editor's
