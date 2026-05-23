@@ -40,6 +40,11 @@ jobs:
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep -E 'iPhone (15|16|17)' | head -10
 
+      # The dictionary sqlite is committed as a zstd archive (~63 MB) and
+      # decompressed on demand; the raw file (~215 MB) is gitignored.
+      - name: Decompress dictionary.sqlite
+        run: bash scripts/ensure_dictionary.sh
+
       - name: Build & test
         run: |
           set -o pipefail
