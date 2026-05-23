@@ -7,7 +7,12 @@ on:
 
 jobs:
   ios:
-    runs-on: macos-15
+    # macos-26 (preview) ships iOS 26.5 simulator runtimes; macos-15 caps at
+    # iOS 26.2, where ~18 of our tests SIGABRT during process bootstrap.
+    # Locally on iOS 26.5 (where developers run) those same tests pass cleanly,
+    # so matching CI to the local runtime eliminates the cluster of
+    # environmental crashes without skip-listing real test coverage.
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       # The Packages/SwiftWhisper submodule is declared with an SSH URL in
@@ -21,9 +26,9 @@ jobs:
         with:
           submodules: recursive
 
-      # The project targets iOS 26.2 / Xcode 26+. macos-15's default Xcode is
-      # 16.x — too old for symbol SVG template format 7.0 in Assets.xcassets.
-      # Pick the newest Xcode the runner has installed.
+      # The project targets iOS 26.2 / Xcode 26+. The runner image carries
+      # several Xcode versions side-by-side; pick the newest stable so the
+      # symbol SVG asset compiler matches the source format.
       - name: Show installed Xcode versions
         run: ls /Applications | grep -i '^Xcode' || true
 
@@ -54,13 +59,45 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
             -enableCodeCoverage YES \
             -derivedDataPath build \
+            -resultBundlePath build/Kioku.xcresult \
             CODE_SIGNING_ALLOWED=NO
+
+      # Emit a per-target line-coverage summary into the workflow run page so
+      # PR reviewers see coverage without downloading the artifact. xccov reads
+      # the same xcresult the artifact step uploads — single source of truth.
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [[ ! -d build/Kioku.xcresult ]]; then
+            echo "No xcresult — skipping coverage summary." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## Coverage"
+            echo
+            echo "| Target | Lines covered | Executable lines | % |"
+            echo "|---|---:|---:|---:|"
+            xcrun xccov view --report --json build/Kioku.xcresult \
+              | python3 -c '
+          import json, sys
+          report = json.load(sys.stdin)
+          for target in report.get("targets", []):
+              name = target.get("name", "?")
+              covered = target.get("coveredLines", 0)
+              executable = target.get("executableLines", 0)
+              if executable == 0:
+                  pct = "—"
+              else:
+                  pct = f"{(covered / executable * 100):.1f}%"
+              print(f"| {name} | {covered} | {executable} | {pct} |")
+          '
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload xcresult bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kioku-xcresult
-          path: build/Logs/Test/*.xcresult
+          path: build/Kioku.xcresult
           if-no-files-found: ignore
           retention-days: 7
