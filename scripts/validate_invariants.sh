@@ -134,11 +134,13 @@ report_group_matches() {
   fi
 }
 
-# Invariant 4: Swift files should warn above 800 lines and fail above 1,200 lines.
+# Invariant 4: Swift files should warn above 800 lines and fail above 1,000 lines.
+# Threshold tightened from 1200 after the May 2026 refactor brought the longest
+# file under 800; the smaller margin makes drift harder to ignore.
 while IFS= read -r file_path; do
   line_count=$(wc -l < "$file_path")
-  if (( line_count > 1200 )); then
-    report_failure "Swift file exceeds 1200 lines: ${file_path} (${line_count} lines)"
+  if (( line_count > 1000 )); then
+    report_failure "Swift file exceeds 1000 lines: ${file_path} (${line_count} lines)"
   elif (( line_count > 800 )); then
     report_warning "Swift file exceeds 800-line warning threshold: ${file_path} (${line_count} lines)"
   fi
@@ -221,6 +223,22 @@ while IFS= read -r file_path; do
   }
   ' "$file_path" || EXIT_CODE=1
 done < <(list_swift_files)
+
+# Invariant 8: every persistence store should have a matching *Tests.swift file
+# under KiokuTests/. Warning-level — surfaces coverage gaps without blocking.
+# Only runs in whole-tree mode; per-edit hook would re-flag on every touch.
+if (( ${#SCOPED_FILES[@]} == 0 )); then
+  while IFS= read -r store_file; do
+    base="$(basename "$store_file" .swift)"
+    # Extensions (X+Foo.swift) inherit the primary file's contract.
+    [[ "$base" == *"+"* ]] && continue
+    test_name="${base}Tests.swift"
+    found="$(find KiokuTests -name "$test_name" -print -quit)"
+    if [[ -z "$found" ]]; then
+      report_warning "Store has no matching test file: ${store_file} (expected KiokuTests/${test_name})"
+    fi
+  done < <(list_swift_files | grep -E '(Store|Storage)\.swift$' || true)
+fi
 
 if (( EXIT_CODE == 0 )); then
   if (( WARNING_COUNT == 0 )); then
