@@ -65,6 +65,14 @@ struct ReadView: View {
     @State var segments: [SegmentRange]?
     @State var furiganaBySegmentLocation: [Int: String] = [:]
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
+    // Locations whose wide furigana entries came from the synthesis pass (per-character
+    // concatenation, e.g. ものご for 物語 when the dict reading isn't yet loaded). Tracked
+    // in-memory so a later recompute with a real dict-derived compound reading can replace
+    // them. On note load this set is reconstructed by `performScheduleFuriganaGeneration`'s
+    // pre-apply classifier, which marks any wide entry whose value matches a naive per-
+    // character dict concat — precise enough to spare LLM pins (whose value diverges from
+    // the concat) but aggressive enough to recover disk state poisoned by pre-gate code.
+    @State var synthesizedFuriganaLocations: Set<Int> = []
     @State var furiganaComputationTask: Task<Void, Never>?
     @State var segmentationRefreshTask: Task<Void, Never>?
     @State var activeNoteID: UUID?

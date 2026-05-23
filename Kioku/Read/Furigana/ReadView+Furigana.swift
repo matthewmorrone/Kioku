@@ -72,23 +72,43 @@ extension ReadView {
                     && furiganaResult.furiganaByLocation.isEmpty
                     && furiganaBySegmentLocation.isEmpty == false)
 
-                let intermediate: (byLocation: [Int: String], lengthByLocation: [Int: Int])
+                // Pre-apply classifier: identify pre-existing wide entries whose value matches
+                // a naive per-character dict concat (e.g. ものご == もの + ご for 物語). These are
+                // presumed synthesis-class — they may have been written by pre-gate synthesis
+                // code, persisted, and reloaded as ordinary entries. Tagging them as
+                // synthesized lets the apply-on-overlap pass replace them with the dict-derived
+                // compound reading (ものがたり). LLM-pinned wide entries diverge from the concat
+                // and stay untagged, so the user-pin preservation rule still protects them.
+                let presumedSynthesizedLocations = locationsOfPresumedSynthesizedWideEntries(
+                    in: furiganaBySegmentLocation,
+                    lengthByLocation: furiganaLengthBySegmentLocation,
+                    sourceText: sourceText,
+                    surfaceReadingData: currentSurfaceReadingData
+                )
+                let migratedSynthesizedLocations = synthesizedFuriganaLocations
+                    .union(presumedSynthesizedLocations)
+
+                let intermediate: (byLocation: [Int: String], lengthByLocation: [Int: Int], synthesizedLocations: Set<Int>)
                 if shouldRunBackfill {
                     // Replace-on-overlap backfill: a new annotation that strictly contains existing
                     // entries (e.g. ものがたり at [L, L+2) covering prior per-character entries from
                     // a pre-merge segmentation of 物 + 語) supersedes those fragments. Otherwise
                     // additive backfill — existing entries at same range are kept (preserves user
-                    // pins and prior-correct annotations) and gaps are filled.
+                    // pins and prior-correct annotations) and gaps are filled. Same-range
+                    // collisions against entries in `migratedSynthesizedLocations` are replaced
+                    // by the dict-derived value (recovers disk-poisoned wide entries).
                     intermediate = furiganaAfterApplyingNewAnnotations(
                         existingByLocation: furiganaBySegmentLocation,
                         existingLengthByLocation: furiganaLengthBySegmentLocation,
                         newByLocation: furiganaResult.furiganaByLocation,
-                        newLengthByLocation: furiganaResult.lengthByLocation
+                        newLengthByLocation: furiganaResult.lengthByLocation,
+                        synthesizedLocations: migratedSynthesizedLocations
                     )
                 } else {
                     intermediate = (
                         byLocation: furiganaBySegmentLocation,
-                        lengthByLocation: furiganaLengthBySegmentLocation
+                        lengthByLocation: furiganaLengthBySegmentLocation,
+                        synthesizedLocations: migratedSynthesizedLocations
                     )
                 }
 
@@ -101,19 +121,21 @@ extension ReadView {
                 // replacement. When backfill is skipped (resources unloaded → recompute empty),
                 // synthesis is skipped too; the next recompute (after resources load) re-runs
                 // both passes against fresh dict data.
-                let synthesized: (byLocation: [Int: String], lengthByLocation: [Int: Int])
+                let synthesized: (byLocation: [Int: String], lengthByLocation: [Int: Int], synthesizedLocations: Set<Int>)
                 if shouldRunBackfill {
                     synthesized = furiganaAfterSynthesizingCompoundReadings(
                         furiganaByLocation: intermediate.byLocation,
                         furiganaLengthByLocation: intermediate.lengthByLocation,
                         edges: segmentEdges,
-                        sourceText: sourceText
+                        sourceText: sourceText,
+                        synthesizedLocations: intermediate.synthesizedLocations
                     )
                 } else {
                     synthesized = intermediate
                 }
                 furiganaBySegmentLocation = synthesized.byLocation
                 furiganaLengthBySegmentLocation = synthesized.lengthByLocation
+                synthesizedFuriganaLocations = synthesized.synthesizedLocations
 
                 // Persist segments with furigana now that readings are fully resolved.
                 // Assign back to self.segments so persistCurrentNoteIfNeeded writes the annotated data.
@@ -163,14 +185,25 @@ extension ReadView {
     // those fragments — they're removed and the new span is installed. Otherwise backfill is
     // additive: the new entry fills empty locations without overwriting same-range entries
     // (preserving user pins and prior-correct annotations).
+    //
+    // The `synthesizedLocations` set carries origin info for wide entries the synthesis pass
+    // produced (e.g. ものご concatenated from per-character fragments before resources loaded,
+    // then persisted to disk). On a same-range collision, the dict-derived recompute value is
+    // allowed to replace a synthesized entry — without this distinction, a poisoned ものご at
+    // [L, 2) would block ものがたり at [L, 2) forever via the user-pin preservation rule. Entries
+    // absent from the set are treated as user-authored (LLM pin, manual edit) and preserved.
+    // Returns the updated set so callers can persist it across recomputes; replaced locations
+    // are removed because the new value comes from the dictionary, not synthesis.
     func furiganaAfterApplyingNewAnnotations(
         existingByLocation: [Int: String],
         existingLengthByLocation: [Int: Int],
         newByLocation: [Int: String],
-        newLengthByLocation: [Int: Int]
-    ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
+        newLengthByLocation: [Int: Int],
+        synthesizedLocations: Set<Int> = []
+    ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int], synthesizedLocations: Set<Int>) {
         var resultByLocation = existingByLocation
         var resultLengthByLocation = existingLengthByLocation
+        var resultSynthesizedLocations = synthesizedLocations
 
         for (newLocation, newReading) in newByLocation {
             guard let newLength = newLengthByLocation[newLocation] else {
@@ -202,18 +235,131 @@ extension ReadView {
                 if resultByLocation[newLocation] == nil {
                     resultByLocation[newLocation] = newReading
                     resultLengthByLocation[newLocation] = newLength
+                } else if let existingLength = resultLengthByLocation[newLocation],
+                          existingLength == newLength,
+                          resultByLocation[newLocation] != newReading,
+                          resultSynthesizedLocations.contains(newLocation) {
+                    // Same-range collision against a synthesized entry — the dict-derived
+                    // compound reading wins. Strip the synthesized marker since the new
+                    // value is from the dictionary, not from concatenated fragments.
+                    resultByLocation[newLocation] = newReading
+                    resultLengthByLocation[newLocation] = newLength
+                    resultSynthesizedLocations.remove(newLocation)
                 }
             } else {
                 for location in coveredLocations {
                     resultByLocation.removeValue(forKey: location)
                     resultLengthByLocation.removeValue(forKey: location)
+                    resultSynthesizedLocations.remove(location)
                 }
                 resultByLocation[newLocation] = newReading
                 resultLengthByLocation[newLocation] = newLength
+                resultSynthesizedLocations.remove(newLocation)
             }
         }
 
-        return (byLocation: resultByLocation, lengthByLocation: resultLengthByLocation)
+        return (
+            byLocation: resultByLocation,
+            lengthByLocation: resultLengthByLocation,
+            synthesizedLocations: resultSynthesizedLocations
+        )
+    }
+
+    // Classifies pre-existing wide furigana entries as synthesis-class when their value can be
+    // decomposed into a sequence of per-character dictionary readings over the same source-text
+    // range. This is the migration hook that recovers disk state poisoned by pre-gate synthesis
+    // code: a wide entry like ものご at [L, 2) over the source-text characters 物語 decomposes as
+    // もの (a valid reading of 物) + ご (a valid reading of 語), so it is structurally
+    // indistinguishable from a synthesis output and should not block the dict-derived ものがたり
+    // on the next recompute. A legitimate compound reading like ものがたり does NOT decompose this
+    // way (がたり is not among the per-character readings of 語), so dict-derived entries are
+    // preserved. Per-character readings are tried in dict order at each position; the search is
+    // O(branches^kanji) worst case but kanji per segment is small (typically 2-4).
+    func locationsOfPresumedSynthesizedWideEntries(
+        in byLocation: [Int: String],
+        lengthByLocation: [Int: Int],
+        sourceText: String,
+        surfaceReadingData: SurfaceReadingDataMap
+    ) -> Set<Int> {
+        var presumed: Set<Int> = []
+        let nsSource = sourceText as NSString
+        let utf16Count = nsSource.length
+        for (location, reading) in byLocation {
+            guard let length = lengthByLocation[location], length > 1 else { continue }
+            guard location >= 0, location + length <= utf16Count else { continue }
+            let surface = nsSource.substring(with: NSRange(location: location, length: length))
+            if Self.readingDecomposesAsPerCharacterDictReadings(
+                reading: reading,
+                surface: surface,
+                surfaceReadingData: surfaceReadingData
+            ) {
+                presumed.insert(location)
+            }
+        }
+        return presumed
+    }
+
+    // Returns true when `reading` can be split into a sequence of substrings such that each
+    // substring is one of the dictionary readings of the corresponding character of `surface`.
+    // Pure function (static) so unit tests can exercise it without spinning up a ReadView.
+    static func readingDecomposesAsPerCharacterDictReadings(
+        reading: String,
+        surface: String,
+        surfaceReadingData: SurfaceReadingDataMap
+    ) -> Bool {
+        let surfaceChars = Array(surface)
+        let readingChars = Array(reading)
+        guard surfaceChars.isEmpty == false, readingChars.isEmpty == false else { return false }
+        return decompose(
+            readingChars: readingChars,
+            readingCursor: 0,
+            surfaceChars: surfaceChars,
+            surfaceCursor: 0,
+            surfaceReadingData: surfaceReadingData
+        )
+    }
+
+    // Depth-first search backing `readingDecomposesAsPerCharacterDictReadings`. At each surface
+    // position, tries every dictionary reading of the current character as a prefix of the
+    // remaining reading; recurses on a match. Succeeds only when every character is consumed by
+    // a valid reading and the reading is exhausted at the same step.
+    private static func decompose(
+        readingChars: [Character],
+        readingCursor: Int,
+        surfaceChars: [Character],
+        surfaceCursor: Int,
+        surfaceReadingData: SurfaceReadingDataMap
+    ) -> Bool {
+        if surfaceCursor == surfaceChars.count {
+            return readingCursor == readingChars.count
+        }
+        guard readingCursor < readingChars.count else { return false }
+        let key = String(surfaceChars[surfaceCursor])
+        guard let charReadings = surfaceReadingData[key]?.readings else { return false }
+        for charReading in charReadings {
+            let charReadingChars = Array(charReading)
+            guard charReadingChars.isEmpty == false else { continue }
+            let endCursor = readingCursor + charReadingChars.count
+            guard endCursor <= readingChars.count else { continue }
+            var matches = true
+            for offset in 0..<charReadingChars.count {
+                if readingChars[readingCursor + offset] != charReadingChars[offset] {
+                    matches = false
+                    break
+                }
+            }
+            guard matches else { continue }
+            if decompose(
+                readingChars: readingChars,
+                readingCursor: endCursor,
+                surfaceChars: surfaceChars,
+                surfaceCursor: surfaceCursor + 1,
+                surfaceReadingData: surfaceReadingData
+            ) {
+                return true
+            }
+        }
+        return false
     }
 
     // Synthesizes a single-span concatenated reading for kanji runs that are tiled by per-
@@ -227,10 +373,12 @@ extension ReadView {
         furiganaByLocation: [Int: String],
         furiganaLengthByLocation: [Int: Int],
         edges: [LatticeEdge],
-        sourceText: String
-    ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int]) {
+        sourceText: String,
+        synthesizedLocations: Set<Int> = []
+    ) -> (byLocation: [Int: String], lengthByLocation: [Int: Int], synthesizedLocations: Set<Int>) {
         var resultByLocation = furiganaByLocation
         var resultLengthByLocation = furiganaLengthByLocation
+        var resultSynthesizedLocations = synthesizedLocations
 
         for (segmentNSRange, segmentSurface) in segmentNSRangesAndSurfaces(for: edges, in: sourceText) {
             for run in FuriganaAttributedString.kanjiRuns(in: segmentSurface) {
@@ -294,12 +442,20 @@ extension ReadView {
                 for entryLocation in entriesInRun {
                     resultByLocation.removeValue(forKey: entryLocation)
                     resultLengthByLocation.removeValue(forKey: entryLocation)
+                    resultSynthesizedLocations.remove(entryLocation)
                 }
                 resultByLocation[runLocation] = pieces.joined()
                 resultLengthByLocation[runLocation] = runLength
+                // Tag the new wide entry as synthesized so a later recompute with a real
+                // dict-derived compound reading can replace it via the apply-on-overlap pass.
+                resultSynthesizedLocations.insert(runLocation)
             }
         }
 
-        return (byLocation: resultByLocation, lengthByLocation: resultLengthByLocation)
+        return (
+            byLocation: resultByLocation,
+            lengthByLocation: resultLengthByLocation,
+            synthesizedLocations: resultSynthesizedLocations
+        )
     }
 }

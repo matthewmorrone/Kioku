@@ -245,6 +245,45 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertEqual(result.lengthByLocation, [0: 1, 2: 1])
     }
 
+    // Disk-poisoned wide entries (e.g. ものご at [0, 2) produced by a synthesis pass that ran
+    // before the dictionary loaded, then persisted) must be replaceable by the dict-derived
+    // compound reading on a later recompute. Without the synthesized-origin marker, the
+    // same-range protection from `testApplyNewAnnotationsPreservesExistingExactMatch` blocks
+    // the replacement and the bogus reading lives forever on disk.
+    func testApplyNewAnnotationsReplacesSameRangeSynthesizedEntryWithDictCompound() throws {
+        let readView = try makeReadView()
+
+        let result = readView.furiganaAfterApplyingNewAnnotations(
+            existingByLocation: [0: "ものご"],
+            existingLengthByLocation: [0: 2],
+            newByLocation: [0: "ものがたり"],
+            newLengthByLocation: [0: 2],
+            synthesizedLocations: [0]
+        )
+
+        XCTAssertEqual(result.byLocation, [0: "ものがたり"])
+        XCTAssertEqual(result.lengthByLocation, [0: 2])
+        XCTAssertFalse(result.synthesizedLocations.contains(0), "dict-derived replacement clears the synthesized marker")
+    }
+
+    // The synthesized-origin gate must NOT clobber user pins. An existing wide entry at the
+    // same range that is absent from the synthesized set (e.g. an LLM-corrected reading the
+    // user explicitly chose) is preserved even when the recompute produces a different value.
+    func testApplyNewAnnotationsPreservesSameRangeUserPinAgainstDifferingDictReading() throws {
+        let readView = try makeReadView()
+
+        let result = readView.furiganaAfterApplyingNewAnnotations(
+            existingByLocation: [0: "ぶつご"],
+            existingLengthByLocation: [0: 2],
+            newByLocation: [0: "ものがたり"],
+            newLengthByLocation: [0: 2],
+            synthesizedLocations: []
+        )
+
+        XCTAssertEqual(result.byLocation, [0: "ぶつご"], "untagged same-range entry treated as user pin and preserved")
+        XCTAssertEqual(result.lengthByLocation, [0: 2])
+    }
+
     // Synthesis: when the recompute finds no compound reading for a merged surface (e.g. coined
     // 月色 has no JMdict entry but 月 and 色 individually do), concatenate the per-character
     // fragments inside the kanji run into a single ruby span "つきいろ" over the compound.
