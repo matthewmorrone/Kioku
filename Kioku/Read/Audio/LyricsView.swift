@@ -33,89 +33,6 @@ struct LyricsView: View {
         cues.indices.filter { hasMismatch(at: $0) }.count
     }
 
-    // Builds the live-state HUD shown at the top of the lyrics popup so the user can see what
-    // the karaoke pipeline is doing. Kept terse — every field is one short token.
-    private var karaokeDebugHUDText: String {
-        let cueIdx = controller.activeCueIndex ?? -1
-        let lookupKey: Int? = (cueIdx >= 0 && cueIdx < cues.count) ? cues[cueIdx].index : nil
-        let cpCount = lookupKey.flatMap { cueTimings[$0]?.count } ?? 0
-        let totalKeys = cueTimings.count
-        let overrideText: String = {
-            guard let r = playbackHighlightRangeOverride else { return "nil" }
-            return "[\(r.location),\(r.length)]"
-        }()
-        let highlightRangeText: String = {
-            guard cueIdx >= 0, cueIdx < highlightRanges.count else { return "?" }
-            guard let r = highlightRanges[cueIdx] else { return "nil" }
-            return "[\(r.location),\(r.length)]"
-        }()
-        let cueLen: Int = {
-            guard cueIdx >= 0, cueIdx < cues.count else { return 0 }
-            return cues[cueIdx].text.utf16.count
-        }()
-        let t = controller.currentTimeMs
-        let p0 = cueTextPreview(at: cueIdx - 1)
-        let p1 = cueTextPreview(at: cueIdx)
-        let p2 = cueTextPreview(at: cueIdx + 1)
-        let p3 = cueTextPreview(at: cueIdx + 2)
-        let neighborText = "[\(p0) | \(p1) | \(p2) | \(p3)]"
-        return "g=\(granularity.rawValue) cue=\(cueIdx) key=\(lookupKey.map(String.init) ?? "-") cp=\(cpCount) total=\(totalKeys) hr=\(highlightRangeText) cueLen=\(cueLen) ovr=\(overrideText) t=\(t) \(neighborText)"
-    }
-
-    // Returns a short preview of the cue text at the given index for the HUD's neighbor strip.
-    // Returns "-" when the index is out of range, and collapses internal newlines so a multi-
-    // line cue still fits on one HUD line.
-    private func cueTextPreview(at index: Int) -> String {
-        guard index >= 0, index < cues.count else { return "-" }
-        let s = cues[index].text.replacingOccurrences(of: "\n", with: "/")
-        return String(s.prefix(8))
-    }
-
-    // Rebases the noteText-coord override range to cue-local UTF-16 coords for the active-cue
-    // renderer. Returns nil when the override is nil (Sentence behavior) or when the range doesn't
-    // intersect this cue (cue boundary edge case). Clamps to the cue length so renderer never
-    // receives an out-of-bounds NSRange.
-    private func cueLocalPlaybackHighlightRange(cueOriginInNote: Int, cueLength: Int) -> NSRange? {
-        guard let override = playbackHighlightRangeOverride else { return nil }
-        let overrideEnd = override.location + override.length
-        let cueEnd = cueOriginInNote + cueLength
-        let clampedStart = max(override.location, cueOriginInNote)
-        let clampedEnd = min(overrideEnd, cueEnd)
-        guard clampedEnd > clampedStart else { return nil }
-        return NSRange(
-            location: clampedStart - cueOriginInNote,
-            length: clampedEnd - clampedStart
-        )
-    }
-
-    // Decides whether the forced-alignment checkpoints for the cue at `displayIndex`
-    // cover the line densely enough that dimming the unplayed tail can be done
-    // reliably. Returns false (= suppress dim, show whole line at full alpha) when
-    // checkpoints are missing or the latest checkpoint stops well short of the cue
-    // end — in that case the band would otherwise freeze at a midpoint and chars
-    // past it would read as "unplayed" even though they're being sung right now.
-    //
-    // The 90% threshold is intentionally generous: forced alignment that genuinely
-    // covers the line lands with the last checkpoint within a couple characters of
-    // cue end (the last word's begin/end). Anything below 90% means we're missing
-    // the tail, and "no dim" is a more honest UI than a stuck dim line.
-    //
-    // Why suppression over linear interpolation: with sparse checkpoints the
-    // alignment data itself can't be trusted to localize a frontier, so a clock-
-    // based estimate would be guessing. Showing the whole line is the only honest
-    // option until alignment improves. Sentence-granularity cues already have
-    // override.upperBound == cueLength so they short-circuit this anyway.
-    private func cueHasReliableDimCoverage(forCueAtIndex displayIndex: Int, cueLength: Int) -> Bool {
-        guard displayIndex >= 0, displayIndex < cues.count, cueLength > 0 else { return false }
-        // Use the cue's `.index` field (its original SRT/numeric ID) as the timings
-        // dict key, matching the lookup convention in the karaokeDebugHUDText and the
-        // observer — array position alone would desync after a skipped/malformed cue.
-        let key = cues[displayIndex].index
-        guard let checkpoints = cueTimings[key], checkpoints.isEmpty == false else { return false }
-        let maxEnd = checkpoints.map { $0.charOffsetInCue + $0.charLength }.max() ?? 0
-        return Double(maxEnd) >= Double(cueLength) * 0.9
-    }
-
     // Returns the slice of noteText that the resolver mapped to this cue, if any.
     // Used only for mismatch detection — `displayText(for:)` deliberately returns the
     // raw cue text now to avoid bleeding past line boundaries on resolver overshoot,
@@ -134,7 +51,7 @@ struct LyricsView: View {
     // index. Compares against the noteText slice — NOT `displayText(for:)`, which now
     // returns the raw cue text and would always compare equal to itself, suppressing the
     // orange-dot mismatch indicator that flags resolver-vs-cue divergence.
-    private func hasMismatch(at index: Int) -> Bool {
+    func hasMismatch(at index: Int) -> Bool {
         guard let note = noteTextForCue(at: index) else { return false }
         let cue = cues[index].text
         // Cosmetic whitespace/newline differences (e.g. SRT cue is single-line but the
@@ -165,7 +82,7 @@ struct LyricsView: View {
     // overlays the active-cue card. Default off so the lyrics card reads clean;
     // the binding is read-only here since the toggle lives in SettingsView.
     @AppStorage(DebugSettings.karaokeDebugHUDKey) private var isKaraokeDebugHUDVisible: Bool = false
-    @StateObject private var translationCache = LyricsTranslationCache()
+    @StateObject var translationCache = LyricsTranslationCache()
 
     // Previously three variants (appleMusic / accentBar / focusCard) selectable from Settings.
     // Collapsed to one canonical style: centered text, no accent stripe, scale + opacity + blur
@@ -186,152 +103,6 @@ struct LyricsView: View {
             .contentShape(Rectangle())
             .allowsHitTesting(true)
         }
-    }
-
-    // Active-cue render input — slices noteText to ONLY the active cue's text and rebases
-    // the furigana table to cue-local coordinates. The renderer then has exactly one cue's
-    // worth of content, so adjacent cues cannot bleed in. Falls back to the cue's raw text
-    // when no noteText range is available (e.g., non-speech cue, alignment didn't resolve).
-    private struct ActiveCueRenderInput {
-        let text: String
-        let furiganaBySegmentLocation: [Int: String]
-        let furiganaLengthBySegmentLocation: [Int: Int]
-        let segmentationRanges: [Range<String.Index>]
-    }
-
-    // Builds the sliced render input for the cue at `index`. Strategy:
-    //   1. Resolve the cue's NSRange in noteText. Try `highlightRanges[index]` first; fall
-    //      back to a substring search if that lookup is nil (non-speech cue, alignment not
-    //      yet resolved, etc.) so the cue still renders with full furigana.
-    //   2. Filter furigana entries to those whose kanji-run start sits inside the cue and
-    //      rebase locations to cue-local UTF-16 coords.
-    //   3. Clip each segmentation range to the cue's bounds (don't drop boundary-crossing
-    //      segments — that would leave their characters uncolored). Classic CT layout
-    //      tolerates clipped sub-segments, so this is safe.
-    //   4. If no noteText match exists at all, fall back to the raw cue text without
-    //      furigana — the user still sees the line.
-    private func activeCueRenderInput(for index: Int) -> ActiveCueRenderInput {
-        guard index >= 0, index < cues.count else {
-            return ActiveCueRenderInput(text: "", furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:], segmentationRanges: [])
-        }
-
-        // Resolve cue range in noteText — prefer the matched highlight range, but also
-        // probe by substring so a missing/nil highlight still finds the cue text when it
-        // appears verbatim in noteText.
-        let resolvedRange: NSRange? = {
-            if index < highlightRanges.count, let r = highlightRanges[index] { return r }
-            let cueText = cues[index].text
-            guard cueText.isEmpty == false else { return nil }
-            let probe = (noteText as NSString).range(of: cueText)
-            return probe.location == NSNotFound ? nil : probe
-        }()
-
-        guard let cueRange = resolvedRange,
-              let swiftRange = Range(cueRange, in: noteText) else {
-            // Fallback path (non-speech cue, alignment unresolved): use the raw cue text
-            // but still clip at the first newline so a multi-line SRT cue only shows the
-            // first sung line in the active card — same single-line contract as the
-            // resolved path below.
-            let raw = cues[index].text
-            let fallback = clipAtFirstNewline(raw)
-            let wholeRange = fallback.startIndex..<fallback.endIndex
-            return ActiveCueRenderInput(
-                text: fallback,
-                furiganaBySegmentLocation: [:],
-                furiganaLengthBySegmentLocation: [:],
-                segmentationRanges: fallback.isEmpty ? [] : [wholeRange]
-            )
-        }
-
-        // Clip at the first newline. The resolver occasionally maps a cue to a noteText
-        // range that crosses a line boundary (off-by-N alignment artifact, or a multi-line
-        // note section paired with a single-line cue). Without this clip the active card
-        // visibly bleeds the next song line in alongside the current one. cueEnd is
-        // recomputed against the clipped UTF-16 length so segment/furigana filtering below
-        // stays inside the visible slice.
-        let rawCueSlice = String(noteText[swiftRange])
-        let cueText = clipAtFirstNewline(rawCueSlice)
-        let cueStart = cueRange.location
-        let cueEnd = cueStart + cueText.utf16.count
-
-        // Furigana: keep entries whose kanji-run UTF-16 start sits inside the cue and
-        // rebase the location to the cue substring's coords (so location 0 = first char).
-        var rebasedFurigana: [Int: String] = [:]
-        var rebasedFuriganaLength: [Int: Int] = [:]
-        for (loc, reading) in furiganaBySegmentLocation where loc >= cueStart && loc < cueEnd {
-            let rebased = loc - cueStart
-            rebasedFurigana[rebased] = reading
-            if let length = furiganaLengthBySegmentLocation[loc] {
-                rebasedFuriganaLength[rebased] = length
-            }
-        }
-
-        // Rebase parent segments into cue-local ranges via UTF-16 offsets, so we never
-        // cross two String instances with String.Index (which traps in StringUTF16View).
-        // Each parent range → NSRange against noteText → clip to [cueStart, cueEnd) →
-        // shift by -cueStart → Range<String.Index> against cueText. Boundary-crossing
-        // segments are clipped rather than dropped, so every character keeps its color.
-        var rebasedSegments: [Range<String.Index>] = []
-        if cueText.isEmpty == false {
-            let noteNS = noteText as NSString
-            for parentRange in segmentationRanges {
-                let parentNS = NSRange(parentRange, in: noteText)
-                guard parentNS.location != NSNotFound else { continue }
-                let segStart = parentNS.location
-                let segEnd = parentNS.location + parentNS.length
-                let clippedStart = max(segStart, cueStart)
-                let clippedEnd = min(segEnd, cueEnd)
-                guard clippedEnd > clippedStart, clippedStart >= 0, clippedEnd <= noteNS.length else { continue }
-                let localNS = NSRange(location: clippedStart - cueStart, length: clippedEnd - clippedStart)
-                if let local = Range(localNS, in: cueText) {
-                    rebasedSegments.append(local)
-                }
-            }
-            if rebasedSegments.isEmpty {
-                rebasedSegments = [cueText.startIndex..<cueText.endIndex]
-            }
-        }
-
-        return ActiveCueRenderInput(
-            text: cueText,
-            furiganaBySegmentLocation: rebasedFurigana,
-            furiganaLengthBySegmentLocation: rebasedFuriganaLength,
-            segmentationRanges: rebasedSegments
-        )
-    }
-
-    // Returns a font-size scale factor that fits `text` on a single line within
-    // `availableWidth` at the given default font size. Clamped to [0.5, 1.0] so the cue
-    // never shrinks below half its default — beyond that, clipping is preferable.
-    private func activeCueFontScale(text: String, availableWidth: CGFloat) -> CGFloat {
-        guard text.isEmpty == false, availableWidth > 0 else { return 1.0 }
-        let baseFont = UIFont.systemFont(ofSize: TypographySettings.defaultTextSize)
-        let measured = (text as NSString).size(withAttributes: [.font: baseFont]).width
-        guard measured > availableWidth else { return 1.0 }
-        return max(0.5, min(1.0, availableWidth / measured))
-    }
-
-    // Height for the active-cue card — sized to fit one visual line (ruby reserve at top
-    // + body line + small bottom margin). Since the renderer now receives only the active
-    // cue's text, this height bounds the card; the renderer's contentInset (topInset =
-    // rubyReserve + 4) reserves space for ruby above the body line.
-    private var activeCueRendererHeight: CGFloat {
-        let textSize = TypographySettings.defaultTextSize
-        let bodyHeight = UIFont.systemFont(ofSize: textSize).lineHeight
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
-        let rubyReserve = furiganaFont.lineHeight + CGFloat(TypographySettings.defaultFuriganaGap)
-        // 4pt top inset + ruby reserve + body line + 4pt bottom margin matches the geometry
-        // RenderGeometry produces with userLineSpacing=0.
-        return rubyReserve + 4 + bodyHeight + 4
-    }
-
-    // Compact height for inactive cue rows and ♪ separators. Drops the ruby reserve since
-    // inactive rows are plain Text (no furigana drawn), so reserving that vertical space
-    // produces visibly large gaps between rows.
-    private var inactiveCueRowHeight: CGFloat {
-        let textSize = TypographySettings.defaultTextSize
-        let bodyHeight = UIFont.systemFont(ofSize: textSize).lineHeight
-        return bodyHeight + 4
     }
 
     // Builds the main lyrics panel showing the scrollable cue history above the active-cue renderer.
@@ -576,105 +347,6 @@ struct LyricsView: View {
         }
     }
 
-    // Inactive cue row — plain text whose visual treatment depends on the selected lyrics style.
-    // Apple Music: bold weight, leading-aligned, opacity fade with mild scale, no blur.
-    // Accent Bar: center-aligned, scale + opacity + blur fall-off — the "karaoke depth" feel.
-    // Single canonical inactive-cue row: centered text that scales, fades, and blurs further from
-    // the active cue. Mismatch indicator (orange dot) survives because it conveys data, not style.
-    @ViewBuilder
-    private func inactiveCueRow(index: Int, distance: Int) -> some View {
-        let metrics = inactiveCueMetrics(distance: distance)
-        let defaultSize = CGFloat(TypographySettings.defaultTextSize)
-        let text = displayText(for: index)
-        let scaleFactor = distance == 0 ? scaleFactorForActiveCue(text: text, availableWidth: 280, defaultFontSize: defaultSize) : 1.0
-        let fontSize = defaultSize * scaleFactor
-
-        HStack(spacing: 4) {
-            if hasMismatch(at: index) {
-                Circle()
-                    .fill(Color.orange)
-                    .frame(width: 6, height: 6)
-            }
-            Text(text)
-                .font(.system(size: fontSize, weight: .regular))
-                .multilineTextAlignment(.center)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .frame(height: inactiveCueRowHeight)
-        .padding(.horizontal, 16)
-        .scaleEffect(metrics.scale, anchor: .center)
-        .opacity(metrics.opacity)
-        .blur(radius: metrics.blur)
-    }
-
-    // Renders a ♪ separator row inserted between vocal cues where the audio has a long
-    // instrumental gap. Same height and distance-based scale/opacity as inactive cue rows so
-    // the marker reads as a peer entry in the list rather than a compressed delimiter.
-    @ViewBuilder
-    private func musicNoteSeparator(distance: Int) -> some View {
-        let metrics = inactiveCueMetrics(distance: distance)
-        Text("♪")
-            .font(.system(size: CGFloat(TypographySettings.defaultTextSize), weight: .regular))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .frame(height: inactiveCueRowHeight)
-            .scaleEffect(metrics.scale, anchor: .center)
-            .opacity(metrics.opacity)
-    }
-
-    // Apple Music-style fall-off: closer rows are larger and brighter, distant rows shrink
-    // and fade. No blur — the size+opacity wave is the readable cue without softening text
-    // into mush.
-    private func inactiveCueMetrics(distance: Int) -> (scale: Double, opacity: Double, blur: Double) {
-        return (
-            scale: max(0.62, 1.0 - Double(distance) * 0.10),
-            opacity: max(0.28, 1.0 - Double(distance) * 0.16),
-            blur: 0
-        )
-    }
-
-    // Calculates the scale factor needed to fit the active cue on a single line without wrapping.
-    // Measures the text at default size and scales down if necessary to fit within available width.
-    private func scaleFactorForActiveCue(text: String, availableWidth: CGFloat, defaultFontSize: CGFloat) -> CGFloat {
-        let font = UIFont.systemFont(ofSize: defaultFontSize)
-        let textSize = (text as NSString).size(withAttributes: [.font: font])
-        let requiredScale = min(1.0, availableWidth / textSize.width)
-        // Clamp to reasonable bounds: don't go below 0.5x or above 1.0x
-        return min(1.0, max(0.5, requiredScale))
-    }
-
-    private var translationConfig: TranslationSession.Configuration {
-        let target = Locale.preferredLanguages
-            .first(where: { !$0.hasPrefix("ja") })
-            .map { Locale.Language(identifier: $0) }
-            ?? Locale.Language(identifier: "en-US")
-        return TranslationSession.Configuration(
-            source: Locale.Language(identifier: "ja"),
-            target: target
-        )
-    }
-
-    // Batch-translates all cues that haven't been cached yet so translations are available during playback.
-    // Uses the note text (via displayText) rather than cue text so translations match what's shown.
-    private func translateAllCues(session: TranslationSession) async {
-        do {
-            try await session.prepareTranslation()
-        } catch {
-            return
-        }
-        for index in cues.indices {
-            let text = displayText(for: index)
-            guard translationCache.needsTranslation(text: text) else { continue }
-            do {
-                let response = try await session.translate(text)
-                await MainActor.run { translationCache.store(text: text, result: response.targetText) }
-            } catch {
-                // Individual cue failure is non-fatal — skip and continue.
-            }
-        }
-    }
-
     // Returns ms remaining until the next vocal cue when the playhead is currently inside a
     // non-speech (♪) cue from the source SRT, OR sitting in the intro before the first
     // vocal cue. nil means a vocal cue is currently playing — render the regular active card.
@@ -709,18 +381,8 @@ struct LyricsView: View {
     // fragmented mid-line text. The SRT is the source of truth for "what line was this," so
     // we use cue.text directly. The active-cue card still does its own noteText slicing for
     // furigana via `activeCueRenderInput`.
-    private func displayText(for cueIndex: Int) -> String {
+    func displayText(for cueIndex: Int) -> String {
         cueIndex < cues.count ? cues[cueIndex].text : ""
-    }
-
-    // Returns `text` truncated at the first newline scalar (\n or \r), or the original
-    // string when no newline is present. Used by the active-cue card to enforce a
-    // single-song-line contract regardless of multi-line cue text or resolver overshoot.
-    private func clipAtFirstNewline(_ text: String) -> String {
-        if let idx = text.firstIndex(where: { $0 == "\n" || $0 == "\r" }) {
-            return String(text[text.startIndex..<idx])
-        }
-        return text
     }
 
     private var controls: some View {
