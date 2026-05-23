@@ -122,17 +122,21 @@ struct FuriganaResolver {
         let runStart = firstRun.start
         let runEnd = firstRun.end
 
-        let allowsIsolatedRunReading = runs.count == 1
         let prefixSurface = String(characters[..<runStart])
         let suffixSurface = runEnd < characters.count
             ? String(characters[runEnd..<characters.count])
             : ""
         var trimmedReading = reading
 
+        // If the surface has kana affixes around the kanji run, the reading must
+        // phonetically match them — otherwise the reading belongs to a different
+        // lemma (e.g. "わたくし" for "私たち" — no "たち"-like suffix in the reading,
+        // so it must not be attached to 私). The earlier shortcut treating a
+        // single-run surface as a free pass was the bug.
         if !prefixSurface.isEmpty {
             if FuriganaResolver.hasPhoneticPrefix(trimmedReading, matching: prefixSurface) {
                 trimmedReading.removeFirst(prefixSurface.count)
-            } else if allowsIsolatedRunReading == false {
+            } else {
                 return nil
             }
         }
@@ -140,7 +144,7 @@ struct FuriganaResolver {
         if !suffixSurface.isEmpty {
             if FuriganaResolver.hasPhoneticSuffix(trimmedReading, matching: suffixSurface) {
                 trimmedReading.removeLast(suffixSurface.count)
-            } else if allowsIsolatedRunReading == false {
+            } else {
                 return nil
             }
         }
