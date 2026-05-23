@@ -86,13 +86,20 @@ extension ReadView {
     // Converts segment edges to persistable order-only segment ranges for note persistence.
     // When furigana maps are provided, each segment is annotated with its resolved readings
     // using offsets relative to the segment's surface.
+    //
+    // `sourceText` defaults to ReadView's `text` @State so existing call sites compile
+    // unchanged. Tests pass it explicitly because Swift String indices have identity to a
+    // specific string — using indices from one string against another (the default empty
+    // `text`) crashes with a Swift runtime trap instead of returning NSNotFound.
     func buildSegmentRanges(
         from edges: [LatticeEdge],
+        in sourceText: String? = nil,
         furiganaByLocation: [Int: String] = [:],
         furiganaLengthByLocation: [Int: Int] = [:]
     ) -> [SegmentRange] {
-        edges.compactMap { edge in
-            let nsRange = NSRange(edge.start..<edge.end, in: text)
+        let effectiveText = sourceText ?? text
+        return edges.compactMap { edge in
+            let nsRange = NSRange(edge.start..<edge.end, in: effectiveText)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else {
                 return nil
             }

@@ -105,9 +105,12 @@ final class SegmentPersistenceRoundTripTests: XCTestCase {
         let originalByLocation: [Int: String] = [0: "ねこ", 2: "いぬ"]
         let originalLengthByLocation: [Int: Int] = [0: 1, 2: 1]
 
-        // Persist: build SegmentRanges with embedded annotations.
+        // Persist: build SegmentRanges with embedded annotations. Pass `in: text`
+        // explicitly so buildSegmentRanges resolves edge indices against the same
+        // string they were constructed from rather than the default empty `text`.
         let persisted = readView.buildSegmentRanges(
             from: edges,
+            in: text,
             furiganaByLocation: originalByLocation,
             furiganaLengthByLocation: originalLengthByLocation
         )
@@ -148,6 +151,7 @@ final class SegmentPersistenceRoundTripTests: XCTestCase {
 
         let persisted = readView.buildSegmentRanges(
             from: edges,
+            in: text,
             furiganaByLocation: originalByLocation,
             furiganaLengthByLocation: originalLengthByLocation
         )
