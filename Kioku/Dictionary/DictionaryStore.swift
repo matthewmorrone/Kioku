@@ -437,11 +437,14 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
 
     // Fetches ordered kanji forms with priority and ke_inf info tags for one entry.
     private func fetchKanjiForms(entryID: Int64) throws -> [KanjiForm] {
+        // ORDER BY id preserves JMdict insertion order; alphabetic ordering
+        // breaks "first form is primary reading" semantics that callers rely on
+        // (e.g. preferredKana selecting the JMdict-canonical reading).
         let sql = """
         SELECT text, priority, info
         FROM kanji
         WHERE entry_id = ?1
-        ORDER BY text ASC
+        ORDER BY id ASC
         """
 
         var statement: OpaquePointer?
@@ -479,12 +482,15 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     }
 
     // Fetches ordered kana forms with priority, re_inf info tags, and nokanji flag for one entry.
+    // ORDER BY id preserves JMdict insertion order; alphabetic ordering breaks
+    // the "first kana form is the primary reading" contract that preferredKana
+    // and other display sites depend on.
     private func fetchKanaForms(entryID: Int64) throws -> [KanaForm] {
         let sql = """
         SELECT text, priority, info, re_nokanji
         FROM kana_forms
         WHERE entry_id = ?1
-        ORDER BY text ASC
+        ORDER BY id ASC
         """
 
         var statement: OpaquePointer?
