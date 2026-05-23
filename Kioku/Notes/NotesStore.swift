@@ -216,8 +216,34 @@ final class NotesStore: ObservableObject {
     }
 
     // Replaces the entire notes collection with one validated snapshot.
+    //
+    // The empty-replacement path bypasses save()'s defensive guard: it deletes
+    // the on-disk files for every note that was present, then resets the
+    // snapshot. Without this, replaceAll(with: []) would set notes to [] and
+    // the didSet save() would see "in-memory empty + disk populated" and
+    // refuse the write — protecting against the "in-memory accidentally went
+    // empty" failure pattern but also blocking the one intentional clear-all
+    // call site.
     func replaceAll(with notes: [Note]) {
         runtimeSegmentationByNoteID = [:]
+        if notes.isEmpty, diskSnapshotByID.isEmpty == false {
+            // Write the deletion through directly, using the live snapshot as
+            // previousSnapshot so writeFiles deletes every note's JSON file.
+            // suppressSave keeps the upcoming notes = [] assignment from
+            // re-entering save() (which would hit the guard and refuse).
+            NotesStore.writeFiles(
+                notes: [],
+                previousSnapshot: diskSnapshotByID,
+                directory: directoryURL,
+                indexURL: indexURL,
+                fileManager: fileManager
+            )
+            diskSnapshotByID = [:]
+            suppressSave = true
+            self.notes = []
+            suppressSave = false
+            return
+        }
         self.notes = notes
     }
 
