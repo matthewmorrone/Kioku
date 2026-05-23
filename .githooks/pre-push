@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Backstop for invariant checks: re-runs the validator at push time so that a
+# commit landed with --no-verify still gets caught before it reaches CI.
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+"$REPO_ROOT/scripts/validate_invariants.sh"

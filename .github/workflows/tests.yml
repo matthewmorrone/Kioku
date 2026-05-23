@@ -1,0 +1,50 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      # The Packages/SwiftWhisper submodule is declared with an SSH URL in
+      # .gitmodules. The fork is public, so rewrite to HTTPS for CI rather
+      # than provisioning a deploy key.
+      - name: Rewrite SSH submodule URLs to HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: List available iOS simulators
+        run: xcrun simctl list devices available | grep -E 'iPhone (15|16|17)' | head -10
+
+      - name: Build & test
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Kioku.xcodeproj \
+            -scheme Kioku \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -enableCodeCoverage YES \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload xcresult bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kioku-xcresult
+          path: build/Logs/Test/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
