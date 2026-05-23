@@ -51,7 +51,7 @@ jobs:
           xcodebuild test \
             -project Kioku.xcodeproj \
             -scheme Kioku \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
             -enableCodeCoverage YES \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO
