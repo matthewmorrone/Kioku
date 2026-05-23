@@ -21,6 +21,17 @@ jobs:
         with:
           submodules: recursive
 
+      # The project targets iOS 26.2 / Xcode 26+. macos-15's default Xcode is
+      # 16.x — too old for symbol SVG template format 7.0 in Assets.xcassets.
+      # Pick the newest Xcode the runner has installed.
+      - name: Show installed Xcode versions
+        run: ls /Applications | grep -i '^Xcode' || true
+
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
       - name: Show toolchain
         run: |
           xcodebuild -version
