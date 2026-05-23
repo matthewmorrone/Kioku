@@ -4,6 +4,7 @@
 
 - Never create git worktrees. Work directly on the current branch.
 - When you encounter pre-existing lint/invariant/test/CI failures while working in the repo, fix them as part of your current change. Do not flag them as "not introduced by me" or leave them for someone else — the codebase is shared, and if you found it broken you own fixing it.
+- On a fresh clone, run `bash scripts/setup.sh` once. It wires `core.hooksPath` to `.githooks/` so pre-commit + pre-push invariant checks run, makes the hook scripts executable, and decompresses `Resources/dictionary.sqlite` from the committed `.zst` archive. Without this, builds fail (missing dictionary) and bad commits sneak past local invariants.
 
 ## Coding Invariants
 
@@ -18,8 +19,8 @@ Empty `catch` blocks are not allowed. A catch must either handle the error meani
 Any type (struct, enum, class, actor, protocol) that contains methods, computed properties, or other logic must live in its own file named after the type. Pure data types — structs with only stored properties, enums with only cases — may be grouped with related types in the same file. Nested type declarations are not allowed.
 
 ### 4. File Size Guardrail
-- Under 800 lines preferred
-- Under 1200 lines maximum
+- Under 800 lines preferred (warning)
+- Under 1000 lines maximum (commit/push blocked)
 
 Large files must be split by responsibility.
 
@@ -31,6 +32,9 @@ Every function must include a comment explaining why it exists. Complex logic mu
 
 ### 7. View Ownership Comments
 Every `View` or `UIViewRepresentable` must document what screen it renders and its major layout sections.
+
+### 8. Store Test Coverage
+Every persistence store (file name ending in `Store.swift` or `Storage.swift`) must have a matching `*Tests.swift` file in `KiokuTests/`. The check is warning-level (doesn't block landings) but every untested store fires on every CI run, so the gap stays visible. Existing untested stores tracked at warning level until tests land.
 
 ### 8. Navigation Contract
 Navigation titles must not be added unless explicitly requested.
