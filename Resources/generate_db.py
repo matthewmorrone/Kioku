@@ -963,21 +963,39 @@ def build_database():
         );
 
         INSERT INTO surface_readings (surface, reading, best_rank, jpdb_rank, wordfreq_zipf)
-        SELECT surface, reading, best_rank, jpdb_rank, wordfreq_zipf FROM (
+        SELECT surface, reading,
+               MIN(best_rank) AS best_rank,
+               MIN(jpdb_rank) AS jpdb_rank,
+               MAX(wordfreq_zipf) AS wordfreq_zipf
+        FROM (
+            -- Kanji form as surface, kana form as reading. Carries jpdb rank when the
+            -- kanji-kana link is known, so common headwords sort to the top of lookups.
             SELECT kj.text AS surface, kf.text AS reading,
-                   MIN(COALESCE(kkl.jpdb_rank, 9999999)) AS best_rank,
-                   MIN(kkl.jpdb_rank) AS jpdb_rank,
-                   MAX(kj.wordfreq_zipf) AS wordfreq_zipf
+                   COALESCE(kkl.jpdb_rank, 9999999) AS best_rank,
+                   kkl.jpdb_rank AS jpdb_rank,
+                   kj.wordfreq_zipf AS wordfreq_zipf
             FROM kanji kj
             JOIN kana_forms kf ON kf.entry_id = kj.entry_id
             LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
-            GROUP BY kj.text, kf.text
             UNION ALL
-            SELECT kf.text, kf.text, 9999999, NULL, kf.wordfreq_zipf
+            -- Every kana form as its own surface. Without this branch the segmenter
+            -- could only see kana surfaces for entries with NO kanji form at all, which
+            -- silently excluded any word predominantly written in kana that also has
+            -- a rare kanji form: このまま (この儘), ありがとう (有り難う), gikun like
+            -- たゆたう (揺蕩う), and anything JMdict tags "usually written in kana alone."
+            -- Hiragana-rendered text would then fall through to the unknown-token path,
+            -- producing the kind of garbage segmentation 流されてたゆたうのこのまま showed.
+            -- wordfreq_zipf is carried from the kana form itself so frequency-based
+            -- tie-breaking remains meaningful; best_rank/jpdb_rank are left unset because
+            -- jpdb's ranking is keyed off the kanji headword, not the kana spelling.
+            SELECT kf.text AS surface, kf.text AS reading,
+                   9999999 AS best_rank,
+                   NULL AS jpdb_rank,
+                   kf.wordfreq_zipf AS wordfreq_zipf
             FROM kana_forms kf
-            WHERE kf.entry_id NOT IN (SELECT entry_id FROM kanji)
         )
-        ORDER BY surface ASC, best_rank ASC, reading ASC;
+        GROUP BY surface, reading
+        ORDER BY surface ASC, MIN(best_rank) ASC, reading ASC;
 
         CREATE INDEX idx_surface_readings_surface ON surface_readings(surface);
         """
