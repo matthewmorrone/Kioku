@@ -120,16 +120,32 @@ enum SongBreakdownRecovery {
         return bucket
     }
 
-    // Locates the first original line whose text contains the given surface verbatim. Trims
-    // any markdown/punctuation that the LLM occasionally left on the surface so kanji-bearing
-    // bullets still match. Returns nil when no line contains the surface.
+    // Locates the first original line whose text contains the given surface verbatim, or
+    // — when the verbatim surface doesn't match — a progressively shorter kanji-bearing
+    // prefix of the surface. The prefix fallback handles dictionary-form vocabulary against
+    // conjugated mentions in the original (e.g. surface "流れる" matching line text "流れて").
+    // Trims any markdown/punctuation that the LLM occasionally left on the surface so
+    // kanji-bearing bullets still match. Returns nil when no prefix matches anywhere.
     private static func firstOriginalContaining(surface raw: String, in originals: [String]) -> Int? {
         let surface = raw
             .trimmingCharacters(in: .whitespaces)
             .trimmingCharacters(in: CharacterSet(charactersIn: "*~`'\"()「」『』"))
         guard surface.isEmpty == false else { return nil }
-        for (i, original) in originals.enumerated() {
-            if original.contains(surface) { return i }
+        // Try the full surface first, then trim one trailing char at a time. Stop when the
+        // remaining prefix is too short to be specific (< 2 chars) or loses its kanji anchor
+        // — a pure-kana 1-char prefix would match almost any line and cause misrouting.
+        let chars = Array(surface)
+        var end = chars.count
+        while end >= 1 {
+            let candidate = String(chars[0..<end])
+            if end < chars.count {
+                if candidate.count < 2 { break }
+                if ScriptClassifier.containsKanji(candidate) == false { break }
+            }
+            for (i, original) in originals.enumerated() {
+                if original.contains(candidate) { return i }
+            }
+            end -= 1
         }
         return nil
     }
