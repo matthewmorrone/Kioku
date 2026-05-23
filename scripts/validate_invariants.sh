@@ -6,6 +6,20 @@ cd "$ROOT_DIR"
 
 PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
+# When --files <path>... is passed, only check those paths (must be Swift files
+# under Kioku/). Used by editor/PostToolUse hooks for per-file feedback.
+SCOPED_FILES=()
+QUIET=0
+if [[ "${1:-}" == "--files" ]]; then
+  shift
+  for arg in "$@"; do
+    case "$arg" in
+      --quiet) QUIET=1 ;;
+      *) SCOPED_FILES+=("$arg") ;;
+    esac
+  done
+fi
+
 RG_BIN=""
 if command -v rg >/dev/null 2>&1; then
   RG_BIN="$(command -v rg)"
@@ -19,6 +33,16 @@ EXIT_CODE=0
 WARNING_COUNT=0
 
 list_swift_files() {
+  if (( ${#SCOPED_FILES[@]} > 0 )); then
+    for f in "${SCOPED_FILES[@]}"; do
+      # Normalize to repo-relative; skip non-Kioku Swift files silently.
+      rel="${f#"$ROOT_DIR"/}"
+      [[ "$rel" == Kioku/*.swift || "$rel" == Kioku/**/*.swift ]] || continue
+      [[ -f "$rel" ]] && printf '%s\n' "$rel"
+    done
+    return
+  fi
+
   if [[ -n "$RG_BIN" ]]; then
     "$RG_BIN" --files Kioku --glob '*.swift' | sort
     return
@@ -31,11 +55,42 @@ search_swift_files() {
   local perl_pattern="$1"
   local is_multiline="${2:-false}"
 
+  # Build the file list once — scoped mode searches only listed files; otherwise
+  # search the whole Kioku tree.
+  local -a targets=()
+  if (( ${#SCOPED_FILES[@]} > 0 )); then
+    while IFS= read -r f; do targets+=("$f"); done < <(list_swift_files)
+    (( ${#targets[@]} > 0 )) || return 0
+  else
+    targets=(Kioku)
+  fi
+
   if [[ -n "$RG_BIN" ]]; then
+    # -H forces filename:line prefix even when only one target is given (scoped mode).
     if [[ "$is_multiline" == "true" ]]; then
-      "$RG_BIN" -nU --glob '*.swift' "$perl_pattern" Kioku || true
+      "$RG_BIN" -HnU --glob '*.swift' "$perl_pattern" "${targets[@]}" || true
     else
-      "$RG_BIN" -n --glob '*.swift' "$perl_pattern" Kioku || true
+      "$RG_BIN" -Hn --glob '*.swift' "$perl_pattern" "${targets[@]}" || true
+    fi
+    return
+  fi
+
+  if (( ${#SCOPED_FILES[@]} > 0 )); then
+    # Direct file list, no find.
+    if [[ "$is_multiline" == "true" ]]; then
+      printf '%s\0' "${targets[@]}" | xargs -0 perl -0ne '
+        while (/'"$perl_pattern"'/gms) {
+          $line = substr($_, 0, pos($_));
+          $line_number = ($line =~ tr/\n//) + 1;
+          print "$ARGV:$line_number:$&\n";
+        }
+      ' 2>/dev/null || true
+    else
+      printf '%s\0' "${targets[@]}" | xargs -0 perl -ne '
+        if (/'"$perl_pattern"'/) {
+          print "$ARGV:$.:$_";
+        }
+      ' 2>/dev/null || true
     fi
     return
   fi
@@ -169,7 +224,9 @@ done < <(list_swift_files)
 
 if (( EXIT_CODE == 0 )); then
   if (( WARNING_COUNT == 0 )); then
-    echo "Invariant checks passed."
+    # In --quiet mode (used by editor hooks), say nothing when clean — silence
+    # means "no findings for the file you just touched."
+    (( QUIET == 1 )) || echo "Invariant checks passed."
   else
     echo "Invariant checks passed with warnings."
   fi

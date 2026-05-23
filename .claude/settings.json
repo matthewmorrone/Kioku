@@ -4,5 +4,18 @@
       "Bash(git -C /Users/matthewmorrone/Projects/Kioku status)",
       "Bash(sqlite3 /Users/matthewmorrone/Projects/Kioku/Resources/dictionary.sqlite \":*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/scripts/hook_check_invariants.sh"
+          }
+        ]
+      }
+    ]
   }
 }
