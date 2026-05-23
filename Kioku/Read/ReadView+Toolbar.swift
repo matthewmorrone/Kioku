@@ -125,13 +125,22 @@ extension ReadView {
     // visual peers — same capsule background, same accent treatment — so the row reads as
     // "actions for the currently-open note."
     var titleLyricsButton: some View {
-        Button {
-            isShowingLyricsView.toggle()
-        } label: {
-            titleActionLabel(systemImage: "music.note", isActive: isShowingLyricsView)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
+        titleActionLabel(systemImage: "music.note", isActive: isShowingLyricsView)
+            .contentShape(Capsule())
+            .onTapGesture {
+                isShowingLyricsView.toggle()
+            }
+            .onLongPressGesture(minimumDuration: 0.35) {
+                // Long press opens the subtitle editor sheet — the only place to access
+                // the alignment menu (Reconcile from Note / Re-time / Validate / etc.).
+                // Mirrors the furigana button's tap-toggles-state, long-press-opens-tools
+                // affordance. presentSubtitleEditorIfPossible() lazy-loads the audio
+                // attachment first when needed, so it's safe to call without checking.
+                presentSubtitleEditorIfPossible()
+            }
+            .accessibilityLabel(isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
+            .accessibilityHint("Long press to edit subtitles")
+            .accessibilityAddTraits(.isButton)
     }
 
     var titleExtractWordsButton: some View {
