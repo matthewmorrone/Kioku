@@ -2,9 +2,9 @@ import Foundation
 
 // Exposes UI-oriented lexical data methods by composing dictionary lookup, deinflection, and segmentation primitives.
 nonisolated public final class Lexicon {
-    private let dictionaryStore: DictionaryStore?
+    let dictionaryStore: DictionaryStore?
     private let segmenter: any TextSegmenting
-    private let deinflector: Deinflector
+    let deinflector: Deinflector
     private let surfaceReadingData: [String: SurfaceReadingData]
     private let maxDepth = 4
 
@@ -211,156 +211,6 @@ nonisolated public final class Lexicon {
         return deinflector.bestTransitions(from: pathsByLemma, targetLemma: best.lemma)
     }
 
-    // Detects compound verb components by examining deinflection transitions for auxiliary-stripping
-    // steps. Returns the main lemma and each detected auxiliary as (lemma, first gloss) pairs, or nil
-    // when the surface is not a compound verb.
-    // For example, 消えてゆく → [(消える, "to disappear"), (行く, "to go")]
-    // For phrasal surfaces containing case particles (夢を見てる, 手が届く), returns a morpheme-level
-    // breakdown instead — the deinflection chain treating the trailing verb suffix as an auxiliary
-    // would otherwise misreport the phrase as a verb compound (夢を見る + る "verb-forming suffix").
-    public func compoundVerbComponents(surface: String) -> [(lemma: String, gloss: String?)]? {
-        if let phrasal = phrasalComponentsForCaseParticleSurface(surface) {
-            return phrasal
-        }
-        let (entries, pathsByLemma) = admittedLemmasAndPaths(for: surface)
-        guard let best = entries.first else { return nil }
-        guard let transitions = deinflector.bestTransitions(from: pathsByLemma, targetLemma: best.lemma),
-              transitions.isEmpty == false else { return nil }
-
-        // Walk transitions looking for auxiliary-stripping steps and recover the auxiliary
-        // surface for each. Three patterns to handle:
-        //
-        //   1. te-form compounds (kanaIn=てゆく, kanaOut=て): kanaIn has kanaOut as a prefix,
-        //      and the remainder is the auxiliary (ゆく).
-        //   2. ichidan i-stem compounds (kanaIn=つづける, kanaOut=る): the entire kanaIn IS
-        //      the auxiliary because v1 verbs have no stem change.
-        //   3. godan i-stem compounds (kanaIn=しつづける, kanaOut=す): the FIRST char of
-        //      kanaIn is the i-stem (し for す→し), the rest is the auxiliary (つづける).
-        //
-        // The previous implementation only handled case 1, so any compound built on a godan
-        // verb's i-stem (買い始める, 飛び込む, さがしつづける, etc.) silently produced no
-        // auxiliary chip in the lookup sheet. Try each strategy and take whichever resolves
-        // to a real dictionary entry.
-        var auxiliaries: [(lemma: String, gloss: String?)] = []
-        for transition in transitions {
-            guard transition.kanaIn.count > transition.kanaOut.count else { continue }
-            // Candidate order matters: prefer the SHORTEST plausible auxiliary so that
-            // surfaces like しつづける don't get reported as the full し続ける entry (which
-            // also exists in JMdict) when the user actually wants just 続ける.
-            // 1. strip-first-char — godan i-stem compounds (しつづける→つづける) AND te-form
-            //    compounds (てゆく→ゆく), since the first char is the linker in both cases.
-            // 2. strip-prefix — fallback for te-form compounds where kanaOut is multi-char.
-            // 3. direct kanaIn — ichidan compounds (つづける with kanaOut=る) where there's
-            //    no linker char to strip; the entire kanaIn IS the auxiliary.
-            var candidates: [String] = []
-            if transition.kanaIn.count > 1 {
-                candidates.append(String(transition.kanaIn.dropFirst()))
-            }
-            if transition.kanaIn.hasPrefix(transition.kanaOut) {
-                candidates.append(String(transition.kanaIn.dropFirst(transition.kanaOut.count)))
-            }
-            candidates.append(transition.kanaIn)
-            var resolvedAux: DictionaryEntry?
-            var resolvedSurface = ""
-            for candidate in candidates where candidate.isEmpty == false {
-                guard let entry = lookupEntries(for: candidate).first else { continue }
-                guard entryHasVerbPOS(entry) else { continue }
-                resolvedAux = entry
-                resolvedSurface = candidate
-                break
-            }
-            guard let auxEntry = resolvedAux else { continue }
-            let gloss = auxEntry.senses.first?.glosses.joined(separator: "; ")
-            let auxLemma = auxEntry.kanjiForms.first?.text ?? auxEntry.kanaForms.first?.text ?? resolvedSurface
-            auxiliaries.append((lemma: auxLemma, gloss: gloss))
-        }
-
-        guard auxiliaries.isEmpty == false else { return nil }
-
-        let mainGloss = lookupEntries(for: best.lemma).first?
-            .senses.first?.glosses.joined(separator: "; ")
-        var result: [(lemma: String, gloss: String?)] = [(lemma: best.lemma, gloss: mainGloss)]
-        result.append(contentsOf: auxiliaries)
-        return result
-    }
-
-    // JMdict POS codes for verbs start with `v` (v1, v5k, v5s, v5k-s, vi/vt, …); auxiliary-only
-    // entries are tagged `aux`/`aux-v`/`aux-adj` and don't count. `vs*` codes mark suru-able nouns
-    // rather than standalone verbs, so they're excluded too. Used to reject non-verb collisions
-    // like past-tense た (aux-v), 区 (noun "ward"), って (particle "you said").
-    private func entryHasVerbPOS(_ entry: DictionaryEntry) -> Bool {
-        posCodes(for: entry).contains { code in
-            code.hasPrefix("v") && code.hasPrefix("vs") == false
-        }
-    }
-
-    // Idioms / phrasal verbs (夢を見る, 手が届く) carry `exp` alongside their verb class in JMdict,
-    // marking them as multi-morpheme expressions rather than single-word verbs.
-    private func entryIsPhrasalExpression(_ entry: DictionaryEntry) -> Bool {
-        posCodes(for: entry).contains("exp")
-    }
-
-    // Returns lower-cased, comma-split, trimmed POS codes across every sense of the entry.
-    private func posCodes(for entry: DictionaryEntry) -> [String] {
-        entry.senses
-            .compactMap { $0.pos?.lowercased() }
-            .flatMap { $0.split(separator: ",") }
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-    }
-
-    // True when the lemma resolves to a single-word verb entry (verb POS, not a phrasal `exp`).
-    // Phrasal verb entries like 夢を見る are excluded so callers can still morpheme-split them.
-    private func entryIsSingleWordVerb(lemma: String) -> Bool {
-        lookupEntries(for: lemma).contains(where: { entry in
-            entryHasVerbPOS(entry) && entryIsPhrasalExpression(entry) == false
-        })
-    }
-
-    // Case particles を and が never appear inside a single-word verb conjugation; their presence
-    // signals the surface is a phrase (noun + particle + verb) being looked up as one segment.
-    // Splits the surface at these characters and returns morpheme-level components, deinflecting
-    // the verbal portion to its dictionary form (見てる → 見る). Returns nil when the surface
-    // contains no case particle so callers fall through to verb-compound detection.
-    private func phrasalComponentsForCaseParticleSurface(_ surface: String) -> [(lemma: String, gloss: String?)]? {
-        let caseParticles: Set<Character> = ["を", "が"]
-        guard surface.contains(where: { caseParticles.contains($0) }) else { return nil }
-
-        // The "を/が never appear inside a single-word verb" assumption breaks for native verbs
-        // that literally contain these kana in their stem — 翻す (ひるがえす), 翻る (ひるがえる),
-        // 流す (ながす), etc. If the surface deinflects to a single-word verb entry, treat it as
-        // that verb rather than splitting it into morphemes around the embedded kana. Phrasal-verb
-        // entries (夢を見る, tagged `exp,v1` in JMdict) deliberately fall through to morpheme split.
-        let surfaceLemma = inflectionInfo(surface: surface)?.lemma ?? surface
-        if entryIsSingleWordVerb(lemma: surfaceLemma) {
-            return nil
-        }
-
-        var tokens: [String] = []
-        var pendingToken = ""
-        for character in surface {
-            if caseParticles.contains(character) {
-                if pendingToken.isEmpty == false {
-                    tokens.append(pendingToken)
-                    pendingToken = ""
-                }
-                tokens.append(String(character))
-            } else {
-                pendingToken.append(character)
-            }
-        }
-        if pendingToken.isEmpty == false {
-            tokens.append(pendingToken)
-        }
-        guard tokens.count > 1 else { return nil }
-
-        let components: [(lemma: String, gloss: String?)] = tokens.map { token in
-            let lemma = inflectionInfo(surface: token)?.lemma ?? token
-            let gloss = lookupEntries(for: lemma).first?.senses.first?.glosses.first
-            return (lemma: lemma, gloss: gloss)
-        }
-        return components
-    }
-
     // Returns lexeme candidates matching one lemma and optional reading filter.
     public func lookupLexeme(_ lemma: String, _ reading: String? = nil) -> [DictionaryEntry] {
         let trimmedLemma = lemma.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -423,138 +273,6 @@ nonisolated public final class Lexicon {
 
                 return lhs.lexeme < rhs.lexeme
             }
-    }
-
-    // Returns one core lexeme record by stable ID string.
-    public func lexeme(_ id: String) -> DictionaryEntry? {
-        guard let entryID = entryID(from: id) else {
-            return nil
-        }
-
-        guard let dictionaryStore else {
-            return nil
-        }
-
-        do {
-            return try dictionaryStore.lookupEntry(entryID: entryID)
-        } catch {
-            print("lexeme lookup failed for id \(id): \(error)")
-            return nil
-        }
-    }
-
-    // Returns all displayable orthographic forms for one lexeme.
-    public func forms(_ lexemeId: String) -> [(spelling: String, reading: String)] {
-        guard let entry = lexeme(lexemeId) else {
-            return []
-        }
-
-        let fallbackReading = entry.kanaForms.first?.text ?? ""
-        var builtForms: [(spelling: String, reading: String)] = []
-
-        for kanjiForm in entry.kanjiForms {
-            builtForms.append((spelling: kanjiForm.text, reading: fallbackReading))
-        }
-
-        for kanaForm in entry.kanaForms {
-            builtForms.append((spelling: kanaForm.text, reading: kanaForm.text))
-        }
-
-        return uniqueForms(builtForms)
-    }
-
-    // Returns flattened gloss strings for one lexeme in persisted sense order.
-    public func senses(_ lexemeId: String) -> [String] {
-        guard let entry = lexeme(lexemeId) else {
-            return []
-        }
-
-        var orderedGlosses: [String] = []
-        for sense in entry.senses {
-            for gloss in sense.glosses {
-                let trimmedGloss = gloss.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmedGloss.isEmpty == false {
-                    orderedGlosses.append(trimmedGloss)
-                }
-            }
-        }
-
-        return orderedGlosses
-    }
-
-    // Returns primary reading for one lexeme using first kana form ordering.
-    public func primaryReading(_ lexemeId: String) -> String? {
-        guard let entry = lexeme(lexemeId) else {
-            return nil
-        }
-
-        return entry.kanaForms.first?.text
-    }
-
-    // Returns preferred headword display form for one lexeme.
-    public func displayForm(_ lexemeId: String) -> (spelling: String, reading: String)? {
-        let allForms = forms(lexemeId)
-        guard allForms.isEmpty == false else {
-            return nil
-        }
-
-        for form in allForms where ScriptClassifier.containsKanji(form.spelling) {
-            return form
-        }
-
-        return allForms.first
-    }
-
-    // Returns the lexeme form that best matches one tapped surface.
-    // Inlines the displayForm fallback to reuse the already-fetched form list and avoid a second DB lookup.
-    public func matchedForm(surface: String, lexemeId: String) -> (spelling: String, reading: String)? {
-        let allForms = forms(lexemeId)
-
-        if let exactMatch = allForms.first(where: { $0.spelling == surface }) {
-            return exactMatch
-        }
-
-        let lemmaCandidates = lemma(surface: surface)
-        if let lemmaMatch = allForms.first(where: { lemmaCandidates.contains($0.spelling) }) {
-            return lemmaMatch
-        }
-
-        // Inline displayForm preference so we don't re-fetch the entry.
-        for form in allForms where ScriptClassifier.containsKanji(form.spelling) {
-            return form
-        }
-
-        return allForms.first
-    }
-
-    // Returns whether one text contains any kanji scalar.
-    public func containsKanji(_ text: String) -> Bool {
-        ScriptClassifier.containsKanji(text)
-    }
-
-    // Returns whether one text is entirely kana.
-    public func isKana(_ text: String) -> Bool {
-        ScriptClassifier.isPureKana(text)
-    }
-
-    // Returns unique kanji characters present in all lexeme forms.
-    public func kanjiCharacters(_ lexemeId: String) -> [String] {
-        let allForms = forms(lexemeId)
-        var seenCharacters = Set<String>()
-        var orderedCharacters: [String] = []
-
-        for form in allForms {
-            for character in form.spelling {
-                let characterString = String(character)
-                if ScriptClassifier.containsKanji(characterString),
-                   seenCharacters.contains(characterString) == false {
-                    seenCharacters.insert(characterString)
-                    orderedCharacters.append(characterString)
-                }
-            }
-        }
-
-        return orderedCharacters
     }
 
     // Expands one lemma into inflected forms by inverting grouped deinflection rules and validating results.
@@ -623,7 +341,7 @@ nonisolated public final class Lexicon {
     }
 
     // Resolves dictionary entries for one surface using script-aware lookup mode selection.
-    private func lookupEntries(for surface: String) -> [DictionaryEntry] {
+    func lookupEntries(for surface: String) -> [DictionaryEntry] {
         guard let dictionaryStore else {
             return []
         }
@@ -705,7 +423,7 @@ nonisolated public final class Lexicon {
     // Computes deinflection paths once and returns admitted, sorted lemma entries alongside the paths.
     // Depth is chain.count — a natural product of the BFS, not a separate computation.
     // Callers that need chain or transition data extract it from the returned paths without re-traversal.
-    private func admittedLemmasAndPaths(for surface: String) -> (lemmas: [(lemma: String, depth: Int)], paths: DeinflectionPathMap) {
+    func admittedLemmasAndPaths(for surface: String) -> (lemmas: [(lemma: String, depth: Int)], paths: DeinflectionPathMap) {
         let trimmedSurface = surface.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedSurface.isEmpty == false else {
             return ([], [:])
@@ -792,36 +510,4 @@ nonisolated public final class Lexicon {
         return (entries, pathsByLemma)
     }
 
-    // Parses stable lexeme ID text to numeric dictionary entry ID.
-    private func entryID(from id: String) -> Int64? {
-        let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let rawID = Int64(trimmedID) {
-            return rawID
-        }
-
-        guard trimmedID.hasPrefix("lex_") else {
-            return nil
-        }
-
-        let numericPart = String(trimmedID.dropFirst(4))
-        return Int64(numericPart)
-    }
-
-    // Removes duplicate forms while preserving first-seen ordering semantics.
-    private func uniqueForms(_ forms: [(spelling: String, reading: String)]) -> [(spelling: String, reading: String)] {
-        var seen = Set<String>()
-        var unique: [(spelling: String, reading: String)] = []
-
-        for form in forms {
-            let key = "\(form.spelling)|\(form.reading)"
-            if seen.contains(key) {
-                continue
-            }
-
-            seen.insert(key)
-            unique.append(form)
-        }
-
-        return unique
-    }
 }
