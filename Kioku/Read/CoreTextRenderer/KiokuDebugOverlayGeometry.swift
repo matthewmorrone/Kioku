@@ -139,12 +139,13 @@ enum KiokuDebugOverlayGeometry {
                 furiganaRect = nil
             }
 
-            // Envelope = horizontal bounding box of (segment ∪ furigana) × (ruby height +
-            // headword height). When ruby is wider than its kanji (ものがたり over 物語,
-            // ちから over 力), it overhangs the segment on both sides; the envelope grows
-            // to contain it. Without this, the debug rect lies about the visible footprint
-            // of the ruby and breaks any consumer that uses the envelope for hit-testing
-            // or visual emphasis.
+            // Envelope = horizontal bounding box of (segment ∪ furigana) × (headword height
+            // + ruby band when ruby exists). When ruby is wider than its kanji (ものがたり
+            // over 物語), it overhangs the segment on both sides; the envelope grows to
+            // contain it. When no ruby is present (no reading attached to this segment),
+            // the ruby band collapses to zero — reserving it would draw a phantom strip
+            // above the glyphs that doesn't reflect anything actually rendered, and would
+            // make hit-testing register interactions in empty space.
             let envelopeMinX: CGFloat
             let envelopeMaxX: CGFloat
             if let furigana = furiganaRect {
@@ -154,11 +155,12 @@ enum KiokuDebugOverlayGeometry {
                 envelopeMinX = segRect.minX
                 envelopeMaxX = segRect.maxX
             }
+            let effectiveRubyHeight = furiganaRect == nil ? 0 : rubyHeight
             let envelope = CGRect(
                 x: envelopeMinX,
-                y: segRect.maxY - headwordHeight - rubyHeight,
+                y: segRect.maxY - headwordHeight - effectiveRubyHeight,
                 width: envelopeMaxX - envelopeMinX,
-                height: headwordHeight + rubyHeight
+                height: headwordHeight + effectiveRubyHeight
             )
 
             return SegmentGeometry(
