@@ -528,6 +528,16 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             score += 10
         }
 
+        // Prefer lemmas whose leading chars match the surface — the closer the
+        // lemma's stem is to the surface, the more directly the deinflection
+        // chain reached it. Disambiguates modern vs classical verbs that share
+        // the same inflected form (e.g. 忘れる shares 「忘れ」 with 忘れない,
+        // 忘る only 「忘」). 5 points per char yields ~10-point separation per
+        // mora — enough to break ties without overpowering wordfreq or the
+        // surface-equality bonus.
+        let commonPrefixCount = lemma.commonPrefix(with: sourceSurface).count
+        score += commonPrefixCount * 5
+
         if let zipf = wordfreqZipfByLemma[lemma], zipf > 0 {
             score += Int(zipf * 5)
         }
