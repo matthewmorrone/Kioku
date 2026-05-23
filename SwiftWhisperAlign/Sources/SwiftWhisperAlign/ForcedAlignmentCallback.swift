@@ -39,17 +39,30 @@ func forcedAlignmentLogitsFilter(
     let begToken = Int(whisper_token_beg(ctx))
     let eotToken = Int(whisper_token_eot(ctx))
 
-    // Advance cursor: check if the most recently emitted non-timestamp token
-    // matches the token we were expecting.
+    // Snapshot cursor + count locally before any subscript. whisper.cpp dispatches
+    // this callback through std::thread lambdas (see whisper_full_with_state::$_2
+    // in the crash trace) and concurrent decode threads share a single alignState
+    // via the void* user_data. Without the snapshot, the previous code read
+    // `alignState.cursor` twice — once for `cursor < count` and once for
+    // `tokenSequence[cursor]` — and a second thread bumping cursor between those
+    // reads could push the subscript past the end, trapping with Array OOB. The
+    // snapshot makes the check-then-subscript pair safe by binding both to the
+    // same Int. The mutating write (`alignState.cursor = ...`) below is still
+    // racy in the rare case two threads both observe the matching emitted token,
+    // but the worst case is a double-advance of one position — never out of range.
+    let tokenCount = alignState.tokenSequence.count
+    var cursorSnapshot = alignState.cursor
+
     if let tokens, n_tokens > 0 {
         // Walk backwards through emitted tokens to find the last non-timestamp token.
         for i in stride(from: Int(n_tokens) - 1, through: 0, by: -1) {
             let emitted = Int(tokens[i].id)
             if emitted < begToken && emitted != eotToken {
                 // This is a text token. If it matches our expected token, advance.
-                if alignState.cursor < alignState.tokenSequence.count &&
-                   emitted == Int(alignState.tokenSequence[alignState.cursor]) {
-                    alignState.cursor += 1
+                if cursorSnapshot < tokenCount &&
+                   emitted == Int(alignState.tokenSequence[cursorSnapshot]) {
+                    alignState.cursor = cursorSnapshot + 1
+                    cursorSnapshot += 1
                 }
                 break
             }
@@ -58,8 +71,8 @@ func forcedAlignmentLogitsFilter(
 
     let negInf = -Float.infinity
 
-    if alignState.cursor < alignState.tokenSequence.count {
-        let nextToken = Int(alignState.tokenSequence[alignState.cursor])
+    if cursorSnapshot < tokenCount {
+        let nextToken = Int(alignState.tokenSequence[cursorSnapshot])
 
         // Suppress all text tokens except the next expected one, and also
         // suppress EOT. The chunked driver bounds how many lyric tokens land
