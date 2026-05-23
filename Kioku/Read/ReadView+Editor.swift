@@ -1,0 +1,212 @@
+import SwiftUI
+import UIKit
+
+// Editor surface for ReadView: keeps the CoreText reader and the rich-text editor mounted
+// together so mode toggles are instant, and exposes the helpers that resolve renderer-side
+// segmentation/highlight state.
+extension ReadView {
+    // True when persisted segmentation has been restored into memory, so the renderer can use it
+    // immediately instead of waiting for the trie/lexicon load that drives readResourcesReady.
+    // For new or un-segmented notes, segmentRanges is empty until the segmenter computes it, so
+    // this stays false and the original gating still applies.
+    var hasRendererSegmentation: Bool {
+        segmentRanges.isEmpty == false
+    }
+
+    // Mirrors FuriganaTextRenderer+Geometry.selectedSegmentNSRange for the CoreText path:
+    // prefers the explicit override (set during merge/split previews) over the simple
+    // location-based lookup so behavior matches between renderers when an override is active.
+    func resolveSelectedHighlightRange() -> NSRange? {
+        let ns = text as NSString
+        if let override = selectedHighlightRangeOverride,
+           override.location != NSNotFound,
+           override.length > 0,
+           override.upperBound <= ns.length {
+            return override
+        }
+        guard let location = selectedSegmentLocation else { return nil }
+        for range in segmentRanges {
+            let ns = NSRange(range, in: text)
+            if ns.location == location, ns.length > 0 {
+                return ns
+            }
+        }
+        return nil
+    }
+
+    // Keeps both read and edit renderers mounted so mode toggles are instant.
+    var editorView: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                if true /* useCoreTextRenderer — toggle disabled; CT is the only path */ {
+                    KiokuCoreTextRendererView(
+                        text: text,
+                        segmentationRanges: segmentRanges,
+                        furiganaBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaBySegmentLocation : [:],
+                        furiganaLengthBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                        isFuriganaVisible: isFuriganaVisible,
+                        isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
+                        isColorAlternationEnabled: isColorAlternationEnabled,
+                        textSize: $textSize,
+                        lineSpacing: lineSpacing,
+                        kerning: kerning,
+                        furiganaGap: CGFloat(furiganaGap),
+                        evenSegmentColor: customTokenColorsEnabled
+                            ? (UIColor(hexString: tokenColorAHex) ?? .label)
+                            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed },
+                        oddSegmentColor: customTokenColorsEnabled
+                            ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
+                            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo },
+                        isLineWrappingEnabled: isLineWrappingEnabled,
+                        isRubySpacingEnabled: isRubySpacingEnabled,
+                        selectedHighlightRange: resolveSelectedHighlightRange(),
+                        playbackHighlightRange: playbackHighlightRangeOverride,
+                        selectionHighlightColor: UIColor.systemYellow.withAlphaComponent(0.35),
+                        playbackHighlightColor: UIColor.systemBlue.withAlphaComponent(0.20),
+                        unknownSegmentLocations: unknownSegmentLocations,
+                        isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                        unknownSegmentColor: .label,
+                        debugFlags: KiokuDebugOverlayView.Flags(
+                            headwordRects: debugHeadwordRects,
+                            furiganaRects: debugFuriganaRects,
+                            envelopeRects: debugEnvelopeRects,
+                            headwordBisectors: debugBisectorHeadword,
+                            furiganaBisectors: debugBisectorFurigana,
+                            headwordLineBands: debugHeadwordLineBands,
+                            furiganaLineBands: debugFuriganaLineBands,
+                            pixelRuler: debugPixelRuler,
+                            leftInsetGuide: debugLeftInsetGuide,
+                            headwordLineNumbers: debugHeadwordLineNumbers,
+                            rubyLineNumbers: debugRubyLineNumbers
+                        ),
+                        illegalMergeLocation: illegalMergeBoundaryLocation,
+                        onSegmentTapped: { location, rect, scrollView in
+                            // The CoreText path forwards its underlying KiokuScrollingTextView so
+                            // the sheet-visibility scroll helpers (contentInset.bottom for
+                            // overscroll, contentOffset adjust) can run against the same scroll
+                            // view that owns the rendered text. UIScrollView is a superclass of
+                            // UITextView, so handleReadModeSegmentTap accepts either path.
+                            handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: scrollView)
+                        }
+                    )
+                    .opacity(isEditMode ? 0 : 1)
+                    .allowsHitTesting(isEditMode == false)
+                    .animation(.default, value: isEditMode)
+                } else {
+                FuriganaTextRenderer(
+                    isActive: isEditMode == false,
+                    isOverlayFrozen: isSheetSwipeTransitionActive,
+                    text: text,
+                    isLineWrappingEnabled: isLineWrappingEnabled,
+                    segmentationRanges: segmentRanges,
+                    selectedSegmentLocation: selectedSegmentLocation,
+                    blankSelectedSegmentLocation: transientBlankReadingSegmentLocation,
+                    selectedHighlightRangeOverride: selectedHighlightRangeOverride,
+                    playbackHighlightRangeOverride: playbackHighlightRangeOverride,
+                    activePlaybackCueIndex: activePlaybackCueIndex,
+                    illegalMergeBoundaryLocation: illegalMergeBoundaryLocation,
+                    furiganaBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaBySegmentLocation : [:],
+                    furiganaLengthBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                    isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
+                    isRubySpacingEnabled: isRubySpacingEnabled,
+                    isColorAlternationEnabled: isColorAlternationEnabled,
+                    isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                    unknownSegmentLocations: unknownSegmentLocations,
+                    changedSegmentLocations: pendingLLMChangedLocations,
+                    changedReadingLocations: pendingLLMChangedReadingLocations,
+                    customEvenSegmentColorHex: customTokenColorsEnabled ? tokenColorAHex : "",
+                    customOddSegmentColorHex: customTokenColorsEnabled ? tokenColorBHex : "",
+                    debugFuriganaRects: debugFuriganaRects,
+                    debugHeadwordRects: debugHeadwordRects,
+                    debugHeadwordLineBands: debugHeadwordLineBands,
+                    debugFuriganaLineBands: debugFuriganaLineBands,
+                    debugBisectorHeadword: debugBisectorHeadword,
+                    debugBisectorFurigana: debugBisectorFurigana,
+                    debugEnvelopeRects: debugEnvelopeRects,
+                    debugLeftInsetGuide: debugLeftInsetGuide,
+                    externalContentOffsetY: sharedScrollOffsetY,
+                    onScrollOffsetYChanged: { newOffsetY in
+                        sharedScrollOffsetY = newOffsetY
+                    },
+                    onSegmentTapped: { tappedSegmentLocation, tappedSegmentRect, sourceView in
+                        handleReadModeSegmentTap(
+                            tappedSegmentLocation,
+                            tappedSegmentRect: tappedSegmentRect,
+                            sourceView: sourceView
+                        )
+                    },
+                    textSize: $textSize,
+                    lineSpacing: lineSpacing,
+                    kerning: kerning,
+                    furiganaGap: furiganaGap
+                )
+                .opacity(isEditMode ? 0 : 1)
+                .allowsHitTesting(isEditMode == false)
+                .animation(.default, value: isEditMode)
+                }
+
+                RichTextEditor(
+                    text: $text,
+                    isLineWrappingEnabled: isLineWrappingEnabled,
+                    segmentationRanges: segmentRanges,
+                    furiganaBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaBySegmentLocation : [:],
+                    furiganaLengthBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                    isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
+                    isColorAlternationEnabled: isColorAlternationEnabled,
+                    isHighlightUnknownEnabled: isHighlightUnknownEnabled,
+                    segmenter: segmenter,
+                    isEditMode: isEditMode,
+                    externalContentOffsetY: sharedScrollOffsetY,
+                    onScrollOffsetYChanged: { newOffsetY in
+                        sharedScrollOffsetY = newOffsetY
+                    },
+                    textSize: $textSize,
+                    lineSpacing: lineSpacing,
+                    kerning: kerning,
+                    furiganaGap: furiganaGap,
+                    debugHeadwordLineBands: debugHeadwordLineBands,
+                    debugFuriganaLineBands: debugFuriganaLineBands
+                )
+                .opacity(isEditMode ? 1 : 0)
+                .allowsHitTesting(isEditMode)
+                .animation(.default, value: isEditMode)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(isEditMode ? Color(.systemBackground) : Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(
+                    isEditMode ? Color.accentColor.opacity(0.45) : Color.secondary.opacity(0.3),
+                    lineWidth: isEditMode ? 2 : 1
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 8)
+        .animation(.default, value: isEditMode)
+        // Disk/mem load-info toast disabled — re-enable by uncommenting this overlay and the
+        // showLoadInfoToast(for:) call in ReadView+Persistence.swift.
+        // .overlay(alignment: .top) {
+        //     if let message = loadInfoToastMessage {
+        //         Text(message)
+        //             .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        //             .foregroundStyle(.white)
+        //             .padding(.horizontal, 10)
+        //             .padding(.vertical, 5)
+        //             .background(Capsule().fill(Color.black.opacity(0.78)))
+        //             .padding(.top, 12)
+        //             .onTapGesture {
+        //                 loadInfoToastClearTask?.cancel()
+        //                 loadInfoToastMessage = nil
+        //             }
+        //             .transition(.opacity.combined(with: .move(edge: .top)))
+        //     }
+        // }
+        // .animation(.easeInOut(duration: 0.18), value: loadInfoToastMessage)
+    }
+}
