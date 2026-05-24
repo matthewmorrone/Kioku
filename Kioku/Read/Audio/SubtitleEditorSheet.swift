@@ -435,38 +435,12 @@ struct SubtitleEditorSheet: View {
             return
         }
 
-        let existingCues = liveCues
-        let musicCues = existingCues.filter { SubtitleParser.isNonSpeechCue($0.text) }
-        let speechCues = existingCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
-
-        // Pure-logic steps (matching, gap construction, merging) live in
-        // SubtitleReconciliation so they're unit-testable against docs/INVARIANTS.md.
-        // This function keeps only the I/O bits — audio duration, slicing, aligner
-        // invocation, and @State updates.
-        let anchors = SubtitleReconciliation.matchAnchors(speechCues: speechCues, noteLines: noteLines)
-
         isRetiming = true
-        retimeProgressMessage = "Measuring audio…"
-
-        let audioDuration = await Self.audioDurationSeconds(for: audioURL) ?? 0
-        guard audioDuration > 0 else {
-            retimeError = "Couldn't read audio duration."
-            return
-        }
-
-        let gaps = SubtitleReconciliation.buildGapWindows(
-            anchors: anchors,
-            noteLines: noteLines,
-            audioDurationSeconds: audioDuration
-        )
-
-        if gaps.isEmpty {
-            retimeError = "Every note line already has a matching cue — nothing to reconcile."
-            return
-        }
-
-        // Prep model (downloaded if needed). Shared by all gaps in this run.
         retimeProgressMessage = "Preparing model…"
+
+        // Prep model (downloaded if needed). The orchestration takes it as input
+        // so the test can pass a pre-resolved URL without going through this UI
+        // download path.
         let modelURL: URL
         do {
             if let existing = OnDeviceLyricAligner.bestAvailableModelURL() {
@@ -481,129 +455,26 @@ struct SubtitleEditorSheet: View {
             return
         }
 
-        var newCues: [SubtitleCue] = []
-        let runStartedAt = Date()
-
-        for (gapIdx, gap) in gaps.enumerated() {
-            if Task.isCancelled { return }
-            let elapsed = Int(Date().timeIntervalSince(runStartedAt))
-            retimeProgressMessage = "Aligning gap \(gapIdx + 1)/\(gaps.count) · \(gap.lines.count) line\(gap.lines.count == 1 ? "" : "s") · \(elapsed)s"
-
-            let sliceURL: URL
-            do {
-                sliceURL = try await Self.sliceAudio(audioURL: audioURL, from: gap.audioStart, to: gap.audioEnd)
-            } catch {
-                retimeError = "Couldn't slice audio for gap \(gapIdx + 1): \(error.localizedDescription)"
-                return
-            }
-            defer { try? FileManager.default.removeItem(at: sliceURL) }
-
-            let lyrics = gap.lines.joined(separator: "\n")
-            let alignedCues: [SubtitleCue]
-            do {
-                let srt = try await OnDeviceLyricAligner.align(
-                    audioURL: sliceURL,
-                    lyrics: lyrics,
-                    modelURL: modelURL,
-                    cancellationCheck: { Task.isCancelled }
-                )
-                alignedCues = SubtitleParser.parse(srt)
-            } catch {
-                if Task.isCancelled { return }
-                // Per the user's "do NOT drop lines" rule: an aligner failure on one gap
-                // falls back to uniform distribution rather than abandoning the run.
-                // The user can re-run reconcile after editing surrounding anchors to
-                // get a real alignment for this stretch.
-                print("[Reconcile] gap \(gapIdx + 1) alignment failed (\(error.localizedDescription)); force-fitting")
-                alignedCues = []
-            }
-
-            let gapSpeechCues = alignedCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
-            let gapMusicCues = alignedCues.filter { SubtitleParser.isNonSpeechCue($0.text) }
-            let speechToUse: [SubtitleCue]
-            if gapSpeechCues.count == gap.lines.count {
-                // Aligner returned the expected line count — trust its timings.
-                speechToUse = gapSpeechCues
-            } else {
-                // Force-fit: uniformly distribute the expected lines across the gap's
-                // window so every note line lands somewhere reasonable. Discards the
-                // aligner's partial output rather than mixing partial-good with synthetic
-                // — that mix tends to produce overlapping cues that confuse the user
-                // worse than honest uniform spacing.
-                speechToUse = SubtitleReconciliation.uniformDistribute(
-                    lines: gap.lines,
-                    windowStartMs: 0,
-                    windowEndMs: Int((gap.audioEnd - gap.audioStart) * 1000)
-                )
-            }
-
-            // Offset gap-local times to absolute audio times before merging.
-            let offsetMs = Int(gap.audioStart * 1000)
-            let absoluteCues = (speechToUse + gapMusicCues).map { cue -> SubtitleCue in
-                var copy = cue
-                copy.startMs += offsetMs
-                copy.endMs += offsetMs
-                return copy
-            }
-            newCues.append(contentsOf: absoluteCues)
-        }
-
-        // Merge via the pure helper so the contract (anchors preserved, music preserved,
-        // consumed anchors dropped) is the same one tested by SubtitleReconciliationTests.
-        let consumedAnchorIndices: Set<Int> = Set(gaps.compactMap { $0.consumedAnchorIndex })
-        let merged = SubtitleReconciliation.mergeReconciledCues(
-            anchors: anchors,
-            consumedAnchorIndices: consumedAnchorIndices,
-            musicCues: musicCues,
-            newGapCues: newCues
-        )
-
-        pendingRetimedSRT = SubtitleParser.formatSRT(from: merged)
-    }
-
-    // Reads the duration of an audio file via AVAsset's async loader. nil when the load
-    // fails or the asset has no audio tracks — callers fail the reconcile gracefully.
-    private static func audioDurationSeconds(for url: URL) async -> Double? {
-        let asset = AVURLAsset(url: url)
         do {
-            let duration = try await asset.load(.duration)
-            return CMTimeGetSeconds(duration)
+            // Delegate the entire orchestration (matching, gap-build, slicing,
+            // aligning, force-fit, merging) to SubtitleReconciliation.reconcile so
+            // production and AlignmentQualityTests both exercise the same code path.
+            let merged = try await SubtitleReconciliation.reconcile(
+                audioURL: audioURL,
+                currentCues: liveCues,
+                noteLines: noteLines,
+                modelURL: modelURL,
+                cancellationCheck: { Task.isCancelled },
+                onProgress: { message in
+                    Task { @MainActor in retimeProgressMessage = message }
+                }
+            )
+            pendingRetimedSRT = SubtitleParser.formatSRT(from: merged)
+        } catch is CancellationError {
+            return
         } catch {
-            return nil
+            retimeError = "Reconcile failed: \(error.localizedDescription)"
         }
-    }
-
-    // Extracts an audio range to a temp .m4a via AVAssetExportSession. The exported file
-    // lives in /tmp and is cleaned up by the caller's defer block. Used to feed the
-    // forced aligner a small clip per gap so it can run cleanly against just that window
-    // without re-encountering the audio it has already anchored.
-    private static func sliceAudio(audioURL: URL, from: Double, to: Double) async throws -> URL {
-        let asset = AVURLAsset(url: audioURL)
-        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
-            throw NSError(
-                domain: "Kioku.Reconcile",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Couldn't create exporter for audio slice."]
-            )
-        }
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("kioku-reconcile-\(UUID().uuidString).m4a")
-        exporter.outputURL = tempURL
-        exporter.outputFileType = .m4a
-        let timescale: CMTimeScale = 1000
-        exporter.timeRange = CMTimeRange(
-            start: CMTime(seconds: from, preferredTimescale: timescale),
-            end: CMTime(seconds: to, preferredTimescale: timescale)
-        )
-
-        await exporter.export()
-        guard exporter.status == .completed else {
-            throw exporter.error ?? NSError(
-                domain: "Kioku.Reconcile",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Audio slice export failed."]
-            )
-        }
-        return tempURL
     }
 
 

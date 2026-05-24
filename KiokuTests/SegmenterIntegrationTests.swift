@@ -262,4 +262,66 @@ final class SegmenterIntegrationTests: XCTestCase {
             line.contains("イル [lemma: いる]")
         })
     }
+
+    // MARK: - Structural invariants (docs/INVARIANTS.md "Segmentation" #1, #2)
+    //
+    // The lattice is intentionally overlapping (it carries alternatives), but the
+    // *chosen* path (`longestMatchEdges`) must tile the source text exactly:
+    //   #1 Total coverage — every UTF-16 unit belongs to some chosen edge.
+    //   #2 Disjoint — no two chosen edges overlap.
+    //
+    // Violating either causes hard-to-diagnose downstream bugs: gaps in coverage
+    // produce un-styled glyphs in the renderer and skip tap handling; overlaps
+    // cause double-tap, double-coloring, and divergent furigana resolution
+    // between the two overlapping edges.
+
+    func testLongestMatchEdgesTileSourceWithoutGapsOrOverlap() throws {
+        // Mix of lyric snippets that touched today's segmentation bugs plus a
+        // pure-kana and pure-katakana case. Run the invariant on each.
+        let corpus = [
+            "朽ちた花びらに黄昏の翅が",
+            "もう触れられないあの日の命を",
+            "悲しみの嘘を忘れない",
+            "夕映の時間はもう無いけれど",
+            "には",
+            "プレイヤーズ",
+            "abc"
+        ]
+        let resources = try sharedResources()
+        for text in corpus {
+            let edges = resources.segmenter.longestMatchEdges(for: text)
+            assertEdgesTileText(edges, text: text)
+        }
+    }
+
+    // Walks `edges` in source-position order and verifies that the first edge
+    // starts at text.startIndex, each subsequent edge starts exactly where the
+    // previous one ended, and the last edge ends at text.endIndex. Any gap
+    // (covering #1) or overlap (covering #2) fails the assertion with a
+    // descriptive message.
+    private func assertEdgesTileText(
+        _ edges: [LatticeEdge],
+        text: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let sorted = edges.sorted { lhs, rhs in
+            text.distance(from: text.startIndex, to: lhs.start)
+                < text.distance(from: text.startIndex, to: rhs.start)
+        }
+        var cursor = text.startIndex
+        for edge in sorted {
+            XCTAssertEqual(
+                edge.start, cursor,
+                "Edge \(edge.surface) starts at \(text.distance(from: text.startIndex, to: edge.start)) but previous edge ended at \(text.distance(from: text.startIndex, to: cursor)) — coverage gap or overlap",
+                file: file, line: line
+            )
+            cursor = edge.end
+        }
+        XCTAssertEqual(
+            cursor, text.endIndex,
+            "Edges stop at \(text.distance(from: text.startIndex, to: cursor)) but text length is \(text.distance(from: text.startIndex, to: text.endIndex)) — missing tail coverage",
+            file: file, line: line
+        )
+    }
 }
