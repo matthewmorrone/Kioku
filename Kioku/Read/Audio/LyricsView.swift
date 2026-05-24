@@ -116,13 +116,12 @@ struct LyricsView: View {
         // and that can happen here when an audio note has zero cues (transcription returned
         // nothing, the .srt was empty) but `audioAttachmentID` is still set so this view
         // mounts. Without the clamps, opening such a note crashes during body evaluation.
-        // When we're in a no-vocal stretch (intro, ♪ cue, instrumental gap), the active card
-        // slot renders the pulsing ♪ and the activeCueIndex cue itself is the *upcoming*
-        // vocal line — it hasn't started yet. Surface it in the below-scroll so the user can
-        // see what's coming next instead of hiding cue 0 entirely during the intro.
-        let inNoVocalStretch = noVocalStretchRemainingMs != nil
+        // Music-note pulsing during instrumental gaps was removed; the active card always
+        // shows the cue at `displayIndex` (which during a gap is the upcoming vocal line —
+        // the user just sees the next line waiting). belowLower is therefore always
+        // displayIndex+1 (the active card occupies displayIndex itself).
         let aboveUpper = max(0, displayIndex)
-        let belowLower = inNoVocalStretch ? displayIndex : displayIndex + 1
+        let belowLower = displayIndex + 1
         let belowUpper = max(belowLower, cues.count)
         return VStack(spacing: 0) {
             // Karaoke diagnostics HUD — only laid out when the user has flipped
@@ -143,17 +142,13 @@ struct LyricsView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
-                        // Each cue from the source SRT renders as either a vocal row or a ♪
-                        // separator based on its own text — we deliberately do NOT synthesize
-                        // markers from inter-cue timing gaps. The subtitle/TextGrid files are
-                        // already the source of truth for instrumental sections; gap-based
-                        // heuristics either miss real interludes (threshold too high) or
-                        // invent fake ones (threshold too low). Trust the data.
+                        // Render every cue as a vocal row regardless of whether the SRT marked it
+                        // non-speech (♪/♫/empty). The ♪ separator UI was removed at user
+                        // request — instrumental gaps now render as absence (nothing in the
+                        // scroll list) rather than as a visible marker.
                         ForEach(0 ..< aboveUpper, id: \.self) { index in
-                            let distance = displayIndex - index
-                            if SubtitleParser.isNonSpeechCue(cues[index].text) {
-                                musicNoteSeparator(distance: distance)
-                            } else {
+                            if SubtitleParser.isNonSpeechCue(cues[index].text) == false {
+                                let distance = displayIndex - index
                                 inactiveCueRow(index: index, distance: distance)
                             }
                         }
@@ -196,11 +191,10 @@ struct LyricsView: View {
                 let activeCueScale = activeCueFontScale(text: cueInput.text, availableWidth: activeCueAvailableWidth)
                 let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
                 VStack(spacing: 0) {
-                    if noVocalStretchRemainingMs != nil {
-                        PulsingDotsIndicator(controller: controller)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: rendererHeight)
-                    } else {
+                    // Pulsing ♪ during instrumental gaps was removed at user request.
+                    // The active card now always shows the cue at `displayIndex` — during
+                    // intros/gaps that means the *upcoming* cue is visible, which is fine
+                    // and matches "see lyrics backwards and forwards regardless of play state."
                     KiokuCoreTextRendererView(
                         text: cueInput.text,
                         segmentationRanges: cueInput.segmentationRanges,
@@ -276,7 +270,6 @@ struct LyricsView: View {
                                 .lineLimit(1)
                         }
                     }
-                    } // end else (vocal-cue rendering)
                 }
                 .padding(.vertical, 8)
                 .translationTask(translationTrigger) { session in
@@ -289,13 +282,11 @@ struct LyricsView: View {
 
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
-                        // Same data-driven contract as the above-scroll: render whatever the
-                        // SRT emits, don't synthesize ♪ markers from timing gaps.
+                        // Render every cue as a vocal row — no ♪ separators (see the
+                        // above-scroll comment for the rationale).
                         ForEach(belowLower ..< belowUpper, id: \.self) { index in
-                            let distance = index - displayIndex
-                            if SubtitleParser.isNonSpeechCue(cues[index].text) {
-                                musicNoteSeparator(distance: distance)
-                            } else {
+                            if SubtitleParser.isNonSpeechCue(cues[index].text) == false {
+                                let distance = index - displayIndex
                                 inactiveCueRow(index: index, distance: distance)
                             }
                         }
@@ -352,27 +343,10 @@ struct LyricsView: View {
     // vocal cue. nil means a vocal cue is currently playing — render the regular active card.
     //
     // Data-driven: the source SRT/TextGrid marks instrumental sections as non-speech cues.
-    // We don't synthesize "no-vocal" state from inter-cue gap timing — heuristic thresholds
-    // either over-trigger (every routine line break flashes the pulsing dots) or under-trigger
-    // (real interludes get missed). If the source files didn't bother marking a section, we
-    // treat it as silence between vocal cues rather than as an interlude.
-    private var noVocalStretchRemainingMs: Int? {
-        guard cues.isEmpty == false else { return nil }
-        let currentMs = controller.currentTimeMs
-        let isVocal: (SubtitleCue) -> Bool = { !SubtitleParser.isNonSpeechCue($0.text) }
-        guard let nextVocalCue = cues.first(where: { isVocal($0) && $0.startMs > currentMs }) else {
-            return nil
-        }
-        // Inside a non-speech cue — show pulsing dots until the next vocal cue starts.
-        if cues.contains(where: { !isVocal($0) && $0.startMs <= currentMs && currentMs < $0.endMs }) {
-            return max(0, nextVocalCue.startMs - currentMs)
-        }
-        // Intro before the first cue of any kind.
-        if let firstCue = cues.first, currentMs < firstCue.startMs {
-            return max(0, nextVocalCue.startMs - currentMs)
-        }
-        return nil
-    }
+    // Music-note / pulsing-dots feature was removed at user request. This computed
+    // property is preserved (returning nil) so any straggler call site silently no-ops
+    // instead of failing to compile. Safe to delete once no callers remain.
+    private var noVocalStretchRemainingMs: Int? { nil }
 
     // Returns the cue's raw SRT text — what the singer actually sang at that timecode.
     // Used for inactive rows and translation. We deliberately do NOT slice noteText with the

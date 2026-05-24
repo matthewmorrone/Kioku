@@ -100,36 +100,33 @@ struct AudioCueHighlightObserver: View {
         case .sentence:
             playbackHighlightRangeOverride = cueRange
         case .word, .mora:
-            guard checkpoints.isEmpty == false else {
-                // Linear-time fallback: with no TextGrid checkpoints we can't pinpoint
-                // word boundaries by audio, so glide a played-prefix range across the cue
-                // based on elapsed fraction. LyricsView reads the upperBound as the
-                // dim-from index, so the unplayed tail fades smoothly as time advances.
-                let cue = cueIndex < cues.count ? cues[cueIndex] : nil
-                let startMs = cue?.startMs ?? 0
-                let endMs = cue?.endMs ?? (startMs + 1)
-                let duration = max(1, endMs - startMs)
-                let elapsed = max(0, min(duration, currentTimeMs - startMs))
-                let fraction = Double(elapsed) / Double(duration)
-                let charPos = max(0, min(cueRange.length - 1, Int(Double(cueRange.length) * fraction)))
-                // Compute the active-chunk range (not a prefix) so the band hugs the current
-                // word while dim covers everything after. Tries noteText segmentation first
-                // (aligns when the cue has a real highlight range); falls back to character-
-                // class chunking on the cue text for synthetic ranges or unsegmented lines.
-                let chunkRange: NSRange = {
-                    let absolutePos = cueRange.location + charPos
-                    if let segment = enclosingSegmentRange(forLocation: absolutePos) {
-                        return segment
+            // Treat "one checkpoint that covers the entire cue" as "no useful word-level
+            // data" — it's what a segments-only TextGrid produces (the binder prefix-matches
+            // the full SRT line against the cue text and emits a single full-length
+            // checkpoint), and without this guard the observer would sit the band on the
+            // first segment forever. Falling through to the elapsed-fraction path slides
+            // the band across the cue at constant rate, which is correct in the absence of
+            // real word timing. When a proper words-tier TextGrid is present, the binder
+            // produces many short checkpoints and this predicate is false.
+            let hasUsefulWordCheckpoints: Bool = {
+                guard checkpoints.isEmpty == false else { return false }
+                if checkpoints.count == 1 {
+                    let cp = checkpoints[0]
+                    if cp.charOffsetInCue == 0 && cp.charLength >= cueRange.length {
+                        return false
                     }
-                    let cueText = cueIndex < cues.count ? cues[cueIndex].text : ""
-                    let chunkEnd = characterClassChunkEnd(in: cueText, atCharOffset: charPos)
-                    let chunkStart = characterClassChunkStart(in: cueText, atCharOffset: charPos)
-                    return NSRange(
-                        location: cueRange.location + chunkStart,
-                        length: max(0, chunkEnd - chunkStart)
-                    )
-                }()
-                playbackHighlightRangeOverride = chunkRange
+                }
+                return true
+            }()
+            guard hasUsefulWordCheckpoints else {
+                // No per-word timing available. We deliberately do NOT fall back to an
+                // elapsed-fraction "constant-rate slide" — sung syllables aren't evenly
+                // spaced, and a constant-rate band misleads the user into thinking it's
+                // tracking the singer when it isn't. Leaving the override nil yields no
+                // active-word band and no unplayed-tail dim (LyricsView's
+                // `unplayedDimmingLocation` is nil when the override is nil), so the
+                // line renders as plain text — honest about what we don't know.
+                playbackHighlightRangeOverride = nil
                 return
             }
             guard let activeCheckpoint = lastCheckpoint(before: currentTimeMs, in: checkpoints) else {

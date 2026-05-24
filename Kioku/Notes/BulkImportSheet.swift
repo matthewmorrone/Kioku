@@ -328,7 +328,12 @@ struct BulkImportSheet: View {
     private var allowedContentTypesForActivePicker: [UTType] {
         switch activePicker {
         case .files:
-            var types: [UTType] = [.plainText, .text, .audio, .mp3, .mpeg4Audio]
+            // NOTE: don't add `.text` here — it's the parent UTI of `public.text`, which
+            // also covers `.json`, `.html`, `.swift`, etc. Users importing alongside the
+            // `.json` artifacts produced by the alignment service would see them appear in
+            // the picker (then get silently dropped by BulkImportPlanner because the
+            // extension isn't in any of its lists). `.plainText` is the txt-specific UTI.
+            var types: [UTType] = [.plainText, .audio, .mp3, .mpeg4Audio]
             if let srt = UTType(filenameExtension: "srt") {
                 types.append(srt)
             }
