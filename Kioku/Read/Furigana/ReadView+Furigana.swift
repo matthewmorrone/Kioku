@@ -72,21 +72,7 @@ extension ReadView {
                     && furiganaResult.furiganaByLocation.isEmpty
                     && furiganaBySegmentLocation.isEmpty == false)
 
-                // Pre-apply classifier: identify pre-existing wide entries whose value matches
-                // a naive per-character dict concat (e.g. ものご == もの + ご for 物語). These are
-                // presumed synthesis-class — they may have been written by pre-gate synthesis
-                // code, persisted, and reloaded as ordinary entries. Tagging them as
-                // synthesized lets the apply-on-overlap pass replace them with the dict-derived
-                // compound reading (ものがたり). LLM-pinned wide entries diverge from the concat
-                // and stay untagged, so the user-pin preservation rule still protects them.
-                let presumedSynthesizedLocations = locationsOfPresumedSynthesizedWideEntries(
-                    in: furiganaBySegmentLocation,
-                    lengthByLocation: furiganaLengthBySegmentLocation,
-                    sourceText: sourceText,
-                    surfaceReadingData: currentSurfaceReadingData
-                )
                 let migratedSynthesizedLocations = synthesizedFuriganaLocations
-                    .union(presumedSynthesizedLocations)
 
                 let intermediate: (byLocation: [Int: String], lengthByLocation: [Int: Int], synthesizedLocations: Set<Int>)
                 if shouldRunBackfill {
@@ -138,14 +124,7 @@ extension ReadView {
                 synthesizedFuriganaLocations = synthesized.synthesizedLocations
 
                 // Persist segments with furigana now that readings are fully resolved.
-                // Assign back to self.segments so persistCurrentNoteIfNeeded writes the annotated data.
-                segments = buildSegmentRanges(
-                    from: segmentEdges,
-                    furiganaByLocation: furiganaBySegmentLocation,
-                    furiganaLengthByLocation: furiganaLengthBySegmentLocation
-                )
-                recordRuntimeSegmentationSnapshot(for: segmentEdges)
-                persistCurrentNoteIfNeeded()
+                rebuildAndPersistSegments(recordRuntime: true)
             }
         }
     }
@@ -177,6 +156,58 @@ extension ReadView {
     // canonical implementation in `FuriganaAttributedString`.
     func kanjiRuns(in surface: String) -> [(start: Int, end: Int)] {
         FuriganaAttributedString.kanjiRuns(in: surface)
+    }
+
+    // Writes per-kanji-run furigana entries for `surface` at UTF-16 `location` using `reading`.
+    // First clears any pre-existing entries inside the surface's range so the new run-level
+    // entries don't collide with a stale segment-level entry, then projects `reading` over the
+    // kanji runs via okurigana alignment and writes one entry per run.
+    //
+    // Returns true if at least one run-level entry was written. False when projection fails or
+    // there are no kanji runs — the caller decides what to do (currently both callers fall back
+    // to leaving the location empty, letting the next recompute backfill).
+    //
+    // Shared by `applyReadingOverride` (user pin via the lookup sheet) and the LLM correction's
+    // per-segment reading apply, so the kanji-run projection + stale-clear sequence lives in
+    // one place.
+    @discardableResult
+    func applyPerRunFurigana(surface: String, reading: String, at location: Int) -> Bool {
+        let surfaceUTF16Length = surface.utf16.count
+        guard surfaceUTF16Length > 0 else { return false }
+
+        // Clear any pre-existing entries whose range overlaps the surface — a stale
+        // segment-level entry would otherwise coexist with new per-run entries.
+        let segmentNSRange = NSRange(location: location, length: surfaceUTF16Length)
+        let staleLocations = Set(furiganaBySegmentLocation.keys.filter { loc in
+            let len = furiganaLengthBySegmentLocation[loc] ?? 0
+            return NSIntersectionRange(NSRange(location: loc, length: len), segmentNSRange).length > 0
+        })
+        furiganaBySegmentLocation = furiganaBySegmentLocation.filter { !staleLocations.contains($0.key) }
+        furiganaLengthBySegmentLocation = furiganaLengthBySegmentLocation.filter { !staleLocations.contains($0.key) }
+
+        let chars = Array(surface)
+        let runs = FuriganaAttributedString.kanjiRuns(in: surface)
+        guard runs.isEmpty == false,
+              let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs),
+              runReadings.count == runs.count else {
+            return false
+        }
+
+        var wroteAny = false
+        for (index, run) in runs.enumerated() {
+            let runSurface = String(chars[run.start..<run.end])
+            let runReading = runReadings[index]
+            guard runReading.isEmpty == false, runReading != runSurface else {
+                continue
+            }
+            let prefixUTF16 = String(chars[..<run.start]).utf16.count
+            let runLength = String(chars[run.start..<run.end]).utf16.count
+            let runLocation = location + prefixUTF16
+            furiganaBySegmentLocation[runLocation] = runReading
+            furiganaLengthBySegmentLocation[runLocation] = runLength
+            wroteAny = true
+        }
+        return wroteAny
     }
 
     // Applies recompute output to the in-memory furigana maps with replace-on-overlap semantics.
@@ -263,103 +294,6 @@ extension ReadView {
             lengthByLocation: resultLengthByLocation,
             synthesizedLocations: resultSynthesizedLocations
         )
-    }
-
-    // Classifies pre-existing wide furigana entries as synthesis-class when their value can be
-    // decomposed into a sequence of per-character dictionary readings over the same source-text
-    // range. This is the migration hook that recovers disk state poisoned by pre-gate synthesis
-    // code: a wide entry like ものご at [L, 2) over the source-text characters 物語 decomposes as
-    // もの (a valid reading of 物) + ご (a valid reading of 語), so it is structurally
-    // indistinguishable from a synthesis output and should not block the dict-derived ものがたり
-    // on the next recompute. A legitimate compound reading like ものがたり does NOT decompose this
-    // way (がたり is not among the per-character readings of 語), so dict-derived entries are
-    // preserved. Per-character readings are tried in dict order at each position; the search is
-    // O(branches^kanji) worst case but kanji per segment is small (typically 2-4).
-    func locationsOfPresumedSynthesizedWideEntries(
-        in byLocation: [Int: String],
-        lengthByLocation: [Int: Int],
-        sourceText: String,
-        surfaceReadingData: SurfaceReadingDataMap
-    ) -> Set<Int> {
-        var presumed: Set<Int> = []
-        let nsSource = sourceText as NSString
-        let utf16Count = nsSource.length
-        for (location, reading) in byLocation {
-            guard let length = lengthByLocation[location], length > 1 else { continue }
-            guard location >= 0, location + length <= utf16Count else { continue }
-            let surface = nsSource.substring(with: NSRange(location: location, length: length))
-            if Self.readingDecomposesAsPerCharacterDictReadings(
-                reading: reading,
-                surface: surface,
-                surfaceReadingData: surfaceReadingData
-            ) {
-                presumed.insert(location)
-            }
-        }
-        return presumed
-    }
-
-    // Returns true when `reading` can be split into a sequence of substrings such that each
-    // substring is one of the dictionary readings of the corresponding character of `surface`.
-    // Pure function (static) so unit tests can exercise it without spinning up a ReadView.
-    static func readingDecomposesAsPerCharacterDictReadings(
-        reading: String,
-        surface: String,
-        surfaceReadingData: SurfaceReadingDataMap
-    ) -> Bool {
-        let surfaceChars = Array(surface)
-        let readingChars = Array(reading)
-        guard surfaceChars.isEmpty == false, readingChars.isEmpty == false else { return false }
-        return decompose(
-            readingChars: readingChars,
-            readingCursor: 0,
-            surfaceChars: surfaceChars,
-            surfaceCursor: 0,
-            surfaceReadingData: surfaceReadingData
-        )
-    }
-
-    // Depth-first search backing `readingDecomposesAsPerCharacterDictReadings`. At each surface
-    // position, tries every dictionary reading of the current character as a prefix of the
-    // remaining reading; recurses on a match. Succeeds only when every character is consumed by
-    // a valid reading and the reading is exhausted at the same step.
-    private static func decompose(
-        readingChars: [Character],
-        readingCursor: Int,
-        surfaceChars: [Character],
-        surfaceCursor: Int,
-        surfaceReadingData: SurfaceReadingDataMap
-    ) -> Bool {
-        if surfaceCursor == surfaceChars.count {
-            return readingCursor == readingChars.count
-        }
-        guard readingCursor < readingChars.count else { return false }
-        let key = String(surfaceChars[surfaceCursor])
-        guard let charReadings = surfaceReadingData[key]?.readings else { return false }
-        for charReading in charReadings {
-            let charReadingChars = Array(charReading)
-            guard charReadingChars.isEmpty == false else { continue }
-            let endCursor = readingCursor + charReadingChars.count
-            guard endCursor <= readingChars.count else { continue }
-            var matches = true
-            for offset in 0..<charReadingChars.count {
-                if readingChars[readingCursor + offset] != charReadingChars[offset] {
-                    matches = false
-                    break
-                }
-            }
-            guard matches else { continue }
-            if decompose(
-                readingChars: readingChars,
-                readingCursor: endCursor,
-                surfaceChars: surfaceChars,
-                surfaceCursor: surfaceCursor + 1,
-                surfaceReadingData: surfaceReadingData
-            ) {
-                return true
-            }
-        }
-        return false
     }
 
     // Synthesizes a single-span concatenated reading for kanji runs that are tiled by per-

@@ -67,91 +67,27 @@ extension SegmentListView {
         }
     }
 
-    // Applies save or unsave state for one canonical dictionary entry id at the
-    // surface level.
-    //
-    // Existing card: toggles `normalizedSurface` in `encounteredSurfaces` and
-    // the active note in `sourceNoteIDs`. The card is removed only when both
-    // become empty. The card's stored `surface` field is preserved — it stays
-    // as whatever the first save normalized to (the lemma for new saves,
-    // historical surface for legacy cards).
-    //
-    // New card: stored surface is the lemma when one is available (lemma
-    // normalization at save time), encountered set seeded with the clicked
-    // surface, note IDs seeded with the active note.
+    // Delegates the save/unsave mutation to `WordsStore.toggle` (which owns the bookkeeping
+    // semantics) and then refreshes the segment list's per-surface star caches. The lemma
+    // form is preferred as the card's stored surface so the lemma row stars correctly; the
+    // user's clicked surface is captured in `encounteredSurfaces` so per-surface star state
+    // still distinguishes which conjugation was tapped.
     func toggleSavedWord(canonicalEntryID: Int64, normalizedSurface: String, normalizedLemma: String) {
-        var entries = wordsStore.words
-        if let existingIndex = entries.firstIndex(where: { $0.canonicalEntryID == canonicalEntryID }) {
-            let existingEntry = entries[existingIndex]
-            var encountered = existingEntry.encounteredSurfaces
-            var noteIDs = Set(existingEntry.sourceNoteIDs)
-
-            let surfaceWasInSet = encountered.contains(normalizedSurface)
-            let noteWasAttached = sourceNoteID.map { noteIDs.contains($0) } ?? false
-            // A row is "currently saved here" iff both the surface is listed
-            // and the note is attached (when there's a note context). Tapping
-            // the star toggles that combined state.
-            let wasSavedHere: Bool = {
-                guard sourceNoteID != nil else { return surfaceWasInSet }
-                return surfaceWasInSet && noteWasAttached
-            }()
-
-            if wasSavedHere {
-                encountered.remove(normalizedSurface)
-                if let sourceNoteID, encountered.isEmpty {
-                    // Last encountered surface gone → drop this note's
-                    // attribution. Card disappears entirely if no other note
-                    // still has it on file.
-                    noteIDs.remove(sourceNoteID)
-                }
-            } else {
-                encountered.insert(normalizedSurface)
-                if let sourceNoteID {
-                    noteIDs.insert(sourceNoteID)
-                }
-            }
-
-            if encountered.isEmpty && noteIDs.isEmpty {
-                entries.remove(at: existingIndex)
-            } else {
-                let orderedNoteIDs = noteIDs.sorted { $0.uuidString < $1.uuidString }
-                entries[existingIndex] = SavedWord(
-                    canonicalEntryID: existingEntry.canonicalEntryID,
-                    surface: existingEntry.surface,
-                    sourceNoteIDs: orderedNoteIDs,
-                    wordListIDs: existingEntry.wordListIDs,
-                    personalNote: existingEntry.personalNote,
-                    savedAt: existingEntry.savedAt,
-                    selectedSenseIDs: existingEntry.selectedSenseIDs,
-                    selectedGlosses: existingEntry.selectedGlosses,
-                    encounteredSurfaces: encountered
-                )
-            }
+        let storedSurface = normalizedLemma.isEmpty ? normalizedSurface : normalizedLemma
+        let senseIDs: [Int64]
+        if let store = dictionaryStore,
+           let resolved = try? store.lookupEntry(entryID: canonicalEntryID) {
+            senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: resolved)
         } else {
-            let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
-            let senseIDs: [Int64]
-            if let store = dictionaryStore,
-               let resolved = try? store.lookupEntry(entryID: canonicalEntryID) {
-                senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: resolved)
-            } else {
-                senseIDs = []
-            }
-            // Lemma-normalize the card's display surface at create time. The
-            // user-clicked surface is captured separately in encounteredSurfaces
-            // so the per-surface star check still distinguishes them later.
-            let storedSurface = normalizedLemma.isEmpty ? normalizedSurface : normalizedLemma
-            entries.append(
-                SavedWord(
-                    canonicalEntryID: canonicalEntryID,
-                    surface: storedSurface,
-                    sourceNoteIDs: noteIDs,
-                    selectedSenseIDs: senseIDs,
-                    encounteredSurfaces: [normalizedSurface]
-                )
-            )
+            senseIDs = []
         }
-
-        wordsStore.replaceAll(with: entries)
+        wordsStore.toggle(
+            canonicalEntryID: canonicalEntryID,
+            storedSurface: storedSurface,
+            encounteredSurface: normalizedSurface,
+            sourceNoteID: sourceNoteID,
+            defaultSenseIDs: senseIDs
+        )
         applySavedWordState(entries: wordsStore.words)
     }
 

@@ -226,26 +226,13 @@ extension ReadView {
                 furiganaBySegmentLocation.removeValue(forKey: location)
                 furiganaLengthBySegmentLocation.removeValue(forKey: location)
             } else {
-                // Write per-kanji-run furigana entries so the renderer centers over each run,
-                // not the full segment (which includes okurigana and shifts the furigana right).
-                let surfaceChars = Array(edge.surface)
-                let runs = kanjiRuns(in: edge.surface)
-                if runs.isEmpty == false,
-                   let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: edge.surface, reading: entry.reading, runs: runs),
-                   runReadings.count == runs.count {
-                    // Clear any stale segment-level entry before writing run-level entries.
-                    furiganaBySegmentLocation.removeValue(forKey: location)
-                    furiganaLengthBySegmentLocation.removeValue(forKey: location)
-                    for (run, runReading) in zip(runs, runReadings) {
-                        guard runReading.isEmpty == false else { continue }
-                        let runSurface = String(surfaceChars[run.start..<run.end])
-                        guard runReading != runSurface else { continue }
-                        let prefixUTF16 = String(surfaceChars[..<run.start]).utf16.count
-                        let runUTF16 = String(surfaceChars[run.start..<run.end]).utf16.count
-                        furiganaBySegmentLocation[location + prefixUTF16] = runReading
-                        furiganaLengthBySegmentLocation[location + prefixUTF16] = runUTF16
-                    }
-                } else {
+                // Write per-kanji-run furigana via the shared helper — clears stale entries
+                // overlapping the surface, then projects the reading over kanji runs so the
+                // renderer centers each ruby span over its own run instead of being shifted
+                // by okurigana. If projection fails (no okurigana to align by), helper writes
+                // nothing and we explicitly drop the segment-level entry below.
+                let wrote = applyPerRunFurigana(surface: edge.surface, reading: entry.reading, at: location)
+                if !wrote {
                     furiganaBySegmentLocation.removeValue(forKey: location)
                     furiganaLengthBySegmentLocation.removeValue(forKey: location)
                 }

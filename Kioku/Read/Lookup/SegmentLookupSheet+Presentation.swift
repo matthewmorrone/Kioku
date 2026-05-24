@@ -86,7 +86,6 @@ extension SegmentLookupSheet {
                 guard let sheetVC, sheetVC.isSplitEditorVisible == false,
                       let outcome = sheetVC.currentOnSelectNext?() else { return }
                 sheetVC.updateCurrentSurface(outcome)
-                sheetVC.updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
                 sheetVC.updateReadingFurigana()
                 sheetVC.updateLemmaChain()
@@ -99,7 +98,6 @@ extension SegmentLookupSheet {
                 guard let sheetVC, sheetVC.isSplitEditorVisible == false,
                       let outcome = sheetVC.currentOnSelectPrevious?() else { return }
                 sheetVC.updateCurrentSurface(outcome)
-                sheetVC.updateSheetPreferredHeight(animated: false)
                 self.refreshSheetSupplementalData()
                 sheetVC.updateReadingFurigana()
                 sheetVC.updateLemmaChain()
@@ -151,8 +149,7 @@ extension SegmentLookupSheet {
                 ))
                 TapDiagnostics.mark("updateCurrentSurface done (synchronous header update)")
                 // Heavy lookups run on a background queue. When they complete, hop back to
-                // main and refresh the rest of the sheet. We deliberately don't call
-                // updateSheetPreferredHeight here — detent animation reads like a dismiss/re-present.
+                // main and refresh the rest of the sheet.
                 self.refreshSheetSupplementalDataAsync { [weak sheetVC] in
                     guard let sheetVC else { return }
                     TapDiagnostics.mark("async refresh complete, applying to sheet UI")
@@ -167,12 +164,7 @@ extension SegmentLookupSheet {
                 TapDiagnostics.mark("in-place update closure returning (refresh continues async)")
             }
 
-            // Views aren't built yet (viewDidLoad fires on present); use fallback height.
-            // viewDidLoad recomputes currentSheetPreferredHeight once views exist.
-            sheetVC.currentSheetPreferredHeight = 400
-            self.configureSurfaceSheetPresentation(sheetVC) {
-                sheetVC.currentSheetPreferredHeight
-            }
+            self.configureSurfaceSheetPresentation(sheetVC)
             presenter.present(sheetVC, animated: true)
             self.presentedSheetController = sheetVC
 
