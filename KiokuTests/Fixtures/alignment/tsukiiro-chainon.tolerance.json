@@ -1,0 +1,5 @@
+{
+  "minCoverage": 0.95,
+  "medianStartMsTolerance": 200,
+  "perCueStartMsTolerance": 500
+}

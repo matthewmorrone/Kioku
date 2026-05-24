@@ -1,4 +1,6 @@
+import AVFoundation
 import Foundation
+import SwiftWhisperAlign
 
 // Pure logic for the anchored-reconcile pipeline. Extracted from SubtitleEditorSheet so
 // the matching, gap-construction, force-fit, and merge steps can be unit-tested without
@@ -156,6 +158,176 @@ enum SubtitleReconciliation {
             let end = (i == lines.count - 1) ? windowEndMs : windowStartMs + (i + 1) * per
             return SubtitleCue(index: 0, startMs: start, endMs: end, text: line)
         }
+    }
+
+    // Reads the duration of an audio file via AVAsset's async loader. nil when the load
+    // fails or the asset has no audio tracks — callers fail the reconcile gracefully.
+    static func audioDurationSeconds(for url: URL) async -> Double? {
+        let asset = AVURLAsset(url: url)
+        do {
+            let duration = try await asset.load(.duration)
+            return CMTimeGetSeconds(duration)
+        } catch {
+            return nil
+        }
+    }
+
+    // Extracts an audio range to a temp .m4a via AVAssetExportSession. The exported file
+    // lives in /tmp and is cleaned up by the caller's defer block. Used to feed the
+    // forced aligner a small clip per gap so it can run cleanly against just that window
+    // without re-encountering the audio it has already anchored.
+    static func sliceAudio(audioURL: URL, from: Double, to: Double) async throws -> URL {
+        let asset = AVURLAsset(url: audioURL)
+        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+            throw NSError(
+                domain: "Kioku.Reconcile",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Couldn't create exporter for audio slice."]
+            )
+        }
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("kioku-reconcile-\(UUID().uuidString).m4a")
+        exporter.outputURL = tempURL
+        exporter.outputFileType = .m4a
+        let timescale: CMTimeScale = 1000
+        exporter.timeRange = CMTimeRange(
+            start: CMTime(seconds: from, preferredTimescale: timescale),
+            end: CMTime(seconds: to, preferredTimescale: timescale)
+        )
+
+        await exporter.export()
+        guard exporter.status == .completed else {
+            throw exporter.error ?? NSError(
+                domain: "Kioku.Reconcile",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Audio slice export failed."]
+            )
+        }
+        return tempURL
+    }
+
+    // End-to-end anchored reconcile: takes (audio, current cues, note lines, model),
+    // produces the merged output cues. This is what `reconcileFromNote` calls in the
+    // editor sheet and what AlignmentQualityTests measures — keeping it in one place
+    // means production and test both exercise the same pipeline. The caller is
+    // responsible for SRT formatting, error display, @State plumbing, and progress UI.
+    //
+    // Algorithm:
+    //   1. Match current speech cues to note line positions (monotonic).
+    //   2. Build gap windows; each middle/tail gap consumes its preceding anchor so
+    //      the aligner can correct any swallowed audio in that anchor.
+    //   3. For each gap, slice the audio range to a temp clip and run forced
+    //      alignment with the gap's lines as script.
+    //   4. Force-fit fallback if the aligner returns fewer cues than expected
+    //      (uniform distribution across the window — never drops a line).
+    //   5. Merge kept anchors + preserved ♪ cues + gap output; sort + renumber.
+    static func reconcile(
+        audioURL: URL,
+        currentCues: [SubtitleCue],
+        noteLines: [String],
+        modelURL: URL,
+        cancellationCheck: (() -> Bool)? = nil,
+        onProgress: ((String) -> Void)? = nil
+    ) async throws -> [SubtitleCue] {
+        let musicCues = currentCues.filter { SubtitleParser.isNonSpeechCue($0.text) }
+        let speechCues = currentCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
+        let anchors = matchAnchors(speechCues: speechCues, noteLines: noteLines)
+
+        onProgress?("Measuring audio…")
+        guard let audioDuration = await audioDurationSeconds(for: audioURL), audioDuration > 0 else {
+            throw NSError(domain: "Kioku.Reconcile", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "Couldn't read audio duration."
+            ])
+        }
+
+        let gaps = buildGapWindows(
+            anchors: anchors,
+            noteLines: noteLines,
+            audioDurationSeconds: audioDuration
+        )
+
+        // No gaps means every note line already has a matching anchor — caller treats
+        // this as "nothing to reconcile" rather than throw.
+        if gaps.isEmpty {
+            let consumedAnchorIndices: Set<Int> = []
+            return mergeReconciledCues(
+                anchors: anchors,
+                consumedAnchorIndices: consumedAnchorIndices,
+                musicCues: musicCues,
+                newGapCues: []
+            )
+        }
+
+        var newCues: [SubtitleCue] = []
+        let runStartedAt = Date()
+
+        for (gapIdx, gap) in gaps.enumerated() {
+            if cancellationCheck?() == true {
+                throw CancellationError()
+            }
+            let elapsed = Int(Date().timeIntervalSince(runStartedAt))
+            onProgress?("Aligning gap \(gapIdx + 1)/\(gaps.count) · \(gap.lines.count) line\(gap.lines.count == 1 ? "" : "s") · \(elapsed)s")
+
+            let sliceURL = try await sliceAudio(audioURL: audioURL, from: gap.audioStart, to: gap.audioEnd)
+            defer { try? FileManager.default.removeItem(at: sliceURL) }
+
+            let lyrics = gap.lines.joined(separator: "\n")
+            let alignedCues: [SubtitleCue]
+            do {
+                let srt = try await OnDeviceLyricAligner.align(
+                    audioURL: sliceURL,
+                    lyrics: lyrics,
+                    modelURL: modelURL,
+                    cancellationCheck: { cancellationCheck?() == true }
+                )
+                alignedCues = SubtitleParser.parse(srt)
+            } catch {
+                if cancellationCheck?() == true { throw CancellationError() }
+                // Per the no-drop invariant: an aligner failure on one gap falls back
+                // to uniform distribution rather than abandoning the run.
+                print("[Reconcile] gap \(gapIdx + 1) alignment failed (\(error.localizedDescription)); force-fitting")
+                alignedCues = []
+            }
+
+            let gapSpeechCues = alignedCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
+            let gapMusicCues = alignedCues.filter { SubtitleParser.isNonSpeechCue($0.text) }
+            // Aligner output is trusted only if (a) it produced the expected line
+            // count AND (b) all cues are bounded by the window. Whisper occasionally
+            // emits timestamps past the audio clip's actual length (segment-boundary
+            // hallucination); without the window-bound check, the merge step
+            // interleaves these stray cues with the *next* anchor's timing —
+            // producing out-of-order output that looks identical to a dropped line
+            // in any downstream consumer that walks monotonically (karaoke
+            // highlighting, the quality-test matcher).
+            let windowDurationMs = Int((gap.audioEnd - gap.audioStart) * 1000)
+            let anyCueExceedsWindow = gapSpeechCues.contains { $0.startMs >= windowDurationMs || $0.endMs > windowDurationMs }
+            let speechToUse: [SubtitleCue]
+            if gapSpeechCues.count == gap.lines.count && anyCueExceedsWindow == false {
+                speechToUse = gapSpeechCues
+            } else {
+                speechToUse = uniformDistribute(
+                    lines: gap.lines,
+                    windowStartMs: 0,
+                    windowEndMs: windowDurationMs
+                )
+            }
+
+            let offsetMs = Int(gap.audioStart * 1000)
+            let absoluteCues = (speechToUse + gapMusicCues).map { cue -> SubtitleCue in
+                var copy = cue
+                copy.startMs += offsetMs
+                copy.endMs += offsetMs
+                return copy
+            }
+            newCues.append(contentsOf: absoluteCues)
+        }
+
+        let consumedAnchorIndices: Set<Int> = Set(gaps.compactMap { $0.consumedAnchorIndex })
+        return mergeReconciledCues(
+            anchors: anchors,
+            consumedAnchorIndices: consumedAnchorIndices,
+            musicCues: musicCues,
+            newGapCues: newCues
+        )
     }
 
     // Combines kept anchors (those not consumed by any gap), preserved ♪ cues, and the

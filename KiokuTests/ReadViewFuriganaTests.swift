@@ -211,6 +211,43 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertTrue(pruned.lengthByLocation.isEmpty)
     }
 
+    // docs/INVARIANTS.md "Furigana Resolution" #6 — annotations whose UTF-16 range
+    // falls outside every current segment range are dropped during the prune pass.
+    // Models the "user edited the note and made the text shorter" path: the old
+    // furigana refers to character positions past the end of the new text, so it
+    // can't fit in any segment of the new edge layout. Keeping the annotation
+    // would render at a stale location (or crash CoreText layout at the boundary).
+    //
+    // The same pruning logic also fires on subset edits within the text (split,
+    // merge, character deletion mid-string) but the simplest end-to-end shape is
+    // "text got shorter and the trailing annotation now points past the end."
+    func testPruneFuriganaForSegmentationDropsAnnotationsPastShortenedText() throws {
+        let readView = try makeReadView()
+        // Simulate: user had "物語の続き" with an annotation on 続 at position 3
+        // (length 1). User deleted "の続き" leaving just "物語" — the annotation's
+        // location 3 is past the new endIndex (UTF-16 length 2 for "物語").
+        let shortenedText = "物語"
+        let onlyEdge = LatticeEdge(
+            start: shortenedText.startIndex,
+            end: shortenedText.endIndex,
+            surface: "物語"
+        )
+        // Annotation that fit inside the old text but doesn't fit anywhere in the new edges.
+        let staleByLocation: [Int: String] = [3: "つづ"]
+        let staleLengthByLocation: [Int: Int] = [3: 1]
+
+        let pruned = readView.pruneFuriganaForSegmentation(
+            furiganaByLocation: staleByLocation,
+            furiganaLengthByLocation: staleLengthByLocation,
+            edges: [onlyEdge],
+            sourceText: shortenedText
+        )
+
+        XCTAssertTrue(pruned.byLocation.isEmpty,
+                      "Annotation past the new edge range must be dropped")
+        XCTAssertTrue(pruned.lengthByLocation.isEmpty)
+    }
+
     // Replace-on-overlap: a new annotation that strictly contains existing fragments (compound
     // reading ものがたり at [0, 2) over prior per-character entries もの at [0, 1) and がたり at
     // [1, 2)) supersedes the fragments. This is what collapses the two-ruby-frame state into a

@@ -86,6 +86,29 @@ new SRT. It must be safe — never lose user-authored content — and predictabl
    - *Rationale*: a partial reconcile is worse than no reconcile.
    - *Status*: ❌.
 
+9. **Quality against ground truth**: on each fixture song, ≥95% of
+   ground-truth cues have a matching output cue (same text) whose start
+   time is within 500ms of the ground-truth start. Median start delta ≤
+   200ms. No ground-truth cue is missing from the output. Tested on the
+   in-app anchored Reconcile pipeline (the exact orchestration the editor
+   sheet calls) against a stable-ts large-v3 oracle.
+   - *Rationale*: the unit tests prove the plumbing — that we don't drop
+     lines, that anchors aren't disturbed, that gaps consume their preceding
+     anchor — but say nothing about whether the aligner *actually finds*
+     the right timestamps. Quality regressions (model change, parameter
+     drift, callback bug like today's TOCTOU race) need a quantitative
+     check against a known-good output, not visual eyeballing.
+   - *Status*: ⚠️ (`AlignmentQualityTests.testQuality_TsukiiroChainon`
+     runs and prints BEFORE/AFTER metrics every CI cycle; no-drop hard
+     gate passes; coverage/median thresholds wrapped in XCTExpectFailure
+     while the in-app pipeline's current floor on 月色チャイのん is 29.4%
+     coverage / 792ms median Δ — substantially better than the
+     pre-reconcile baseline of 29.4% / 764ms with 3 missing lines).
+   - *On the AlignmentQualityTests harness*: each fixture also asserts
+     the no-drop guarantee directly. That's the only assertion not
+     wrapped in expectFailure — dropping a line is a structural defect
+     in the pipeline, not a timing-quality knob.
+
 ---
 
 ## Furigana Resolution (`ReadView+Furigana`, `FuriganaResolver`)
@@ -136,7 +159,8 @@ fragments. The invariants govern which source wins and when.
    are dropped.
    - *Rationale*: stale annotations on edited segments display in wrong
      positions or crash layout.
-   - *Status*: ❌.
+   - *Status*: ✅ (`ReadViewFuriganaTests.testPruneFuriganaForSegmentationDropsAnnotationsPastShortenedText`
+     plus the existing split-case test).
 
 ---
 
@@ -150,12 +174,14 @@ invariants govern coverage (no character orphaned) and user-intent persistence
    exactly one segment in `segmentEdges`.
    - *Rationale*: gaps cause rendering glitches; overlap causes double-tap
      and double-color bugs.
-   - *Status*: ⚠️ (`SegmentationKnownGoodTests` covers some songs).
+   - *Status*: ✅ (`SegmenterIntegrationTests.testLongestMatchEdgesTileSourceWithoutGapsOrOverlap`,
+     property-tested over a corpus; new fixtures just append to the corpus loop).
 
 2. **Disjoint segments**: no two segments in `segmentEdges` overlap in their
    UTF-16 ranges.
    - *Rationale*: same as #1.
-   - *Status*: ❌.
+   - *Status*: ✅ (same test as #1 — the tile-walker catches both gap and
+     overlap with the same `cursor == edge.start` assertion).
 
 3. **User merge/split survival**: segments produced by user merge or split
    actions persist across text-unchanged recomputes (re-segmentation only
@@ -215,7 +241,8 @@ Notes hold user-authored content. The contract is data integrity above all.
    for which a `<noteID>.json` file exists, in load order.
    - *Rationale*: index drift causes missing-from-list or duplicate-row
      bugs.
-   - *Status*: ❌.
+   - *Status*: ✅ (`NotesStoreTests.testIndexAndDiskFilesStayConsistentAcrossLifecycle`
+     walks add → delete → replaceAll asserting both sides after each step).
 
 ---
 

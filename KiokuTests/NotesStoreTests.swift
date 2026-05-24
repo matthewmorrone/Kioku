@@ -156,6 +156,89 @@ final class NotesStoreTests: XCTestCase {
         let reader = NotesStore(fileManager: fileManager)
         XCTAssertTrue(reader.notes.isEmpty)
     }
+
+    // docs/INVARIANTS.md "Note Persistence" #5 — `_index.json` and the
+    // `<noteID>.json` files on disk must stay in lockstep: the index lists
+    // exactly the IDs for which a JSON file exists, in load order. Drift on
+    // either side causes missing-from-list or duplicate-row UI bugs, plus the
+    // load-from-disk pipeline produces either dangling references or orphan
+    // files that re-appear on next launch.
+    //
+    // Walks the lifecycle: add → delete → replaceAll, asserting consistency
+    // after each step by reading both surfaces (the on-disk index file and
+    // the actual file listing of the Notes directory).
+    func testIndexAndDiskFilesStayConsistentAcrossLifecycle() throws {
+        let writer = NotesStore(fileManager: fileManager)
+        let n1 = Note(title: "first", content: "1")
+        let n2 = Note(title: "second", content: "2")
+        let n3 = Note(title: "third", content: "3")
+
+        writer.addNote(n1)
+        writer.addNote(n2)
+        writer.addNote(n3)
+        writer.flushPendingSave()
+        try assertIndexMatchesFiles(expectedCount: 3)
+
+        // Delete the middle note. Index must drop n2.id; n2.json must be gone.
+        _ = writer.deleteNote(id: n2.id)
+        writer.flushPendingSave()
+        try assertIndexMatchesFiles(expectedCount: 2, mustNotContain: n2.id)
+
+        // replaceAll wipes everything. Index empties; all <id>.json files gone.
+        writer.replaceAll(with: [])
+        writer.flushPendingSave()
+        try assertIndexMatchesFiles(expectedCount: 0)
+    }
+
+    // Reads `_index.json` and the directory listing of `<root>/Notes/` and
+    // confirms they describe the same set of note IDs. Both sources must agree
+    // on count, and the index's IDs must appear as filenames (and vice versa).
+    private func assertIndexMatchesFiles(
+        expectedCount: Int,
+        mustNotContain banned: UUID? = nil,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let notesDir = testRoot.appendingPathComponent("Notes", isDirectory: true)
+        let indexURL = notesDir.appendingPathComponent("_index.json")
+
+        // Diskside: every <UUID>.json file in Notes/ (excluding _index.json)
+        let allFiles = (try? FileManager.default.contentsOfDirectory(atPath: notesDir.path)) ?? []
+        let noteFileIDs: Set<UUID> = Set(allFiles.compactMap { name -> UUID? in
+            guard name.hasSuffix(".json"), name != "_index.json" else { return nil }
+            return UUID(uuidString: String(name.dropLast(".json".count)))
+        })
+
+        // Indexside: the IDs `_index.json` lists, in order.
+        let indexedIDs: [UUID]
+        if expectedCount == 0, FileManager.default.fileExists(atPath: indexURL.path) == false {
+            // No index file is acceptable as an empty index — the store re-creates
+            // it on next write. Treat as zero entries.
+            indexedIDs = []
+        } else {
+            let data = try Data(contentsOf: indexURL)
+            let stringIDs = try JSONDecoder().decode([String].self, from: data)
+            indexedIDs = stringIDs.compactMap(UUID.init(uuidString:))
+        }
+
+        XCTAssertEqual(noteFileIDs.count, expectedCount,
+                       "Expected \(expectedCount) <id>.json files but found \(noteFileIDs.count)",
+                       file: file, line: line)
+        XCTAssertEqual(indexedIDs.count, expectedCount,
+                       "Expected \(expectedCount) entries in _index.json but found \(indexedIDs.count)",
+                       file: file, line: line)
+        XCTAssertEqual(Set(indexedIDs), noteFileIDs,
+                       "Index entries and on-disk note files diverge: index=\(Set(indexedIDs)) files=\(noteFileIDs)",
+                       file: file, line: line)
+        if let banned {
+            XCTAssertFalse(noteFileIDs.contains(banned),
+                           "Deleted note \(banned) must not have a file on disk",
+                           file: file, line: line)
+            XCTAssertFalse(indexedIDs.contains(banned),
+                           "Deleted note \(banned) must not appear in _index.json",
+                           file: file, line: line)
+        }
+    }
 }
 
 // FileManager subclass that redirects .applicationSupportDirectory lookups to a
