@@ -24,16 +24,21 @@ import XCTest
 //         -parallel-testing-enabled NO
 //
 // To add a fixture:
-//     1. Run scripts/generate-alignment-oracle.py with your song's mp3 + text
-//     2. Drop the produced dir into KiokuTests/Fixtures/alignment/<fixture-name>/
+//     1. Run /Users/matthewmorrone/Projects/alignment/align.py against a directory
+//        containing your song's mp3 + matching .txt (see that repo's README) with
+//        STABLE_TS_MODEL=large-v3 and STABLE_TS_VAD=0 — produces .srt + .TextGrid
+//        + .json next to the audio.
+//     2. Drop the audio + note.txt + the produced ground-truth.srt + tolerance.json
+//        into KiokuTests/Fixtures/alignment/<fixture-name>/ (rename .srt to
+//        ground-truth.srt; tolerance.json is hand-authored).
 //     3. Add a `testQuality_<FixtureName>()` function below that calls
 //        runQualityCheck(fixtureName: "<fixture-name>")
 //
 // The fixture dir must contain:
 //     - audio.mp3 (or .m4a/.wav)        the source audio
 //     - note.txt                         the lyric script (one line per expected cue)
-//     - ground-truth.srt                 the oracle (from stable-ts large-v3)
-//     - tolerance.json                   thresholds (see generate-alignment-oracle.py)
+//     - ground-truth.srt                 the oracle (from align.py, large-v3 + VAD off)
+//     - tolerance.json                   thresholds (hand-authored per fixture)
 @MainActor
 final class AlignmentQualityTests: XCTestCase {
 
