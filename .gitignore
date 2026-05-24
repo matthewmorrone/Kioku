@@ -24,3 +24,11 @@ Packages/zinnia-swift/
 node_modules/
 .claude/scheduled_tasks.lock
 .superpowers/
+
+# Runtime artifacts written by scripts/vad-rescore.py and
+# scripts/transcript-rescore.py into the repo root. Per-song analysis
+# snapshots, not source — regenerate by re-running the script against
+# the corpus. Keeping them out of git avoids merge conflicts and stale-
+# state confusion when multiple machines re-run the analysis.
+/alignment-vad-baseline.json
+/transcript-rescore.json
