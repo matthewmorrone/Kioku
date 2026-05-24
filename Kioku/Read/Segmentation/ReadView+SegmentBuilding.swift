@@ -20,6 +20,23 @@ extension ReadView {
         }
     }
 
+    // Rebuilds `self.segments` from the current `segmentEdges` and furigana maps, optionally
+    // records a runtime snapshot, then persists the note. Single helper so the three places
+    // that need "annotate the current edges with current furigana, then save" can't drift on
+    // whether they remembered the runtime snapshot or the persist call.
+    func rebuildAndPersistSegments(recordRuntime: Bool = false) {
+        let rebuilt = buildSegmentRanges(
+            from: segmentEdges,
+            furiganaByLocation: furiganaBySegmentLocation,
+            furiganaLengthByLocation: furiganaLengthBySegmentLocation
+        )
+        segments = rebuilt
+        if recordRuntime {
+            recordRuntimeSegmentationSnapshot(for: segmentEdges)
+        }
+        persistCurrentNoteIfNeeded()
+    }
+
     // Applies active segmentation edges to UI state and refreshes furigana using those exact segment boundaries.
     func applySegmentEdges(_ edges: [LatticeEdge], persistOverride: Bool) {
         segmentEdges = edges
@@ -49,13 +66,7 @@ extension ReadView {
             // Persist with the in-memory furigana embedded so the synchronous disk write
             // already carries every reading override that survived the segment-structure
             // change. The async regen below will fill defaults for any newly-blank segment.
-            let segments = buildSegmentRanges(
-                from: edges,
-                furiganaByLocation: furiganaBySegmentLocation,
-                furiganaLengthByLocation: furiganaLengthBySegmentLocation
-            )
-            self.segments = segments
-            persistCurrentNoteIfNeeded()
+            rebuildAndPersistSegments()
         }
 
         // Regenerate readings for newly-introduced segments (merge produced a new combined

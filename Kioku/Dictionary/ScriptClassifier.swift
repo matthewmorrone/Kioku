@@ -55,6 +55,24 @@ nonisolated enum ScriptClassifier {
         return true
     }
 
+    // Detects whether any scalar belongs to hiragana, katakana (full or half-width),
+    // katakana phonetic extensions, or the supported CJK unified ideograph blocks —
+    // i.e. the codepoint set that could plausibly be Japanese text. Used by the
+    // clipboard-lookup coordinator to filter out non-Japanese clipboards before
+    // surfacing a lookup banner.
+    static func containsJapanese(_ text: String) -> Bool {
+        for scalar in text.unicodeScalars {
+            let value = scalar.value
+            if (0x3040...0x309F).contains(value) { return true }   // Hiragana
+            if (0x30A0...0x30FF).contains(value) { return true }   // Katakana
+            if (0x31F0...0x31FF).contains(value) { return true }   // Katakana Phonetic Extensions
+            if (0xFF65...0xFF9F).contains(value) { return true }   // Half-width Katakana
+            if (0x4E00...0x9FFF).contains(value) { return true }   // CJK Unified Ideographs
+            if (0x3400...0x4DBF).contains(value) { return true }   // CJK Unified Ideographs Ext A
+        }
+        return false
+    }
+
     // Detects whether any scalar belongs to the supported kanji blocks.
     static func containsKanji(_ text: String) -> Bool {
         for scalar in text.unicodeScalars {

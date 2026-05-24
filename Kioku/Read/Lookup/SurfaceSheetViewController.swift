@@ -36,7 +36,6 @@ final class SurfaceSheetViewController: UIViewController {
     var splitEntryLeftValue = ""
     var splitEntryRightValue = ""
     var isSplitEditorVisible = false
-    var currentSheetPreferredHeight: CGFloat = 0
 
     // MARK: - UI components (set up in buildHeader/buildSplitPanel/buildActionMenu/buildMiddleContent)
 
@@ -113,31 +112,6 @@ final class SurfaceSheetViewController: UIViewController {
         splitButton.isEnabled = currentSurface.count > 1 && currentOnSplitApply != nil
         splitButton.alpha = splitButton.isEnabled ? 1 : 0.45
         updateMergeButtonAvailability()
-        // Views are now built — compute the real preferred height for the detent.
-        currentSheetPreferredHeight = computePreferredSheetHeight()
-    }
-
-    // The detent resolver was registered with a 400pt placeholder before viewDidLoad ran.
-    // viewWillAppear runs after the view hierarchy is laid out, so invalidating here forces the
-    // sheet to size itself to the real measured content height on first presentation.
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        updateSheetPreferredHeight(animated: false)
-    }
-
-    // First real layout pass commits actual subview widths so multi-line UILabels finally
-    // know their wrapped height. systemLayoutSizeFitting in viewDidLoad/viewWillAppear runs
-    // before the view has a real width on screen and under-reports tall gloss content; this
-    // hook catches the corrected measurement and re-invalidates the detent. Guarded by a
-    // height-delta threshold so the detent change in turn doesn't re-trigger this hook.
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        let measuredHeight = computePreferredSheetHeight()
-        guard abs(measuredHeight - currentSheetPreferredHeight) > 0.5 else { return }
-        currentSheetPreferredHeight = measuredHeight
-        if #available(iOS 16.0, *) {
-            sheetPresentationController?.invalidateDetents()
-        }
     }
 
     // MARK: - Reading management
@@ -295,13 +269,13 @@ final class SurfaceSheetViewController: UIViewController {
 
     // MARK: - Split management
 
-    // Shows or hides the split editor panel and updates button tint and sheet height.
+    // Shows or hides the split editor panel and updates button tint. Sheet height stays
+    // fixed at `.medium()` — the split editor expands inside the existing sheet bounds.
     func setSplitEditorVisible(_ visible: Bool) {
         isSplitEditorVisible = visible
         splitPanelContainer.isHidden = !visible
         splitPanelCollapsedConstraint.isActive = !visible
         splitButton.tintColor = visible ? .label : .secondaryLabel
-        updateSheetPreferredHeight(animated: true)
     }
 
     // Resets left and right split values to the highest-scoring two-segment sublattice path,
@@ -369,36 +343,4 @@ final class SurfaceSheetViewController: UIViewController {
         openDetailButton.alpha = hasDictionaryEntry ? 1 : 0.45
     }
 
-    // Recalculates and applies the preferred sheet height for the current state.
-    func updateSheetPreferredHeight(animated: Bool) {
-        _ = animated
-        currentSheetPreferredHeight = computePreferredSheetHeight()
-        if #available(iOS 16.0, *) {
-            sheetPresentationController?.invalidateDetents()
-        }
-    }
-
-    // Measures actual rendered component sizes to derive the ideal sheet height.
-    func computePreferredSheetHeight() -> CGFloat {
-        guard let sheet else { return 400 }
-        let contentWidth = max(200, sheet.activeScreenBounds().width) - 32
-        let middleHeight = middleContentContainer.isHidden ? 0 : ceil(middleContentContainer.systemLayoutSizeFitting(
-            CGSize(width: contentWidth, height: UIView.layoutFittingCompressedSize.height),
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel
-        ).height)
-        let splitHeight = ceil(splitPanelContainer.systemLayoutSizeFitting(
-            CGSize(width: contentWidth, height: UIView.layoutFittingCompressedSize.height),
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel
-        ).height)
-        let headerHeight = ceil(headerContainer.systemLayoutSizeFitting(
-            CGSize(width: contentWidth, height: UIView.layoutFittingCompressedSize.height),
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel
-        ).height)
-        let safeArea = view.window?.safeAreaInsets ?? .zero
-        let baseChrome = sheet.surfaceSheetBaseChromeHeight(headerHeight: headerHeight, safeArea: safeArea)
-        return baseChrome + middleHeight + splitHeight
-    }
 }

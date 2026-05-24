@@ -314,31 +314,29 @@ struct WordsView: View {
 
     // Saves or removes an entry from search results.
     func toggleSave(_ entry: DictionaryEntry) {
-        let surface = entry.primarySearchSurface
-        if isSaved(entry) {
-            wordsStore.remove(id: entry.entryId)
-        } else {
-            let senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
-            wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface, selectedSenseIDs: senseIDs))
-        }
+        wordsStore.toggle(
+            canonicalEntryID: entry.entryId,
+            storedSurface: entry.primarySearchSurface,
+            defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+        )
     }
 
     // Saves or removes a word surfaced from the history list.
     func toggleSaveHistory(_ entry: HistoryEntry) {
-        if isSavedByID(entry.canonicalEntryID) {
-            wordsStore.remove(id: entry.canonicalEntryID)
+        // History rows lack a resolved DictionaryEntry; resolve once so the smart-default
+        // picker can populate selectedSenseIDs at save time.
+        let senseIDs: [Int64]
+        if let store = dictionaryStore,
+           let resolved = try? store.lookupEntry(entryID: entry.canonicalEntryID) {
+            senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: resolved)
         } else {
-            // History rows lack a resolved DictionaryEntry; resolve once so the smart-default
-            // picker can populate selectedSenseIDs at save time.
-            let senseIDs: [Int64]
-            if let store = dictionaryStore,
-               let resolved = try? store.lookupEntry(entryID: entry.canonicalEntryID) {
-                senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: resolved)
-            } else {
-                senseIDs = []
-            }
-            wordsStore.add(SavedWord(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface, selectedSenseIDs: senseIDs))
+            senseIDs = []
         }
+        wordsStore.toggle(
+            canonicalEntryID: entry.canonicalEntryID,
+            storedSurface: entry.surface,
+            defaultSenseIDs: senseIDs
+        )
     }
 
     // Returns the saved word for a history entry if it exists, otherwise a minimal SavedWord for display.
@@ -349,11 +347,11 @@ struct WordsView: View {
 
     // Toggles save/unsave for an entry surfaced in the browse-frequency sheet.
     func handleBrowseToggleSave(_ entry: DictionaryEntry) {
-        if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) {
-            wordsStore.remove(id: entry.entryId)
-        } else {
-            wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface))
-        }
+        wordsStore.toggle(
+            canonicalEntryID: entry.entryId,
+            storedSurface: entry.primarySearchSurface,
+            defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+        )
     }
 
     // Routes a picked kanji from the radical input sheet into the search field on the Words tab.

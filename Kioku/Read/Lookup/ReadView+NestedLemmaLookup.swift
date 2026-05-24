@@ -103,20 +103,13 @@ extension ReadView {
             },
             sheetSaveToggle: { [weak nestedSheet] in
                 guard let entry = nestedSheet?.currentSheetDictionaryEntry else { return }
-                if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) {
-                    wordsStore.remove(id: entry.entryId)
-                } else {
-                    let sourceIDs = activeNoteID.map { [$0] } ?? []
-                    let senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
-                    wordsStore.add(
-                        SavedWord(
-                            canonicalEntryID: entry.entryId,
-                            surface: lemma,
-                            sourceNoteIDs: sourceIDs,
-                            selectedSenseIDs: senseIDs
-                        )
-                    )
-                }
+                wordsStore.toggle(
+                    canonicalEntryID: entry.entryId,
+                    storedSurface: lemma,
+                    encounteredSurface: lemma,
+                    sourceNoteID: activeNoteID,
+                    defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+                )
             },
             sheetOpenWordDetail: { [weak nestedSheet] in
                 guard let entry = resolvedEntry() else { return }

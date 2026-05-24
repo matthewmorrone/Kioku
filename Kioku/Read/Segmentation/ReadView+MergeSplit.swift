@@ -2,6 +2,9 @@ import SwiftUI
 import UIKit
 
 // Handles merge and split operations on the active segment selection in the read screen.
+// Both the bottom sheet (selection-driven) and the segment list (row-driven) go through
+// the same primitives so they share one set of guards, one mutation path, and one
+// selection-update policy — no per-surface duplication.
 extension ReadView {
     // Resolves the initial merged edge bounds for the currently selected segment location.
     func initialMergedEdgeBounds(for selectedLocation: Int) -> ClosedRange<Int>? {
@@ -46,56 +49,62 @@ extension ReadView {
         return (left: leftSurface, right: rightSurface)
     }
 
-    // Applies a merge against the current merged bounds and returns updated popover payload fields.
-    func mergeAdjacentSegment(isMergingLeft: Bool) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)? {
-        guard let currentBounds = selectedBounds ?? selectedSegmentLocation.flatMap({ location in
-            initialMergedEdgeBounds(for: location)
-        }) else {
-            return nil
-        }
+    // Shared merge primitive — the single source of truth for merging two adjacent edges.
+    //
+    // Merges `segmentEdges[edgeIndex - 1]` with `segmentEdges[edgeIndex]` when merging left,
+    // or `segmentEdges[edgeIndex]` with `segmentEdges[edgeIndex + 1]` otherwise. Returns the
+    // post-merge index of the merged edge. Once the bounds and `isMergeAllowed` guards pass,
+    // the model is mutated and a valid index is always returned — no silent post-mutation
+    // failures. Callers that need a tuple (surface + neighbors) for UI refresh derive it
+    // from the returned index against the post-mutation `segmentEdges` array.
+    //
+    // In global mode the same merge is applied to every adjacent pair whose surfaces match;
+    // the returned index points to the merged edge produced at this call site's position.
+    func mergeEdges(at edgeIndex: Int, isMergingLeft: Bool, updateSelection: Bool) -> Int? {
+        guard segmentEdges.indices.contains(edgeIndex) else { return nil }
 
-        let nextBounds: ClosedRange<Int>
+        let mergeBounds: ClosedRange<Int>
         if isMergingLeft {
-            guard currentBounds.lowerBound > 0 else {
-                return nil
-            }
-            let leftEdge = segmentEdges[currentBounds.lowerBound - 1]
-            let rightEdge = segmentEdges[currentBounds.lowerBound]
+            guard edgeIndex > 0 else { return nil }
+            let leftEdge = segmentEdges[edgeIndex - 1]
+            let rightEdge = segmentEdges[edgeIndex]
             guard isMergeAllowed(between: leftEdge, and: rightEdge) else {
                 flashIllegalMergeBoundary(between: leftEdge, and: rightEdge)
                 return nil
             }
-            nextBounds = (currentBounds.lowerBound - 1)...currentBounds.upperBound
+            mergeBounds = (edgeIndex - 1)...edgeIndex
         } else {
-            guard currentBounds.upperBound + 1 < segmentEdges.count else {
-                return nil
-            }
-            let leftEdge = segmentEdges[currentBounds.upperBound]
-            let rightEdge = segmentEdges[currentBounds.upperBound + 1]
+            guard edgeIndex + 1 < segmentEdges.count else { return nil }
+            let leftEdge = segmentEdges[edgeIndex]
+            let rightEdge = segmentEdges[edgeIndex + 1]
             guard isMergeAllowed(between: leftEdge, and: rightEdge) else {
                 flashIllegalMergeBoundary(between: leftEdge, and: rightEdge)
                 return nil
             }
-            nextBounds = currentBounds.lowerBound...(currentBounds.upperBound + 1)
+            mergeBounds = edgeIndex...(edgeIndex + 1)
         }
 
-        let mergedStart = segmentEdges[nextBounds.lowerBound].start
-        let mergedEnd = segmentEdges[nextBounds.upperBound].end
+        let sourceLeftSurface = segmentEdges[mergeBounds.lowerBound].surface
+        let sourceRightSurface = segmentEdges[mergeBounds.upperBound].surface
+        let mergedStart = segmentEdges[mergeBounds.lowerBound].start
+        let mergedEnd = segmentEdges[mergeBounds.upperBound].end
         let mergedSurface = String(text[mergedStart..<mergedEnd])
         let mergedEdge = LatticeEdge(start: mergedStart, end: mergedEnd, surface: mergedSurface)
-        let sourceLeftSurface = segmentEdges[nextBounds.lowerBound].surface
-        let sourceRightSurface = segmentEdges[nextBounds.upperBound].surface
 
         var updatedEdges = segmentEdges
+        var resultIndex = mergeBounds.lowerBound
+
         if shouldApplyChangesGlobally {
+            // Apply the same merge to every adjacent pair matching the source surfaces.
+            // Track the post-global-merge position of THIS call's pair so the caller can
+            // re-focus selection on the right edge after global mode shifts indices.
             var globallyMergedEdges: [LatticeEdge] = []
-            var edgeIndex = 0
-
-            while edgeIndex < updatedEdges.count {
-                if edgeIndex + 1 < updatedEdges.count {
-                    let leftEdge = updatedEdges[edgeIndex]
-                    let rightEdge = updatedEdges[edgeIndex + 1]
-
+            var i = 0
+            var indexOfTargetMerge = -1
+            while i < updatedEdges.count {
+                if i + 1 < updatedEdges.count {
+                    let leftEdge = updatedEdges[i]
+                    let rightEdge = updatedEdges[i + 1]
                     if leftEdge.surface == sourceLeftSurface,
                        rightEdge.surface == sourceRightSurface,
                        isMergeAllowed(between: leftEdge, and: rightEdge) {
@@ -107,83 +116,69 @@ extension ReadView {
                                 surface: globalMergedSurface
                             )
                         )
-                        edgeIndex += 2
+                        if i == mergeBounds.lowerBound {
+                            indexOfTargetMerge = globallyMergedEdges.count - 1
+                        }
+                        i += 2
                         continue
                     }
                 }
-
-                globallyMergedEdges.append(updatedEdges[edgeIndex])
-                edgeIndex += 1
+                globallyMergedEdges.append(updatedEdges[i])
+                i += 1
             }
-
             updatedEdges = globallyMergedEdges
+            // Fallback to lowerBound if the per-position tracker missed (defensive — the
+            // global loop iterates monotonically so the target position should always hit).
+            resultIndex = indexOfTargetMerge >= 0 ? indexOfTargetMerge : mergeBounds.lowerBound
         } else {
-            updatedEdges.replaceSubrange(nextBounds, with: [mergedEdge])
+            updatedEdges.replaceSubrange(mergeBounds, with: [mergedEdge])
         }
 
         applySegmentEdges(updatedEdges, persistOverride: true)
 
-        guard let mergedIndex = updatedEdges.firstIndex(where: { edge in
-            let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
-            return edgeNSRange.location == NSRange(mergedStart..<mergedEnd, in: text).location && edge.surface == mergedSurface
-        }) else {
-            return nil
+        if updateSelection, segmentEdges.indices.contains(resultIndex) {
+            let resolvedEdge = segmentEdges[resultIndex]
+            selectedBounds = resultIndex...resultIndex
+            let mergedNSRange = NSRange(resolvedEdge.start..<resolvedEdge.end, in: text)
+            selectedSegmentLocation = mergedNSRange.location
+            selectedHighlightRangeOverride = mergedNSRange
         }
 
-        selectedBounds = mergedIndex...mergedIndex
-        let mergedNSRange = NSRange(updatedEdges[mergedIndex].start..<updatedEdges[mergedIndex].end, in: text)
-        selectedSegmentLocation = mergedNSRange.location
-        selectedHighlightRangeOverride = mergedNSRange
-
-        // Filter neighbors by merge legality so the sheet's buttons reflect what's actually allowed.
-        let leftNeighborSurface: String?
-        if mergedIndex > 0, isMergeAllowed(between: updatedEdges[mergedIndex - 1], and: updatedEdges[mergedIndex]) {
-            leftNeighborSurface = updatedEdges[mergedIndex - 1].surface
-        } else {
-            leftNeighborSurface = nil
-        }
-        let rightNeighborIndex = mergedIndex + 1
-        let rightNeighborSurface: String?
-        if rightNeighborIndex < updatedEdges.count, isMergeAllowed(between: updatedEdges[mergedIndex], and: updatedEdges[rightNeighborIndex]) {
-            rightNeighborSurface = updatedEdges[rightNeighborIndex].surface
-        } else {
-            rightNeighborSurface = nil
-        }
-        return (surface: mergedSurface, leftNeighborSurface: leftNeighborSurface, rightNeighborSurface: rightNeighborSurface)
+        return resultIndex
     }
 
-    // Applies a split offset against the current merged selection and returns updated popover payload fields.
-    func applySplitSelection(offsetUTF16: Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)? {
-        guard let mergedRange = currentMergedSelectionNSRange() else {
-            return nil
-        }
+    // Shared split primitive — the single source of truth for splitting an edge in two.
+    //
+    // Splits `segmentEdges[edgeIndex]` at `offsetUTF16` (relative to the edge's start) into
+    // two adjacent edges. Returns the (leftIndex, rightIndex) pair of the new edges. Once
+    // the bounds and offset guards pass, the model is mutated and valid indices are always
+    // returned — no silent post-mutation failures.
+    //
+    // In global mode the same split is applied to every edge whose surface matches; the
+    // returned indices point to the pieces produced at this call site's position.
+    func splitEdge(at edgeIndex: Int, offsetUTF16: Int, updateSelection: Bool) -> (leftIndex: Int, rightIndex: Int)? {
+        guard segmentEdges.indices.contains(edgeIndex) else { return nil }
 
-        guard offsetUTF16 > 0, offsetUTF16 < mergedRange.length else {
-            return nil
-        }
+        let sourceEdge = segmentEdges[edgeIndex]
+        let sourceSurface = sourceEdge.surface
+        let sourceNSRange = NSRange(sourceEdge.start..<sourceEdge.end, in: text)
+        guard offsetUTF16 > 0, offsetUTF16 < sourceNSRange.length else { return nil }
 
-        let leftRange = NSRange(location: mergedRange.location, length: offsetUTF16)
-        let rightRange = NSRange(location: mergedRange.location + offsetUTF16, length: mergedRange.length - offsetUTF16)
-        guard
-            let leftSurface = substring(for: leftRange),
-            let rightSurface = substring(for: rightRange)
-        else {
-            return nil
-        }
-
-        guard let mergedEdgeIndex = segmentEdges.firstIndex(where: { edge in
-            let edgeRange = NSRange(edge.start..<edge.end, in: text)
-            return edgeRange.location == mergedRange.location && edgeRange.length == mergedRange.length
-        }) else {
-            return nil
-        }
-
+        let leftRange = NSRange(location: sourceNSRange.location, length: offsetUTF16)
+        let rightRange = NSRange(
+            location: sourceNSRange.location + offsetUTF16,
+            length: sourceNSRange.length - offsetUTF16
+        )
         guard
             let leftStringRange = Range(leftRange, in: text),
             let rightStringRange = Range(rightRange, in: text)
         else {
             return nil
         }
+
+        let leftSurface = String(text[leftStringRange])
+        let rightSurface = String(text[rightStringRange])
+        guard leftSurface.isEmpty == false, rightSurface.isEmpty == false else { return nil }
 
         let leftEdge = LatticeEdge(
             start: leftStringRange.lowerBound,
@@ -197,15 +192,22 @@ extension ReadView {
         )
 
         var updatedEdges = segmentEdges
-        let sourceSurface = String(text[leftStringRange.lowerBound..<rightStringRange.upperBound])
-        if shouldApplyChangesGlobally {
-            var globallySplitEdges: [LatticeEdge] = []
+        var resultLeftIndex = edgeIndex
+        var resultRightIndex = edgeIndex + 1
 
-            for edge in updatedEdges {
+        if shouldApplyChangesGlobally {
+            // Apply the same split to every edge with a matching surface. Track this call
+            // site's left-piece index across the global loop so selection lands correctly.
+            var globallySplitEdges: [LatticeEdge] = []
+            var indexOfTargetLeft = -1
+            for (sourceIdx, edge) in updatedEdges.enumerated() {
                 if edge.surface == sourceSurface {
                     let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
                     let edgeLeftRange = NSRange(location: edgeNSRange.location, length: offsetUTF16)
-                    let edgeRightRange = NSRange(location: edgeNSRange.location + offsetUTF16, length: edgeNSRange.length - offsetUTF16)
+                    let edgeRightRange = NSRange(
+                        location: edgeNSRange.location + offsetUTF16,
+                        length: edgeNSRange.length - offsetUTF16
+                    )
 
                     if let edgeLeftStringRange = Range(edgeLeftRange, in: text),
                        let edgeRightStringRange = Range(edgeRightRange, in: text) {
@@ -213,6 +215,9 @@ extension ReadView {
                         let edgeRightSurface = String(text[edgeRightStringRange])
 
                         if edgeLeftSurface.isEmpty == false, edgeRightSurface.isEmpty == false {
+                            if sourceIdx == edgeIndex {
+                                indexOfTargetLeft = globallySplitEdges.count
+                            }
                             globallySplitEdges.append(
                                 LatticeEdge(
                                     start: edgeLeftStringRange.lowerBound,
@@ -231,36 +236,132 @@ extension ReadView {
                         }
                     }
                 }
-
                 globallySplitEdges.append(edge)
             }
-
             updatedEdges = globallySplitEdges
+            resultLeftIndex = indexOfTargetLeft >= 0 ? indexOfTargetLeft : edgeIndex
+            resultRightIndex = resultLeftIndex + 1
         } else {
-            updatedEdges.replaceSubrange(mergedEdgeIndex...mergedEdgeIndex, with: [leftEdge, rightEdge])
+            updatedEdges.replaceSubrange(edgeIndex...edgeIndex, with: [leftEdge, rightEdge])
         }
 
         applySegmentEdges(updatedEdges, persistOverride: true)
 
-        guard let selectedLeftEdgeIndex = updatedEdges.firstIndex(where: { edge in
-            let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
-            return edgeNSRange.location == leftRange.location && edge.surface == leftSurface
+        if updateSelection, segmentEdges.indices.contains(resultLeftIndex) {
+            let resolvedLeftEdge = segmentEdges[resultLeftIndex]
+            let resolvedLeftNSRange = NSRange(resolvedLeftEdge.start..<resolvedLeftEdge.end, in: text)
+            selectedBounds = resultLeftIndex...resultLeftIndex
+            selectedSegmentLocation = resolvedLeftNSRange.location
+            selectedHighlightRangeOverride = resolvedLeftNSRange
+        }
+
+        return (leftIndex: resultLeftIndex, rightIndex: resultRightIndex)
+    }
+
+    // Bottom-sheet merge entry point: derives the target edge from the current selection,
+    // delegates to `mergeEdges`, then assembles the (surface, neighbors) tuple the sheet's
+    // header refresh needs. Once `mergeEdges` returns a non-nil index, the merged edge and
+    // its neighbors are read from the post-mutation `segmentEdges` — no second re-lookup
+    // that could fail after the model has changed.
+    func mergeAdjacentSegment(isMergingLeft: Bool) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)? {
+        guard let currentBounds = selectedBounds ?? selectedSegmentLocation.flatMap({ location in
+            initialMergedEdgeBounds(for: location)
         }) else {
             return nil
         }
+        // Anchor at the lower bound for left merge, upper bound for right merge so that a
+        // multi-edge selection extends in the expected direction. Single-edge selections
+        // (the common case) collapse to the same index either way.
+        let anchorIndex = isMergingLeft ? currentBounds.lowerBound : currentBounds.upperBound
 
-        selectedBounds = selectedLeftEdgeIndex...selectedLeftEdgeIndex
-        selectedSegmentLocation = leftRange.location
-        selectedHighlightRangeOverride = leftRange
+        guard let mergedIndex = mergeEdges(
+            at: anchorIndex,
+            isMergingLeft: isMergingLeft,
+            updateSelection: true
+        ) else {
+            return nil
+        }
 
-        // Filter left neighbor by merge legality; the right neighbor is always the adjacent split piece.
+        let mergedEdge = segmentEdges[mergedIndex]
         let leftNeighborSurface: String?
-        if selectedLeftEdgeIndex > 0, isMergeAllowed(between: updatedEdges[selectedLeftEdgeIndex - 1], and: updatedEdges[selectedLeftEdgeIndex]) {
-            leftNeighborSurface = updatedEdges[selectedLeftEdgeIndex - 1].surface
+        if mergedIndex > 0, isMergeAllowed(between: segmentEdges[mergedIndex - 1], and: mergedEdge) {
+            leftNeighborSurface = segmentEdges[mergedIndex - 1].surface
         } else {
             leftNeighborSurface = nil
         }
-        return (surface: leftSurface, leftNeighborSurface: leftNeighborSurface, rightNeighborSurface: rightSurface)
+        let rightNeighborIndex = mergedIndex + 1
+        let rightNeighborSurface: String?
+        if rightNeighborIndex < segmentEdges.count,
+           isMergeAllowed(between: mergedEdge, and: segmentEdges[rightNeighborIndex]) {
+            rightNeighborSurface = segmentEdges[rightNeighborIndex].surface
+        } else {
+            rightNeighborSurface = nil
+        }
+        return (
+            surface: mergedEdge.surface,
+            leftNeighborSurface: leftNeighborSurface,
+            rightNeighborSurface: rightNeighborSurface
+        )
+    }
+
+    // Bottom-sheet split entry point: derives the target edge from the current merged
+    // selection NSRange, delegates to `splitEdge`, then assembles the (surface, neighbors)
+    // tuple the sheet's header refresh needs. As with merge, the post-split neighbors are
+    // read straight from the returned indices — no fragile re-lookup.
+    func applySplitSelection(offsetUTF16: Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)? {
+        guard let mergedRange = currentMergedSelectionNSRange(),
+              let edgeIndex = segmentEdges.firstIndex(where: { edge in
+                  let edgeRange = NSRange(edge.start..<edge.end, in: text)
+                  return edgeRange.location == mergedRange.location && edgeRange.length == mergedRange.length
+              }) else {
+            return nil
+        }
+
+        guard let indices = splitEdge(
+            at: edgeIndex,
+            offsetUTF16: offsetUTF16,
+            updateSelection: true
+        ) else {
+            return nil
+        }
+
+        let leftEdge = segmentEdges[indices.leftIndex]
+        let rightEdge = segmentEdges[indices.rightIndex]
+        let leftNeighborSurface: String?
+        if indices.leftIndex > 0,
+           isMergeAllowed(between: segmentEdges[indices.leftIndex - 1], and: leftEdge) {
+            leftNeighborSurface = segmentEdges[indices.leftIndex - 1].surface
+        } else {
+            leftNeighborSurface = nil
+        }
+        return (
+            surface: leftEdge.surface,
+            leftNeighborSurface: leftNeighborSurface,
+            rightNeighborSurface: rightEdge.surface
+        )
+    }
+
+    // Segment-list merge entry point: a row in the list already knows its edge index, so
+    // it delegates straight to `mergeEdges`. Selection is only updated in non-global mode
+    // because the segment list dismisses its popover at the end and a fresh user tap will
+    // re-establish selection anyway.
+    func mergeSegmentFromSegmentList(at edgeIndex: Int, isMergingLeft: Bool) {
+        _ = mergeEdges(
+            at: edgeIndex,
+            isMergingLeft: isMergingLeft,
+            updateSelection: !shouldApplyChangesGlobally
+        )
+        SegmentLookupSheet.shared.dismissPopover()
+    }
+
+    // Segment-list split entry point: same pattern as `mergeSegmentFromSegmentList`.
+    func splitSegmentFromSegmentList(at edgeIndex: Int, offsetUTF16: Int) {
+        _ = splitEdge(
+            at: edgeIndex,
+            offsetUTF16: offsetUTF16,
+            updateSelection: !shouldApplyChangesGlobally
+        )
+        SegmentLookupSheet.shared.dismissPopover()
     }
 
     // Resolves the currently highlighted merged segment range used by merge/split actions.

@@ -1,16 +1,13 @@
 import UIKit
 
 extension SegmentLookupSheet {
-    // Returns the fixed chrome height outside the middle content and optional split panel.
-    func surfaceSheetBaseChromeHeight(headerHeight: CGFloat, safeArea: UIEdgeInsets) -> CGFloat {
-        20 + safeArea.top + headerHeight + 8 + 16 + 108 + 12 + safeArea.bottom + 16
-    }
-
-    // Applies the shared native-sheet presentation settings for the lookup sheet.
-    func configureSurfaceSheetPresentation(
-        _ sheetController: UIViewController,
-        preferredHeight: @escaping () -> CGFloat
-    ) {
+    // Applies the shared native-sheet presentation settings for the lookup sheet. The sheet
+    // uses UIKit's built-in `.medium()` detent so its height is stable across the entire
+    // lifetime of one presentation — no measure-and-resize churn while async dictionary data
+    // arrives, which previously moved the merge/split buttons under the user's finger.
+    // Content that exceeds the medium height clips at the action menu rather than expanding
+    // the sheet.
+    func configureSurfaceSheetPresentation(_ sheetController: UIViewController) {
         sheetController.modalPresentationStyle = .pageSheet
 
         guard let sheetPresentationController = sheetController.sheetPresentationController else {
@@ -21,20 +18,8 @@ extension SegmentLookupSheet {
         // presentationController is nil before present() is called so setting delegate there is a no-op.
         sheetPresentationController.delegate = self
 
-        if #available(iOS 16.0, *) {
-            let fittedDetentIdentifier = UISheetPresentationController.Detent.Identifier("surfaceFitted")
-            let fittedDetent = UISheetPresentationController.Detent.custom(identifier: fittedDetentIdentifier) { context in
-                // Cap at the screen height so the sheet never overflows, but otherwise size to content.
-                min(preferredHeight(), context.maximumDetentValue)
-            }
-            sheetPresentationController.detents = [fittedDetent]
-            sheetPresentationController.selectedDetentIdentifier = fittedDetentIdentifier
-            sheetPresentationController.largestUndimmedDetentIdentifier = fittedDetentIdentifier
-        } else {
-            sheetPresentationController.detents = [.medium()]
-            sheetPresentationController.largestUndimmedDetentIdentifier = .medium
-        }
-
+        sheetPresentationController.detents = [.medium()]
+        sheetPresentationController.largestUndimmedDetentIdentifier = .medium
         sheetPresentationController.prefersGrabberVisible = false
     }
 }

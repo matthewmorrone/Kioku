@@ -47,46 +47,16 @@ extension ReadView {
             }
         }
 
-        // Apply the override to each target, removing stale furigana inside the range first.
-        // Overrides use the same per-kanji-run projection as the lookup-sheet title so okurigana
+        // Apply the override to each target via the shared per-run helper — it clears stale
+        // overlapping entries first, then projects `reading` over the kanji runs so okurigana
         // never ends up inside the highlighted word's furigana.
-        for (targetLocation, targetLength) in targets {
-            let segmentNSRange = NSRange(location: targetLocation, length: targetLength)
-            let staleLocations = Set(furiganaBySegmentLocation.keys.filter { loc in
-                let len = furiganaLengthBySegmentLocation[loc] ?? 0
-                return NSIntersectionRange(NSRange(location: loc, length: len), segmentNSRange).length > 0
-            })
-            furiganaBySegmentLocation = furiganaBySegmentLocation.filter { !staleLocations.contains($0.key) }
-            furiganaLengthBySegmentLocation = furiganaLengthBySegmentLocation.filter { !staleLocations.contains($0.key) }
-
-            let chars = Array(selectedSurface ?? "")
-            let runs = FuriganaAttributedString.kanjiRuns(in: selectedSurface ?? "")
-
-            if let selectedSurface, runs.isEmpty == false,
-               let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: selectedSurface, reading: reading, runs: runs),
-               runReadings.count == runs.count {
-                for (index, run) in runs.enumerated() {
-                    let runSurface = String(chars[run.start..<run.end])
-                    let runReading = runReadings[index]
-                    guard runReading.isEmpty == false, runReading != runSurface else {
-                        continue
-                    }
-
-                    let prefixUTF16 = String(chars[..<run.start]).utf16.count
-                    let runLength = String(chars[run.start..<run.end]).utf16.count
-                    let runLocation = targetLocation + prefixUTF16
-                    furiganaBySegmentLocation[runLocation] = runReading
-                    furiganaLengthBySegmentLocation[runLocation] = runLength
-                }
+        if let selectedSurface {
+            for (targetLocation, _) in targets {
+                applyPerRunFurigana(surface: selectedSurface, reading: reading, at: targetLocation)
             }
         }
         // Rebuild segments with updated furigana then persist.
-        segments = buildSegmentRanges(
-            from: segmentEdges,
-            furiganaByLocation: furiganaBySegmentLocation,
-            furiganaLengthByLocation: furiganaLengthBySegmentLocation
-        )
-        persistCurrentNoteIfNeeded()
+        rebuildAndPersistSegments()
     }
 
     // Removes the persisted reading for the currently selected segment and re-runs furigana
@@ -533,14 +503,13 @@ extension ReadView {
                 sheetSaveToggle: {
                     guard let surface = currentSelectedSurface(),
                           let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry else { return }
-                    // Save with the tapped surface so WordDetailView can still show the encountered form.
-                    if wordsStore.words.contains(where: { $0.canonicalEntryID == entry.entryId }) {
-                        wordsStore.remove(id: entry.entryId)
-                    } else {
-                        let sourceIDs = activeNoteID.map { [$0] } ?? []
-                        let senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
-                        wordsStore.add(SavedWord(canonicalEntryID: entry.entryId, surface: surface, sourceNoteIDs: sourceIDs, selectedSenseIDs: senseIDs))
-                    }
+                    wordsStore.toggle(
+                        canonicalEntryID: entry.entryId,
+                        storedSurface: surface,
+                        encounteredSurface: surface,
+                        sourceNoteID: activeNoteID,
+                        defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+                    )
                 },
                 sheetOpenWordDetail: {
                     guard let surface = currentSelectedSurface(),

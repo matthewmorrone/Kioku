@@ -411,7 +411,6 @@ extension SurfaceSheetViewController {
             updateMiddleContent()
             updateSaveButtonAppearance()
             updateOpenDetailButtonAppearance()
-            updateSheetPreferredHeight(animated: true)
         }, for: .touchUpInside)
 
         mergeRightButton.addAction(UIAction { [weak self] _ in
@@ -439,7 +438,6 @@ extension SurfaceSheetViewController {
             updateMiddleContent()
             updateSaveButtonAppearance()
             updateOpenDetailButtonAppearance()
-            updateSheetPreferredHeight(animated: true)
         }, for: .touchUpInside)
 
         splitButton.addAction(UIAction { [weak self] _ in
@@ -456,7 +454,6 @@ extension SurfaceSheetViewController {
                     updateMiddleContent()
                     updateSaveButtonAppearance()
                     updateOpenDetailButtonAppearance()
-                    updateSheetPreferredHeight(animated: true)
                 }
                 return
             }
@@ -528,7 +525,6 @@ extension SurfaceSheetViewController {
             updateMiddleContent()
             updateSaveButtonAppearance()
             updateOpenDetailButtonAppearance()
-            updateSheetPreferredHeight(animated: true)
         }, for: .touchUpInside)
 
         let swipeLeft = UISwipeGestureRecognizer(target: self, action: #selector(handleSheetSwipe(_:)))
