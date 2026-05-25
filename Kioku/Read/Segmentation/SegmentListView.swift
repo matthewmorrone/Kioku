@@ -244,18 +244,6 @@ struct SegmentListView: View {
                             includesCommonParticles.toggle()
                         }
 
-                        // Display lemma (食べる) vs raw surface (食べた). Persists
-                        // across sheet presentations via AppStorage; default is
-                        // on (lemma) since dictionary form is generally the study
-                        // target, with surface still visible in word detail.
-                        optionToggleButton(
-                            title: "lemmas",
-                            isOn: showLemmasInSegmentList,
-                            accessibilityLabel: showLemmasInSegmentList ? "Show Surface Forms" : "Show Lemmas"
-                        ) {
-                            showLemmasInSegmentList.toggle()
-                        }
-
                         Spacer(minLength: 0)
 
                         Button {
@@ -325,13 +313,6 @@ struct SegmentListView: View {
             scheduleCanonicalEntryIDHydrationForVisibleRows()
         }
         .onChange(of: includesCommonParticles) { _, _ in
-            scheduleCanonicalEntryIDHydrationForVisibleRows()
-        }
-        // Toggling the lemma/surface mode changes the row identity, so the
-        // canonical-id cache (keyed by row identity) needs to repopulate for
-        // the new key set — otherwise star state for lemma rows stays unset
-        // until the user re-presents the sheet.
-        .onChange(of: showLemmasInSegmentList) { _, _ in
             scheduleCanonicalEntryIDHydrationForVisibleRows()
         }
         .onDisappear {
