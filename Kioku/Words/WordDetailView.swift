@@ -477,20 +477,11 @@ struct WordDetailView: View {
     var currentSelectedSenseIDs: [Int64] { currentSavedWord.selectedSenseIDs }
     var currentSelectedGlosses: [GlossRef] { currentSavedWord.selectedGlosses }
 
-    // Returns spellings to surface as secondary display — excludes archaic and search-only forms.
-    // Kana surfaces are excluded entirely: a kana reading maps to many possible kanji, so
-    // surfacing one entry's kanji forms implies a false uniqueness.
+    // Delegates to the unit-tested WordVariants helper. Surfaces both kanji and
+    // kana alternates for kanji-bearing saved surfaces; returns [] for pure-kana
+    // surfaces (see WordVariants for the rationale and filter rules).
     private func alternateSpellings(entry: DictionaryEntry) -> [String] {
-        guard ScriptClassifier.containsKanji(word.surface) else { return [] }
-
-        let others = entry.kanaForms
-            .filter { form in
-                let info = form.info ?? ""
-                return form.text != word.surface
-                    && !info.contains("ok") && !info.contains("sk")
-            }
-            .map(\.text)
-        return others.count > 1 ? others : []
+        WordVariants.alternateSpellings(savedSurface: word.surface, entry: entry)
     }
 
     // Returns true when the entry flags the word as usually written in kana alone.

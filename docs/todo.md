@@ -57,7 +57,7 @@ template (surface, hypothesis, fix path).
 - [ ] Make saving to the words list more responsive
 - [ ] Add advanced dictionary filters/sorting (JLPT, POS, frequency, commonness toggles)
 - [ ] Romaji display option (romaji→kana *search* shipped; *display* toggle not implemented)
-- [ ] alternateSpellings(): include kanji variants (currently kana-only at `WordDetailView.swift:483-494`, and only when the saved surface contains kanji)
+- [x] alternateSpellings(): include kanji variants — extracted from `WordDetailView` to `Kioku/Words/WordVariants.swift` so it's unit-testable; now surfaces both kanji-form and kana-form alternates (was kana-only), filters out `oK`/`sK`/`ok`/`sk` archaic + search-only forms, keeps irregular (`iK`/`ik`) variants. Pinned by `WordVariantsTests.swift` (6 tests). The previous `count > 1` noise-suppression gate is dropped — for kanji-bearing surfaces, even a single alternate is informative now that kanji variants are included. Pure-kana saved surfaces still return [] (false-uniqueness guard preserved).
 - [ ] CSV import: explicit option to fill kanji from the dictionary when the surface column is missing (today the importer silently substitutes kanji even when only kana was provided)
 
 ## Study & Review
