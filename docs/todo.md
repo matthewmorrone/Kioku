@@ -212,10 +212,59 @@ Things that aren't broken but could become so. Not actionable today — just wor
 ## Watch list — degrading since last triage (2026-05-25)
 
 - ⚠️  **`print()` call count: 77.** Down from 101 after the os.Logger migration pass (24 converted). Remaining are concentrated in legacy diagnostic paths; route through `os.Logger` (subsystem-tagged so they're filterable in Console.app) opportunistically when touching the surrounding code.
-- ⚠️  **Largest file still over 800-line warning threshold.** `SwiftWhisperAlign/Sources/SwiftWhisperAlign/ForcedAlignmentProvider.swift` 814 LOC. Split candidates: provider façade ↔ alignment math ↔ transcription fallback. Other ≥700-line files: `SubtitleEditorSheet.swift` 758, `ReadView+LLMCorrection.swift` 741, `ReadView+Segmentation.swift` 735, `ReadView+AudioTranscription.swift` 722.
-- ⚠️  **`ReadView` extension sprawl.** 19 `ReadView+*.swift` files totaling 6,427 LOC all share the same `View`'s `@State` — extensions split text, not state ownership, so any new feature touches multiple files and any state rename is a 19-file change. Phase-3 architectural item; tracked as the one structural debt that will keep compounding if deferred. Brainstorm before starting: extract `@StateObject ReadViewModel`, or carve out subsystem-owned view models (`SegmentationViewModel`, `LookupViewModel`, `LyricsViewModel`, `LLMCorrectionViewModel`) matching the existing folder split.
+- ✅ **File-size guardrail cleared (2026-05-25).** Splits landed: `ForcedAlignmentProvider.swift` 819 → 580 (extracted `AlignmentTimestampMath`, `AlignmentNonSpeechCueBuilder`, `WhisperAudioFrameDecoder`); `ReadView+AudioTranscription.swift` 722 → 293 (extracted `AudioTranscriptionHelpers`); `SubtitleEditorSheet.swift` 758 → ~660 (extracted `SubtitleEditorTimingTools`); `ReadView+LLMCorrection.swift` 741 → 405 (extracted `LLMCorrectionDiagnostics`). `ReadView+Segmentation.swift` 735 still pending the preventive split.
+- ⚠️  **`ReadView` extension sprawl — the architectural one.** See the dedicated section below.
 - ✅ **`SWIFT_VERSION = 6.0`** (was 5.0) — strict-concurrency now active. Done 2026-05-25 across 13 src files + 14 test targets: nonisolated logger/statics/callbacks, `Sendable` conformances on dict types, MainActor isolation for tests. 373/373 passing.
 - ✅ **Force-unwrap audit done** — each surviving `!` either has a one-line `// invariant: …` justification or has been replaced with safe unwrap.
+
+## ReadView decomposition (architectural, deferred)
+
+**Problem.** 19 `ReadView+*.swift` files in `Kioku/Read/` total 6,427 LOC and
+all live as extensions on the same `ReadView` struct, sharing one `@State`
+namespace. The folder layout (`Segmentation/`, `Lookup/`, `Audio/`, `LLM/`,
+`Furigana/`, `CoreTextRenderer/`) implies subsystem ownership that the type
+system doesn't enforce: a Lookup file freely reads Segmentation `@State`, an
+Audio file freely toggles Furigana `@State`, and any state-property rename is
+a 19-file diff. Pure-helper extractions (the preventive splits landed
+2026-05-25 — `LLMCorrectionDiagnostics`, `AudioTranscriptionHelpers`,
+`SubtitleEditorTimingTools`) get small things off the host file but don't
+touch the underlying coupling. This is the one structural debt that will keep
+compounding if deferred.
+
+**Brainstorm before starting.** Two plausible directions, neither obviously
+right:
+
+1. **One `@StateObject ReadViewModel`.** All ReadView state moves to a single
+   `@MainActor final class ReadViewModel: ObservableObject` that the View
+   holds. Extensions become methods on the model. Win: state ownership is now
+   one type with `private` properties; extensions in other files can't reach
+   in without going through `internal` properties (forcing intentional
+   exposure). Lose: the model becomes a 6k+ LOC class with the same coupling,
+   just relocated; the @Published property explosion may regress SwiftUI body
+   invalidation behavior.
+
+2. **Per-subsystem view models.** `SegmentationViewModel`, `LookupViewModel`,
+   `LyricsViewModel`, `LLMCorrectionViewModel`, etc., each owning its own
+   slice of state, composed by `ReadView` as `@StateObject` properties. Win:
+   subsystem coupling becomes explicit (Lookup that wants Segmentation state
+   must take a reference); each model is small enough to reason about. Lose:
+   shared state that genuinely crosses subsystems (selected segment location
+   read by Lookup, Lyrics, AND Furigana; current cue time read by Lyrics AND
+   Furigana) needs a deliberate cross-model contract — probably a slim
+   `ReadCoordinator` or a few `@Published` projections — that's worth getting
+   right rather than improvising mid-refactor.
+
+**Recommended approach.** Do a brainstorming session first (worktree or
+scratch branch, not main). Pick one subsystem (`Lookup` is probably smallest)
+and extract its view model end-to-end as a probe. Measure: did the host file
+shrink? Did the new view model's API surface stay tight? Did the cross-subsystem
+state requirements come into focus? Use the answer to commit to direction #1
+or #2 for the rest.
+
+**Until then.** Continue the pure-helper extraction pattern when files cross
+the 700-line band — that's worked well (4 splits landed today, 19 files still
+share state but each one is now tractable to read). The architectural fix is
+the larger version of the same conversation, not a different one.
 
 ## Verified clean (no follow-up needed)
 
