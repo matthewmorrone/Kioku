@@ -11,6 +11,7 @@ import CoreText
 // the tests asserted on `kCTRubyAnnotationAttributeName` runs. After the manual-ruby
 // migration the builder emits ruby as data (`Output.rubyEntries`) and the view draws it
 // in its own pass — assertions now target the entry list directly.
+@MainActor
 final class KiokuCoreTextAttributedStringBuilderTests: XCTestCase {
 
     private func segmentRange(_ text: String, _ substring: String) -> Range<String.Index>? {

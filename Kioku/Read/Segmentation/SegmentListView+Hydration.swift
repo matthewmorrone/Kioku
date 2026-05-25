@@ -104,7 +104,7 @@ extension SegmentListView {
     // mutate @State and other MainActor-isolated view state directly inside `onComplete`.
     func hydrateCanonicalEntryIDs(
         for pairs: [(surface: String, lemma: String)],
-        onComplete: @escaping ([String: Int64]) -> Void
+        onComplete: @escaping @Sendable @MainActor ([String: Int64]) -> Void
     ) {
         guard pairs.isEmpty == false, let dictionaryStore else {
             onComplete([:])
@@ -137,7 +137,7 @@ extension SegmentListView {
                 }
             }
 
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 onComplete(resolvedEntryIDs)
             }
         }

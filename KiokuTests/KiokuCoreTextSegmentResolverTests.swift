@@ -4,6 +4,7 @@ import XCTest
 // Guards tap → segment resolution for the CoreText Read path. Mis-resolution silently
 // breaks tap-to-look-up (the most-used Read interaction) without a crash or visible
 // regression, so it deserves explicit coverage.
+@MainActor
 final class KiokuCoreTextSegmentResolverTests: XCTestCase {
 
     func test_emptyRanges_returnsNil() {

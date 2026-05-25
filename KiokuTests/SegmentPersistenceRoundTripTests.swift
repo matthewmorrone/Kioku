@@ -12,6 +12,7 @@ import XCTest
 //    actually depend on ReadView's @State — they take text/edges/segments as parameters
 //    directly. We instantiate ReadView only because Swift extension methods need a
 //    receiver; the body of each call is pure.
+@MainActor
 final class SegmentPersistenceRoundTripTests: XCTestCase {
 
     // Lightweight ReadView; only used to call extension methods. The persistence helpers

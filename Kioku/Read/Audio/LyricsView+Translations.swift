@@ -1,5 +1,7 @@
 import SwiftUI
-import Translation
+// @preconcurrency: see comment in LyricsActiveCueOverlay.swift — TranslationSession isn't
+// yet Sendable but is meant to be passed into async helpers exactly like this.
+@preconcurrency import Translation
 
 // Translation pipeline for the lyrics popup — derives the TranslationSession.Configuration
 // from the user's preferred locales (skipping ja so we always translate INTO a non-Japanese

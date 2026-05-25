@@ -1,6 +1,10 @@
 import AVFoundation
 import NaturalLanguage
-import Speech
+// @preconcurrency: Speech (SFTranscription, SFSpeechRecognitionTask, ...) predates Swift
+// concurrency and its types aren't Sendable. The Task.detached + checked-continuation
+// pattern at line 365+ wraps SFTranscription crossings safely; this import opts that
+// boundary out of Swift 6 strict checking rather than annotating each use site.
+@preconcurrency import Speech
 import SwiftUI
 import UniformTypeIdentifiers
 

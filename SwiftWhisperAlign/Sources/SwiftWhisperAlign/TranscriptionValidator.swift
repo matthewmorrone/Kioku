@@ -27,8 +27,8 @@ public struct TranscriptionValidator {
         audioURL: URL,
         modelURL: URL,
         language: String = "ja",
-        cancellationCheck: (() -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> [Segment] {
         let frames = try await decodeAudioFrames(from: audioURL)
         guard frames.isEmpty == false else { return [] }

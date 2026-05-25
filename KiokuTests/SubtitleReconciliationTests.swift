@@ -8,6 +8,7 @@ import XCTest
 // Scope: pure logic only — matching, gap construction, force-fit, merge. The
 // integration path (audio slicing + Whisper inference + cancellation) requires
 // a fixture and is covered separately (currently invariant #8, still ❌).
+@MainActor
 final class SubtitleReconciliationTests: XCTestCase {
 
     // Builds a speech cue with millisecond timing. Test fixture helper — keeps cases

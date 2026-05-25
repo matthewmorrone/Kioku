@@ -183,9 +183,9 @@ enum OnDeviceLyricAligner {
         audioURL: URL,
         lyrics: String,
         modelURL: URL,
-        cancellationCheck: (() -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil,
-        onSegment: (([SwiftWhisperAlign.AlignedLine]) -> Void)? = nil
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+        onSegment: (@Sendable ([SwiftWhisperAlign.AlignedLine]) -> Void)? = nil
     ) async throws -> String {
 
         let lines = lyrics

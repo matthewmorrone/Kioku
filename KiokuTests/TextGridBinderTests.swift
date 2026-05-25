@@ -3,6 +3,7 @@ import XCTest
 
 // Verifies the TextGrid → CueCharTimings binder. Forced-aligner output is noisy; the binder
 // must drop misaligned intervals without crashing or rewinding the per-cue cursor.
+@MainActor
 final class TextGridBinderTests: XCTestCase {
 
     // Builds a single-tier TextGridFile inline so tests don't depend on the parser.

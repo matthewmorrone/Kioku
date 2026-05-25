@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated public struct DictionaryEntrySense: Equatable {
+nonisolated public struct DictionaryEntrySense: Equatable, Sendable {
     // Stable per-sense database id; lets saved-word selections reference a sense without
     // depending on its position in the senses array.
     public let senseID: Int64

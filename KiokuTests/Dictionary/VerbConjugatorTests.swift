@@ -1,6 +1,7 @@
 import XCTest
 @testable import Kioku
 
+@MainActor
 final class VerbConjugatorTests: XCTestCase {
 
     // MARK: Ichidan

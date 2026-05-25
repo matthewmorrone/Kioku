@@ -6,6 +6,7 @@ import UIKit
 // suffered relayout cascades; the CoreText path shifts line origins directly. This test
 // suite locks the input → shift contract so future refactors don't silently lose the
 // inset (which would clip ruby at the left edge of any line whose first segment is wide).
+@MainActor
 final class KiokuWideRubyLineInsetTests: XCTestCase {
 
     private let baseFont = UIFont.systemFont(ofSize: 18)

@@ -2,6 +2,7 @@ import XCTest
 @testable import Kioku
 
 // Exercises the real segmenter pipeline against a few small strings without rebuilding the trie per test.
+@MainActor
 final class SegmenterIntegrationTests: XCTestCase {
 
     // Returns the shared test harness so each test uses the same dictionary-backed pipeline instance.

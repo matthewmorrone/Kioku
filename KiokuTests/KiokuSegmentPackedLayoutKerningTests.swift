@@ -16,6 +16,7 @@ import CoreText
 // first-segment-on-line scenario where the ruby is wider than its kanji, and assert
 // that the envelope's left edge always sits at the inset and the kanji-run-centered
 // ruby never extends left of placement.originX.
+@MainActor
 final class KiokuSegmentPackedLayoutKerningTests: XCTestCase {
 
     private let bodyFont = UIFont.systemFont(ofSize: 18)

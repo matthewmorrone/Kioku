@@ -11,6 +11,7 @@ import XCTest
 //   - Re-bucket the vocabulary by substring-matching `surface` against each `original`.
 //   - Leave correctly-shaped breakdowns untouched.
 //   - Be idempotent: a second pass yields the same value.
+@MainActor
 final class SongBreakdownRecoveryTests: XCTestCase {
 
     func testLeavesCorrectlyShapedBreakdownUntouched() {

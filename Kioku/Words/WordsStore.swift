@@ -2,13 +2,24 @@ import Combine
 import Foundation
 import SwiftUI
 
+// Box that lets the persist queue ship a UserDefaults across the Sendable boundary even
+// though Foundation hasn't yet annotated UserDefaults as Sendable. Apple documents
+// UserDefaults as thread-safe; this box is the one place we encode that promise.
+private struct UncheckedSendableUserDefaults: @unchecked Sendable {
+    let value: UserDefaults
+}
+
 // Owns saved-word persistence for the Words tab. Replaces direct UserDefaults access in WordsView.
 @MainActor
 final class WordsStore: ObservableObject {
     @Published private(set) var words: [SavedWord] = []
 
-    private let userDefaults: UserDefaults
-    private let storageKey: String
+    // nonisolated(unsafe) on userDefaults because UserDefaults isn't formally Sendable
+    // in the SDK but Apple documents it as thread-safe — the persist() background
+    // dispatch needs to capture it without the @MainActor isolation of WordsStore
+    // making sending it a race per Swift 6 strict checking.
+    nonisolated(unsafe) private let userDefaults: UserDefaults
+    nonisolated private let storageKey: String
 
     // Both the UserDefaults instance and the storage key are parameterized so tests can scope
     // each case to a per-suite UserDefaults without leaking into .standard. Production callers
@@ -242,9 +253,13 @@ final class WordsStore: ObservableObject {
         let normalized = SavedWordStorage.normalizedEntries(entries)
         words = normalized
         let storageKey = self.storageKey
-        let userDefaults = self.userDefaults
+        // UserDefaults isn't formally Sendable in the SDK but Apple documents it as
+        // thread-safe — wrap in an @unchecked Sendable box so the persistQueue capture
+        // satisfies Swift 6 strict-concurrency without spraying nonisolated(unsafe)
+        // through every call-site.
+        let userDefaults = UncheckedSendableUserDefaults(value: self.userDefaults)
         WordsStore.persistQueue.async {
-            SavedWordStorage.writeNormalized(normalized, storageKey: storageKey, userDefaults: userDefaults)
+            SavedWordStorage.writeNormalized(normalized, storageKey: storageKey, userDefaults: userDefaults.value)
         }
     }
 

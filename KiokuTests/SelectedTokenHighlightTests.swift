@@ -6,6 +6,7 @@ import UIKit
 // and furigana spacing vary. The envelope math lives in FuriganaSelectedSegmentGeometry
 // (extracted from FuriganaTextRenderer specifically so these invariants can be tested
 // without spinning up a UITextView in the test target).
+@MainActor
 final class SelectedTokenHighlightTests: XCTestCase {
 
     // Stand-in for the TextKit `firstRect(for:)` result a real UITextView would return.

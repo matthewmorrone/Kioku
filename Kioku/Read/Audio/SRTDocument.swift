@@ -34,7 +34,9 @@ struct SRTDocument: FileDocument {
 }
 
 extension UTType {
-    static var subripText: UTType {
-        UTType(filenameExtension: "srt") ?? .plainText
-    }
+    // Explicit `nonisolated` because this file imports SwiftUI, which under Swift 6
+    // makes top-level extension members default to @MainActor — and
+    // FileDocument.readableContentTypes (which references this) is a nonisolated
+    // protocol requirement. Evaluated once at first access; UTType is Sendable.
+    nonisolated static let subripText: UTType = UTType(filenameExtension: "srt") ?? .plainText
 }
