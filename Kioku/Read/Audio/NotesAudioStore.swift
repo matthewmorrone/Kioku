@@ -4,14 +4,22 @@ import Foundation
 // Each attachment is keyed by a UUID shared between the Note model and the stored files.
 final class NotesAudioStore {
     // Shared instance so both NotesView (import) and ReadView (playback) access the same storage.
-    static let shared = NotesAudioStore()
+    static let shared = NotesAudioStore(audioDirectory: NotesAudioStore.defaultAudioDirectory())
 
     private let audioDirectory: URL
 
-    private init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        audioDirectory = docs.appendingPathComponent("audio", isDirectory: true)
+    // Designated initializer. The base directory is parameterized so tests can scope each
+    // case to a temp dir without polluting Documents/. Production wiring goes through `.shared`.
+    init(audioDirectory: URL) {
+        self.audioDirectory = audioDirectory
         try? FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true)
+    }
+
+    // Resolves the production audio directory at `Documents/audio`. Kept as a static helper
+    // so the singleton can use it without duplicating the path logic at the call site.
+    private static func defaultAudioDirectory() -> URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return docs.appendingPathComponent("audio", isDirectory: true)
     }
 
     // Copies an audio file from a security-scoped URL into permanent storage.
@@ -169,7 +177,13 @@ final class NotesAudioStore {
         try backup.audioData.write(to: destination, options: .atomic)
 
         if let srtText = backup.srtText {
-            _ = try saveSRT(srtText, attachmentID: backup.attachmentID, preferredFilename: backup.audioFilename)
+            // Derive the SRT filename from the audio basename via the dedicated helper.
+            // Passing backup.audioFilename ("song.mp3") directly would propagate the audio
+            // extension through storedFilename and write the SRT to "{uuid}-song.mp3",
+            // overwriting the audio we just restored. Pinned by
+            // NotesAudioStoreTests.testImportAttachmentWithAudioAndSRTKeepsBothIntact.
+            let srtFilename = Self.preferredSubtitleFilename(forAudioFilename: backup.audioFilename)
+            _ = try saveSRT(srtText, attachmentID: backup.attachmentID, preferredFilename: srtFilename)
         }
 
         if let cues = backup.cues {
@@ -298,15 +312,27 @@ final class NotesAudioStore {
     }
 
     // Reverses the UUID-prefix storage scheme to recover the human-readable original filename.
+    // storedFilename writes either "{uuid}.ext" (no preserved basename) or "{uuid}-{base}.ext".
+    // UUIDs are exactly 36 chars with 4 internal hyphens, so splitting the stem on the first
+    // hyphen would lose UUID segments into what should be the base — the prefix has to be
+    // detected by fixed length + UUID validity. Pinned by
+    // NotesAudioStoreTests.testPreferredSubtitleExportFilenameUsesSRTBasenameWhenPresent.
     private func readableFilename(fromStoredURL url: URL, defaultExtension: String) -> String {
-        let filename = url.lastPathComponent
-        let prefix = url.deletingPathExtension().lastPathComponent
-        let attachmentPrefix = prefix.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+        let stem = url.deletingPathExtension().lastPathComponent
         let ext = url.pathExtension.isEmpty ? defaultExtension : url.pathExtension
-        if attachmentPrefix.count == 2 {
-            return String(attachmentPrefix[1]) + "." + ext
+        let uuidLength = 36
+        guard stem.count >= uuidLength + 2 else {
+            return url.lastPathComponent
         }
-        return filename
+        let uuidEnd = stem.index(stem.startIndex, offsetBy: uuidLength)
+        guard
+            UUID(uuidString: String(stem[..<uuidEnd])) != nil,
+            stem[uuidEnd] == "-"
+        else {
+            return url.lastPathComponent
+        }
+        let baseStart = stem.index(after: uuidEnd)
+        return String(stem[baseStart...]) + "." + ext
     }
 
     // Strips characters that are unsafe in filenames so stored audio files open without escaping issues.
