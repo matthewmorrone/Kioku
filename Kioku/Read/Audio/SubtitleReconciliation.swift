@@ -186,22 +186,16 @@ enum SubtitleReconciliation {
             )
         }
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("kioku-reconcile-\(UUID().uuidString).m4a")
-        exporter.outputURL = tempURL
-        exporter.outputFileType = .m4a
         let timescale: CMTimeScale = 1000
         exporter.timeRange = CMTimeRange(
             start: CMTime(seconds: from, preferredTimescale: timescale),
             end: CMTime(seconds: to, preferredTimescale: timescale)
         )
 
-        await exporter.export()
-        guard exporter.status == .completed else {
-            throw exporter.error ?? NSError(
-                domain: "Kioku.Reconcile",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Audio slice export failed."]
-            )
-        }
+        // iOS 18+ API: throws on failure instead of stashing the error on the exporter,
+        // and consumes the destination URL + file type as arguments rather than
+        // configuring outputURL/outputFileType properties (those are deprecated).
+        try await exporter.export(to: tempURL, as: .m4a)
         return tempURL
     }
 
