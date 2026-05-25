@@ -51,7 +51,7 @@ template (surface, hypothesis, fix path).
 - [x] List conjugations in dictionary view (`WordDetailView.swift:33-34` + `ConjugationSheetView.swift`)
 - [x] Variants section in WordDetail: list all kanji and kana forms of the entry, labeled, separate from the saved surface (`WordDetailView.swift:4`)
 - [ ] Add manual/custom word creation and editing
-- [ ] Deduplicate example sentences
+- [x] Deduplicate example sentences — `Kioku/Dictionary/SentencePairDedup.swift` normalizes (trim, strip wrapping quote pair, strip trailing sentence-final punctuation) then dedupes preserving order. Wired into both `fetchSentencePairs` (replaces the prior exact-string `seenJapanese` set, now catches Tatoeba near-duplicates across priority terms) and `searchSentences` (which had no dedup at all). Pinned by 7 tests in `SentencePairDedupTests.swift`.
 - [ ] Custom reading popup should be prefilled and set to Japanese keyboard
       (UI exists; missing `.keyboardType` JP IME hint)
 - [ ] Make saving to the words list more responsive

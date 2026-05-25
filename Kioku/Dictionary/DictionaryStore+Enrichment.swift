@@ -76,7 +76,6 @@ extension DictionaryStore {
             """
 
             var allPairs: [SentencePair] = []
-            var seenJapanese = Set<String>()
 
             // Query each term in priority order so surface matches come first.
             for term in uniqueTerms {
@@ -99,13 +98,14 @@ extension DictionaryStore {
                     )
                 }
 
-                // Append only unseen sentences, preserving shortest-first within each term.
-                for pair in rows where seenJapanese.insert(pair.japanese).inserted {
-                    allPairs.append(pair)
-                }
+                allPairs.append(contentsOf: rows)
             }
 
-            return allPairs
+            // Normalized dedup across all terms — collapses Tatoeba near-duplicates
+            // (trailing 。, wrapping 「」, whitespace) that exact-string equality
+            // would miss. Preserves order so the priority-ordered surface→lemma walk
+            // above still wins the first slot for the user-visible example list.
+            return SentencePairDedup.dedupe(allPairs)
         }
     }
 
@@ -136,7 +136,7 @@ extension DictionaryStore {
             try bindText("\"\(escaped)\"", index: 1, statement: statement)
             try bindInt64(Int64(limit), index: 2, statement: statement)
 
-            return try stepRows(statement: statement) { stmt -> SentencePair? in
+            let rows = try stepRows(statement: statement) { stmt -> SentencePair? in
                 guard
                     let japanesePointer = sqlite3_column_text(stmt, 0),
                     let englishPointer = sqlite3_column_text(stmt, 1)
@@ -146,6 +146,10 @@ extension DictionaryStore {
                     english: String(cString: englishPointer)
                 )
             }
+            // Free-form search has no priority loop to dedup across, but the corpus
+            // itself contains punctuation/quote near-duplicates — same normalized
+            // dedup as fetchSentencePairs.
+            return SentencePairDedup.dedupe(rows)
         }
     }
 
