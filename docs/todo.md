@@ -211,7 +211,7 @@ Things that aren't broken but could become so. Not actionable today — just wor
 
 ## Watch list — degrading since last triage (2026-05-25)
 
-- ⚠️  **`print()` call count: 77.** Down from 101 after the os.Logger migration pass (24 converted). Remaining are concentrated in legacy diagnostic paths; route through `os.Logger` (subsystem-tagged so they're filterable in Console.app) opportunistically when touching the surrounding code.
+- ⚠️  **`print()` call count: 66.** Down from 101 (and from 77 mid-session) via the os.Logger migration pass + the preventive splits. Remaining are concentrated in legacy diagnostic paths; route through `os.Logger` (subsystem-tagged so they're filterable in Console.app) opportunistically when touching the surrounding code.
 - ✅ **File-size guardrail cleared (2026-05-25).** Splits landed: `ForcedAlignmentProvider.swift` 819 → 580 (extracted `AlignmentTimestampMath`, `AlignmentNonSpeechCueBuilder`, `WhisperAudioFrameDecoder`); `ReadView+AudioTranscription.swift` 722 → 293 (extracted `AudioTranscriptionHelpers`); `SubtitleEditorSheet.swift` 758 → ~660 (extracted `SubtitleEditorTimingTools`); `ReadView+LLMCorrection.swift` 741 → 405 (extracted `LLMCorrectionDiagnostics`). `ReadView+Segmentation.swift` 735 still pending the preventive split.
 - ⚠️  **`ReadView` extension sprawl — the architectural one.** See the dedicated section below.
 - ✅ **`SWIFT_VERSION = 6.0`** (was 5.0) — strict-concurrency now active. Done 2026-05-25 across 13 src files + 14 test targets: nonisolated logger/statics/callbacks, `Sendable` conformances on dict types, MainActor isolation for tests. 373/373 passing.
