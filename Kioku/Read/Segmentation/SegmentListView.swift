@@ -39,6 +39,17 @@ struct SegmentListView: View {
     // appears saved without a write migration.
     @State var savedWordSourceNoteIDsBySurface: [String: Set<UUID>] = [:]
     @State var canonicalEntryIDBySurface: [String: Int64] = [:]
+    // Memoizes `lemmaForSurface(edge.surface)` results — populated off-main when
+    // `edges` changes (see `hydrateLemmasForEdgeSurfaces`). Body row rendering,
+    // `resolvedRowSurface`, and `displayRows` dedup all read through this cache,
+    // falling back to a live segmenter call on miss. Empty value means "checked,
+    // no lemma resolved" so the cache distinguishes miss from hit.
+    @State var lemmaCacheByEdgeSurface: [String: String] = [:]
+    // Cross-call memoization for `applySavedWordState`'s per-card legacy detection
+    // (`lemmaForSurface(storedSurface)`). Persists across the sheet's lifetime so
+    // toggling a star doesn't re-segment every previously-seen storedSurface on
+    // each rebuild. Same empty-string-as-checked convention as the edge cache.
+    @State var lemmaCacheByStoredSurface: [String: String] = [:]
     @State var includesDuplicates = false
     @State var includesCommonParticles = false
     @State var hydrationGeneration: Int = 0
@@ -65,21 +76,13 @@ struct SegmentListView: View {
     // Read at view init time so a settings change takes effect on the next sheet presentation.
     let commonParticles = ParticleSettings.allowed()
 
-    // When on, this view treats the dictionary lemma (食べる) as the row's
-    // identity — for display, save/star lookup, tap-to-detail, dedup, and
-    // "Add All". When off, the raw surface (食べた) is identity. The toggle is
-    // semantic, not cosmetic: flipping it changes what saving the row stores
-    // in the Words list, and what the star reflects.
-    //
-    // Default true: dictionary form is the typical study target. Surface text
-    // is still recoverable inside the Word Details sheet.
-    //
-    // Migration note: words saved while the toggle was off (stored with the
-    // conjugated surface) will read as "not saved" on lemma rows for that
-    // word, because the saved-by-surface lookup keys off the displayed string.
-    // That's accurate — "食べた" and "食べる" are different entries in the store.
-    @AppStorage("kioku.settings.segmentList.showLemmas") var showLemmasInSegmentList: Bool = true
-
+    // Row identity is unconditionally the dictionary lemma when one resolves,
+    // otherwise the raw edge surface. Used for display, save/star lookup,
+    // tap-to-detail, dedup, and Add All. Previously this was switchable via a
+    // `lemmas` toggle in the bottom bar; the toggle was deleted because the
+    // single-tap save path was already lemma-only (so the toggle's "surface
+    // mode" caused divergent semantics between Add All and tap-to-save). The
+    // raw conjugation the user clicked is preserved in `encounteredSurfaces`.
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -94,7 +97,7 @@ struct SegmentListView: View {
                         // action (save, star lookup, tap detail, etc.). Computed once per row
                         // so display and behavior can't drift apart.
                         let rowIdentity = resolvedRowSurface(for: edge)
-                        let rowLemma = lemmaForSurface(edge.surface) ?? ""
+                        let rowLemma = cachedLemma(forEdgeSurface: edge.surface)
                         // Pre-compute candidates here (not inside contextMenu) so the
                         // @ViewBuilder closure stays short — too many items / nested
                         // conditionals there caused later items (Split sub-menu) to
@@ -260,10 +263,13 @@ struct SegmentListView: View {
                         } label: {
                             Text("Add All")
                                 .font(.system(size: 13, weight: .semibold))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, 12)
                                 .frame(height: 30)
                         }
                         .buttonStyle(.borderedProminent)
+                        .layoutPriority(1)
                         .accessibilityLabel("Add All Visible Words")
                     }
 
@@ -292,12 +298,20 @@ struct SegmentListView: View {
                 .accessibilityLabel("Back")
             }
         }
+        // Standard iOS grabber bar at the top of the sheet. Gives the user a
+        // dedicated drag handle that lets them swipe the sheet down to dismiss
+        // regardless of scroll position — without this, the List's scroll
+        // gesture wins from any non-top scroll offset and the only way out is
+        // the back button or swiping from the very top edge.
+        .presentationDragIndicator(.visible)
         .onAppear {
             loadSavedWordsFromStorage()
+            hydrateLemmasForEdgeSurfaces()
             scheduleCanonicalEntryIDHydrationForVisibleRows()
             rebuildSplitMenuCaches()
         }
         .onChange(of: edges.map(\.surface)) { _, _ in
+            hydrateLemmasForEdgeSurfaces()
             scheduleCanonicalEntryIDHydrationForVisibleRows()
             rebuildSplitMenuCaches()
         }
