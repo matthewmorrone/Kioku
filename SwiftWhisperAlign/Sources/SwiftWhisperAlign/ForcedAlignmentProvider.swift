@@ -40,7 +40,7 @@ public final class ForcedAlignmentProvider {
             )
         }
 
-        let frames = try await decodeAudioFrames(from: input.audioURL)
+        let frames = try await WhisperAudioFrameDecoder.decode(from: input.audioURL)
         guard frames.isEmpty == false else {
             throw NSError(
                 domain: "SwiftWhisperAlign.ForcedAlignment",
@@ -63,7 +63,7 @@ public final class ForcedAlignmentProvider {
         // than relying on timestamp tokens alone under forced alignment.
         var cparams = whisper_context_default_params()
         cparams.dtw_token_timestamps = true
-        cparams.dtw_aheads_preset = dtwPreset(for: modelURL)
+        cparams.dtw_aheads_preset = AlignmentTimestampMath.dtwPreset(for: modelURL)
 
         guard let ctx = modelURL.path.withCString({ path in
             whisper_init_from_file_with_params(path, cparams)
@@ -127,7 +127,7 @@ public final class ForcedAlignmentProvider {
         // Insert ♪ cues for gaps where the audio is non-silent (music) — silent gaps are
         // skipped so we don't fill quiet stretches with spurious ♪ markers. The detector
         // built above is reused; no second decode and no separate type.
-        let combined = insertNonSpeechCues(
+        let combined = AlignmentNonSpeechCueBuilder.insertNonSpeechCues(
             lyricLines: lyricLines,
             audioDuration: audioDuration,
             gapThreshold: gapThreshold,
@@ -157,7 +157,7 @@ public final class ForcedAlignmentProvider {
         frames: [Float],
         nonSpeech: NonSpeechDetector
     ) -> [AlignedLine] {
-        var tokenTimestamps = Self.repairDegenerateTimestamps(rawTimestamps)
+        var tokenTimestamps = AlignmentTimestampMath.repairDegenerateTimestamps(rawTimestamps)
 
         // Build a VAD mask once; each line boundary queries it.
         let vad = VoiceActivityDetector(frames: frames)
@@ -405,7 +405,7 @@ public final class ForcedAlignmentProvider {
             // exceeds either is considered unreliable; everything from that
             // word onward goes back to the queue.
             let committedSoFar = Array(durations.prefix(redoIndex))
-            let medDur = median(committedSoFar)
+            let medDur = AlignmentTimestampMath.median(committedSoFar)
             let localMax = medDur.isFinite && medDur > 0 ? medDur * wordDurationFactor : maxWordDurationGlobal
             let effectiveMax = min(localMax, maxWordDurationGlobal)
             // Only check from the second non-zero onward (matches stable-ts
@@ -454,250 +454,16 @@ public final class ForcedAlignmentProvider {
         return committedTimestamps
     }
 
-    // Median of a Double array. Returns 0 for empty input.
-    private func median(_ values: [Double]) -> Double {
-        guard values.isEmpty == false else { return 0 }
-        let sorted = values.sorted()
-        let mid = sorted.count / 2
-        if sorted.count % 2 == 0 {
-            return (sorted[mid - 1] + sorted[mid]) / 2
-        }
-        return sorted[mid]
-    }
-
-    // Repairs degenerate t_dtw values. Whisper sometimes emits t_dtw == 0
-    // (or a value equal to the segment's t0) when DTW fails on a token,
-    // producing runs of identical or out-of-order timestamps. We detect those
-    // runs and linearly interpolate from the nearest good values on each side.
-    private static func repairDegenerateTimestamps(_ input: [Double]) -> [Double] {
-        guard input.count >= 2 else { return input }
-        var ts = input
-
-        // Step 1: mark a timestamp as invalid when it is zero and not at the
-        // very start, or when it breaks monotonicity. Keep the first valid
-        // anchor to avoid losing genuine zero starts.
-        var valid = [Bool](repeating: true, count: ts.count)
-        for i in 0..<ts.count {
-            if i > 0 && ts[i] == 0 { valid[i] = false; continue }
-            if i > 0 && ts[i] < ts[i - 1] { valid[i] = false }
-        }
-
-        // Step 2: collapse runs of equal timestamps into "only the first is
-        // valid" — the rest were duplicated by DTW failure, not real data.
-        for i in 1..<ts.count where valid[i] && ts[i] == ts[i - 1] {
-            valid[i] = false
-        }
-
-        // Step 3: interpolate invalid runs from the nearest valid neighbors.
-        var i = 0
-        while i < ts.count {
-            if valid[i] { i += 1; continue }
-            var j = i
-            while j < ts.count && valid[j] == false { j += 1 }
-            let leftIdx = i - 1
-            let rightIdx = j
-            let leftVal = leftIdx >= 0 ? ts[leftIdx] : 0.0
-            let rightVal = rightIdx < ts.count ? ts[rightIdx] : (ts.last ?? leftVal) + 0.1
-            let span = max(1, rightIdx - leftIdx)
-            for k in i..<j {
-                let frac = Double(k - leftIdx) / Double(span)
-                ts[k] = leftVal + (rightVal - leftVal) * frac
-            }
-            i = j
-        }
-
-        return ts
-    }
-
-    // Returns the DTW alignment heads preset for the given model file.
-    private static func dtwPreset(for modelURL: URL) -> whisper_alignment_heads_preset {
-        let name = modelURL.deletingPathExtension().lastPathComponent.lowercased()
-        if name.contains("tiny.en") { return WHISPER_AHEADS_TINY_EN }
-        if name.contains("tiny")    { return WHISPER_AHEADS_TINY }
-        if name.contains("base.en") { return WHISPER_AHEADS_BASE_EN }
-        if name.contains("base")    { return WHISPER_AHEADS_BASE }
-        if name.contains("small.en") { return WHISPER_AHEADS_SMALL_EN }
-        if name.contains("small")   { return WHISPER_AHEADS_SMALL }
-        if name.contains("medium.en") { return WHISPER_AHEADS_MEDIUM_EN }
-        if name.contains("medium")  { return WHISPER_AHEADS_MEDIUM }
-        if name.contains("large-v3") { return WHISPER_AHEADS_LARGE_V3 }
-        if name.contains("large-v2") { return WHISPER_AHEADS_LARGE_V2 }
-        if name.contains("large-v1") || name.contains("large") { return WHISPER_AHEADS_LARGE_V1 }
-        // Fallback: use top-most layers which works for any model.
-        return WHISPER_AHEADS_N_TOP_MOST
-    }
-
-    // Instance method wrapper for the static preset lookup.
-    private func dtwPreset(for modelURL: URL) -> whisper_alignment_heads_preset {
-        Self.dtwPreset(for: modelURL)
-    }
-
     // Routes whisper.cpp + ggml log output to a no-op. Installed lazily on
     // the first alignment call so we don't silence logs globally until the
-    // aligner actually runs.
+    // aligner actually runs. Stays on this class (not extracted to a namespace)
+    // because the `loggerInstalled` static var can't move across files via an
+    // extension without becoming public.
     private static var loggerInstalled = false
     private static func installSilentLogger() {
         guard loggerInstalled == false else { return }
         loggerInstalled = true
         whisper_log_set({ _, _, _ in }, nil)
-    }
-
-    // Inserts ♪ cues for gaps between lyric lines that exceed the threshold.
-    private func insertNonSpeechCues(
-        lyricLines: [AlignedLine],
-        audioDuration: Double,
-        gapThreshold: Double,
-        nonSpeech: NonSpeechDetector
-    ) -> [AlignedLine] {
-        var combined: [AlignedLine] = []
-
-        // Gap before first lyric line.
-        if let first = lyricLines.first, first.start > gapThreshold,
-           let interval = audibleInterval(start: 0, end: first.start, gapThreshold: gapThreshold, nonSpeech: nonSpeech) {
-            combined.append(AlignedLine(text: "♪", start: interval.start, end: interval.end))
-        }
-
-        for (i, line) in lyricLines.enumerated() {
-            combined.append(line)
-
-            // Gap between consecutive lines.
-            if i + 1 < lyricLines.count {
-                let gap = lyricLines[i + 1].start - line.end
-                if gap > gapThreshold,
-                   let interval = audibleInterval(start: line.end, end: lyricLines[i + 1].start, gapThreshold: gapThreshold, nonSpeech: nonSpeech) {
-                    combined.append(AlignedLine(text: "♪", start: interval.start, end: interval.end))
-                }
-            }
-        }
-
-        // Gap after last lyric line.
-        if let last = lyricLines.last, audioDuration - last.end > gapThreshold,
-           let interval = audibleInterval(start: last.end, end: audioDuration, gapThreshold: gapThreshold, nonSpeech: nonSpeech) {
-            combined.append(AlignedLine(text: "♪", start: interval.start, end: interval.end))
-        }
-
-        return combined
-    }
-
-    // Returns the audible (non-silent) sub-interval within [start, end), or nil if the
-    // surviving stretch is shorter than gapThreshold. The leading and trailing silence
-    // is trimmed so the ♪ marker doesn't extend over quiet edges; small silent dips in
-    // the middle are kept inside the marker (they are part of the same music run).
-    private func audibleInterval(start: Double, end: Double, gapThreshold: Double, nonSpeech: NonSpeechDetector) -> (start: Double, end: Double)? {
-        guard end > start else { return nil }
-
-        // Trim leading silence: bump start forward past any silent interval that starts
-        // at or before `start`.
-        var trimmedStart = start
-        for i in 0..<nonSpeech.silentStarts.count {
-            if nonSpeech.silentStarts[i] <= trimmedStart && nonSpeech.silentEnds[i] > trimmedStart {
-                trimmedStart = min(end, nonSpeech.silentEnds[i])
-            }
-        }
-        // Trim trailing silence: pull end backward before any silent interval that ends
-        // at or after `end`.
-        var trimmedEnd = end
-        for i in 0..<nonSpeech.silentStarts.count {
-            if nonSpeech.silentStarts[i] < trimmedEnd && nonSpeech.silentEnds[i] >= trimmedEnd {
-                trimmedEnd = max(trimmedStart, nonSpeech.silentStarts[i])
-            }
-        }
-        let duration = trimmedEnd - trimmedStart
-        guard duration >= gapThreshold else { return nil }
-
-        // Reject the marker entirely when the gap is dominated by silence (more than half
-        // silent after the trim) — that means there's no real music run to label.
-        let silentInside = silentOverlap(silentStarts: nonSpeech.silentStarts, silentEnds: nonSpeech.silentEnds, start: trimmedStart, end: trimmedEnd)
-        guard duration - silentInside >= gapThreshold else { return nil }
-        return (trimmedStart, trimmedEnd)
-    }
-
-    // Sums silent regions overlapping [start, end).
-    private func silentOverlap(silentStarts: [Double], silentEnds: [Double], start: Double, end: Double) -> Double {
-        var total: Double = 0
-        for i in 0..<silentStarts.count {
-            let s = max(start, silentStarts[i])
-            let e = min(end, silentEnds[i])
-            if e > s { total += e - s }
-        }
-        return total
-    }
-
-    // Decodes audio to 16 kHz mono 32-bit float PCM — the format whisper.cpp requires.
-    private func decodeAudioFrames(from url: URL) async throws -> [Float] {
-        let asset = AVURLAsset(url: url)
-        let tracks = try await asset.loadTracks(withMediaType: .audio)
-        guard let track = tracks.first else {
-            throw NSError(
-                domain: "SwiftWhisperAlign.ForcedAlignment",
-                code: 10,
-                userInfo: [NSLocalizedDescriptionKey: "No audio track found in file."]
-            )
-        }
-
-        let outputSettings: [String: Any] = [
-            AVFormatIDKey:              kAudioFormatLinearPCM,
-            AVLinearPCMIsFloatKey:      true,
-            AVLinearPCMBitDepthKey:     32,
-            AVLinearPCMIsBigEndianKey:  false,
-            AVLinearPCMIsNonInterleaved: false,
-            AVSampleRateKey:            16_000,
-            AVNumberOfChannelsKey:      1
-        ]
-
-        let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
-        output.alwaysCopiesSampleData = false
-
-        guard reader.canAdd(output) else {
-            throw NSError(
-                domain: "SwiftWhisperAlign.ForcedAlignment",
-                code: 11,
-                userInfo: [NSLocalizedDescriptionKey: "Could not configure audio reader."]
-            )
-        }
-        reader.add(output)
-        guard reader.startReading() else {
-            throw reader.error ?? NSError(
-                domain: "SwiftWhisperAlign.ForcedAlignment",
-                code: 12,
-                userInfo: [NSLocalizedDescriptionKey: "Audio reader failed to start."]
-            )
-        }
-
-        var frames: [Float] = []
-
-        while reader.status == .reading {
-            guard let sampleBuffer = output.copyNextSampleBuffer() else { break }
-            defer { CMSampleBufferInvalidate(sampleBuffer) }
-
-            guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
-
-            var dataLength = 0
-            var dataPointer: UnsafeMutablePointer<Int8>?
-            let status = CMBlockBufferGetDataPointer(
-                blockBuffer,
-                atOffset: 0,
-                lengthAtOffsetOut: nil,
-                totalLengthOut: &dataLength,
-                dataPointerOut: &dataPointer
-            )
-            guard status == kCMBlockBufferNoErr, let dataPointer, dataLength > 0 else { continue }
-
-            let sampleCount = dataLength / MemoryLayout<Float>.size
-            let floatPointer = UnsafeRawPointer(dataPointer).assumingMemoryBound(to: Float.self)
-            frames.append(contentsOf: UnsafeBufferPointer(start: floatPointer, count: sampleCount))
-        }
-
-        if reader.status == .failed {
-            throw reader.error ?? NSError(
-                domain: "SwiftWhisperAlign.ForcedAlignment",
-                code: 13,
-                userInfo: [NSLocalizedDescriptionKey: "Audio reader failed while decoding."]
-            )
-        }
-
-        return frames
     }
 }
 
