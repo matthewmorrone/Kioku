@@ -18,6 +18,7 @@ struct SettingsView: View {
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
     @AppStorage(LyricsHighlightGranularity.storageKey) private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
+    @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
     @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
 
     @AppStorage(LLMSettings.providerKey) private var llmProviderRaw: String = LLMSettings.defaultProvider
@@ -341,6 +342,14 @@ struct SettingsView: View {
                     // Toggle("Use CoreText Renderer (experimental)", isOn: $useCoreTextRenderer)
                 }
                 #endif
+
+                Section {
+                    Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
+                } header: {
+                    Text("Clipboard")
+                } footer: {
+                    Text("When on, Kioku checks your clipboard for Japanese text each time the app opens and offers to look it up. iOS shows its standard \u{201C}Pasted from\u{201D} notification when this happens — turn off to disable both.")
+                }
 
                 Section {
                     // Pushes the About / Credits screen — dataset attributions and library acks.
