@@ -38,6 +38,35 @@ extension SegmentListView {
         }
     }
 
+    // Off-main lemma hydration for every edge surface in the current segment list.
+    // Populates `lemmaCacheByEdgeSurface` so `resolvedRowSurface` and per-row
+    // `rowLemma` lookups become O(1) hashmap hits — the lemma toggle and scroll
+    // paths previously paid one `segmenter.preferredLemma(for:)` call (trie +
+    // deinflector) per row PER body re-evaluation, which dominated those paths
+    // for long notes. Segmenter is `@unchecked Sendable` (see Segmenter.swift)
+    // so it's safe to call from a background queue; we just hop assignment of
+    // the @State dict back to main.
+    //
+    // Re-runs whenever the edge surfaces change; the deduplicated Set keeps the
+    // background workload proportional to distinct surfaces, not row count.
+    func hydrateLemmasForEdgeSurfaces() {
+        let distinctSurfaces = Set(edges.map(\.surface))
+            .subtracting(lemmaCacheByEdgeSurface.keys)
+        guard distinctSurfaces.isEmpty == false else { return }
+
+        let resolver = lemmaForSurface
+        DispatchQueue.global(qos: .userInitiated).async {
+            var resolved: [String: String] = [:]
+            resolved.reserveCapacity(distinctSurfaces.count)
+            for surface in distinctSurfaces {
+                resolved[surface] = resolver(surface) ?? ""
+            }
+            DispatchQueue.main.async {
+                lemmaCacheByEdgeSurface.merge(resolved) { current, _ in current }
+            }
+        }
+    }
+
     // Schedules canonical-id hydration for visible rows so lookups never block sheet presentation.
     func scheduleCanonicalEntryIDHydrationForVisibleRows() {
         var seenSurfaces = Set<String>()

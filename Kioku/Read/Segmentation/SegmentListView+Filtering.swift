@@ -88,49 +88,43 @@ extension SegmentListView {
     // actual text content of the note — split previews, newline checks,
     // punctuation/particle filters — keep using `edge.surface` directly
     // because they're operating on the source string, not a vocab entry.
-    // Returns the lemma candidates for `edgeSurface` filtered down to those
-    // that could plausibly produce this surface — i.e. whose dictionary
-    // entries have at least one verb or i-adjective sense. Only these POS
-    // classes actually conjugate, so for past-tense / te-form / negative-form
-    // surfaces the segmenter's mechanical deinflection emits noun candidates
-    // (e.g. なつ for なった) that aren't real interpretations.
-    //
-    // The filter is bypassed when the segmenter's first pick equals the
-    // surface itself — there's no deinflection happening so all POS classes
-    // are legitimate (the user might have typed a noun like "本").
-    //
-    // Looked up via DictionaryStore at call time, which means each call costs
-    // a few SQL lookups. Acceptable here because this only runs when the row
-    // re-renders (rare) and only touches a handful of candidate strings.
+    // Returns the lemma candidates for `edgeSurface`. POS gating to keep only
+    // conjugating classes (verb / i-adjective) when deinflection was applied is
+    // done inside `Segmenter.lemmaCandidates` using its in-memory
+    // partOfSpeechByEntryID map, so this is just a pass-through.
     func filteredLemmaCandidates(forEdgeSurface edgeSurface: String) -> [String] {
-        let candidates = lemmaCandidatesForSurface(edgeSurface)
-        guard let store = dictionaryStore else { return candidates }
-        let isDictionaryFormSurface = candidates.first == edgeSurface
-        if isDictionaryFormSurface { return candidates }
-        return candidates.filter { lemma in
-            guard let entries = try? store.lookup(surface: lemma, mode: .kanjiAndKana),
-                  entries.isEmpty == false else {
-                return false
-            }
-            return entries.contains { entry in
-                entry.senses.contains { sense in
-                    let bits = PartOfSpeech.bits(from: sense.pos)
-                    return PartOfSpeech.isVerb(bits) || PartOfSpeech.isAdjective(bits)
-                }
-            }
-        }
+        lemmaCandidatesForSurface(edgeSurface)
     }
 
     // Returns the string this row uses as its identity for save/star/tap
     // operations and dedup. With `showLemmasInSegmentList` on AND a non-empty
     // lemma available, returns the lemma; otherwise the raw edge surface.
     // The toggle controls behavior end-to-end via this single function.
+    //
+    // Reads through `lemmaCacheByEdgeSurface` first — populated off-main when
+    // edges change (see `hydrateLemmasForEdgeSurfaces`) so flipping the lemma
+    // toggle doesn't redo N segmenter trie + deinflector passes per render.
+    // Cache miss falls through to the live segmenter call; that path is hit
+    // during the brief warming window after edges change, then never again.
     func resolvedRowSurface(for edge: LatticeEdge) -> String {
-        guard showLemmasInSegmentList,
-              let lemma = lemmaForSurface(edge.surface),
-              lemma.isEmpty == false else {
+        guard showLemmasInSegmentList else { return edge.surface }
+        if let cached = lemmaCacheByEdgeSurface[edge.surface] {
+            return cached.isEmpty ? edge.surface : cached
+        }
+        guard let lemma = lemmaForSurface(edge.surface), lemma.isEmpty == false else {
             return edge.surface
         }
         return lemma
+    }
+
+    // Cache-aware lemma lookup for the per-row body's `rowLemma`. Returns the
+    // resolved lemma or empty string. Same hydration semantics as
+    // `resolvedRowSurface` — uses the off-main-populated cache when available
+    // so the toggle and scroll paths are O(1) per row.
+    func cachedLemma(forEdgeSurface surface: String) -> String {
+        if let cached = lemmaCacheByEdgeSurface[surface] {
+            return cached
+        }
+        return (lemmaForSurface(surface) ?? "")
     }
 }
