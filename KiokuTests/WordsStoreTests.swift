@@ -29,6 +29,16 @@ final class WordsStoreTests: XCTestCase {
         WordsStore(userDefaults: defaults, storageKey: Self.storageKey)
     }
 
+    // Drains the off-main persist queue so subsequent makeStore() calls observe the
+    // latest writes. Required after the persist path moved off-main; without it the
+    // reader can construct before the background JSON encode + UserDefaults write
+    // completes. Production never needs this — the app launches long after the queue
+    // has drained.
+    private func makeReaderStore() -> WordsStore {
+        WordsStore.flushPendingWritesForTesting()
+        return makeStore()
+    }
+
     // MARK: - Initialization
 
     // A fresh suite produces an empty store with no leaked entries from prior runs.
@@ -46,7 +56,7 @@ final class WordsStoreTests: XCTestCase {
             SavedWord(canonicalEntryID: 2, surface: "犬"),
         ])
 
-        let reader = makeStore()
+        let reader = makeReaderStore()
         XCTAssertEqual(reader.words.map(\.canonicalEntryID), [1, 2])
         XCTAssertEqual(reader.words.map(\.surface), ["猫", "犬"])
     }
@@ -63,7 +73,7 @@ final class WordsStoreTests: XCTestCase {
         XCTAssertTrue(store.words.isEmpty)
 
         // And it persists.
-        let reader = makeStore()
+        let reader = makeReaderStore()
         XCTAssertTrue(reader.words.isEmpty)
     }
 
@@ -211,7 +221,7 @@ final class WordsStoreTests: XCTestCase {
     // — simulates the SegmentListView path where an external writer bypasses the published array.
     func testReloadPicksUpExternalWrite() {
         let writer = makeStore()
-        let reader = makeStore()
+        let reader = makeReaderStore()
         XCTAssertTrue(reader.words.isEmpty)
 
         writer.replaceAll(with: [SavedWord(canonicalEntryID: 1, surface: "猫")])
