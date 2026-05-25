@@ -1,5 +1,7 @@
 import Foundation
 
+// invariant-store-test-coverage: WordsStoreTests.swift
+
 // Loads and persists saved words in canonical-entry keyed normalized form.
 enum SavedWordStorage {
     // Loads saved words from storage and rewrites them if normalization changes the payload.
