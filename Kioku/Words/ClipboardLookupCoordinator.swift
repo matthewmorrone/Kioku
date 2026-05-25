@@ -17,14 +17,25 @@ final class ClipboardLookupCoordinator: ObservableObject {
     @Published private(set) var hasPendingClipboard = false
     @AppStorage("clipboardLookup.lastSeenChangeCount") private var lastSeenChangeCount: Int = -1
 
+    // The defaults instance used to read the auto-detect toggle. Injected so
+    // tests can verify the gate without poking global UserDefaults.standard.
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        // Captures the defaults instance the toggle is read from at check time.
+        self.defaults = defaults
+    }
+
     // Cached trimmed clipboard string captured at check time so consume doesn't have to
     // hit the pasteboard a second time (which would fire iOS's "Pasted from" banner again).
     private var pendingClipboardText: String?
 
     // Reads the pasteboard, filters non-Japanese content, and flips `hasPendingClipboard`
     // only when a lookup-worthy Japanese string is present. Triggers iOS's "Pasted from"
-    // banner because content access is required to apply the script filter.
+    // banner because content access is required to apply the script filter — short-circuits
+    // before any pasteboard access when the user has turned auto-detect off in Settings.
     func checkClipboard() {
+        guard autoDetectEnabled else { return }
         let pasteboard = UIPasteboard.general
         let currentChangeCount = pasteboard.changeCount
         guard currentChangeCount != lastSeenChangeCount else { return }
@@ -65,5 +76,14 @@ final class ClipboardLookupCoordinator: ObservableObject {
         lastSeenChangeCount = UIPasteboard.general.changeCount
         hasPendingClipboard = false
         pendingClipboardText = nil
+    }
+
+    // Returns whether the user has the clipboard auto-detect feature enabled.
+    // Defaults to on when the key is unset so existing users see no change.
+    private var autoDetectEnabled: Bool {
+        if defaults.object(forKey: ClipboardSettings.autoDetectKey) == nil {
+            return ClipboardSettings.defaultAutoDetect
+        }
+        return defaults.bool(forKey: ClipboardSettings.autoDetectKey)
     }
 }
