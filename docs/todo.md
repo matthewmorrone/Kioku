@@ -43,6 +43,64 @@ template (surface, hypothesis, fix path).
       (basic `AVSpeechSynthesizer` speak exists in `SurfaceSheetViewController+Build.swift` —
       missing controls and highlight)
 - [ ] Quiz on next and previous words/lines
+- [ ] **Unify the two LLM call paths into a single merged, context-sharing call** —
+      today `Kioku/Read/LLM/LLMCorrectionService.swift` (segmentation/reading correction)
+      and `Kioku/Learn/Songs/SongBreakdownService.swift` (per-line breakdown) are two
+      separate round-trips with duplicated HTTP plumbing and *no shared context*: the
+      segmentation pass doesn't see song-level poetic register/established imagery, and
+      the breakdown pass has no access to the segmentation's authoritative readings, so
+      surfaces and per-word annotations can drift out of sync. Two-phase refactor:
+      1. **Extract `LLMClient`** owning provider dispatch (OpenAI/Claude/stub), HTTP,
+         validation, errors. Both services currently duplicate `callOpenAI` /
+         `callClaude` / `validate` (~150 LOC each). Per-call-site policy stays a
+         parameter: timeouts (5min for songs vs 60s for segmentation), max_tokens (8192
+         vs 4096), system-message use, stub-key (`kioku.llm.song.stubResponse` vs
+         `LLMSettings.stubResponseKey` + bundled `llm_stub.txt` fallback).
+      2. **Merge the song call** so one LLM round-trip returns both corrected
+         segmentation *and* breakdown in a single structured-JSON response.
+         Segmentation has song context (better splits for poetic compounds); breakdown
+         references segments by id, so surfaces stay in sync and romaji is derived
+         from the assigned readings at render time rather than re-emitted by the
+         model. Use OpenAI `response_format: { type: "json_schema", strict: true }`
+         and Anthropic forced-tool-use for schema enforcement.
+      - **Wire format:** structured JSON (option C). Schema sketch:
+        ```json
+        {
+          "segments": [{"id": 0, "line": 1, "surface": "朽ち", "reading": "くち"}, ...],
+          "lines": [{
+            "index": 1,
+            "gist": "Twilight wings rest on decayed petals.",
+            "words": [{"segment_ids": [0,1], "definition": "..."}, ...],
+            "grammar_note": null,
+            "reference": null   // or {"kind":"same_as","line":N} / {"kind":"parallel","line":N,"substitution":"X → Y"}
+          }, ...]
+        }
+        ```
+        `segments[]` is the single source of truth — no `romaji` field anywhere
+        (derived from `reading` via existing kana→romaji at display). Per-word bullets
+        reference segments by id, not retyped surface — editing a segment in Read view
+        propagates to the bullet automatically. `words[]` is sparse — pure case
+        particles (が/を/に) don't get bullets, matching today's prompt rule 5.
+        `original` field omitted on purpose (reconstructable from segments filtered by
+        line; one less drift surface).
+      - **Render rule (option B):** drop romaji from prompt entirely; renderer derives
+        it from each segment's `reading`. Existing kana→romaji converter handles this.
+      - **Migration:** existing cached breakdowns are markdown — either invalidate on
+        first read or keep `SongBreakdownParser` around for one transitional version and
+        re-fetch lazily. Stub mode becomes JSON; ship a one-shot converter from an
+        existing markdown stub to seed the new format.
+      - **OPEN QUESTION (needs decision before implementation):** triggering rule when
+        the user taps "Improve segmentation" in Read view on a song note. Options:
+        (a) cheap path — segmentation-only call (~4k tokens), breakdown stays a
+        separate later call; (b) merged path — always fire the full ~8k-token call so
+        the breakdown is pre-cached. (b) is strictly cheaper if a breakdown will ever
+        be requested; (a) wastes nothing for segmentation-only users. Suggested
+        default: merged path if a breakdown exists or has ever been requested for the
+        same lyric hash; cheap path otherwise.
+      - Files touched: new `Kioku/LLM/LLMClient.swift` (or similar), `LLMCorrectionService.swift`,
+        `SongBreakdownService.swift`, `SongBreakdownPrompt.swift`, `SongBreakdownParser.swift`
+        (replaced by JSON decoder), `SongLine`/`SongWord` models (gain `segmentIDs` field),
+        breakdown UI (`SongLineCard.swift` — render romaji from referenced segments).
 
 ## Words & Dictionary
 
