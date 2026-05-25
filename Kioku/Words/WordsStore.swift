@@ -7,12 +7,19 @@ import SwiftUI
 final class WordsStore: ObservableObject {
     @Published private(set) var words: [SavedWord] = []
 
-    private let storageKey = "kioku.words.v1"
+    private let userDefaults: UserDefaults
+    private let storageKey: String
 
-    init() {
+    // Both the UserDefaults instance and the storage key are parameterized so tests can scope
+    // each case to a per-suite UserDefaults without leaking into .standard. Production callers
+    // get the defaults and keep using the v1 key.
+    init(userDefaults: UserDefaults = .standard, storageKey: String = "kioku.words.v1") {
+        self.userDefaults = userDefaults
+        self.storageKey = storageKey
         let key = storageKey
+        let defaults = userDefaults
         words = StartupTimer.measure("WordsStore.init") {
-            SavedWordStorage.loadSavedWords(storageKey: key)
+            SavedWordStorage.loadSavedWords(storageKey: key, userDefaults: defaults)
         }
     }
 
@@ -121,7 +128,7 @@ final class WordsStore: ObservableObject {
 
     // Reloads the published words array from persistent storage. Called by external writers (e.g. SegmentListView) to keep the store in sync after a direct persist.
     func reload() {
-        words = SavedWordStorage.loadSavedWords(storageKey: storageKey)
+        words = SavedWordStorage.loadSavedWords(storageKey: storageKey, userDefaults: userDefaults)
     }
 
     // Replaces the saved-word store with one canonical snapshot.
@@ -225,7 +232,7 @@ final class WordsStore: ObservableObject {
     // SavedWordStorage.loadSavedWords is gone, so this stays a single normalize + encode + write.
     private func persist(_ entries: [SavedWord]) {
         let normalized = SavedWordStorage.normalizedEntries(entries)
-        SavedWordStorage.writeNormalized(normalized, storageKey: storageKey)
+        SavedWordStorage.writeNormalized(normalized, storageKey: storageKey, userDefaults: userDefaults)
         words = normalized
     }
 }
