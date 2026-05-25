@@ -87,4 +87,25 @@ final class SegmentationKnownGoodTests: XCTestCase {
     func testTears() throws {
         try assertFullSpan(surface: "ティアーズ", expectedLemma: "ティアーズ")
     }
+
+    // 済まれないで — passive (-れる) + negative (-ない) + linking で on 済む.
+    // Pinned by the passiveNegativeTeForms rule set added 2026-05-25 (12 rules,
+    // one per v5 stem ending + v1 + vk + vs).
+    func testSumarenaide() throws {
+        try assertFullSpan(surface: "済まれないで", expectedLemma: "済む")
+    }
+
+    // かけましょ — 〜ましょ volitional of かける. Previously not recognized; the
+    // ましょ deinflection chain now resolves it.
+    func testKakemasho() throws {
+        try assertFullSpan(surface: "かけましょ", expectedLemma: "かける")
+    }
+
+    // ショーブ — katakana spelling of しょうぶ via long-vowel expansion (ョー →
+    // ょう). Follows the same convention as testTokimeku: lemma resolves to the
+    // hiragana headword, not the kanji 勝負 (which would require a kana→kanji
+    // promotion not currently done by this path).
+    func testShobu() throws {
+        try assertFullSpan(surface: "ショーブ", expectedLemma: "しょうぶ")
+    }
 }

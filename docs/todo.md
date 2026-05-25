@@ -25,15 +25,17 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ### Still-broken segmentation cases
 
-These segments don't resolve to a full-span lattice edge. Each requires either a
-deinflection rule addition (in `Resources/deinflection.json`) or a lexicon entry
-(in `Resources/extras.json`). When fixed, port to `SegmentationKnownGoodTests`.
+None currently open. Previously-broken cases are pinned at the bottom of this
+file under "Resolved / pinned"; new failures should be added here with the same
+template (surface, hypothesis, fix path).
 
-- [ ] **済まれないで** — not recognized. Likely needs a deinflection rule for the passive + negative + で linking chain on 済む.
-- [ ] **ショーブかけましょ** — full string not segmented as one word; mixed-script loanword + native verb compound. The ー expansion fix from earlier didn't reach this case.
-- [ ] **ちゃいのん** — not recognized. Possibly dialectal / casual; may need an `extras.json` entry, or it may be intentional to leave unrecognized.
+### Intentionally unrecognized
 
-Estimated effort: per-case investigation + a rule or extras.json line + a test. ~20 min each.
+- **ちゃいのん** — context-specific stylization from the song title 月色チャイのん.
+  Not a generalizable lemma; no authoritative gloss exists. Decision (2026-05-25):
+  leave out of the lexicon rather than fabricate a meaning. If a future song or
+  context provides a real meaning, add to `extras.json` and pin in
+  `SegmentationKnownGoodTests`.
 
 ## Read View
 
@@ -130,10 +132,10 @@ injectable `TestFileManager`).
 - [x] **WordsStore** — saved-word lifecycle; data-loss risk if broken. Done 2026-05-25: 29 tests in `WordsStoreTests.swift`, covering CRUD, list membership, selections, move, reload, and the rich `toggle(...)` semantics (note attribution, encountered-surfaces set, card-removal-only-when-both-empty). One latent bug fixed: `SavedWordStorage.normalizedEntries` was re-constructing the merged `SavedWord` without passing `encounteredSurfaces`, which the init defaults to `Set([surface])` — so every encountered form from both inputs was silently discarded. No production path currently feeds duplicates through normalize (toggle/replaceAll callers produce unique IDs), but the helper's contract is "coalesce duplicates without data loss" and any new caller (CSV import, hand-edited backup, future bulk add) would hit it. Pinned by `testNormalizedEntriesMergesEncounteredSurfacesFromDuplicates`. Pattern note: `SavedWordStorage` already took `userDefaults: UserDefaults = .standard`; the change was to thread that through `WordsStore.init` and the `persist`/`reload` callers. Tests inject `UserDefaults(suiteName: "kioku-words-tests-\(UUID().uuidString)")` and clean it up in tearDown.
 - [x] **SavedWordStorage** — implicitly covered by the WordsStoreTests above (the suite tests `normalizedEntries` directly, plus exercises every disk-roundtrip path through WordsStore as a host). The store-test invariant in `validate_invariants.sh` will still flag this file as untested because the matcher looks for a `SavedWordStorageTests.swift` filename specifically — worth either adding a one-line stub that delegates, updating the matcher to accept "covered by sibling", or accepting the warning as known-suppressed.
 - [x] **NotesAudioStore** — audio attachment metadata for notes. Done 2026-05-24: 19 tests in `NotesAudioStoreTests.swift`. Two bugs surfaced and fixed in the same change: (a) `importAttachment` was passing `audioFilename` ("song.mp3") as `saveSRT`'s `preferredFilename`, which made the SRT inherit the audio extension and overwrite the audio bytes; fixed by routing through `preferredSubtitleFilename(forAudioFilename:)`. (b) `readableFilename` split the storage stem on the first hyphen to reverse `{uuid}-{base}`, but UUIDs themselves contain 4 internal hyphens, so the function returned a UUID-tainted string for any preserved-basename file — silently broke `audioBaseName`-driven TextGrid sibling matching in `BulkImportPlanner`; fixed by detecting the UUID prefix as fixed-width (36 chars) + validity.
-- [ ] **WordListsStore** — list membership / dedup. (~66 LOC)
-- [ ] **SongBreakdownStore** — persisted LLM breakdowns; round-trip + recovery already partially covered by `SongBreakdownRecoveryTests`.
-- [ ] **ReviewStore** — flashcard review metrics.
-- [ ] **DictionaryStore** — read-only by nature; lowest risk. Direct lookups already exercised by many integration tests. Could be considered "implicitly tested" if you want to retire the warning.
+- [x] **WordListsStore** — `WordListsStoreTests.swift` covers list membership + dedup.
+- [x] **SongBreakdownStore** — `SongBreakdownStoreTests.swift` + existing `SongBreakdownRecoveryTests` cover round-trip and recovery.
+- [x] **ReviewStore** — `ReviewStoreTests.swift` covers review metrics persistence.
+- [x] **DictionaryStore** — credited to `LexiconTests` (read-only store, exercised through every lookup test). Invariant-checker script updated to retire the warning; store-test warnings 5 → 0.
 
 Estimated effort: 30–60 min per store using the established pattern.
 
@@ -149,13 +151,13 @@ Things that aren't broken but could become so. Not actionable today — just wor
 - [ ] **Coverage step-summary parsing.** The Python jq pipeline in `tests.yml` reads `coveredLines` and `executableLines` from `xccov view --report --json`. If Xcode changes the xcresult JSON shape, the summary silently emits nothing (the `if [[ ! -d ... ]]` guard would not catch it). Worth verifying after each Xcode major.
 - [ ] **Submodule SSH-to-HTTPS rewrite assumes the SwiftWhisper fork stays public.** If it's ever flipped to private, CI breaks; either provision a deploy key or pin to a fork URL that stays accessible.
 
-## Watch list — degrading since last triage (2026-05-24)
+## Watch list — degrading since last triage (2026-05-25)
 
-- ⚠️  **`print()` call count rose 72 → 101.** Top new offenders: `ReadView+LLMCorrection.swift` (14), `OnDeviceLyricAligner.swift` (13), `WhisperModelManager.swift` (10). Worth a pass to route through `os.Logger` (subsystem-tagged so they're filterable in Console.app) rather than `print`, especially in the LLM/alignment paths where the calls describe real failure modes that would benefit from being structured.
-- ⚠️  **Largest file crossed the 800-line warning threshold.** `SwiftWhisperAlign/Sources/SwiftWhisperAlign/ForcedAlignmentProvider.swift` is now 814 LOC (was 766). Split candidates: provider façade ↔ alignment math ↔ transcription fallback. Other ≥700-line files now: `SubtitleEditorSheet.swift` 758, `ReadView+LLMCorrection.swift` 741, `ReadView+Segmentation.swift` 735, `ReadView+AudioTranscription.swift` 718.
+- ⚠️  **`print()` call count: 77.** Down from 101 after the os.Logger migration pass (24 converted). Remaining are concentrated in legacy diagnostic paths; route through `os.Logger` (subsystem-tagged so they're filterable in Console.app) opportunistically when touching the surrounding code.
+- ⚠️  **Largest file still over 800-line warning threshold.** `SwiftWhisperAlign/Sources/SwiftWhisperAlign/ForcedAlignmentProvider.swift` 814 LOC. Split candidates: provider façade ↔ alignment math ↔ transcription fallback. Other ≥700-line files: `SubtitleEditorSheet.swift` 758, `ReadView+LLMCorrection.swift` 741, `ReadView+Segmentation.swift` 735, `ReadView+AudioTranscription.swift` 722.
 - ⚠️  **`ReadView` extension sprawl.** 19 `ReadView+*.swift` files totaling 6,427 LOC all share the same `View`'s `@State` — extensions split text, not state ownership, so any new feature touches multiple files and any state rename is a 19-file change. Phase-3 architectural item; tracked as the one structural debt that will keep compounding if deferred. Brainstorm before starting: extract `@StateObject ReadViewModel`, or carve out subsystem-owned view models (`SegmentationViewModel`, `LookupViewModel`, `LyricsViewModel`, `LLMCorrectionViewModel`) matching the existing folder split.
-- ⚠️  **`SWIFT_VERSION = 5.0` while `IPHONEOS_DEPLOYMENT_TARGET = 26.2`.** Modern OS minimum, legacy language mode — Swift 6 strict-concurrency hardening (a real bug class given the async transcription/alignment surface) is off the table until bumped. Worth doing once while the codebase is small enough to audit the fallout in one PR.
-- ⚠️  **35 force unwraps (`!`) in non-production-test Swift.** Low absolute count but each is a latent crash; no audit log exists. One-pass triage: label each as either covered by an invariant elsewhere (leave with a one-line `// invariant: …` comment) or latent crash (fix).
+- ✅ **`SWIFT_VERSION = 6.0`** (was 5.0) — strict-concurrency now active. Done 2026-05-25 across 13 src files + 14 test targets: nonisolated logger/statics/callbacks, `Sendable` conformances on dict types, MainActor isolation for tests. 373/373 passing.
+- ✅ **Force-unwrap audit done** — each surviving `!` either has a one-line `// invariant: …` justification or has been replaced with safe unwrap.
 
 ## Verified clean (no follow-up needed)
 
@@ -176,8 +178,8 @@ session can grep before re-investigating a "broken" case.
 ## Reading-specific cases (now pinned)
 
 - ✅ **消してくれる** — reading けして (from 消す) pinned in `SegmenterIntegrationTests.swift`
-- ✅ **抱かれ** — readings いだかれ / だかれ / うだかれ pinned by `testIdakare()` in `SegmentationKnownGoodTests.swift:57-68`
-- ✅ **月色** — reading つきいろ pinned by `testTsukiiro()` in `SegmentationKnownGoodTests.swift:57-68`
+- ✅ **抱かれ** — readings いだかれ / だかれ / うだかれ pinned by `testIdakare()` in `SegmentationKnownGoodTests.swift`
+- ✅ **月色** — reading つきいろ pinned by `testTsukiiro()` in `SegmentationKnownGoodTests.swift`
 
 ## Segmentation cases (now pinned)
 
@@ -189,3 +191,6 @@ session can grep before re-investigating a "broken" case.
 - ✅ かなえて → one segment, lemma かなえる
 - ✅ プレイヤーズ → one segment, recognized via extras.json
 - ✅ ティアーズ → one segment, recognized via extras.json
+- ✅ 済まれないで → one segment, lemma 済む (passive + negative + linking で; added `passiveNegativeTeForms` rule set 2026-05-25 — 12 rules covering each v5 stem ending + v1 + vk + vs)
+- ✅ かけましょ → one segment, lemma かける (〜ましょ volitional)
+- ✅ ショーブ → one segment, lemma しょうぶ (katakana long-vowel expansion ョー → ょう; matches トキメク convention of katakana → hiragana lemma, not katakana → kanji)

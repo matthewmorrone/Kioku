@@ -6678,5 +6678,79 @@
         "vk"
       ]
     }
+  ],
+  "passiveNegativeTeForms": [
+    {
+      "kanaIn": "われないで",
+      "kanaOut": "う",
+      "rulesIn": ["v5"],
+      "rulesOut": ["v5"]
+    },
+    {
+      "kanaIn": "かれないで",
+      "kanaOut": "く",
+      "rulesIn": ["v5"],
+      "rulesOut": ["v5"]
+    },
+    {
+      "kanaIn": "がれないで",
+      "kanaOut": "ぐ",
+      "rulesIn": ["v5"],
+      "rulesOut": ["v5"]
+    },
+    {
+      "kanaIn": "されないで",
+      "kanaOut": "す",
+      "rulesIn": ["v5"],
+      "rulesOut": ["v5"]
+    },
+    {
+      "kanaIn": "たれないで",
+      "kanaOut": "つ",
+      "rulesIn": ["v5"],
+      "rulesOut": ["v5"]
+    },
+    {
+      "kanaIn": "なれないで",
+      "kanaOut": "ぬ",
+      "rulesIn": ["v5"],
+      "rulesOut": ["v5"]
+    },
+    {
+      "kanaIn": "ばれないで",
+      "kanaOut": "ぶ",
+      "rulesIn": ["v5"],
+      "rulesOut": ["v5"]
+    },
+    {
+      "kanaIn": "まれないで",
+      "kanaOut": "む",
+      "rulesIn": ["v5"],
+      "rulesOut": ["v5"]
+    },
+    {
+      "kanaIn": "られないで",
+      "kanaOut": "る",
+      "rulesIn": ["v5"],
+      "rulesOut": ["v5"]
+    },
+    {
+      "kanaIn": "られないで",
+      "kanaOut": "る",
+      "rulesIn": ["v1"],
+      "rulesOut": ["v1"]
+    },
+    {
+      "kanaIn": "こられないで",
+      "kanaOut": "くる",
+      "rulesIn": ["vk"],
+      "rulesOut": ["vk"]
+    },
+    {
+      "kanaIn": "されないで",
+      "kanaOut": "する",
+      "rulesIn": ["vs"],
+      "rulesOut": ["vs"]
+    }
   ]
 }
