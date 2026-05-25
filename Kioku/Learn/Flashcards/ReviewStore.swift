@@ -11,12 +11,17 @@ final class ReviewStore: ObservableObject {
     @Published private(set) var lifetimeCorrect: Int = 0
     @Published private(set) var lifetimeAgain: Int = 0
 
+    private let userDefaults: UserDefaults
     private let statsKey = "kioku.review.stats.v1"
     private let wrongKey = "kioku.review.wrong.v1"
     private let lifetimeCorrectKey = "kioku.review.lifetimeCorrect.v1"
     private let lifetimeAgainKey = "kioku.review.lifetimeAgain.v1"
 
-    init() {
+    // UserDefaults is parameterized so tests scope each case to a per-suite store and
+    // never collide with .standard. Production callers get the default and keep using
+    // the v1 keys above.
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         stats = [:]
         markedWrong = []
         lifetimeCorrect = 0
@@ -101,7 +106,7 @@ final class ReviewStore: ObservableObject {
 
     // Loads all persisted review state from UserDefaults on init.
     private func load() {
-        if let data = UserDefaults.standard.data(forKey: statsKey),
+        if let data = userDefaults.data(forKey: statsKey),
            let decoded = try? JSONDecoder().decode([String: ReviewWordStats].self, from: data) {
             var result: [Int64: ReviewWordStats] = [:]
             for (k, v) in decoded {
@@ -110,12 +115,12 @@ final class ReviewStore: ObservableObject {
             stats = result
         }
 
-        if let strings = UserDefaults.standard.array(forKey: wrongKey) as? [String] {
+        if let strings = userDefaults.array(forKey: wrongKey) as? [String] {
             markedWrong = Set(strings.compactMap { Int64($0) })
         }
 
-        lifetimeCorrect = UserDefaults.standard.integer(forKey: lifetimeCorrectKey)
-        lifetimeAgain = UserDefaults.standard.integer(forKey: lifetimeAgainKey)
+        lifetimeCorrect = userDefaults.integer(forKey: lifetimeCorrectKey)
+        lifetimeAgain = userDefaults.integer(forKey: lifetimeAgainKey)
     }
 
     // Encodes the stats dictionary with String keys because JSON requires string keys.
@@ -123,17 +128,17 @@ final class ReviewStore: ObservableObject {
         var encodable: [String: ReviewWordStats] = [:]
         for (id, st) in stats { encodable[String(id)] = st }
         guard let data = try? JSONEncoder().encode(encodable) else { return }
-        UserDefaults.standard.set(data, forKey: statsKey)
+        userDefaults.set(data, forKey: statsKey)
     }
 
     // Persists the wrong set as an array of id strings.
     private func persistWrong() {
-        UserDefaults.standard.set(markedWrong.map { String($0) }, forKey: wrongKey)
+        userDefaults.set(markedWrong.map { String($0) }, forKey: wrongKey)
     }
 
     // Persists lifetime counters as plain integers for cheap reads on subsequent launches.
     private func persistLifetime() {
-        UserDefaults.standard.set(lifetimeCorrect, forKey: lifetimeCorrectKey)
-        UserDefaults.standard.set(lifetimeAgain, forKey: lifetimeAgainKey)
+        userDefaults.set(lifetimeCorrect, forKey: lifetimeCorrectKey)
+        userDefaults.set(lifetimeAgain, forKey: lifetimeAgainKey)
     }
 }
