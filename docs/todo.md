@@ -159,7 +159,7 @@ template (surface, hypothesis, fix path).
 
 - [x] Adjust ruby typography settings (spacing, padding) — `SettingsView.swift:17` `furiganaGapKey` + sliders for `furiganaGap`, `kerning`, `lineSpacing`
 - [ ] Default to Japanese IME where appropriate (no `TextField` keyboard-type hints found)
-- [ ] Clipboard behavior settings (auto-lookup is on; no user toggle)
+- [x] Clipboard behavior settings — `ClipboardSettings.swift` defines `autoDetectKey` + `defaultAutoDetect = true`; new "Clipboard" section in `SettingsView` toggles it. `ClipboardLookupCoordinator.checkClipboard()` short-circuits before any pasteboard read when off, so iOS's "Pasted from" notification doesn't fire for users who turn it off. Coordinator's `init(defaults:)` takes an injected `UserDefaults` so the gate is testable; pinned by 4 tests in `ClipboardLookupCoordinatorTests.swift`.
 
 ## Ship Readiness
 
