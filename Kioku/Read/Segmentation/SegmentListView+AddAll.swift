@@ -12,23 +12,26 @@ extension SegmentListView {
             return
         }
 
-        // Dedupe by normalized surface so the dictionary is only consulted once per distinct word.
+        // Dedupe by row identity (lemma when resolved, surface fallback) so the
+        // dictionary is only consulted once per distinct word and 食べた / 食べる /
+        // 食べない collapse to one card of 食べる.
         var seenSurfaces = Set<String>()
         var orderedSurfaces: [String] = []
+        // Per-row identity → the raw edge surface that produced it. Add All
+        // records every encountered conjugation on the resulting card so the
+        // user can later see "I tapped both 食べた and 食べない for this entry."
+        var encounteredByIdentity: [String: Set<String>] = [:]
         var unresolvedPairs: [(surface: String, lemma: String)] = []
         orderedSurfaces.reserveCapacity(rows.count)
 
         for row in rows {
-            // Add All persists each visible row using its identity string —
-            // lemma in lemma mode, raw surface otherwise. Matches what the
-            // user sees: lemma list saved as lemma entries, surface list saved
-            // as conjugated entries. The `lemma` field stays the dictionary
-            // form regardless so the metadata is correct in both modes.
             let normalizedSurface = normalizedSurfaceForFiltering(resolvedRowSurface(for: row.edge))
-            guard normalizedSurface.isEmpty == false,
-                  seenSurfaces.contains(normalizedSurface) == false else {
-                continue
+            guard normalizedSurface.isEmpty == false else { continue }
+            let rawEdgeSurface = normalizedSurfaceForFiltering(row.edge.surface)
+            if rawEdgeSurface.isEmpty == false {
+                encounteredByIdentity[normalizedSurface, default: Set()].insert(rawEdgeSurface)
             }
+            guard seenSurfaces.contains(normalizedSurface) == false else { continue }
             seenSurfaces.insert(normalizedSurface)
             orderedSurfaces.append(normalizedSurface)
             if canonicalEntryIDBySurface[normalizedSurface] == nil {
@@ -103,7 +106,11 @@ extension SegmentListView {
             // Distinct "Saving…" indicator so the user knows persistence is running rather than
             // wondering why the previous "Adding N/N…" message has stalled.
             addAllFeedbackMessage = "Saving…"
-            let addedCount = commitAddAllVisibleWords(orderedSurfaces: orderedSurfaces, lookup: lookup)
+            let addedCount = commitAddAllVisibleWords(
+                orderedSurfaces: orderedSurfaces,
+                lookup: lookup,
+                encounteredByIdentity: encounteredByIdentity
+            )
             if Task.isCancelled { return }
 
             // Final toast: report the real count from the commit step (which only counts
