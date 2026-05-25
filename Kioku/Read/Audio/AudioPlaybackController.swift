@@ -32,6 +32,10 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // cannot delay the auto-pause. Cancelled and re-created by each `playRange` call;
     // cancelled by any explicit seek/stop so it never lingers into unrelated playback.
     private var stopWorkItem: DispatchWorkItem? = nil
+    // Logged once per playback start so the karaoke debug log shows the I/O latency we
+    // subtracted from AVAudioPlayer.currentTime. Reset to false on pause/stop so the
+    // next play() re-reads it (route may have changed mid-pause, e.g., AirPods reconnect).
+    private var didLogOutputLatency = false
 
     override init() {
         super.init()
@@ -113,6 +117,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         stopTimer()
         cancelStopWorkItem()
         audioLevel = 0
+        didLogOutputLatency = false
         syncTimeAndCue()
     }
 
@@ -126,6 +131,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         activeCueIndex = nil
         audioLevel = 0
         stopAtMs = nil
+        didLogOutputLatency = false
     }
 
     // Plays a contiguous millisecond range, automatically pausing at `endMs`. Used by the
@@ -266,9 +272,24 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // Reads the current player position and resolves which cue is active at that time.
     // Called from both seek and the polling timer — never checks end-of-playback so that
     // seeking during playback cannot accidentally kill the timer.
+    //
+    // I/O latency correction: AVAudioPlayer.currentTime reports the decode position —
+    // the moment a sample is handed to the system mixer. The user hears samples that
+    // are already in the output buffer (≈10-50ms wired, ≈100-200ms AirPods/Bluetooth).
+    // Without subtracting AVAudioSession.outputLatency, the karaoke band sits on the
+    // syllable about to be sung, not the one being heard, perceived as a consistent
+    // lead especially on wireless routes. Subtracting once here keeps the band aligned
+    // with the audible audio across all consumers (cue index resolution AND the per-
+    // word checkpoint lookup that drives the highlight band) — they all read
+    // currentTimeMs, so the correction lives at the single source.
     private func syncTimeAndCue() {
         guard let player else { return }
-        let ms = Int(player.currentTime * 1000)
+        let outputLatencySec = AVAudioSession.sharedInstance().outputLatency
+        if didLogOutputLatency == false {
+            didLogOutputLatency = true
+            KaraokeDebugLog.log("controller: outputLatency=\(Int(outputLatencySec * 1000))ms (subtracted from player.currentTime for karaoke alignment)")
+        }
+        let ms = max(0, Int(player.currentTime * 1000 - outputLatencySec * 1000))
         if currentTimeMs != ms {
             currentTimeMs = ms
         }
