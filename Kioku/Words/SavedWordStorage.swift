@@ -52,6 +52,11 @@ enum SavedWordStorage {
                 // Preserve existing sense / gloss selections; fall back to incoming when existing is empty.
                 let mergedSenseIDs = existing.selectedSenseIDs.isEmpty ? entry.selectedSenseIDs : existing.selectedSenseIDs
                 let mergedGlosses = existing.selectedGlosses.isEmpty ? entry.selectedGlosses : existing.selectedGlosses
+                // Union the encountered surfaces from both duplicates — the SavedWord init defaults
+                // encounteredSurfaces=nil to Set([surface]), so omitting this arg silently drops every
+                // encountered form from both inputs and reseeds with only the preferred surface.
+                // Pinned by WordsStoreTests.testNormalizedEntriesMergesEncounteredSurfacesFromDuplicates.
+                let mergedEncountered = existing.encounteredSurfaces.union(entry.encounteredSurfaces)
                 existing = SavedWord(
                     canonicalEntryID: existing.canonicalEntryID,
                     surface: preferredSurface,
@@ -60,7 +65,8 @@ enum SavedWordStorage {
                     personalNote: mergedNote,
                     savedAt: existing.savedAt,
                     selectedSenseIDs: mergedSenseIDs,
-                    selectedGlosses: mergedGlosses
+                    selectedGlosses: mergedGlosses,
+                    encounteredSurfaces: mergedEncountered
                 )
                 mergedByEntryID[entry.canonicalEntryID] = existing
                 continue
