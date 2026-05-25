@@ -343,6 +343,15 @@ struct SettingsView: View {
                 #endif
 
                 Section {
+                    // Pushes the About / Credits screen — dataset attributions and library acks.
+                    NavigationLink {
+                        AboutView()
+                    } label: {
+                        Label("About", systemImage: "info.circle")
+                    }
+                }
+
+                Section {
                     // Exports the full app state to one JSON backup file.
                     Button {
                         beginAppExport()
