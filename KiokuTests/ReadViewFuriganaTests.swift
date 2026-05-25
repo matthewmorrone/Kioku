@@ -3,6 +3,7 @@ import XCTest
 @testable import Kioku
 
 // Verifies furigana alignment behavior for mixed kanji and kana read-mode segments.
+@MainActor
 final class ReadViewFuriganaTests: XCTestCase {
 
     // Builds a lightweight read view backed by the shared real segmenter so furigana helpers use production logic.

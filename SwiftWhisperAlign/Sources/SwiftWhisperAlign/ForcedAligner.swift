@@ -19,9 +19,9 @@ public struct ForcedAligner {
     // onSegment: called each time a segment completes with partial alignment results.
     public func align(
         input: AlignmentInput,
-        cancellationCheck: (() -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil,
-        onSegment: (([AlignedLine]) -> Void)? = nil
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+        onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
     ) async throws -> AlignmentResult {
         let provider = ForcedAlignmentProvider(modelURL: modelURL)
         return try await provider.align(
@@ -36,9 +36,9 @@ public struct ForcedAligner {
     public func alignAndWrite(
         input: AlignmentInput,
         outputURL: URL,
-        cancellationCheck: (() -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil,
-        onSegment: (([AlignedLine]) -> Void)? = nil
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+        onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
     ) async throws {
         let result = try await align(
             input: input,
@@ -52,9 +52,9 @@ public struct ForcedAligner {
     // Aligns and returns the SRT text as a string.
     public func alignToSRT(
         input: AlignmentInput,
-        cancellationCheck: (() -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil,
-        onSegment: (([AlignedLine]) -> Void)? = nil
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+        onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
     ) async throws -> String {
         let result = try await align(
             input: input,

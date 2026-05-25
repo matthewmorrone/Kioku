@@ -1,6 +1,7 @@
 import XCTest
 @testable import Kioku
 
+@MainActor
 final class RomajiToKanaTests: XCTestCase {
 
     private func assertConverts(_ input: String,

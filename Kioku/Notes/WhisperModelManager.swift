@@ -4,8 +4,11 @@ import OSLog
 
 // Subsystem-tagged so Console.app filtering ("subsystem:matthewmorrone.Kioku
 // category:Whisper") shows only model-manager output without LLM, alignment, or
-// playback noise.
-private let logger = Logger(subsystem: "matthewmorrone.Kioku", category: "Whisper")
+// playback noise. `nonisolated` because under Swift 6 file-scope lets in a file
+// that imports a UI framework (Observation here) infer @MainActor, but the
+// URLSessionDownloadDelegate callbacks below run on URLSession's delegate
+// queue and can't see a main-isolated reference. Logger is Sendable.
+nonisolated private let logger = Logger(subsystem: "matthewmorrone.Kioku", category: "Whisper")
 
 // Represents the resolved URL for a Whisper model, regardless of its origin.
 enum WhisperModelSource: Equatable {

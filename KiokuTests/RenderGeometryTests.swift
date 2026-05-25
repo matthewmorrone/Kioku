@@ -8,6 +8,7 @@ import UIKit
 // mode, CoreText) consume RenderGeometry so character positions match across mode toggles.
 // Drift between the two paths used to be ~6pt per line at default settings; if anyone
 // reintroduces it, these tests fail loudly with the actual delta.
+@MainActor
 final class RenderGeometryTests: XCTestCase {
 
     // Margins that are intentionally fixed (not scaled by typography). Mirrors the legacy

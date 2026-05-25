@@ -150,7 +150,7 @@ extension SegmentListView {
     // re-segmenting storedSurfaces we've already resolved this session.
     static func computeSavedWordState(
         entries: [SavedWord],
-        lemmaResolver: (String) -> String?,
+        lemmaResolver: @Sendable (String) -> String?,
         lemmaCache: [String: String]
     ) -> (ComputedSavedWordState, [String: String]) {
         var savedWordEntryIDs = Set<Int64>()

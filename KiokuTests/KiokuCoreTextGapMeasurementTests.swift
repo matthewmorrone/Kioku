@@ -20,6 +20,7 @@ import CoreText
 //
 // Numbers print on failure (and via XCTContext when wanted) so we can compare against
 // TK2 hand-measurements if we ever capture them.
+@MainActor
 final class KiokuCoreTextGapMeasurementTests: XCTestCase {
 
     private let logURL = URL(fileURLWithPath: "/tmp/kioku-gap-measurements.log")

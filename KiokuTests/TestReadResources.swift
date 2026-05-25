@@ -15,7 +15,11 @@ private enum TestReadResourcesError: Error, LocalizedError {
 
 // Reuses one real dictionary-backed segmenter pipeline across unit tests to avoid repeated trie allocation.
 final class TestReadResources {
-    private static var cachedResources: TestReadResources?
+    // Process-wide cache for the dictionary-backed segmenter pipeline. nonisolated(unsafe)
+    // because Swift 6 strict checking flags any mutable global, but the cache is populated
+    // by the first call and read by all subsequent callers — XCTest serializes the test
+    // cases within this target so concurrent access doesn't occur in practice.
+    nonisolated(unsafe) private static var cachedResources: TestReadResources?
 
     let dictionaryStore: DictionaryStore
     let trie: DictionaryTrie

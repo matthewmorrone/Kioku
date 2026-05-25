@@ -2,6 +2,7 @@ import CoreGraphics
 import XCTest
 @testable import Kioku
 
+@MainActor
 final class ReadViewSheetVisibilityScrollTests: XCTestCase {
     func testAdjustmentReturnsNilWhenSegmentAlreadyInsideVisibleBand() {
         let context = ReadViewSheetVisibilityScrollContext(

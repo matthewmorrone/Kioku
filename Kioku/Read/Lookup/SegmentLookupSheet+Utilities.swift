@@ -8,7 +8,7 @@ extension SegmentLookupSheet {
     // TAP instrumentation. Stale results from a superseded tap are dropped via the
     // generation counter, so the sheet never flashes back to old content after the user
     // already moved to a new word.
-    func refreshSheetSupplementalDataAsync(completion: @escaping () -> Void) {
+    func refreshSheetSupplementalDataAsync(completion: @escaping @Sendable () -> Void) {
         refreshGeneration += 1
         let generation = refreshGeneration
         let readingsProvider = sheetReadingsProvider

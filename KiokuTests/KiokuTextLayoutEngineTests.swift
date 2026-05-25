@@ -6,6 +6,7 @@ import CoreText
 // Guards the geometry contract that FuriganaTextRenderer (and the experimental CoreText
 // path) rely on. Every public method here is a load-bearing primitive — if any of these
 // tests fail, ruby placement, segment hit-testing, or scroll-to-cue will regress.
+@MainActor
 final class KiokuTextLayoutEngineTests: XCTestCase {
 
     private let baseFont = UIFont.systemFont(ofSize: 18)

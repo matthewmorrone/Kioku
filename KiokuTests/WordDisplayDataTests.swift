@@ -1,6 +1,7 @@
 import XCTest
 @testable import Kioku
 
+@MainActor
 final class WordDisplayDataTests: XCTestCase {
     var store: DictionaryStore!
 

@@ -8,6 +8,7 @@ import UIKit
 // CTRubyAnnotation `.center` aligns ruby midpoint over base midpoint). A regression
 // in either would make the overlay lie about glyph positions, which defeats its
 // entire purpose as a debugging aid.
+@MainActor
 final class KiokuDebugOverlayGeometryTests: XCTestCase {
 
     private let baseFont = UIFont.systemFont(ofSize: 18)

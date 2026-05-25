@@ -3,6 +3,7 @@ import XCTest
 @testable import Kioku
 
 // Verifies UI-facing lexical surface methods against real dictionary and deinflection resources.
+@MainActor
 final class LexiconTests: XCTestCase {
 
     // Returns a shared lexical surface so resource loading and trie setup happen once for this suite.
@@ -411,7 +412,11 @@ final class LexiconTests: XCTestCase {
 
 // Caches expensive lexical test resources across all LexiconTests cases.
 private enum SharedLexiconSurface {
-    private static var cached: Lexicon?
+    // Process-wide cache. nonisolated(unsafe) because Swift 6 strict checking flags
+    // any mutable global, but XCTest runs each test case serially within the test
+    // class and the cache is only ever populated by the first call before any
+    // concurrent access can occur.
+    nonisolated(unsafe) private static var cached: Lexicon?
 
     // Returns cached lexical resources so full dictionary loading runs at most once in this file.
     static func resources() throws -> Lexicon {

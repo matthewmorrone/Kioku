@@ -11,6 +11,7 @@ import XCTest
 // New entries land here as cases move from "Still-broken" to the
 // "Resolved / pinned" section of docs/todo.md — keeping that doc short and
 // routing the long-tail verification through the regular test suite.
+@MainActor
 final class SegmentationKnownGoodTests: XCTestCase {
 
     // Asserts the surface appears as a full-span edge in the lattice AND

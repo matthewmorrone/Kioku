@@ -3,6 +3,7 @@ import XCTest
 
 // Verifies the short-form TextGrid parser against synthetic fixtures and the structural shape
 // expected from typical forced-aligner output (silence intervals + non-empty intervals + multiple tiers).
+@MainActor
 final class TextGridParserTests: XCTestCase {
 
     private let header = """

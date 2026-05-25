@@ -28,9 +28,9 @@ public final class ForcedAlignmentProvider {
     public func align(
         input: AlignmentInput,
         gapThreshold: Double = 1.5,
-        cancellationCheck: (() -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil,
-        onSegment: (([AlignedLine]) -> Void)? = nil
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+        onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
     ) async throws -> AlignmentResult {
         guard input.lines.isEmpty == false else {
             throw NSError(
@@ -241,8 +241,8 @@ public final class ForcedAlignmentProvider {
         frames: [Float],
         fullTokens: [whisper_token],
         nonSpeech: NonSpeechDetector,
-        cancellationCheck: (() -> Bool)?,
-        onProgress: ((Double) -> Void)?
+        cancellationCheck: (@Sendable () -> Bool)?,
+        onProgress: (@Sendable (Double) -> Void)?
     ) async throws -> [Double] {
         let sampleRate = 16_000
         let windowSamples = 30 * sampleRate

@@ -6,6 +6,7 @@ import XCTest
 // output shape: header, italic romaji, dash-bullet word entries, **Gist:** marker, optional
 // grammar note, and `---` section separators. Covers chorus references (sameAsLine and
 // parallelTo) plus vocalization lines that lack romaji/bullets/gist.
+@MainActor
 final class SongBreakdownParserTests: XCTestCase {
 
     private func parser() -> SongBreakdownParser {

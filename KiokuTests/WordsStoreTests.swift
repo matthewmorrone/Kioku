@@ -228,6 +228,9 @@ final class WordsStoreTests: XCTestCase {
         // reader has stale in-memory state until reload.
         XCTAssertTrue(reader.words.isEmpty)
 
+        // Wait for the writer's off-main persist to land on disk before the reader
+        // tries to observe it — without this, reload races past an in-flight write.
+        WordsStore.flushPendingWritesForTesting()
         reader.reload()
         XCTAssertEqual(reader.words.map(\.canonicalEntryID), [1])
     }

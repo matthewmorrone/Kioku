@@ -1,5 +1,9 @@
 import SwiftUI
-import Translation
+// @preconcurrency: TranslationSession isn't yet annotated Sendable in the iOS 18+
+// Translation framework, but Apple's intended usage is exactly this — pass a session
+// produced by .translationTask into an async helper. Opting this import out of strict
+// concurrency checking until the framework's annotations catch up.
+@preconcurrency import Translation
 
 // Persistent FuriganaTextRenderer overlay for the active lyrics cue.
 // Lives in LyricsView above the scroll list — never torn down between cue transitions

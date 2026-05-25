@@ -225,8 +225,8 @@ enum SubtitleReconciliation {
         currentCues: [SubtitleCue],
         noteLines: [String],
         modelURL: URL,
-        cancellationCheck: (() -> Bool)? = nil,
-        onProgress: ((String) -> Void)? = nil
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onProgress: (@Sendable (String) -> Void)? = nil
     ) async throws -> [SubtitleCue] {
         let musicCues = currentCues.filter { SubtitleParser.isNonSpeechCue($0.text) }
         let speechCues = currentCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
