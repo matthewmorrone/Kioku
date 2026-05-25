@@ -112,7 +112,7 @@ template (surface, hypothesis, fix path).
 - [ ] Split Settings into Basic vs Advanced (move advanced controls behind secondary screen)
 - [ ] Accessibility pass (62× `.accessibilityLabel` present; missing Dynamic Type / `scaledMetric` sizing and contrast audit)
 - [ ] App Store packaging artifacts and release QA checklist
-- [ ] Credits/About screen with dataset attributions (JMdict, Tatoeba, IPADic, fastText)
+- [x] Credits/About screen with dataset attributions — `Kioku/Settings/AboutView.swift` pushed from a new "About" row in `SettingsView`. Renders version + 8 dataset entries (JMdict, KANJIDIC2, Tatoeba, JPDB Frequency, wordfreq, UniDic pitch accent, RADKFILE2/KRADFILE2, Tegaki-Zinnia) and 9 library entries (SwiftWhisper, USearch, SwiftLCS, swift-subtitle-kit, SwiftSubtitles, CodableCSV, swift-audio-marker, TextFormation, zinnia-swift), each with license + source URL. Data lives in `Attributions.swift` (separate from view for testability); 5 tests in `AttributionsTests.swift` regression-guard against accidentally dropping an entry.
 
 ---
 

@@ -561,137 +561,43 @@ struct SubtitleEditorSheet: View {
         return "\(String(format: "%g", seconds))s"
     }
 
-    // Returns the set of cue indices whose SRT blocks overlap the current editor selection.
-    // When there's no selection (cursor only), returns all indices.
+    // Thin wrappers over SubtitleEditorTimingTools — the actual logic lives there as
+    // pure functions over [SubtitleCue], so the view file stays manageable and the
+    // timing tools become testable without standing up a SwiftUI host.
+
     private func selectedCueIndices() -> Set<Int> {
-        let cues = liveCues
-        guard editorSelection.length > 0 else {
-            return Set(cues.indices)
-        }
-
-        // Build the SRT and find each cue block's range in the text.
-        var selected = Set<Int>()
-        let formatted = SubtitleParser.formatSRT(from: cues)
-        let blocks = formatted.components(separatedBy: "\n\n")
-        var offset = 0
-        for (i, block) in blocks.enumerated() {
-            let blockRange = NSRange(location: offset, length: block.utf16.count)
-            if NSIntersectionRange(blockRange, editorSelection).length > 0 {
-                selected.insert(i)
-            }
-            // +2 for the "\n\n" separator.
-            offset += block.utf16.count + (i < blocks.count - 1 ? 2 : 0)
-        }
-        return selected
+        SubtitleEditorTimingTools.selectedCueIndices(cues: liveCues, selection: editorSelection)
     }
 
-    // Shifts timestamps for cues within the editor selection by the given offset.
-    // When nothing is selected (cursor only), shifts all cues.
+    // Applies a millisecond shift to the selected cues (or all cues when nothing
+    // is explicitly selected) and re-serializes the SRT text from the result.
     private func shiftTimes(by offsetSeconds: Double) {
-        var cues = liveCues
+        let cues = liveCues
         guard cues.isEmpty == false else { return }
-        let offsetMs = Int(offsetSeconds * 1000)
-        let affected = selectedCueIndices()
-        cues = cues.enumerated().map { i, cue in
-            guard affected.contains(i) else { return cue }
-            return SubtitleCue(
-                index: cue.index,
-                startMs: max(0, cue.startMs + offsetMs),
-                endMs: max(0, cue.endMs + offsetMs),
-                text: cue.text
-            )
-        }
-        srtText = SubtitleParser.formatSRT(from: cues)
+        let shifted = SubtitleEditorTimingTools.shiftTimes(
+            cues: cues,
+            by: Int(offsetSeconds * 1000),
+            affectedIndices: selectedCueIndices()
+        )
+        srtText = SubtitleParser.formatSRT(from: shifted)
     }
 
-    // Normalizes timing: extends each cue's end to meet the next cue's start (filling small gaps),
-    // and inserts ♪ cues for instrumental gaps longer than the threshold.
+    // Snaps overlapping or out-of-order cue boundaries so every cue is a valid,
+    // non-overlapping interval — reserialized to the editor's SRT text buffer.
     private func normalizeTiming() {
         let cues = liveCues
         guard cues.isEmpty == false else { return }
-        let gapThreshold = 10_000 // ms — gaps longer than this get a ♪ cue
-
-        var normalized: [SubtitleCue] = []
-
-        // Insert ♪ before first cue if the leading gap is large.
-        if let first = cues.first, first.startMs > gapThreshold {
-            normalized.append(SubtitleCue(index: 0, startMs: 0, endMs: first.startMs, text: "♪"))
-        }
-
-        for (i, cue) in cues.enumerated() {
-            var adjusted = cue
-
-            // Extend first cue backward to 0 if the leading gap is small (no ♪ inserted).
-            if i == 0 && cue.startMs > 0 && cue.startMs <= gapThreshold {
-                adjusted = SubtitleCue(
-                    index: adjusted.index,
-                    startMs: 0,
-                    endMs: adjusted.endMs,
-                    text: adjusted.text
-                )
-            }
-            // Small gap before this cue — pull its start back to meet the previous cue's end.
-            if let prev = normalized.last, SubtitleParser.isNonSpeechCue(prev.text) == false {
-                let gap = adjusted.startMs - prev.endMs
-                if gap > 0 && gap <= gapThreshold {
-                    adjusted = SubtitleCue(
-                        index: adjusted.index,
-                        startMs: prev.endMs,
-                        endMs: adjusted.endMs,
-                        text: adjusted.text
-                    )
-                }
-            }
-            normalized.append(adjusted)
-
-            // Insert ♪ cue for large gaps.
-            if i + 1 < cues.count {
-                let gapStart = adjusted.endMs
-                let gapEnd = cues[i + 1].startMs
-                if gapEnd - gapStart > gapThreshold {
-                    normalized.append(SubtitleCue(
-                        index: 0,
-                        startMs: gapStart,
-                        endMs: gapEnd,
-                        text: "♪"
-                    ))
-                }
-            }
-        }
-
-        // Re-index sequentially.
-        for i in normalized.indices {
-            normalized[i] = SubtitleCue(
-                index: i + 1,
-                startMs: normalized[i].startMs,
-                endMs: normalized[i].endMs,
-                text: normalized[i].text
-            )
-        }
-
-        srtText = SubtitleParser.formatSRT(from: normalized)
+        srtText = SubtitleParser.formatSRT(from: SubtitleEditorTimingTools.normalizeTiming(cues: cues))
     }
 
-    // Replaces each mismatched cue's text with the corresponding note text, preserving timestamps.
+    // Re-derives each cue's display text from the underlying note's highlight
+    // ranges so editor edits to spelling/punctuation flow back to the SRT.
     private func normalizeCueText() {
-        var cues = liveCues
-        let ranges = liveHighlightRanges
-        for index in cues.indices {
-            guard SubtitleParser.isNonSpeechCue(cues[index].text) == false else { continue }
-            guard index < ranges.count,
-                  let range = ranges[index],
-                  let swiftRange = Range(range, in: noteText) else { continue }
-            let noteLineText = String(noteText[swiftRange])
-            if noteLineText != cues[index].text {
-                cues[index] = SubtitleCue(
-                    index: cues[index].index,
-                    startMs: cues[index].startMs,
-                    endMs: cues[index].endMs,
-                    text: noteLineText
-                )
-            }
-        }
-        srtText = SubtitleParser.formatSRT(from: cues)
+        srtText = SubtitleParser.formatSRT(from: SubtitleEditorTimingTools.normalizeCueText(
+            cues: liveCues,
+            highlightRanges: liveHighlightRanges,
+            noteText: noteText
+        ))
     }
 
     // Binds the parse-error alert to whether there is currently a failure message.
