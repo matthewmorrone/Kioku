@@ -1,5 +1,11 @@
 import Foundation
 import Observation
+import OSLog
+
+// Subsystem-tagged so Console.app filtering ("subsystem:matthewmorrone.Kioku
+// category:Whisper") shows only model-manager output without LLM, alignment, or
+// playback noise.
+private let logger = Logger(subsystem: "matthewmorrone.Kioku", category: "Whisper")
 
 // Represents the resolved URL for a Whisper model, regardless of its origin.
 enum WhisperModelSource: Equatable {
@@ -86,7 +92,7 @@ final class WhisperModelManager {
     func download(_ model: WhisperDownloadableModel) async {
         let filename = model.filename
         guard downloadProgress[filename] == nil else {
-            print("[Whisper] download(\(filename)): already in flight, skipping")
+            logger.debug("download(\(filename)): already in flight, skipping")
             return
         }
 
@@ -100,7 +106,7 @@ final class WhisperModelManager {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let destination = dir.appendingPathComponent(filename)
 
-            print("[Whisper] download(\(filename)): starting from \(model.remoteURL)")
+            logger.info("download(\(filename)): starting from \(model.remoteURL)")
 
             let delegate = WhisperDownloadProgressDelegate { [weak self] progress in
                 guard let self else { return }
@@ -110,7 +116,7 @@ final class WhisperModelManager {
             let (tempURL, response) = try await URLSession.shared.download(from: model.remoteURL, delegate: delegate)
 
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            print("[Whisper] download(\(filename)): HTTP \(status), temp file at \(tempURL.path)")
+            logger.info("download(\(filename)): HTTP \(status), temp file at \(tempURL.path)")
 
             guard status == 200 else {
                 throw WhisperDownloadError.httpError(status)
@@ -120,14 +126,14 @@ final class WhisperModelManager {
                 try FileManager.default.removeItem(at: destination)
             }
             try FileManager.default.moveItem(at: tempURL, to: destination)
-            print("[Whisper] download(\(filename)): moved to \(destination.path)")
+            logger.info("download(\(filename)): moved to \(destination.path)")
 
             await MainActor.run {
                 downloadProgress.removeValue(forKey: filename)
                 refreshDownloadedModels()
             }
         } catch {
-            print("[Whisper] download(\(filename)): failed — \(error)")
+            logger.error("download(\(filename)): failed — \(error.localizedDescription)")
             await MainActor.run {
                 downloadProgress.removeValue(forKey: filename)
                 downloadErrors[filename] = error.localizedDescription
@@ -137,7 +143,7 @@ final class WhisperModelManager {
 
     // Cancels an in-progress download — removes partial state. The caller must cancel the Task.
     func cancelDownload(filename: String) {
-        print("[Whisper] cancelDownload(\(filename))")
+        logger.info("cancelDownload(\(filename))")
         downloadProgress.removeValue(forKey: filename)
         downloadErrors.removeValue(forKey: filename)
     }
@@ -167,11 +173,11 @@ private final class WhisperDownloadProgressDelegate: NSObject, URLSessionDownloa
         totalBytesExpectedToWrite: Int64
     ) {
         guard totalBytesExpectedToWrite > 0 else {
-            print("[Whisper] progress: totalBytesExpectedToWrite unknown (redirect response?)")
+            logger.warning("progress: totalBytesExpectedToWrite unknown (redirect response?)")
             return
         }
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        print("[Whisper] progress: \(Int(progress * 100))% (\(totalBytesWritten)/\(totalBytesExpectedToWrite) bytes)")
+        logger.debug("progress: \(Int(progress * 100))% (\(totalBytesWritten)/\(totalBytesExpectedToWrite) bytes)")
         onProgress(progress)
     }
 
@@ -182,13 +188,13 @@ private final class WhisperDownloadProgressDelegate: NSObject, URLSessionDownloa
         didFinishDownloadingTo location: URL
     ) {
         // File move is handled by the async download(from:delegate:) continuation.
-        print("[Whisper] delegate didFinishDownloadingTo: \(location.path)")
+        logger.debug("delegate didFinishDownloadingTo: \(location.path)")
     }
 
     // Logs task-level errors from the URLSession delegate so failures are visible in the console.
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error {
-            print("[Whisper] delegate didCompleteWithError: \(error)")
+            logger.error("delegate didCompleteWithError: \(error.localizedDescription)")
         }
     }
 }
