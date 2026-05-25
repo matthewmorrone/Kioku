@@ -1,6 +1,14 @@
 import Foundation
 import SQLite3
 
+// invariant-store-test-coverage: LexiconTests.swift
+//
+// Read-only by nature — DictionaryStore is the SQLite read layer for the bundled
+// JMdict-derived database. Every query method it exposes (surface lookup, lemma resolution,
+// entry/sense fetch, sentence pairs, kanji forms) is exercised end-to-end by LexiconTests
+// against the real dictionary.sqlite. Writing a parallel DictionaryStoreTests would
+// duplicate that coverage without adding signal.
+
 nonisolated public final class DictionaryStore: @unchecked Sendable {
     private var db: OpaquePointer?
     // Sentinel destructor value that tells SQLite to copy the string immediately.
