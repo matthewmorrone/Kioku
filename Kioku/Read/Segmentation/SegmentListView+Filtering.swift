@@ -29,11 +29,9 @@ extension SegmentListView {
         }
 
         if includesDuplicates == false {
-            // Dedup key uses the row's identity string (lemma in lemma mode,
-            // surface otherwise) so two conjugated forms of the same verb
-            // collapse into one row when the user is studying lemmas. In
-            // surface mode this preserves the prior behavior (dedup by raw
-            // surface).
+            // Dedup key is the row's identity string (lemma when resolved,
+            // raw surface as fallback) so 食べた / 食べる / 食べない all
+            // collapse to one row of 食べる.
             var seenIdentities = Set<String>()
             filteredRows = filteredRows.filter { _, edge in
                 let identity = normalizedSurfaceForFiltering(resolvedRowSurface(for: edge))
@@ -97,17 +95,12 @@ extension SegmentListView {
     }
 
     // Returns the string this row uses as its identity for save/star/tap
-    // operations and dedup. With `showLemmasInSegmentList` on AND a non-empty
-    // lemma available, returns the lemma; otherwise the raw edge surface.
-    // The toggle controls behavior end-to-end via this single function.
-    //
-    // Reads through `lemmaCacheByEdgeSurface` first — populated off-main when
-    // edges change (see `hydrateLemmasForEdgeSurfaces`) so flipping the lemma
-    // toggle doesn't redo N segmenter trie + deinflector passes per render.
-    // Cache miss falls through to the live segmenter call; that path is hit
-    // during the brief warming window after edges change, then never again.
+    // operations and dedup. Always the dictionary lemma when one resolves,
+    // otherwise the raw edge surface as a fallback. Reads through
+    // `lemmaCacheByEdgeSurface` (populated off-main on edges change) so this
+    // is O(1) on the hot path; cache miss falls through to the live segmenter
+    // call during the brief warming window after edges change.
     func resolvedRowSurface(for edge: LatticeEdge) -> String {
-        guard showLemmasInSegmentList else { return edge.surface }
         if let cached = lemmaCacheByEdgeSurface[edge.surface] {
             return cached.isEmpty ? edge.surface : cached
         }
