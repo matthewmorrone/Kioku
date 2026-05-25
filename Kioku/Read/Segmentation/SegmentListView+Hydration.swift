@@ -61,7 +61,12 @@ extension SegmentListView {
             for surface in distinctSurfaces {
                 resolved[surface] = resolver(surface) ?? ""
             }
-            DispatchQueue.main.async {
+            // Task { @MainActor in … } instead of DispatchQueue.main.async so the
+            // assignment is compile-time guaranteed to land on the main actor —
+            // matches the pattern `hydrateCanonicalEntryIDs` uses (migrated for
+            // Swift 6 in 500dd9d) and protects against future refactors that
+            // might drop the hop without the compiler catching it.
+            Task { @MainActor in
                 lemmaCacheByEdgeSurface.merge(resolved) { current, _ in current }
             }
         }
