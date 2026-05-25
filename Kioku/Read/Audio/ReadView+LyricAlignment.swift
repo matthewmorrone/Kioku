@@ -295,7 +295,7 @@ extension ReadView {
     private func preparePendingSubtitleAudioSelection(from sourceURL: URL) {
         do {
             clearPendingSubtitleAudioSelection()
-            pendingSubtitleAudioURL = try Self.copyImportedAudioToTemporaryLocation(sourceURL)
+            pendingSubtitleAudioURL = try AudioTranscriptionHelpers.copyImportedAudioToTemporaryLocation(sourceURL)
             pendingSubtitleAudioFilename = sourceURL.lastPathComponent
         } catch {
             lyricAlignmentErrorMessage = error.localizedDescription
