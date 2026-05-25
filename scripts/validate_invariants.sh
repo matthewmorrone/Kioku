@@ -227,6 +227,16 @@ done < <(list_swift_files)
 # Invariant 8: every persistence store should have a matching *Tests.swift file
 # under KiokuTests/. Warning-level — surfaces coverage gaps without blocking.
 # Only runs in whole-tree mode; per-edit hook would re-flag on every touch.
+#
+# A store can opt into "covered by sibling" by adding a one-line directive at the
+# top of the file:
+#
+#     // invariant-store-test-coverage: WordsStoreTests.swift
+#
+# Useful when the storage type is exercised end-to-end by tests for a higher-level
+# store that owns it (e.g., SavedWordStorage covered by WordsStoreTests). The
+# checker still verifies the named sibling file exists so the directive can't
+# rot silently.
 if (( ${#SCOPED_FILES[@]} == 0 )); then
   while IFS= read -r store_file; do
     base="$(basename "$store_file" .swift)"
@@ -234,9 +244,20 @@ if (( ${#SCOPED_FILES[@]} == 0 )); then
     [[ "$base" == *"+"* ]] && continue
     test_name="${base}Tests.swift"
     found="$(find KiokuTests -name "$test_name" -print -quit)"
-    if [[ -z "$found" ]]; then
-      report_warning "Store has no matching test file: ${store_file} (expected KiokuTests/${test_name})"
+    if [[ -n "$found" ]]; then
+      continue
     fi
+    coverage_directive="$(grep -E '^[[:space:]]*//[[:space:]]*invariant-store-test-coverage:[[:space:]]*[A-Za-z0-9_+.]+\.swift' "$store_file" | head -1 || true)"
+    if [[ -n "$coverage_directive" ]]; then
+      sibling="$(printf '%s' "$coverage_directive" | sed -E 's|.*coverage:[[:space:]]*||' | tr -d '[:space:]')"
+      sibling_found="$(find KiokuTests -name "$sibling" -print -quit)"
+      if [[ -n "$sibling_found" ]]; then
+        continue
+      fi
+      report_warning "Store ${store_file} declares coverage by ${sibling} but ${sibling} not found in KiokuTests/"
+      continue
+    fi
+    report_warning "Store has no matching test file: ${store_file} (expected KiokuTests/${test_name})"
   done < <(list_swift_files | grep -E '(Store|Storage)\.swift$' || true)
 fi
 
