@@ -7,9 +7,15 @@ import SwiftUI
 final class WordListsStore: ObservableObject {
     @Published private(set) var lists: [WordList] = []
 
-    private let storageKey = "kioku.wordlists.v1"
+    private let userDefaults: UserDefaults
+    private let storageKey: String
 
-    init() {
+    // UserDefaults and storage key are parameterized so tests scope each case to a
+    // per-suite UserDefaults without touching .standard. Production callers get the
+    // defaults and keep using the v1 key.
+    init(userDefaults: UserDefaults = .standard, storageKey: String = "kioku.wordlists.v1") {
+        self.userDefaults = userDefaults
+        self.storageKey = storageKey
         lists = []
         lists = StartupTimer.measure("WordListsStore.init") {
             load()
@@ -51,7 +57,7 @@ final class WordListsStore: ObservableObject {
 
     // Loads word lists from UserDefaults, returning empty array if none exist.
     private func load() -> [WordList] {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
+        guard let data = userDefaults.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([WordList].self, from: data) else {
             return []
         }
@@ -61,6 +67,6 @@ final class WordListsStore: ObservableObject {
     // Persists the current lists array to UserDefaults.
     private func persist() {
         guard let encoded = try? JSONEncoder().encode(lists) else { return }
-        UserDefaults.standard.set(encoded, forKey: storageKey)
+        userDefaults.set(encoded, forKey: storageKey)
     }
 }
