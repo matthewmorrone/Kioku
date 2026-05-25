@@ -141,7 +141,8 @@ extension SegmentListView {
     @discardableResult
     func commitAddAllVisibleWords(
         orderedSurfaces: [String],
-        lookup: [String: Int64]
+        lookup: [String: Int64],
+        encounteredByIdentity: [String: Set<String>]
     ) -> Int {
         var entries = wordsStore.words
         // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
@@ -158,12 +159,19 @@ extension SegmentListView {
                 continue
             }
 
+            // Every conjugation seen for this card identity in this Add All pass,
+            // plus the identity itself (so the lemma always queries as saved on
+            // the per-surface star map). Single-tap save already includes the
+            // identity in encountered; we match that here.
+            var newlyEncountered = encounteredByIdentity[normalizedSurface] ?? Set()
+            newlyEncountered.insert(normalizedSurface)
+
             if let existingIndex = indexByEntryID[entryID] {
                 let existingEntry = entries[existingIndex]
                 var noteIDs = Set(existingEntry.sourceNoteIDs)
                 var encountered = existingEntry.encounteredSurfaces
                 let needsNote = sourceNoteID.map { noteIDs.contains($0) == false } ?? false
-                let needsSurface = encountered.contains(normalizedSurface) == false
+                let needsSurface = newlyEncountered.subtracting(encountered).isEmpty == false
                 if needsNote == false && needsSurface == false {
                     continue
                 }
@@ -171,7 +179,7 @@ extension SegmentListView {
                     noteIDs.insert(sourceNoteID)
                 }
                 if needsSurface {
-                    encountered.insert(normalizedSurface)
+                    encountered.formUnion(newlyEncountered)
                 }
                 entries[existingIndex] = SavedWord(
                     canonicalEntryID: existingEntry.canonicalEntryID,
@@ -187,18 +195,17 @@ extension SegmentListView {
             } else {
                 let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
                 indexByEntryID[entryID] = entries.count
-                // Add All doesn't know the derived lemma here, so the stored
-                // surface is whatever row identity the user is viewing (lemma
-                // when toggle is on, surface otherwise). The encountered set
-                // is seeded with the same identity. New cards therefore satisfy
-                // the "storedSurface matches encountered" invariant the legacy
-                // detector relies on.
+                // New card: stored surface is the canonical lemma (= the row
+                // identity, which `resolvedRowSurface` produces lemma-first).
+                // Encountered set captures every conjugation the user just saw
+                // in the segment list (e.g. 食べた + 食べない both end up here),
+                // so the per-surface star map lights both rows on this note.
                 entries.append(
                     SavedWord(
                         canonicalEntryID: entryID,
                         surface: normalizedSurface,
                         sourceNoteIDs: noteIDs,
-                        encounteredSurfaces: [normalizedSurface]
+                        encounteredSurfaces: newlyEncountered
                     )
                 )
             }

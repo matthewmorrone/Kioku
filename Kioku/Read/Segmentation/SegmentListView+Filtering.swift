@@ -77,15 +77,11 @@ extension SegmentListView {
     }
 
     // The string this row uses as its identity for save/star/tap operations
-    // and dedup. With `showLemmasInSegmentList` on AND a non-empty lemma
-    // available, returns the lemma; otherwise the raw edge surface.
-    //
-    // Every call site that previously passed `edge.surface` to lookups,
-    // toggleSavedWord, openWordDetail, etc. now passes this value instead, so
-    // the toggle controls behavior end-to-end. Operations that work on the
-    // actual text content of the note — split previews, newline checks,
-    // punctuation/particle filters — keep using `edge.surface` directly
-    // because they're operating on the source string, not a vocab entry.
+    // and dedup — always the dictionary lemma when one resolves, otherwise the
+    // raw edge surface. Call sites that operate on the note's actual text
+    // (split previews, newline checks, punctuation/particle filters) keep
+    // using `edge.surface` directly because they're operating on the source
+    // string, not a vocab entry.
     // Returns the lemma candidates for `edgeSurface`. POS gating to keep only
     // conjugating classes (verb / i-adjective) when deinflection was applied is
     // done inside `Segmenter.lemmaCandidates` using its in-memory
