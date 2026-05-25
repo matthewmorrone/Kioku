@@ -226,13 +226,42 @@ final class WordsStore: ObservableObject {
         replaceAll(with: entries)
     }
 
-    // Normalizes once, writes the canonical snapshot to storage, then publishes the same array
-    // to memory. The synchronous write closes the durability gap that an off-main write would
-    // open if the app is force-quit before the queue drains; the previous read-back via
-    // SavedWordStorage.loadSavedWords is gone, so this stays a single normalize + encode + write.
+    // Normalizes on main (cheap, hashmap merge), publishes the new array immediately so
+    // SwiftUI repaints on the same runloop tick, then dispatches the JSON encode +
+    // UserDefaults write off-main on a SERIAL queue. The serial queue preserves write
+    // ordering (so a rapid sequence of toggles can't land out-of-order on disk) and
+    // avoids the snapshot-replace race: we never read back from the background path
+    // into @Published `words`, so a newer main-thread mutation can't be clobbered by
+    // a stale background write completing later.
+    //
+    // Durability tradeoff: a hard kill in the millisecond window between publish and
+    // disk write loses the latest toggle. Acceptable for this use case — the user can
+    // re-tap, and the alternative (sync write on main) was the bottleneck on the
+    // star-tap path.
     private func persist(_ entries: [SavedWord]) {
         let normalized = SavedWordStorage.normalizedEntries(entries)
-        SavedWordStorage.writeNormalized(normalized, storageKey: storageKey, userDefaults: userDefaults)
         words = normalized
+        let storageKey = self.storageKey
+        let userDefaults = self.userDefaults
+        WordsStore.persistQueue.async {
+            SavedWordStorage.writeNormalized(normalized, storageKey: storageKey, userDefaults: userDefaults)
+        }
+    }
+
+    // Serial queue ensures writes land in the order they were dispatched, so rapid
+    // toggles can't race each other into UserDefaults. Static so all WordsStore
+    // instances share one queue (in practice there's one per app, plus per-test).
+    private static let persistQueue = DispatchQueue(
+        label: "matthewmorrone.Kioku.WordsStore.persist",
+        qos: .utility
+    )
+
+    // Blocks until every previously dispatched persist write has completed. Used
+    // by tests that construct a fresh WordsStore to verify on-disk state — without
+    // this, the reader can race past an in-flight background write. Production code
+    // never calls this: the next app launch always observes the latest write because
+    // the queue drains long before then.
+    static func flushPendingWritesForTesting() {
+        persistQueue.sync {}
     }
 }
