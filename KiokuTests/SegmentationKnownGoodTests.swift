@@ -1,15 +1,16 @@
 import XCTest
 @testable import Kioku
 
-// Pins cases that previously failed and have since been fixed (see
-// docs/test-failures.md). Each test asserts both that the full surface appears
-// as a lattice edge and that preferredLemma resolves to the expected base form,
-// catching regressions in either the segmentation greedy walk or the lemma
-// scoring pipeline that landed those fixes.
+// Pins cases that previously failed and have since been fixed (open cases live
+// under "Still-broken segmentation cases" in docs/todo.md; resolved ones are
+// listed at the bottom of that doc). Each test asserts both that the full
+// surface appears as a lattice edge and that preferredLemma resolves to the
+// expected base form, catching regressions in either the segmentation greedy
+// walk or the lemma scoring pipeline that landed those fixes.
 //
-// New entries land here as cases from test-failures.md move from "open" to
-// "resolved" — keeping that doc short and routing the long-tail verification
-// through the regular test suite.
+// New entries land here as cases move from "Still-broken" to the
+// "Resolved / pinned" section of docs/todo.md — keeping that doc short and
+// routing the long-tail verification through the regular test suite.
 final class SegmentationKnownGoodTests: XCTestCase {
 
     // Asserts the surface appears as a full-span edge in the lattice AND
