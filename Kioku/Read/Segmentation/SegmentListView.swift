@@ -151,7 +151,10 @@ struct SegmentListView: View {
                         // "tap a word to see its definition" affordance.
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            openWordDetail(for: rowIdentity, lemma: rowLemma)
+                            // Tap opens the lookup sheet (lighter-weight UI for quick lookups).
+                            // Long-press → "Word Details" still opens the full WordDetailView
+                            // — preserves the tap=sheet, details=page split the user requested.
+                            openLookupSheet(for: rowIdentity, lemma: rowLemma)
                         }
                         .contextMenu {
                             Button {

@@ -1,5 +1,12 @@
 import SwiftUI
 
+// Wraps a non-Sendable closure so it can be captured into a @Sendable background
+// dispatch. Safe here because lemmaForSurface only reads from nonisolated Segmenter.
+nonisolated private final class UncheckedSendableBox<T>: @unchecked Sendable {
+    let value: T
+    init(value: T) { self.value = value }
+}
+
 // Saved-word state management for SegmentListView: per-surface star toggling,
 // canonical-id-backed persistence into WordsStore, and the in-memory caches
 // (`savedWordSurfaces`, `savedWordSourceNoteIDsBySurface`) that drive star
@@ -114,20 +121,22 @@ extension SegmentListView {
     // assignment arrives.
     func loadSavedWordsFromStorage() {
         let entries = wordsStore.words
-        let resolver = lemmaForSurface
+        let resolverBox = UncheckedSendableBox(value: lemmaForSurface)
         let cacheSnapshot = lemmaCacheByStoredSurface
         DispatchQueue.global(qos: .userInitiated).async {
             let (state, updatedCache) = Self.computeSavedWordState(
                 entries: entries,
-                lemmaResolver: resolver,
+                lemmaResolver: resolverBox.value,
                 lemmaCache: cacheSnapshot
             )
             DispatchQueue.main.async {
-                savedWordEntryIDs = state.savedWordEntryIDs
-                savedWordSourceNoteIDsByEntryID = state.savedWordSourceNoteIDsByEntryID
-                savedWordSourceNoteIDsBySurface = state.savedWordSourceNoteIDsBySurface
-                savedWordSurfaces = state.savedWordSurfaces
-                lemmaCacheByStoredSurface.merge(updatedCache) { _, new in new }
+                MainActor.assumeIsolated {
+                    savedWordEntryIDs = state.savedWordEntryIDs
+                    savedWordSourceNoteIDsByEntryID = state.savedWordSourceNoteIDsByEntryID
+                    savedWordSourceNoteIDsBySurface = state.savedWordSourceNoteIDsBySurface
+                    savedWordSurfaces = state.savedWordSurfaces
+                    lemmaCacheByStoredSurface.merge(updatedCache) { _, new in new }
+                }
             }
         }
     }
@@ -148,9 +157,9 @@ extension SegmentListView {
     // (Segmenter is `@unchecked Sendable`, so the production wire-up is fine).
     // `lemmaCache` is a snapshot of `lemmaCacheByStoredSurface` to short-circuit
     // re-segmenting storedSurfaces we've already resolved this session.
-    static func computeSavedWordState(
+    nonisolated static func computeSavedWordState(
         entries: [SavedWord],
-        lemmaResolver: @Sendable (String) -> String?,
+        lemmaResolver: (String) -> String?,
         lemmaCache: [String: String]
     ) -> (ComputedSavedWordState, [String: String]) {
         var savedWordEntryIDs = Set<Int64>()
@@ -253,7 +262,7 @@ extension SegmentListView {
     // light up correctly because `applySavedWordState` expands them with the
     // derived lemma at refresh time.
     func isSavedSurface(normalizedSurface: String) -> Bool {
-        savedWordSurfaces.contains(normalizedSurface)
+        resolvedSavedKey(for: normalizedSurface) != nil
     }
 
     // True when the queried surface is saved AND attributed to the active note.
@@ -261,7 +270,8 @@ extension SegmentListView {
         guard let sourceNoteID else {
             return isSavedSurface(normalizedSurface: normalizedSurface)
         }
-        guard let sourceNoteIDs = savedWordSourceNoteIDsBySurface[normalizedSurface] else {
+        guard let resolvedKey = resolvedSavedKey(for: normalizedSurface),
+              let sourceNoteIDs = savedWordSourceNoteIDsBySurface[resolvedKey] else {
             return false
         }
         return sourceNoteIDs.contains(sourceNoteID)
@@ -273,9 +283,32 @@ extension SegmentListView {
         guard let sourceNoteID else {
             return false
         }
-        guard let sourceNoteIDs = savedWordSourceNoteIDsBySurface[normalizedSurface] else {
+        guard let resolvedKey = resolvedSavedKey(for: normalizedSurface),
+              let sourceNoteIDs = savedWordSourceNoteIDsBySurface[resolvedKey] else {
             return false
         }
         return sourceNoteIDs.isEmpty == false && sourceNoteIDs.contains(sourceNoteID) == false
+    }
+
+    // Resolves a row's queried surface to the key under which its saved state actually lives,
+    // bridging conjugation → lemma. Try direct hit first; if miss, deinflect via the segmenter
+    // and try the lemma. Returns nil when no saved card matches either form.
+    //
+    // Closes the inverse gap from computeSavedWordState's expansion: that path adds (stored,
+    // lemma) to the map when they differ (handles "save 食べた → 食べる row also stars"). This
+    // handles the reverse direction ("save 食べる → 食べた row also stars") by walking the
+    // segmenter on demand. Result is cheap — lemmaForSurface is the same closure that drives
+    // row hydration, with its own memoization upstream.
+    private func resolvedSavedKey(for normalizedSurface: String) -> String? {
+        if savedWordSurfaces.contains(normalizedSurface) {
+            return normalizedSurface
+        }
+        guard let lemma = lemmaForSurface(normalizedSurface)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              lemma.isEmpty == false,
+              lemma != normalizedSurface,
+              savedWordSurfaces.contains(lemma)
+        else { return nil }
+        return lemma
     }
 }
