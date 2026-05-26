@@ -235,7 +235,10 @@ final class BulkImportRunner: ObservableObject {
     // Runs Whisper transcription on a single audio file using the supplied model URL,
     // forwarding progress to the matching plan item so the sheet can render per-row state.
     // Returns one SubtitleCue per non-empty Whisper segment, indexed sequentially.
-    private func transcribe(audioURL: URL, modelURL: URL, itemID: String) async throws -> [SubtitleCue] {
+    // nonisolated so the non-Sendable `whisper` instance doesn't cross actor boundaries
+    // at the await; progress updates are explicitly hopped to MainActor inside the
+    // delegate closure.
+    nonisolated private func transcribe(audioURL: URL, modelURL: URL, itemID: String) async throws -> [SubtitleCue] {
         let didStartAudio = audioURL.startAccessingSecurityScopedResource()
         let didStartModel = modelURL.startAccessingSecurityScopedResource()
         defer {

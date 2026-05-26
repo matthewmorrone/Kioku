@@ -29,7 +29,7 @@ enum WordOfTheDayScheduler {
     private static let scheduleSignatureVersion = 1
 
     // Notification request identifiers use this prefix for batch filtering.
-    static let requestPrefix = "wotd_"
+    nonisolated static let requestPrefix = "wotd_"
 
     // Requests push notification authorization for alerts, badges, and sound.
     static func requestAuthorization() async -> Bool {

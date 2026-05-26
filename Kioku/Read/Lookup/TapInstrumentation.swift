@@ -7,9 +7,9 @@ import Foundation
 //
 // To consume the logs: Console.app → connect to the iPhone → filter on "TAP"
 // (or run `idevicesyslog | grep TAP` from a terminal with libimobiledevice).
-enum TapDiagnostics {
-    static var startTime: CFAbsoluteTime = 0
-    static var isActive: Bool = false
+nonisolated enum TapDiagnostics {
+    nonisolated(unsafe) static var startTime: CFAbsoluteTime = 0
+    nonisolated(unsafe) static var isActive: Bool = false
 
     // Called the instant the tap recognizer fires; resets the elapsed-time clock so every
     // subsequent `mark` reports time-since-this-tap.

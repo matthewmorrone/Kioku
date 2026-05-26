@@ -219,9 +219,9 @@ enum OnDeviceLyricAligner {
 
 // URLSession download delegate that forwards byte-level progress to a closure.
 private final class WhisperAlignmentDownloadDelegate: NSObject, URLSessionDownloadDelegate {
-    private let onProgress: (Double) -> Void
+    private let onProgress: @Sendable (Double) -> Void
 
-    init(onProgress: @escaping (Double) -> Void) {
+    init(onProgress: @escaping @Sendable (Double) -> Void) {
         self.onProgress = onProgress
     }
 

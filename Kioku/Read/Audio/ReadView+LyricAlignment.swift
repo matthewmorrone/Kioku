@@ -2,6 +2,27 @@ import SwiftUI
 import UniformTypeIdentifiers
 import SwiftWhisperAlign
 
+// Thread-safe cancellation flag for alignment. The @State Bool drives UI; this token
+// is what we hand to the @Sendable cancellationCheck closure so whisper.cpp can poll
+// from inference threads without crossing actor isolation. cancelAlignment() flips both.
+nonisolated final class AlignmentCancellationToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _isCancelled = false
+    // Thread-safe read of the cancellation flag, polled from whisper.cpp inference threads.
+    var isCancelled: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _isCancelled
+    }
+    // Signals cancellation so the next abort_callback poll returns true.
+    func cancel() {
+        lock.lock(); _isCancelled = true; lock.unlock()
+    }
+    // Clears the flag before starting a new alignment run.
+    func reset() {
+        lock.lock(); _isCancelled = false; lock.unlock()
+    }
+}
+
 // Hosts the note-level lyric-alignment flow: transcribes audio on-device using SwiftWhisper,
 // aligns transcription segments to note text lines, and saves the resulting SRT.
 extension ReadView {
@@ -112,6 +133,7 @@ extension ReadView {
 
         isGeneratingLyricAlignment = true
         isCancellingAlignment = false
+        alignmentCancellationToken.reset()
         alignmentResultSRT = ""
         lyricAlignmentProgressMessage = "Preparing \(totalLines) lines..."
         lyricAlignmentSourceFilename = originalAudioFilename
@@ -141,7 +163,7 @@ extension ReadView {
                 audioURL: sourceURL,
                 lyrics: trimmedLyrics,
                 modelURL: modelURL,
-                cancellationCheck: { [self] in isCancellingAlignment },
+                cancellationCheck: { [token = alignmentCancellationToken] in token.isCancelled },
                 onProgress: { [self] fraction in
                     let pct = Int((fraction * 100).rounded())
                     if pct > 0 {
@@ -208,6 +230,7 @@ extension ReadView {
     @MainActor
     func cancelAlignment() {
         isCancellingAlignment = true
+        alignmentCancellationToken.cancel()
     }
 
     // Writes the on-device alignment SRT and paired audio file to disk and links them to the note.

@@ -5,8 +5,9 @@ import SwiftUI
 // Box that lets the persist queue ship a UserDefaults across the Sendable boundary even
 // though Foundation hasn't yet annotated UserDefaults as Sendable. Apple documents
 // UserDefaults as thread-safe; this box is the one place we encode that promise.
-private struct UncheckedSendableUserDefaults: @unchecked Sendable {
+nonisolated private final class UncheckedSendableUserDefaults: @unchecked Sendable {
     let value: UserDefaults
+    init(value: UserDefaults) { self.value = value }
 }
 
 // Owns saved-word persistence for the Words tab. Replaces direct UserDefaults access in WordsView.

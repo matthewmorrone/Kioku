@@ -323,9 +323,15 @@ final class SurfaceSheetViewController: UIViewController {
     // MARK: - Content and height
 
     // Delegates middle content rebuild to the sheet coordinator which holds shared data.
-    // Passes self so compound-component chips can present nested lookup sheets.
+    // Passes self so compound-component chips can present nested lookup sheets, and the currently
+    // displayed reading so the gloss can match it (e.g. 様/よう → "appearance" not "Mr/Mrs/...").
     func updateMiddleContent() {
-        sheet?.updateMiddleContent(in: middleContentStack, parent: self)
+        sheet?.updateMiddleContent(
+            in: middleContentStack,
+            parent: self,
+            selectedReading: displayedReading(),
+            selectedKanji: currentSurface
+        )
     }
 
     // Refreshes the save button icon and tint to reflect the current saved state.

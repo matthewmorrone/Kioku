@@ -61,6 +61,9 @@ struct WordsView: View {
     var savedSort: WordsSortOrder { WordsSortOrder(rawValue: savedSortOrder) ?? .newestFirst }
     var historySort: WordsSortOrder { WordsSortOrder(rawValue: historySortOrderRaw) ?? .newestFirst }
     @State var searchResults: [DictionaryEntry] = []
+    // Populated when the query segments into multiple tokens — switches the search results
+    // view from entry-list mode to one-row-per-segment mode (Pleco-style sentence parse).
+    @State var parsedSegments: [ParsedSegment] = []
     @State var searchTask: Task<Void, Never>?
 
     // Builds the word model used by WordDetailView, reusing a saved word when available and

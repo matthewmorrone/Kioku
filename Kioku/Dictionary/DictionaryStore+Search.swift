@@ -4,7 +4,7 @@ import SQLite3
 // Search query surface used by the Words tab for explicit Japanese and English lookup modes.
 extension DictionaryStore {
     // Executes one Words-tab dictionary search in the requested language mode.
-    func searchEntries(term: String, mode: DictionarySearchMode, limit: Int = 100) throws -> [DictionaryEntry] {
+    nonisolated func searchEntries(term: String, mode: DictionarySearchMode, limit: Int = 100) throws -> [DictionaryEntry] {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return [] }
 
@@ -58,7 +58,7 @@ extension DictionaryStore {
 
     // Executes a kana/kanji LIKE search using user-facing `?` (one char) and `*` (any chars) wildcards.
     // Returns up to `limit` entries that match the pattern against either kana_forms or kanji surfaces.
-    func searchEntriesByPattern(_ pattern: String, limit: Int = 200) throws -> [DictionaryEntry] {
+    nonisolated func searchEntriesByPattern(_ pattern: String, limit: Int = 200) throws -> [DictionaryEntry] {
         let trimmed = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return [] }
         guard trimmed.contains("*") || trimmed.contains("?") else { return [] }
@@ -79,7 +79,7 @@ extension DictionaryStore {
     }
 
     // Performs the Japanese surface/reading search behavior already used by the Words tab.
-    private func searchJapaneseEntries(term: String) throws -> [DictionaryEntry] {
+    nonisolated private func searchJapaneseEntries(term: String) throws -> [DictionaryEntry] {
         var entries: [DictionaryEntry] = []
         if ScriptClassifier.containsKanji(term) {
             entries += try lookup(surface: term, mode: .kanjiAndKana)
@@ -91,7 +91,7 @@ extension DictionaryStore {
     }
 
     // Performs English gloss search first, then materializes entries in ranked order.
-    private func searchEnglishEntries(term: String, limit: Int) throws -> [DictionaryEntry] {
+    nonisolated private func searchEnglishEntries(term: String, limit: Int) throws -> [DictionaryEntry] {
         let entryIDs = try matchingEnglishEntryIDs(term: term, limit: limit)
         var entries: [DictionaryEntry] = []
         entries.reserveCapacity(entryIDs.count)
@@ -106,7 +106,7 @@ extension DictionaryStore {
     }
 
     // Translates user wildcards (`?`, `*`) to SQL LIKE wildcards (`_`, `%`), escaping literal `%`/`_`/`\`.
-    private func sqlLikePattern(from input: String) -> String {
+    nonisolated private func sqlLikePattern(from input: String) -> String {
         var result = ""
         result.reserveCapacity(input.count)
         for character in input {
@@ -124,7 +124,7 @@ extension DictionaryStore {
     }
 
     // Returns deduplicated entry ids whose kana or kanji surfaces match the SQL LIKE pattern.
-    private func matchingPatternEntryIDs(sqlPattern: String, limit: Int) throws -> [Int64] {
+    nonisolated private func matchingPatternEntryIDs(sqlPattern: String, limit: Int) throws -> [Int64] {
         try withSerializedDatabaseAccess {
             let sql = """
             SELECT entry_id FROM (
@@ -150,7 +150,7 @@ extension DictionaryStore {
     }
 
     // Returns ranked entry ids whose English glosses contain the search term.
-    private func matchingEnglishEntryIDs(term: String, limit: Int) throws -> [Int64] {
+    nonisolated private func matchingEnglishEntryIDs(term: String, limit: Int) throws -> [Int64] {
         try withSerializedDatabaseAccess {
             let normalizedTerm = term.lowercased()
             let containsPattern = "%\(normalizedTerm)%"
