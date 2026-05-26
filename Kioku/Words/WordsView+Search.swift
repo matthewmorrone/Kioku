@@ -13,7 +13,9 @@ extension WordsView {
         }
         .listRowSeparator(.hidden)
 
-        if filteredSearchResults.isEmpty {
+        if parsedSegments.isEmpty == false {
+            parsedSegmentsResultsSection
+        } else if filteredSearchResults.isEmpty {
             Section {
                 Text(searchText.isEmpty ? "" : "No results")
                     .foregroundStyle(.secondary)
@@ -172,11 +174,15 @@ extension WordsView {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedQuery.isEmpty == false else {
             searchResults = []
+            parsedSegments = []
             return
         }
 
         let alternateKana = convertedKana?.trimmingCharacters(in: .whitespacesAndNewlines)
         let isWildcardQuery = trimmedQuery.contains("*") || trimmedQuery.contains("?")
+        // Only consider sentence-parse mode for Japanese input — English headword lookups
+        // ("light", "to shine") should always stay in entry-list mode.
+        let sentenceCandidateSegmenter: (any TextSegmenting)? = (isWildcardQuery == false && searchMode == .japanese) ? segmenter : nil
 
         searchTask = Task {
             do {
@@ -187,6 +193,28 @@ extension WordsView {
 
             guard let store = dictionaryStore, Task.isCancelled == false else { return }
             let mode = searchMode
+
+            // Run segmentation first. If the query produces ≥2 non-boundary tokens, switch
+            // to Pleco-style row-per-segment mode and skip the literal entry search entirely.
+            if let parseSegmenter = sentenceCandidateSegmenter {
+                let tokens = await Task.detached(priority: .userInitiated) {
+                    WordsView.parseTokens(trimmedQuery, using: parseSegmenter)
+                }.value
+                if tokens.count >= 2 {
+                    let segments = await Task.detached(priority: .userInitiated) {
+                        WordsView.resolveParsedSegments(tokens: tokens, store: store)
+                    }.value
+                    guard Task.isCancelled == false,
+                          searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery,
+                          searchMode == mode else {
+                        return
+                    }
+                    parsedSegments = segments
+                    searchResults = []
+                    return
+                }
+            }
+
             let results = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
                     if isWildcardQuery {
@@ -216,6 +244,7 @@ extension WordsView {
             }
 
             searchResults = results
+            parsedSegments = []
             pruneUnavailableSearchPartsOfSpeech()
         }
     }

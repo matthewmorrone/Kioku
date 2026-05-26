@@ -29,4 +29,32 @@ nonisolated public struct DictionaryEntry: Equatable, Sendable {
         self.kanaForms = kanaForms
         self.senses = senses
     }
+
+    // Picks the first sense whose JMdict stagk/stagr restrictions are compatible with the given
+    // reading and kanji form. A sense matches when its restriction list is empty (applies to all
+    // forms) or contains the supplied value. When no sense matches — typically because the caller
+    // passed a reading not represented in the entry, e.g. a user-supplied custom reading — falls
+    // back to senses.first so callers still get a gloss to display.
+    public func sense(forReading reading: String?, kanji: String? = nil) -> DictionaryEntrySense? {
+        let match = senses.first { sense in
+            let readingOK: Bool
+            if sense.applicableReadings.isEmpty {
+                readingOK = true
+            } else if let reading {
+                readingOK = sense.applicableReadings.contains(reading)
+            } else {
+                readingOK = false
+            }
+            let kanjiOK: Bool
+            if sense.applicableKanji.isEmpty {
+                kanjiOK = true
+            } else if let kanji {
+                kanjiOK = sense.applicableKanji.contains(kanji)
+            } else {
+                kanjiOK = false
+            }
+            return readingOK && kanjiOK
+        }
+        return match ?? senses.first
+    }
 }

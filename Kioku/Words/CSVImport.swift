@@ -3,7 +3,7 @@ import Foundation
 // Stateless CSV parsing and dictionary-enrichment helpers for the import workflow.
 // Supports comma, semicolon, tab, and pipe delimiters with RFC 4180 quoted-field handling.
 // Falls back to list mode (one word per line) when no delimiter is detected.
-enum CSVImport {
+nonisolated enum CSVImport {
 
     // Parses raw text into import items using auto-detected delimiter or list mode.
     static func parseItems(from text: String) -> [CSVImportItem] {
@@ -19,21 +19,22 @@ enum CSVImport {
     static func fillMissing(items: inout [CSVImportItem], dictionaryStore: DictionaryStore?) async {
         guard let dictionaryStore, items.isEmpty == false else { return }
 
-        var copy = items
+        let snapshot = items
         let enriched: [CSVImportItem] = await withCheckedContinuation { continuation in
             // DictionaryStore serializes its own SQLite access; safe to call from any thread.
             DispatchQueue.global(qos: .userInitiated).async {
-                for idx in copy.indices {
-                    enrich(&copy[idx], using: dictionaryStore)
+                var working = snapshot
+                for idx in working.indices {
+                    enrich(&working[idx], using: dictionaryStore)
                 }
-                continuation.resume(returning: copy)
+                continuation.resume(returning: working)
             }
         }
         items = enriched
     }
 
     // Enriches one item in-place by looking up the best dictionary match for its known fields.
-    private static func enrich(_ item: inout CSVImportItem, using dictionaryStore: DictionaryStore) {
+    nonisolated private static func enrich(_ item: inout CSVImportItem, using dictionaryStore: DictionaryStore) {
         let surface = trim(item.providedSurface ?? item.computedSurface)
         let kana = trim(item.providedKana ?? item.computedKana)
         let meaning = trim(item.providedMeaning ?? item.computedMeaning)

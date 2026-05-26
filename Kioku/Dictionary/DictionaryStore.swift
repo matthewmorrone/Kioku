@@ -536,6 +536,46 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         return items
     }
 
+    // Fetches sense-level kanji/kana restrictions for one entry, grouped by sense_id.
+    // Returns a map of sense_id → (stagk values, stagr values). Senses without restrictions
+    // are absent from the map and treated as "applies to all forms" at the call site.
+    private func fetchSenseRestrictionMap(entryID: Int64) throws -> [Int64: (kanji: [String], readings: [String])] {
+        let sql = """
+        SELECT sr.sense_id, sr.type, sr.value
+        FROM sense_restrictions sr
+        JOIN senses s ON s.id = sr.sense_id
+        WHERE s.entry_id = ?1
+        ORDER BY sr.id ASC
+        """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        try prepare(sql: sql, statement: &statement)
+        try bindInt64(entryID, index: 1, statement: statement)
+
+        var map: [Int64: (kanji: [String], readings: [String])] = [:]
+        var stepCode = sqlite3_step(statement)
+        while stepCode == SQLITE_ROW {
+            let senseID = sqlite3_column_int64(statement, 0)
+            let type = sqlite3_column_text(statement, 1).map { String(cString: $0) }
+            let value = sqlite3_column_text(statement, 2).map { String(cString: $0) }
+            if let type, let value {
+                var entry = map[senseID] ?? (kanji: [], readings: [])
+                switch type {
+                case "stagk": entry.kanji.append(value)
+                case "stagr": entry.readings.append(value)
+                default: break
+                }
+                map[senseID] = entry
+            }
+            stepCode = sqlite3_step(statement)
+        }
+        guard stepCode == SQLITE_DONE else {
+            throw DictionarySQLiteError.step(message: errorMessage())
+        }
+        return map
+    }
+
     // Fetches senses and ordered glosses for one entry, including misc, field, and dialect tags.
     private func fetchSenses(entryID: Int64) throws -> [DictionaryEntrySense] {
         let sql = """
@@ -551,6 +591,10 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
 
         try prepare(sql: sql, statement: &statement)
         try bindInt64(entryID, index: 1, statement: statement)
+
+        // Pre-fetch reading/kanji restrictions so each sense can be tagged at construction time.
+        // Senses with no entry in the map have no restrictions → apply to every form (JMdict default).
+        let restrictions = try fetchSenseRestrictionMap(entryID: entryID)
 
         var senses: [DictionaryEntrySense] = []
         var currentSenseID: Int64?
@@ -573,13 +617,16 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             if currentSenseID != senseID {
                 // Flush the previous sense before starting the next grouped row set.
                 if let id = currentSenseID {
+                    let r = restrictions[id]
                     senses.append(DictionaryEntrySense(
                         senseID: id,
                         pos: currentPOS,
                         misc: currentMisc,
                         field: currentField,
                         dialect: currentDialect,
-                        glosses: currentGlosses
+                        glosses: currentGlosses,
+                        applicableKanji: r?.kanji ?? [],
+                        applicableReadings: r?.readings ?? []
                     ))
                 }
                 currentSenseID = senseID
@@ -603,13 +650,16 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
 
         // Flush the final grouped sense after stepping completes.
         if let id = currentSenseID {
+            let r = restrictions[id]
             senses.append(DictionaryEntrySense(
                 senseID: id,
                 pos: currentPOS,
                 misc: currentMisc,
                 field: currentField,
                 dialect: currentDialect,
-                glosses: currentGlosses
+                glosses: currentGlosses,
+                applicableKanji: r?.kanji ?? [],
+                applicableReadings: r?.readings ?? []
             ))
         }
 

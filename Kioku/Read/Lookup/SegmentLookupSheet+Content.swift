@@ -32,14 +32,23 @@ extension SegmentLookupSheet {
     // Rebuilds the middle content section with the most common definition gloss.
     // Hides the container when there is no content to display.
     // The parent view controller is used to present nested component lookup sheets.
-    func updateMiddleContent(in middleContentStack: UIStackView, parent: UIViewController? = nil) {
+    // selectedReading and selectedKanji filter senses via JMdict stagk/stagr restrictions so the
+    // gloss matches the form the user is actually looking at — e.g. 様 read as よう shows
+    // "appearance, manner" rather than 様's primary sense ("Mr/Mrs/Miss/Ms", which is stagr=さま).
+    func updateMiddleContent(
+        in middleContentStack: UIStackView,
+        parent: UIViewController? = nil,
+        selectedReading: String? = nil,
+        selectedKanji: String? = nil
+    ) {
         for subview in middleContentStack.arrangedSubviews {
             middleContentStack.removeArrangedSubview(subview)
             subview.removeFromSuperview()
         }
 
         guard let entry = currentSheetDictionaryEntry,
-              let firstGloss = entry.senses.first?.glosses.joined(separator: "; "),
+              let firstGloss = entry.sense(forReading: selectedReading, kanji: selectedKanji)?
+                .glosses.joined(separator: "; "),
               firstGloss.isEmpty == false else {
             middleContentStack.superview?.isHidden = true
             return

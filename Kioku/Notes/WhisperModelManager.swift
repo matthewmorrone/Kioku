@@ -161,9 +161,9 @@ final class WhisperModelManager {
 
 // Relays URLSession download progress to a closure, following redirects transparently.
 private final class WhisperDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
-    private let onProgress: (Double) -> Void
+    private let onProgress: @Sendable (Double) -> Void
 
-    init(onProgress: @escaping (Double) -> Void) {
+    init(onProgress: @escaping @Sendable (Double) -> Void) {
         self.onProgress = onProgress
     }
 

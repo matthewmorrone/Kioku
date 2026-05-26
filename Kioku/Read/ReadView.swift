@@ -94,6 +94,7 @@ struct ReadView: View {
     @State var isPerformingAudioTranscription = false
     @State var isGeneratingLyricAlignment = false
     @State var isCancellingAlignment = false
+    @State var alignmentCancellationToken = AlignmentCancellationToken()
     @State var audioTranscriptionErrorMessage = ""
     @State var lyricAlignmentErrorMessage = ""
     @State var lyricAlignmentProgressMessage = ""

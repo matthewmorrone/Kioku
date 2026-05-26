@@ -16,7 +16,7 @@ import SwiftWhisper
 
 // Transcribes audio from a file URL using a GGML Whisper model
 // and returns segments as AlignmentSegments with second-based timestamps.
-final class SwiftWhisperTranscriptionProvider {
+nonisolated final class SwiftWhisperTranscriptionProvider {
     private let modelURL: URL
 
     // modelURL must point to a GGML .bin file (from WhisperModelManager).
@@ -26,14 +26,12 @@ final class SwiftWhisperTranscriptionProvider {
 
     // Decodes audio to 16 kHz mono float PCM, runs Whisper inference,
     // and converts the resulting segments to AlignmentSegment values.
-    // Decodes audio to 16 kHz mono float PCM, runs Whisper inference,
-    // and converts the resulting segments to AlignmentSegment values.
     // onProgress: called on main queue with a 0–1 fraction as inference advances.
     // onSegment: called on main queue with each newly decoded AlignmentSegment including timing.
     func transcribe(
         url: URL,
-        onProgress: ((Double) -> Void)? = nil,
-        onSegment: ((AlignmentSegment) -> Void)? = nil
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+        onSegment: (@Sendable (AlignmentSegment) -> Void)? = nil
     ) async throws -> [AlignmentSegment] {
         let frames = try await decodeAudioFrames(from: url)
         guard frames.isEmpty == false else {
@@ -163,21 +161,21 @@ final class SwiftWhisperTranscriptionProvider {
 // Forwards SwiftWhisper delegate callbacks to the progress and segment closures.
 // Must be a class because WhisperDelegate requires AnyObject.
 private final class AlignmentProgressDelegate: WhisperDelegate {
-    private let onProgress: ((Double) -> Void)?
-    private let onSegment: ((AlignmentSegment) -> Void)?
+    private let onProgress: (@Sendable (Double) -> Void)?
+    private let onSegment: (@Sendable (AlignmentSegment) -> Void)?
 
-    init(onProgress: ((Double) -> Void)?, onSegment: ((AlignmentSegment) -> Void)?) {
+    nonisolated init(onProgress: (@Sendable (Double) -> Void)?, onSegment: (@Sendable (AlignmentSegment) -> Void)?) {
         self.onProgress = onProgress
         self.onSegment = onSegment
     }
 
     // Forwards inference progress fraction to the caller. Already dispatched to main by SwiftWhisper.
-    func whisper(_ aWhisper: Whisper, didUpdateProgress progress: Double) {
+    nonisolated func whisper(_ aWhisper: Whisper, didUpdateProgress progress: Double) {
         onProgress?(progress)
     }
 
     // Forwards each newly decoded segment with its timestamps. Already dispatched to main by SwiftWhisper.
-    func whisper(_ aWhisper: Whisper, didProcessNewSegments segments: [Segment], atIndex index: Int) {
+    nonisolated func whisper(_ aWhisper: Whisper, didProcessNewSegments segments: [Segment], atIndex index: Int) {
         for seg in segments {
             guard !seg.text.isEmpty else { continue }
             onSegment?(AlignmentSegment(
@@ -189,8 +187,8 @@ private final class AlignmentProgressDelegate: WhisperDelegate {
     }
 
     // No action needed — final segments are returned by the async transcribe call.
-    func whisper(_ aWhisper: Whisper, didCompleteWithSegments segments: [Segment]) {}
+    nonisolated func whisper(_ aWhisper: Whisper, didCompleteWithSegments segments: [Segment]) {}
 
     // Errors are surfaced through the async throw path; no action needed here.
-    func whisper(_ aWhisper: Whisper, didErrorWith error: Error) {}
+    nonisolated func whisper(_ aWhisper: Whisper, didErrorWith error: Error) {}
 }
