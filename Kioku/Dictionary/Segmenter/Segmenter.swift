@@ -95,13 +95,48 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     if surface.count == 1, ScriptClassifier.isPureKana(surface), !config.standaloneKana.contains(surface) {
                         continue
                     }
-                    edges.append(
-                        LatticeEdge(
-                            start: surfaceRange.lowerBound,
-                            end: surfaceRange.upperBound,
-                            surface: surface
-                        )
+                    // Populate POS + dict flag so Viterbi's transitionCost has data to work with.
+                    // POS comes from the surface's own trie node first; falls back to the union of
+                    // POS bits across resolved lemmas when the surface is a deinflected form whose
+                    // trie node isn't tagged directly.
+                    var posBits = trie.partOfSpeech(for: surface)
+                    if posBits == 0 {
+                        for lemma in lemmas { posBits |= trie.partOfSpeech(for: lemma) }
+                    }
+                    var edge = LatticeEdge(
+                        start: surfaceRange.lowerBound,
+                        end: surfaceRange.upperBound,
+                        surface: surface
                     )
+                    edge.partOfSpeech = posBits
+                    edge.isDictionaryMatch = true
+                    // Flag entries that bundle a known grammatical kana as their final char
+                    // when the rest of the surface is its own dict entry — these are the rare
+                    // "たいよ"-style bundles that need to lose to the compositional path.
+                    if surface.count > 1, let lastChar = surface.last,
+                       SegmenterScoring.grammaticalEndingKana.contains(lastChar) {
+                        let prefix = String(surface.dropLast())
+                        if trie.contains(prefix) {
+                            edge.decomposesAtGrammaticalEnding = true
+                        }
+                    }
+                    // Direct surface lookup for IPADic context IDs (populated at dict-build time).
+                    // For deinflected forms whose surface isn't tagged, fall through to the lemma's
+                    // IDs — the resolved lemma is what tells us which IPADic slot the surface
+                    // belongs in (e.g. 会い → 会う → verb-stem-godan IDs).
+                    if let directIDs = trie.ipadicContextIDs(for: surface) {
+                        edge.ipadicLeftID = directIDs.left
+                        edge.ipadicRightID = directIDs.right
+                    } else {
+                        for lemma in lemmas {
+                            if let lemmaIDs = trie.ipadicContextIDs(for: lemma) {
+                                edge.ipadicLeftID = lemmaIDs.left
+                                edge.ipadicRightID = lemmaIDs.right
+                                break
+                            }
+                        }
+                    }
+                    edges.append(edge)
                     keptMatches += 1
                 }
             }
@@ -200,9 +235,23 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         return paths(from: text.startIndex)
     }
 
-    // Produces both the full candidate lattice and the currently selected greedy path for one text snapshot.
+    // Produces both the full candidate lattice and the currently selected path for one text snapshot.
+    // Path selection is greedy longest-match by default; when SegmenterSettings.isViterbiEnabled
+    // is true, the same lattice is re-scored via Viterbi DP (POS bigram + node costs) and the
+    // minimum-cost path is returned instead. The viterbi branch is opt-in so changing the flag
+    // in Settings instantly reverts to the long-shipped greedy behavior — no rebuild needed.
     func longestMatchResult(for text: String) -> (latticeEdges: [LatticeEdge], selectedEdges: [LatticeEdge]) {
         let latticeEdges = buildLattice(for: text)
+
+        if SegmenterSettings.isViterbiEnabled {
+            let (annotatedEdges, path) = viterbiSelect(from: latticeEdges, in: text)
+            // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
+            // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
+            if !path.isEmpty {
+                return (latticeEdges: annotatedEdges, selectedEdges: path)
+            }
+        }
+
         var edgesByStart: [String.Index: [LatticeEdge]] = [:]
 
         for edge in latticeEdges {
@@ -574,29 +623,48 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 
-    // MARK: - Viterbi (not yet wired into the active segmentation path)
+    // MARK: - Viterbi
 
     // Selects the minimum-cost lattice path using Viterbi DP with POS transition costs.
-    // To enable: replace longestMatchSegments body with viterbiBestPath(for:).map { $0.start..<$0.end }
+    // Wired into longestMatchResult behind SegmenterSettings.isViterbiEnabled; this entry point
+    // remains available for direct callers (diagnostics, tests).
     func viterbiBestPath(for text: String) -> [LatticeEdge] {
-        runViterbiAndAnnotateEdges(for: text).path
+        let edges = buildLattice(for: text)
+        return viterbiSelect(from: edges, in: text).path
     }
 
-    // Runs Viterbi search while attaching per-edge diagnostic score and predecessor-start metadata.
-    private func runViterbiAndAnnotateEdges(for text: String) -> (edges: [LatticeEdge], path: [LatticeEdge]) {
-        var edges = buildLattice(for: text)
+    // Runs Viterbi search over an already-built lattice. Returns the edges (annotated in place with
+    // per-edge score / predecessor metadata for the diagnostic overlay) and the chosen path.
+    // Pulled out of viterbiBestPath so longestMatchResult can share its lattice instead of rebuilding.
+    private func viterbiSelect(from inputEdges: [LatticeEdge], in text: String) -> (edges: [LatticeEdge], path: [LatticeEdge]) {
+        var edges = inputEdges
         guard !edges.isEmpty else { return (edges: [], path: []) }
 
         var edgesByEnd: [String.Index: [Int]] = [:]
         for (i, edge) in edges.enumerated() { edgesByEnd[edge.end, default: []].append(i) }
 
+        // Precompute character offsets for every edge endpoint once. String.distance is O(n) in
+        // grapheme clusters, and calling it from inside a sort comparator turns Viterbi setup into
+        // O(E log E · N) string traversal — large enough on real notes to trigger the iOS watchdog
+        // and crash the app to home screen. Building offset arrays via a single index walk is O(N+E).
+        var indexToCharOffset: [String.Index: Int] = [:]
+        indexToCharOffset.reserveCapacity(text.count + 1)
+        var walkIndex = text.startIndex
+        var walkOffset = 0
+        indexToCharOffset[walkIndex] = walkOffset
+        while walkIndex < text.endIndex {
+            walkIndex = text.index(after: walkIndex)
+            walkOffset += 1
+            indexToCharOffset[walkIndex] = walkOffset
+        }
+
+        let startOffsets = edges.map { indexToCharOffset[$0.start] ?? 0 }
+        let endOffsets = edges.map { indexToCharOffset[$0.end] ?? 0 }
+
         let sortedIndices = edges.indices.sorted { li, ri in
-            let le = text.distance(from: text.startIndex, to: edges[li].end)
-            let re = text.distance(from: text.startIndex, to: edges[ri].end)
-            if le == re {
-                return text.distance(from: text.startIndex, to: edges[li].start)
-                     < text.distance(from: text.startIndex, to: edges[ri].start)
-            }
+            let le = endOffsets[li]
+            let re = endOffsets[ri]
+            if le == re { return startOffsets[li] < startOffsets[ri] }
             return le < re
         }
 
@@ -611,7 +679,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 bestScore[i] = nodeCost
                 back[i] = nil
                 edges[i].viterbiScore = nodeCost
-                edges[i].viterbiPrevStart = text.distance(from: text.startIndex, to: edge.start)
+                edges[i].viterbiPrevStart = startOffsets[i]
                 continue
             }
 
@@ -620,7 +688,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
             for prev in edgesByEnd[edge.start] ?? [] {
                 guard let prevScore = bestScore[prev] else { continue }
-                let t = SegmenterScoring.transitionCost(prev: edges[prev].partOfSpeech, next: edge.partOfSpeech)
+                let t = SegmenterScoring.transitionCost(prev: edges[prev], next: edge)
                 if shouldLogPOSTransitions && t != 0 {
                     print("POS transition \(edges[prev].surface) → \(edge.surface) \(t)")
                 }
@@ -632,9 +700,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 bestScore[i] = resolved
                 back[i] = bestPrev
                 edges[i].viterbiScore = resolved
-                edges[i].viterbiPrevStart = bestPrev.map {
-                    text.distance(from: text.startIndex, to: edges[$0].start)
-                }
+                edges[i].viterbiPrevStart = bestPrev.map { startOffsets[$0] }
             }
         }
 

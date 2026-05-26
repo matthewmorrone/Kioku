@@ -42,8 +42,11 @@ final class TestReadResources {
         let dictionaryStore = try DictionaryStore(databaseURL: Self.dictionaryDatabaseURL())
         let trie = DictionaryTrie()
 
-        for surface in try dictionaryStore.fetchAllSurfaces() {
-            trie.insert(surface)
+        // Use SurfaceRecord variant so the trie carries POS bits — without these every lattice
+        // edge gets partOfSpeech=0 and Viterbi's transitionCost dispatch returns 0 immediately,
+        // making bigram-based segmentation tests vacuous.
+        for record in try dictionaryStore.fetchSurfaceRecords() {
+            trie.insert(record)
         }
 
         let deinflector = try Deinflector(jsonFileURL: Self.deinflectionRulesURL(), trie: trie)
