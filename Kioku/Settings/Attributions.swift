@@ -79,8 +79,9 @@ nonisolated enum Attributions {
         ),
     ]
 
-    // Third-party Swift libraries linked via SPM. Mirrors docs/libraries.md
-    // "Installed Libraries" section.
+    // Third-party Swift libraries actually linked into the app. Mirrors
+    // docs/libraries.md "Installed Libraries" — entries here MUST have a real
+    // SPM pin or vendored source under Packages/. Do not list aspirational deps.
     static let libraries: [Library] = [
         Library(
             name: "SwiftWhisper",
@@ -88,39 +89,9 @@ nonisolated enum Attributions {
             sourceURL: "https://github.com/exPHAT/SwiftWhisper"
         ),
         Library(
-            name: "USearch",
-            purpose: "Vector similarity search for semantic lookup.",
-            sourceURL: "https://github.com/unum-cloud/USearch"
-        ),
-        Library(
-            name: "SwiftLCS",
-            purpose: "Longest-common-subsequence diff for LLM correction reconciliation.",
-            sourceURL: "https://github.com/Frugghi/SwiftLCS"
-        ),
-        Library(
-            name: "swift-subtitle-kit",
-            purpose: "SRT parsing and resync for the read screen.",
-            sourceURL: "https://github.com/dioKaratzas/swift-subtitle-kit"
-        ),
-        Library(
-            name: "SwiftSubtitles",
-            purpose: "Broader subtitle-format support complementing swift-subtitle-kit.",
-            sourceURL: "https://github.com/dagronf/SwiftSubtitles"
-        ),
-        Library(
-            name: "CodableCSV",
-            purpose: "Codable-compatible CSV encoding/decoding for word import/export.",
-            sourceURL: "https://github.com/dehesa/CodableCSV"
-        ),
-        Library(
-            name: "swift-audio-marker",
-            purpose: "Per-word timing-marker model for Whisper output.",
-            sourceURL: "https://github.com/atelier-socle/swift-audio-marker"
-        ),
-        Library(
-            name: "TextFormation",
-            purpose: "Text-editing helpers used in the note editor.",
-            sourceURL: "https://github.com/ChimeHQ/TextFormation"
+            name: "MeCab",
+            purpose: "Morphological analyzer powering the .mecab segmentation backend.",
+            sourceURL: "https://github.com/matthewmorrone/mecab"
         ),
         Library(
             name: "zinnia-swift",

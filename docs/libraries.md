@@ -6,131 +6,72 @@ Libraries evaluated but not yet installed. Revisit when the relevant feature are
 
 ## Installed Libraries
 
-Currently linked via SPM.
+What we actually link.
 
 ### SwiftWhisper (exPHAT) ✅
 - **Repo:** https://github.com/exPHAT/SwiftWhisper
-- **SPM:** `https://github.com/exPHAT/SwiftWhisper.git`
+- **Vendored at:** `Packages/SwiftWhisper/`
 - **Why installed:** On-device Whisper transcription. Bundles whisper.cpp with no transitive dependencies, avoiding the swift-transformers ↔ swift-tokenizers conflict that WhisperKit caused with AzooKeyKanaKanjiConverter.
 
-### USearch (unum-cloud) ✅
-- **Repo:** https://github.com/unum-cloud/USearch
-- **SPM:** `https://github.com/unum-cloud/USearch.git`
-- **Why installed:** Vector similarity search over word embeddings. Powers semantic lookup and smart review ranking.
+### SwiftWhisperAlign (local) ✅
+- **Location:** `SwiftWhisperAlign/` (sibling SPM package)
+- **Why installed:** Per-word audio alignment, subtitle reconciliation, lyric alignment. Wraps SwiftWhisper output into timed markers consumed by the read screen.
 
-### SwiftLCS (Frugghi) ✅
-- **Repo:** https://github.com/Frugghi/SwiftLCS
-- **SPM:** `https://github.com/Frugghi/SwiftLCS.git`
-- **Why installed:** Longest Common Subsequence diff algorithm. Used to reconcile LLM correction output against the original text.
+### MeCab (matthewmorrone fork) ✅
+- **Repo:** https://github.com/matthewmorrone/mecab.git
+- **SPM:** remote, pinned in `Package.resolved`
+- **Why installed:** Powers the `.mecab` segmentation backend. Also the planned source of empirical Viterbi bigram costs (see `matrix.def`) once we promote it from alt-backend to scoring oracle.
 
-### swift-subtitle-kit (dioKaratzas) ✅
-- **Repo:** https://github.com/dioKaratzas/swift-subtitle-kit
-- **SPM:** `https://github.com/dioKaratzas/swift-subtitle-kit.git`
-- **Why installed:** SRT/subtitle parsing and resync — in-process subtitle handling for the read screen.
-
-### SwiftSubtitles (dagronf) ✅
-- **Repo:** https://github.com/dagronf/SwiftSubtitles
-- **SPM:** `https://github.com/dagronf/SwiftSubtitles.git`
-- **Why installed:** Broader subtitle format support (SRT, VTT, SBV, etc.) complementing swift-subtitle-kit.
-
-### CodableCSV (dehesa) ✅
-- **Repo:** https://github.com/dehesa/CodableCSV
-- **SPM:** `https://github.com/dehesa/CodableCSV.git`
-- **Why installed:** Codable-compatible CSV encoding/decoding. Used for importing/exporting word lists or frequency data.
-
-### swift-audio-marker (atelier-socle) ✅
-- **Repo:** https://github.com/atelier-socle/swift-audio-marker
-- **SPM:** `https://github.com/atelier-socle/swift-audio-marker.git`
-- **Why installed:** Audio timing marker model — represents and manipulates per-word timestamps from Whisper output.
-
-### TextFormation (ChimeHQ) ✅
-- **Repo:** https://github.com/ChimeHQ/TextFormation
-- **SPM:** `https://github.com/ChimeHQ/TextFormation.git`
-- **Why installed:** Text editing helpers — indentation, bracket completion, whitespace handling. Used in the note editor.
+### zinnia-swift (local) ✅
+- **Repo:** https://github.com/sasakure-uk/zinnia-swift
+- **Vendored at:** `Packages/zinnia-swift/`
+- **Why installed:** Swift bindings for the Zinnia handwriting recognition engine. Powers kanji handwriting input.
 
 ---
 
-## Audio & Speech
+## Candidates (not installed)
 
-### FluidAudio
-- **Repo:** https://github.com/FluidInference/FluidAudio
-- **Why interesting:** Real-time streaming ASR, speaker diarization, VAD — all offloaded to Apple Neural Engine. Strong audio infrastructure.
-- **Blocker:** Japanese model coverage unconfirmed. Revisit when FluidInference ships a Japanese Parakeet variant or when diarization is needed for multi-speaker audio.
+Short list — anything not below was evaluated and rejected.
+
+### CodableCSV (dehesa)
+- **Repo:** https://github.com/dehesa/CodableCSV
+- **Why interesting:** Codable-compatible CSV encode/decode. Enables Anki / generic-CSV vocab import/export for users migrating in or out.
+- **Revisit when:** Anki interop or bulk vocabulary import/export becomes a feature.
 
 ### mlx-audio (Blaizzy)
 - **Repo:** https://github.com/Blaizzy/mlx-audio
-- **SPM:** `https://github.com/Blaizzy/mlx-audio.git`
-- **Why interesting:** MLX-based audio inference; could support vocal stem separation or custom model inference.
-- **Blocker:** High integration cost, requires MLX runtime. Revisit when building vocal stem separation.
+- **Why interesting:** MLX-based audio inference; on-device vocal stem separation for songs with overpowering instrumentation.
+- **Blocker:** High integration cost, requires MLX runtime. Revisit when stem separation moves on-device.
 
-### SwiftFFmpeg
-- **Repo:** https://github.com/sunlubo/SwiftFFmpeg
-- **SPM:** `https://github.com/sunlubo/SwiftFFmpeg.git`
-- **Why interesting:** Full FFmpeg wrapping for audio/video format conversion. Useful for converting audio to raw PCM/WAV for stem separation model input.
-- **Blocker:** Requires bundling a prebuilt FFmpeg binary for iOS (~20MB+). AVFoundation's `AVAssetExportSession` covers most conversion needs. Revisit when a Core ML stem separation model requires a specific PCM format AVFoundation can't produce.
-
-### ElevenLabs (atacan)
-- **Repo:** https://github.com/atacan/ElevenLabs
-- **SPM:** `https://github.com/atacan/ElevenLabs.git`
-- **Why interesting:** TTS — could narrate vocabulary definitions or example sentences.
-- **Blocker:** Not in current scope. Revisit if audio pronunciation preview becomes a feature.
+### Shuffle (Kicksort)
+- **Repo:** https://github.com/Kicksort/Shuffle
+- **Why interesting:** Tinder-style swipe-card UI for flashcard review, SPM-installable (unlike Koloda).
+- **Revisit when:** Card-based review UX is on the roadmap. Current review flow doesn't need it.
 
 ---
 
-## Japanese Language
+## Python pipeline (server-side, not Swift)
 
-### novi/mecab-swift
-- **Repo:** https://github.com/novi/mecab-swift
-- **SPM:** `https://github.com/novi/mecab-swift.git`
-- **Why interesting:** MeCab morphological analyzer; a well-maintained alternative/complement to the existing lattice segmenter.
-- **Blocker:** Adding a second segmentation path risks architectural complexity. The existing lattice segmenter + deinflection pipeline is purpose-built for this app. Revisit if MeCab coverage proves better for specific text types.
-
-### String-Japanese (brevansio)
-- **Repo:** https://github.com/brevansio/String-Japanese
-- **SPM:** `https://github.com/brevansio/String-Japanese.git`
-- **Why interesting:** Kana/romaji detection, character classification utilities.
-- **Blocker:** `KanaNormalizer` and `ScriptClassifier` already cover this. Only useful if those need replacement or extension with edge cases.
-
-### similarity-search-kit (ZachNagengast)
-- **Repo:** https://github.com/ZachNagengast/similarity-search-kit
-- **SPM:** `https://github.com/ZachNagengast/similarity-search-kit.git`
-- **Why interesting:** Apple Neural Engine-accelerated embedding similarity search. Could power "find similar words" or smart review card ranking.
-- **Blocker:** Overlaps with USearch (already installed). Only add if Apple Neural Engine acceleration proves measurably faster than USearch for the specific embedding dimensions used.
-
----
-
-## UI
-
-### Koloda (Yalantis)
-- **Repo:** https://github.com/Yalantis/Koloda
-- **Why interesting:** Tinder-style swipe card UI for flashcard review mode.
-- **Blocker:** No SPM support (CocoaPods/Carthage only). Card review UI is coming from v1 of the app anyway.
-- **Alternative:** [Shuffle](https://github.com/Kicksort/Shuffle) has identical mechanics with SPM support (`https://github.com/Kicksort/Shuffle.git`).
-
-### RichTextKit (danielsaidi)
-- **Repo:** https://github.com/danielsaidi/RichTextKit
-- **SPM:** `https://github.com/danielsaidi/RichTextKit.git`
-- **Why interesting:** Full rich text editing with formatting toolbar.
-- **Blocker:** Notes are plain text with overlay-rendered ruby — rich text formatting would conflict with the segmentation/annotation pipeline. Only revisit if note format fundamentally changes.
-
-### ESTMusicIndicator (Aufree)
-- **Repo:** https://github.com/Aufree/ESTMusicIndicator
-- **Why interesting:** Animated bar indicator for playback state on note rows.
-- **Blocker:** No SPM support (CocoaPods only). Implement as a small custom SwiftUI view using animated bars — it's ~30 lines.
-
----
-
-## Subtitle & Timing
-
-### subtweak (juri)
-- **Repo:** https://github.com/juri/subtweak
-- **SPM:** `https://github.com/juri/subtweak.git`
-- **Why interesting:** SRT timing adjustment and gap detection.
-- **Blocker:** SubtitleKit (already installed) covers resync in-process. subtweak is better as an offline preprocessing CLI tool.
-
----
-
-## Stable-ts (jianfch)
+### stable-ts (jianfch)
 - **Repo:** https://github.com/jianfch/stable-ts
-- **Why interesting:** Enhances Whisper timestamp stability — produces much more accurate word-level timing for karaoke alignment.
-- **Blocker:** Python only. Would need to run server-side and consume results via API, or find a way to port the timestamp-stabilization logic to Swift/Core ML. High value if on-device Whisper timestamps prove too jittery for tight karaoke sync.
+- **Status:** Already in use — drives the offline audio-alignment pipeline producing word-level SRT/TextGrid/JSON for SailorMoon batch and other songs. Not a Swift dependency.
+
+---
+
+## Rejected (do not revisit without new evidence)
+
+- **USearch** — semantic similarity over embeddings; no embedding pipeline planned.
+- **SwiftLCS** — LLM correction reconciliation already works with custom diff.
+- **swift-subtitle-kit / SwiftSubtitles** — we're SRT-only, server-generated; custom parsing suffices.
+- **swift-audio-marker** — SwiftWhisperAlign already covers per-word timing markers.
+- **TextFormation** — notes are Japanese plain text; indentation/bracket helpers don't apply.
+- **FluidAudio** — diarization not needed for single-speaker content.
+- **SwiftFFmpeg** — AVFoundation covers our conversion needs; +20 MB binary.
+- **ElevenLabs** — cloud TTS, out of scope.
+- **novi/mecab-swift** — we already link MeCab directly via the matthewmorrone fork.
+- **String-Japanese** — KanaNormalizer + ScriptClassifier cover kana/romaji classification.
+- **similarity-search-kit** — duplicate of USearch, same reasoning.
+- **Koloda** — no SPM support; Shuffle is the SPM-compatible equivalent.
+- **RichTextKit** — conflicts with overlay-rendered ruby on plain-text notes.
+- **ESTMusicIndicator** — no SPM, trivial to reimplement as ~30 lines of SwiftUI.
+- **subtweak** — offline preprocessing CLI, not a runtime dependency.
