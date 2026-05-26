@@ -28,13 +28,7 @@ final class AttributionsTests: XCTestCase {
         let names = Set(Attributions.libraries.map(\.name))
         let required: Set<String> = [
             "SwiftWhisper",
-            "USearch",
-            "SwiftLCS",
-            "swift-subtitle-kit",
-            "SwiftSubtitles",
-            "CodableCSV",
-            "swift-audio-marker",
-            "TextFormation",
+            "MeCab",
             "zinnia-swift",
         ]
         let missing = required.subtracting(names)
