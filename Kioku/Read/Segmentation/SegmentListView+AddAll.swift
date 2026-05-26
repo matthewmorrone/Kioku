@@ -148,14 +148,33 @@ extension SegmentListView {
         // Index by canonical entry id to keep the merge step O(N+M) when the saved-word list is large.
         var indexByEntryID: [Int64: Int] = [:]
         indexByEntryID.reserveCapacity(entries.count)
+        // Fallback resolver built from the saved entries themselves. Without this, surfaces
+        // that don't round-trip through DictionaryStore.lookupFirstEntryID (archaic kana,
+        // dictionary-build drift between save time and now, edge entries) drop out of the
+        // dictionary `lookup` and never get re-attributed to the current note — Add All
+        // silently leaves their stars at yellow-hollow. By falling back to the entry's own
+        // stored + encountered surfaces, we always find an existing card when one exists.
+        var entryIDBySavedSurface: [String: Int64] = [:]
         for (index, entry) in entries.enumerated() {
             indexByEntryID[entry.canonicalEntryID] = index
+            let storedSurface = entry.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+            if storedSurface.isEmpty == false {
+                entryIDBySavedSurface[storedSurface] = entry.canonicalEntryID
+            }
+            for surface in entry.encounteredSurfaces {
+                let trimmed = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty == false {
+                    entryIDBySavedSurface[trimmed] = entry.canonicalEntryID
+                }
+            }
         }
 
         var addedCount = 0
 
         for normalizedSurface in orderedSurfaces {
-            guard let entryID = lookup[normalizedSurface] else {
+            // Dictionary lookup wins when present; fall back to the saved-entry index for any
+            // surface that can't be re-resolved by the dictionary right now.
+            guard let entryID = lookup[normalizedSurface] ?? entryIDBySavedSurface[normalizedSurface] else {
                 continue
             }
 

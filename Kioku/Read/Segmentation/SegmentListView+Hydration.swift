@@ -1,5 +1,12 @@
 import SwiftUI
 
+// Wraps a non-Sendable closure so it can be captured into a @Sendable background
+// dispatch. Safe here because lemmaForSurface only reads from nonisolated Segmenter.
+nonisolated private final class UncheckedSendableBox<T>: @unchecked Sendable {
+    let value: T
+    init(value: T) { self.value = value }
+}
+
 // Canonical-entry-id hydration and word-detail presentation for SegmentListView.
 // Star rendering and tap-to-detail both rely on the surface → canonical-id map
 // populated here off the main thread, with a synchronous fast-path when the
@@ -17,14 +24,121 @@ extension SegmentListView {
             return
         }
 
+        // Fallback path: if the surface matches a saved entry's stored or encountered surface,
+        // open detail for THAT card directly. Skips the dictionary hydration for words that
+        // can't round-trip through DictionaryStore.lookupFirstEntryID (archaic kana, dict-build
+        // drift) — without this, tapping a row with yellow-hollow star silently no-ops.
+        if let entryID = canonicalEntryIDFromSavedEntries(for: normalizedSurface) {
+            canonicalEntryIDBySurface[normalizedSurface] = entryID
+            presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+            return
+        }
+
         let normalizedLemma = normalizedSurfaceForFiltering(lemma)
         hydrateCanonicalEntryIDs(for: [(surface: normalizedSurface, lemma: normalizedLemma)]) { hydratedEntryIDs in
             if hydratedEntryIDs.isEmpty == false {
                 canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
             }
-            guard let entryID = hydratedEntryIDs[normalizedSurface] else { return }
-            presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+            if let entryID = hydratedEntryIDs[normalizedSurface] {
+                presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+                return
+            }
+            // Last-resort fallback after hydration: same saved-entries lookup as above. Useful
+            // when canonicalEntryIDBySurface was cleared between the two checks.
+            if let entryID = canonicalEntryIDFromSavedEntries(for: normalizedSurface) {
+                canonicalEntryIDBySurface[normalizedSurface] = entryID
+                presentWordDetail(canonicalEntryID: entryID, surface: normalizedSurface)
+            }
         }
+    }
+
+    // Presents the in-app lookup sheet (SegmentLookupSheet) for the tapped row. Mirrors the
+    // tap-from-read-view flow but with no neighbor/swipe context — list rows aren't spatially
+    // adjacent the way inline segments are. The sheet's "see details" chevron uses the
+    // sheetOpenWordDetail callback to navigate to WordDetailView, so the user's mental model
+    // (tap = sheet, Word Details = full page) holds end-to-end.
+    func openLookupSheet(for surface: String, lemma: String) {
+        let normalizedSurface = normalizedSurfaceForFiltering(surface)
+        guard normalizedSurface.isEmpty == false else { return }
+
+        // Resolve canonical entry ID using the same fallback chain as openWordDetail: cache →
+        // saved-entries index → dictionary hydration. Without this the sheet would render an
+        // empty shell for surfaces that don't directly resolve in the dictionary right now.
+        if let entryID = canonicalEntryIDBySurface[normalizedSurface] {
+            presentLookupSheet(canonicalEntryID: entryID, surface: normalizedSurface)
+            return
+        }
+        if let entryID = canonicalEntryIDFromSavedEntries(for: normalizedSurface) {
+            canonicalEntryIDBySurface[normalizedSurface] = entryID
+            presentLookupSheet(canonicalEntryID: entryID, surface: normalizedSurface)
+            return
+        }
+        let normalizedLemma = normalizedSurfaceForFiltering(lemma)
+        hydrateCanonicalEntryIDs(for: [(surface: normalizedSurface, lemma: normalizedLemma)]) { hydratedEntryIDs in
+            if hydratedEntryIDs.isEmpty == false {
+                canonicalEntryIDBySurface.merge(hydratedEntryIDs) { current, _ in current }
+            }
+            if let entryID = hydratedEntryIDs[normalizedSurface] {
+                presentLookupSheet(canonicalEntryID: entryID, surface: normalizedSurface)
+            } else if let entryID = canonicalEntryIDFromSavedEntries(for: normalizedSurface) {
+                canonicalEntryIDBySurface[normalizedSurface] = entryID
+                presentLookupSheet(canonicalEntryID: entryID, surface: normalizedSurface)
+            }
+        }
+    }
+
+    // Drives SegmentLookupSheet with the minimum provider set we need from list context: the
+    // dictionary entry (via canonical-id SQL lookup), kana readings projected from its forms,
+    // save state from the existing per-surface caches, and the "open word detail" callback
+    // that lifts the user from the sheet to the full WordDetailView page.
+    func presentLookupSheet(canonicalEntryID: Int64, surface: String) {
+        guard let dictionaryStore else { return }
+        let normalizedSurface = surface
+
+        SegmentLookupSheet.shared.presentSheet(
+            surface: normalizedSurface,
+            leftNeighborSurface: nil,
+            rightNeighborSurface: nil,
+            // Readings are the kana_forms of the entry; sheet header renders furigana from these.
+            sheetReadingsProvider: {
+                guard let entry = try? dictionaryStore.lookupEntry(entryID: canonicalEntryID) else { return [] }
+                return entry.kanaForms.map(\.text)
+            },
+            // Headword + senses come straight from the dictionary entry the row identifies.
+            sheetDictionaryEntryProvider: {
+                try? dictionaryStore.lookupEntry(entryID: canonicalEntryID)
+            },
+            // Wire the star button on the sheet to the same per-surface toggle the row uses.
+            sheetIsSavedProvider: {
+                isSavedForCurrentNote(normalizedSurface: normalizedSurface)
+            },
+            sheetSaveToggle: {
+                toggleSavedWord(normalizedSurface)
+            },
+            // The chevron "see details" still navigates to the full page — keeps the user's
+            // tap=sheet, details=page mental model intact.
+            sheetOpenWordDetail: {
+                presentWordDetail(canonicalEntryID: canonicalEntryID, surface: normalizedSurface)
+            }
+        )
+    }
+
+    // Walks wordsStore.words for a saved entry whose stored or encountered surface matches the
+    // queried (already-normalized) surface, returning that entry's canonical id. The match is
+    // O(N + encounteredCount); negligible vs the SQL hydration path we're falling back from.
+    // Shared by openWordDetail and Add All's commit step so both paths handle dict drift the
+    // same way.
+    func canonicalEntryIDFromSavedEntries(for normalizedSurface: String) -> Int64? {
+        for entry in wordsStore.words {
+            let stored = entry.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+            if stored == normalizedSurface { return entry.canonicalEntryID }
+            for surface in entry.encounteredSurfaces {
+                if surface.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedSurface {
+                    return entry.canonicalEntryID
+                }
+            }
+        }
+        return nil
     }
 
     // Picks the existing SavedWord for an entry id when present so list memberships and personal
@@ -54,8 +168,12 @@ extension SegmentListView {
             .subtracting(lemmaCacheByEdgeSurface.keys)
         guard distinctSurfaces.isEmpty == false else { return }
 
-        let resolver = lemmaForSurface
+        // The lemmaForSurface closure is constructed on MainActor but reads only
+        // from nonisolated Segmenter state, so calling it off main is safe at
+        // runtime even though the type system can't prove it.
+        let resolverBox = UncheckedSendableBox(value: lemmaForSurface)
         DispatchQueue.global(qos: .userInitiated).async {
+            let resolver = resolverBox.value
             var resolved: [String: String] = [:]
             resolved.reserveCapacity(distinctSurfaces.count)
             for surface in distinctSurfaces {
