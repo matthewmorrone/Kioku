@@ -26,6 +26,7 @@ struct ContentView: View {
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionarySetting = SegmenterSettings.defaultMeCabDictionary
+    @AppStorage(SegmenterSettings.viterbiEnabledKey) private var viterbiEnabledSetting = SegmenterSettings.defaultViterbiEnabled
     @StateObject private var wotdNavigation = WordOfTheDayNavigation()
     @StateObject private var clipboardCoordinator = ClipboardLookupCoordinator()
     @Environment(\.scenePhase) private var scenePhase
@@ -126,6 +127,10 @@ struct ContentView: View {
             rebuildReadResources()
         }
         .onChange(of: mecabDictionarySetting) { _, _ in
+            rebuildReadResources()
+        }
+        // Bump the segmenter revision so ReadView re-segments existing text with the new scoring path.
+        .onChange(of: viterbiEnabledSetting) { _, _ in
             rebuildReadResources()
         }
         // Validate WOTD scheduling after startup has settled rather than on the critical path.
@@ -358,13 +363,17 @@ struct ContentView: View {
             }} catch { print("fetchSurfaceReadingData failed: \(error)") }
 
             do {
-                let surfaces = try StartupTimer.measure("fetchAllSurfaces") {
-                    try store.fetchAllSurfaces()
+                // SurfaceRecords carry POS bits + IPADic context IDs so Viterbi can look up
+                // bigram costs directly in matrix.bin. The fetch path was rewritten to aggregate
+                // POS per entry in a first pass (small) and join in-memory against surface rows
+                // in a second pass — avoids the JOIN-explosion that OOM-killed the app earlier.
+                let records = try StartupTimer.measure("fetchSurfaceRecords") {
+                    try store.fetchSurfaceRecords()
                 }
-                StartupTimer.measure("trie population (\(surfaces.count) surfaces)") {
-                    for surface in surfaces { trie.insert(surface) }
+                StartupTimer.measure("trie population (\(records.count) records)") {
+                    for record in records { trie.insert(record) }
                 }
-            } catch { print("fetchAllSurfaces failed: \(error)") }
+            } catch { print("fetchSurfaceRecords failed: \(error)") }
 
         } catch {
             print("DictionaryStore initialization failed: \(error)")

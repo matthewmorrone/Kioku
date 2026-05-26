@@ -14,6 +14,17 @@ struct LatticeEdge {
     var partOfSpeech: UInt64 = 0
     // True when the surface resolves through the dictionary trie (including deinflection).
     var isDictionaryMatch: Bool = false
+    // True when the surface ends in a known grammatical kana (た/だ/て/で/よ) and the surface
+    // minus that last char is itself a dict entry — i.e., the entry decomposes into a
+    // prefix + grammatical ending. Used by the Viterbi node-cost to discourage rare bundled
+    // entries (たいよ, 生まれた) from outranking the compositional split.
+    var decomposesAtGrammaticalEnding: Bool = false
+    // IPADic context IDs tagged at dictionary-build time. When both are populated on adjacent
+    // edges, Viterbi looks up the connection cost directly in IPADic's matrix.bin instead of
+    // bucketing through POS classes — the same scoring fidelity MeCab itself uses. nil when
+    // the surface lacked tags (deinflected forms, fallback edges, untagged trie inserts).
+    var ipadicLeftID: Int32? = nil
+    var ipadicRightID: Int32? = nil
     // Accumulated Viterbi score for the best path ending at this edge; nil until Viterbi runs.
     var viterbiScore: Int? = nil
     // Character offset of the predecessor edge's start in the best Viterbi path; nil until Viterbi runs.

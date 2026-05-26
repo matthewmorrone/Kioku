@@ -7,13 +7,27 @@ nonisolated final class MeCabTokenizer {
 
     // Initializes MeCab with the compiled dictionary at the given directory path.
     // MeCab requires a mecabrc config file even when dictionary path is passed via -d.
+    //
+    // Uses mecab_new (argc/argv) instead of mecab_new2 (single-string-parsed-by-whitespace)
+    // because iOS bundle paths contain a literal space (".../Kioku Reader.app/MeCab/...")
+    // that mecab_new2 splits on, producing nonexistent split paths and silent init failure.
     init?(dictionaryPath: String) {
         guard let rcPath = Bundle.main.path(forResource: "mecabrc", ofType: nil, inDirectory: "MeCab") else {
             print("MeCabTokenizer: mecabrc not found in bundle")
             return nil
         }
-        let arg = "-r \(rcPath) -d \(dictionaryPath)"
-        mecabPtr = mecab_new2(arg)
+
+        // Build argv as C-strings. strdup-ed copies are freed after mecab_new returns —
+        // mecab internalizes the args, so the buffers can go out of scope safely.
+        let args = ["mecab", "-r", rcPath, "-d", dictionaryPath]
+        let cArgs = args.map { strdup($0) }
+        defer { cArgs.forEach { free($0) } }
+
+        var argPtrs: [UnsafeMutablePointer<CChar>?] = cArgs
+        mecabPtr = argPtrs.withUnsafeMutableBufferPointer { buf in
+            mecab_new(Int32(buf.count), buf.baseAddress)
+        }
+
         guard mecabPtr != nil else {
             let err = mecab_strerror(nil).map { String(cString: $0) } ?? "unknown error"
             print("MeCabTokenizer: init failed for \(dictionaryPath) — \(err)")

@@ -103,4 +103,22 @@ public enum PartOfSpeech: UInt8, CaseIterable {
     public nonisolated static func isPrefix(_ bits: UInt64) -> Bool    { (bits & PartOfSpeech.prefix.bit) != 0 }
     // Returns true when the counter bit is set on the packed POS value.
     public nonisolated static func isCounter(_ bits: UInt64) -> Bool   { (bits & PartOfSpeech.counter.bit) != 0 }
+    // Returns true when the adverb bit is set on the packed POS value.
+    public nonisolated static func isAdverb(_ bits: UInt64) -> Bool    { (bits & PartOfSpeech.adverb.bit) != 0 }
+    // Returns true when the conjunction bit is set on the packed POS value.
+    public nonisolated static func isConjunction(_ bits: UInt64) -> Bool { (bits & PartOfSpeech.conjunction.bit) != 0 }
+    // Returns true when the suffix bit is set on the packed POS value.
+    public nonisolated static func isSuffix(_ bits: UInt64) -> Bool    { (bits & PartOfSpeech.suffix.bit) != 0 }
+    // Returns true when the copula bit is set on the packed POS value.
+    public nonisolated static func isCopula(_ bits: UInt64) -> Bool    { (bits & PartOfSpeech.copula.bit) != 0 }
+    // Returns true when the numeric bit is set on the packed POS value.
+    public nonisolated static func isNumeric(_ bits: UInt64) -> Bool   { (bits & PartOfSpeech.numeric.bit) != 0 }
+    // Returns true when the pronoun bit is set on the packed POS value.
+    public nonisolated static func isPronoun(_ bits: UInt64) -> Bool   { (bits & PartOfSpeech.pronoun.bit) != 0 }
+    // Returns true when the proper-noun bit is set on the packed POS value.
+    public nonisolated static func isProperNoun(_ bits: UInt64) -> Bool { (bits & PartOfSpeech.properNoun.bit) != 0 }
+    // Returns true when the interjection bit is set on the packed POS value.
+    public nonisolated static func isInterjection(_ bits: UInt64) -> Bool { (bits & PartOfSpeech.interjection.bit) != 0 }
+    // Returns true when the expression bit is set on the packed POS value.
+    public nonisolated static func isExpression(_ bits: UInt64) -> Bool { (bits & PartOfSpeech.expression.bit) != 0 }
 }

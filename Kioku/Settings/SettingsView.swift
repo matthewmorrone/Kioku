@@ -38,6 +38,7 @@ struct SettingsView: View {
 
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
+    @AppStorage(SegmenterSettings.viterbiEnabledKey) private var viterbiEnabled: Bool = SegmenterSettings.defaultViterbiEnabled
 
     @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
@@ -217,6 +218,10 @@ struct SettingsView: View {
                         }
                     }
 
+                    if segmenterBackend == SegmenterBackend.trie.rawValue {
+                        Toggle("Viterbi scoring (experimental)", isOn: $viterbiEnabled)
+                    }
+
                 } header: {
                     Text("Segmentation")
                 } footer: {
@@ -224,6 +229,8 @@ struct SettingsView: View {
                         Text("MeCab uses statistical morphological analysis. IPAdic is smaller; UniDic provides finer-grained segmentation.")
                     } else if segmenterBackend == SegmenterBackend.nlTokenizer.rawValue {
                         Text("Apple's built-in ICU tokenizer. No external dictionary needed.")
+                    } else if viterbiEnabled {
+                        Text("Trie segmenter with Viterbi DP scoring (POS bigram + node costs). Toggle off to revert to greedy longest-match.")
                     } else {
                         Text("Dictionary trie uses the built-in word list with deinflection rules.")
                     }
@@ -352,6 +359,13 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    // Lists CrashLogger's persisted records (exceptions, signals, MetricKit
+                    // post-mortems including OOM kills). Tap a record to view JSON + share.
+                    NavigationLink {
+                        CrashLogsView()
+                    } label: {
+                        Label("Crash Logs", systemImage: "exclamationmark.triangle")
+                    }
                     // Pushes the About / Credits screen — dataset attributions and library acks.
                     NavigationLink {
                         AboutView()

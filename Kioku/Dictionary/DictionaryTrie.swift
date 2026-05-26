@@ -25,16 +25,28 @@ nonisolated public final class DictionaryTrie {
 
     // Inserts a surface without metadata.
     public func insert(_ surface: String) {
-        insert(surface, entryIDs: [], partOfSpeech: 0)
+        insert(surface, entryIDs: [], partOfSpeech: 0, ipadicLeftID: nil, ipadicRightID: nil)
     }
 
     // Inserts one surface record so terminal nodes retain compact entry-id and POS metadata.
     public func insert(_ record: SurfaceRecord) {
-        insert(record.surface, entryIDs: record.entryIDs, partOfSpeech: record.partOfSpeech)
+        insert(
+            record.surface,
+            entryIDs: record.entryIDs,
+            partOfSpeech: record.partOfSpeech,
+            ipadicLeftID: record.ipadicLeftID,
+            ipadicRightID: record.ipadicRightID
+        )
     }
 
     // Inserts a surface with optional metadata, merging entry IDs if the surface already exists.
-    public func insert(_ surface: String, entryIDs: [Int], partOfSpeech: UInt64) {
+    public func insert(
+        _ surface: String,
+        entryIDs: [Int],
+        partOfSpeech: UInt64,
+        ipadicLeftID: Int32? = nil,
+        ipadicRightID: Int32? = nil
+    ) {
         var node = root
         var length = 0
 
@@ -61,6 +73,11 @@ nonisolated public final class DictionaryTrie {
         }
 
         node.partOfSpeech |= partOfSpeech
+        // Last writer wins for context IDs — same surface inserted twice with different IDs is
+        // rare (only happens if generate_db.py changes how it harvests). MeCab's lookup gives one
+        // (left_id, right_id) per surface, so consecutive inserts for the same surface should match.
+        if let ipadicLeftID { node.ipadicLeftID = ipadicLeftID }
+        if let ipadicRightID { node.ipadicRightID = ipadicRightID }
 
         if !node.isTerminal {
             node.isTerminal = true
@@ -79,6 +96,34 @@ nonisolated public final class DictionaryTrie {
             node = next
         }
         return node.isTerminal
+    }
+
+    // Returns the OR-merged part-of-speech bitfield for a terminal surface, or 0 when the trie
+    // was built without metadata or the surface is not a terminal. Used by the segmenter to
+    // populate lattice edges so Viterbi can consult bigram transition costs.
+    public func partOfSpeech(for surface: String) -> UInt64 {
+        var node = root
+        for character in surface {
+            guard let next = node.children[character] else { return 0 }
+            node = next
+        }
+        return node.isTerminal ? node.partOfSpeech : 0
+    }
+
+    // Returns the IPADic (left_id, right_id) tagged onto this surface at dictionary-build time
+    // via Resources/migrate_add_context_ids.py, or nil when the surface isn't tagged.
+    // Used by Segmenter.buildLattice to populate lattice edges so Viterbi can index matrix.bin
+    // directly instead of going through POS-class buckets.
+    public func ipadicContextIDs(for surface: String) -> (left: Int32, right: Int32)? {
+        var node = root
+        for character in surface {
+            guard let next = node.children[character] else { return nil }
+            node = next
+        }
+        guard node.isTerminal, let lid = node.ipadicLeftID, let rid = node.ipadicRightID else {
+            return nil
+        }
+        return (left: lid, right: rid)
     }
 
     // Returns compact entry-id metadata for an exact surface hit, or nil when no metadata is stored.
