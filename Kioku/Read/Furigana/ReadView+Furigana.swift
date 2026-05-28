@@ -138,7 +138,10 @@ extension ReadView {
         edges: [LatticeEdge],
         surfaceReadingData: SurfaceReadingDataMap
     ) -> (furiganaByLocation: [Int: String], lengthByLocation: [Int: Int]) {
-        let resolved = FuriganaResolver(segmenter: segmenter).build(
+        let resolved = FuriganaResolver(
+            segmenter: segmenter,
+            kanjiReadingFallback: kanjiReadingFallback
+        ).build(
             for: sourceText,
             edges: edges,
             surfaceReadingData: surfaceReadingData
