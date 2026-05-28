@@ -51,6 +51,7 @@ extension ReadView {
                         lineSpacing: lineSpacing,
                         kerning: kerning,
                         furiganaGap: CGFloat(furiganaGap),
+                        furiganaSizeOverride: customFuriganaSizeEnabled ? CGFloat(furiganaSize) : nil,
                         evenSegmentColor: customTokenColorsEnabled
                             ? (UIColor(hexString: tokenColorAHex) ?? .label)
                             : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed },

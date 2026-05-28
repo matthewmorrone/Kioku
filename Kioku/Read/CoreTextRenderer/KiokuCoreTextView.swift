@@ -75,6 +75,13 @@ final class KiokuCoreTextView: UIView {
         didSet { setNeedsDisplay() }
     }
 
+    // When set, overrides the implicit `baseTextSize * 0.5` furigana font size used by
+    // `drawRuby`. nil (default) preserves the legacy ratio. The renderer host writes
+    // through to this whenever the user's "Custom Furigana Size" toggle is on.
+    var furiganaFontSizeOverride: CGFloat? = nil {
+        didSet { setNeedsDisplay() }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         commonInit()
@@ -224,7 +231,7 @@ final class KiokuCoreTextView: UIView {
     // them that way), so visually segments touch and ruby never crosses footprint edges.
     private func drawSegmentPacked(in context: CGContext, dirtyRect: CGRect) {
         let baseFontSize = baseTextSize
-        let furiganaFont = UIFont.systemFont(ofSize: max(1, baseFontSize * 0.5))
+        let furiganaFont = UIFont.systemFont(ofSize: max(1, furiganaFontSizeOverride ?? (baseFontSize * 0.5)))
         var rubyAscent: CGFloat = 0
         var rubyDescent: CGFloat = 0
         var rubyLeading: CGFloat = 0
@@ -337,7 +344,7 @@ final class KiokuCoreTextView: UIView {
     // The reserve is set by the host; the placement is what the slider tunes.
     private func drawRuby(in context: CGContext, dirtyRect: CGRect) {
         guard rubyEntries.isEmpty == false else { return }
-        let furiganaFont = UIFont.systemFont(ofSize: max(1, baseTextSize * 0.5))
+        let furiganaFont = UIFont.systemFont(ofSize: max(1, furiganaFontSizeOverride ?? (baseTextSize * 0.5)))
         let ctFuriganaFont = furiganaFont as CTFont
         let nsString = layoutEngine.attributedString.string as NSString
 
@@ -423,7 +430,9 @@ final class KiokuCoreTextView: UIView {
         // kanji's line box and the ruby floats unbanded above. Only applies when furigana
         // is actually being drawn (rubyEntries non-empty) so plain-text highlights stay
         // flush with the line.
-        let rubyExtraTop: CGFloat = rubyEntries.isEmpty ? 0 : (baseTextSize * 0.5 + max(0, furiganaGap))
+        let rubyExtraTop: CGFloat = rubyEntries.isEmpty
+            ? 0
+            : ((furiganaFontSizeOverride ?? (baseTextSize * 0.5)) + max(0, furiganaGap))
         for band in highlightBands {
             guard band.range.location != NSNotFound, band.range.length > 0 else { continue }
             let rects = layoutEngine.boundingRects(forCharacterRange: band.range)
