@@ -43,7 +43,8 @@ struct FuriganaResolver {
                 segmentRange: segmentRange,
                 sourceText: sourceText,
                 lemmaReference: segmenter.preferredLemma(for: segmentSurface) ?? segmentSurface,
-                surfaceReadingData: surfaceReadingData
+                surfaceReadingData: surfaceReadingData,
+                allowKanjiFallback: edge.isDictionaryMatch == false
             )
             // Preserve the original ReadView pipeline's early-continue semantics: when run-level
             // projection produced no annotations, skip the fallback path entirely rather than
@@ -198,7 +199,8 @@ struct FuriganaResolver {
         segmentRange: Range<String.Index>,
         sourceText: String,
         lemmaReference: String,
-        surfaceReadingData: SurfaceReadingDataMap
+        surfaceReadingData: SurfaceReadingDataMap,
+        allowKanjiFallback: Bool
     ) -> [(reading: String, localStartOffset: Int, localLength: Int)] {
         let runs = FuriganaAttributedString.kanjiRuns(in: segmentSurface)
         guard runs.isEmpty == false else {
@@ -277,13 +279,18 @@ struct FuriganaResolver {
         }
 
         // Last-resort per-kanji fallback: any individual kanji still without an annotation gets its
-        // standalone KANJIDIC2 reading, painted over just that one character. This guarantees the
-        // reader always sees *some* furigana over a kanji even when no word/lemma reading resolved —
-        // e.g. 眩 in 眩しげ, which the deinflector doesn't reduce to 眩しい and which has no
-        // surface-reading entry of its own. The reading may not match the in-context pronunciation,
-        // but a best-effort single-kanji reading beats a bare, un-annotated kanji. Disabled (no-op)
-        // whenever the fallback map is empty, which keeps existing callers/tests unchanged.
-        if kanjiReadingFallback.isEmpty == false {
+        // standalone KANJIDIC2 reading, painted over just that one character, so the reader sees
+        // *some* furigana over a kanji even when no word/lemma reading resolved. The reading may not
+        // match the in-context pronunciation, so this is deliberately the lowest-priority source:
+        //   • gated on `allowKanjiFallback`, which the caller sets only for non-dictionary edges
+        //     (segments the segmenter couldn't resolve to a known word) — when an edge IS a
+        //     dictionary match we trust its reading pipeline, including its deliberate suppressions
+        //     (e.g. the 私たち okurigana-mismatch case), and never overpaint it with a guess;
+        //   • only fills kanji not already covered by a real reading above;
+        //   • a no-op whenever the fallback map is empty, keeping existing callers/tests unchanged.
+        // Words the segmenter recognises (incl. inflected/derived forms reachable via deinflection,
+        // like 眩しげ → 眩しい) get their correct reading from the paths above and never reach here.
+        if allowKanjiFallback, kanjiReadingFallback.isEmpty == false {
             let characters = Array(segmentSurface)
             let coveredOffsets = Set(annotations.flatMap { annotation in
                 annotation.localStartOffset..<(annotation.localStartOffset + annotation.localLength)

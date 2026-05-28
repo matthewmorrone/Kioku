@@ -166,10 +166,13 @@ final class ReadViewFuriganaTests: XCTestCase {
     func testBuildFuriganaBySegmentLocationUsesKanjiFallbackWhenNoDictionaryReading() throws {
         let readView = try makeReadView(kanjiReadingFallback: ["眩": "まぶ"])
         let sourceText = "眩しげ"
+        // A non-dictionary edge (the segmenter couldn't resolve the surface to a known word) is the
+        // only case where the last-resort fallback is allowed to fire.
         let edge = LatticeEdge(
             start: sourceText.startIndex,
             end: sourceText.endIndex,
-            surface: sourceText
+            surface: sourceText,
+            isDictionaryMatch: false
         )
 
         // No surface-reading entries at all: the only reading source is the per-kanji fallback.
@@ -207,6 +210,32 @@ final class ReadViewFuriganaTests: XCTestCase {
         // The resolved local reading ちか must stand; the fallback きん must not replace it.
         XCTAssertEqual(furigana.furiganaByLocation[0], "ちか")
         XCTAssertEqual(furigana.lengthByLocation[0], 1)
+    }
+
+    // The kanji fallback is lowest-priority: it must not fire on dictionary-matched edges. When the
+    // segmenter resolved the surface to a known word we trust its reading pipeline (including its
+    // deliberate suppressions), so a kanji left un-annotated there stays bare rather than getting a
+    // context-free guess painted over it. Only unrecognised (non-dictionary) segments get the net.
+    func testKanjiFallbackSuppressedForDictionaryMatchedEdge() throws {
+        let readView = try makeReadView(kanjiReadingFallback: ["眩": "まぶ"])
+        let sourceText = "眩しげ"
+        // Mark the edge as a dictionary match — as if the segmenter resolved it to a known lemma —
+        // but provide no reading data, so only the (now-suppressed) fallback could produce ruby.
+        let edge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText,
+            isDictionaryMatch: true
+        )
+
+        let furigana = readView.buildFuriganaBySegmentLocation(
+            for: sourceText,
+            edges: [edge],
+            surfaceReadingData: makeSurfaceReadingData([:])
+        )
+
+        XCTAssertTrue(furigana.furiganaByLocation.isEmpty)
+        XCTAssertTrue(furigana.lengthByLocation.isEmpty)
     }
 
     // The gentle prune keeps fragmented per-character entries inside a merged segment so the
