@@ -41,6 +41,10 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // line via the engine's `topRubyReserve`, and this value controls where inside that
     // reserve the ruby glyphs land.
     let furiganaGap: CGFloat
+    // When set, overrides the implicit `textSize * 0.5` furigana font size in both the
+    // draw pass and the kern-overhang math, so the user can pick a furigana size
+    // independent of the headword size. nil (default) preserves the legacy ratio.
+    var furiganaSizeOverride: CGFloat? = nil
     let evenSegmentColor: UIColor
     let oddSegmentColor: UIColor
     let isLineWrappingEnabled: Bool
@@ -171,7 +175,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
             TapDiagnostics.mark("onSegmentTapped returned (back in KiokuCoreTextRendererView wiring)")
         }
         let font = UIFont.systemFont(ofSize: textSize)
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        let furiganaFont = UIFont.systemFont(ofSize: furiganaSizeOverride ?? (textSize * 0.5))
 
         // Fingerprint the typography-affecting inputs. Selection state and highlight bands
         // are NOT part of the build (they're drawn as overlays), so changing only those
@@ -207,6 +211,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         typographyHasher.combine(unplayedDimmingLocation ?? -1)
         typographyHasher.combine(unplayedAlpha)
         typographyHasher.combine(furiganaGap)
+        typographyHasher.combine(furiganaSizeOverride ?? -1)
         let typographyFingerprint = typographyHasher.finalize()
 
         if uiView.lastTypographyFingerprint != typographyFingerprint {
@@ -231,7 +236,8 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     unknownSegmentColor: unknownSegmentColor,
                     isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
                     unplayedDimmingLocation: unplayedDimmingLocation,
-                    unplayedAlpha: unplayedAlpha
+                    unplayedAlpha: unplayedAlpha,
+                    furiganaSizeOverride: furiganaSizeOverride
                 )
             )
             uiView.contentView.setAttributedString(output.attributedString)
@@ -243,6 +249,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         // a re-typeset on their own but downstream draw passes read them. Always set them
         // so the renderer stays in sync even on the cached-typography path.
         uiView.contentView.baseTextSize = CGFloat(textSize)
+        uiView.contentView.furiganaFontSizeOverride = furiganaSizeOverride
         uiView.contentView.furiganaGap = isFuriganaVisible ? furiganaGap : 0
         // Geometry is resolved by the SHARED RenderGeometry helper so this path produces
         // the same line origins as RichTextEditor — toggling edit↔view never moves a
@@ -253,7 +260,8 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         let geometry = RenderGeometry.resolve(
             textSize: textSize,
             userLineSpacing: lineSpacing,
-            furiganaGap: furiganaGap
+            furiganaGap: furiganaGap,
+            furiganaSizeOverride: furiganaSizeOverride
         )
         uiView.contentView.setTopRubyReserve(0)
         uiView.contentView.setLineSpacing(geometry.interLineGap)

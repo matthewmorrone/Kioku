@@ -29,6 +29,15 @@ struct SettingsPreviewRenderer: View {
     let lineSpacing: Double
     let kerning: Double
     let furiganaGap: Double
+
+    // Read the same keys ReadView+Editor reads so the preview's color and font paths stay
+    // byte-for-byte parallel with the read tab — flip the toggle or change a swatch / slider
+    // in the Settings UI and the preview updates live.
+    @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
+    @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
+    @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
+    @AppStorage(TypographySettings.customFuriganaSizeEnabledKey) private var customFuriganaSizeEnabled: Bool = false
+    @AppStorage(TypographySettings.furiganaSizeKey) private var furiganaSize: Double = TypographySettings.defaultFuriganaSize
     let debugFuriganaRects: Bool
     let debugHeadwordRects: Bool
     let debugHeadwordLineBands: Bool
@@ -183,10 +192,16 @@ struct SettingsPreviewRenderer: View {
     }
 
     var body: some View {
-        // Match the default segment colors ReadView uses when custom token colors are off,
-        // so the preview reads identically to the read tab in the common case.
-        let evenColor = UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed }
-        let oddColor = UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo }
+        // Mirror ReadView+Editor's branching: when custom token colors are enabled, use the
+        // user's hex picks; otherwise fall back to the default system-color alternation. Same
+        // fallback colors (.label / .secondaryLabel) on hex parse failure so behavior stays
+        // identical to the read tab.
+        let evenColor: UIColor = customTokenColorsEnabled
+            ? (UIColor(hexString: tokenColorAHex) ?? .label)
+            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed }
+        let oddColor: UIColor = customTokenColorsEnabled
+            ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
+            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo }
         KiokuCoreTextRendererView(
             text: Self.previewText,
             segmentationRanges: segmentationRanges,
@@ -199,6 +214,7 @@ struct SettingsPreviewRenderer: View {
             lineSpacing: lineSpacing,
             kerning: kerning,
             furiganaGap: CGFloat(furiganaGap),
+            furiganaSizeOverride: customFuriganaSizeEnabled ? CGFloat(furiganaSize) : nil,
             evenSegmentColor: evenColor,
             oddSegmentColor: oddColor,
             isLineWrappingEnabled: true,

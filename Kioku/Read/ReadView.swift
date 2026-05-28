@@ -25,6 +25,8 @@ struct ReadView: View {
     @AppStorage(TypographySettings.lineSpacingKey) var lineSpacing = TypographySettings.defaultLineSpacing
     @AppStorage(TypographySettings.kerningKey) var kerning = TypographySettings.defaultKerning
     @AppStorage(TypographySettings.furiganaGapKey) var furiganaGap = TypographySettings.defaultFuriganaGap
+    @AppStorage(TypographySettings.customFuriganaSizeEnabledKey) var customFuriganaSizeEnabled: Bool = false
+    @AppStorage(TypographySettings.furiganaSizeKey) var furiganaSize = TypographySettings.defaultFuriganaSize
     @AppStorage(TokenColorSettings.enabledKey) var customTokenColorsEnabled: Bool = false
     @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) var tokenColorBHex: String = TokenColorSettings.defaultColorBHex

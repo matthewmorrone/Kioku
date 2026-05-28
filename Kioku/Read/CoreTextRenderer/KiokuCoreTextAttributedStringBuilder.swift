@@ -76,6 +76,9 @@ enum KiokuCoreTextAttributedStringBuilder {
         // the played portion stays full-strength. nil disables the effect.
         var unplayedDimmingLocation: Int? = nil
         var unplayedAlpha: CGFloat = 0.18
+        // When set, replaces the implicit `textSize * 0.5` furigana font size used for
+        // the ruby-overhang kern math. Default nil preserves legacy behavior.
+        var furiganaSizeOverride: CGFloat? = nil
     }
 
     // Composes the renderer-ready NSAttributedString: base font + paragraph style,
@@ -145,7 +148,7 @@ enum KiokuCoreTextAttributedStringBuilder {
         // consumes these and positions each reading using the layout engine's kanji rect.
         var rubyEntries: [RubyEntry] = []
         if inputs.isVisualEnhancementsEnabled, inputs.isFuriganaVisible {
-            let furiganaFont = UIFont.systemFont(ofSize: inputs.textSize * 0.5)
+            let furiganaFont = UIFont.systemFont(ofSize: inputs.furiganaSizeOverride ?? (inputs.textSize * 0.5))
             // Cache segment NSRanges so spacing compensation can route the trailing .kern
             // to the segment's LAST character rather than the kanji's — keeps okurigana
             // tucked against its kanji and pushes the gap to the segment boundary, where

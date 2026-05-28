@@ -16,6 +16,8 @@ struct SettingsView: View {
     @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
     @AppStorage(TypographySettings.kerningKey) private var kerning = TypographySettings.defaultKerning
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
+    @AppStorage(TypographySettings.customFuriganaSizeEnabledKey) private var customFuriganaSizeEnabled = false
+    @AppStorage(TypographySettings.furiganaSizeKey) private var furiganaSize = TypographySettings.defaultFuriganaSize
     @AppStorage(LyricsHighlightGranularity.storageKey) private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
@@ -83,21 +85,6 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Lets the user override the default system-color segment alternation palette.
-                Section {
-                    Toggle("Custom Token Colors", isOn: $customTokenColorsEnabled)
-                    if customTokenColorsEnabled {
-                        ColorPicker("Primary Color", selection: tokenColorABinding, supportsOpacity: false)
-                        ColorPicker("Secondary Color", selection: tokenColorBBinding, supportsOpacity: false)
-                        Button("Reset to Defaults") {
-                            tokenColorAHex = TokenColorSettings.defaultColorAHex
-                            tokenColorBHex = TokenColorSettings.defaultColorBHex
-                        }
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    }
-                }
-
                 // Hosts typography sliders that update read and preview rendering.
                 Section {
                         // Shows live typography preview.
@@ -130,15 +117,32 @@ struct SettingsView: View {
                     )
 
 
-                    // Controls base font size.
+                    // Controls base font size. Label switches to "Headword Size" when the
+                    // user has decoupled the furigana size, to make clear that this slider
+                    // now drives only the kanji/kana body glyphs.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("Text Size")
+                            Text(customFuriganaSizeEnabled ? "Headword Size" : "Text Size")
                             Spacer()
                             Text(String(format: "%.0f", textSize))
                                 .foregroundStyle(.secondary)
                         }
                         Slider(value: $textSize, in: TypographySettings.textSizeRange, step: 1)
+                    }
+
+                    // Independent furigana font size. Only visible when the user has
+                    // explicitly opted in via the toggle below; otherwise the renderer
+                    // falls back to the implicit headword * 0.5 ratio.
+                    if customFuriganaSizeEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Furigana Size")
+                                Spacer()
+                                Text(String(format: "%.0f", furiganaSize))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $furiganaSize, in: TypographySettings.furiganaSizeRange, step: 1)
+                        }
                     }
 
                     // Controls additional line spacing.
@@ -171,6 +175,20 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Slider(value: $kerning, in: TypographySettings.kerningRange, step: 1)
+                    }
+
+                    // Decouples furigana size from headword size. Off (default) keeps the
+                    // implicit `textSize * 0.5` ratio; on reveals the Furigana Size slider
+                    // above and relabels the body slider to "Headword Size".
+                    Toggle("Custom Furigana Size", isOn: $customFuriganaSizeEnabled)
+
+                    // Lets the user override the default system-color segment alternation palette.
+                    // Flipping the toggle off restores the defaults visually without touching the
+                    // stored hex picks, so no explicit reset control is needed.
+                    Toggle("Custom Token Colors", isOn: $customTokenColorsEnabled)
+                    if customTokenColorsEnabled {
+                        ColorPicker("Primary Color", selection: tokenColorABinding, supportsOpacity: false)
+                        ColorPicker("Secondary Color", selection: tokenColorBBinding, supportsOpacity: false)
                     }
                 }
 

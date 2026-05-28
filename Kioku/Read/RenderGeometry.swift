@@ -39,10 +39,14 @@ struct RenderGeometry {
     static func resolve(
         textSize: Double,
         userLineSpacing: Double,
-        furiganaGap: Double
+        furiganaGap: Double,
+        // When non-nil, replaces the implicit `textSize * 0.5` furigana font size used
+        // to compute the vertical ruby reserve, so enlarging the ruby grows line spacing
+        // instead of clipping into the line above. nil preserves legacy behavior.
+        furiganaSizeOverride: CGFloat? = nil
     ) -> RenderGeometry {
         let bodyFont = UIFont.systemFont(ofSize: CGFloat(textSize))
-        let furiganaFont = UIFont.systemFont(ofSize: CGFloat(textSize) * 0.5)
+        let furiganaFont = UIFont.systemFont(ofSize: furiganaSizeOverride ?? (CGFloat(textSize) * 0.5))
         // Ruby reserve = furigana font's full line height + user's tunable gap. The
         // reserve must accommodate the ruby's ascent + descent (≤ lineHeight) and the
         // visual breathing room the user dialed in via the slider.
