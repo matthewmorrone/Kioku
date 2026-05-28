@@ -6,6 +6,7 @@ nonisolated private struct ReadResources {
     var dictionaryStore: DictionaryStore?
     var lexicon: Lexicon?
     var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
+    var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
     var ready: Bool = false
     var segmenterRevision: Int = 0
 }
@@ -51,6 +52,7 @@ struct ContentView: View {
                 dictionaryStore: readResources.dictionaryStore,
                 lexicon: readResources.lexicon,
                 surfaceReadingData: readResources.surfaceReadingData,
+                kanjiReadingFallback: readResources.kanjiReadingFallback,
                 segmenterRevision: readResources.segmenterRevision,
                 readResourcesReady: readResources.ready,
                 onOpenWordDetail: handleOpenWordDetail,
@@ -316,6 +318,7 @@ struct ContentView: View {
                     dictionaryStore: result.dictionaryStore,
                     lexicon: result.lexicon,
                     surfaceReadingData: result.surfaceReadingData,
+                    kanjiReadingFallback: result.kanjiReadingFallback,
                     ready: true,
                     segmenterRevision: currentRevision + 1
                 )
@@ -326,7 +329,7 @@ struct ContentView: View {
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
     // Uses the specified backend and MeCab dictionary when MeCab is selected.
-    private nonisolated static func makeReadResources(backend: String, mecabDictionary: String) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap) {
+    private nonisolated static func makeReadResources(backend: String, mecabDictionary: String) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap, kanjiReadingFallback: KanjiReadingFallbackMap) {
         StartupTimer.mark("makeReadResources started")
         let overallStart = CFAbsoluteTimeGetCurrent()
 
@@ -334,6 +337,7 @@ struct ContentView: View {
         var dictionaryStore: DictionaryStore?
         var lexicon: Lexicon?
         var surfaceReadingData: [String: SurfaceReadingData] = [:]
+        var kanjiReadingFallback: [Character: String] = [:]
         var deinflector: Deinflector?
 
         do {
@@ -361,6 +365,13 @@ struct ContentView: View {
             do { surfaceReadingData = try StartupTimer.measure("fetchSurfaceReadingData") {
                 try store.fetchSurfaceReadingData()
             }} catch { print("fetchSurfaceReadingData failed: \(error)") }
+
+            // Last-resort per-kanji furigana source. Loaded alongside the word-level map so any
+            // kanji without a dictionary word/lemma reading still gets *some* ruby (see
+            // KanjiReadingFallbackMap). Cheap relative to the 327k-entry surface map (~13k kanji).
+            do { kanjiReadingFallback = try StartupTimer.measure("fetchKanjiReadingFallbackMap") {
+                try store.fetchKanjiReadingFallbackMap()
+            }} catch { print("fetchKanjiReadingFallbackMap failed: \(error)") }
 
             do {
                 // SurfaceRecords carry POS bits + IPADic context IDs so Viterbi can look up
@@ -443,7 +454,8 @@ struct ContentView: View {
             segmenter: segmenter,
             dictionaryStore: dictionaryStore,
             lexicon: lexicon,
-            surfaceReadingData: SurfaceReadingDataMap(surfaceReadingData)
+            surfaceReadingData: SurfaceReadingDataMap(surfaceReadingData),
+            kanjiReadingFallback: KanjiReadingFallbackMap(kanjiReadingFallback)
         )
     }
 }

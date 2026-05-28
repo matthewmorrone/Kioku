@@ -14,6 +14,10 @@ import Foundation
 // Pure value type. Threadsafe under the segmenter's existing concurrency contract.
 struct FuriganaResolver {
     let segmenter: any TextSegmenting
+    // Last-resort per-kanji reading source (KANJIDIC2). Defaults to empty so existing callers and
+    // tests keep their exact behaviour — the fallback only fires when a populated map is supplied
+    // (the production ReadView / Songs path). See KanjiReadingFallbackMap for the rationale.
+    var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
 
     // Produces the renderer-shape data for a fully segmented source string. Iterates the
     // edge list and, for each kanji-bearing edge, attaches per-run readings or a single
@@ -269,6 +273,31 @@ struct FuriganaResolver {
                 }
 
                 annotations.append((reading: runReading, localStartOffset: run.start, localLength: run.end - run.start))
+            }
+        }
+
+        // Last-resort per-kanji fallback: any individual kanji still without an annotation gets its
+        // standalone KANJIDIC2 reading, painted over just that one character. This guarantees the
+        // reader always sees *some* furigana over a kanji even when no word/lemma reading resolved —
+        // e.g. 眩 in 眩しげ, which the deinflector doesn't reduce to 眩しい and which has no
+        // surface-reading entry of its own. The reading may not match the in-context pronunciation,
+        // but a best-effort single-kanji reading beats a bare, un-annotated kanji. Disabled (no-op)
+        // whenever the fallback map is empty, which keeps existing callers/tests unchanged.
+        if kanjiReadingFallback.isEmpty == false {
+            let characters = Array(segmentSurface)
+            let coveredOffsets = Set(annotations.flatMap { annotation in
+                annotation.localStartOffset..<(annotation.localStartOffset + annotation.localLength)
+            })
+            for run in runs {
+                for offset in run.start..<run.end where coveredOffsets.contains(offset) == false {
+                    let kanji = characters[offset]
+                    guard let reading = kanjiReadingFallback[kanji],
+                          reading.isEmpty == false,
+                          String(kanji) != reading else {
+                        continue
+                    }
+                    annotations.append((reading: reading, localStartOffset: offset, localLength: 1))
+                }
             }
         }
 

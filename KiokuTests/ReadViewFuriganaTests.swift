@@ -7,7 +7,10 @@ import XCTest
 final class ReadViewFuriganaTests: XCTestCase {
 
     // Builds a lightweight read view backed by the shared real segmenter so furigana helpers use production logic.
-    private func makeReadView(surfaceReadings: [String: [String]] = [:]) throws -> ReadView {
+    private func makeReadView(
+        surfaceReadings: [String: [String]] = [:],
+        kanjiReadingFallback: [Character: String] = [:]
+    ) throws -> ReadView {
         let resources = try TestReadResources.shared()
         let dataMap = surfaceReadings.mapValues { readings in
             SurfaceReadingData(readings: readings, frequencyByReading: [:])
@@ -18,6 +21,7 @@ final class ReadViewFuriganaTests: XCTestCase {
             segmenter: resources.segmenter,
             dictionaryStore: resources.dictionaryStore,
             surfaceReadingData: SurfaceReadingDataMap(dataMap),
+            kanjiReadingFallback: KanjiReadingFallbackMap(kanjiReadingFallback),
             segmenterRevision: 0,
             readResourcesReady: true
         )
@@ -152,6 +156,57 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertEqual(furigana.lengthByLocation[0], 1)
         XCTAssertEqual(furigana.furiganaByLocation[2], "から")
         XCTAssertEqual(furigana.lengthByLocation[2], 1)
+    }
+
+    // Regression: 眩しげ (the appearance "-げ" form of 眩しい) doesn't deinflect to its base
+    // adjective and has no surface-reading entry for either the surface or the bare kanji 眩,
+    // so every dictionary path produces nothing — the user saw a kanji with no furigana at all.
+    // The KANJIDIC2 single-kanji fallback must paint the kanji's standalone reading so *some*
+    // ruby always appears over a kanji. The reading need not match the in-context pronunciation.
+    func testBuildFuriganaBySegmentLocationUsesKanjiFallbackWhenNoDictionaryReading() throws {
+        let readView = try makeReadView(kanjiReadingFallback: ["眩": "まぶ"])
+        let sourceText = "眩しげ"
+        let edge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText
+        )
+
+        // No surface-reading entries at all: the only reading source is the per-kanji fallback.
+        let furigana = readView.buildFuriganaBySegmentLocation(
+            for: sourceText,
+            edges: [edge],
+            surfaceReadingData: makeSurfaceReadingData([:])
+        )
+
+        XCTAssertEqual(furigana.furiganaByLocation[0], "まぶ")
+        XCTAssertEqual(furigana.lengthByLocation[0], 1)
+        XCTAssertNil(furigana.furiganaByLocation[1], "no annotation should attach to the kana しげ")
+    }
+
+    // The per-kanji fallback is strictly last-resort: when a dictionary reading already resolves
+    // for the kanji run it must win, and the fallback must not double-annotate the same kanji.
+    func testKanjiFallbackDoesNotOverrideResolvedDictionaryReading() throws {
+        let readView = try makeReadView(kanjiReadingFallback: ["近": "きん"])
+        let sourceText = "近づいて"
+        let edge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText
+        )
+
+        let surfaceReadingData = makeSurfaceReadingData([
+            "近づく": ["ちかづく"]
+        ])
+        let furigana = readView.buildFuriganaBySegmentLocation(
+            for: sourceText,
+            edges: [edge],
+            surfaceReadingData: surfaceReadingData
+        )
+
+        // The resolved local reading ちか must stand; the fallback きん must not replace it.
+        XCTAssertEqual(furigana.furiganaByLocation[0], "ちか")
+        XCTAssertEqual(furigana.lengthByLocation[0], 1)
     }
 
     // The gentle prune keeps fragmented per-character entries inside a merged segment so the
