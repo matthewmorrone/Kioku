@@ -235,6 +235,19 @@ final class SegmenterIntegrationTests: XCTestCase {
                       "standalone きた must deinflect to くる — got \(candidates.sorted())")
     }
 
+    // End-to-end: with POS data wired into the segmenter, the lemma-candidate gate keeps the
+    // deinflected verb する (a verb) for した instead of dropping it, so the "Choose Lemma…"
+    // picker offers both the noun reading した (→ 下 / 舌 at lookup) and the verb する.
+    func testLemmaCandidatesOfferSuruForShita() throws {
+        let segmenter = try sharedResources().segmenter
+        let candidates = segmenter.lemmaCandidates(for: "した")
+
+        XCTAssertTrue(candidates.contains("する"),
+                      "picker must offer する for した — got \(candidates)")
+        XCTAssertTrue(candidates.contains("した"),
+                      "picker must still offer the noun reading した — got \(candidates)")
+    }
+
     // The empty-stem admission must not turn bare grammatical endings into words:
     // a single-kana stem-recovery rule (し ⇒ する) needs a real preceding stem,
     // so a bare し must not deinflect to する.

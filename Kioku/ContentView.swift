@@ -361,6 +361,11 @@ struct ContentView: View {
         var surfaceReadingData: [String: SurfaceReadingData] = [:]
         var kanjiReadingFallback: [Character: String] = [:]
         var deinflector: Deinflector?
+        // Per-entry POS bits, captured from the same surface-data scan that builds the trie.
+        // Threaded into the trie-Viterbi Segmenter so its lemma-candidate POS gate can tell a
+        // verb (する) from a noun — without it the gate sees all-zero bits and drops every
+        // deinflected verb candidate (e.g. した → する).
+        var partOfSpeechByEntryID: [Int: UInt64] = [:]
 
         do {
             let store = try StartupTimer.measure("DictionaryStore.init") {
@@ -400,13 +405,14 @@ struct ContentView: View {
                 // bigram costs directly in matrix.bin. The fetch path was rewritten to aggregate
                 // POS per entry in a first pass (small) and join in-memory against surface rows
                 // in a second pass — avoids the JOIN-explosion that OOM-killed the app earlier.
-                let records = try StartupTimer.measure("fetchSurfaceRecords") {
-                    try store.fetchSurfaceRecords()
+                let surfaceData = try StartupTimer.measure("fetchSurfaceData") {
+                    try store.fetchSurfaceData()
                 }
-                StartupTimer.measure("trie population (\(records.count) records)") {
-                    for record in records { trie.insert(record) }
+                partOfSpeechByEntryID = surfaceData.partOfSpeechByEntryID
+                StartupTimer.measure("trie population (\(surfaceData.surfaceRecords.count) records)") {
+                    for record in surfaceData.surfaceRecords { trie.insert(record) }
                 }
-            } catch { print("fetchSurfaceRecords failed: \(error)") }
+            } catch { print("fetchSurfaceData failed: \(error)") }
 
         } catch {
             print("DictionaryStore initialization failed: \(error)")
@@ -452,7 +458,7 @@ struct ContentView: View {
             } else if backend == SegmenterBackend.nlTokenizer.rawValue {
                 return NLTokenizerSegmenter()
             } else {
-                return Segmenter(trie: trie, deinflector: deinflector, wordfreqZipfByLemma: wordfreqZipfByLemma)
+                return Segmenter(trie: trie, deinflector: deinflector, partOfSpeechByEntryID: partOfSpeechByEntryID, wordfreqZipfByLemma: wordfreqZipfByLemma)
             }
         }
 
