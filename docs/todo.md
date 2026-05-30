@@ -8,6 +8,18 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ---
 
+## Regression watch
+
+- [ ] **Keep the "filter by associated note" (and list) filter** — `WordsFilterView`
+      (`Kioku/Words/WordsFilterView.swift`) has a `Section("Notes")` (line ~26) that
+      filters saved words by source note via `activeFilterNoteIDs`, plus the
+      `Section("Lists")` filter. Wired through `WordsView.swift:203` (sheet),
+      `WordsView+Toolbar.swift:174` (funnel icon), and applied in `visibleWords`
+      (`WordsView.swift:274`). A newer/unpushed Words UI consolidated the
+      dictionary-search filters (JP/EN, common, sort) into a toolbar menu — when
+      reconciling that work, make sure the note/list filter is NOT dropped. Note the
+      "Notes" section only renders when saved words have populated `sourceNoteIDs`.
+
 ## Bugs
 
 - [ ] Ruby persistent overhang spacing on the left edge
