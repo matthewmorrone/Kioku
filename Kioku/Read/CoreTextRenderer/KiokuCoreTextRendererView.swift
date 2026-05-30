@@ -66,6 +66,13 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     let unknownSegmentLocations: Set<Int>
     let isHighlightUnknownEnabled: Bool
     let unknownSegmentColor: UIColor
+    // Pending-LLM-correction highlight: locations the AI re-segmented or re-read, awaiting the
+    // user's confirm/reject. Each is tinted green (carrying its furigana) so the change is
+    // visible. `changedReadingLocations` is the reading-only subset, threaded for parity with
+    // the TextKit path and the typography hash. Empty = no pending correction. Defaulted so the
+    // lyrics/song call sites that don't surface LLM changes need not pass them.
+    var changedSegmentLocations: Set<Int> = []
+    var changedReadingLocations: Set<Int> = []
     // Dev-only debug overlay toggles. The overlay view stays mounted always but only
     // draws when a flag is on, so this is zero-cost for normal users.
     let debugFlags: KiokuDebugOverlayView.Flags
@@ -208,6 +215,8 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         for location in unknownSegmentLocations { typographyHasher.combine(location) }
         typographyHasher.combine(isHighlightUnknownEnabled)
         typographyHasher.combine(unknownSegmentColor.description)
+        for location in changedSegmentLocations.sorted() { typographyHasher.combine(location) }
+        for location in changedReadingLocations.sorted() { typographyHasher.combine(location) }
         typographyHasher.combine(unplayedDimmingLocation ?? -1)
         typographyHasher.combine(unplayedAlpha)
         typographyHasher.combine(furiganaGap)
@@ -234,6 +243,8 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     unknownSegmentLocations: unknownSegmentLocations,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                     unknownSegmentColor: unknownSegmentColor,
+                    changedSegmentLocations: changedSegmentLocations,
+                    changedReadingLocations: changedReadingLocations,
                     isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
                     unplayedDimmingLocation: unplayedDimmingLocation,
                     unplayedAlpha: unplayedAlpha,

@@ -390,6 +390,9 @@ extension ReadView {
                 pendingLLMChangedReadingLocations = changedReadingLocations
                 pendingLLMChangesByLocation = changesByLocation
                 hasPendingLLMChanges = true
+                // This note now has an AI correction applied — future taps should confirm
+                // before replacing it rather than re-running silently.
+                hasAppliedLLMCorrectionForCurrentNote = true
             }
         case .surfaceMismatch(let msg):
             llmCorrectionErrorMessage = msg

@@ -75,6 +75,7 @@ extension ReadView {
             pendingLLMChangedReadingLocations = []
             preLLMSegmentEntries = []
             hasPendingLLMChanges = false
+            hasAppliedLLMCorrectionForCurrentNote = false
             SegmentLookupSheet.shared.dismissPopover()
             isLoadingSelectedNote = false
             return
@@ -94,6 +95,7 @@ extension ReadView {
         pendingLLMChangedReadingLocations = []
         preLLMSegmentEntries = []
         hasPendingLLMChanges = false
+        hasAppliedLLMCorrectionForCurrentNote = false
         let noteToLoad = notesStore.note(withID: selectedNote.id) ?? selectedNote
         StartupTimer.mark("loadSelectedNoteIfNeeded preparing note")
         isLoadingSelectedNote = true

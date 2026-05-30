@@ -145,6 +145,12 @@ struct ReadView: View {
     @State var llmChangePopoverLocation: Int? = nil
     @State var isShowingLLMChangePopover = false
     @State var isShowingLLMRerunConfirm = false
+    // True once an LLM correction has actually been applied to the currently-loaded note.
+    // Gates the "Re-run AI Correction?" confirm so it only warns about replacing prior
+    // corrections — not on the first run. Reset when a note loads or corrections are cleared.
+    // (Session-scoped: reloading a previously-corrected note starts fresh, so the first tap
+    // after reload runs without the warning.)
+    @State var hasAppliedLLMCorrectionForCurrentNote = false
     @State var pendingAutoSegQueue: [PendingAutoSegRequest] = []
     // Records the value that loadSelectedNoteIfNeeded just wrote into `text` so the deferred
     // SwiftUI .onChange(of: text) handler can recognize the load-assignment and skip its
