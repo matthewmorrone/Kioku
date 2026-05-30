@@ -19,9 +19,40 @@ extension WordsView {
             }
         }
 
-        // Handwriting input routes a recognized character into the search field, so it stays
-        // available across tabs whenever the user isn't mid-edit.
-        if editMode == .inactive {
+        // Kanji-discovery entrypoints (browse-by-frequency, example-sentence search, radical
+        // and handwriting input) live on the leading edge, available on both tabs when the
+        // user isn't actively searching or editing.
+        if editMode == .inactive && searchText.isEmpty {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isBrowseFrequencyPresented = true
+                } label: {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Browse by frequency")
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isSentenceSearchPresented = true
+                } label: {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Search example sentences")
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isRadicalInputPresented = true
+                } label: {
+                    Image(systemName: "square.grid.3x3")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Find kanji by radical")
+            }
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     isHandwritingPresented = true
