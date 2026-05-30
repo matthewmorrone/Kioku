@@ -19,6 +19,36 @@ nonisolated private final class ProviderBox<R>: @unchecked Sendable {
 }
 
 extension SegmentLookupSheet {
+    // Picks the dictionary entry whose reading matches the one `SurfaceSheetViewController`
+    // will paint first, so the gloss panel and the reading header agree on initial open.
+    // Mirrors the controller's initial-reading-pick logic (override-if-known else readings[0]),
+    // and falls back to the lemma resolver's default entry when neither the override nor the
+    // first reading has a mapped entry — that fallback path covers custom user-typed readings
+    // and kana-only entries that don't participate in the reading→entry map.
+    //
+    // Without this hop, `resolvedDictionaryEntryForCurrentSelectedSegment()` and the displayed
+    // reading were sourced from independent paths and could disagree: e.g. tap 様 in context
+    // where furigana renders よう, but the resolver returns the higher-frequency さま entry,
+    // so the panel showed "Mr; Mrs; Miss; Ms" under a よう header until the user clicked a
+    // chevron. This brings the chevron-handler's reading→entry coupling forward to first paint.
+    fileprivate func entryMatchingDisplayedReading(
+        readings: [String],
+        readingMap: [String: (lemma: String, chain: [String], entry: DictionaryEntry?)],
+        fallback: DictionaryEntry?
+    ) -> DictionaryEntry? {
+        let override = activeReadingOverrideProvider?()
+        let displayedReading: String?
+        if let override, readings.contains(override) {
+            displayedReading = override
+        } else {
+            displayedReading = readings.first
+        }
+        if let displayedReading, let mapped = readingMap[displayedReading]?.entry {
+            return mapped
+        }
+        return fallback
+    }
+
     // Runs every supplemental provider on a background queue, applies the results on main,
     // then calls `completion` on main. The providers are synchronous and each can take many
     // hundreds of ms (full deinflection traversal + dictionary index hits), so blocking the
@@ -61,7 +91,11 @@ extension SegmentLookupSheet {
                     self.currentSheetFrequencyByReading = frequency
                     self.currentSheetLemmaInfo = lemmaInfo
                     self.currentSheetLemmaInfoByReading = lemmaInfoByReading
-                    self.currentSheetDictionaryEntry = dictionaryEntry
+                    self.currentSheetDictionaryEntry = self.entryMatchingDisplayedReading(
+                        readings: readings,
+                        readingMap: lemmaInfoByReading,
+                        fallback: dictionaryEntry
+                    )
                     self.currentSheetLexiconDebugInfo = ""
                     self.currentSheetWordComponents = []
                     self.currentSheetCompoundComponents = compoundComponents
@@ -82,7 +116,11 @@ extension SegmentLookupSheet {
         currentSheetFrequencyByReading = sheetFrequencyProvider?()
         currentSheetLemmaInfo = sheetLemmaInfoProvider?()
         currentSheetLemmaInfoByReading = sheetLemmaInfoByReadingProvider?() ?? [:]
-        currentSheetDictionaryEntry = sheetDictionaryEntryProvider?()
+        currentSheetDictionaryEntry = entryMatchingDisplayedReading(
+            readings: currentSheetUniqueReadings,
+            readingMap: currentSheetLemmaInfoByReading,
+            fallback: sheetDictionaryEntryProvider?()
+        )
         currentSheetLexiconDebugInfo = ""
         currentSheetWordComponents = []
         currentSheetCompoundComponents = sheetCompoundComponentsProvider?() ?? []

@@ -443,26 +443,51 @@ extension ReadView {
                     lemmaInfoForCurrentSelectedSegment()
                 },
                 // Per-reading lemma map: lets the arrow controls cycle the lemma + gloss along
-                // with the reading. For 触れられない we admit both 触れる (depth 2) and 触る (depth 3);
-                // each contributes a surface-projected reading (ふれられない / さわれられない) and its
-                // dictionary entry, so arrowing between the projected readings also flips the
-                // lemma label and gloss panel. The projected reading is what currentReadings
-                // actually cycles through (see sheetReadingsProvider), so this map keys on the
-                // same string. Surfaces whose own surfaceReadingData has direct entries (i.e.
-                // dictionary surfaces, not inflected) get no map — the existing single-lemma
-                // path handles them.
+                // with the reading. Two populations, both needed:
+                //
+                // 1) Inflected surfaces (e.g. 触れられない) — we admit both 触れる (depth 2) and
+                //    触る (depth 3); each contributes a surface-projected reading
+                //    (ふれられない / さわれられない) and its dictionary entry, so arrowing flips
+                //    the lemma label and gloss panel.
+                //
+                // 2) Dictionary surfaces with multiple JMdict entries (e.g. 様, 方, 中, 何) —
+                //    these used to be skipped under the assumption that one entry covers all
+                //    readings, but kanji like 様 are actually split across separate JMdict
+                //    entries (さま honorific vs よう manner-suffix). For each direct reading,
+                //    look up the entry whose kana form matches that reading specifically.
+                //    Without this, the gloss panel and the displayed reading drift apart on
+                //    first paint — the resolver picks the higher-frequency さま entry while
+                //    the controller's reading-cycle starts on よう.
+                //
+                // Surface projection for #1 is critical because bare lemma readings are shorter
+                // than the inflected surface's okurigana tail (sheetReadingsProvider returns
+                // projected readings, so this map must key on the same strings).
                 sheetLemmaInfoByReadingProvider: {
                     let surface = currentSelectedSurface() ?? ""
                     guard surface.isEmpty == false, let lexicon, let store = dictionaryStore else { return [:] }
-                    if let data = surfaceReadingData[surface], data.readings.isEmpty == false {
-                        return [:]
-                    }
                     var byReading: [String: (lemma: String, chain: [String], entry: DictionaryEntry?)] = [:]
+
+                    // Path 1: lemma-projected readings. For each (lemma, reading), prefer the
+                    // JMdict entry whose kana form matches the reading — that disambiguates
+                    // homographic kanji like 様 (さま honorific vs よう manner-suffix), 方
+                    // (かた vs ほう), 中 (なか vs ちゅう), etc. Falls back to the lemma's
+                    // highest-priority entry when the reading is non-canonical (inflected
+                    // surfaces project an okurigana tail onto the lemma reading, e.g.
+                    // 触れる/ふれる → ふれられない, which won't match any JMdict kana form).
                     for group in lexicon.surfaceReadingsByLemma(surface: surface) {
                         let lemmaMode: LookupMode = ScriptClassifier.containsKanji(group.lemma) ? .kanjiAndKana : .kanaOnly
-                        let entry = (try? store.lookup(surface: group.lemma, mode: lemmaMode))?.first
+                        let lemmaFallback = (try? store.lookup(surface: group.lemma, mode: lemmaMode))?.first
                         for reading in group.surfaceReadings where byReading[reading] == nil {
-                            byReading[reading] = (lemma: group.lemma, chain: group.chain, entry: entry)
+                            let perReadingEntry = lexicon.lookupLexeme(group.lemma, reading).first
+                            byReading[reading] = (lemma: group.lemma, chain: group.chain, entry: perReadingEntry ?? lemmaFallback)
+                        }
+                    }
+
+                    // Path 2: kana-only or dictionary surfaces not admitted as a lemma by Path 1.
+                    if let data = surfaceReadingData[surface], data.readings.isEmpty == false {
+                        for reading in data.readings where byReading[reading] == nil {
+                            let entry = lexicon.lookupLexeme(surface, reading).first
+                            byReading[reading] = (lemma: surface, chain: [], entry: entry)
                         }
                     }
                     return byReading
