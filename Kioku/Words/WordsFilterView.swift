@@ -11,6 +11,13 @@ struct WordsFilterView: View {
 
     @Binding var activeFilterNoteIDs: Set<UUID>
     @Binding var activeFilterListIDs: Set<UUID>
+    // True when the Words screen should be displaying the saved/favorites list rather
+    // than the lookup history. Driven by the toggle row at the top of this sheet so
+    // "show me my favorites" is one tap away without leaving the filter context.
+    @Binding var showSavedWords: Bool
+    // Sort order applied to whichever list is currently being shown (saved vs history).
+    // The parent owns the storage; this sheet just toggles between options.
+    @Binding var sortOrder: WordsSortOrder
 
     @State private var isAddingList = false
     @State private var newListName = ""
@@ -18,19 +25,31 @@ struct WordsFilterView: View {
     @State private var renameText = ""
     @State private var listsEditMode: EditMode = .inactive
 
+    // True when any note OR list filter is active. Drives the Favorites row visibility:
+    // a note/list filter is inherently a narrowing of the saved-words view, so the
+    // Favorites toggle becomes redundant (and contradictory if turned off) while one
+    // is on. Hiding makes the relationship visually mutex without disabling controls.
+    private var anyNoteOrListSelected: Bool {
+        activeFilterNoteIDs.isEmpty == false || activeFilterListIDs.isEmpty == false
+    }
+
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    savedFilterRow
+                }
+
                 // Notes that have at least one saved word, so the list stays relevant.
                 if notesWithSavedWords.isEmpty == false {
-                    Section("Notes") {
+                    Section {
                         ForEach(notesWithSavedWords) { (note: Note) in
                             noteFilterRow(note)
                         }
                     }
                 }
 
-                Section("Lists") {
+                Section {
                     ForEach(wordListsStore.lists) { (list: WordList) in
                         listFilterRow(list)
                     }
@@ -48,6 +67,19 @@ struct WordsFilterView: View {
                             Label("New List", systemImage: "square.and.pencil")
                         }
                     }
+                }
+
+                // Sort control sits below the filter sections — last because it shapes
+                // *how* the filtered set is ordered, after you've decided *what* to show.
+                Section {
+                    Picker(selection: $sortOrder) {
+                        ForEach(WordsSortOrder.allCases) { order in
+                            Text(order.title).tag(order)
+                        }
+                    } label: {
+                        Text("Sort")
+                    }
+                    .pickerStyle(.menu)
                 }
             }
             .environment(\.editMode, $listsEditMode)
@@ -68,16 +100,6 @@ struct WordsFilterView: View {
                         .accessibilityLabel(listsEditMode == .active ? "Done Reordering" : "Reorder Lists")
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "checkmark.circle")
-                            .font(.system(size: 16))
-                            .frame(width: 32, height: 32)
-                    }
-                    .accessibilityLabel("Done")
-                }
             }
         }
     }
@@ -91,6 +113,31 @@ struct WordsFilterView: View {
     private var notesWithSavedWords: [Note] {
         let noteIDsWithWords = Set(wordsStore.words.flatMap(\.sourceNoteIDs))
         return notesStore.notes.filter { noteIDsWithWords.contains($0.id) }
+    }
+
+    // Favorites toggle row — same visual pattern as noteFilterRow so the sheet
+    // reads as a coherent list of selectable scopes. Leading star icon visually
+    // anchors the row to the same star used on individual word rows.
+    @ViewBuilder
+    private var savedFilterRow: some View {
+        Button {
+            showSavedWords.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "star.fill")
+                    .foregroundStyle(Color.yellow)
+                Text("Favorites").foregroundStyle(.primary)
+                Spacer()
+                // Checkmark suppressed while any note/list filter is active — the filter
+                // is the dominant selector, Favorites is mutex-implied. Row stays visible
+                // and tappable so the user can flip it for when filters are cleared.
+                if showSavedWords && anyNoteOrListSelected == false {
+                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // Builds a note filter row that toggles the note filter on/off.
@@ -150,21 +197,26 @@ struct WordsFilterView: View {
         }
     }
 
-    // Adds or removes a note ID from the active filter set.
+    // Adds or removes a note ID from the active filter set. Selecting any note auto-
+    // flips the Favorites toggle on — note filters only narrow the saved-words view,
+    // so toggling one while History is showing would silently do nothing otherwise.
     private func toggleNoteFilter(_ noteID: UUID) {
         if activeFilterNoteIDs.contains(noteID) {
             activeFilterNoteIDs.remove(noteID)
         } else {
             activeFilterNoteIDs.insert(noteID)
+            showSavedWords = true
         }
     }
 
-    // Adds or removes a word list ID from the active filter set.
+    // Adds or removes a word list ID from the active filter set. Selecting any list
+    // auto-flips the Favorites toggle on (same rationale as toggleNoteFilter).
     private func toggleListFilter(_ listID: UUID) {
         if activeFilterListIDs.contains(listID) {
             activeFilterListIDs.remove(listID)
         } else {
             activeFilterListIDs.insert(listID)
+            showSavedWords = true
         }
     }
 

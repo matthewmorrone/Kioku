@@ -20,7 +20,16 @@ Steps to perform — run them in order, stopping if any fails. If `$ARGUMENTS` c
    xcrun devicectl device install app --device FEB1FCF4-369B-5AE3-B521-24AA1FEA25D9 "/tmp/kioku-build/Build/Products/Debug-iphoneos/Kioku Reader.app"
    ```
 
-3. **Launch the app.** Skip this step if `$ARGUMENTS` contains `--no-launch`.
+3. **Terminate any running Kioku process.** Install replaces the bundle on disk but doesn't kill the running app, so the next launch would just foreground the old process and reuse stale in-memory state (e.g. the dictionary trie built once at startup). Safe no-op when Kioku isn't running.
+   ```bash
+   PID=$(xcrun devicectl device info processes --device FEB1FCF4-369B-5AE3-B521-24AA1FEA25D9 2>&1 | grep -i "Kioku" | head -1 | awk '{print $1}')
+   if [ -n "$PID" ]; then
+     xcrun devicectl device process terminate --device FEB1FCF4-369B-5AE3-B521-24AA1FEA25D9 --pid "$PID"
+     sleep 1
+   fi
+   ```
+
+4. **Launch the app.** Skip this step if `$ARGUMENTS` contains `--no-launch`.
    ```bash
    xcrun devicectl device process launch --device FEB1FCF4-369B-5AE3-B521-24AA1FEA25D9 matthewmorrone.Kioku
    ```

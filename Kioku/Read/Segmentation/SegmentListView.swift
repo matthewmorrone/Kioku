@@ -18,7 +18,7 @@ struct SegmentListView: View {
     // Returns all dictionary-backed lemma candidates for a surface, ordered
     // best-first by the segmenter's scoring. Powers the "Choose lemma…"
     // context menu — when a surface has multiple plausible dictionary
-    // entries (e.g. なった → なる, なう) the user gets to pick instead of
+    // entries (e.g. した → した, する) the user gets to pick instead of
     // accepting the auto-picked top candidate. ReadView wires this to
     // `segmenter.lemmaCandidates(for:)`.
     let lemmaCandidatesForSurface: (String) -> [String]

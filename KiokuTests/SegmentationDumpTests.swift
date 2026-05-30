@@ -14,6 +14,8 @@ final class SegmentationDumpTests: XCTestCase {
         "今すぐ会いたいよ",
         "ハートは万華鏡",
         "同じ地球に生まれたの",
+        // のま vs また bug — expected path: 中 / の / またたく (entry 31593, またたく = "to twinkle")
+        "命は闇の中のまたたく光だ",
     ]
 
     func testDumpGreedy() throws {

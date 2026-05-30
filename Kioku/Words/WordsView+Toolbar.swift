@@ -5,40 +5,6 @@ import SwiftUI
 extension WordsView {
     @ToolbarContentBuilder
     var toolbarContent: some ToolbarContent {
-        // Browse-by-frequency entrypoint available on both tabs when not actively searching/editing.
-        if editMode == .inactive && searchText.isEmpty {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    isBrowseFrequencyPresented = true
-                } label: {
-                    Image(systemName: "chart.bar.fill")
-                        .font(.system(size: 16))
-                        .frame(width: 32, height: 32)
-                }
-                .accessibilityLabel("Browse by frequency")
-            }
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    isSentenceSearchPresented = true
-                } label: {
-                    Image(systemName: "text.bubble")
-                        .font(.system(size: 16))
-                        .frame(width: 32, height: 32)
-                }
-                .accessibilityLabel("Search example sentences")
-            }
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    isRadicalInputPresented = true
-                } label: {
-                    Image(systemName: "square.grid.3x3")
-                        .font(.system(size: 16))
-                        .frame(width: 32, height: 32)
-                }
-                .accessibilityLabel("Find kanji by radical")
-            }
-        }
-
         // CSV import floats to the leading side, separate from CRUD controls.
         if activeTab == .saved && editMode == .inactive && searchText.isEmpty {
             ToolbarItem(placement: .topBarLeading) {
@@ -83,7 +49,7 @@ extension WordsView {
                             if selectedHistoryIDs.count == historyStore.entries.count {
                                 selectedHistoryIDs.removeAll()
                             } else {
-                                selectedHistoryIDs = Set(historyStore.entries.map(\.canonicalEntryID))
+                                selectedHistoryIDs = Set(historyStore.entries.map(\.id))
                             }
                         }
                     } label: {

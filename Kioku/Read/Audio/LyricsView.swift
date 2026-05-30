@@ -142,15 +142,18 @@ struct LyricsView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
-                        // Render every cue as a vocal row regardless of whether the SRT marked it
-                        // non-speech (♪/♫/empty). The ♪ separator UI was removed at user
-                        // request — instrumental gaps now render as absence (nothing in the
-                        // scroll list) rather than as a visible marker.
+                        // Render every cue as a row regardless of whether the SRT marked it
+                        // non-speech (♪/♫/empty). Instrumental gaps appear as `♪` rows that
+                        // scroll past with the same distance-based fall-off as vocal cues —
+                        // a visible "this section is instrumental" marker the user can see
+                        // approaching (above the active card) and receding (below it), just
+                        // like any other line. The dedicated `musicNoteSeparator` UI was
+                        // removed earlier; this path uses the cue's own text ("♪") in the
+                        // standard `inactiveCueRow` so non-speech cues participate in the
+                        // scroller as first-class peers, not as special widgets.
                         ForEach(0 ..< aboveUpper, id: \.self) { index in
-                            if SubtitleParser.isNonSpeechCue(cues[index].text) == false {
-                                let distance = displayIndex - index
-                                inactiveCueRow(index: index, distance: distance)
-                            }
+                            let distance = displayIndex - index
+                            inactiveCueRow(index: index, distance: distance)
                         }
                     }
                 }
@@ -282,13 +285,11 @@ struct LyricsView: View {
 
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
-                        // Render every cue as a vocal row — no ♪ separators (see the
-                        // above-scroll comment for the rationale).
+                        // Render every cue as a row, including non-speech (♪/♫/empty) —
+                        // see the above-scroll comment for the rationale.
                         ForEach(belowLower ..< belowUpper, id: \.self) { index in
-                            if SubtitleParser.isNonSpeechCue(cues[index].text) == false {
-                                let distance = index - displayIndex
-                                inactiveCueRow(index: index, distance: distance)
-                            }
+                            let distance = index - displayIndex
+                            inactiveCueRow(index: index, distance: distance)
                         }
                     }
                 }
@@ -337,16 +338,6 @@ struct LyricsView: View {
             if let attachmentID { translationCache.load(for: attachmentID) }
         }
     }
-
-    // Returns ms remaining until the next vocal cue when the playhead is currently inside a
-    // non-speech (♪) cue from the source SRT, OR sitting in the intro before the first
-    // vocal cue. nil means a vocal cue is currently playing — render the regular active card.
-    //
-    // Data-driven: the source SRT/TextGrid marks instrumental sections as non-speech cues.
-    // Music-note / pulsing-dots feature was removed at user request. This computed
-    // property is preserved (returning nil) so any straggler call site silently no-ops
-    // instead of failing to compile. Safe to delete once no callers remain.
-    private var noVocalStretchRemainingMs: Int? { nil }
 
     // Returns the cue's raw SRT text — what the singer actually sang at that timecode.
     // Used for inactive rows and translation. We deliberately do NOT slice noteText with the

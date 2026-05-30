@@ -163,10 +163,18 @@ nonisolated final class Deinflector {
                 }
 
                 let stem = item.surface.dropLast(rule.kanaIn.count)
-                // An empty stem means the entire surface is the inflectional ending, which cannot
-                // produce a valid dictionary entry. Reject it before enqueueing.
-                guard stem.isEmpty == false else { continue }
                 let candidateSurface = String(stem) + rule.kanaOut
+                // An empty stem means the whole surface matched the rule's input.
+                // For a generic suffix (た, て, ない) that's just a bare ending
+                // and can't form a word — reject it. But the irregular する/くる
+                // verbs conjugate as whole words (した⇒する, きた⇒くる, して⇒する),
+                // so kanaIn IS the entire conjugated form and kanaOut is itself a
+                // real verb. Admit those when the trie confirms the result is a
+                // word; the kanaIn ≥ 2 check excludes single-kana stem-recovery
+                // rules (し⇒する, き⇒くる) that genuinely need a preceding stem.
+                if stem.isEmpty {
+                    guard rule.kanaIn.count >= 2, trie.contains(candidateSurface) else { continue }
+                }
                 let chainItem = normalizedRuleLabel(labeledRule.label)
 
                 for nextGrammar in rule.rulesOut {

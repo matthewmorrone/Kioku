@@ -25,9 +25,16 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ### Still-broken segmentation cases
 
-None currently open. Previously-broken cases are pinned at the bottom of this
-file under "Resolved / pinned"; new failures should be added here with the same
-template (surface, hypothesis, fix path).
+- **の + またたく → のまたたく (fused)** — sentence `命は闇の中のまたたく光だ`
+  parses to 8 segments instead of 9. The Viterbi/MeCab path fuses the possessive
+  particle の with the following verb またたく into a single surface のまたたく
+  (sometimes also splits as のま + たたく, with のま resolving to the 連用形 of
+  飲ます "to make drink"). Hypothesis: bigram cost of の-prt + またたく-verb is
+  higher than のま-verb + たたく-verb, even though the former is correct here.
+  Same sentence also misreads 闇 (やみ) as くらい — the reading for 暗い, an
+  unrelated entry, suggesting the homograph lookup is picking the wrong sense.
+  Fix path: revisit Viterbi bigram calibration for prt→verb transitions and
+  audit whether 闇's canonical kana row is being passed over for 暗い's.
 
 ### Intentionally unrecognized
 

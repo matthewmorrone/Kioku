@@ -17,23 +17,49 @@ final class HistoryStore: ObservableObject {
         }
     }
 
-    // Records a lookup event, moving the entry to the front (most recent first).
-    // Removes any prior record for the same canonical_entry_id before inserting.
+    // Records a per-entry lookup, moving it to the front. Dedupes by canonical_entry_id.
     func record(canonicalEntryID: Int64, surface: String) {
-        entries.removeAll { $0.canonicalEntryID == canonicalEntryID }
+        entries.removeAll { $0.kind == .entry && $0.canonicalEntryID == canonicalEntryID }
         entries.insert(
-            HistoryEntry(canonicalEntryID: canonicalEntryID, surface: surface, lookedUpAt: Date()),
+            HistoryEntry(canonicalEntryID: canonicalEntryID, surface: surface, lookedUpAt: Date(), kind: .entry),
             at: 0
         )
-        if entries.count > maxEntries {
-            entries = Array(entries.prefix(maxEntries))
-        }
+        trimAndPersist()
+    }
+
+    // Records a free-text search phrase the user submitted from the search field.
+    // Dedupes by query text — re-submitting the same phrase moves it to the front rather
+    // than creating a duplicate row. Empty / whitespace-only queries are dropped so we
+    // don't pollute history when the user focuses the field and dismisses.
+    func record(query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return }
+        entries.removeAll { $0.kind == .query && $0.surface == trimmed }
+        entries.insert(
+            HistoryEntry(canonicalEntryID: 0, surface: trimmed, lookedUpAt: Date(), kind: .query),
+            at: 0
+        )
+        trimAndPersist()
+    }
+
+    // Removes one entry. Accepts the composite Identifiable ID ("e:<id>" or "q:<text>"),
+    // not the canonical entry id, so query rows can be removed without ID collision.
+    func remove(historyID: String) {
+        entries.removeAll { $0.id == historyID }
         persist()
     }
 
-    // Removes one entry by canonical entry ID.
+    // Removes one entry by canonical entry ID. .entry rows only — query rows ignored.
     func remove(id: Int64) {
-        entries.removeAll { $0.canonicalEntryID == id }
+        entries.removeAll { $0.kind == .entry && $0.canonicalEntryID == id }
+        persist()
+    }
+
+    // Caps the entries list and writes once.
+    private func trimAndPersist() {
+        if entries.count > maxEntries {
+            entries = Array(entries.prefix(maxEntries))
+        }
         persist()
     }
 
@@ -42,7 +68,15 @@ final class HistoryStore: ObservableObject {
     // instead of N times — the per-item loop is what freezes the UI on bulk history clears.
     func remove(ids: Set<Int64>) {
         guard !ids.isEmpty else { return }
-        entries.removeAll { ids.contains($0.canonicalEntryID) }
+        entries.removeAll { $0.kind == .entry && ids.contains($0.canonicalEntryID) }
+        persist()
+    }
+
+    // Bulk-delete by composite history IDs ("e:<id>" / "q:<text>"). Same single-persist
+    // discipline as remove(ids:) — needed when multi-select picks up query rows.
+    func remove(historyIDs: Set<String>) {
+        guard !historyIDs.isEmpty else { return }
+        entries.removeAll { historyIDs.contains($0.id) }
         persist()
     }
 
@@ -53,11 +87,12 @@ final class HistoryStore: ObservableObject {
     }
 
     // Replaces the history store with one bounded, most-recent-first snapshot.
+    // Dedupes by composite id so .query and .entry rows can coexist without collision.
     func replaceAll(with entries: [HistoryEntry]) {
-        var dedupedByID: [Int64: HistoryEntry] = [:]
+        var dedupedByID: [String: HistoryEntry] = [:]
         for entry in entries.sorted(by: { $0.lookedUpAt > $1.lookedUpAt }) {
-            if dedupedByID[entry.canonicalEntryID] == nil {
-                dedupedByID[entry.canonicalEntryID] = entry
+            if dedupedByID[entry.id] == nil {
+                dedupedByID[entry.id] = entry
             }
         }
 

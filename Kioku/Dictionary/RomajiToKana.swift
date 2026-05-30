@@ -95,7 +95,29 @@ nonisolated enum RomajiToKana {
         }
 
         guard didConvert else { return nil }
+        // Reject mixed-script garbage like "Hello" → "ヘllお". Trailing ASCII letters
+        // are kept (the "tan" → "たn" mid-typing case); embedded letters mean the
+        // input wasn't really romaji.
+        if hasEmbeddedAsciiLetter(output) { return nil }
         return Result(kana: output, didConvert: true)
+    }
+
+    // True when `s` contains any ASCII letter other than a single trailing n/N
+    // (the deliberate "kon" → "こn" mid-typing case).
+    private static func hasEmbeddedAsciiLetter(_ s: String) -> Bool {
+        let scalars = Array(s.unicodeScalars)
+        var endIndex = scalars.count
+        if let last = scalars.last, last.value == 0x6E || last.value == 0x4E {
+            endIndex -= 1
+        }
+        for i in 0..<endIndex where isAsciiLetter(scalars[i]) { return true }
+        return false
+    }
+
+    // True for ASCII A–Z or a–z.
+    private static func isAsciiLetter(_ scalar: Unicode.Scalar) -> Bool {
+        let v = scalar.value
+        return (0x41...0x5A).contains(v) || (0x61...0x7A).contains(v)
     }
 
     // MARK: - Matching

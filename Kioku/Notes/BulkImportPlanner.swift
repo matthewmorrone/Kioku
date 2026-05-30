@@ -62,14 +62,17 @@ enum BulkImportPlanner {
 
         return orderedKeys.compactMap { key -> BulkImportPlanItem? in
             guard var item = itemsByKey[key] else { return nil }
-            // Match to an existing note when the item carries audio OR is a TextGrid-only companion:
-            // a user dropping just `.TextGrid` files for songs they previously imported expects the
-            // karaoke data to attach to those notes, not be skipped.
-            let isTextGridOnly = item.textGridURL != nil
-                && item.audioURL == nil
-                && item.subtitleURL == nil
-                && item.textURL == nil
-            if item.audioURL != nil || isTextGridOnly {
+            // Match to an existing note whenever the user dropped companion files only —
+            // i.e., no .txt body. A text body is the only file type that legitimately
+            // creates a new note; SRT alone, TextGrid alone, SRT+TextGrid, audio+anything,
+            // etc. are all "attach to existing" candidates. Without this, dropping just a
+            // refreshed .srt on a song you already imported would silently create a duplicate
+            // note instead of updating the existing one's subtitles.
+            let isCompanionOnly = item.textURL == nil
+                && (item.audioURL != nil
+                    || item.subtitleURL != nil
+                    || item.textGridURL != nil)
+            if isCompanionOnly {
                 item.matchedExistingNoteID = matchedNoteID(
                     forBaseName: item.baseName,
                     in: existingNotes,
@@ -100,13 +103,21 @@ enum BulkImportPlanner {
         let karaokeSuffix = hasTextGrid ? " with karaoke timings" : ""
 
         if item.matchedExistingNoteID != nil {
-            if item.audioURL == nil && item.subtitleURL == nil && item.textURL == nil && hasTextGrid {
-                return "Attach karaoke timings to matching note"
-            }
-            if item.subtitleURL != nil {
+            let hasAudio = item.audioURL != nil
+            let hasSubtitle = item.subtitleURL != nil
+
+            if hasAudio && hasSubtitle {
                 return "Attach audio and subtitle to matching note" + karaokeSuffix
             }
-            return "Attach audio to matching note" + karaokeSuffix
+            if hasAudio {
+                return "Attach audio to matching note" + karaokeSuffix
+            }
+            if hasSubtitle {
+                return "Attach subtitle to matching note" + karaokeSuffix
+            }
+            // Only TextGrid remains — the runner attaches karaoke timings to the
+            // matching note's existing cues.
+            return "Attach karaoke timings to matching note"
         }
 
         switch (item.textURL != nil, item.subtitleURL != nil, item.audioURL != nil) {

@@ -260,6 +260,31 @@ def create_schema(conn):
             tokenize='unicode61'
         );
 
+        -- FTS5 trigram tables backing Words-tab substring search. Trigram tokenizer
+        -- indexes every 3-character substring of the source column, so MATCH 'hello'
+        -- (5 chars) finds 'shellos', 'othello', 'helloween'... in O(log n) instead of
+        -- the 432k/489k full-table scan that LIKE '%hello%' forces. Queries shorter
+        -- than 3 chars must fall back to the indexed B-tree prefix path at query
+        -- time — trigram can't represent 1- or 2-character lookups.
+        CREATE VIRTUAL TABLE glosses_fts USING fts5(
+            gloss,
+            content=glosses,
+            content_rowid=id,
+            tokenize='trigram'
+        );
+        CREATE VIRTUAL TABLE kanji_fts USING fts5(
+            text,
+            content=kanji,
+            content_rowid=id,
+            tokenize='trigram'
+        );
+        CREATE VIRTUAL TABLE kana_forms_fts USING fts5(
+            text,
+            content=kana_forms,
+            content_rowid=id,
+            tokenize='trigram'
+        );
+
         -- Multi-radical kanji decomposition data from EDRDG's RADKFILE/KRADFILE.
         -- `radicals` is the inventory of radical components (e.g. 木, 心, 亻) with their stroke
         -- counts. `kanji_radicals` is the many-to-many mapping populated from KRADFILE: one row
@@ -642,6 +667,40 @@ def import_mecab_context_ids(conn):
         updated_kana += result.rowcount
 
     print(f"  Tagged {updated_kanji} kanji rows + {updated_kana} kana rows with IPADic context IDs")
+
+    # Strip symbol/EOS-class right IDs (≤4) from rows whose entry isn't an interjection.
+    # MeCab returns one ID pair per surface, but JMdict can have multiple entries per surface;
+    # the surface→IDs broadcast leaks interjection-class tags onto unrelated meanings (e.g.
+    # entry 7's "のま" reading of 々 picks up right=2 which matrix.bin scores as cheap-to-glue,
+    # letting のま beat の+またたく in Viterbi). Nulling these rows lets transitionCost fall
+    # back to the POS-bucket scoring driven by the entry's actual JMdict POS bitfield.
+    cleared_kana = conn.execute(
+        """
+        UPDATE kana_forms
+           SET ipadic_left_id = NULL, ipadic_right_id = NULL
+         WHERE ipadic_right_id IS NOT NULL
+           AND ipadic_right_id <= 4
+           AND NOT EXISTS (
+               SELECT 1 FROM senses s
+                WHERE s.entry_id = kana_forms.entry_id
+                  AND s.pos LIKE '%int%'
+           )
+        """
+    ).rowcount
+    cleared_kanji = conn.execute(
+        """
+        UPDATE kanji
+           SET ipadic_left_id = NULL, ipadic_right_id = NULL
+         WHERE ipadic_right_id IS NOT NULL
+           AND ipadic_right_id <= 4
+           AND NOT EXISTS (
+               SELECT 1 FROM senses s
+                WHERE s.entry_id = kanji.entry_id
+                  AND s.pos LIKE '%int%'
+           )
+        """
+    ).rowcount
+    print(f"  Cleared symbol-class IDs on {cleared_kana} kana + {cleared_kanji} kanji rows (POS mismatch)")
 
 
 def import_jpdb(conn):
@@ -1057,6 +1116,13 @@ def build_database():
 
     print("Building sentence FTS index...")
     conn.execute("INSERT INTO sentence_pairs_fts(sentence_pairs_fts) VALUES('rebuild')")
+
+    print("Building trigram FTS indexes for Words-tab substring search...")
+    # `rebuild` repopulates an external-content FTS5 table by scanning its content table —
+    # cleaner than a manual INSERT...SELECT and tolerant of partial rebuilds.
+    conn.execute("INSERT INTO glosses_fts(glosses_fts) VALUES('rebuild')")
+    conn.execute("INSERT INTO kanji_fts(kanji_fts) VALUES('rebuild')")
+    conn.execute("INSERT INTO kana_forms_fts(kana_forms_fts) VALUES('rebuild')")
 
     print("Importing radical decomposition data...")
     import_radicals(conn)

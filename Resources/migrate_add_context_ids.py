@@ -112,6 +112,52 @@ def harvest_context_ids(conn: sqlite3.Connection) -> None:
     print(f"  Tagged {updated_kanji} kanji rows + {updated_kana} kana rows")
 
 
+def clear_mismatched_symbol_class_ids(conn: sqlite3.Connection) -> None:
+    """
+    MeCab's surface→IDs mapping is one-to-one but our entries are one-to-many: a surface
+    like 'のま' or 'あの' has multiple JMdict entries with different POS, and MeCab returns
+    a single (left, right) per surface. When the harvested right_id falls in the symbol/EOS
+    bucket (≤4) — which IPADic uses for true interjections and punctuation — propagating
+    those IDs to entries whose POS isn't interjection makes matrix.bin score them as
+    cheap-to-glue-anywhere. That's how のま (entry 7, the iteration mark's 'noma' reading)
+    beats の+またたく in Viterbi.
+
+    We null out the context IDs on those mismatched rows so Viterbi's transitionCost falls
+    back to the POS-bucket scoring (empirically calibrated medians) for those edges
+    instead of consulting matrix.bin with leaked symbol-class IDs.
+    """
+    cleared_kana = conn.execute(
+        """
+        UPDATE kana_forms
+           SET ipadic_left_id = NULL, ipadic_right_id = NULL
+         WHERE ipadic_right_id IS NOT NULL
+           AND ipadic_right_id <= 4
+           AND NOT EXISTS (
+               SELECT 1 FROM senses s
+                WHERE s.entry_id = kana_forms.entry_id
+                  AND s.pos LIKE '%int%'
+           )
+        """
+    ).rowcount
+
+    cleared_kanji = conn.execute(
+        """
+        UPDATE kanji
+           SET ipadic_left_id = NULL, ipadic_right_id = NULL
+         WHERE ipadic_right_id IS NOT NULL
+           AND ipadic_right_id <= 4
+           AND NOT EXISTS (
+               SELECT 1 FROM senses s
+                WHERE s.entry_id = kanji.entry_id
+                  AND s.pos LIKE '%int%'
+           )
+        """
+    ).rowcount
+
+    conn.commit()
+    print(f"  Cleared symbol-class IDs on {cleared_kana} kana + {cleared_kanji} kanji rows (POS mismatch)")
+
+
 def main() -> None:
     if not DB_PATH.exists():
         sys.exit(f"dictionary.sqlite not found at {DB_PATH}")
@@ -120,6 +166,7 @@ def main() -> None:
     try:
         ensure_columns(conn)
         harvest_context_ids(conn)
+        clear_mismatched_symbol_class_ids(conn)
     finally:
         conn.close()
 

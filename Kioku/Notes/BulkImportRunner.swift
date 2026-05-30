@@ -70,6 +70,24 @@ final class BulkImportRunner: ObservableObject {
             return
         }
 
+        // Subtitle-only attach (optionally with TextGrid): user is dropping refreshed
+        // cues onto a note they already imported. Audio is untouched; cues, SRT, and
+        // any TextGrid checkpoints replace the existing attachment's subtitle data.
+        // Without this branch, an SRT-only import would fall through to createNewNote
+        // and silently produce a duplicate note instead of updating the existing one.
+        if let existingNoteID = item.matchedExistingNoteID,
+           item.audioURL == nil,
+           let subtitleData {
+            try attachSubtitleToExistingNote(
+                noteID: existingNoteID,
+                cues: subtitleData.cues,
+                srtText: subtitleData.rawText,
+                textGridURL: item.textGridURL,
+                preferredSubtitleFilename: item.baseName + ".srt"
+            )
+            return
+        }
+
         // TextGrid-only attach: user has the note already (and its cues), just wants to add the
         // karaoke checkpoints. We load the note's existing cues and bind against them — no audio
         // is replaced, no new note created.
@@ -198,6 +216,50 @@ final class BulkImportRunner: ObservableObject {
                 try NotesAudioStore.shared.saveCueTimings(timings, attachmentID: attachmentID)
             }
         }
+        if let srtText, srtText.isEmpty == false {
+            _ = try NotesAudioStore.shared.saveSRT(
+                srtText,
+                attachmentID: attachmentID,
+                preferredFilename: preferredSubtitleFilename
+            )
+        }
+
+        store.updateAudioAttachment(id: noteID, attachmentID: attachmentID)
+    }
+
+    // Attaches subtitle data (cues, SRT, optional TextGrid timings) to an existing
+    // note's attachment without touching audio. Reuses the note's current attachment
+    // ID when present, mirroring attachAudioToExistingNote's behavior, so a later
+    // audio import lands on the same attachment slot rather than orphaning files.
+    private func attachSubtitleToExistingNote(
+        noteID: UUID,
+        cues: [SubtitleCue]?,
+        srtText: String?,
+        textGridURL: URL?,
+        preferredSubtitleFilename: String
+    ) throws {
+        let attachmentID = store.note(withID: noteID)?.audioAttachmentID ?? UUID()
+
+        if let cues, cues.isEmpty == false {
+            try NotesAudioStore.shared.saveCues(cues, attachmentID: attachmentID)
+        }
+
+        // Bind TextGrid checkpoints against either the freshly-imported cues or, if
+        // none were supplied, the cues already saved on the matched note. Mirrors the
+        // fallback in attachAudioToExistingNote so a TextGrid in this branch never
+        // silently no-ops just because the SRT was the same one already on the note.
+        if let textGridURL {
+            let cuesForBinding: [SubtitleCue] = {
+                if let cues, cues.isEmpty == false { return cues }
+                return NotesAudioStore.shared.loadCues(for: attachmentID)
+            }()
+            if cuesForBinding.isEmpty == false,
+               let timings = Self.bindTextGridCheckpoints(textGridURL: textGridURL, cues: cuesForBinding),
+               timings.isEmpty == false {
+                try NotesAudioStore.shared.saveCueTimings(timings, attachmentID: attachmentID)
+            }
+        }
+
         if let srtText, srtText.isEmpty == false {
             _ = try NotesAudioStore.shared.saveSRT(
                 srtText,

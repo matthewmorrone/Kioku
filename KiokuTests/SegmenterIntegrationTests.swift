@@ -213,6 +213,38 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertTrue(candidates.contains("愛しい"))
     }
 
+    // した is the standalone past tense of the irregular する, but する conjugates
+    // as a whole word (kanaIn した == the entire surface, so the stem is empty).
+    // The deinflector's empty-stem guard used to reject every whole-surface
+    // match, so した never recovered する — only the spurious ichidan reading しる
+    // (た→る) survived. Whole irregular forms whose result is a real dictionary
+    // word must be admitted.
+    func testDeinflectorRecoversSuruFromStandaloneShita() throws {
+        let candidates = try deinflectionCandidates(for: "した")
+
+        XCTAssertTrue(candidates.contains("する"),
+                      "standalone した must deinflect to する — got \(candidates.sorted())")
+    }
+
+    // きた is the standalone past of くる (same whole-word irregular shape). Same
+    // empty-stem guard, same fix.
+    func testDeinflectorRecoversKuruFromStandaloneKita() throws {
+        let candidates = try deinflectionCandidates(for: "きた")
+
+        XCTAssertTrue(candidates.contains("くる"),
+                      "standalone きた must deinflect to くる — got \(candidates.sorted())")
+    }
+
+    // The empty-stem admission must not turn bare grammatical endings into words:
+    // a single-kana stem-recovery rule (し ⇒ する) needs a real preceding stem,
+    // so a bare し must not deinflect to する.
+    func testDeinflectorDoesNotRecoverSuruFromBareShi() throws {
+        let candidates = try deinflectionCandidates(for: "し")
+
+        XCTAssertFalse(candidates.contains("する"),
+                       "bare し should not spawn する without a stem — got \(candidates.sorted())")
+    }
+
     // Verifies v5 す-verb benefactive (てくれる) chains recover their dictionary lemma in one step.
     func testDeinflectorRecoversBenefactiveVerbLemmaForSuVerb() throws {
         let candidates = try deinflectionCandidates(for: "消してくれる")
