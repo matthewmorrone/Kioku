@@ -38,21 +38,6 @@ extension LyricsView {
         .blur(radius: metrics.blur)
     }
 
-    // Renders a ♪ separator row inserted between vocal cues where the audio has a long
-    // instrumental gap. Same height and distance-based scale/opacity as inactive cue rows so
-    // the marker reads as a peer entry in the list rather than a compressed delimiter.
-    @ViewBuilder
-    func musicNoteSeparator(distance: Int) -> some View {
-        let metrics = inactiveCueMetrics(distance: distance)
-        Text("♪")
-            .font(.system(size: CGFloat(TypographySettings.defaultTextSize), weight: .regular))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .frame(height: inactiveCueRowHeight)
-            .scaleEffect(metrics.scale, anchor: .center)
-            .opacity(metrics.opacity)
-    }
-
     // Apple Music-style fall-off: closer rows are larger and brighter, distant rows shrink
     // and fade. No blur — the size+opacity wave is the readable cue without softening text
     // into mush.

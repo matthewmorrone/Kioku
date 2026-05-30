@@ -156,6 +156,15 @@ final class RomajiToKanaTests: XCTestCase {
         assertNil("123")
     }
 
+    // Regression: "Hello" used to produce "ヘllお" because `He`→ヘ, `o`→お, and the
+    // embedded `ll` fell through as ASCII. Embedded ASCII letters now reject.
+    func test_embedded_ascii_letters_return_nil() {
+        assertNil("Hello")
+        assertNil("hello")
+        assertNil("World")     // would have been "ヲrld"
+        assertNil("Hellos")    // would have been "ヘllおs"
+    }
+
     // MARK: Pass-through
 
     func test_digits_pass_through_when_some_conversion() {

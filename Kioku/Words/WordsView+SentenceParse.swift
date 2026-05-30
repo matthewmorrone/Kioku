@@ -126,26 +126,87 @@ extension WordsView {
 
     // Resolves each segment surface to its best dictionary hit. Runs off-main; safe to call
     // from a detached task. Returns segments in their original order.
+    //
+    // Implementation:
+    //   1. Look up each unique surface's canonical entry id via the in-memory map
+    //      (O(1) per surface — populated at startup by populateCanonicalEntryIDMap).
+    //   2. Materialize all needed entries in ONE batched SQL call.
+    //   3. Build the per-token result by joining back to the materialized table.
+    //
+    // Falls back to dictionaryTop (per-token searchEntries fan-out) for surfaces missing
+    // from the canonical map, which happens before the prewarming pass finishes during
+    // the first few seconds after launch.
     nonisolated static func resolveParsedSegments(
         tokens: [String],
         store: DictionaryStore
     ) -> [ParsedSegment] {
-        // Cache repeated surfaces (の, は, etc.) so a long sentence doesn't fan out
-        // into one SQLite round-trip per occurrence.
-        var cache: [String: DictionaryEntry?] = [:]
-        return tokens.map { surface in
-            if let cached = cache[surface] {
-                return ParsedSegment(surface: surface, entry: cached)
+        // Collect each unique surface's canonical entry id (skip nils — those will fall
+        // back to dictionaryTop below).
+        var canonicalIDBySurface: [String: Int64] = [:]
+        var fallbackSurfaces: Set<String> = []
+        for surface in Set(tokens) {
+            if let entryID = store.lookupFirstEntryID(surface: surface) {
+                canonicalIDBySurface[surface] = entryID
+            } else {
+                fallbackSurfaces.insert(surface)
             }
-            let hit = dictionaryTop(store: store, surface: surface)
-            cache[surface] = hit
-            return ParsedSegment(surface: surface, entry: hit)
+        }
+
+        // One batched SQL roundtrip for every entry id we found via the canonical map.
+        let entryIDs = Array(Set(canonicalIDBySurface.values))
+        let batched = (try? store.lookupEntries(entryIDs: entryIDs)) ?? []
+        let entryByID = Dictionary(uniqueKeysWithValues: batched.map { ($0.entryId, $0) })
+
+        // Fallback: per-surface dictionaryTop for anything the canonical map didn't cover.
+        var fallbackBySurface: [String: DictionaryEntry?] = [:]
+        for surface in fallbackSurfaces {
+            fallbackBySurface[surface] = dictionaryTop(store: store, surface: surface)
+        }
+
+        return tokens.map { surface in
+            if let entryID = canonicalIDBySurface[surface], let entry = entryByID[entryID] {
+                return ParsedSegment(surface: surface, entry: entry)
+            }
+            if let fallback = fallbackBySurface[surface] {
+                return ParsedSegment(surface: surface, entry: fallback)
+            }
+            return ParsedSegment(surface: surface, entry: nil)
         }
     }
 
     // Top dictionary hit for `surface`, or nil if the dictionary has no entry for it.
+    //
+    // Pulls the top 5 hits from the existing search ranking, then applies a sense-breadth
+    // tiebreak among entries whose JPDB rank is within ~5× of the best entry's rank
+    // (or all rank-less). This fixes cases where JPDB's anime/VN corpus elevates a narrow
+    // homograph above the broader canonical entry — e.g. 瞬く resolves to entry 172123
+    // (しばたたく, 1 sense "to blink repeatedly") because JPDB ranks it 8634 vs entry 31593
+    // (またたく, 2 senses "to twinkle / to blink") at 10603. They're close in rank but the
+    // broader entry is the one a learner expects to see first.
+    //
+    // Outside the tolerance band, JPDB rank wins as before — we don't want to override
+    // cases where there's a clear frequency-based winner.
     private nonisolated static func dictionaryTop(store: DictionaryStore, surface: String) -> DictionaryEntry? {
-        let hits = (try? store.searchEntries(term: surface, mode: .japanese, limit: 1)) ?? []
-        return hits.first
+        let hits = (try? store.searchEntries(term: surface, mode: .japanese, limit: 5)) ?? []
+        guard let first = hits.first else { return nil }
+        // Cluster: hits whose JPDB rank is within the tolerance band of the top hit.
+        // Rank-less entries cluster together (both nil); a rank-less hit doesn't cluster
+        // with a ranked one because we have no scale to compare them.
+        let tolerance = 5.0
+        let cluster = hits.prefix(5).filter { entry in
+            switch (first.jpdbRank, entry.jpdbRank) {
+            case (nil, nil): return true
+            case let (.some(top), .some(other)): return Double(other) <= Double(top) * tolerance
+            default: return false
+            }
+        }
+        // Within the cluster, prefer the entry with the most senses (broader coverage).
+        // Stable on ties — preserves JPDB order among entries with equal sense counts.
+        return cluster.enumerated().max { lhs, rhs in
+            if lhs.element.senses.count != rhs.element.senses.count {
+                return lhs.element.senses.count < rhs.element.senses.count
+            }
+            return lhs.offset > rhs.offset
+        }?.element ?? first
     }
 }

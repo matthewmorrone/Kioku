@@ -1,18 +1,14 @@
 import SwiftUI
 
 // Dictionary-search content, filters, and the debounced search task that powers them.
-// Covers the search results list section, the filters disclosure, and the helpers that
-// compute available POS labels, sort/filter results, and toggle save state for hits.
+// Covers the search results list section and the helpers that compute available POS labels,
+// sort/filter results, and toggle save state for hits. The filter UI itself (toolbar menu)
+// has been removed — these helpers are kept so a replacement UI can rewire to them later.
 extension WordsView {
     // MARK: - Search results view
 
     @ViewBuilder
     var searchResultsContent: some View {
-        Section {
-            searchFiltersSection
-        }
-        .listRowSeparator(.hidden)
-
         if parsedSegments.isEmpty == false {
             parsedSegmentsResultsSection
         } else if filteredSearchResults.isEmpty {
@@ -37,69 +33,6 @@ extension WordsView {
                 Text("\(filteredSearchResults.count) Result\(filteredSearchResults.count == 1 ? "" : "s")")
             }
         }
-    }
-
-    // Renders the search-mode picker plus optional live result filters for dictionary search.
-    var searchFiltersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Picker("Search Mode", selection: $searchMode) {
-                ForEach(DictionarySearchMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            DisclosureGroup(isExpanded: $areSearchFiltersExpanded) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Toggle("Common words only", isOn: $searchCommonWordsOnly)
-
-                    Picker("Sort", selection: $searchSortMode) {
-                        ForEach(DictionarySearchSortMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    HStack {
-                        Text("Part of speech")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Menu {
-                            ForEach(availableSearchPartsOfSpeech, id: \.self) { label in
-                                Button {
-                                    toggleSearchPartOfSpeech(label)
-                                } label: {
-                                    Label(label, systemImage: searchSelectedPartsOfSpeech.contains(label) ? "checkmark" : "")
-                                }
-                            }
-                        } label: {
-                            Text(searchPartOfSpeechSummary)
-                                .font(.caption)
-                        }
-                        .disabled(availableSearchPartsOfSpeech.isEmpty)
-                    }
-
-                    Button("Reset Filters") {
-                        resetSearchControls()
-                    }
-                    .disabled(hasActiveSearchControls == false)
-                }
-                .padding(.top, 4)
-            } label: {
-                HStack(spacing: 8) {
-                    Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
-                    Spacer()
-                    if hasActiveSearchControls {
-                        Text("Active")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .font(.subheadline.weight(.semibold))
-            }
-        }
-        .padding(.vertical, 2)
     }
 
     // MARK: - Search helpers

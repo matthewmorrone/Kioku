@@ -303,14 +303,29 @@ struct ContentView: View {
     }
 
     // Rebuilds the segmenter and related resources on a background thread using the current settings.
+    //
+    // Two-stage publish: the bare DictionaryStore lands on the main actor as soon as SQLite
+    // opens (sub-second), so the Words tab's search bar becomes live immediately. The full
+    // segmenter + lexicon + prewarmed maps (POS bits, canonical entry ids, surface readings)
+    // follow afterwards on a slower path and overwrite the partial state once ready.
     private func rebuildReadResources() {
         let backend = UserDefaults.standard.string(forKey: SegmenterSettings.backendKey) ?? SegmenterSettings.defaultBackend
         let mecabDict = UserDefaults.standard.string(forKey: SegmenterSettings.mecabDictionaryKey) ?? SegmenterSettings.defaultMeCabDictionary
 
-        // Task.detached runs the heavy dictionary/trie work off the main thread.
-        // A single ReadResources assignment triggers one SwiftUI body re-eval instead of six.
         let currentRevision = readResources.segmenterRevision
-        Task.detached(priority: .utility) {
+        Task.detached(priority: .userInitiated) {
+            // Stage 1 — fast path: open the read-only SQLite handle so the dictionary
+            // search bar is usable while the prewarming pass below is still running.
+            if let earlyStore = try? DictionaryStore() {
+                await MainActor.run {
+                    if readResources.dictionaryStore == nil {
+                        readResources.dictionaryStore = earlyStore
+                        StartupTimer.mark("dictionaryStore published (fast path)")
+                    }
+                }
+            }
+
+            // Stage 2 — slow path: full segmenter/lexicon build + DictionaryStore prewarming.
             let result = Self.makeReadResources(backend: backend, mecabDictionary: mecabDict)
             await MainActor.run {
                 readResources = ReadResources(

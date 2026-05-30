@@ -122,6 +122,195 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         return resolved
     }
 
+    // Batched materialization: fetches every facet (header, kanji forms, kana forms, senses,
+    // glosses) for N entries in a SINGLE SQL statement via UNION ALL. Reassembles the rows
+    // into [DictionaryEntry] in the original order of `entryIDs`. Replaces the per-entry
+    // lookupEntry hot path that fired 4N round-trips through the serialized SQLite queue.
+    nonisolated public func lookupEntries(entryIDs: [Int64]) throws -> [DictionaryEntry] {
+        guard entryIDs.isEmpty == false else { return [] }
+        return try withSerializedDatabaseAccess {
+            // Unique IDs to bind once (callers may pass duplicates after multi-mode dedup).
+            // Original order is preserved for the final result via the index map below.
+            var orderMap: [Int64: Int] = [:]
+            var unique: [Int64] = []
+            for id in entryIDs where orderMap[id] == nil {
+                orderMap[id] = unique.count
+                unique.append(id)
+            }
+
+            // Single prepared statement with four UNION ALL legs. Each leg emits a row
+            // tagged with row_kind ('h' header, 'k' kanji, 'r' kana, 's' sense-or-gloss).
+            // All shared columns are projected as NULL where they don't apply so the column
+            // shape matches across legs.
+            let placeholders = Array(repeating: "?", count: unique.count).joined(separator: ",")
+            let sql = """
+            SELECT 'h' AS row_kind, e.id AS entry_id,
+                   MIN(wf.jpdb_rank) AS jpdb_rank, MAX(wf.wordfreq_zipf) AS wordfreq_zipf,
+                   NULL AS text, NULL AS priority, NULL AS info, NULL AS nokanji,
+                   NULL AS sense_id, NULL AS pos, NULL AS misc, NULL AS field, NULL AS dialect,
+                   NULL AS gloss, NULL AS sort_a, NULL AS sort_b
+              FROM entries e
+              LEFT JOIN word_frequency wf ON wf.entry_id = e.id
+             WHERE e.id IN (\(placeholders))
+             GROUP BY e.id
+            UNION ALL
+            SELECT 'k', k.entry_id, NULL, NULL,
+                   k.text, k.priority, k.info, NULL,
+                   NULL, NULL, NULL, NULL, NULL,
+                   NULL, k.id, NULL
+              FROM kanji k
+             WHERE k.entry_id IN (\(placeholders))
+            UNION ALL
+            SELECT 'r', kf.entry_id, NULL, NULL,
+                   kf.text, kf.priority, kf.info, kf.re_nokanji,
+                   NULL, NULL, NULL, NULL, NULL,
+                   NULL, kf.id, NULL
+              FROM kana_forms kf
+             WHERE kf.entry_id IN (\(placeholders))
+            UNION ALL
+            SELECT 's', s.entry_id, NULL, NULL,
+                   NULL, NULL, NULL, NULL,
+                   s.id, s.pos, s.misc, s.field, s.dialect,
+                   g.gloss, s.order_index, g.order_index
+              FROM senses s
+              LEFT JOIN glosses g ON g.sense_id = s.id
+             WHERE s.entry_id IN (\(placeholders))
+            -- Within each entry, force a deterministic per-leg ordering so the first
+            -- kanji/kana/sense is the JMdict-canonical primary form. Without this UNION ALL
+            -- returns rows in arbitrary order and the "first kana form" picked into the
+            -- entry's `kanaForms` array becomes whichever variant SQLite served first.
+            ORDER BY entry_id ASC, row_kind ASC, sort_a ASC, sort_b ASC
+            """
+
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: sql, statement: &statement)
+
+            // The same ID list is bound four times — once per IN clause leg.
+            var bindIndex: Int32 = 1
+            for _ in 0..<4 {
+                for id in unique {
+                    try bindInt64(id, index: bindIndex, statement: statement)
+                    bindIndex += 1
+                }
+            }
+
+            // Mutable per-entry assembly state, keyed by entry_id.
+            struct Assembly {
+                var jpdbRank: Int?
+                var wordfreqZipf: Double?
+                // Order-preserving but dedup'd via the seen sets.
+                var kanji: [KanjiForm] = []
+                var kana: [KanaForm] = []
+                var seenKanji = Set<String>()
+                var seenKana = Set<String>()
+                // Sense id → (sense fields, gloss list); senses ordered by emission order
+                // which mirrors `s.order_index ASC` because the rows arrive in that order
+                // within the 's' leg of the UNION.
+                var senseOrder: [Int64] = []
+                var senseFields: [Int64: (pos: String?, misc: String?, field: String?, dialect: String?)] = [:]
+                var glossesBySense: [Int64: [String]] = [:]
+                var seenGlossesBySense: [Int64: Set<String>] = [:]
+            }
+            var assembly: [Int64: Assembly] = [:]
+
+            var stepCode = sqlite3_step(statement)
+            while stepCode == SQLITE_ROW {
+                guard let kindPtr = sqlite3_column_text(statement, 0) else {
+                    stepCode = sqlite3_step(statement); continue
+                }
+                let kind = String(cString: kindPtr)
+                let entryID = sqlite3_column_int64(statement, 1)
+                var entry = assembly[entryID] ?? Assembly()
+
+                switch kind {
+                case "h":
+                    entry.jpdbRank = sqlite3_column_type(statement, 2) != SQLITE_NULL
+                        ? Int(sqlite3_column_int(statement, 2)) : nil
+                    entry.wordfreqZipf = sqlite3_column_type(statement, 3) != SQLITE_NULL
+                        ? sqlite3_column_double(statement, 3) : nil
+                case "k":
+                    if let textPtr = sqlite3_column_text(statement, 4) {
+                        let text = String(cString: textPtr)
+                        if entry.seenKanji.insert(text).inserted {
+                            let priority = sqlite3_column_text(statement, 5).map { String(cString: $0) }
+                            let info = sqlite3_column_text(statement, 6).map { String(cString: $0) }
+                            entry.kanji.append(KanjiForm(text: text, priority: priority, info: info))
+                        }
+                    }
+                case "r":
+                    if let textPtr = sqlite3_column_text(statement, 4) {
+                        let text = String(cString: textPtr)
+                        if entry.seenKana.insert(text).inserted {
+                            let priority = sqlite3_column_text(statement, 5).map { String(cString: $0) }
+                            let info = sqlite3_column_text(statement, 6).map { String(cString: $0) }
+                            let nokanji = sqlite3_column_int(statement, 7) != 0
+                            entry.kana.append(KanaForm(text: text, priority: priority, info: info, nokanji: nokanji))
+                        }
+                    }
+                case "s":
+                    let senseID = sqlite3_column_int64(statement, 8)
+                    if entry.senseFields[senseID] == nil {
+                        let pos = sqlite3_column_text(statement, 9).map { String(cString: $0) }
+                        let misc = sqlite3_column_text(statement, 10).map { String(cString: $0) }
+                        let field = sqlite3_column_text(statement, 11).map { String(cString: $0) }
+                        let dialect = sqlite3_column_text(statement, 12).map { String(cString: $0) }
+                        entry.senseFields[senseID] = (pos: pos, misc: misc, field: field, dialect: dialect)
+                        entry.senseOrder.append(senseID)
+                    }
+                    if let glossPtr = sqlite3_column_text(statement, 13) {
+                        let gloss = String(cString: glossPtr)
+                        var seen = entry.seenGlossesBySense[senseID] ?? Set()
+                        if seen.insert(gloss).inserted {
+                            entry.seenGlossesBySense[senseID] = seen
+                            entry.glossesBySense[senseID, default: []].append(gloss)
+                        }
+                    }
+                default:
+                    break
+                }
+
+                assembly[entryID] = entry
+                stepCode = sqlite3_step(statement)
+            }
+
+            guard stepCode == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage())
+            }
+
+            // Build DictionaryEntry list in the order the caller requested.
+            var result: [DictionaryEntry] = []
+            result.reserveCapacity(unique.count)
+            for entryID in unique {
+                guard let a = assembly[entryID] else { continue }
+                let senses = a.senseOrder.map { sid -> DictionaryEntrySense in
+                    let fields = a.senseFields[sid] ?? (pos: nil, misc: nil, field: nil, dialect: nil)
+                    return DictionaryEntrySense(
+                        senseID: sid,
+                        pos: fields.pos,
+                        misc: fields.misc,
+                        field: fields.field,
+                        dialect: fields.dialect,
+                        glosses: a.glossesBySense[sid] ?? [],
+                        applicableKanji: [],
+                        applicableReadings: []
+                    )
+                }
+                let matchedSurface = a.kanji.first?.text ?? a.kana.first?.text ?? ""
+                result.append(DictionaryEntry(
+                    entryId: entryID,
+                    jpdbRank: a.jpdbRank,
+                    wordfreqZipf: a.wordfreqZipf,
+                    matchedSurface: matchedSurface,
+                    kanjiForms: a.kanji,
+                    kanaForms: a.kana,
+                    senses: senses
+                ))
+            }
+            return result
+        }
+    }
+
     // Fetches one fully materialized entry by ID so UI layers can resolve stable lexeme identifiers.
     public func lookupEntry(entryID: Int64) throws -> DictionaryEntry? {
         try withSerializedDatabaseAccess {

@@ -96,9 +96,22 @@ nonisolated enum SubtitleParser {
     }
 
     // Returns true for cues that represent instrumental/non-speech sections.
+    // A cue qualifies when every non-whitespace character is a ♪ or ♫ — this covers
+    // single-glyph cues ("♪"), doubled cues ("♪♪"), spaced cues ("♪ ♪"), and multi-line
+    // cues containing only music glyphs ("♪\n♪"). Any other text character makes it speech.
     static func isNonSpeechCue(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed == "♪" || trimmed == "♫" || trimmed.isEmpty
+        var sawMusicGlyph = false
+        for scalar in text.unicodeScalars {
+            if CharacterSet.whitespacesAndNewlines.contains(scalar) { continue }
+            if scalar == "♪" || scalar == "♫" {
+                sawMusicGlyph = true
+                continue
+            }
+            return false
+        }
+        // Reached end with only whitespace + ♪/♫ — non-speech iff there was at least one
+        // music glyph, or the whole cue was empty/whitespace (intro padding).
+        return sawMusicGlyph || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     // Finds the note line that matches a cue's text so the cue can be highlighted during playback.
