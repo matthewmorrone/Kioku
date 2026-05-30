@@ -19,6 +19,7 @@ struct SongStepperView: View {
     // `surfaceReadingData`, so it's been removed to avoid dead state.
     let segmenter: (any TextSegmenting)?
     let surfaceReadingData: SurfaceReadingDataMap
+    let kanjiReadingFallback: KanjiReadingFallbackMap
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     // Per-line expansion state. A line is "expanded" when its word/grammar explanations are
     // visible AND furigana is rendered above its Japanese — the two move together. Keyed by
@@ -36,10 +37,12 @@ struct SongStepperView: View {
     // visual no-op in that mode.
     init(note: Note,
          segmenter: (any TextSegmenting)? = nil,
-         surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()) {
+         surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
+         kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()) {
         self.note = note
         self.segmenter = segmenter
         self.surfaceReadingData = surfaceReadingData
+        self.kanjiReadingFallback = kanjiReadingFallback
     }
 
     var body: some View {
@@ -362,7 +365,10 @@ struct SongStepperView: View {
         }
         let edges = segmenter.longestMatchEdges(for: text)
         let segmentationRanges = edges.map { $0.start..<$0.end }
-        let resolved = FuriganaResolver(segmenter: segmenter).build(
+        let resolved = FuriganaResolver(
+            segmenter: segmenter,
+            kanjiReadingFallback: kanjiReadingFallback
+        ).build(
             for: text,
             edges: edges,
             surfaceReadingData: surfaceReadingData
