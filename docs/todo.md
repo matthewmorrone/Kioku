@@ -147,7 +147,7 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 - [x] Dedicated kanji discovery tab/screen (`RadicalInputView()` sheet in `WordsView.swift`, "Find kanji by radical" toolbar button)
 - [ ] Full kanji metadata support (radicals, readings, components)
       (partial: `KanjiInfo` has radicals + stroke count; component tree not confirmed)
-- [ ] Handwriting input and stroke order (radical input shipped; handwriting recognition still TBD)
+- [x] Handwriting input and stroke order (Zinnia handwriting recognition + KanjiVG stroke-order animation shipped; radical input also shipped)
 - [ ] Kanji of the day feature
 
 ## Audio & Alignment
