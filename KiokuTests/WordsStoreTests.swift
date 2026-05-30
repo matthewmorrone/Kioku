@@ -471,4 +471,54 @@ final class WordsStoreTests: XCTestCase {
         XCTAssertEqual(store.words.count, 1, "init must dedupe stored duplicates")
         XCTAssertEqual(store.words[0].wordListIDs.count, 2, "merge unions the wordListIDs of the duplicates")
     }
+
+    // MARK: - Re-point
+
+    // Re-pointing swaps the entry id + surface but carries list/note/personal-note metadata over,
+    // and folds the old surface into encounteredSurfaces. This is the した→下 → する fix.
+    func testRepointChangesEntryAndSurfacePreservingMetadata() {
+        let store = makeStore()
+        let listID = UUID()
+        let noteID = UUID()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "下",
+                            sourceNoteIDs: [noteID], wordListIDs: [listID],
+                            personalNote: "from a song", encounteredSurfaces: ["した"]))
+
+        store.repoint(fromEntryID: 100, toEntryID: 200, lemma: "する")
+
+        XCTAssertNil(store.words.first { $0.canonicalEntryID == 100 }, "old card must be gone")
+        let card = store.words.first { $0.canonicalEntryID == 200 }
+        XCTAssertEqual(card?.surface, "する")
+        XCTAssertEqual(card?.wordListIDs, [listID], "list membership carries over")
+        XCTAssertEqual(card?.sourceNoteIDs, [noteID], "source notes carry over")
+        XCTAssertEqual(card?.personalNote, "from a song", "personal note carries over")
+        XCTAssertEqual(card?.encounteredSurfaces.contains("した"), true)
+        XCTAssertEqual(card?.encounteredSurfaces.contains("下"), true, "old surface folds into encountered set")
+    }
+
+    // When the target entry is already saved, re-point merges onto it instead of creating a
+    // duplicate card (duplicate canonicalEntryID would crash the ForEach identity).
+    func testRepointMergesIntoExistingTargetCard() {
+        let store = makeStore()
+        let listA = UUID()
+        let listB = UUID()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "下", wordListIDs: [listA]))
+        store.add(SavedWord(canonicalEntryID: 200, surface: "する", wordListIDs: [listB]))
+
+        store.repoint(fromEntryID: 100, toEntryID: 200, lemma: "する")
+
+        XCTAssertFalse(store.words.contains { $0.canonicalEntryID == 100 }, "source card removed")
+        let targets = store.words.filter { $0.canonicalEntryID == 200 }
+        XCTAssertEqual(targets.count, 1, "no duplicate target card")
+        XCTAssertEqual(targets.first.map { Set($0.wordListIDs) }, [listA, listB], "list memberships union")
+    }
+
+    // Re-pointing to the same id is a no-op (avoids needless churn / self-merge).
+    func testRepointToSameEntryIsNoOp() {
+        let store = makeStore()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "する"))
+        store.repoint(fromEntryID: 100, toEntryID: 100, lemma: "する")
+        XCTAssertEqual(store.words.count, 1)
+        XCTAssertEqual(store.words.first?.canonicalEntryID, 100)
+    }
 }

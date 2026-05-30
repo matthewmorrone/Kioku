@@ -22,7 +22,9 @@ extension WordsView {
                     onToggleList: { listID in
                         wordsStore.toggleListMembership(wordID: savedWord.canonicalEntryID, listID: listID)
                     },
-                    onRemove: { wordsStore.remove(id: savedWord.canonicalEntryID) }
+                    onRemove: { wordsStore.remove(id: savedWord.canonicalEntryID) },
+                    lemmaCandidateCount: { lemmaCandidateCount(for: savedWord.surface) },
+                    onChooseLemma: { chooseLemma(forSavedWord: savedWord) }
                 )
                 .tag(savedWord.canonicalEntryID)
             }
@@ -91,6 +93,13 @@ extension WordsView {
                 } label: {
                     Label("Look Up", systemImage: "magnifyingglass")
                 }
+                if lemmaCandidateCount(for: entry.surface) > 1 {
+                    Button {
+                        chooseLemma(forHistoryEntry: entry)
+                    } label: {
+                        Label("Choose Lemma…", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
                 Divider()
                 let saved = isSavedByID(entry.canonicalEntryID)
                 Button {
@@ -157,6 +166,14 @@ extension WordsView {
                 selectedDetailWord = wordForHistory(entry)
             } label: {
                 Label("Open Details", systemImage: "info.circle")
+            }
+
+            if lemmaCandidateCount(for: entry.surface) > 1 {
+                Button {
+                    chooseLemma(forHistoryEntry: entry)
+                } label: {
+                    Label("Choose Lemma…", systemImage: "arrow.triangle.2.circlepath")
+                }
             }
 
             Divider()

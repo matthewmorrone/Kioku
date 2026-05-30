@@ -9,6 +9,10 @@ struct WordRowView: View {
     let onOpenDetails: () -> Void
     let onToggleList: (UUID) -> Void
     let onRemove: () -> Void
+    // Evaluated lazily inside the context menu (built on long-press) so "Choose Lemma…" only
+    // appears when the surface resolves to more than one lemma.
+    var lemmaCandidateCount: () -> Int = { 0 }
+    var onChooseLemma: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 12) {
@@ -59,6 +63,16 @@ struct WordRowView: View {
                 onOpenDetails()
             } label: {
                 Label("Open Details", systemImage: "info.circle")
+            }
+
+            // Re-point this card to a different lemma when the surface is ambiguous
+            // (e.g. した saved as 下 → re-point to する). Only shown when an alternative exists.
+            if lemmaCandidateCount() > 1 {
+                Button {
+                    onChooseLemma()
+                } label: {
+                    Label("Choose Lemma…", systemImage: "arrow.triangle.2.circlepath")
+                }
             }
 
             // Shows each word list as a toggle so the user can assign membership inline.
