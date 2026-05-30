@@ -42,6 +42,31 @@ final class HistoryStore: ObservableObject {
         trimAndPersist()
     }
 
+    // Re-points a per-entry history row to a different dictionary entry, keeping its position
+    // and timestamp. Because .entry rows dedupe by id ("e:<id>"), the target id must be unique:
+    // any pre-existing row for the target entry is folded into the re-pointed slot.
+    func repoint(historyID: String, toEntryID newID: Int64, surface: String) {
+        guard let old = entries.first(where: { $0.id == historyID && $0.kind == .entry }),
+              old.canonicalEntryID != newID else { return }
+
+        let repointed = HistoryEntry(canonicalEntryID: newID, surface: surface, lookedUpAt: old.lookedUpAt, kind: .entry)
+        var placed = false
+        var updated: [HistoryEntry] = []
+        for entry in entries {
+            // Replace the source row in place, and drop any other row already holding the target id.
+            if entry.id == historyID || (entry.kind == .entry && entry.canonicalEntryID == newID) {
+                if !placed {
+                    updated.append(repointed)
+                    placed = true
+                }
+            } else {
+                updated.append(entry)
+            }
+        }
+        entries = updated
+        persist()
+    }
+
     // Removes one entry. Accepts the composite Identifiable ID ("e:<id>" or "q:<text>"),
     // not the canonical entry id, so query rows can be removed without ID collision.
     func remove(historyID: String) {

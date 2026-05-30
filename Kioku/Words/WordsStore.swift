@@ -64,6 +64,44 @@ final class WordsStore: ObservableObject {
         persist(words.filter { !ids.contains($0.canonicalEntryID) })
     }
 
+    // Re-points a saved card to a different dictionary entry — the fix for a card that
+    // resolved to the wrong lemma (e.g. した saved as 下 when the user meant the verb する).
+    // List membership, personal note, source notes, and save date carry over; the old surface
+    // folds into encounteredSurfaces; sense/gloss selections reset because they reference the
+    // OLD entry's senses. If the target entry is already saved, the two cards merge onto it
+    // (union of lists/notes/surfaces) so identity (keyed by canonicalEntryID) stays unique.
+    func repoint(fromEntryID oldID: Int64, toEntryID newID: Int64, lemma: String) {
+        guard oldID != newID,
+              let old = words.first(where: { $0.canonicalEntryID == oldID }) else { return }
+
+        let existing = words.first(where: { $0.canonicalEntryID == newID })
+
+        var encountered = old.encounteredSurfaces
+        encountered.insert(old.surface)
+        if let existing { encountered.formUnion(existing.encounteredSurfaces) }
+
+        let mergedLists = Array(Set(old.wordListIDs).union(existing?.wordListIDs ?? []))
+        let mergedNotes = Array(Set(old.sourceNoteIDs).union(existing?.sourceNoteIDs ?? []))
+
+        let repointed = SavedWord(
+            canonicalEntryID: newID,
+            surface: lemma,
+            sourceNoteIDs: mergedNotes,
+            wordListIDs: mergedLists,
+            personalNote: old.personalNote ?? existing?.personalNote,
+            savedAt: old.savedAt,
+            selectedSenseIDs: [],
+            selectedGlosses: [],
+            encounteredSurfaces: encountered
+        )
+
+        // Keep the card roughly where the old one sat; drop both old and any target collision first.
+        let insertIndex = words.firstIndex(where: { $0.canonicalEntryID == oldID }) ?? words.count
+        var updated = words.filter { $0.canonicalEntryID != oldID && $0.canonicalEntryID != newID }
+        updated.insert(repointed, at: min(insertIndex, updated.count))
+        persist(updated)
+    }
+
     // Toggles membership of a word in a word list; adds if absent, removes if present.
     func toggleListMembership(wordID: Int64, listID: UUID) {
         persist(words.map { word in

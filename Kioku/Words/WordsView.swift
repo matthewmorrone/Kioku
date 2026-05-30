@@ -48,6 +48,8 @@ struct WordsView: View {
     @State var activeFilterNoteIDs: Set<UUID> = []
     @State var activeFilterListIDs: Set<UUID> = []
     @State var isFilterSheetPresented = false
+    // Drives the "Choose Lemma…" disambiguation sheet for saved-word and history rows.
+    @State var lemmaPickerContext: WordsLemmaPickerContext?
     @State var editMode: EditMode = .inactive
     @State var selectedWordIDs: Set<Int64> = []
     @State var isBatchRemoveConfirmPresented = false
@@ -243,6 +245,20 @@ struct WordsView: View {
                 .environmentObject(wordListsStore)
                 .environmentObject(wordsStore)
                 .environmentObject(notesStore)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(item: $lemmaPickerContext) { context in
+                LemmaPickerSheet(
+                    surface: context.surface,
+                    candidates: context.candidates,
+                    dictionaryStore: dictionaryStore,
+                    onChoose: { lemma, canonicalEntryID in
+                        context.onChoose(lemma, canonicalEntryID)
+                        lemmaPickerContext = nil
+                    },
+                    onCancel: { lemmaPickerContext = nil }
+                )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
@@ -874,6 +890,41 @@ struct WordsView: View {
             ?? SavedWord(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
     }
 
+    // Number of distinct lemma candidates a surface resolves to. Cheap enough to call in a
+    // context-menu builder (built lazily on long-press, one row at a time) so "Choose Lemma…"
+    // only appears when there's actually an alternative to pick.
+    func lemmaCandidateCount(for surface: String) -> Int {
+        (segmenter?.lemmaCandidates(for: surface) ?? []).count
+    }
+
+    // Opens the disambiguation picker for a saved card; choosing re-points the card to the
+    // selected lemma's entry (fixes a した→下 mis-save by re-pointing it to する).
+    func chooseLemma(forSavedWord word: SavedWord) {
+        let candidates = segmenter?.lemmaCandidates(for: word.surface) ?? []
+        guard candidates.count > 1 else { return }
+        lemmaPickerContext = WordsLemmaPickerContext(
+            surface: word.surface,
+            candidates: candidates,
+            onChoose: { lemma, entryID in
+                wordsStore.repoint(fromEntryID: word.canonicalEntryID, toEntryID: entryID, lemma: lemma)
+            }
+        )
+    }
+
+    // Opens the disambiguation picker for a per-entry history row; choosing re-points the
+    // history row to the selected lemma's entry, preserving its position.
+    func chooseLemma(forHistoryEntry entry: HistoryEntry) {
+        let candidates = segmenter?.lemmaCandidates(for: entry.surface) ?? []
+        guard candidates.count > 1 else { return }
+        lemmaPickerContext = WordsLemmaPickerContext(
+            surface: entry.surface,
+            candidates: candidates,
+            onChoose: { lemma, entryID in
+                historyStore.repoint(historyID: entry.id, toEntryID: entryID, surface: lemma)
+            }
+        )
+    }
+
     // Toggles save/unsave for an entry surfaced in the browse-frequency sheet.
     func handleBrowseToggleSave(_ entry: DictionaryEntry) {
         wordsStore.toggle(
@@ -904,6 +955,16 @@ struct WordsView: View {
             selectedDetailWord = detailWord(entryID: entry.entryId, surfaceHint: entry.primarySearchSurface)
         }
     }
+}
+
+// Carries everything the "Choose Lemma…" sheet needs for one row. The `onChoose` closure
+// captures the row identity and store call (re-point saved card vs history row), keeping the
+// shared LemmaPickerSheet presentation generic across both row types.
+struct WordsLemmaPickerContext: Identifiable {
+    let id = UUID()
+    let surface: String
+    let candidates: [String]
+    let onChoose: (_ lemma: String, _ canonicalEntryID: Int64) -> Void
 }
 
 #Preview {

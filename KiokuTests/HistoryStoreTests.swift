@@ -108,4 +108,32 @@ final class HistoryStoreTests: XCTestCase {
         let reader = HistoryStore()
         XCTAssertEqual(reader.entries.map(\.canonicalEntryID), [8, 7])
     }
+
+    // MARK: - Re-point
+
+    // Re-pointing a history row swaps its entry id + surface in place, keeping list position.
+    func testRepointKeepsPositionAndUpdatesSurface() {
+        let store = HistoryStore()
+        store.record(canonicalEntryID: 1, surface: "A")
+        store.record(canonicalEntryID: 2, surface: "下")
+        store.record(canonicalEntryID: 3, surface: "C") // entries now [3, 2, 1]
+
+        store.repoint(historyID: "e:2", toEntryID: 99, surface: "する")
+
+        XCTAssertEqual(store.entries.map(\.canonicalEntryID), [3, 99, 1], "middle row re-pointed in place")
+        XCTAssertEqual(store.entries.first { $0.canonicalEntryID == 99 }?.surface, "する")
+    }
+
+    // If the target id already has a row, re-point folds it into the re-pointed slot so the
+    // composite id ("e:<id>") stays unique (a duplicate would collide in the List's ForEach).
+    func testRepointDedupesAgainstExistingTargetRow() {
+        let store = HistoryStore()
+        store.record(canonicalEntryID: 1, surface: "A")
+        store.record(canonicalEntryID: 2, surface: "下") // entries [2, 1]
+
+        store.repoint(historyID: "e:2", toEntryID: 1, surface: "する")
+
+        XCTAssertEqual(store.entries.filter { $0.canonicalEntryID == 1 }.count, 1, "no duplicate target row")
+        XCTAssertEqual(store.entries.map(\.canonicalEntryID), [1], "source slot kept, stale target folded out")
+    }
 }
