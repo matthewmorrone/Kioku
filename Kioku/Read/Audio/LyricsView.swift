@@ -28,6 +28,22 @@ struct LyricsView: View {
 
     private var activeIndex: Int { controller.activeCueIndex ?? 0 }
 
+    // Even/odd segment-alternation colors for the active-cue card. Honors the user's custom
+    // palette when enabled (falling back to the system defaults on an unparseable hex), and
+    // otherwise uses the same system orange/red + cyan/indigo defaults Read uses. Kept in lockstep
+    // with ReadView+Editor so the karaoke card and the page render identically.
+    private var resolvedEvenSegmentColor: UIColor {
+        customTokenColorsEnabled
+            ? (UIColor(hexString: tokenColorAHex) ?? .label)
+            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed }
+    }
+
+    private var resolvedOddSegmentColor: UIColor {
+        customTokenColorsEnabled
+            ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
+            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo }
+    }
+
     // Number of cues where the subtitle text differs from the corresponding note text.
     private var mismatchCount: Int {
         cues.indices.filter { hasMismatch(at: $0) }.count
@@ -78,6 +94,12 @@ struct LyricsView: View {
     // karaoke popup. AppStorage subscribes to the persisted key directly — no observation
     // plumbing needed for cross-view reactivity.
     @AppStorage("kioku.settings.rubySpacing") private var isRubySpacingEnabled = true
+    // Mirror the Read-view custom segment-color settings so the active-cue card uses the same
+    // palette the rest of Read does. Without these the card hardcoded the system defaults and
+    // ignored the user's picks. AppStorage subscribes to the persisted keys directly.
+    @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
+    @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
+    @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
     // Settings → Debug → "Karaoke HUD" controls whether the diagnostic strip
     // overlays the active-cue card. Default off so the lyrics card reads clean;
     // the binding is read-only here since the toggle lives in SettingsView.
@@ -210,8 +232,8 @@ struct LyricsView: View {
                         lineSpacing: 0,
                         kerning: 0,
                         furiganaGap: CGFloat(TypographySettings.defaultFuriganaGap),
-                        evenSegmentColor: UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed },
-                        oddSegmentColor: UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo },
+                        evenSegmentColor: resolvedEvenSegmentColor,
+                        oddSegmentColor: resolvedOddSegmentColor,
                         // Single-line render: scaling above keeps text within the card;
                         // disabling wrapping prevents any residual long cue from breaking
                         // onto a second visible line (it would clip instead).
