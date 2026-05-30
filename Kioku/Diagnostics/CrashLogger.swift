@@ -203,8 +203,18 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
         guard let data = try? JSONSerialization.data(
             withJSONObject: entry,
             options: [.prettyPrinted, .sortedKeys]
-        ) else { return }
-        try? data.write(to: url, options: .atomic)
+        ) else {
+            print("[CrashLogger] could not serialize crash entry for prefix=\(prefix)")
+            return
+        }
+        // Surface persistence failures to the device log so a "lost" crash doesn't simply
+        // vanish. If we reached this path from a signal handler the print itself carries the
+        // same async-signal-safety risk the write() already accepts (see file header).
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            print("[CrashLogger] failed to persist \(prefix) crash to \(url.lastPathComponent): \(error.localizedDescription)")
+        }
     }
 
     // Reads CFBundleShortVersionString + CFBundleVersion for the crash JSON header so we can
