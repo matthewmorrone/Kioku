@@ -428,6 +428,22 @@ public final class ForcedAlignmentProvider {
                 continue
             }
 
+            // Density guard: when the DTW attention can't find clear speech
+            // anchors (e.g. instrumental intro with music energy in the voice
+            // band), it crams tokens into a tiny time span — producing median
+            // per-token durations well below what any real singing can produce
+            // (~50 ms/mora at extreme speed). Detect this and skip the batch so
+            // the tokens get retried against later audio that may contain vocals.
+            if commitCount > 10 {
+                let commitDurations = Array(durations.prefix(commitCount))
+                let medDurCommit = AlignmentTimestampMath.median(commitDurations)
+                if medDurCommit < 0.04 {
+                    print("[ForcedAlign] skipping \(commitCount) tokens at \(String(format: "%.1f", windowOffsetSeconds))s: median duration \(String(format: "%.3f", medDurCommit))s (likely non-vocal audio)")
+                    audioStart = audioEnd
+                    continue
+                }
+            }
+
             for i in 0..<commitCount {
                 committedTimestamps.append(windowTokenStarts[i])
             }
