@@ -5,6 +5,8 @@ import UserNotifications
 // Presents typography controls, Word of the Day configuration, and a live preview for reading settings.
 struct SettingsView: View {
     let dictionaryStore: DictionaryStore?
+    // Hosts the on-demand local-network MCP listener whose UI lives in BridgeSettingsSection.
+    @ObservedObject var bridgeServer: KiokuBridgeServer
 
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var wordsStore: WordsStore
@@ -367,6 +369,8 @@ struct SettingsView: View {
                     // Toggle("Use CoreText Renderer (experimental)", isOn: $useCoreTextRenderer)
                 }
                 #endif
+
+                BridgeSettingsSection(bridgeServer: bridgeServer)
 
                 Section {
                     Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
