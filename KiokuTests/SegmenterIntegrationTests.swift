@@ -190,6 +190,15 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertTrue(candidates.contains("淋しい"))
     }
 
+    // Verifies adjective appearance ("-げ") forms recover their base adjective lemma so the
+    // surface gets correct readings and lookup. 眩しげ is the appearance form of 眩しい; without
+    // this rule it resolved to no lemma at all (bare kanji, empty lookup sheet).
+    func testDeinflectorRecoversAdjectiveLemmaFromGeAppearanceForm() throws {
+        let candidates = try deinflectionCandidates(for: "眩しげ")
+
+        XCTAssertTrue(candidates.contains("眩しい"))
+    }
+
     // Verifies godan causative te-forms recover their dictionary-form lemma.
     func testDeinflectorRecoversGodanLemmaFromCausativeTeForm() throws {
         let candidates = try deinflectionCandidates(for: "覗かせて")

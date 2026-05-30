@@ -369,7 +369,8 @@ extension ReadView {
                     SongStepperView(
                         note: note,
                         segmenter: segmenter,
-                        surfaceReadingData: surfaceReadingData
+                        surfaceReadingData: surfaceReadingData,
+                        kanjiReadingFallback: kanjiReadingFallback
                     )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {

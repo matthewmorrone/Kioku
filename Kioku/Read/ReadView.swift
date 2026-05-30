@@ -15,6 +15,7 @@ struct ReadView: View {
     let dictionaryStore: DictionaryStore?
     let lexicon: Lexicon?
     let surfaceReadingData: SurfaceReadingDataMap
+    let kanjiReadingFallback: KanjiReadingFallbackMap
     let segmenterRevision: Int
     let readResourcesReady: Bool
     // (entryID, surface, reading, sublatticePaths) — carries pre-computed data from the lookup sheet.
@@ -168,6 +169,7 @@ struct ReadView: View {
         dictionaryStore: DictionaryStore?,
         lexicon: Lexicon? = nil,
         surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
+        kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap(),
         segmenterRevision: Int,
         readResourcesReady: Bool,
         onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil,
@@ -179,6 +181,7 @@ struct ReadView: View {
         self.dictionaryStore = dictionaryStore
         self.lexicon = lexicon
         self.surfaceReadingData = surfaceReadingData
+        self.kanjiReadingFallback = kanjiReadingFallback
         self.segmenterRevision = segmenterRevision
         self.readResourcesReady = readResourcesReady
         self.onOpenWordDetail = onOpenWordDetail

@@ -2809,6 +2809,16 @@
       ]
     },
     {
+      "kanaIn": "げ",
+      "kanaOut": "い",
+      "rulesIn": [
+        "adj-i"
+      ],
+      "rulesOut": [
+        "adj-i"
+      ]
+    },
+    {
       "kanaIn": "かった",
       "kanaOut": "い",
       "rulesIn": [

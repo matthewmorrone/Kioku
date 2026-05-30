@@ -354,4 +354,67 @@ extension DictionaryStore {
             )
         }
     }
+
+    // Builds the single-kanji → preferred-reading map used as the last-resort furigana source
+    // (see KanjiReadingFallbackMap). One scan over kanji_readings for every single-character
+    // literal, kun readings preferred over on (kun tends to be the natural standalone reading —
+    // e.g. 眩 → まぶ from まぶ.しい, which also happens to be correct for 眩しげ). The reading is
+    // cleaned into plain furigana hiragana:
+    //   • kun readings carry okurigana after a "." (まぶ.しい) and prefix/suffix "-" markers,
+    //     both of which are stripped so only the on-the-kanji stem remains,
+    //   • on readings are stored in katakana and converted to hiragana.
+    // Candidates that don't reduce to pure hiragana (rare KANJIDIC artifacts) are skipped, and the
+    // first valid reading per literal wins. Returns character-keyed entries ready to wrap in a map.
+    nonisolated func fetchKanjiReadingFallbackMap() throws -> [Character: String] {
+        try withSerializedDatabaseAccess {
+            // length(literal) = 1 keeps multi-codepoint literals out so keys stay single Characters.
+            // The CASE orders kun before on; kr.id breaks ties so the primary reading comes first.
+            let sql = """
+            SELECT kc.literal, kr.reading, kr.type
+            FROM kanji_readings kr
+            JOIN kanji_characters kc ON kc.id = kr.kanji_id
+            WHERE kr.type IN ('on', 'kun') AND length(kc.literal) = 1
+            ORDER BY kc.literal ASC, CASE kr.type WHEN 'kun' THEN 0 ELSE 1 END ASC, kr.id ASC
+            """
+
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: sql, statement: &statement)
+
+            let rows = try stepRows(statement: statement) { stmt -> (String, String, String)? in
+                guard
+                    let literalPointer = sqlite3_column_text(stmt, 0),
+                    let readingPointer = sqlite3_column_text(stmt, 1),
+                    let typePointer = sqlite3_column_text(stmt, 2)
+                else { return nil }
+                return (String(cString: literalPointer), String(cString: readingPointer), String(cString: typePointer))
+            }
+
+            var map: [Character: String] = [:]
+            for (literal, reading, _) in rows {
+                guard let kanji = literal.first, literal.count == 1 else { continue }
+                // Rows are ordered with the preferred reading first, so once a literal has an
+                // entry we keep it and skip the remaining (lower-priority) readings.
+                if map[kanji] != nil { continue }
+                guard let cleaned = Self.cleanedKanjiReadingForFurigana(reading) else { continue }
+                map[kanji] = cleaned
+            }
+            return map
+        }
+    }
+
+    // Reduces a raw KANJIDIC2 reading to a furigana-ready hiragana stem, or nil if nothing usable
+    // remains. Drops okurigana (everything from the first ".") and prefix/suffix "-" markers, then
+    // converts katakana (on'yomi) to hiragana; returns nil when the result isn't pure hiragana.
+    nonisolated private static func cleanedKanjiReadingForFurigana(_ reading: String) -> String? {
+        var stem = reading
+        if let dot = stem.firstIndex(of: ".") {
+            stem = String(stem[..<dot])
+        }
+        stem = stem.replacingOccurrences(of: "-", with: "")
+        guard stem.isEmpty == false else { return nil }
+        let hiragana = KanaNormalizer.katakanaToHiragana(stem)
+        guard ScriptClassifier.isPureHiragana(hiragana) else { return nil }
+        return hiragana
+    }
 }
