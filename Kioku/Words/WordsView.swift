@@ -57,6 +57,7 @@ struct WordsView: View {
     @State var isBrowseFrequencyPresented = false
     @State var isSentenceSearchPresented = false
     @State var isRadicalInputPresented = false
+    @State var isHandwritingPresented = false
     // History row selection. Keyed by HistoryEntry.id (composite "e:<id>" or "q:<text>")
     // so .entry and .query rows can both be multi-selected without colliding.
     @State var selectedHistoryIDs: Set<String> = []
@@ -186,6 +187,11 @@ struct WordsView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                     .interactiveDismissDisabled()
+            }
+            .sheet(isPresented: $isHandwritingPresented) {
+                HandwritingInputView(onSelectCharacter: handleHandwritingSelect)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $isFilterSheetPresented) {
                 WordsFilterView(
@@ -858,6 +864,12 @@ struct WordsView: View {
     func handleRadicalSelectKanji(_ kanji: String) {
         isRadicalInputPresented = false
         searchText = kanji
+    }
+
+    // Routes a recognized character from the handwriting sheet into the search field.
+    func handleHandwritingSelect(_ character: String) {
+        isHandwritingPresented = false
+        searchText = character
     }
 
     // Opens one browse-frequency result in the detail sheet, dismissing the browse sheet first.

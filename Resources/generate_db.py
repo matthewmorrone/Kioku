@@ -15,6 +15,7 @@ PITCH_ACCENT_PATH = RESOURCES_DIR / "pitch-accent.tsv"
 SENTENCE_PAIRS_PATH = RESOURCES_DIR / "sentence-pairs.tsv"
 RADKFILE_PATH = RESOURCES_DIR / "radkfile2.utf8"
 KRADFILE_PATH = RESOURCES_DIR / "kradfile2.utf8"
+KANJIVG_PATH = RESOURCES_DIR / "kanjivg.xml"
 OUTPUT_DB = RESOURCES_DIR / "dictionary.sqlite"
 
 
@@ -303,6 +304,19 @@ def create_schema(conn):
         );
         CREATE INDEX idx_kanji_radicals_radical ON kanji_radicals(radical);
         CREATE INDEX idx_kanji_radicals_kanji ON kanji_radicals(kanji);
+
+        -- KanjiVG stroke vector data. Each row is one stroke of one kanji, ordered by
+        -- stroke_order so an animated rendering can draw strokes in the canonical sequence.
+        -- path_d holds the SVG `d` attribute verbatim; the Swift layer parses it into CGPath.
+        -- KanjiVG paths use a 109×109 canvas (with a small margin); the Swift view is
+        -- responsible for normalizing to its render size.
+        CREATE TABLE kanji_strokes (
+            kanji TEXT NOT NULL,
+            stroke_order INTEGER NOT NULL,
+            path_d TEXT NOT NULL,
+            PRIMARY KEY (kanji, stroke_order)
+        );
+        CREATE INDEX idx_kanji_strokes_kanji ON kanji_strokes(kanji);
         """
     )
 
@@ -972,6 +986,64 @@ def import_radicals(conn):
         )
 
 
+def import_kanjivg(conn):
+    # Parses the KanjiVG single-file XML and populates kanji_strokes with one row per stroke.
+    # Each <kanji id="kvg:kanji_XXXXX"> in the XML wraps nested <g> groups; we don't care about
+    # the grouping structure — we just want all <path> elements in document order, which gives
+    # us the canonical stroke sequence (matches what KanjiVG's documentation describes).
+    if not KANJIVG_PATH.exists():
+        print(f"  KanjiVG file not found at {KANJIVG_PATH} — skipping stroke order data")
+        return
+
+    import xml.etree.ElementTree as ET
+
+    print(f"  Parsing strokes from {KANJIVG_PATH.name}...")
+    # KanjiVG uses the SVG namespace as default; we strip namespaces while parsing so .tag works
+    # without the {namespace}Tag prefix everywhere.
+    iterator = ET.iterparse(KANJIVG_PATH, events=("end",))
+    kanji_count = 0
+    stroke_count = 0
+    for _event, elem in iterator:
+        tag = elem.tag.split("}", 1)[-1]
+        if tag != "kanji":
+            continue
+        # Element id looks like "kvg:kanji_06f22" → take the trailing hex and convert.
+        elem_id = elem.get("id", "")
+        if "_" not in elem_id:
+            elem.clear()
+            continue
+        hex_part = elem_id.split("_", 1)[1]
+        try:
+            literal = chr(int(hex_part, 16))
+        except ValueError:
+            elem.clear()
+            continue
+
+        order = 0
+        for path in elem.iter():
+            inner_tag = path.tag.split("}", 1)[-1]
+            if inner_tag != "path":
+                continue
+            d = path.get("d")
+            if not d:
+                continue
+            order += 1
+            conn.execute(
+                "INSERT OR IGNORE INTO kanji_strokes (kanji, stroke_order, path_d) VALUES (?, ?, ?)",
+                (literal, order, d),
+            )
+            stroke_count += 1
+
+        if order > 0:
+            kanji_count += 1
+
+        # iterparse retains a reference to every parsed element by default — clearing keeps
+        # memory bounded on the 14 MB XML file.
+        elem.clear()
+
+    print(f"  Done: {stroke_count} strokes across {kanji_count} kanji")
+
+
 def katakana_to_hiragana(text):
     # Converts full-width katakana to hiragana (subtract 96 from each katakana codepoint).
     return "".join(chr(ord(ch) - 96) if 0x30A1 <= ord(ch) <= 0x30F6 else ch for ch in text)
@@ -1126,6 +1198,9 @@ def build_database():
 
     print("Importing radical decomposition data...")
     import_radicals(conn)
+
+    print("Importing KanjiVG stroke data...")
+    import_kanjivg(conn)
 
     print("Materializing surface_readings lookup table...")
     conn.executescript(

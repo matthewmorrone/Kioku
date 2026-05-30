@@ -23,6 +23,7 @@ struct SentenceSearchView: View {
                     }
                 }
                 .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search the Tatoeba corpus…")
+                .textInputAutocapitalization(.never)
                 .onChange(of: query) { _, newValue in
                     scheduleSearch(for: newValue)
                 }
