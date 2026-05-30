@@ -40,6 +40,10 @@ final class TestReadResources {
     // Builds the real dictionary-backed segmenter pipeline used by integration tests.
     private init() throws {
         let dictionaryStore = try DictionaryStore(databaseURL: Self.dictionaryDatabaseURL())
+        // The app populates this at startup (ContentView); without it Lexicon's POS-bit
+        // lookups (posBits(forSurface:)) all return 0, silently disabling the deinflection
+        // shadow gate — so tests must populate it too to exercise real behavior.
+        try dictionaryStore.populateSurfacePOSBitsMap()
         let trie = DictionaryTrie()
 
         // Use the full surface-data scan so the trie carries POS bits AND we keep the
