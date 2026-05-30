@@ -101,6 +101,16 @@
       "provenance": "Tegaki-Zinnia Japanese handwriting recognition model (~25MB). Consumed by the Zinnia recognizer via the Packages/zinnia-swift local Swift package (feat/handwriting branch). License: LGPL — see the Tegaki project for redistribution terms. Download the Japanese model from https://tegaki.github.io and save as Resources/handwriting-ja.model."
     },
     {
+      "name": "kanjivg",
+      "type": "stroke-data",
+      "path": "Resources/kanjivg.xml",
+      "required": false,
+      "derived": false,
+      "url": "https://github.com/KanjiVG/kanjivg/releases/download/r20220427/kanjivg-20220427-main.zip",
+      "sha256": null,
+      "provenance": "KanjiVG (Kanji Vector Graphics) by Ulrich Apel et al. License: CC BY-SA 3.0. Single-file XML distribution. Download, unzip, and save as Resources/kanjivg.xml. Example: curl -sL https://github.com/KanjiVG/kanjivg/releases/download/r20220427/kanjivg-20220427-main.zip -o /tmp/kvg.zip && unzip -p /tmp/kvg.zip 'kanjivg-20220427.xml' > Resources/kanjivg.xml"
+    },
+    {
       "name": "dictionary",
       "type": "sqlite",
       "path": "Kioku/Resources/dictionary.sqlite",

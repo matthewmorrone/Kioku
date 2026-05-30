@@ -9,6 +9,7 @@ struct KanjiDetailView: View {
 
     @State private var words: [DictionaryEntry] = []
     @State private var isLoadingWords = true
+    @State private var strokes: [DictionaryStore.KanjiStrokeRecord] = []
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -79,13 +80,20 @@ struct KanjiDetailView: View {
         }
     }
 
-    // Hero card: oversized kanji glyph plus metadata badges.
+    // Hero card: KanjiVG stroke-order animation when stroke data is available, falling back to
+    // an oversized glyph. Metadata badges sit below either way.
     @ViewBuilder
     private var headerCard: some View {
         VStack(spacing: 12) {
-            Text(info.literal)
-                .font(.system(size: 96, weight: .regular))
-                .padding(.top, 8)
+            if strokes.isEmpty {
+                Text(info.literal)
+                    .font(.system(size: 96, weight: .regular))
+                    .padding(.top, 8)
+            } else {
+                StrokeOrderAnimationView(strokes: strokes)
+                    .frame(width: 180, height: 180)
+                    .padding(.top, 8)
+            }
 
             HStack(spacing: 8) {
                 if let grade = info.grade {
@@ -120,14 +128,20 @@ struct KanjiDetailView: View {
             )
     }
 
-    // Loads up to 30 common words containing this kanji off the main actor.
+    // Loads up to 30 common words containing this kanji + the KanjiVG stroke data, both off the
+    // main actor so the sheet's first frame doesn't block on SQL.
     private func loadWords() async {
         let literal = info.literal
         let store = dictionaryStore
-        let loaded: [DictionaryEntry] = await Task.detached(priority: .userInitiated) {
+        async let wordsTask = Task.detached(priority: .userInitiated) {
             (try? store?.searchEntriesContainingKanji(literal: literal, limit: 30)) ?? []
         }.value
-        words = loaded
+        async let strokesTask = Task.detached(priority: .userInitiated) {
+            (try? store?.fetchKanjiStrokes(for: literal)) ?? []
+        }.value
+        let (loadedWords, loadedStrokes) = await (wordsTask, strokesTask)
+        words = loadedWords
+        strokes = loadedStrokes
         isLoadingWords = false
     }
 }

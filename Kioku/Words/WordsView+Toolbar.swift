@@ -19,6 +19,21 @@ extension WordsView {
             }
         }
 
+        // Handwriting input routes a recognized character into the search field, so it stays
+        // available across tabs whenever the user isn't mid-edit.
+        if editMode == .inactive {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isHandwritingPresented = true
+                } label: {
+                    Image(systemName: "pencil.and.scribble")
+                        .font(.system(size: 16))
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Handwriting input")
+            }
+        }
+
         ToolbarItemGroup(placement: .topBarTrailing) {
             if searchText.isEmpty {
                 if editMode == .active {
