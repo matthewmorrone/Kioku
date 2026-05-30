@@ -113,7 +113,11 @@ struct SongStepperView: View {
             guard let attachmentID = note.audioAttachmentID else { return }
             guard let url = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
             let cues = NotesAudioStore.shared.loadCues(for: attachmentID)
-            try? audioController.load(audioURL: url, cues: cues)
+            do {
+                try audioController.load(audioURL: url, cues: cues)
+            } catch {
+                print("[SongStepperView] audio load failed for \(url.lastPathComponent): \(error.localizedDescription)")
+            }
         }
         .onDisappear {
             // Release the audio file + deactivate the session when the sheet/screen leaves.

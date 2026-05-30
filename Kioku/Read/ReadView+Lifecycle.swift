@@ -16,7 +16,11 @@ extension ReadView {
                         // Reload the controller with updated cues so highlighting stays in sync.
                         audioAttachmentCues = newCues
                         if let url = NotesAudioStore.shared.audioURL(for: attachmentID) {
-                            try? audioController.load(audioURL: url, cues: newCues)
+                            do {
+                                try audioController.load(audioURL: url, cues: newCues)
+                            } catch {
+                                print("[ReadView] reload after subtitle edit failed for \(url.lastPathComponent): \(error.localizedDescription)")
+                            }
                         }
                     }
                 }

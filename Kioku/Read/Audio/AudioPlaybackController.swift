@@ -50,10 +50,17 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // takes effect without an app restart.
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
-        if AudioSettings.backgroundPlaybackEnabled {
-            try? session.setCategory(.playback, mode: .spokenAudio)
-        } else {
-            try? session.setCategory(.ambient, mode: .default)
+        // setCategory can fail transiently when iOS is mid-route-switch (call interruption,
+        // AirPods reconnect). Log instead of swallowing so "playback started but no sound"
+        // bug reports have something to point at.
+        do {
+            if AudioSettings.backgroundPlaybackEnabled {
+                try session.setCategory(.playback, mode: .spokenAudio)
+            } else {
+                try session.setCategory(.ambient, mode: .default)
+            }
+        } catch {
+            print("[AudioPlaybackController] setCategory failed: \(error.localizedDescription)")
         }
     }
 
@@ -79,7 +86,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         duration = 0
         currentTimeMs = 0
         activeCueIndex = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("[AudioPlaybackController] setActive(false) failed: \(error.localizedDescription)")
+        }
     }
 
     // Starts or resumes playback. Begins polling for the current cue.
@@ -90,7 +101,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             return
         }
         configureAudioSession()
-        try? AVAudioSession.sharedInstance().setActive(true)
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("[AudioPlaybackController] play setActive(true) failed: \(error.localizedDescription)")
+        }
         player.play()
         isPlaying = true
         startTimer()
@@ -101,7 +116,11 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     func playFromStart() {
         guard let player else { return }
         configureAudioSession()
-        try? AVAudioSession.sharedInstance().setActive(true)
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("[AudioPlaybackController] playFromStart setActive(true) failed: \(error.localizedDescription)")
+        }
         player.currentTime = 0
         currentTimeMs = 0
         player.play()
