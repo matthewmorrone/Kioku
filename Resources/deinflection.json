@@ -455,6 +455,16 @@
       ]
     },
     {
+      "kanaIn": "んでる",
+      "kanaOut": "ぬ",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
       "kanaIn": "たかった",
       "kanaOut": "る",
       "rulesIn": [
@@ -497,6 +507,16 @@
     {
       "kanaIn": "いたかった",
       "kanaOut": "う",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
+      "kanaIn": "いてる",
+      "kanaOut": "く",
       "rulesIn": [
         "v5"
       ],

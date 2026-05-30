@@ -206,6 +206,25 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertTrue(candidates.contains("覗く"))
     }
 
+    // Verifies the contracted progressive (〜てる = 〜ている with い dropped) recovers the
+    // dictionary form for godan く verbs. 輝いてる is 輝く's progressive; without the いてる→く
+    // rule the segmenter could only strip the te-form (輝いて) and orphaned the contracted る,
+    // splitting 輝いてる into 輝いて | る. Its voiced sibling いでる→ぐ and full form いている→く
+    // already existed; this was a hole in the contracted-progressive set.
+    func testDeinflectorRecoversGodanKuLemmaFromContractedProgressive() throws {
+        let candidates = try deinflectionCandidates(for: "輝いてる")
+
+        XCTAssertTrue(candidates.contains("輝く"))
+    }
+
+    // Verifies the contracted progressive recovers ぬ-verb lemmas (死んでる → 死ぬ). The
+    // contracted んでる set had む/ぶ but was missing ぬ, the third んでいる ending.
+    func testDeinflectorRecoversNuLemmaFromContractedProgressive() throws {
+        let candidates = try deinflectionCandidates(for: "死んでる")
+
+        XCTAssertTrue(candidates.contains("死ぬ"))
+    }
+
     // Verifies additional adjective nominalized forms recover their base adjective lemma.
     func testDeinflectorRecoversAdjectiveLemmaFromSaNominalizationForAishisa() throws {
         let candidates = try deinflectionCandidates(for: "愛しさ")
