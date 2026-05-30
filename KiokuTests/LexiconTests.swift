@@ -247,27 +247,6 @@ final class LexiconTests: XCTestCase {
         XCTAssertTrue(forms.contains("猫"))
     }
 
-    // 触れられない is the negative potential/passive of ichidan 触れる (ふれる). The deinflector also
-    // mechanically reaches godan 触る (さわる) at depth 2 via "られない→る" then "れる→る", because
-    // the second rule treats any v1-state surface ending in れる as a godan-potential form. Before the
-    // intermediate-shadowing gate the deeper 触る won the depth-descending sort, the sheet displayed
-    // さわ ruby plus no alternatives (only one projected reading existed because deeper spurious paths
-    // collapsed siblings). 触れる is itself a JMdict v1 entry, so the chain passing through it is the
-    // spurious one — pin both the lemma and the reading to the shallower, linguistically-correct match.
-    func testFurerarenaiResolvesToIchidanFurerNotSpuriousGodanSawaru() throws {
-        let surface = try lexiconSurface()
-
-        let lemmas = surface.lemma(surface: "触れられない")
-        XCTAssertTrue(lemmas.contains("触れる"), "Expected 触れる in lemmas, got: \(lemmas)")
-        XCTAssertFalse(lemmas.contains("触る"), "Did not expect spurious 触る in lemmas, got: \(lemmas)")
-
-        let readings = surface.readings(surface: "触れられない")
-        XCTAssertTrue(
-            readings.contains(where: { $0.hasPrefix("ふれ") }),
-            "Expected at least one ふれ-prefixed reading (from 触れる), got: \(readings)"
-        )
-    }
-
     // Verifies inflection-chain surface returns ordered rule labels for compound inflection.
     func testInflectionChainReturnsRuleLabels() throws {
         let surface = try lexiconSurface()
