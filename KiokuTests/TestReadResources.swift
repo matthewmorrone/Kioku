@@ -42,10 +42,13 @@ final class TestReadResources {
         let dictionaryStore = try DictionaryStore(databaseURL: Self.dictionaryDatabaseURL())
         let trie = DictionaryTrie()
 
-        // Use SurfaceRecord variant so the trie carries POS bits — without these every lattice
-        // edge gets partOfSpeech=0 and Viterbi's transitionCost dispatch returns 0 immediately,
-        // making bigram-based segmentation tests vacuous.
-        for record in try dictionaryStore.fetchSurfaceRecords() {
+        // Use the full surface-data scan so the trie carries POS bits AND we keep the
+        // per-entry POS map — without these every lattice edge gets partOfSpeech=0 and
+        // Viterbi's transitionCost dispatch returns 0 immediately, making bigram-based
+        // segmentation tests vacuous, and the lemma-candidate POS gate drops every
+        // deinflected verb candidate (e.g. した → する).
+        let surfaceData = try dictionaryStore.fetchSurfaceData()
+        for record in surfaceData.surfaceRecords {
             trie.insert(record)
         }
 
@@ -54,7 +57,11 @@ final class TestReadResources {
         self.dictionaryStore = dictionaryStore
         self.trie = trie
         self.deinflector = deinflector
-        self.segmenter = Segmenter(trie: trie, deinflector: deinflector)
+        self.segmenter = Segmenter(
+            trie: trie,
+            deinflector: deinflector,
+            partOfSpeechByEntryID: surfaceData.partOfSpeechByEntryID
+        )
     }
 
     // Resolves the repository root from the checked-in test file location.
