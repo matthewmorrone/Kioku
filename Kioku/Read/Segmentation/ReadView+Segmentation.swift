@@ -91,6 +91,8 @@ extension ReadView {
         pendingLLMChangesByLocation = [:]
         preLLMSegmentEntries = []
         hasPendingLLMChanges = false
+        // Corrections were just cleared, so the next AI run should go straight through.
+        hasAppliedLLMCorrectionForCurrentNote = false
         // Always drop user-edited readings so the reset is total. Re-segmentation will
         // backfill defaults from the lexicon below.
         furiganaBySegmentLocation = [:]

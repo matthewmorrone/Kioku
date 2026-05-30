@@ -67,6 +67,8 @@ extension ReadView {
                         unknownSegmentLocations: unknownSegmentLocations,
                         isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                         unknownSegmentColor: .label,
+                        changedSegmentLocations: pendingLLMChangedLocations,
+                        changedReadingLocations: pendingLLMChangedReadingLocations,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,

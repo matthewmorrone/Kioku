@@ -19,6 +19,12 @@ import CoreText
 // stay on the overlay layer.
 enum KiokuCoreTextAttributedStringBuilder {
 
+    // Foreground color for segments changed by a pending LLM correction. Matches
+    // ReadTextStyleResolver.changedSegmentColor so the CoreText and TextKit paths agree.
+    // Mint/green is distinct from the alternation palette (orange/cyan/red/indigo) and the
+    // yellow selection rect, so a changed segment stays legible against every other state.
+    static let changedSegmentColor: UIColor = .systemGreen
+
     // A single furigana run: location/length in UTF-16 against the source `text`, and the
     // reading string to draw centered above that run. Emitted by `build` and consumed by the
     // view's draw pass — the layout engine resolves each entry's screen rect at draw time, so
@@ -63,6 +69,14 @@ enum KiokuCoreTextAttributedStringBuilder {
         var unknownSegmentLocations: Set<Int> = []
         var isHighlightUnknownEnabled: Bool = false
         var unknownSegmentColor: UIColor = .label
+        // Pending-LLM-correction highlighting. Any segment whose location appears in
+        // `changedSegmentLocations` is tinted green so the user can see what the AI changed
+        // before confirming. `changedReadingLocations` is the subset where only the reading
+        // changed (surface untouched) — see the apply block in build(). This is functional
+        // UI state (awaiting confirm/reject), not a visual preference, so it always wins over
+        // the alternation/unknown palette. Mirrors ReadTextStyleResolver's changed-segment pass.
+        var changedSegmentLocations: Set<Int> = []
+        var changedReadingLocations: Set<Int> = []
         // When true, the renderer is in segment-packed mode and handles inter-segment
         // spacing via per-segment X placement. The builder must NOT inject its
         // ruby-overhang kerning compensation in that case — the kern bump would inflate
@@ -139,6 +153,24 @@ enum KiokuCoreTextAttributedStringBuilder {
             result.enumerateAttribute(.foregroundColor, in: dimRange, options: []) { value, subrange, _ in
                 let base = (value as? UIColor) ?? .label
                 result.addAttribute(.foregroundColor, value: base.withAlphaComponent(alpha), range: subrange)
+            }
+        }
+
+        // Changed-segment highlight for a pending LLM correction. Applied last so it always
+        // wins over the alternation/unknown colors. CTLineDraw honors .foregroundColor, and
+        // the ruby draw pass reads each kanji run's .foregroundColor (see KiokuCoreTextView
+        // rubyForegroundColor), so tinting the base range green carries the furigana along
+        // with it automatically. Unlike the TextKit path (ReadTextStyleResolver) we color the
+        // whole segment for reading-only changes too: CoreText derives ruby color from the
+        // base glyph color, so furigana-only tinting isn't expressible without per-run ruby
+        // overrides — and a green segment still reads clearly as "this changed". The glow
+        // shadow from the TextKit path is omitted because CTLineDraw ignores NSShadow.
+        if inputs.changedSegmentLocations.isEmpty == false {
+            for segmentRange in inputs.segmentationRanges {
+                let nsRange = NSRange(segmentRange, in: inputs.text)
+                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+                guard inputs.changedSegmentLocations.contains(nsRange.location) else { continue }
+                result.addAttribute(.foregroundColor, value: Self.changedSegmentColor, range: nsRange)
             }
         }
 

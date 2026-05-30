@@ -25,7 +25,9 @@ extension ReadView {
                 cancelLLMCorrection()
             } else if hasPendingLLMChanges {
                 confirmLLMChanges()
-            } else if segments != nil {
+            } else if hasAppliedLLMCorrectionForCurrentNote {
+                // Only warn about replacing corrections once this note has actually had one
+                // applied — a fresh note runs straight away without the confirm dialog.
                 isShowingLLMRerunConfirm = true
             } else {
                 requestLLMCorrection()
