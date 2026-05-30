@@ -193,6 +193,29 @@ struct WordsView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $isBrowseFrequencyPresented) {
+                BrowseFrequencyView(
+                    dictionaryStore: dictionaryStore,
+                    isSaved: { entryID in wordsStore.words.contains(where: { $0.canonicalEntryID == entryID }) },
+                    onToggleSave: handleBrowseToggleSave,
+                    onSelectEntry: handleBrowseSelectEntry
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $isSentenceSearchPresented) {
+                SentenceSearchView(dictionaryStore: dictionaryStore)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $isRadicalInputPresented) {
+                RadicalInputView(
+                    dictionaryStore: dictionaryStore,
+                    onSelectKanji: handleRadicalSelectKanji
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $isFilterSheetPresented) {
                 WordsFilterView(
                     activeFilterNoteIDs: $activeFilterNoteIDs,
