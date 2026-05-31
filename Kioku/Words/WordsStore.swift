@@ -116,6 +116,18 @@ final class WordsStore: ObservableObject {
         })
     }
 
+    // Detaches one word from one note (e.g. "Remove from <note>" on a row viewed under a
+    // note filter). The word stays saved — note attribution is just one of its attributes —
+    // it simply drops out of that note's filtered view.
+    func removeNoteMembership(wordID: Int64, noteID: UUID) {
+        persist(words.map { word in
+            guard word.canonicalEntryID == wordID, word.sourceNoteIDs.contains(noteID) else { return word }
+            var updated = word
+            updated.sourceNoteIDs.removeAll { $0 == noteID }
+            return updated
+        })
+    }
+
     // Strips a deleted list id from all saved words so no orphan memberships remain.
     func removeListMembership(listID: UUID) {
         persist(words.map { word in

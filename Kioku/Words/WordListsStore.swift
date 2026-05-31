@@ -23,10 +23,14 @@ final class WordListsStore: ObservableObject {
     }
 
     // Creates a new word list with the given name and appends it to the published array.
-    func create(name: String) {
+    // Returns the new list's id so callers can immediately target it (e.g. add/move the
+    // current selection into the just-created list) without re-searching the array.
+    @discardableResult
+    func create(name: String) -> UUID {
         let newList = WordList(id: UUID(), name: name, createdAt: Date())
         lists.append(newList)
         persist()
+        return newList.id
     }
 
     // Renames an existing word list by id. No-ops if the id is not found.

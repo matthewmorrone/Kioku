@@ -20,7 +20,7 @@ import UIKit
 //      NEXT app launch via didReceive(_:), so this is the only way to learn about kernel kills.
 nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unchecked Sendable {
 
-    nonisolated(unsafe) static let shared = CrashLogger()
+    static let shared = CrashLogger()
 
     private static let crashesDirectoryName = "crashes"
 
@@ -43,7 +43,15 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
         surfacePreviousCrashes()
 
         NSSetUncaughtExceptionHandler { exception in
-            CrashLogger.writeExceptionCrash(exception: exception)
+            // Extract values synchronously to avoid sending the exception across actors
+            let name = exception.name.rawValue
+            let reason = exception.reason ?? "(no reason)"
+            let userInfo = String(describing: exception.userInfo ?? [:])
+            let callStack = exception.callStackSymbols
+
+            Task { @MainActor in
+                CrashLogger.writeExceptionCrash(name: name, reason: reason, userInfo: userInfo, callStack: callStack)
+            }
         }
 
         installSignalHandlers()
@@ -53,17 +61,19 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
 
     // Persists an ObjC exception with its callStackSymbols. NSSetUncaughtExceptionHandler runs
     // synchronously before the process dies, so we can use full Foundation APIs here.
-    private static func writeExceptionCrash(exception: NSException) {
+    @MainActor private static func writeExceptionCrash(name: String, reason: String, userInfo: String, callStack: [String]) {
+        let info = currentSystemInfo()
+        let systemVersion = info.iosVersion
         let entry: [String: Any] = [
             "kind": "exception",
             "timestamp": ISO8601DateFormatter().string(from: Date()),
-            "name": exception.name.rawValue,
-            "reason": exception.reason ?? "(no reason)",
-            "userInfo": String(describing: exception.userInfo ?? [:]),
-            "callStack": exception.callStackSymbols,
+            "name": name,
+            "reason": reason,
+            "userInfo": userInfo,
+            "callStack": callStack,
             "appVersion": appVersionString(),
-            "iosVersion": UIDevice.current.systemVersion,
-            "deviceModel": UIDevice.current.model
+            "iosVersion": systemVersion,
+            "deviceModel": info.deviceModel
         ]
         writeCrashFile(prefix: "exc", entry: entry)
     }
@@ -76,7 +86,9 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
         let signals: [Int32] = [SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP]
         for signum in signals {
             signal(signum) { caught in
-                CrashLogger.writeSignalCrash(signal: caught)
+                Task { @MainActor in
+                    CrashLogger.writeSignalCrash(signal: caught)
+                }
                 // Re-raise with the default handler so the process actually terminates and
                 // upstream tools (Xcode debugger, MetricKit's next-launch payload) see the
                 // crash too. Without this we'd swallow the signal and run with corrupted state.
@@ -89,7 +101,7 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
     // Captures the current backtrace via libsystem's backtrace(3) and writes a structured
     // crash record. Called from inside the POSIX signal handler — see installSignalHandlers
     // for the async-signal-safety caveats.
-    private static func writeSignalCrash(signal: Int32) {
+    @MainActor private static func writeSignalCrash(signal: Int32) {
         var addresses = [UnsafeMutableRawPointer?](repeating: nil, count: 128)
         let frameCount = backtrace(&addresses, 128)
         var stack: [String] = []
@@ -102,6 +114,9 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
             free(symbols)
         }
 
+        let info = currentSystemInfo()
+        let systemVersion = info.iosVersion
+
         let entry: [String: Any] = [
             "kind": "signal",
             "timestamp": ISO8601DateFormatter().string(from: Date()),
@@ -109,8 +124,8 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
             "signalName": signalName(signal),
             "callStack": stack,
             "appVersion": appVersionString(),
-            "iosVersion": UIDevice.current.systemVersion,
-            "deviceModel": UIDevice.current.model
+            "iosVersion": systemVersion,
+            "deviceModel": info.deviceModel
         ]
         writeCrashFile(prefix: "sig", entry: entry)
     }
@@ -119,30 +134,85 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
     // full Apple-formatted call stack tree; AppExitMetric carries the OOM/watchdog buckets.
     // Both get persisted alongside the in-process captures.
     func didReceive(_ payloads: [MXDiagnosticPayload]) {
+        // Pre-extract the minimal, Sendable data from payloads synchronously to avoid sending
+        // non-Sendable types across actors.
+        struct CrashItem: Sendable {
+            let timestamp: Date
+            let exceptionType: Int
+            let exceptionCode: Int
+            let signal: Int
+            let terminationReason: String
+            let virtualMemoryRegionInfo: String
+            let callStackTreeJSON: String
+        }
+        struct HangItem: Sendable {
+            let timestamp: Date
+            let hangDuration: Double
+            let callStackTreeJSON: String
+        }
+
+        var crashes: [CrashItem] = []
+        var hangs: [HangItem] = []
+
         for payload in payloads {
-            for crash in payload.crashDiagnostics ?? [] {
+            let ts = payload.timeStampBegin
+            if let crashDiags = payload.crashDiagnostics {
+                for crash in crashDiags {
+                    let item = CrashItem(
+                        timestamp: ts,
+                        exceptionType: crash.exceptionType?.intValue ?? -1,
+                        exceptionCode: crash.exceptionCode?.intValue ?? -1,
+                        signal: crash.signal?.intValue ?? -1,
+                        terminationReason: crash.terminationReason ?? "(none)",
+                        virtualMemoryRegionInfo: crash.virtualMemoryRegionInfo ?? "(none)",
+                        callStackTreeJSON: String(decoding: crash.callStackTree.jsonRepresentation(), as: UTF8.self)
+                    )
+                    crashes.append(item)
+                }
+            }
+            if let hangDiags = payload.hangDiagnostics {
+                for hang in hangDiags {
+                    let item = HangItem(
+                        timestamp: ts,
+                        hangDuration: hang.hangDuration.value,
+                        callStackTreeJSON: String(decoding: hang.callStackTree.jsonRepresentation(), as: UTF8.self)
+                    )
+                    hangs.append(item)
+                }
+            }
+        }
+
+        // Hop to main actor only to read system version; do not capture 'payloads'.
+        Task { @MainActor in
+            let systemVersion = UIDevice.current.systemVersion
+            let appVersion = Self.appVersionString()
+
+            // Write crashes
+            for c in crashes {
                 let entry: [String: Any] = [
                     "kind": "metrickit.crash",
-                    "timestamp": ISO8601DateFormatter().string(from: payload.timeStampBegin),
-                    "exceptionType": crash.exceptionType?.intValue ?? -1,
-                    "exceptionCode": crash.exceptionCode?.intValue ?? -1,
-                    "signal": crash.signal?.intValue ?? -1,
-                    "terminationReason": crash.terminationReason ?? "(none)",
-                    "virtualMemoryRegionInfo": crash.virtualMemoryRegionInfo ?? "(none)",
-                    "callStackTree": String(decoding: crash.callStackTree.jsonRepresentation(), as: UTF8.self),
-                    "appVersion": Self.appVersionString(),
-                    "iosVersion": UIDevice.current.systemVersion
+                    "timestamp": ISO8601DateFormatter().string(from: c.timestamp),
+                    "exceptionType": c.exceptionType,
+                    "exceptionCode": c.exceptionCode,
+                    "signal": c.signal,
+                    "terminationReason": c.terminationReason,
+                    "virtualMemoryRegionInfo": c.virtualMemoryRegionInfo,
+                    "callStackTree": c.callStackTreeJSON,
+                    "appVersion": appVersion,
+                    "iosVersion": systemVersion
                 ]
                 Self.writeCrashFile(prefix: "mxk", entry: entry)
             }
-            for hang in payload.hangDiagnostics ?? [] {
+
+            // Write hangs
+            for h in hangs {
                 let entry: [String: Any] = [
                     "kind": "metrickit.hang",
-                    "timestamp": ISO8601DateFormatter().string(from: payload.timeStampBegin),
-                    "hangDuration": hang.hangDuration.value,
-                    "callStackTree": String(decoding: hang.callStackTree.jsonRepresentation(), as: UTF8.self),
-                    "appVersion": Self.appVersionString(),
-                    "iosVersion": UIDevice.current.systemVersion
+                    "timestamp": ISO8601DateFormatter().string(from: h.timestamp),
+                    "hangDuration": h.hangDuration,
+                    "callStackTree": h.callStackTreeJSON,
+                    "appVersion": appVersion,
+                    "iosVersion": systemVersion
                 ]
                 Self.writeCrashFile(prefix: "hang", entry: entry)
             }
@@ -197,6 +267,11 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
 
     // MARK: - Helpers
 
+    @MainActor private static func currentSystemInfo() -> (iosVersion: String, deviceModel: String) {
+        return (UIDevice.current.systemVersion, UIDevice.current.model)
+    }
+
+    // Serializes one crash/diagnostic entry to a timestamped JSON file in the crash dir.
     private static func writeCrashFile(prefix: String, entry: [String: Any]) {
         let stamp = String(format: "%.0f", Date().timeIntervalSince1970)
         let url = CrashLogger.shared.crashesDirectory.appendingPathComponent("\(prefix)-\(stamp).json")
