@@ -60,9 +60,6 @@ struct WordsView: View {
     @State var isSentenceSearchPresented = false
     @State var isRadicalInputPresented = false
     @State var isHandwritingPresented = false
-    // History row selection. Keyed by HistoryEntry.id (composite "e:<id>" or "q:<text>")
-    // so .entry and .query rows can both be multi-selected without colliding.
-    @State var selectedHistoryIDs: Set<String> = []
     @State var activeTab: WordsTab = .history
     @AppStorage("savedWordsSortOrder") var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
     @AppStorage("historySortOrder") var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
@@ -138,7 +135,6 @@ struct WordsView: View {
             selectedDetailWord = nil
             editMode = .inactive
             selectedWordIDs.removeAll()
-            selectedHistoryIDs.removeAll()
             searchText = query
         }
 
@@ -164,7 +160,13 @@ struct WordsView: View {
                 .presentationDetents([.large])
             }
             .sheet(isPresented: $isBatchListSheetPresented) {
-                WordsBatchListView(selectedWordIDs: selectedWordIDs)
+                // Pass the active list filter as the Move source only when exactly one list
+                // is filtered — that's the single unambiguous "list you're viewing".
+                WordsBatchListView(
+                    selectedWordIDs: selectedWordIDs,
+                    sourceListID: activeFilterListIDs.count == 1 ? activeFilterListIDs.first : nil,
+                    surfaces: selectionSurfaces
+                )
                     .environmentObject(wordsStore)
                     .environmentObject(wordListsStore)
                     .presentationDetents([.medium, .large])
@@ -303,34 +305,48 @@ struct WordsView: View {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
 
-                // Selection-aware actions, only meaningful while editing.
+                // One selection menu for every tab. Because every word row selects into the
+                // same selectedWordIDs set, Select All and Manage Lists are identical code on
+                // Saved and History. Only the destructive verb differs — "Remove" means unsave
+                // on Saved and delete-from-log on History — so just that one action is
+                // contextual; everything else is genuinely shared.
                 if editMode == .active {
                     Divider()
+                    let selectable = selectableWordIDs
                     Button {
-                        if selectedWordIDs.count == visibleWords.count {
+                        if selectedWordIDs.count == selectable.count {
                             selectedWordIDs.removeAll()
                         } else {
-                            selectedWordIDs = Set(visibleWords.map(\.canonicalEntryID))
+                            selectedWordIDs = Set(selectable)
                         }
                     } label: {
-                        if selectedWordIDs.count == visibleWords.count && visibleWords.isEmpty == false {
+                        if selectedWordIDs.count == selectable.count && selectable.isEmpty == false {
                             Label("Deselect All", systemImage: "minus.circle")
                         } else {
                             Label("Select All", systemImage: "circle.dashed.inset.filled")
                         }
                     }
-                    .disabled(visibleWords.isEmpty)
+                    .disabled(selectable.isEmpty)
 
                     if selectedWordIDs.isEmpty == false {
                         Button {
                             isBatchListSheetPresented = true
                         } label: {
-                            Label("Add to List…", systemImage: "text.badge.plus")
+                            Label("Manage Lists…", systemImage: "text.badge.plus")
                         }
                         Button(role: .destructive) {
-                            isBatchRemoveConfirmPresented = true
+                            if activeTab == .history {
+                                historyStore.remove(canonicalEntryIDs: selectedWordIDs)
+                                selectedWordIDs.removeAll()
+                                editMode = .inactive
+                            } else {
+                                isBatchRemoveConfirmPresented = true
+                            }
                         } label: {
-                            Label("Remove (\(selectedWordIDs.count))", systemImage: "trash")
+                            Label(activeTab == .history
+                                  ? "Remove from History (\(selectedWordIDs.count))"
+                                  : "Remove from Saved (\(selectedWordIDs.count))",
+                                  systemImage: "trash")
                         }
                     }
                 }
@@ -390,12 +406,17 @@ struct WordsView: View {
     }
 
     private var resultsList: some View {
+        // ONE selection model for every word row, whichever tab it lives on: a word is
+        // identified by its canonical entry id (Int64), so Saved, History, and search-result
+        // rows all select into the same selectedWordIDs set. That's what lets the batch menu
+        // be a single shared interface instead of per-tab silos. History `.query` rows (free-
+        // text searches with no word behind them) carry no Int64 tag, so they're simply not
+        // selectable — which is correct, you can't add a search phrase to a list.
         List(selection: $selectedWordIDs) {
             if searchText.isEmpty && activeTab == .saved {
                 // Saved tab: all favorites (filtered by note/list when filters are on).
                 // filteredSavedContent uses visibleWords which already applies the filter,
-                // so this same view works for both the unfiltered "show all" and the
-                // narrowed cases.
+                // so this same view works for both the unfiltered "show all" and narrowed cases.
                 filteredSavedContent
             } else if searchText.isEmpty && activeTab == .history {
                 // History tab: lookup log, newest first.
@@ -406,7 +427,9 @@ struct WordsView: View {
                 parsedSegmentsResultsSection
             } else {
                 ForEach(searchResults, id: \.entryId) { entry in
-                    entryRow(
+                    wordRow(
+                        entryID: entry.entryId,
+                        surface: entry.primarySearchSurface,
                         entry: entry,
                         gloss: matchingGloss(for: entry, query: searchText),
                         onTap: {
@@ -418,10 +441,7 @@ struct WordsView: View {
             }
         }
         .listStyle(.plain)
-        // Edit mode binding so List(selection:) actually shows selection circles. Saved
-        // word ids are Int64, so selection of search-result-only / history-only rows would
-        // need a separate List(selection:) — for now editing only really makes sense on
-        // saved words, which already use canonical entry ids as identifiers.
+        // Edit-mode binding so List(selection:) shows the selection circles on every tab.
         .environment(\.editMode, $editMode)
         // Dismiss the keyboard the moment the user scrolls (system iOS behaviour)
         // and on any tap landing on empty space (via the background overlay below).
@@ -468,141 +488,6 @@ struct WordsView: View {
             ProgressView().controlSize(.large)
         } else if searchResults.isEmpty && parsedSegments.isEmpty {
             ContentUnavailableView.search(text: trimmed)
-        }
-    }
-
-    // Shared row layout used by BOTH search results and history `.entry` rows. The
-    // structural pattern is HStack(content + Spacer + star) wrapped in contentShape +
-    // onTapGesture so the entire row's bounds are tap-tested (including empty space
-    // between text and the star). Both surfaces therefore behave identically: tap any-
-    // where = open detail; tap the star = save/unsave.
-    func entryRow(
-        entry: DictionaryEntry,
-        gloss: String?,
-        onTap: @escaping () -> Void
-    ) -> some View {
-        let headword = entry.kanjiForms.first?.text
-        let reading = entry.kanaForms.first?.text
-        let saved = isSavedByID(entry.entryId)
-
-        // Row content stays plain so List(selection:) keeps its native gestures
-        // intact — including the swipe-across-multiple-rows multiselect in edit mode.
-        // The detail-tap is attached via .simultaneousGesture so it coexists with the
-        // List's tap-to-toggle-selection gesture rather than consuming it. Star is
-        // hidden during editing so the row has one clear tap target.
-        return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if let headword {
-                        Text(headword).font(.title3.weight(.semibold))
-                        if let reading, reading != headword {
-                            Text(reading).font(.subheadline).foregroundStyle(.secondary)
-                        }
-                    } else if let reading {
-                        Text(reading).font(.title3.weight(.semibold))
-                    }
-                }
-                if let gloss {
-                    Text(gloss).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                }
-            }
-            Spacer(minLength: 0)
-            if editMode != .active {
-                Button {
-                    toggleSave(entry)
-                } label: {
-                    Image(systemName: saved ? "star.fill" : "star")
-                        .foregroundStyle(saved ? Color.yellow : Color.secondary)
-                        .font(.system(size: 16, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(saved ? "Unsave" : "Save")
-            }
-        }
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                if editMode != .active {
-                    onTap()
-                }
-            }
-        )
-        .contextMenu {
-            Button {
-                UIPasteboard.general.string = headword ?? reading ?? ""
-            } label: {
-                Label("Copy", systemImage: "doc.on.doc")
-            }
-            Button {
-                onTap()
-            } label: {
-                Label("Open Details", systemImage: "info.circle")
-            }
-            Divider()
-            Button {
-                toggleSave(entry)
-            } label: {
-                Label(saved ? "Unfavorite" : "Favorite",
-                      systemImage: saved ? "star.slash" : "star")
-            }
-            if saved {
-                Divider()
-                Button(role: .destructive) {
-                    wordsStore.remove(id: entry.entryId)
-                } label: {
-                    Label("Remove from Saved", systemImage: "trash")
-                }
-            }
-        }
-    }
-
-    // Renders saved words (already filtered by note/list via visibleWords) using the
-    // unified entryRow. Materialized entries are pulled from the same materializedHistory
-    // cache that history uses — a saved word's DictionaryEntry is fetched in the same
-    // batched pass and shared across both views.
-    @ViewBuilder
-    var filteredSavedContent: some View {
-        if visibleWords.isEmpty {
-            Text(isFilterActive
-                ? "No saved words match the current filter."
-                : "No saved words yet. Tap the star on any result to save it.")
-                .foregroundStyle(.secondary)
-        } else {
-            ForEach(visibleWords) { word in
-                if let entry = materializedHistory[word.canonicalEntryID] {
-                    entryRow(
-                        entry: entry,
-                        gloss: entry.senses.first?.glosses.first,
-                        onTap: {
-                            isSearchFieldFocused = false
-                            selectedDetailWord = word
-                        }
-                    )
-                } else {
-                    // Pending materialization (or dict-drift orphan) — show the surface
-                    // plus a filled yellow star, because every SavedWord in visibleWords
-                    // IS a favorite by construction. Drawing it as un-starred would be
-                    // a lie about the underlying state.
-                    Button {
-                        isSearchFieldFocused = false
-                        selectedDetailWord = word
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text(word.surface).font(.title3.weight(.semibold))
-                            Spacer(minLength: 0)
-                            Image(systemName: "star.fill")
-                                .foregroundStyle(Color.yellow)
-                                .font(.system(size: 16, weight: .semibold))
-                        }
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
         }
     }
 
@@ -825,6 +710,34 @@ struct WordsView: View {
         }
     }
 
+    // The word ids the user can select on the current tab — the universe for "Select All"
+    // and the cap for "all selected". Saved tab → the visible favorites; History tab → the
+    // `.entry` rows (query rows aren't words). Search/parse modes force edit mode off, so
+    // they never reach the selection menu and default to empty here.
+    var selectableWordIDs: [Int64] {
+        if searchText.isEmpty && activeTab == .saved {
+            return visibleWords.map(\.canonicalEntryID)
+        }
+        if searchText.isEmpty && activeTab == .history {
+            return sortedHistory.filter { $0.kind == .entry }.map(\.canonicalEntryID)
+        }
+        return []
+    }
+
+    // Surface text for every selectable word id, so a batch list-add can materialize a
+    // SavedWord for a History-only word that isn't saved yet. Saved words win over history
+    // rows when both exist (their stored surface is canonical).
+    var selectionSurfaces: [Int64: String] {
+        var map: [Int64: String] = [:]
+        for entry in historyStore.entries where entry.kind == .entry {
+            map[entry.canonicalEntryID] = entry.surface
+        }
+        for word in wordsStore.words {
+            map[word.canonicalEntryID] = word.surface
+        }
+        return map
+    }
+
     // Sorts a saved-word array by the given order.
     func sorted(_ words: [SavedWord], by order: WordsSortOrder) -> [SavedWord] {
         switch order {
@@ -855,33 +768,47 @@ struct WordsView: View {
     // "make this not a favorite anymore" — and full removal is the only state change
     // that delivers that.
     func toggleSave(_ entry: DictionaryEntry) {
-        if isSavedByID(entry.entryId) {
-            wordsStore.remove(id: entry.entryId)
-        } else {
-            wordsStore.toggle(
-                canonicalEntryID: entry.entryId,
-                storedSurface: entry.primarySearchSurface,
-                defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
-            )
-        }
+        toggleSaveWord(entryID: entry.entryId, surface: entry.primarySearchSurface, materialized: entry)
     }
 
-    // Saves or removes a word surfaced from the history list.
-    func toggleSaveHistory(_ entry: HistoryEntry) {
-        // History rows lack a resolved DictionaryEntry; resolve once so the smart-default
-        // picker can populate selectedSenseIDs at save time.
+    // The one save/unsave used by every word row. Unsave is a full remove (favorite ==
+    // saved == present in WordsStore). On save we seed smart-default senses from the
+    // materialized entry when we have it, else resolve once from the dictionary store — so
+    // a row whose DictionaryEntry hasn't been fetched yet (pending history/saved row) still
+    // saves with sensible senses. Replaces the old toggleSave/toggleSaveHistory split.
+    func toggleSaveWord(entryID: Int64, surface: String, materialized: DictionaryEntry?) {
+        if isSavedByID(entryID) {
+            wordsStore.remove(id: entryID)
+            return
+        }
         let senseIDs: [Int64]
-        if let store = dictionaryStore,
-           let resolved = try? store.lookupEntry(entryID: entry.canonicalEntryID) {
+        if let materialized {
+            senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: materialized)
+        } else if let store = dictionaryStore,
+                  let resolved = try? store.lookupEntry(entryID: entryID) {
             senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: resolved)
         } else {
             senseIDs = []
         }
         wordsStore.toggle(
-            canonicalEntryID: entry.canonicalEntryID,
-            storedSurface: entry.surface,
+            canonicalEntryID: entryID,
+            storedSurface: materialized?.primarySearchSurface ?? surface,
             defaultSenseIDs: senseIDs
         )
+    }
+
+    // Single active list/note filter, when exactly one is on — the unambiguous "container
+    // you're viewing", used to offer the contextual "Remove from <container>" row action.
+    var singleActiveListID: UUID? { activeFilterListIDs.count == 1 ? activeFilterListIDs.first : nil }
+    var singleActiveNoteID: UUID? { activeFilterNoteIDs.count == 1 ? activeFilterNoteIDs.first : nil }
+
+    // Display name of a list for the contextual remove label.
+    func listName(_ id: UUID) -> String { wordListsStore.lists.first { $0.id == id }?.name ?? "List" }
+
+    // Display title of a note for the contextual remove label (falls back to "Untitled Note").
+    func noteName(_ id: UUID) -> String {
+        let trimmed = notesStore.note(withID: id)?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "Untitled Note" : trimmed
     }
 
     // Returns the saved word for a history entry if it exists, otherwise a minimal SavedWord for display.
@@ -899,28 +826,22 @@ struct WordsView: View {
 
     // Opens the disambiguation picker for a saved card; choosing re-points the card to the
     // selected lemma's entry (fixes a した→下 mis-save by re-pointing it to する).
-    func chooseLemma(forSavedWord word: SavedWord) {
-        let candidates = segmenter?.lemmaCandidates(for: word.surface) ?? []
+    // One lemma re-point for any word row. Re-points the word wherever it actually lives —
+    // the saved card and/or the history entry — so a single row action keeps both stores
+    // consistent no matter which tab you triggered it from.
+    func chooseLemma(entryID: Int64, surface: String) {
+        let candidates = segmenter?.lemmaCandidates(for: surface) ?? []
         guard candidates.count > 1 else { return }
         lemmaPickerContext = WordsLemmaPickerContext(
-            surface: word.surface,
+            surface: surface,
             candidates: candidates,
-            onChoose: { lemma, entryID in
-                wordsStore.repoint(fromEntryID: word.canonicalEntryID, toEntryID: entryID, lemma: lemma)
-            }
-        )
-    }
-
-    // Opens the disambiguation picker for a per-entry history row; choosing re-points the
-    // history row to the selected lemma's entry, preserving its position.
-    func chooseLemma(forHistoryEntry entry: HistoryEntry) {
-        let candidates = segmenter?.lemmaCandidates(for: entry.surface) ?? []
-        guard candidates.count > 1 else { return }
-        lemmaPickerContext = WordsLemmaPickerContext(
-            surface: entry.surface,
-            candidates: candidates,
-            onChoose: { lemma, entryID in
-                historyStore.repoint(historyID: entry.id, toEntryID: entryID, surface: lemma)
+            onChoose: { lemma, newID in
+                if wordsStore.words.contains(where: { $0.canonicalEntryID == entryID }) {
+                    wordsStore.repoint(fromEntryID: entryID, toEntryID: newID, lemma: lemma)
+                }
+                if historyStore.entries.contains(where: { $0.kind == .entry && $0.canonicalEntryID == entryID }) {
+                    historyStore.repoint(historyID: "e:\(entryID)", toEntryID: newID, surface: lemma)
+                }
             }
         )
     }

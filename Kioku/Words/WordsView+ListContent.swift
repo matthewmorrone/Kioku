@@ -1,36 +1,173 @@
 import SwiftUI
 
-// List content for the Words screen — the saved-words list, the history list, and the
-// individual history-row builder used by the history tab.
+// List content for the Words screen. ONE word-row builder (`wordRow`) renders every
+// dictionary word the app shows — live search results, saved favorites, and history
+// `.entry` rows — with identical body, gestures, swipe action, and context menu. The only
+// thing that varies by where the row is shown is which "Remove from …" action the menu and
+// swipe offer (list / note / history), driven by the current view context. Free-text
+// history `.query` rows are not words, so they keep their own small builder.
 extension WordsView {
-    // MARK: - List content sections
+    // MARK: - The unified word row
 
+    // The single row used for search results, saved words, and history entries. `entry` is
+    // the materialized DictionaryEntry; while it's still being fetched it's nil and we fall
+    // back to showing `surface`. `gloss` lets search results show the query-matched sense.
+    func wordRow(
+        entryID: Int64,
+        surface: String,
+        entry: DictionaryEntry?,
+        gloss: String?,
+        onTap: @escaping () -> Void
+    ) -> some View {
+        let saved = isSavedByID(entryID)
+        let headword = entry?.kanjiForms.first?.text
+        let reading = entry?.kanaForms.first?.text
+
+        // Plain content so List(selection:) keeps its native selection gestures (incl. the
+        // swipe-across-rows multiselect in edit mode). The detail tap rides on a
+        // simultaneousGesture so it coexists with the List's tap-to-select; the star is
+        // hidden in edit mode so the row has one clear tap target.
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    if let headword {
+                        Text(headword).font(.title3.weight(.semibold))
+                        if let reading, reading != headword {
+                            Text(reading).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    } else if let reading {
+                        Text(reading).font(.title3.weight(.semibold))
+                    } else {
+                        // Pending materialization (or dict-drift orphan) — show the surface.
+                        Text(surface).font(.title3.weight(.semibold))
+                    }
+                }
+                if let gloss {
+                    Text(gloss).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            Spacer(minLength: 0)
+            if editMode != .active {
+                Button {
+                    toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
+                } label: {
+                    Image(systemName: saved ? "star.fill" : "star")
+                        .foregroundStyle(saved ? Color.yellow : Color.secondary)
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(saved ? "Unsave" : "Save")
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                if editMode != .active { onTap() }
+            }
+        )
+        .contextMenu {
+            wordRowMenu(entryID: entryID, surface: surface, entry: entry, onTap: onTap)
+        }
+    }
+
+    // The single context menu for every word row. Shared items first; then the global
+    // Favorite/Unfavorite (favorite == saved); then exactly the contextual "Remove from …"
+    // actions that make sense where the row is being viewed. Unfavorite and "remove from a
+    // container" are deliberately separate: leaving a list/note doesn't unsave the word.
     @ViewBuilder
-    var savedWordsContent: some View {
-        if visibleWords.isEmpty {
-            Text("No saved words yet")
-                .foregroundStyle(.secondary)
-        } else {
-            ForEach(visibleWords, id: \.canonicalEntryID) { savedWord in
-                WordRowView(
-                    word: savedWord,
-                    lists: wordListsStore.lists,
-                    onOpenDetails: {
-                        guard editMode == .inactive else { return }
-                        selectedDetailWord = savedWord
-                    },
-                    onToggleList: { listID in
-                        wordsStore.toggleListMembership(wordID: savedWord.canonicalEntryID, listID: listID)
-                    },
-                    onRemove: { wordsStore.remove(id: savedWord.canonicalEntryID) },
-                    lemmaCandidateCount: { lemmaCandidateCount(for: savedWord.surface) },
-                    onChooseLemma: { chooseLemma(forSavedWord: savedWord) }
-                )
-                .tag(savedWord.canonicalEntryID)
+    func wordRowMenu(
+        entryID: Int64,
+        surface: String,
+        entry: DictionaryEntry?,
+        onTap: @escaping () -> Void
+    ) -> some View {
+        let saved = isSavedByID(entryID)
+        let copyText = entry?.kanjiForms.first?.text ?? entry?.kanaForms.first?.text ?? surface
+
+        Button {
+            UIPasteboard.general.string = copyText
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+        Button {
+            onTap()
+        } label: {
+            Label("Open Details", systemImage: "info.circle")
+        }
+        if lemmaCandidateCount(for: surface) > 1 {
+            Button {
+                chooseLemma(entryID: entryID, surface: surface)
+            } label: {
+                Label("Choose Lemma…", systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
+
+        Divider()
+
+        Button(role: saved ? .destructive : nil) {
+            toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
+        } label: {
+            Label(saved ? "Unfavorite" : "Favorite", systemImage: saved ? "star.slash" : "star")
+        }
+
+        // Contextual "remove from the thing you're viewing", independent of unfavorite.
+        if let listID = singleActiveListID {
+            Button(role: .destructive) {
+                wordsStore.removeFromList(wordIDs: [entryID], listID: listID)
+            } label: {
+                Label("Remove from \(listName(listID))", systemImage: "folder.badge.minus")
+            }
+        }
+        if let noteID = singleActiveNoteID {
+            Button(role: .destructive) {
+                wordsStore.removeNoteMembership(wordID: entryID, noteID: noteID)
+            } label: {
+                Label("Remove from \(noteName(noteID))", systemImage: "minus.circle")
+            }
+        }
+        if activeTab == .history && searchText.isEmpty {
+            Button(role: .destructive) {
+                historyStore.remove(canonicalEntryIDs: [entryID])
+            } label: {
+                Label("Remove from History", systemImage: "clock.arrow.circlepath")
             }
         }
     }
 
+    // MARK: - List content sections
+
+    // Saved words (already filtered by note/list via visibleWords), rendered with the
+    // unified wordRow. Materialized entries come from the shared materializedHistory cache.
+    @ViewBuilder
+    var filteredSavedContent: some View {
+        if visibleWords.isEmpty {
+            Text(isFilterActive
+                ? "No saved words match the current filter."
+                : "No saved words yet. Tap the star on any result to save it.")
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(visibleWords) { word in
+                let entry = materializedHistory[word.canonicalEntryID]
+                wordRow(
+                    entryID: word.canonicalEntryID,
+                    surface: word.surface,
+                    entry: entry,
+                    gloss: entry?.senses.first?.glosses.first,
+                    onTap: {
+                        isSearchFieldFocused = false
+                        selectedDetailWord = word
+                    }
+                )
+                // Explicit Int64 tag so List(selection: $selectedWordIDs) binds this row.
+                .tag(word.canonicalEntryID)
+            }
+        }
+    }
+
+    // History: `.entry` rows reuse the unified wordRow (selectable, same menu as Favorites);
+    // `.query` rows are free-text searches with no word identity, so they keep their own row.
     @ViewBuilder
     var historyContent: some View {
         if historyStore.entries.isEmpty {
@@ -38,166 +175,30 @@ extension WordsView {
                 .foregroundStyle(.secondary)
         } else {
             ForEach(sortedHistory) { entry in
-                historyRow(entry)
-                    .tag(entry.id)
+                if entry.kind == .entry {
+                    let materialized = materializedHistory[entry.canonicalEntryID]
+                    wordRow(
+                        entryID: entry.canonicalEntryID,
+                        surface: entry.surface,
+                        entry: materialized,
+                        gloss: materialized?.senses.first?.glosses.first,
+                        onTap: {
+                            historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
+                            selectedDetailWord = wordForHistory(entry)
+                        }
+                    )
+                    .tag(entry.canonicalEntryID)
+                } else {
+                    queryHistoryRow(entry)
+                }
             }
         }
     }
 
-    // Renders one history entry row.
-    //
-    // .entry rows behave as before (tap opens the detail sheet, star saves/unsaves).
-    // .query rows display the phrase, tap re-populates the search field (which kicks off
-    // the parse via the existing onChange handler), and have no save star — saving a
-    // free-text phrase doesn't make sense in a per-entry saved-words list.
-    @ViewBuilder
-    func historyRow(_ entry: HistoryEntry) -> some View {
-        switch entry.kind {
-        case .entry:
-            entryHistoryRow(entry)
-        case .query:
-            queryHistoryRow(entry)
-        }
-    }
-
-    // Per-entry history row — uses the shared entryRow layout when the DictionaryEntry
-    // is materialized (kanji + reading + first gloss + star, full-row tap target).
-    // Falls back to a text-only row while the materialization is still pending.
-    @ViewBuilder
-    private func entryHistoryRow(_ entry: HistoryEntry) -> some View {
-        let openDetail = {
-            historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
-            selectedDetailWord = wordForHistory(entry)
-        }
-        if let materialized = materializedHistory[entry.canonicalEntryID] {
-            entryRow(
-                entry: materialized,
-                gloss: materialized.senses.first?.glosses.first,
-                onTap: openDetail
-            )
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button(role: .destructive) {
-                    historyStore.remove(historyID: entry.id)
-                } label: {
-                    Label("Remove", systemImage: "trash")
-                }
-            }
-            .contextMenu {
-                Button {
-                    UIPasteboard.general.string = entry.surface
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                Button {
-                    openDetail()
-                } label: {
-                    Label("Look Up", systemImage: "magnifyingglass")
-                }
-                if lemmaCandidateCount(for: entry.surface) > 1 {
-                    Button {
-                        chooseLemma(forHistoryEntry: entry)
-                    } label: {
-                        Label("Choose Lemma…", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                }
-                Divider()
-                let saved = isSavedByID(entry.canonicalEntryID)
-                Button {
-                    toggleSaveHistory(entry)
-                } label: {
-                    Label(saved ? "Unsave" : "Save", systemImage: saved ? "star.slash" : "star")
-                }
-                Divider()
-                Button(role: .destructive) {
-                    historyStore.remove(historyID: entry.id)
-                } label: {
-                    Label("Remove", systemImage: "trash")
-                }
-            }
-        } else {
-            entryHistoryRowFallback(entry, openDetail: openDetail)
-        }
-    }
-
-    // Stub row used while the unified row's DictionaryEntry is still being fetched.
-    // Matches the unified row's HStack/contentShape pattern so tap behavior is consistent.
-    @ViewBuilder
-    private func entryHistoryRowFallback(_ entry: HistoryEntry, openDetail: @escaping () -> Void) -> some View {
-        HStack(spacing: 12) {
-            Text(entry.surface)
-                .font(.title3.weight(.semibold))
-            Spacer(minLength: 0)
-            let saved = isSavedByID(entry.canonicalEntryID)
-            Button {
-                toggleSaveHistory(entry)
-            } label: {
-                Image(systemName: saved ? "star.fill" : "star")
-                    .foregroundStyle(saved ? Color.yellow : Color.secondary)
-                    .font(.system(size: 16, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .onTapGesture { openDetail() }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) {
-                historyStore.remove(historyID: entry.id)
-            } label: {
-                Label("Remove", systemImage: "trash")
-            }
-        }
-        .contextMenu {
-            Button {
-                UIPasteboard.general.string = entry.surface
-            } label: {
-                Label("Copy", systemImage: "doc.on.doc")
-            }
-
-            Button {
-                historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
-                selectedDetailWord = wordForHistory(entry)
-            } label: {
-                Label("Look Up", systemImage: "magnifyingglass")
-            }
-
-            Button {
-                historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
-                selectedDetailWord = wordForHistory(entry)
-            } label: {
-                Label("Open Details", systemImage: "info.circle")
-            }
-
-            if lemmaCandidateCount(for: entry.surface) > 1 {
-                Button {
-                    chooseLemma(forHistoryEntry: entry)
-                } label: {
-                    Label("Choose Lemma…", systemImage: "arrow.triangle.2.circlepath")
-                }
-            }
-
-            Divider()
-
-            let saved = isSavedByID(entry.canonicalEntryID)
-            Button {
-                toggleSaveHistory(entry)
-            } label: {
-                Label(saved ? "Unsave" : "Save", systemImage: saved ? "star.slash" : "star")
-            }
-
-            Button(role: .destructive) {
-                historyStore.remove(historyID: entry.id)
-            } label: {
-                Label("Remove from History", systemImage: "trash")
-            }
-        }
-    }
-
-    // Free-text query history row — tap re-populates the search field; no save star.
+    // Free-text query history row — tap re-populates the search field; no save star, and
+    // not a word, so it isn't selectable and doesn't use wordRow.
     @ViewBuilder
     private func queryHistoryRow(_ entry: HistoryEntry) -> some View {
-        // Mirrors entryHistoryRow's HStack layout: text on the leading edge, icon on
-        // the trailing edge in the same slot the .entry rows use for the save star.
         HStack(spacing: 12) {
             Text(entry.surface)
                 .font(.body)
@@ -209,8 +210,9 @@ extension WordsView {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+        // Gated so edit-mode taps toggle List selection instead of re-running the query.
         .onTapGesture {
-            searchText = entry.surface
+            if editMode != .active { searchText = entry.surface }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {

@@ -14,8 +14,9 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
 
     let canonicalEntryID: Int64
     let surface: String
-    // Provenance: which notes this word was saved from. Not used for list-membership UI.
-    let sourceNoteIDs: [UUID]
+    // Provenance: which notes this word was saved from. Mutable so a word can be detached
+    // from a single note ("Remove from <note>") without rebuilding the whole record.
+    var sourceNoteIDs: [UUID]
     // Every distinct surface string the user has actually saved for this card —
     // 食べた, 食べる, 食べます, etc. for the same verb. Per-surface star state
     // in the segment list reads this set: yellow only when the queried surface

@@ -105,6 +105,14 @@ final class HistoryStore: ObservableObject {
         persist()
     }
 
+    // Bulk-delete `.entry` rows by canonical entry id. Lets the unified Int64 word-selection
+    // remove History rows without first round-tripping through composite "e:<id>" strings.
+    func remove(canonicalEntryIDs: Set<Int64>) {
+        guard !canonicalEntryIDs.isEmpty else { return }
+        entries.removeAll { $0.kind == .entry && canonicalEntryIDs.contains($0.canonicalEntryID) }
+        persist()
+    }
+
     // Removes all history entries.
     func clear() {
         entries = []
