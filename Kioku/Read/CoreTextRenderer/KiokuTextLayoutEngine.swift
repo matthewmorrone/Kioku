@@ -92,7 +92,21 @@ final class KiokuTextLayoutEngine {
     // layout already honors `paragraph.lineBreakMode = .byClipping`; the packer doesn't read
     // paragraph attributes, so we plumb the flag through explicitly. Default true preserves
     // legacy behavior for hosts that don't override it.
-    var isLineWrappingEnabled: Bool = true
+    //
+    // Rebuilds on change like every other layout-affecting input (setWidthConstraint,
+    // setLineSpacing, setSegmentPacking). Without this self-triggered reflow, a wrapping-only
+    // change reached the engine via the renderer AFTER setAttributedString had already rebuilt
+    // and was ignored by setSegmentPacking's change check — so the packed layout lagged one
+    // update behind the flag, showing the stale value at init and needing two toggles to
+    // converge. The didSet guards on change to avoid relayout thrash on the renderer's
+    // every-pass re-assignment. Initializer-default assignment does not fire didSet, so init()'s
+    // own rebuildLayout() remains the single startup reflow.
+    var isLineWrappingEnabled: Bool = true {
+        didSet {
+            guard oldValue != isLineWrappingEnabled else { return }
+            rebuildLayout()
+        }
+    }
     // Per-kanji-run ruby data. Captured here (not just on the renderer) because the engine
     // needs it to measure footprints during segment packing.
     private var furiganaByLocation: [Int: String] = [:]
