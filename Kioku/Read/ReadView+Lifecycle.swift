@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // Lifecycle and presentation composition for ReadView: layers the alert/sheet/dialog
 // modifiers, the scenePhase + selection-change observers, and the NavigationStack-wrapped
@@ -354,6 +355,16 @@ extension ReadView {
             case .audio: handleLyricAlignmentAudioSelection(result)
             case .subtitleFile: handleSubtitleFileSelection(result)
             }
+        }
+        // Lyric-button quick-load picker: one shot for audio + subtitle/textgrid. Multi-select so
+        // the user can grab "song.mp3" and "song.srt" (or "song.TextGrid") together; the handler
+        // sorts them by kind and imports in one pass.
+        .fileImporter(
+            isPresented: $isShowingLyricMediaPicker,
+            allowedContentTypes: [.audio, .mpeg4Audio, .mp3, .subripText, .praatTextGrid],
+            allowsMultipleSelection: true
+        ) { result in
+            handleLyricMediaSelection(result)
         }
         // Sheet entry point for the LLM breakdown — moved off the Learn tab. SongStepperView
         // expects to live in a NavigationStack for its principal/trailing toolbar items, so

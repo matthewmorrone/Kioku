@@ -239,7 +239,8 @@ extension ReadView {
         srtText: String,
         audioURL: URL,
         originalAudioFilename: String,
-        noteID: UUID
+        noteID: UUID,
+        textGridURL: URL? = nil
     ) throws {
         let cues = SubtitleParser.parse(srtText)
         guard cues.isEmpty == false else {
@@ -261,6 +262,15 @@ extension ReadView {
                 attachmentID: newAttachmentID,
                 preferredFilename: NotesAudioStore.preferredSubtitleFilename(forAudioFilename: originalAudioFilename)
             )
+            // Optional karaoke checkpoints from a paired TextGrid. Best-effort: a TextGrid that
+            // doesn't bind (wrong format, no matching intervals) just means no per-character timing,
+            // never a failed import — so it's gated on a non-empty result and uses `try?`.
+            if let textGridURL,
+               let content = try? SubtitleSourceLoader.readText(from: textGridURL),
+               let timings = SubtitleSourceLoader.bindCheckpoints(textGridContent: content, cues: cues),
+               timings.isEmpty == false {
+                try? NotesAudioStore.shared.saveCueTimings(timings, attachmentID: newAttachmentID)
+            }
         } catch {
             NotesAudioStore.shared.deleteAttachment(newAttachmentID)
             throw error
@@ -373,6 +383,84 @@ extension ReadView {
         }
     }
 
+    // Receives the lyric-button quick-load picker result: a mixed bag of audio / srt / textgrid.
+    // Sorts by kind (first of each wins), then stages and imports in one pass. Audio is required —
+    // the lyric view needs something to play — while srt/textgrid are optional companions.
+    @MainActor
+    func handleLyricMediaSelection(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            var audioURL: URL?
+            var srtURL: URL?
+            var textGridURL: URL?
+            for url in urls {
+                switch SubtitleSourceLoader.classify(url) {
+                case .audio: if audioURL == nil { audioURL = url }
+                case .srt: if srtURL == nil { srtURL = url }
+                case .textGrid: if textGridURL == nil { textGridURL = url }
+                case .unknown: break
+                }
+            }
+
+            guard let audioURL else {
+                lyricAlignmentErrorMessage = "Pick an audio file (mp3 / m4a) — the lyric view needs something to play."
+                return
+            }
+
+            clearPendingSubtitleAudioSelection()
+            clearPendingSubtitleFileSelection()
+            clearPendingSubtitleTextGridSelection()
+
+            preparePendingSubtitleAudioSelection(from: audioURL)
+            guard pendingSubtitleAudioURL != nil else { return } // staging error already surfaced
+
+            if let srtURL { stagePendingSidecar(srtURL, as: .srt) }
+            if let textGridURL { stagePendingSidecar(textGridURL, as: .textGrid) }
+
+            Task { await submitPendingSubtitleSelection() }
+
+        case .failure(let error):
+            if Self.isUserCancelledFileSelection(error) == false {
+                lyricAlignmentErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    // Copies a security-scoped subtitle/textgrid file to a temporary location and records it as the
+    // pending sidecar of the given kind. Shared by the quick-load picker for both companion types.
+    @MainActor
+    private func stagePendingSidecar(_ sourceURL: URL, as kind: SubtitleSourceLoader.Kind) {
+        do {
+            let didAccess = sourceURL.startAccessingSecurityScopedResource()
+            defer { if didAccess { sourceURL.stopAccessingSecurityScopedResource() } }
+            let tempDir = FileManager.default.temporaryDirectory
+            let dest = tempDir.appendingPathComponent(UUID().uuidString + "_" + sourceURL.lastPathComponent)
+            try FileManager.default.copyItem(at: sourceURL, to: dest)
+            switch kind {
+            case .srt:
+                pendingSubtitleFileURL = dest
+                pendingSubtitleFilename = sourceURL.lastPathComponent
+            case .textGrid:
+                pendingSubtitleTextGridURL = dest
+                pendingSubtitleTextGridFilename = sourceURL.lastPathComponent
+            default:
+                break
+            }
+        } catch {
+            lyricAlignmentErrorMessage = error.localizedDescription
+        }
+    }
+
+    // Clears any staged TextGrid file selection.
+    @MainActor
+    func clearPendingSubtitleTextGridSelection() {
+        if let url = pendingSubtitleTextGridURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        pendingSubtitleTextGridURL = nil
+        pendingSubtitleTextGridFilename = ""
+    }
+
     // Receives the file picker result for an existing subtitle file and stages it.
     @MainActor
     func handleSubtitleFileSelection(_ result: Result<[URL], Error>) {
@@ -422,10 +510,26 @@ extension ReadView {
             return
         }
 
+        // Resolve the SRT to import, in priority order:
+        //   1. An explicit subtitle file (.srt) — authoritative cue text.
+        //   2. A TextGrid's coarsest interval tier, formatted as SRT — lets a `.TextGrid`-only
+        //      pick produce a playable note (its finer tiers still bind karaoke checkpoints below).
+        //   3. Neither → fall through to on-device forced alignment using the note text as lyrics.
+        let resolvedSRT: String?
         if let subtitleURL = pendingSubtitleFileURL {
-            // User provided an existing subtitle file — import directly, skip alignment.
+            resolvedSRT = try? SubtitleSourceLoader.readText(from: subtitleURL)
+        } else if let textGridURL = pendingSubtitleTextGridURL,
+                  let content = try? SubtitleSourceLoader.readText(from: textGridURL),
+                  let cues = try? SubtitleSourceLoader.deriveCues(fromTextGrid: content),
+                  cues.isEmpty == false {
+            resolvedSRT = SubtitleParser.formatSRT(from: cues)
+        } else {
+            resolvedSRT = nil
+        }
+
+        if let srtText = resolvedSRT {
+            // We have cue text (from SRT or a TextGrid) — import directly, skip alignment.
             do {
-                let srtText = try String(contentsOf: subtitleURL, encoding: .utf8)
                 flushPendingNotePersistenceIfNeeded()
                 guard let noteID = activeNoteID else {
                     lyricAlignmentErrorMessage = "Save or enter note text before importing subtitles."
@@ -435,7 +539,8 @@ extension ReadView {
                     srtText: srtText,
                     audioURL: audioURL,
                     originalAudioFilename: pendingSubtitleAudioFilename,
-                    noteID: noteID
+                    noteID: noteID,
+                    textGridURL: pendingSubtitleTextGridURL
                 )
                 alignmentResultSRT = srtText
                 checkForSubtitleMismatches()
@@ -443,7 +548,7 @@ extension ReadView {
                 lyricAlignmentErrorMessage = error.localizedDescription
             }
         } else {
-            // No subtitle file — run forced alignment.
+            // No subtitle file or TextGrid — run forced alignment.
             await generateAlignedSRT(
                 fromPreparedAudioURL: audioURL,
                 originalAudioFilename: pendingSubtitleAudioFilename
@@ -456,6 +561,7 @@ extension ReadView {
         try? FileManager.default.removeItem(at: audioURL)
         clearPendingSubtitleAudioSelection(removeTemporaryFile: false)
         clearPendingSubtitleFileSelection()
+        clearPendingSubtitleTextGridSelection()
     }
 
     // Rewrites subtitle cues to use the note text for each line, preserving timestamps.
