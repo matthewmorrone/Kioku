@@ -217,14 +217,13 @@ extension ReadView {
                 isColorAlternationEnabled.toggle()
             }
 
-            // The displayed on/off state is the inverse of `isLineWrappingEnabled`: the
-            // checkmark/highlight indicates "lines are wrapping," which is the state the
-            // stored flag produces when false. Only the presentation is inverted here — the
-            // toggle still flips the underlying flag, so wrapping behavior is unchanged.
+            // The indicator mirrors the stored flag directly: `isLineWrappingEnabled == true`
+            // maps to `.byWordWrapping` in every render site, so a checkmark/highlight means
+            // "lines are wrapping." No inversion — display and behavior track the same flag.
             displayOptionRow(
                 title: "Line Wrapping",
-                systemImage: isLineWrappingEnabled ? "arrow.right.to.line.compact" : "text.alignleft",
-                isEnabled: isLineWrappingEnabled == false
+                systemImage: isLineWrappingEnabled ? "text.alignleft" : "arrow.right.to.line.compact",
+                isEnabled: isLineWrappingEnabled
             ) {
                 isLineWrappingEnabled.toggle()
             }

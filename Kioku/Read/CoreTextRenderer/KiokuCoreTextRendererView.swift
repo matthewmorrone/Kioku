@@ -625,11 +625,21 @@ final class KiokuScrollingTextView: UIScrollView {
     // overlay's geometry depends on engine state, so it has to refresh in lockstep.
     override func layoutSubviews() {
         super.layoutSubviews()
-        let width = bounds.width
-        let height = contentView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        contentView.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        let viewportWidth = bounds.width
+        // Lay the engine out against the viewport width; sizeThatFits feeds back the height.
+        let height = contentView.sizeThatFits(CGSize(width: viewportWidth, height: .greatestFiniteMagnitude)).height
+        // The engine's own contentSize.width is the natural content width. When line
+        // wrapping is OFF the packer lets segments overflow the right edge instead of
+        // breaking, so this exceeds the viewport — size the content view and scroll content
+        // to that natural width so the overflowing columns become reachable by a horizontal
+        // pan (UIScrollView engages horizontal scrolling automatically once
+        // contentSize.width > bounds.width). When wrapping is ON the natural width collapses
+        // back to the viewport (lines break to fit), so `max` returns viewportWidth and only
+        // vertical scrolling remains — no behavior change to the wrapping path itself.
+        let contentWidth = max(viewportWidth, contentView.layoutEngine.contentSize.width)
+        contentView.frame = CGRect(x: 0, y: 0, width: contentWidth, height: height)
         debugOverlay.frame = contentView.frame
-        contentSize = CGSize(width: width, height: height)
+        contentSize = CGSize(width: contentWidth, height: height)
         // Re-apply centering shifts now that `bounds.width` (and therefore the engine's
         // widthConstraint, set by contentView.layoutSubviews above) is correct. The
         // updateUIView path may have run before any layout pass with bounds.width=0; in
