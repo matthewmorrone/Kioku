@@ -86,9 +86,16 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
         let signals: [Int32] = [SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP]
         for signum in signals {
             signal(signum) { caught in
-                Task { @MainActor in
-                    CrashLogger.writeSignalCrash(signal: caught)
-                }
+                // Write the crash record SYNCHRONOUSLY, right here in the handler, BEFORE
+                // re-raising. The previous version dispatched `Task { @MainActor in ... }` and
+                // then immediately `raise()`d — the process died before the async task ever ran,
+                // so SIGTRAP/SIGSEGV crashes never produced a `sig-` file and we were stuck with
+                // unreliable next-launch MetricKit offset payloads. Capturing inline guarantees a
+                // full symbolicated stack hits disk for every signal crash. backtrace()/
+                // backtrace_symbols() aren't strictly async-signal-safe (they allocate), but the
+                // process is already dying and this is the same pragmatic tradeoff KSCrash and
+                // PLCrashReporter make.
+                CrashLogger.writeSignalCrash(signal: caught)
                 // Re-raise with the default handler so the process actually terminates and
                 // upstream tools (Xcode debugger, MetricKit's next-launch payload) see the
                 // crash too. Without this we'd swallow the signal and run with corrupted state.
@@ -101,7 +108,12 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
     // Captures the current backtrace via libsystem's backtrace(3) and writes a structured
     // crash record. Called from inside the POSIX signal handler — see installSignalHandlers
     // for the async-signal-safety caveats.
-    @MainActor private static func writeSignalCrash(signal: Int32) {
+    // nonisolated so it can run directly inside the POSIX signal handler (arbitrary thread),
+    // synchronously, before the process is re-raised. Does NOT touch UIDevice / any MainActor
+    // state — reading those from a signal handler on a non-main thread would itself trap. The
+    // OS version/device model aren't needed to diagnose an in-process crash; MetricKit's
+    // next-launch payload still carries them if we want them later.
+    nonisolated private static func writeSignalCrash(signal: Int32) {
         var addresses = [UnsafeMutableRawPointer?](repeating: nil, count: 128)
         let frameCount = backtrace(&addresses, 128)
         var stack: [String] = []
@@ -114,18 +126,14 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
             free(symbols)
         }
 
-        let info = currentSystemInfo()
-        let systemVersion = info.iosVersion
-
         let entry: [String: Any] = [
             "kind": "signal",
             "timestamp": ISO8601DateFormatter().string(from: Date()),
             "signal": signal,
             "signalName": signalName(signal),
             "callStack": stack,
-            "appVersion": appVersionString(),
-            "iosVersion": systemVersion,
-            "deviceModel": info.deviceModel
+            "breadcrumbs": DiagnosticBreadcrumbs.snapshot(),
+            "appVersion": appVersionString()
         ]
         writeCrashFile(prefix: "sig", entry: entry)
     }
