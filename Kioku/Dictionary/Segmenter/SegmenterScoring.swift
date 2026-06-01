@@ -22,7 +22,7 @@ nonisolated struct SegmenterScoring {
         posBadTransitionPenalty: 150
     )
 
-    // MARK: - Viterbi scoring constants (not yet wired into the active segmentation path)
+    // MARK: - Viterbi scoring constants (consumed by edgeCost, the live Viterbi node-cost path)
 
     static let viterbiDictionaryBonus = -3
     static let viterbiSingleCharacterPenalty = 3
@@ -34,6 +34,11 @@ nonisolated struct SegmenterScoring {
     // (e.g. たいよ = たい + よ, 生まれた = 生まれ + た). Pushes Viterbi toward the compositional
     // path so auxiliaries and sentence-final particles don't get absorbed into the verb stem.
     static let viterbiBundledGrammaticalEndingPenalty = 15
+    // Soft penalty for surfaces in the SegmentationDemotions denylist (のか, のす, …). Sized in
+    // the same band as the grammatical-ending demotion: enough to cancel a 2-char surface's
+    // dictionary+length advantage so the compositional split wins, without forbidding the surface
+    // outright. Viterbi may still pick a demoted surface when no cheaper global path exists.
+    static let viterbiDemotedSurfacePenalty = 18
 
     // Trailing kana that signal "this surface ends with a grammatical particle/auxiliary fused
     // onto its stem" — checked at lattice-build time, not at every transition lookup.
@@ -135,6 +140,10 @@ nonisolated struct SegmenterScoring {
 
         if edge.decomposesAtGrammaticalEnding {
             cost += viterbiBundledGrammaticalEndingPenalty
+        }
+
+        if SegmentationDemotions.contains(edge.surface) {
+            cost += viterbiDemotedSurfacePenalty
         }
 
         return cost
