@@ -130,7 +130,14 @@ extension ReadView {
         titleActionLabel(systemImage: "music.note", isActive: isShowingLyricsView)
             .contentShape(Capsule())
             .onTapGesture {
-                isShowingLyricsView.toggle()
+                // Nothing attached yet → the lyric view would be empty, so jump straight to the
+                // media picker (mp3 / srt / textgrid) instead of toggling a blank overlay. Once an
+                // attachment exists, the tap reverts to its normal show/hide-lyrics behavior.
+                if activeAudioAttachmentID == nil {
+                    isShowingLyricMediaPicker = true
+                } else {
+                    isShowingLyricsView.toggle()
+                }
             }
             .onLongPressGesture(minimumDuration: 0.35) {
                 // Long press opens the subtitle editor sheet — the only place to access

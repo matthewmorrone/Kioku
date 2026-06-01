@@ -111,8 +111,12 @@ struct ReadView: View {
     @State var pendingSubtitleAudioFilename = ""
     @State var pendingSubtitleFileURL: URL? = nil
     @State var pendingSubtitleFilename = ""
+    @State var pendingSubtitleTextGridURL: URL? = nil
+    @State var pendingSubtitleTextGridFilename = ""
     @State var isShowingSubtitlePicker = false
     @State var subtitlePickerTarget: SubtitlePickerTarget = .audio
+    // Drives the lyric-button "nothing loaded yet" media picker (mp3 + srt + textgrid, multi-select).
+    @State var isShowingLyricMediaPicker = false
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
     @State var audioController = AudioPlaybackController()
