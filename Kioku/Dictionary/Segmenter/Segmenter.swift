@@ -314,6 +314,17 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // Pure-kana exact trie matches receive a length bonus so deinflection-only noise candidates
     // (e.g. もき → もく) don't block adjacent real words (e.g. きっと) by winning on raw length.
     private func compareEdgePriority(_ lhs: LatticeEdge, _ rhs: LatticeEdge, in text: String) -> Bool {
+        // Demotion dominates every other discriminator: a surface in the SegmentationDemotions
+        // denylist (のか, のす, …) sinks below any non-demoted candidate starting at the same
+        // position, regardless of length. This is the greedy analog of edgeCost's soft penalty —
+        // a demoted surface is still chosen when it is the only candidate here. Returning true
+        // means lhs ranks *lower* than rhs, so lhs loses iff lhs is the demoted one.
+        let lhsDemoted = SegmentationDemotions.contains(lhs.surface)
+        let rhsDemoted = SegmentationDemotions.contains(rhs.surface)
+        if lhsDemoted != rhsDemoted {
+            return lhsDemoted
+        }
+
         let lhsLength = text.distance(from: lhs.start, to: lhs.end)
         let rhsLength = text.distance(from: rhs.start, to: rhs.end)
 
