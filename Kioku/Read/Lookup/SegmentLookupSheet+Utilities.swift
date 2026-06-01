@@ -1,22 +1,11 @@
 import UIKit
 
-// Wraps a non-Sendable provider closure so it can ride into a @Sendable dispatch block.
-// The closure stays PRIVATE to the box and is only invoked through the typed `call()` method,
-// so the non-Sendable closure type never escapes the class — only its (Sendable) return value
-// does. Swift 6 strict mode flagged the previous design (`let value: T` read directly with
-// `box.value?()`) because reading the property re-exposed the non-Sendable closure type to
-// the @Sendable closure that was reading it. This shape side-steps that check entirely.
-//
-// The providers themselves are constructed on MainActor (capturing MainActor state) but only
-// read from nonisolated DictionaryStore / Lexicon, so invoking them on `providerQueue` is
-// safe at runtime — the @unchecked Sendable annotation reflects that runtime safety.
-nonisolated private final class ProviderBox<R>: @unchecked Sendable {
-    private let closure: (() -> R)?
-    init(_ closure: (() -> R)?) { self.closure = closure }
-    // Returns the closure's result, or nil if the provider was nil. Never exposes the
-    // closure itself, so the non-Sendable type doesn't cross the @Sendable boundary.
-    func call() -> R? { closure?() }
-}
+// NOTE: a `ProviderBox` @unchecked-Sendable wrapper and a background `providerQueue` used to live
+// here, smuggling the @MainActor-isolated provider closures onto a background queue. That tripped
+// a dispatch_assert_queue(main) precondition at runtime (SIGTRAP on every word tap) — the wrapper
+// silenced the compile-time isolation check but not the runtime one. The providers read ReadView
+// @State and must run on the main actor; see refreshSheetSupplementalDataAsync below. Both the box
+// and the queue were removed.
 
 extension SegmentLookupSheet {
     // Picks the dictionary entry whose reading matches the one `SurfaceSheetViewController`
@@ -49,59 +38,73 @@ extension SegmentLookupSheet {
         return fallback
     }
 
-    // Runs every supplemental provider on a background queue, applies the results on main,
-    // then calls `completion` on main. The providers are synchronous and each can take many
-    // hundreds of ms (full deinflection traversal + dictionary index hits), so blocking the
-    // main thread on all six produced the multi-second pre-sheet stalls we observed in the
-    // TAP instrumentation. Stale results from a superseded tap are dropped via the
-    // generation counter, so the sheet never flashes back to old content after the user
-    // already moved to a new word.
+    // Runs every supplemental provider, then calls `completion`. Deferred by one main-actor hop
+    // (DispatchQueue.main.async) so the sheet's present() animation starts BEFORE the heavy
+    // dictionary work — the user sees the sheet move ~16ms after the tap, then the dynamic
+    // sections populate a beat later. Stale results from a superseded tap are dropped via the
+    // generation counter.
+    //
+    // CRITICAL — why this runs on MAIN, not a background queue: the providers read ReadView's
+    // @State (currentSelectedSurface(), surfaceReadingData, segmentEdges, text…). Under this
+    // project's SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor, those closures are @MainActor-isolated
+    // and carry a dispatch_assert_queue(main) precondition. The previous version dispatched them
+    // onto `providerQueue` (background); the very first provider call then tripped that assertion
+    // → SIGTRAP on EVERY tap. ProviderBox/@unchecked Sendable silenced the COMPILE-time isolation
+    // check but not the RUNTIME assert. Slowness and isolation are orthogonal: this data must be
+    // read on the main actor. The heavy dictionary lookups inside (lexicon/segmenter/
+    // DictionaryStore) are themselves nonisolated and could be split off-main later on a plain
+    // snapshot if timing proves it necessary — see the per-provider timings logged below.
     func refreshSheetSupplementalDataAsync(completion: @escaping @MainActor @Sendable () -> Void) {
         refreshGeneration += 1
         let generation = refreshGeneration
-        let readingsProvider = ProviderBox(sheetReadingsProvider)
-        let sublatticeProvider = ProviderBox(sheetSublatticeProvider)
-        let frequencyProvider = ProviderBox(sheetFrequencyProvider)
-        let lemmaInfoProvider = ProviderBox(sheetLemmaInfoProvider)
-        let lemmaInfoByReadingProvider = ProviderBox(sheetLemmaInfoByReadingProvider)
-        let dictionaryEntryProvider = ProviderBox(sheetDictionaryEntryProvider)
-        let compoundComponentsProvider = ProviderBox(sheetCompoundComponentsProvider)
 
-        TapDiagnostics.mark("refreshSheetSupplementalDataAsync dispatched (gen=\(generation))")
-        providerQueue.async { [weak self] in
-            let readings = readingsProvider.call() ?? []
-            let sublattice = sublatticeProvider.call() ?? []
-            let frequency = frequencyProvider.call() ?? nil
-            let lemmaInfo = lemmaInfoProvider.call() ?? nil
-            let lemmaInfoByReading = lemmaInfoByReadingProvider.call() ?? [:]
-            let dictionaryEntry = dictionaryEntryProvider.call() ?? nil
-            // Double-coalesce: compoundComponentsProvider's closure itself returns `[(...)]?`,
-            // and call() wraps that in another optional, so we need to flatten twice. Parens
-            // force left-to-right associativity — `??` is right-associative by default.
-            let compoundComponents = (compoundComponentsProvider.call() ?? nil) ?? []
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    guard self.refreshGeneration == generation else {
-                        TapDiagnostics.mark("refresh: gen=\(generation) discarded as stale (current=\(self.refreshGeneration))")
-                        return
-                    }
-                    self.currentSheetUniqueReadings = readings
-                    self.currentSheetSublatticeEdges = sublattice
-                    self.currentSheetFrequencyByReading = frequency
-                    self.currentSheetLemmaInfo = lemmaInfo
-                    self.currentSheetLemmaInfoByReading = lemmaInfoByReading
-                    self.currentSheetDictionaryEntry = self.entryMatchingDisplayedReading(
-                        readings: readings,
-                        readingMap: lemmaInfoByReading,
-                        fallback: dictionaryEntry
-                    )
-                    self.currentSheetLexiconDebugInfo = ""
-                    self.currentSheetWordComponents = []
-                    self.currentSheetCompoundComponents = compoundComponents
-                    TapDiagnostics.mark("refresh: applied to main (gen=\(generation))")
-                    completion()
+        TapDiagnostics.mark("refreshSheetSupplementalDataAsync scheduled (gen=\(generation))")
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                guard self.refreshGeneration == generation else {
+                    TapDiagnostics.mark("refresh: gen=\(generation) discarded as stale (current=\(self.refreshGeneration))")
+                    return
                 }
+
+                // Per-provider timing so we can SEE whether any provider exceeds a frame budget
+                // (~16ms) on a real device. If one consistently does, that's the candidate for a
+                // snapshot-on-main / compute-off-main split; until then, on-main keeps it simple
+                // and crash-free.
+                func timed<T>(_ label: String, _ work: () -> T) -> T {
+                    let start = CFAbsoluteTimeGetCurrent()
+                    let result = work()
+                    let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+                    TapDiagnostics.mark(String(format: "provider %@ took %.1fms", label, ms))
+                    return result
+                }
+
+                let overallStart = CFAbsoluteTimeGetCurrent()
+                let readings = timed("readings") { self.sheetReadingsProvider?() ?? [] }
+                let sublattice = timed("sublattice") { self.sheetSublatticeProvider?() ?? [] }
+                let frequency = timed("frequency") { self.sheetFrequencyProvider?() }
+                let lemmaInfo = timed("lemmaInfo") { self.sheetLemmaInfoProvider?() }
+                let lemmaInfoByReading = timed("lemmaInfoByReading") { self.sheetLemmaInfoByReadingProvider?() ?? [:] }
+                let dictionaryEntry = timed("dictionaryEntry") { self.sheetDictionaryEntryProvider?() }
+                let compoundComponents = timed("compoundComponents") { self.sheetCompoundComponentsProvider?() ?? [] }
+
+                self.currentSheetUniqueReadings = readings
+                self.currentSheetSublatticeEdges = sublattice
+                self.currentSheetFrequencyByReading = frequency
+                self.currentSheetLemmaInfo = lemmaInfo
+                self.currentSheetLemmaInfoByReading = lemmaInfoByReading
+                self.currentSheetDictionaryEntry = self.entryMatchingDisplayedReading(
+                    readings: readings,
+                    readingMap: lemmaInfoByReading,
+                    fallback: dictionaryEntry
+                )
+                self.currentSheetLexiconDebugInfo = ""
+                self.currentSheetWordComponents = []
+                self.currentSheetCompoundComponents = compoundComponents
+
+                let totalMs = (CFAbsoluteTimeGetCurrent() - overallStart) * 1000
+                TapDiagnostics.mark(String(format: "refresh: all providers done in %.1fms (gen=%d)", totalMs, generation))
+                completion()
             }
         }
     }

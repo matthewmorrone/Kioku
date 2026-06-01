@@ -11,12 +11,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     private weak var presentedController: UIViewController?
     weak var presentedSheetController: UIViewController?
     private var isPreparingSheetDismissal = false
-    // Serial queue dedicated to running the synchronous Lexicon / DictionaryStore providers
-    // off the main thread. Serial (not concurrent) so that we don't pile up overlapping
-    // dictionary traversals when the user taps in quick succession — each tap's work runs
-    // in order, and the generation counter lets late results detect that they're stale.
-    let providerQueue = DispatchQueue(label: "Kioku.SegmentLookupSheet.providers")
-    // Incremented on every refresh request. The background block captures the generation
+    // Incremented on every refresh request. The deferred main-actor block captures the generation
     // it was scheduled at and only writes `currentSheet*` properties when the captured
     // value still matches — this is how a fast second tap throws away the first tap's
     // results instead of letting them overwrite the now-correct sheet.
