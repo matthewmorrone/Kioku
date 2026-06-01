@@ -9,12 +9,13 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     private let scoring: SegmenterScoring
     // Per-entry POS bitfields loaded from the dictionary; empty when built without metadata.
     private let partOfSpeechByEntryID: [Int: UInt64]
-    // Lemma → best wordfreq Zipf among that lemma's readings. Used by
-    // `preferredLemmaScore` to break ties between equally-script-matched
-    // candidates by real-world frequency. Empty when the segmenter is built
-    // without the surface-reading map (e.g., test fixtures); in that case
-    // the scoring falls back to the prior script-only tiebreakers.
-    private let wordfreqZipfByLemma: [String: Double]
+    // Surface → unified frequency score (~0–7 Zipf-equivalent; higher = more common), derived from
+    // jpdb_rank (and wordfreq Zipf when present). Two consumers:
+    //   • edgeCost — the core statistical node cost of the global path (rare words cost more).
+    //   • preferredLemmaScore — frequency tiebreak between equally-script-matched lemma candidates.
+    // Empty when the segmenter is built without the surface-reading map (e.g., test fixtures); in
+    // that case the scoring falls back to the script-only tiebreakers and a zero frequency term.
+    private let frequencyScoreBySurface: [String: Double]
     // Set to true locally to print POS transition decisions during Viterbi runs.
     private let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -38,14 +39,14 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         partOfSpeechByEntryID: [Int: UInt64] = [:],
         config: SegmenterConfig = SegmenterConfig(),
         scoring: SegmenterScoring = .default,
-        wordfreqZipfByLemma: [String: Double] = [:]
+        frequencyScoreBySurface: [String: Double] = [:]
     ) {
         self.trie = trie
         self.deinflector = deinflector
         self.partOfSpeechByEntryID = partOfSpeechByEntryID
         self.config = config
         self.scoring = scoring
-        self.wordfreqZipfByLemma = wordfreqZipfByLemma
+        self.frequencyScoreBySurface = frequencyScoreBySurface
     }
 
     // Generates all dictionary-backed lattice edges for every start position in the input text.
@@ -88,6 +89,14 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 }
 
                 let surface = String(text[surfaceRange])
+
+                // Hard rejection: a single morpheme never spans a hiragana↔katakana boundary. Once
+                // the scan has consumed both scripts, this surface (and every longer one from this
+                // start) is spurious, so stop extending. Without this, the kana-normalizing
+                // deinflector resolves cross-boundary spans to real words (ビロード+の→「ドの」→どの,
+                // ケンカ+もした→「カもした」→醸す) and the frequency-blind cost model selects them.
+                if ScriptClassifier.mixesHiraganaAndKatakana(surface) { break }
+
                 let lemmas = resolvedTrieLemmas(for: surface)
 
                 if lemmas.isEmpty == false {
@@ -110,6 +119,16 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     )
                     edge.partOfSpeech = posBits
                     edge.isDictionaryMatch = true
+                    // Best (highest) frequency score across the surface and its resolved lemmas.
+                    // Conjugated surfaces (流されて) carry no direct score, so the lemma (流される)
+                    // supplies it. Feeds the statistical term in SegmenterScoring.edgeCost.
+                    var freqScore = frequencyScoreBySurface[surface] ?? 0
+                    for lemma in lemmas {
+                        if let lemmaScore = frequencyScoreBySurface[lemma], lemmaScore > freqScore {
+                            freqScore = lemmaScore
+                        }
+                    }
+                    edge.frequencyScore = freqScore
                     // Flag entries that bundle a known grammatical kana as their final char
                     // when the rest of the surface is its own dict entry — these are the rare
                     // "たいよ"-style bundles that need to lose to the compositional path.
@@ -236,14 +255,15 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
 
     // Produces both the full candidate lattice and the currently selected path for one text snapshot.
-    // Path selection is greedy longest-match by default; when SegmenterSettings.isViterbiEnabled
-    // is true, the same lattice is re-scored via Viterbi DP (POS bigram + node costs) and the
-    // minimum-cost path is returned instead. The viterbi branch is opt-in so changing the flag
-    // in Settings instantly reverts to the long-shipped greedy behavior — no rebuild needed.
+    // Path selection is local longest-match ("greedy") by default; when the strategy is
+    // SegmenterSettings.usesGlobalLongestMatch, the same lattice is re-scored via the Viterbi DP
+    // (POS bigram + node costs) and the minimum-cost path is returned instead. The global branch
+    // is opt-in so changing the strategy in Settings instantly reverts to the long-shipped local
+    // behavior — no rebuild needed.
     func longestMatchResult(for text: String) -> (latticeEdges: [LatticeEdge], selectedEdges: [LatticeEdge]) {
         let latticeEdges = buildLattice(for: text)
 
-        if SegmenterSettings.isViterbiEnabled {
+        if SegmenterSettings.usesGlobalLongestMatch {
             let (annotatedEdges, path) = viterbiSelect(from: latticeEdges, in: text)
             // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
             // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
@@ -479,6 +499,22 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 }
                 lemmas.formUnion(matchedTrieLemmas(for: candidate))
             }
+
+            // Second deinflection pass for derivational bases. A lexicalized れる/られる form
+            // (生まれる, 流される) is a complete dictionary verb, so the first pass halts there and
+            // never reaches its base (生む, 流す). But jpdb attaches frequency to the base, and the
+            // base is a legitimate alternate lemma the user may want to see — so re-deinflect each
+            // first-pass れる-form once more and add any trie-backed base as an ADDITIONAL candidate.
+            // preferredLemmaScore still ranks the surface-closest lexicalized form first, so this
+            // only widens the candidate set (feeding the frequency term + the lemma picker); it does
+            // not change the chosen primary lemma. Gated on the れる suffix to keep it cheap and
+            // scoped to the passive/spontaneous/potential class where the base carries the frequency.
+            let firstPassLemmas = lemmas
+            for lemma in firstPassLemmas where lemma != surface && lemma.hasSuffix("れる") {
+                for base in deinflector.generateCandidates(for: lemma) where base != lemma {
+                    lemmas.formUnion(matchedTrieLemmas(for: base))
+                }
+            }
         }
 
         return lemmas
@@ -598,8 +634,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         let commonPrefixCount = lemma.commonPrefix(with: sourceSurface).count
         score += commonPrefixCount * 5
 
-        if let zipf = wordfreqZipfByLemma[lemma], zipf > 0 {
-            score += Int(zipf * 5)
+        if let freqScore = frequencyScoreBySurface[lemma], freqScore > 0 {
+            score += Int(freqScore * 5)
         }
 
         return score
@@ -637,8 +673,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // MARK: - Viterbi
 
     // Selects the minimum-cost lattice path using Viterbi DP with POS transition costs.
-    // Wired into longestMatchResult behind SegmenterSettings.isViterbiEnabled; this entry point
-    // remains available for direct callers (diagnostics, tests).
+    // Wired into longestMatchResult behind SegmenterSettings.usesGlobalLongestMatch; this entry
+    // point remains available for direct callers (diagnostics, tests).
     func viterbiBestPath(for text: String) -> [LatticeEdge] {
         let edges = buildLattice(for: text)
         return viterbiSelect(from: edges, in: text).path

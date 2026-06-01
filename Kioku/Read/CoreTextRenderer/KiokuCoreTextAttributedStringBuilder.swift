@@ -1,6 +1,13 @@
 import UIKit
 import CoreText
 
+extension NSAttributedString.Key {
+    // Marks a run that should be drawn with a blurred glow (favorited/saved word). The draw pass
+    // reads this per-run and applies a CGContext shadow; CTLineDraw ignores it, which is why the
+    // glow lives in the renderer's run-walk rather than as a plain attribute.
+    static let kiokuFavoritedGlow = NSAttributedString.Key("kiokuFavoritedGlow")
+}
+
 // Builds the NSAttributedString consumed by KiokuCoreTextView along with the list of ruby
 // entries to draw above it. The renderer used to bake CTRubyAnnotation into the attributed
 // string, which let CoreText position ruby for us but gave away vertical-gap control — Apple
@@ -77,6 +84,12 @@ enum KiokuCoreTextAttributedStringBuilder {
         // the alternation/unknown palette. Mirrors ReadTextStyleResolver's changed-segment pass.
         var changedSegmentLocations: Set<Int> = []
         var changedReadingLocations: Set<Int> = []
+        // Favorited (saved) segment glow. When enabled, segments whose location appears in
+        // favoritedSegmentLocations get the .kiokuFavoritedGlow attribute, which the draw pass
+        // renders as a blurred glow in favoritedGlowColor.
+        var favoritedSegmentLocations: Set<Int> = []
+        var isFavoritedGlowEnabled: Bool = false
+        var favoritedGlowColor: UIColor = .systemYellow
         // When true, the renderer is in segment-packed mode and handles inter-segment
         // spacing via per-segment X placement. The builder must NOT inject its
         // ruby-overhang kerning compensation in that case — the kern bump would inflate
@@ -171,6 +184,18 @@ enum KiokuCoreTextAttributedStringBuilder {
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
                 guard inputs.changedSegmentLocations.contains(nsRange.location) else { continue }
                 result.addAttribute(.foregroundColor, value: Self.changedSegmentColor, range: nsRange)
+            }
+        }
+
+        // Favorited (saved) glow. Tags each favorited segment's run with .kiokuFavoritedGlow; the
+        // draw pass applies a CGContext blur shadow to those runs (CTLineDraw can't, so the glow is
+        // drawn in the renderer's run-walk). Colour-neutral — keeps whatever foreground it already has.
+        if inputs.isFavoritedGlowEnabled && inputs.favoritedSegmentLocations.isEmpty == false {
+            for segmentRange in inputs.segmentationRanges {
+                let nsRange = NSRange(segmentRange, in: inputs.text)
+                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+                guard inputs.favoritedSegmentLocations.contains(nsRange.location) else { continue }
+                result.addAttribute(.kiokuFavoritedGlow, value: inputs.favoritedGlowColor, range: nsRange)
             }
         }
 

@@ -235,6 +235,14 @@ extension ReadView {
             ) {
                 isRubySpacingEnabled.toggle()
             }
+
+            displayOptionRow(
+                title: "Favorited Glow",
+                systemImage: isFavoritedGlowEnabled ? "star.fill" : "star",
+                isEnabled: isFavoritedGlowEnabled
+            ) {
+                isFavoritedGlowEnabled.toggle()
+            }
         }
         .padding(12)
         .frame(width: 270)

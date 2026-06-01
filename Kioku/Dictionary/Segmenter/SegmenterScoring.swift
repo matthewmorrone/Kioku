@@ -22,27 +22,58 @@ nonisolated struct SegmenterScoring {
         posBadTransitionPenalty: 150
     )
 
-    // MARK: - Viterbi scoring constants (consumed by edgeCost, the live Viterbi node-cost path)
+    // MARK: - Cost-model constants (consumed by edgeCost, the node-cost layer of the global longest-match path)
 
-    static let viterbiDictionaryBonus = -3
-    static let viterbiSingleCharacterPenalty = 3
-    static let viterbiNonFunctionalSingleCharacterPenalty = 12
-    static let viterbiUnknownPenalty = 6
-    static let viterbiLengthRewardPerCharacter = -6
-    static let viterbiVerbBonus = -3
+    // Flat cost charged once per edge, independent of length. This is the term that makes the
+    // global path a *longest*-match: the per-character length reward cancels across any full-
+    // coverage path (every path spans the same characters), so without a flat per-edge cost the
+    // only thing differentiating paths is the −3 dictionary bonus — which silently rewards *more*
+    // splits (e.g. このまま=-27 loses to この+まま=-30). Charging +10 per edge minimizes token
+    // count, so a single whole-word edge beats two shorter ones unless the split is genuinely
+    // cheaper. Sized above costDictionaryBonus (3) so it dominates the per-split bonus.
+    static let costPerEdgeBase = 10
+
+    // Weight on the frequency term in edgeCost (multiplies the ~0–7 frequencyScore). This is the
+    // *primary* statistical signal — the reason a global cost-path segmenter beats greedy at all.
+    // Higher = frequency dominates structure more. Start ~3 and tune on-device: too low and rare-
+    // word chains (のす, 蟹) still win on structural bonuses; too high and frequency swamps every
+    // other signal. A Double so the weight can be fractioned without changing call sites.
+    static let costFrequencyWeight: Double = 3.0
+
+    // Penalty for a dictionary edge with NO frequency data (jpdb_rank absent → frequencyScore 0).
+    // These are obscure/archaic entries (たの) a learner text never intends; without this they sat
+    // at a neutral 0 frequency cost and won fusions like あな+「たの」 for free. Sized to lose to any
+    // ranked alternative parse, while still being chosen when it is the only edge available. Tunable.
+    static let costUnrankedDictionaryPenalty = 30
+
+    static let costDictionaryBonus = -3
+    static let costSingleCharacterPenalty = 3
+    static let costNonFunctionalSingleCharacterPenalty = 12
+    static let costUnknownPenalty = 6
+    static let costLengthRewardPerCharacter = -6
+    static let costVerbBonus = -3
     // Penalty applied to multi-char dict entries that decompose into prefix + grammatical kana
     // (e.g. たいよ = たい + よ, 生まれた = 生まれ + た). Pushes Viterbi toward the compositional
     // path so auxiliaries and sentence-final particles don't get absorbed into the verb stem.
-    static let viterbiBundledGrammaticalEndingPenalty = 15
+    static let costBundledGrammaticalEndingPenalty = 15
     // Soft penalty for surfaces in the SegmentationDemotions denylist (のか, のす, …). Sized in
     // the same band as the grammatical-ending demotion: enough to cancel a 2-char surface's
     // dictionary+length advantage so the compositional split wins, without forbidding the surface
     // outright. Viterbi may still pick a demoted surface when no cheaper global path exists.
-    static let viterbiDemotedSurfacePenalty = 18
+    static let costDemotedSurfacePenalty = 18
 
     // Trailing kana that signal "this surface ends with a grammatical particle/auxiliary fused
     // onto its stem" — checked at lattice-build time, not at every transition lookup.
     static let grammaticalEndingKana: Set<Character> = ["た", "だ", "て", "で", "よ"]
+
+    // Global weight applied to the entire transition (POS-bigram + IPADic matrix) layer.
+    //   0 — transitions ignored; the global path is decided by node costs alone. This is the
+    //       lyric-domain tuning: IPADic's CRF matrix is trained on formal prose and over-splits
+    //       verb+auxiliary chains (愛している→愛|し|ている, 流される→流|され|て) on song text.
+    //   1 — full transition cost (the long-shipped behavior, same fidelity as MeCab).
+    // Set to 0 so globalLongestMatch reproduces local longest-match's whole-word behavior while
+    // still fixing fragment-stranding via node costs. Flip to 1 to restore the bigram layer.
+    static let transitionWeight = 0
 
     // POS-bigram costs. Negative values are *rewards* (push the path toward this pairing);
     // positive values are *penalties* (push the path away). Constant *names* describe sign
@@ -56,94 +87,115 @@ nonisolated struct SegmenterScoring {
     // constants above. Inline comments show raw IPADic-scale medians and sample size (n).
     //
     // To disable the expanded table and revert to a leaner heuristic: gate the new branches
-    // in transitionCost(prev:next:) on a flag, or revert this file. The Viterbi pathway
-    // itself is gated by SegmenterSettings.isViterbiEnabled — turning that off bypasses
-    // transitionCost entirely (greedy longest-match does not consult bigram costs).
+    // in transitionCost(prev:next:) on a flag, or revert this file. The global longest-match
+    // pathway itself is gated by SegmenterSettings.usesGlobalLongestMatch — turning that off
+    // reverts to local longest-match, which does not consult bigram costs.
 
     // --- "Original 9" buckets, now empirically calibrated. Some sign-flipped vs the
     //     original hand-tuned values; renamed where that happened. ---
-    static let viterbiParticleParticlePenalty = 1        // raw 142   (n=49284)
-    static let viterbiPrefixParticlePenalty = 13         // raw 1319  (n=888)
-    static let viterbiCounterParticleReward = -26        // raw -2579 (n=222) — flipped from "Penalty"
-    static let viterbiNounNounPenalty = 1                // raw 139   (n=1024)
-    static let viterbiNounParticleReward = -24           // raw -2416 (n=7104)
-    static let viterbiAdjParticleReward = -4             // raw -425  (n=30192)
-    static let viterbiVerbAuxiliaryReward = -16          // raw -1643 (n=133920)
-    static let viterbiVerbParticleReward = -4            // raw -443  (n=159840)
-    static let viterbiParticleNounPenalty = 6            // raw 560   (n=7104)  — flipped from "Reward"
+    static let costParticleParticlePenalty = 1        // raw 142   (n=49284)
+    static let costPrefixParticlePenalty = 13         // raw 1319  (n=888)
+    static let costCounterParticleReward = -26        // raw -2579 (n=222) — flipped from "Penalty"
+    static let costNounNounPenalty = 1                // raw 139   (n=1024)
+    static let costNounParticleReward = -24           // raw -2416 (n=7104)
+    static let costAdjParticleReward = -4             // raw -425  (n=30192)
+    static let costVerbAuxiliaryReward = -16          // raw -1643 (n=133920)
+    static let costVerbParticleReward = -4            // raw -443  (n=159840)
+    static let costParticleNounPenalty = 6            // raw 560   (n=7104)  — flipped from "Reward"
 
     // --- Rewards (negative). ---
-    static let viterbiPrefixNounReward = -10             // raw -1043 (n=128)
-    static let viterbiNumericCounterReward = -107        // raw -10731 (n=1) — single matched cell; strong signal
-    static let viterbiNounSuffixReward = -27             // raw -2734 (n=288)
-    static let viterbiNounAuxiliaryReward = -7           // raw -722  (n=5952)
-    static let viterbiAdjectiveAuxiliaryReward = -4      // raw -437  (n=25296)
-    static let viterbiAuxiliaryAuxiliaryReward = -11     // raw -1134 (n=34596)
-    static let viterbiCopulaParticleReward = -4          // raw -372  (n=41292)
-    static let viterbiCopulaAuxiliaryReward = -11        // raw -1134 (n=34596) — same cells as aux-aux (IPADic collapse)
-    static let viterbiPronounParticleReward = -24        // raw -2374 (n=444)
-    static let viterbiProperNounParticleReward = -24     // raw -2353 (n=1554)
-    static let viterbiParticleVerbReward = -4            // raw -383  (n=159840)
-    static let viterbiAdverbAdverbReward = -1            // raw -62   (n=4)
-    static let viterbiPrefixPrefixReward = -3            // raw -289  (n=16)  — flipped from "Penalty"
+    static let costPrefixNounReward = -10             // raw -1043 (n=128)
+    static let costNumericCounterReward = -107        // raw -10731 (n=1) — single matched cell; strong signal
+    static let costNounSuffixReward = -27             // raw -2734 (n=288)
+    static let costNounAuxiliaryReward = -7           // raw -722  (n=5952)
+    static let costAdjectiveAuxiliaryReward = -4      // raw -437  (n=25296)
+    static let costAuxiliaryAuxiliaryReward = -11     // raw -1134 (n=34596)
+    static let costCopulaParticleReward = -4          // raw -372  (n=41292)
+    static let costCopulaAuxiliaryReward = -11        // raw -1134 (n=34596) — same cells as aux-aux (IPADic collapse)
+    static let costPronounParticleReward = -24        // raw -2374 (n=444)
+    static let costProperNounParticleReward = -24     // raw -2353 (n=1554)
+    static let costParticleVerbReward = -4            // raw -383  (n=159840)
+    static let costAdverbAdverbReward = -1            // raw -62   (n=4)
+    static let costPrefixPrefixReward = -3            // raw -289  (n=16)  — flipped from "Penalty"
 
     // --- Near-neutral (kept for documentation; mostly noise vs node costs). ---
-    static let viterbiAdverbAdjectiveCost = 0            // raw 36    (n=272)
-    static let viterbiParticleAdjectiveCost = 1          // raw 98    (n=30192)
+    static let costAdverbAdjectiveCost = 0            // raw 36    (n=272)
+    static let costParticleAdjectiveCost = 1          // raw 98    (n=30192)
 
     // --- Penalties (positive). Names flipped where sign reversed. ---
-    static let viterbiAdverbVerbPenalty = 4              // raw 374   (n=1440)  — flipped from "Reward"
-    static let viterbiNounVerbCompoundPenalty = 4        // raw 445   (n=23040) — flipped from "Reward"; suru-compounds use special context IDs MeCab handles via node cost, not bigram
-    static let viterbiAdjectiveNounPenalty = 5           // raw 529   (n=4352)  — flipped from "Reward"
-    static let viterbiInterjectionParticlePenalty = 4    // raw 419   (n=222)   — flipped from "Reward"
-    static let viterbiConjunctionAnyPenalty = 3          // raw 311   (n=2630)  — flipped from "Reward"
-    static let viterbiAuxiliaryVerbPenalty = 7           // raw 748   (n=133920)
-    static let viterbiAuxiliaryNounPenalty = 9           // raw 948   (n=5952)
-    static let viterbiAuxiliaryAdjectivePenalty = 5      // raw 527   (n=25296)
-    static let viterbiPrefixVerbPenalty = 1              // raw 132   (n=2880)
-    static let viterbiPrefixAuxiliaryPenalty = 4         // raw 404   (n=744)
-    static let viterbiSuffixVerbPenalty = 6              // raw 594   (n=6480)
-    static let viterbiSuffixNounPenalty = 6              // raw 643   (n=288)
-    static let viterbiCopulaVerbPenalty = 7              // raw 748   (n=133920) — same cells as aux-verb
-    static let viterbiCopulaNounPenalty = 9              // raw 948   (n=5952)   — same cells as aux-noun
-    static let viterbiParticleAuxiliaryPenalty = 10      // raw 1023  (n=41292)
+    static let costAdverbVerbPenalty = 4              // raw 374   (n=1440)  — flipped from "Reward"
+    static let costNounVerbCompoundPenalty = 4        // raw 445   (n=23040) — flipped from "Reward"; suru-compounds use special context IDs MeCab handles via node cost, not bigram
+    static let costAdjectiveNounPenalty = 5           // raw 529   (n=4352)  — flipped from "Reward"
+    static let costInterjectionParticlePenalty = 4    // raw 419   (n=222)   — flipped from "Reward"
+    static let costConjunctionAnyPenalty = 3          // raw 311   (n=2630)  — flipped from "Reward"
+    static let costAuxiliaryVerbPenalty = 7           // raw 748   (n=133920)
+    static let costAuxiliaryNounPenalty = 9           // raw 948   (n=5952)
+    static let costAuxiliaryAdjectivePenalty = 5      // raw 527   (n=25296)
+    static let costPrefixVerbPenalty = 1              // raw 132   (n=2880)
+    static let costPrefixAuxiliaryPenalty = 4         // raw 404   (n=744)
+    static let costSuffixVerbPenalty = 6              // raw 594   (n=6480)
+    static let costSuffixNounPenalty = 6              // raw 643   (n=288)
+    static let costCopulaVerbPenalty = 7              // raw 748   (n=133920) — same cells as aux-verb
+    static let costCopulaNounPenalty = 9              // raw 948   (n=5952)   — same cells as aux-noun
+    static let costParticleAuxiliaryPenalty = 10      // raw 1023  (n=41292)
 
     // Calculates edge-local node cost independent of predecessor transitions.
     static func edgeCost(_ edge: LatticeEdge) -> Int {
-        var cost = 0
+        var cost = costPerEdgeBase
 
         if edge.isDictionaryMatch {
-            cost += viterbiDictionaryBonus
+            cost += costDictionaryBonus
         }
 
         if edge.surface.count == 1 {
-            cost += viterbiSingleCharacterPenalty + 5
+            cost += costSingleCharacterPenalty + 5
             if !PartOfSpeech.isParticle(edge.partOfSpeech)
                 && !PartOfSpeech.isAuxiliary(edge.partOfSpeech)
                 && !isPunctuationSurface(edge.surface) {
-                cost += viterbiNonFunctionalSingleCharacterPenalty
+                cost += costNonFunctionalSingleCharacterPenalty
             }
         }
 
         if !edge.isDictionaryMatch {
-            cost += viterbiUnknownPenalty
+            cost += costUnknownPenalty
         }
 
-        cost += edge.surface.count * viterbiLengthRewardPerCharacter
+        cost += edge.surface.count * costLengthRewardPerCharacter
 
-        // Only reward "true verb" entries — those tagged verb and not also noun. Multi-POS
-        // entries like たいよ (noun+verb) and other compound nouns get noun-ish treatment so
-        // they don't outrank legitimate compositional parses.
-        if PartOfSpeech.isVerb(edge.partOfSpeech) && !PartOfSpeech.isNoun(edge.partOfSpeech) {
-            cost += viterbiVerbBonus
+        // Frequency term — the core statistical node cost (≈ −log P(word)).
+        //   • Ranked words: reward proportional to commonness (~0–7 score). Common = cheap. This is
+        //     what lets すべて (rank 1,305) beat のす (伸す, rank 44,453).
+        //   • Known but UNRANKED words (no jpdb_rank at all): a heavy penalty, NOT a neutral 0. Such
+        //     entries (たの, entry 139584) are obscure/archaic forms a learner text never intends —
+        //     an unseen word has P≈0, so its cost should approach ∞. Treating missing frequency as 0
+        //     let 「たの」 fuse for free; this blasts it. It is still chosen when it is the only parse.
+        // Unknown (non-dictionary) edges are handled by costUnknownPenalty above, not here.
+        if edge.frequencyScore > 0 {
+            cost += Int((-costFrequencyWeight * edge.frequencyScore).rounded())
+        } else if edge.isDictionaryMatch {
+            // frequencyScore reflects the full resolution closure: the surface, all writings of its
+            // entry (per-entry propagation in fetchFrequencyScoreBySurface), and its deinflected
+            // bases (resolvedTrieLemmas). So a score of 0 now means "no ranked form ANYWHERE in this
+            // word's resolution" — i.e. genuine junk like 「たの」 (an `exp` that deinflects to
+            // nothing). Conjugations (会いたい→会う), compounds (追いかけて→追いかける), and alternate
+            // writings (ケンカ=喧嘩) all reach a ranked form, so they take the reward branch above and
+            // never land here. This penalty therefore fires only on the たの/のす-class fusions.
+            cost += costUnrankedDictionaryPenalty
         }
+
+        // Verb bonus disabled: a flat reward for *any* verb is frequency-blind and systematically
+        // helped rare verbs (伸す/貸す/醸す) win over common non-verb words. The frequency term above
+        // now distinguishes common from rare directly. Re-enable only if a real regression needs it.
+        // if PartOfSpeech.isVerb(edge.partOfSpeech) && !PartOfSpeech.isNoun(edge.partOfSpeech) {
+        //     cost += costVerbBonus
+        // }
 
         if edge.decomposesAtGrammaticalEnding {
-            cost += viterbiBundledGrammaticalEndingPenalty
+            cost += costBundledGrammaticalEndingPenalty
         }
 
         if SegmentationDemotions.contains(edge.surface) {
-            cost += viterbiDemotedSurfacePenalty
+            cost += costDemotedSurfacePenalty
         }
 
         return cost
@@ -169,6 +221,9 @@ nonisolated struct SegmenterScoring {
     // divides by 100 to land in the same scale as the bucketed values + the existing node
     // costs (which are also at /100 scale).
     static func transitionCost(prev: LatticeEdge, next: LatticeEdge) -> Int {
+        // transitionWeight == 0 short-circuits the entire bigram layer (see constant above):
+        // the global path is then decided by node costs alone, which is the lyric-domain tuning.
+        guard transitionWeight != 0 else { return 0 }
         if let prevRight = prev.ipadicRightID, let nextLeft = next.ipadicLeftID {
             let raw = IPADicMatrix.shared.cost(rightID: prevRight, leftID: nextLeft)
             return raw / 100
@@ -185,55 +240,55 @@ nonisolated struct SegmenterScoring {
         if prev == 0 || next == 0 { return 0 }
 
         // --- Highest-confidence pairings (rare bigrams with very tight semantics) ---
-        if PartOfSpeech.isNumeric(prev)   && PartOfSpeech.isCounter(next)   { return viterbiNumericCounterReward }
-        if PartOfSpeech.isAuxiliary(prev) && PartOfSpeech.isAuxiliary(next) { return viterbiAuxiliaryAuxiliaryReward }
+        if PartOfSpeech.isNumeric(prev)   && PartOfSpeech.isCounter(next)   { return costNumericCounterReward }
+        if PartOfSpeech.isAuxiliary(prev) && PartOfSpeech.isAuxiliary(next) { return costAuxiliaryAuxiliaryReward }
 
         // --- Penalties for syntactically broken pairings ---
-        if PartOfSpeech.isPrefix(prev)    && PartOfSpeech.isAuxiliary(next) { return viterbiPrefixAuxiliaryPenalty }
-        if PartOfSpeech.isAuxiliary(prev) && PartOfSpeech.isVerb(next)      { return viterbiAuxiliaryVerbPenalty }
-        if PartOfSpeech.isAuxiliary(prev) && PartOfSpeech.isNoun(next)      { return viterbiAuxiliaryNounPenalty }
-        if PartOfSpeech.isAuxiliary(prev) && PartOfSpeech.isAdjective(next) { return viterbiAuxiliaryAdjectivePenalty }
-        if PartOfSpeech.isCopula(prev)    && PartOfSpeech.isVerb(next)      { return viterbiCopulaVerbPenalty }
-        if PartOfSpeech.isCopula(prev)    && PartOfSpeech.isNoun(next)      { return viterbiCopulaNounPenalty }
-        if PartOfSpeech.isSuffix(prev)    && PartOfSpeech.isVerb(next)      { return viterbiSuffixVerbPenalty }
-        if PartOfSpeech.isSuffix(prev)    && PartOfSpeech.isNoun(next)      { return viterbiSuffixNounPenalty }
-        if PartOfSpeech.isPrefix(prev)    && PartOfSpeech.isVerb(next)      { return viterbiPrefixVerbPenalty }
-        if PartOfSpeech.isParticle(prev)  && PartOfSpeech.isAuxiliary(next) { return viterbiParticleAuxiliaryPenalty }
+        if PartOfSpeech.isPrefix(prev)    && PartOfSpeech.isAuxiliary(next) { return costPrefixAuxiliaryPenalty }
+        if PartOfSpeech.isAuxiliary(prev) && PartOfSpeech.isVerb(next)      { return costAuxiliaryVerbPenalty }
+        if PartOfSpeech.isAuxiliary(prev) && PartOfSpeech.isNoun(next)      { return costAuxiliaryNounPenalty }
+        if PartOfSpeech.isAuxiliary(prev) && PartOfSpeech.isAdjective(next) { return costAuxiliaryAdjectivePenalty }
+        if PartOfSpeech.isCopula(prev)    && PartOfSpeech.isVerb(next)      { return costCopulaVerbPenalty }
+        if PartOfSpeech.isCopula(prev)    && PartOfSpeech.isNoun(next)      { return costCopulaNounPenalty }
+        if PartOfSpeech.isSuffix(prev)    && PartOfSpeech.isVerb(next)      { return costSuffixVerbPenalty }
+        if PartOfSpeech.isSuffix(prev)    && PartOfSpeech.isNoun(next)      { return costSuffixNounPenalty }
+        if PartOfSpeech.isPrefix(prev)    && PartOfSpeech.isVerb(next)      { return costPrefixVerbPenalty }
+        if PartOfSpeech.isParticle(prev)  && PartOfSpeech.isAuxiliary(next) { return costParticleAuxiliaryPenalty }
 
         // --- Empirically sign-flipped pairings — my hand-tuned guesses had these wrong ---
-        if PartOfSpeech.isAdverb(prev)    && PartOfSpeech.isVerb(next)      { return viterbiAdverbVerbPenalty }
-        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isVerb(next)      { return viterbiNounVerbCompoundPenalty }
-        if PartOfSpeech.isAdjective(prev) && PartOfSpeech.isNoun(next)      { return viterbiAdjectiveNounPenalty }
-        if PartOfSpeech.isInterjection(prev) && PartOfSpeech.isParticle(next) { return viterbiInterjectionParticlePenalty }
-        if PartOfSpeech.isPrefix(prev)    && PartOfSpeech.isPrefix(next)    { return viterbiPrefixPrefixReward }
-        if PartOfSpeech.isCounter(prev)   && PartOfSpeech.isParticle(next)  { return viterbiCounterParticleReward }
+        if PartOfSpeech.isAdverb(prev)    && PartOfSpeech.isVerb(next)      { return costAdverbVerbPenalty }
+        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isVerb(next)      { return costNounVerbCompoundPenalty }
+        if PartOfSpeech.isAdjective(prev) && PartOfSpeech.isNoun(next)      { return costAdjectiveNounPenalty }
+        if PartOfSpeech.isInterjection(prev) && PartOfSpeech.isParticle(next) { return costInterjectionParticlePenalty }
+        if PartOfSpeech.isPrefix(prev)    && PartOfSpeech.isPrefix(next)    { return costPrefixPrefixReward }
+        if PartOfSpeech.isCounter(prev)   && PartOfSpeech.isParticle(next)  { return costCounterParticleReward }
 
         // --- Original-bucket rules (now empirically valued) ---
-        if PartOfSpeech.isParticle(prev) && PartOfSpeech.isParticle(next) { return viterbiParticleParticlePenalty }
-        if PartOfSpeech.isPrefix(prev)   && PartOfSpeech.isParticle(next) { return viterbiPrefixParticlePenalty }
-        if PartOfSpeech.isVerb(prev)     && PartOfSpeech.isAuxiliary(next) { return viterbiVerbAuxiliaryReward }
-        if PartOfSpeech.isVerb(prev)     && PartOfSpeech.isParticle(next) { return viterbiVerbParticleReward }
+        if PartOfSpeech.isParticle(prev) && PartOfSpeech.isParticle(next) { return costParticleParticlePenalty }
+        if PartOfSpeech.isPrefix(prev)   && PartOfSpeech.isParticle(next) { return costPrefixParticlePenalty }
+        if PartOfSpeech.isVerb(prev)     && PartOfSpeech.isAuxiliary(next) { return costVerbAuxiliaryReward }
+        if PartOfSpeech.isVerb(prev)     && PartOfSpeech.isParticle(next) { return costVerbParticleReward }
 
         // --- Rewards for high-frequency, natural pairings ---
-        if PartOfSpeech.isCopula(prev)    && PartOfSpeech.isAuxiliary(next) { return viterbiCopulaAuxiliaryReward }
-        if PartOfSpeech.isCopula(prev)    && PartOfSpeech.isParticle(next)  { return viterbiCopulaParticleReward }
-        if PartOfSpeech.isPrefix(prev)    && PartOfSpeech.isNoun(next)      { return viterbiPrefixNounReward }
-        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isSuffix(next)    { return viterbiNounSuffixReward }
-        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isAuxiliary(next) { return viterbiNounAuxiliaryReward }
-        if PartOfSpeech.isAdjective(prev) && PartOfSpeech.isAuxiliary(next) { return viterbiAdjectiveAuxiliaryReward }
-        if PartOfSpeech.isAdverb(prev)    && PartOfSpeech.isAdjective(next) { return viterbiAdverbAdjectiveCost }
-        if PartOfSpeech.isAdverb(prev)    && PartOfSpeech.isAdverb(next)    { return viterbiAdverbAdverbReward }
-        if PartOfSpeech.isProperNoun(prev) && PartOfSpeech.isParticle(next) { return viterbiProperNounParticleReward }
-        if PartOfSpeech.isPronoun(prev)   && PartOfSpeech.isParticle(next)  { return viterbiPronounParticleReward }
-        if PartOfSpeech.isConjunction(prev) { return viterbiConjunctionAnyPenalty }
-        if PartOfSpeech.isParticle(prev)  && PartOfSpeech.isVerb(next)      { return viterbiParticleVerbReward }
-        if PartOfSpeech.isParticle(prev)  && PartOfSpeech.isAdjective(next) { return viterbiParticleAdjectiveCost }
+        if PartOfSpeech.isCopula(prev)    && PartOfSpeech.isAuxiliary(next) { return costCopulaAuxiliaryReward }
+        if PartOfSpeech.isCopula(prev)    && PartOfSpeech.isParticle(next)  { return costCopulaParticleReward }
+        if PartOfSpeech.isPrefix(prev)    && PartOfSpeech.isNoun(next)      { return costPrefixNounReward }
+        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isSuffix(next)    { return costNounSuffixReward }
+        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isAuxiliary(next) { return costNounAuxiliaryReward }
+        if PartOfSpeech.isAdjective(prev) && PartOfSpeech.isAuxiliary(next) { return costAdjectiveAuxiliaryReward }
+        if PartOfSpeech.isAdverb(prev)    && PartOfSpeech.isAdjective(next) { return costAdverbAdjectiveCost }
+        if PartOfSpeech.isAdverb(prev)    && PartOfSpeech.isAdverb(next)    { return costAdverbAdverbReward }
+        if PartOfSpeech.isProperNoun(prev) && PartOfSpeech.isParticle(next) { return costProperNounParticleReward }
+        if PartOfSpeech.isPronoun(prev)   && PartOfSpeech.isParticle(next)  { return costPronounParticleReward }
+        if PartOfSpeech.isConjunction(prev) { return costConjunctionAnyPenalty }
+        if PartOfSpeech.isParticle(prev)  && PartOfSpeech.isVerb(next)      { return costParticleVerbReward }
+        if PartOfSpeech.isParticle(prev)  && PartOfSpeech.isAdjective(next) { return costParticleAdjectiveCost }
 
         // --- Broad fallbacks (kept last so specific rules above always win) ---
-        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isNoun(next)      { return viterbiNounNounPenalty }
-        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isParticle(next)  { return viterbiNounParticleReward }
-        if PartOfSpeech.isAdjective(prev) && PartOfSpeech.isParticle(next)  { return viterbiAdjParticleReward }
-        if PartOfSpeech.isParticle(prev)  && PartOfSpeech.isNoun(next)      { return viterbiParticleNounPenalty }
+        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isNoun(next)      { return costNounNounPenalty }
+        if PartOfSpeech.isNoun(prev)      && PartOfSpeech.isParticle(next)  { return costNounParticleReward }
+        if PartOfSpeech.isAdjective(prev) && PartOfSpeech.isParticle(next)  { return costAdjParticleReward }
+        if PartOfSpeech.isParticle(prev)  && PartOfSpeech.isNoun(next)      { return costParticleNounPenalty }
 
         return 0
     }

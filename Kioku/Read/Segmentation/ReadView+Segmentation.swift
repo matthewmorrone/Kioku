@@ -524,16 +524,37 @@ extension ReadView {
                     resolvedDictionaryEntryForCurrentSelectedSegment()
                 },
                 sheetIsSavedProvider: {
-                    guard let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry else { return false }
-                    return wordsStore.words.contains { $0.canonicalEntryID == entry.entryId }
+                    // Same shared "filled star" predicate the extract-words list and the glow use, so
+                    // all three agree 1:1. Keyed on the lemma (the form the extract list stars) so an
+                    // inflected segment reflects the favorite state of its dictionary word.
+                    guard let surface = currentSelectedSurface() else { return false }
+                    let resolver: (String) -> String? = { segmenter.preferredLemma(for: $0) }
+                    let (state, _) = SegmentListView.computeSavedWordState(
+                        entries: wordsStore.words,
+                        lemmaResolver: resolver,
+                        lemmaCache: [:]
+                    )
+                    return state.isStarFilled(
+                        surface.trimmingCharacters(in: .whitespacesAndNewlines),
+                        noteID: activeNoteID,
+                        lemmaResolver: resolver
+                    )
                 },
                 sheetSaveToggle: {
                     guard let surface = currentSelectedSurface(),
                           let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry else { return }
+                    // Key the save on the lemma (storedSurface == encounteredSurface == lemma) — the
+                    // same thing the extract-words list does in lemma mode. This keeps toggling
+                    // symmetric with what the star reflects: the star is filled because the *word*
+                    // (lemma) is favorited, so tapping it must toggle the lemma, not add yet another
+                    // inflected encountered surface (which would leave the star stuck filled).
+                    let lemma = segmenter.preferredLemma(for: surface)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let key = (lemma?.isEmpty == false ? lemma! : surface)
                     wordsStore.toggle(
                         canonicalEntryID: entry.entryId,
-                        storedSurface: surface,
-                        encounteredSurface: surface,
+                        storedSurface: key,
+                        encounteredSurface: key,
                         sourceNoteID: activeNoteID,
                         defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
                     )

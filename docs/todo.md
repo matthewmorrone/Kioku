@@ -173,6 +173,23 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       single source instead of cross-referencing two. Solves the class of bugs where
       hand-editing the SRT leaves stale TextGrid timings driving the per-word band.
 - [ ] Fix karaoke trace ~150-200ms lead (AVAudioSession I/O latency uncompensated)
+- [ ] **Real-time SRT editing in the lyric view** — let the user fix subtitle timing/text
+      in-place while the song plays, instead of only through the long-press
+      `SubtitleEditorSheet`. The lyric view (`Kioku/Read/Audio/LyricsView.swift`,
+      active cue rendered by `KiokuCoreTextRendererView`) already knows the active cue
+      index (`AudioPlaybackController.activeCueIndex`) and current time
+      (`currentTimeMs`). Proposed in-place actions on the active cue: (a) "set cue
+      start = now" / "set cue end = now" snapped to the playhead; (b) nudge start/end
+      by ±50ms; (c) split the cue at the playhead; (d) merge with the previous/next
+      cue; (e) shift all following cues by a delta (global re-time). Persist back
+      through the existing `audioAttachmentCues` → `NotesAudioStore.saveCues` /
+      `saveSRT` path (mirror `syncSubtitlesToNote` in `ReadView+LyricAlignment.swift`).
+      **Dependency:** do AFTER the SRT/TextGrid unification (the "Unified ResolvedCue
+      data model" item above) — editing the SRT today leaves stale TextGrid
+      checkpoints driving the per-word band, which the unified model fixes by
+      validating/shifting checkpoints against the edited cue bounds at load time.
+      Groundwork already landed (2026-06-01): `SubtitleSourceLoader.swift` is the
+      shared load/parse/bind seam the lyric-button media picker now uses.
 
 ## Settings
 

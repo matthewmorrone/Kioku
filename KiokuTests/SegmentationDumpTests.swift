@@ -2,9 +2,9 @@ import XCTest
 @testable import Kioku
 
 // One-off dump of segmentation output for phrases the user flagged as suspicious in
-// ムーンライト伝説. Prints the full lattice and the chosen path for both greedy and
-// Viterbi modes so we can see exactly where boundaries land — not derived from
-// pixel-color inspection of a screenshot.
+// ムーンライト伝説. Prints the full lattice and the chosen path for both local and
+// global longest-match strategies so we can see exactly where boundaries land — not derived
+// from pixel-color inspection of a screenshot.
 //
 // Not asserting anything — purely diagnostic. `xcrun xcodebuild test ... -only-testing:KiokuTests/SegmentationDumpTests`.
 @MainActor
@@ -16,19 +16,27 @@ final class SegmentationDumpTests: XCTestCase {
         "同じ地球に生まれたの",
         // のま vs また bug — expected path: 中 / の / またたく (entry 31593, またたく = "to twinkle")
         "命は闇の中のまたたく光だ",
+        // local-longest-match over-consume — expected path: 流されて / たゆたう / の / この / まま.
+        // Local grabs 流されてた (流される past-progressive contraction) and strands ゆた/う,
+        // the amputated tail of たゆたう (揺蕩う = "to drift/sway"). 月色チャイのん.
+        "流されてたゆたうのこのまま",
+        // reduplicated-adverb trap — expected path: もっと / もっと / 愛している.
+        // Local grabs もっとも (尤も = "most/extremely") and strands a bare っ (never a valid
+        // morpheme) plus と. Same shape as ずっとずっと, きっときっと. タキシードミラージュ.
+        "もっともっと愛している",
     ]
 
-    func testDumpGreedy() throws {
+    func testDumpLocal() throws {
         let resources = try TestReadResources.shared()
-        UserDefaults.standard.set(false, forKey: SegmenterSettings.viterbiEnabledKey)
-        dump(label: "GREEDY", segmenter: resources.segmenter)
+        UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
+        dump(label: "LOCAL", segmenter: resources.segmenter)
     }
 
-    func testDumpViterbi() throws {
+    func testDumpGlobal() throws {
         let resources = try TestReadResources.shared()
-        UserDefaults.standard.set(true, forKey: SegmenterSettings.viterbiEnabledKey)
-        defer { UserDefaults.standard.set(false, forKey: SegmenterSettings.viterbiEnabledKey) }
-        dump(label: "VITERBI", segmenter: resources.segmenter)
+        UserDefaults.standard.set(SegmentationStrategy.globalLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
+        defer { UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey) }
+        dump(label: "GLOBAL", segmenter: resources.segmenter)
     }
 
     private func dump(label: String, segmenter: Segmenter) {
@@ -43,13 +51,13 @@ final class SegmentationDumpTests: XCTestCase {
                 let dictMark = edge.isDictionaryMatch ? "DICT" : "----"
                 let decompMark = edge.decomposesAtGrammaticalEnding ? "DECOMP" : "------"
                 let nodeCost = SegmenterScoring.edgeCost(edge)
-                let viterbiCost = edge.viterbiScore.map(String.init) ?? "—"
+                let pathScore = edge.viterbiScore.map(String.init) ?? "—"
                 let s = phrase.distance(from: phrase.startIndex, to: edge.start)
                 let e = phrase.distance(from: phrase.startIndex, to: edge.end)
                 print(String(format: "  %2d–%2d : %@ : %@ : %@ : %@ : node=%d : best=%@",
                              s, e, edge.surface,
                              posLabels.isEmpty ? "—" : posLabels,
-                             dictMark, decompMark, nodeCost, viterbiCost))
+                             dictMark, decompMark, nodeCost, pathScore))
             }
             print()
         }

@@ -58,13 +58,21 @@ final class TestReadResources {
 
         let deinflector = try Deinflector(jsonFileURL: Self.deinflectionRulesURL(), trie: trie)
 
+        // The app builds this at startup (ContentView) and feeds it to the Segmenter; it's the
+        // core statistical input to the global cost model. Without it every edge gets
+        // frequencyScore 0, so the frequency reward never fires and every dictionary edge takes
+        // the unranked +30 penalty uniformly — making any global-segmentation test a test of a
+        // frequency-blind model that doesn't match production. Load it here so tests are honest.
+        let frequencyScoreBySurface = (try? dictionaryStore.fetchFrequencyScoreBySurface()) ?? [:]
+
         self.dictionaryStore = dictionaryStore
         self.trie = trie
         self.deinflector = deinflector
         self.segmenter = Segmenter(
             trie: trie,
             deinflector: deinflector,
-            partOfSpeechByEntryID: surfaceData.partOfSpeechByEntryID
+            partOfSpeechByEntryID: surfaceData.partOfSpeechByEntryID,
+            frequencyScoreBySurface: frequencyScoreBySurface
         )
     }
 

@@ -24,6 +24,7 @@ struct SettingsView: View {
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
     @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
+    @AppStorage(SegmentationDemotions.storageKey) private var demotionsRaw: String = SegmentationDemotions.defaultRawValue
 
     @AppStorage(LLMSettings.providerKey) private var llmProviderRaw: String = LLMSettings.defaultProvider
     @AppStorage(LLMSettings.openAIKeyStorageKey) private var openAIKey: String = ""
@@ -35,6 +36,7 @@ struct SettingsView: View {
     @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
     @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
+    @AppStorage(TokenColorSettings.highlightColorKey) private var highlightHex: String = TokenColorSettings.defaultHighlightHex
 
     @AppStorage(WordOfTheDayScheduler.enabledKey) private var wotdEnabled: Bool = false
     @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
@@ -42,7 +44,7 @@ struct SettingsView: View {
 
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
-    @AppStorage(SegmenterSettings.viterbiEnabledKey) private var viterbiEnabled: Bool = SegmenterSettings.defaultViterbiEnabled
+    @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
 
     @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
@@ -188,10 +190,20 @@ struct SettingsView: View {
                     // Flipping the toggle off restores the defaults visually without touching the
                     // stored hex picks, so no explicit reset control is needed.
                     Toggle("Custom Token Colors", isOn: $customTokenColorsEnabled)
+                    // Curated palettes — tap one to apply its pair (and turn custom colors on).
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            ForEach(TokenColorSettings.presets) { preset in
+                                tokenPresetSwatch(preset)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
                     if customTokenColorsEnabled {
                         ColorPicker("Primary Color", selection: tokenColorABinding, supportsOpacity: false)
                         ColorPicker("Secondary Color", selection: tokenColorBBinding, supportsOpacity: false)
                     }
+                    ColorPicker("Highlight Color", selection: tokenHighlightBinding, supportsOpacity: false)
                 }
 
                 Section {
@@ -220,6 +232,26 @@ struct SettingsView: View {
                         .buttonStyle(.bordered)
                         .font(.footnote)
                     }
+                } header: {
+                    Text("Allowed Particles")
+                }
+
+                // Inline chip editor for the segmentation demotion denylist (surfaces to deprioritize).
+                Section {
+                    ParticleTagEditor(tags: demotionsBinding)
+                    HStack {
+                        Spacer()
+                        Button("Reset to Defaults") {
+                            SegmentationDemotions.reset()
+                            demotionsRaw = SegmentationDemotions.defaultRawValue
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.footnote)
+                    }
+                } header: {
+                    Text("Segmentation Demotions")
+                } footer: {
+                    Text("Surfaces to deprioritize during segmentation — spurious fusions like のか or のす. The segmenter avoids these unless they're the only option. Applies the next time text is segmented.")
                 }
 
                 // Selects which segmentation engine to use and which MeCab dictionary to load.
@@ -239,7 +271,10 @@ struct SettingsView: View {
                     }
 
                     if segmenterBackend == SegmenterBackend.trie.rawValue {
-                        Toggle("Viterbi scoring (experimental)", isOn: $viterbiEnabled)
+                        Toggle("Global longest-match (experimental)", isOn: Binding(
+                            get: { segmentationStrategy == .globalLongestMatch },
+                            set: { segmentationStrategy = $0 ? .globalLongestMatch : .localLongestMatch }
+                        ))
                     }
 
                 } header: {
@@ -249,8 +284,8 @@ struct SettingsView: View {
                         Text("MeCab uses statistical morphological analysis. IPAdic is smaller; UniDic provides finer-grained segmentation.")
                     } else if segmenterBackend == SegmenterBackend.nlTokenizer.rawValue {
                         Text("Apple's built-in ICU tokenizer. No external dictionary needed.")
-                    } else if viterbiEnabled {
-                        Text("Trie segmenter with Viterbi DP scoring (POS bigram + node costs). Toggle off to revert to greedy longest-match.")
+                    } else if segmentationStrategy == .globalLongestMatch {
+                        Text("Trie segmenter with global longest-match: the whole-line minimum-cost path (POS bigram + node costs), computed by the Viterbi DP. Toggle off to revert to local (greedy) longest-match.")
                     } else {
                         Text("Dictionary trie uses the built-in word list with deinflection rules.")
                     }
@@ -613,6 +648,38 @@ struct SettingsView: View {
         }
     }
 
+    // A tappable two-tone swatch for a token-color preset. Applies the pair and turns custom colors
+    // on; outlined in the accent color when it's the currently-active pair.
+    private func tokenPresetSwatch(_ preset: TokenColorSettings.Preset) -> some View {
+        let isSelected = customTokenColorsEnabled
+            && tokenColorAHex.caseInsensitiveCompare(preset.aHex) == .orderedSame
+            && tokenColorBHex.caseInsensitiveCompare(preset.bHex) == .orderedSame
+        return Button {
+            tokenColorAHex = preset.aHex
+            tokenColorBHex = preset.bHex
+            highlightHex = preset.highlightHex
+            customTokenColorsEnabled = true
+        } label: {
+            VStack(spacing: 4) {
+                HStack(spacing: 0) {
+                    Color(UIColor(hexString: preset.aHex) ?? .gray)
+                    Color(UIColor(hexString: preset.bHex) ?? .gray)
+                }
+                .frame(width: 48, height: 24)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.3),
+                                lineWidth: isSelected ? 2 : 1)
+                )
+                Text(preset.name)
+                    .font(.caption2)
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     // Converts the hex string AppStorage value to/from a SwiftUI Color for use with ColorPicker.
     private var tokenColorABinding: Binding<Color> {
         Binding(
@@ -629,6 +696,16 @@ struct SettingsView: View {
             get: { Color(UIColor(hexString: tokenColorBHex) ?? UIColor(hexString: TokenColorSettings.defaultColorBHex)!) },
             set: { color in
                 if let hex = UIColor(color).hexString { tokenColorBHex = hex }
+            }
+        )
+    }
+
+    // Highlight color — shared by the favorited glow and the selection box (hex AppStorage) <-> Color.
+    private var tokenHighlightBinding: Binding<Color> {
+        Binding(
+            get: { Color(UIColor(hexString: highlightHex) ?? UIColor(hexString: TokenColorSettings.defaultHighlightHex)!) },
+            set: { color in
+                if let hex = UIColor(color).hexString { highlightHex = hex }
             }
         )
     }
@@ -657,6 +734,14 @@ struct SettingsView: View {
             set: { particlesRaw = ParticleSettings.encodeList($0) }
         )
     }
+
+    // Bridges AppStorage raw string to the demotion list expected by ParticleTagEditor.
+    private var demotionsBinding: Binding<[String]> {
+        Binding(
+            get: { SegmentationDemotions.decodeList(from: demotionsRaw) },
+            set: { demotionsRaw = SegmentationDemotions.encodeList($0) }
+        )
+    }
 }
 
 // Chip grid for adding and removing individual kana from the particle allowlist.
@@ -665,10 +750,10 @@ private struct ParticleTagEditor: View {
     @State private var draft: String = ""
     @FocusState private var draftFocused: Bool
 
-    private let columns: [GridItem] = [GridItem(.adaptive(minimum: 56), spacing: 8)]
-
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+        // FlowLayout (not LazyVGrid) so each chip takes its natural width and wraps — no fixed
+        // columns. Multi-character demotions (その物, か弱い) size to their content.
+        FlowLayout(spacing: 8) {
             ForEach(tags, id: \.self) { tag in
                 tagChip(for: tag)
             }
@@ -711,6 +796,8 @@ private struct ParticleTagEditor: View {
         HStack(spacing: 0) {
             Text(tag)
                 .font(.subheadline)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             Button(role: .destructive) {
                 tags.removeAll { $0 == tag }
             } label: {
@@ -735,6 +822,54 @@ private struct ParticleTagEditor: View {
             tags.sort()
         }
         draft = ""
+    }
+}
+
+// Wrapping flow layout: each subview takes its natural width and wraps to the next row when it would
+// overflow the available width — no fixed columns. Used by the tag-chip editors so chips size to
+// their content. (iOS 16+ Layout protocol; deployment target is well above that.)
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    // Measures the wrapped rows to report the total height for the proposed width.
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+        let maxWidth = proposal.width ?? .greatestFiniteMagnitude
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var widestRow: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                widestRow = max(widestRow, x - spacing)
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        widestRow = max(widestRow, x - spacing)
+        let resolvedWidth = proposal.width ?? widestRow
+        return CGSize(width: resolvedWidth, height: y + rowHeight)
+    }
+
+    // Places each subview left-to-right at its natural size, wrapping to a new row on overflow.
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 
