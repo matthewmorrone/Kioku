@@ -1,6 +1,18 @@
 import SwiftUI
 import UIKit
 
+// Reference-type cache for the favorited-glow computation. Held by @State so it persists across
+// `body` re-evaluations; because it's a class, ReadView mutates its fields without writing the
+// @State wrapper (which would be illegal during a view update). `signature` is the hash of the
+// glow's inputs at the time `locations` was computed; `lemmaBySurface` memoizes per-segment lemma
+// resolution for one text (keyed by `lemmaTextKey`).
+final class FavoritedGlowMemo {
+    var signature: Int?
+    var locations: Set<Int> = []
+    var lemmaTextKey: Int = 0
+    var lemmaBySurface: [String: String?] = [:]
+}
+
 // Editor surface for ReadView: keeps the CoreText reader and the rich-text editor mounted
 // together so mode toggles are instant, and exposes the helpers that resolve renderer-side
 // segmentation/highlight state.
@@ -35,6 +47,86 @@ extension ReadView {
     }
 
     // Keeps both read and edit renderers mounted so mode toggles are instant.
+    // UTF-16 locations of segments the extract-words list shows a FILLED star for — drives the glow.
+    // 1:1 with the extract-list stars by construction: both go through the same shared predicate
+    // (ComputedSavedWordState.isStarFilled) over the same WordsStore snapshot, grounded in encountered
+    // surfaces (+ lemma bridging + note attribution). So inflected forms light up (消える saved →
+    // 消えて / 消えてゆく glow) and unfavoriting clears the glow immediately.
+    //
+    // MEMOIZED: `body` re-evaluates constantly (scroll, playback highlight, selection) but the glow
+    // only depends on wordsStore.words, the segmentation, the active note, and the toggle. We hash
+    // those into a cheap signature and skip the (expensive) deinflection sweep when nothing relevant
+    // changed. The cache lives in a reference type held by @State, so updating it here does NOT trip
+    // SwiftUI's "modifying state during view update" (we mutate the object's fields, not the @State
+    // wrapper). The per-segment lemma cache persists across recomputes (keyed by text), so even a
+    // favorite toggle stays cheap — it re-runs set lookups, not a fresh deinflection pass.
+    var favoritedSegmentLocations: Set<Int> {
+        guard isFavoritedGlowEnabled else {
+            favoritedGlowMemo.signature = nil
+            return []
+        }
+
+        var hasher = Hasher()
+        hasher.combine(activeNoteID)
+        hasher.combine(segmentRanges.count)
+        if let first = segmentRanges.first { hasher.combine(NSRange(first, in: text).location) }
+        if let last = segmentRanges.last { hasher.combine(NSRange(last, in: text).location) }
+        for word in wordsStore.words {
+            hasher.combine(word.canonicalEntryID)
+            for surface in word.encounteredSurfaces.sorted() { hasher.combine(surface) }
+            for noteID in word.sourceNoteIDs { hasher.combine(noteID) }
+        }
+        let signature = hasher.finalize()
+        if favoritedGlowMemo.signature == signature {
+            return favoritedGlowMemo.locations
+        }
+
+        let locations = computeFavoritedSegmentLocations()
+        favoritedGlowMemo.signature = signature
+        favoritedGlowMemo.locations = locations
+        return locations
+    }
+
+    // The heavy computation behind `favoritedSegmentLocations`, run only on a memo miss.
+    private func computeFavoritedSegmentLocations() -> Set<Int> {
+        // Per-segment lemma resolution is the dominant cost; reuse it across recomputes for the same
+        // text so toggling a favorite doesn't re-deinflect the whole note.
+        let textKey = text.hashValue
+        if favoritedGlowMemo.lemmaTextKey != textKey {
+            favoritedGlowMemo.lemmaTextKey = textKey
+            favoritedGlowMemo.lemmaBySurface = [:]
+        }
+        let resolver: (String) -> String? = { [segmenter, favoritedGlowMemo] surface in
+            if let cached = favoritedGlowMemo.lemmaBySurface[surface] { return cached }
+            let value = segmenter.preferredLemma(for: surface)
+            favoritedGlowMemo.lemmaBySurface[surface] = value
+            return value
+        }
+
+        let (state, _) = SegmentListView.computeSavedWordState(
+            entries: wordsStore.words,
+            lemmaResolver: resolver,
+            lemmaCache: [:]
+        )
+        guard state.savedWordSurfaces.isEmpty == false else { return [] }
+
+        let ns = text as NSString
+        var locations = Set<Int>()
+        var verdictBySurface: [String: Bool] = [:]
+        for range in segmentRanges {
+            let nsRange = NSRange(range, in: text)
+            guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+            let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
+            let isFilled = verdictBySurface[surface] ?? {
+                let v = state.isStarFilled(surface, noteID: activeNoteID, lemmaResolver: resolver)
+                verdictBySurface[surface] = v
+                return v
+            }()
+            if isFilled { locations.insert(nsRange.location) }
+        }
+        return locations
+    }
+
     var editorView: some View {
         VStack(spacing: 8) {
             ZStack {
@@ -62,13 +154,16 @@ extension ReadView {
                         isRubySpacingEnabled: isRubySpacingEnabled,
                         selectedHighlightRange: resolveSelectedHighlightRange(),
                         playbackHighlightRange: playbackHighlightRangeOverride,
-                        selectionHighlightColor: UIColor.systemYellow.withAlphaComponent(0.35),
+                        selectionHighlightColor: (UIColor(hexString: highlightHex) ?? .systemYellow).withAlphaComponent(0.35),
                         playbackHighlightColor: UIColor.systemBlue.withAlphaComponent(0.20),
                         unknownSegmentLocations: unknownSegmentLocations,
                         isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                         unknownSegmentColor: .label,
                         changedSegmentLocations: pendingLLMChangedLocations,
                         changedReadingLocations: pendingLLMChangedReadingLocations,
+                        favoritedSegmentLocations: favoritedSegmentLocations,
+                        isFavoritedGlowEnabled: isFavoritedGlowEnabled,
+                        favoritedGlowColor: UIColor(hexString: highlightHex) ?? .systemYellow,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,

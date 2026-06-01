@@ -220,6 +220,9 @@ extension SegmentListView {
 
     // Applies saved-word state used by star rendering from one canonical storage snapshot.
     //
+    // (Shared favorited-state predicate lives on ComputedSavedWordState below so the extract-words
+    // stars, the in-text glow, and the lookup-sheet star all answer "is this favorited?" identically.)
+    //
     // Per-surface star state: yellow only if the queried surface is in some
     // card's encountered set. Legacy expansion runs in-memory here — for any
     // surface in a card's encountered set, look up its lemma via the same
@@ -255,60 +258,88 @@ extension SegmentListView {
         lemmaCacheByStoredSurface = updatedCache
     }
 
-    // Per-surface "saved anywhere" check. Previously this fell back to a
-    // canonical-id match — that fallback was the source of the surface/lemma
-    // aliasing bug (saving 食べた made the 食べる row appear saved too). Now
-    // star state queries only the encountered-surface map. Legacy cards still
-    // light up correctly because `applySavedWordState` expands them with the
-    // derived lemma at refresh time.
+    // The four star predicates now delegate to the shared implementation on ComputedSavedWordState
+    // (below), so the extract-words stars use the EXACT same logic the glow and lookup-sheet star
+    // use. `currentSavedState` just wraps this view's @State caches into that value type — no
+    // recomputation.
+    private var currentSavedState: ComputedSavedWordState {
+        ComputedSavedWordState(
+            savedWordEntryIDs: savedWordEntryIDs,
+            savedWordSourceNoteIDsByEntryID: savedWordSourceNoteIDsByEntryID,
+            savedWordSourceNoteIDsBySurface: savedWordSourceNoteIDsBySurface,
+            savedWordSurfaces: savedWordSurfaces
+        )
+    }
+
+    // Per-surface "saved anywhere" check (lemma-bridged).
     func isSavedSurface(normalizedSurface: String) -> Bool {
-        resolvedSavedKey(for: normalizedSurface) != nil
+        currentSavedState.isSavedSurface(normalizedSurface, lemmaResolver: lemmaForSurface)
     }
 
     // True when the queried surface is saved AND attributed to the active note.
     func isSavedForCurrentNote(normalizedSurface: String) -> Bool {
-        guard let sourceNoteID else {
-            return isSavedSurface(normalizedSurface: normalizedSurface)
-        }
-        guard let resolvedKey = resolvedSavedKey(for: normalizedSurface),
-              let sourceNoteIDs = savedWordSourceNoteIDsBySurface[resolvedKey] else {
-            return false
-        }
-        return sourceNoteIDs.contains(sourceNoteID)
+        currentSavedState.isSavedForNote(normalizedSurface, noteID: sourceNoteID, lemmaResolver: lemmaForSurface)
     }
 
     // True when the surface is saved but its attributions don't include the
     // active note — the "saved elsewhere" / yellow-hollow visual state.
     func isSavedForOtherNotes(normalizedSurface: String) -> Bool {
-        guard let sourceNoteID else {
-            return false
-        }
-        guard let resolvedKey = resolvedSavedKey(for: normalizedSurface),
-              let sourceNoteIDs = savedWordSourceNoteIDsBySurface[resolvedKey] else {
-            return false
-        }
-        return sourceNoteIDs.isEmpty == false && sourceNoteIDs.contains(sourceNoteID) == false
+        currentSavedState.isSavedForOtherNotes(normalizedSurface, noteID: sourceNoteID, lemmaResolver: lemmaForSurface)
     }
+}
 
-    // Resolves a row's queried surface to the key under which its saved state actually lives,
-    // bridging conjugation → lemma. Try direct hit first; if miss, deinflect via the segmenter
-    // and try the lemma. Returns nil when no saved card matches either form.
-    //
-    // Closes the inverse gap from computeSavedWordState's expansion: that path adds (stored,
-    // lemma) to the map when they differ (handles "save 食べた → 食べる row also stars"). This
-    // handles the reverse direction ("save 食べる → 食べた row also stars") by walking the
-    // segmenter on demand. Result is cheap — lemmaForSurface is the same closure that drives
-    // row hydration, with its own memoization upstream.
-    private func resolvedSavedKey(for normalizedSurface: String) -> String? {
+// Shared favorited-state predicate. This is THE single source of truth for "is this surface
+// favorited (and how)", used by the extract-words list stars, the in-text favorited glow, and the
+// lookup-sheet star — so all three stay 1:1 by construction. Operates purely on the snapshot value
+// type, so any caller that can build a ComputedSavedWordState (from WordsStore.words) gets the same
+// answers without depending on SegmentListView's @State.
+extension SegmentListView.ComputedSavedWordState {
+    // Resolves a queried surface to the key its saved state lives under, bridging conjugation →
+    // lemma: direct hit first, else deinflect and try the lemma. nil when neither form is saved.
+    func resolvedSavedKey(for normalizedSurface: String, lemmaResolver: (String) -> String?) -> String? {
         if savedWordSurfaces.contains(normalizedSurface) {
             return normalizedSurface
         }
-        guard let lemma = lemmaForSurface(normalizedSurface)?
+        guard let lemma = lemmaResolver(normalizedSurface)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
               lemma.isEmpty == false,
               lemma != normalizedSurface,
               savedWordSurfaces.contains(lemma)
         else { return nil }
         return lemma
+    }
+
+    // Saved under any note (or with no note attribution).
+    func isSavedSurface(_ normalizedSurface: String, lemmaResolver: (String) -> String?) -> Bool {
+        resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver) != nil
+    }
+
+    // Saved AND attributed to `noteID` (nil note context collapses to "saved anywhere").
+    func isSavedForNote(_ normalizedSurface: String, noteID: UUID?, lemmaResolver: (String) -> String?) -> Bool {
+        guard let noteID else {
+            return isSavedSurface(normalizedSurface, lemmaResolver: lemmaResolver)
+        }
+        guard let key = resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver),
+              let notes = savedWordSourceNoteIDsBySurface[key] else { return false }
+        return notes.contains(noteID)
+    }
+
+    // Saved but NOT attributed to `noteID` — the "saved elsewhere" hollow-yellow state.
+    func isSavedForOtherNotes(_ normalizedSurface: String, noteID: UUID?, lemmaResolver: (String) -> String?) -> Bool {
+        guard let noteID else { return false }
+        guard let key = resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver),
+              let notes = savedWordSourceNoteIDsBySurface[key] else { return false }
+        return notes.isEmpty == false && notes.contains(noteID) == false
+    }
+
+    // The "filled star" predicate the extract-words list renders (isSavedForCurrentNote OR saved
+    // with no note attribution at all). The in-text glow mirrors exactly this, giving the 1:1
+    // correspondence between starred words and highlighted words.
+    func isStarFilled(_ normalizedSurface: String, noteID: UUID?, lemmaResolver: (String) -> String?) -> Bool {
+        if isSavedForNote(normalizedSurface, noteID: noteID, lemmaResolver: lemmaResolver) {
+            return true
+        }
+        return isSavedSurface(normalizedSurface, lemmaResolver: lemmaResolver)
+            && isSavedForOtherNotes(normalizedSurface, noteID: noteID, lemmaResolver: lemmaResolver) == false
     }
 }

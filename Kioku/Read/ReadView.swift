@@ -31,12 +31,14 @@ struct ReadView: View {
     @AppStorage(TokenColorSettings.enabledKey) var customTokenColorsEnabled: Bool = false
     @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
+    @AppStorage(TokenColorSettings.highlightColorKey) var highlightHex: String = TokenColorSettings.defaultHighlightHex
     @AppStorage("kioku.settings.showFurigana") var isFuriganaVisible = true
     @AppStorage("kioku.settings.colorAlternation") var isColorAlternationEnabled = true
     @AppStorage("kioku.settings.highlightUnknown") var isHighlightUnknownEnabled = false
     @AppStorage("kioku.settings.applyGlobally") var shouldApplyChangesGlobally = true
     @AppStorage("kioku.settings.lineWrapping") var isLineWrappingEnabled = true
     @AppStorage("kioku.settings.rubySpacing") var isRubySpacingEnabled = true
+    @AppStorage("kioku.settings.favoritedGlow") var isFavoritedGlowEnabled = false
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) var debugFuriganaRects: Bool = false
     @AppStorage(DebugSettings.headwordRectsKey) var debugHeadwordRects: Bool = false
@@ -60,6 +62,8 @@ struct ReadView: View {
     @State var segmentLatticeEdges: [LatticeEdge] = []
     @State var segmentEdges: [LatticeEdge] = []
     @State var segmentRanges: [Range<String.Index>] = []
+    // Cache for the favorited-glow set so it isn't recomputed (deinflection sweep) on every body eval.
+    @State var favoritedGlowMemo = FavoritedGlowMemo()
     @State var unknownSegmentLocations: Set<Int> = []
     @State var selectedSegmentLocation: Int?
     @State var selectedHighlightRangeOverride: NSRange?

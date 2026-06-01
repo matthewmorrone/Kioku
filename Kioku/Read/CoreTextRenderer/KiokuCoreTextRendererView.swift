@@ -73,6 +73,11 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // lyrics/song call sites that don't surface LLM changes need not pass them.
     var changedSegmentLocations: Set<Int> = []
     var changedReadingLocations: Set<Int> = []
+    // Favorited (saved) word glow: locations whose surface is a saved word get a blurred glow in
+    // favoritedGlowColor. Defaulted so the lyrics/song call sites that don't surface it need not pass it.
+    var favoritedSegmentLocations: Set<Int> = []
+    var isFavoritedGlowEnabled: Bool = false
+    var favoritedGlowColor: UIColor = .systemYellow
     // Dev-only debug overlay toggles. The overlay view stays mounted always but only
     // draws when a flag is on, so this is zero-cost for normal users.
     let debugFlags: KiokuDebugOverlayView.Flags
@@ -217,6 +222,9 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         typographyHasher.combine(unknownSegmentColor.description)
         for location in changedSegmentLocations.sorted() { typographyHasher.combine(location) }
         for location in changedReadingLocations.sorted() { typographyHasher.combine(location) }
+        for location in favoritedSegmentLocations.sorted() { typographyHasher.combine(location) }
+        typographyHasher.combine(isFavoritedGlowEnabled)
+        typographyHasher.combine(favoritedGlowColor.description)
         typographyHasher.combine(unplayedDimmingLocation ?? -1)
         typographyHasher.combine(unplayedAlpha)
         typographyHasher.combine(furiganaGap)
@@ -245,6 +253,9 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     unknownSegmentColor: unknownSegmentColor,
                     changedSegmentLocations: changedSegmentLocations,
                     changedReadingLocations: changedReadingLocations,
+                    favoritedSegmentLocations: favoritedSegmentLocations,
+                    isFavoritedGlowEnabled: isFavoritedGlowEnabled,
+                    favoritedGlowColor: favoritedGlowColor,
                     isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
                     unplayedDimmingLocation: unplayedDimmingLocation,
                     unplayedAlpha: unplayedAlpha,
@@ -262,6 +273,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         uiView.contentView.baseTextSize = CGFloat(textSize)
         uiView.contentView.furiganaFontSizeOverride = furiganaSizeOverride
         uiView.contentView.furiganaGap = isFuriganaVisible ? furiganaGap : 0
+        uiView.contentView.isFavoritedGlowEnabled = isFavoritedGlowEnabled
         // Geometry is resolved by the SHARED RenderGeometry helper so this path produces
         // the same line origins as RichTextEditor — toggling edit↔view never moves a
         // character. The reserve for ruby is baked into the top inset (line 0) and the

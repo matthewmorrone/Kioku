@@ -31,7 +31,7 @@ struct ContentView: View {
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionarySetting = SegmenterSettings.defaultMeCabDictionary
-    @AppStorage(SegmenterSettings.viterbiEnabledKey) private var viterbiEnabledSetting = SegmenterSettings.defaultViterbiEnabled
+    @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategySetting: SegmentationStrategy = SegmenterSettings.defaultStrategy
     @StateObject private var wotdNavigation = WordOfTheDayNavigation()
     @StateObject private var clipboardCoordinator = ClipboardLookupCoordinator()
     @Environment(\.scenePhase) private var scenePhase
@@ -138,8 +138,8 @@ struct ContentView: View {
         .onChange(of: mecabDictionarySetting) { _, _ in
             rebuildReadResources()
         }
-        // Bump the segmenter revision so ReadView re-segments existing text with the new scoring path.
-        .onChange(of: viterbiEnabledSetting) { _, _ in
+        // Bump the segmenter revision so ReadView re-segments existing text with the new strategy.
+        .onChange(of: segmentationStrategySetting) { _, _ in
             rebuildReadResources()
         }
         // Validate WOTD scheduling after startup has settled rather than on the critical path.
@@ -431,22 +431,12 @@ struct ContentView: View {
             print("Deinflector initialization failed: \(error)")
         }
 
-        // Derives the lemma → best-Zipf map from the surface-reading data so
-        // Segmenter.preferredLemmaScore can break script-tied lemma choices
-        // by real-world frequency. We pick the max Zipf across a lemma's
-        // readings — for verbs with multiple kana forms, the highest-Zipf
-        // reading is the strongest "this is the common word" signal.
-        let wordfreqZipfByLemma: [String: Double] = StartupTimer.measure("wordfreqZipfByLemma build") {
-            var map: [String: Double] = [:]
-            map.reserveCapacity(surfaceReadingData.count)
-            for (surface, data) in surfaceReadingData {
-                var best: Double = 0
-                for case let zipf? in data.frequencyByReading.values.map(\.wordfreqZipf) where zipf > best {
-                    best = zipf
-                }
-                if best > 0 { map[surface] = best }
-            }
-            return map
+        // Frequency scores for segmentation come straight from word_frequency (the table that
+        // carries jpdb_rank), NOT from surface_readings.jpdb_rank — that column is NULL for kana
+        // surfaces, so the previous build produced an empty map and the segmenter's frequency term
+        // was inert. fetchFrequencyScoreBySurface reads the populated source the rest of the app uses.
+        let frequencyScoreBySurface: [String: Double] = StartupTimer.measure("frequencyScoreBySurface build") {
+            (try? dictionaryStore?.fetchFrequencyScoreBySurface()) ?? [:]
         }
 
         // Choose segmenter based on the user's backend preference.
@@ -458,7 +448,7 @@ struct ContentView: View {
             } else if backend == SegmenterBackend.nlTokenizer.rawValue {
                 return NLTokenizerSegmenter()
             } else {
-                return Segmenter(trie: trie, deinflector: deinflector, partOfSpeechByEntryID: partOfSpeechByEntryID, wordfreqZipfByLemma: wordfreqZipfByLemma)
+                return Segmenter(trie: trie, deinflector: deinflector, partOfSpeechByEntryID: partOfSpeechByEntryID, frequencyScoreBySurface: frequencyScoreBySurface)
             }
         }
 

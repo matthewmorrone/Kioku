@@ -31,8 +31,8 @@ final class SurfaceSheetViewController: UIViewController {
 
     // MARK: - Split state
 
-    var leftSplitValue = ""
-    var rightSplitValue = ""
+    var leftSplitValue = "" { didSet { updateSplitFrequencyLabel(); refreshSplitCandidateSelection() } }
+    var rightSplitValue = "" { didSet { updateSplitFrequencyLabel(); refreshSplitCandidateSelection() } }
     var splitEntryLeftValue = ""
     var splitEntryRightValue = ""
     var isSplitEditorVisible = false
@@ -54,6 +54,16 @@ final class SurfaceSheetViewController: UIViewController {
     var splitButton: UIButton!
     var cancelSplitButton: UIButton!
     var applySplitButton: UIButton!
+    // Shows the per-piece frequency scores behind the current split (below the [] ↔ [] inputs).
+    var splitFrequencyLabel: UILabel?
+    // Horizontally-scrolling row of selectable two-way split candidates (one chip per valid
+    // sublattice split). Surfaces the full set — e.g. both どこ・かに and どこか・に — instead of
+    // only the single auto-proposed best split. Hidden when there are fewer than two candidates.
+    var splitCandidatesScroll: UIScrollView?
+    var splitCandidatesRow: UIStackView?
+    // Backing data for the candidate chips: each entry is a [left, right] two-segment path. Chip
+    // tag is its index here, so taps and the active-selection highlight can resolve back to a path.
+    var splitCandidatePaths: [[String]] = []
     var mergeLeftButton: UIButton!
     var mergeRightButton: UIButton!
     var saveButton: UIButton!
@@ -318,6 +328,99 @@ final class SurfaceSheetViewController: UIViewController {
         leftInputTapButton.alpha = leftInputTapButton.isEnabled ? 1 : 0.45
         rightInputTapButton.isEnabled = leftSplitValue.isEmpty == false
         rightInputTapButton.alpha = rightInputTapButton.isEnabled ? 1 : 0.45
+
+        rebuildSplitCandidates()
+    }
+
+    // Rebuilds the chip row from every distinct two-segment sublattice split, highest average
+    // frequency first (the same signal resetSplitInputs averages to pick its default). Surfaces
+    // the full set — どこかに yields both どこ・かに and どこか・に — so a non-default split is one tap
+    // away instead of requiring the user to nudge the boundary character-by-character. Hidden when
+    // there are fewer than two candidates (nothing to choose between).
+    func rebuildSplitCandidates() {
+        guard let row = splitCandidatesRow, let sheet else { return }
+        row.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        // Looks up the frequency-based score for a single segment candidate.
+        func segmentScore(_ segment: String) -> Double {
+            sheet.pathSegmentFrequencyProvider?(segment).flatMap { sheet.normalizedSheetFrequencyScore($0) } ?? 0
+        }
+        // Averages segment scores across a full path to rank candidate splits.
+        func pathScore(_ path: [String]) -> Double {
+            path.map(segmentScore).reduce(0, +) / max(1, Double(path.count))
+        }
+
+        var seen: Set<String> = []
+        let twoPaths = sheet.sublatticeValidPaths(from: sheet.currentSheetSublatticeEdges)
+            .filter { $0.count == 2 }
+            .filter { seen.insert($0.joined(separator: "·")).inserted }
+            .sorted { pathScore($0) > pathScore($1) }
+        splitCandidatePaths = twoPaths
+
+        splitCandidatesScroll?.isHidden = twoPaths.count < 2
+        guard twoPaths.count >= 2 else { return }
+
+        for (index, path) in twoPaths.enumerated() {
+            let chip = UIButton(type: .system)
+            var config = UIButton.Configuration.gray()
+            config.title = path.joined(separator: "・")
+            config.cornerStyle = .capsule
+            config.buttonSize = .small
+            chip.configuration = config
+            chip.tag = index
+            chip.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.leftSplitValue = path[0]
+                self.rightSplitValue = path[1]
+                self.leftInput.text = path[0]
+                self.rightInput.text = path[1]
+                self.applySplitButton.isEnabled = true
+                self.applySplitButton.alpha = 1
+                self.leftInputTapButton.isEnabled = true
+                self.leftInputTapButton.alpha = 1
+                self.rightInputTapButton.isEnabled = true
+                self.rightInputTapButton.alpha = 1
+            }, for: .touchUpInside)
+            row.addArrangedSubview(chip)
+        }
+        refreshSplitCandidateSelection()
+    }
+
+    // Highlights whichever candidate chip matches the current left/right split values so chip taps
+    // and manual boundary nudges (the ↔ controls) stay visually in sync. No-op before the chip row
+    // is built or when the active split isn't one of the enumerated candidates.
+    func refreshSplitCandidateSelection() {
+        guard let row = splitCandidatesRow else { return }
+        for case let chip as UIButton in row.arrangedSubviews {
+            let path = splitCandidatePaths.indices.contains(chip.tag) ? splitCandidatePaths[chip.tag] : []
+            let isActive = path == [leftSplitValue, rightSplitValue]
+            chip.configuration?.baseBackgroundColor = isActive ? UIColor.systemBlue.withAlphaComponent(0.25) : nil
+            chip.configuration?.baseForegroundColor = isActive ? .systemBlue : .label
+        }
+    }
+
+    // Shows the per-piece frequency scores behind the current split, just below the [] ↔ [] inputs.
+    // This is exactly the signal resetSplitInputs averages to pick the most-likely split (higher =
+    // more common), so the user can see *why* a given split was proposed. Hidden when the split isn't
+    // a valid two-piece cut. Driven by the leftSplitValue/rightSplitValue didSet observers, so it
+    // tracks both the initial most-likely split and any manual boundary moves.
+    func updateSplitFrequencyLabel() {
+        guard let label = splitFrequencyLabel else { return }
+        guard let sheet, leftSplitValue.isEmpty == false, rightSplitValue.isEmpty == false else {
+            label.text = nil
+            label.isHidden = true
+            return
+        }
+        // Formats one piece as "surface score", or "surface –" when it has no frequency data.
+        func piece(_ surface: String) -> String {
+            if let score = sheet.pathSegmentFrequencyProvider?(surface)
+                .flatMap({ sheet.normalizedSheetFrequencyScore($0) }) {
+                return String(format: "%@ %.1f", surface, score)
+            }
+            return "\(surface) –"
+        }
+        label.isHidden = false
+        label.text = "freq   " + piece(leftSplitValue) + "    ·    " + piece(rightSplitValue)
     }
 
     // MARK: - Content and height

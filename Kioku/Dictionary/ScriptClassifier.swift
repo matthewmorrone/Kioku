@@ -55,6 +55,29 @@ nonisolated enum ScriptClassifier {
         return true
     }
 
+    // True when `text` contains BOTH a hiragana and a katakana scalar. A single Japanese morpheme
+    // essentially never spans this boundary: loanword compounds like 歯ブラシ ("toothbrush") mix
+    // *kanji* with katakana, not hiragana with katakana. The segmenter uses this as a hard rejection
+    // so kana-normalized fusions across the boundary — ビロード+の→「ドの」(→どの), ケンカ+もした→
+    // 「カもした」(→醸す) — never become edges. The prolonged sound mark ー (U+30FC) is shared by both
+    // scripts, so it is treated as neutral and never triggers a mix on its own.
+    static func mixesHiraganaAndKatakana(_ text: String) -> Bool {
+        var hasHiragana = false
+        var hasKatakana = false
+
+        for scalar in text.unicodeScalars {
+            let value = scalar.value
+            if (0x3040...0x309F).contains(value) {
+                hasHiragana = true
+            } else if (0x30A0...0x30FF).contains(value) && value != 0x30FC {
+                hasKatakana = true
+            }
+            if hasHiragana && hasKatakana { return true }
+        }
+
+        return false
+    }
+
     // Detects whether any scalar belongs to hiragana, katakana (full or half-width),
     // katakana phonetic extensions, or the supported CJK unified ideograph blocks —
     // i.e. the codepoint set that could plausibly be Japanese text. Used by the

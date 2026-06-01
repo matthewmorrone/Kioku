@@ -368,6 +368,37 @@ final class SegmenterIntegrationTests: XCTestCase {
         }
     }
 
+    // Characterization: records exactly which segmentation paths validPaths enumerates for どこかに,
+    // the reported "only doko+kani, missing dokoka+ni" case. Prints the full edge set and paths so
+    // we can see whether the gap is in the lattice/validPaths (data) or in a UI layer above it.
+    func testValidPathsForDokokani() throws {
+        let text = "どこかに"
+        let resources = try sharedResources()
+        let edges = resources.segmenter.buildLattice(for: text)
+
+        let edgeLines = edges
+            .map { edge -> String in
+                let s = text.distance(from: text.startIndex, to: edge.start)
+                let e = text.distance(from: text.startIndex, to: edge.end)
+                return "\(s)->\(e) \(edge.surface)"
+            }
+            .sorted()
+        print("[dokokani] edges:\n  " + edgeLines.joined(separator: "\n  "))
+
+        let paths = LatticeEdge.validPaths(from: edges)
+        let pathLines = paths.map { $0.joined(separator: "·") }
+        print("[dokokani] validPaths:\n  " + pathLines.joined(separator: "\n  "))
+
+        XCTAssertTrue(
+            edges.contains { $0.surface == "どこか" },
+            "lattice is missing the どこか edge — root cause is the trie/buildLattice, not the UI"
+        )
+        XCTAssertTrue(
+            paths.contains(["どこか", "に"]),
+            "validPaths omits どこか·に even though the edge exists — root cause is validPaths/section filtering"
+        )
+    }
+
     // Walks `edges` in source-position order and verifies that the first edge
     // starts at text.startIndex, each subsequent edge starts exactly where the
     // previous one ended, and the last edge ends at text.endIndex. Any gap

@@ -130,6 +130,62 @@ extension DictionaryStore {
         }
     }
 
+    // Builds a surface → frequency-score map (~0–7 Zipf-equivalent, higher = more common) directly
+    // from `word_frequency`, the table that actually carries jpdb_rank.
+    //
+    // Propagation is per ENTRY, not per writing: jpdb ranks one written form (usually the kanji,
+    // e.g. 喧嘩), but every writing of that entry is the same word, so we apply the entry's best
+    // rank to ALL its kana and kanji surfaces. That rescues alternate writings the segmenter sees in
+    // text — ケンカ inherits 喧嘩's rank (3207), わがまま inherits 我儘's (14647) — instead of those
+    // kana spellings reading as rank-none. A genuinely unranked entry (たの, an `exp`) stays NONE,
+    // which is the signal that distinguishes real words from junk. Rank→score reuses FrequencyData
+    // so the mapping matches every other frequency consumer. (Conjugations like 会いたい aren't stored
+    // surfaces; they inherit frequency via the deinflected lemma in resolvedTrieLemmas.)
+    nonisolated func fetchFrequencyScoreBySurface() throws -> [String: Double] {
+        try withSerializedDatabaseAccess {
+            var bestRankBySurface: [String: Int] = [:]
+
+            // Runs one (surface, MIN(rank)) query and folds rows into bestRankBySurface, keeping the lowest rank per surface.
+            func accumulate(sql: String) throws {
+                var statement: OpaquePointer?
+                defer { sqlite3_finalize(statement) }
+                try prepare(sql: sql, statement: &statement)
+                while sqlite3_step(statement) == SQLITE_ROW {
+                    guard let textPointer = sqlite3_column_text(statement, 0) else { continue }
+                    let surface = String(cString: textPointer)
+                    let rank = Int(sqlite3_column_int(statement, 1))
+                    if let existing = bestRankBySurface[surface], existing <= rank { continue }
+                    bestRankBySurface[surface] = rank
+                }
+            }
+
+            // Per-entry best rank, propagated to every writing of that entry (kana + kanji).
+            let entryRankCTE = """
+                WITH entry_rank AS (
+                    SELECT entry_id, MIN(jpdb_rank) AS rank
+                    FROM word_frequency WHERE jpdb_rank IS NOT NULL GROUP BY entry_id
+                )
+                """
+            try accumulate(sql: entryRankCTE + """
+                SELECT kf.text, er.rank
+                FROM kana_forms kf JOIN entry_rank er ON er.entry_id = kf.entry_id
+                """)
+            try accumulate(sql: entryRankCTE + """
+                SELECT kj.text, er.rank
+                FROM kanji kj JOIN entry_rank er ON er.entry_id = kj.entry_id
+                """)
+
+            var scoreBySurface: [String: Double] = [:]
+            scoreBySurface.reserveCapacity(bestRankBySurface.count)
+            for (surface, rank) in bestRankBySurface {
+                if let score = FrequencyData(jpdbRank: rank, wordfreqZipf: nil).normalizedScore, score > 0 {
+                    scoreBySurface[surface] = score
+                }
+            }
+            return scoreBySurface
+        }
+    }
+
     // Fetches all unique dictionary surfaces from kanji and kana_forms tables.
     nonisolated public func fetchAllSurfaces() throws -> [String] {
         try withSerializedDatabaseAccess {

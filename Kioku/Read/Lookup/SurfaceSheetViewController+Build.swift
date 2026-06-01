@@ -191,8 +191,46 @@ extension SurfaceSheetViewController {
             applySplitButton.heightAnchor.constraint(equalToConstant: 44),
         ])
 
+        let frequencyLabel = UILabel()
+        frequencyLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        frequencyLabel.textColor = .secondaryLabel
+        frequencyLabel.textAlignment = .center
+        frequencyLabel.numberOfLines = 1
+        frequencyLabel.adjustsFontSizeToFitWidth = true
+        frequencyLabel.minimumScaleFactor = 0.7
+        splitFrequencyLabel = frequencyLabel
+
+        // Selectable candidate chips sit above the inputs so the full set of valid two-way splits
+        // is visible at a glance (and one-tap selectable), not just the single auto-proposed best.
+        let candidatesScroll = UIScrollView()
+        candidatesScroll.translatesAutoresizingMaskIntoConstraints = false
+        candidatesScroll.showsHorizontalScrollIndicator = false
+        candidatesScroll.clipsToBounds = true
+
+        let candidatesRow = UIStackView()
+        candidatesRow.axis = .horizontal
+        candidatesRow.spacing = 8
+        candidatesRow.alignment = .center
+        candidatesRow.translatesAutoresizingMaskIntoConstraints = false
+        candidatesScroll.addSubview(candidatesRow)
+
+        NSLayoutConstraint.activate([
+            candidatesRow.topAnchor.constraint(equalTo: candidatesScroll.contentLayoutGuide.topAnchor),
+            candidatesRow.bottomAnchor.constraint(equalTo: candidatesScroll.contentLayoutGuide.bottomAnchor),
+            candidatesRow.leadingAnchor.constraint(equalTo: candidatesScroll.contentLayoutGuide.leadingAnchor),
+            candidatesRow.trailingAnchor.constraint(equalTo: candidatesScroll.contentLayoutGuide.trailingAnchor),
+            candidatesRow.heightAnchor.constraint(equalTo: candidatesScroll.frameLayoutGuide.heightAnchor),
+            candidatesScroll.heightAnchor.constraint(equalToConstant: 36),
+        ])
+
+        splitCandidatesScroll = candidatesScroll
+        splitCandidatesRow = candidatesRow
+
+        splitPanelContainer.addArrangedSubview(candidatesScroll)
         splitPanelContainer.addArrangedSubview(splitInputsRow)
+        splitPanelContainer.addArrangedSubview(frequencyLabel)
         splitPanelContainer.addArrangedSubview(splitActionsRow)
+        updateSplitFrequencyLabel()
     }
 
     // Constructs the word-actions row (speak, save, open) and segmentation-actions row (merge-left, split, merge-right).
