@@ -194,7 +194,17 @@ nonisolated public final class Lexicon {
     public func inflectionInfo(surface: String) -> (lemma: String, chain: [String])? {
         // Compute paths once; extract the chain from them rather than re-traversing via deinflector.inflectionChain.
         let (entries, pathsByLemma) = admittedLemmasAndPaths(for: surface)
-        guard let best = entries.first else {
+
+        // admittedLemmasAndPaths deliberately keeps deinflection candidates that have NO JMdict
+        // entry (see its POS-gate comment) so other call sites can fall back to surface display.
+        // This method's result, though, is rendered verbatim as the header's dictionary-form
+        // subtitle, so it must only ever name a real dictionary word. Without this guard a surface
+        // like どこかに — which the deinflector mechanically rewrites to どこかぬ via the near-extinct
+        // ぬ-verb 連用形 rule (に→ぬ) — would display どこかぬ, a non-word, as its lemma. Pick the
+        // best-ranked entry the dictionary actually knows; if none resolve, the surface isn't a
+        // recognized inflection and we report none (callers nil-coalesce to the surface). This
+        // mirrors the implicit guard readings() already has via empty lemma readings.
+        guard let best = entries.first(where: { lookupEntries(for: $0.lemma).isEmpty == false }) else {
             return nil
         }
 
