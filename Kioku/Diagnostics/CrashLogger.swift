@@ -38,6 +38,15 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: crashesDirectory, withIntermediateDirectories: true)
 
+        // One-off maintenance hatch: launching with `-clearCrashes` wipes the on-disk crash
+        // records before anything reads them. The files live in the app sandbox, which host
+        // shell tools / devicectl can't delete, so this launch-arg is the only no-UI way to
+        // clear accumulated dumps. No-op on normal launches.
+        if ProcessInfo.processInfo.arguments.contains("-clearCrashes") {
+            clearCrashFiles()
+            print("==== CrashLogger: cleared prior crash records on launch (-clearCrashes) ====")
+        }
+
         // Dump any prior crashes to the console so they're visible if Xcode is attached and
         // self-evident in the device log stream. Files stay on disk for later retrieval too.
         surfacePreviousCrashes()
