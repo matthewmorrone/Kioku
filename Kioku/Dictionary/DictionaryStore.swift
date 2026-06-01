@@ -439,11 +439,16 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         // rank across ALL readings, misrepresenting the frequency of the matched reading.
         let frequencyJoin: String
         if matchKana && matchKanji {
+            // Drive from the text indexes (idx_kanji_text / idx_kana_text) instead of an
+            // EXISTS correlated to `e`. An EXISTS-in-WHERE makes `entries` the driving table —
+            // SQLite scans all ~215k rows and probes each. The `e.id IN (… WHERE text=?1)` form
+            // makes the text index the driver: seek the handful of matching surface rows, then
+            // PK-join back to `entries`. Same result set, ~1000× fewer rows touched.
             whereClause = """
-            EXISTS (
-                SELECT 1 FROM kanji kj WHERE kj.entry_id = e.id AND kj.text = ?1
-                UNION ALL
-                SELECT 1 FROM kana_forms kf WHERE kf.entry_id = e.id AND kf.text = ?1
+            e.id IN (
+                SELECT entry_id FROM kanji WHERE text = ?1
+                UNION
+                SELECT entry_id FROM kana_forms WHERE text = ?1
             )
             """
             frequencyJoin = """
@@ -452,13 +457,13 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
                   OR EXISTS (SELECT 1 FROM kanji kj2 WHERE kj2.id = wf.kanji_id AND kj2.text = ?1))
             """
         } else if matchKana {
-            whereClause = "EXISTS (SELECT 1 FROM kana_forms kf WHERE kf.entry_id = e.id AND kf.text = ?1)"
+            whereClause = "e.id IN (SELECT entry_id FROM kana_forms WHERE text = ?1)"
             frequencyJoin = """
             LEFT JOIN word_frequency wf ON wf.entry_id = e.id
                 AND EXISTS (SELECT 1 FROM kana_forms kf2 WHERE kf2.id = wf.kana_id AND kf2.text = ?1)
             """
         } else {
-            whereClause = "EXISTS (SELECT 1 FROM kanji kj WHERE kj.entry_id = e.id AND kj.text = ?1)"
+            whereClause = "e.id IN (SELECT entry_id FROM kanji WHERE text = ?1)"
             frequencyJoin = """
             LEFT JOIN word_frequency wf ON wf.entry_id = e.id
                 AND EXISTS (SELECT 1 FROM kanji kj2 WHERE kj2.id = wf.kanji_id AND kj2.text = ?1)

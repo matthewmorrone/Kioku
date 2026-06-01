@@ -116,16 +116,13 @@ def create_schema(conn):
         -- happened to have a kanji form, even when the kanji form is rare or never used —
         -- so kana-dominant words like ここ inherited only their rare-kanji zipf and
         -- mislabelled as Rare downstream.
-        CREATE VIEW word_frequency AS
-            SELECT k.entry_id, k.id AS kanji_id, kf.id AS kana_id,
-                   kkl.jpdb_rank, k.wordfreq_zipf
-            FROM kanji_kana_links kkl
-            JOIN kanji k ON k.id = kkl.kanji_id
-            JOIN kana_forms kf ON kf.id = kkl.kana_id
-            UNION ALL
-            SELECT kf.entry_id, NULL AS kanji_id, kf.id AS kana_id,
-                   NULL AS jpdb_rank, kf.wordfreq_zipf
-            FROM kana_forms kf;
+        -- word_frequency is materialized as an INDEXED TABLE at the end of the build (see
+        -- materialize_word_frequency below), NOT a view. As a view it was re-evaluated (a full
+        -- UNION over kanji_kana_links + kana_forms, ~514k rows) on every dictionary lookup that
+        -- LEFT JOINs it, and since it has no indexable entry_id, SQLite built an AUTOMATIC
+        -- COVERING INDEX per query — a flat ~310ms tax on every lookup. A real table with an
+        -- entry_id index turns that into an index seek. It can't be created here because the
+        -- source tables (kanji.wordfreq_zipf, kanji_kana_links.jpdb_rank) aren't populated yet.
 
         -- Sense-level application restrictions (stagk / stagr).
         -- type: 'stagk' restricts to a specific kanji form; 'stagr' restricts to a specific kana form.
@@ -1254,7 +1251,35 @@ def build_database():
     surface_count = conn.execute("SELECT COUNT(*) FROM surface_readings").fetchone()[0]
     print(f"  Done: {surface_count} surface_readings rows materialized")
 
+    # Materialize word_frequency as an indexed table now that wordfreq_zipf (on kanji/kana_forms)
+    # and jpdb_rank (on kanji_kana_links) are fully populated. See the schema-phase note above for
+    # why this is a table, not a view: the per-lookup LEFT JOIN was re-materializing the whole
+    # view + building a throwaway index every call (~310ms). idx_wf_entry_id makes it an O(log n)
+    # seek; kana_id/kanji_id indexes serve the reading-constrained frequency subqueries.
+    print("Materializing word_frequency table...")
+    conn.executescript(
+        """
+        CREATE TABLE word_frequency AS
+            SELECT k.entry_id, k.id AS kanji_id, kf.id AS kana_id,
+                   kkl.jpdb_rank, k.wordfreq_zipf
+            FROM kanji_kana_links kkl
+            JOIN kanji k ON k.id = kkl.kanji_id
+            JOIN kana_forms kf ON kf.id = kkl.kana_id
+            UNION ALL
+            SELECT kf.entry_id, NULL AS kanji_id, kf.id AS kana_id,
+                   NULL AS jpdb_rank, kf.wordfreq_zipf
+            FROM kana_forms kf;
+
+        CREATE INDEX idx_wf_entry_id ON word_frequency(entry_id);
+        CREATE INDEX idx_wf_kana_id ON word_frequency(kana_id);
+        CREATE INDEX idx_wf_kanji_id ON word_frequency(kanji_id);
+        """
+    )
+    wf_count = conn.execute("SELECT COUNT(*) FROM word_frequency").fetchone()[0]
+    print(f"  Done: {wf_count} word_frequency rows materialized")
+
     conn.commit()
+    conn.execute("ANALYZE")
     conn.execute("PRAGMA optimize")
     conn.close()
 
