@@ -159,7 +159,24 @@ extension ReadView {
             unknownSegmentLocations = []
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
-            refreshSegmentationRanges()
+            // Defer the segmentation kickoff by one main-actor turn so SwiftUI can
+            // commit the plain-text frame FIRST. The CoreText builder already draws
+            // base text without segmentation (build() emits the full string before its
+            // isVisualEnhancementsEnabled guard), but running the kickoff inline means
+            // its main-actor apply pass — which sets segmentRanges and forces a full
+            // CoreText re-typeset of the whole note — lands in the same render cycle as
+            // `text = content`. That render cycle never gets to show the text-only state,
+            // so a freshly imported (un-cached) note reads BLANK until segmentation
+            // finishes. Cached notes skip this path entirely (synchronous edge restore
+            // above), which is why only computation-bound notes showed the delay.
+            // Yielding here lets the text paint immediately; furigana/colors fill in a
+            // beat later. The guard drops the work if the user navigated away meanwhile.
+            let deferredNoteID = noteToLoad.id
+            let deferredContent = noteToLoad.content
+            Task { @MainActor in
+                guard activeNoteID == deferredNoteID, text == deferredContent else { return }
+                refreshSegmentationRanges()
+            }
         }
 
         // showLoadInfoToast(for: noteToLoad)  // disabled — re-enable to show disk/mem counts on each load
