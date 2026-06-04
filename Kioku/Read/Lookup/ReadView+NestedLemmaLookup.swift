@@ -53,19 +53,11 @@ extension ReadView {
             return readings
         }
 
-        // Looks up frequency for an arbitrary surface, with the same lemma-fallback hop the
-        // primary sheet uses so inflected forms still report something.
+        // Looks up frequency for an arbitrary surface via the shared resolver (direct surface,
+        // then deinflected lemmas, skipping frequency-less entries) so inflected forms and
+        // split fragments still report something instead of a "—".
         func frequencyForSurface(_ surface: String) -> [String: FrequencyData]? {
-            if let data = surfaceReadingData[surface]?.frequencyByReading {
-                return data
-            }
-            guard let lexicon else { return nil }
-            for base in lexicon.lemma(surface: surface) {
-                if let data = surfaceReadingData[base]?.frequencyByReading {
-                    return data
-                }
-            }
-            return nil
+            frequencyData(forSurface: surface)
         }
 
         // Recursive drill — tapping a compound row inside the nested sheet stacks yet another

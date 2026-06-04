@@ -10,15 +10,26 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ## Regression watch
 
-- [ ] **Keep the "filter by associated note" (and list) filter** — `WordsFilterView`
-      (`Kioku/Words/WordsFilterView.swift`) has a `Section("Notes")` (line ~26) that
-      filters saved words by source note via `activeFilterNoteIDs`, plus the
-      `Section("Lists")` filter. Wired through `WordsView.swift:203` (sheet),
-      `WordsView+Toolbar.swift:174` (funnel icon), and applied in `visibleWords`
-      (`WordsView.swift:274`). A newer/unpushed Words UI consolidated the
-      dictionary-search filters (JP/EN, common, sort) into a toolbar menu — when
-      reconciling that work, make sure the note/list filter is NOT dropped. Note the
-      "Notes" section only renders when saved words have populated `sourceNoteIDs`.
+- [x] **Re-wire the four kanji-discovery entry points on the Words tab** — Done 2026-06-04.
+      Confirmed the diagnosis exactly: the `.sheet(isPresented:)` modifiers, the four state
+      flags (`isBrowseFrequencyPresented`/`isSentenceSearchPresented`/`isRadicalInputPresented`/
+      `isHandwritingPresented`), and all four destination views were intact and compiling, but
+      nothing set any flag to `true`. Added a Discover group to the `ellipsis.circle` overflow
+      menu in `WordsView.customSearchBar` (below Edit/Import, behind a Divider): Browse by
+      Frequency (`chart.bar.fill`), Search Example Sentences (`text.bubble`), Find Kanji by
+      Radical (`square.grid.3x3`), Handwriting Input (`pencil.and.scribble`). Placement chosen
+      by user (section-in-ellipsis over dedicated button / leading toolbar). Recurrence guard
+      noted inline in the code comment (grep `isBrowseFrequencyPresented = true` etc. before
+      assuming wired). Builds clean.
+
+- [x] **Keep the "filter by associated note" (and list) filter** — Verified present
+      2026-06-04. The anticipated reconciliation already happened: `WordsFilterView` is now a
+      unified "Show" dropdown (Favorites / per-source-note / per-list scopes) and BOTH the note
+      filter (`notesWithSavedWords` → `tapNote`/`selectNote`) and list filter survived. Reached
+      via the funnel button in `WordsView.customSearchBar` (`isFilterSheetPresented`) and applied
+      in `visibleWords` via `activeFilterNoteIDs`/`activeFilterListIDs`. Note scopes still only
+      appear for notes with populated `sourceNoteIDs` (`notesWithSavedWords`). No code change
+      needed — the watch is discharged.
 
 ## Bugs
 
@@ -27,6 +38,13 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 - [x] Combining or splitting words: save button state not refreshed after merge/split
 - [ ] Clicking the star button doesn't always trigger bookmarking (bookmark button works)
 - [ ] Typing freely in English in the paste area is super laggy
+- [ ] **Favorited word not highlighted when favorited more than once in one note** — e.g.
+      なびかせて (lemma 靡かす/靡かせる) is favorited but shows no favorite highlight (glow/star)
+      in Read view. Suspected cause: the **same word/surface favorited multiple times within
+      a single note** — the duplicate membership breaks the highlight-matching path. Relates
+      to the recent "unify favoriting state across stars + glow" work (`af01ffe`). Check how
+      duplicate favorite entries for one note collapse (or fail to) when resolving the
+      highlight set.
 
 ## Segmentation & Lookup
 
@@ -34,8 +52,23 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 - [x] Lexicon lemma ranking respects saved-word surfaces when scoring inflection candidates (`Lexicon.swift:241-270` — `resolve()` ranks lexemes by saved surface + inflection-chain score)
 - [ ] Use frequency data to influence segmentation path selection
 - [ ] Provide meaning of verbs in the form they surface in
+- [ ] **Name the inflected form of a verb surface** — for an inflected surface (e.g.
+      なびかせて → causative + te-form), surface a human-readable label of the grammatical
+      form, not just the resolved lemma. The deinflector already walks the rule chain from
+      surface to lemma (`Deinflector.swift`); expose that chain as named form labels in the
+      lookup/detail UI. Distinct from the gloss-in-form item above — this names the
+      conjugation, that explains the meaning.
 
 ### Still-broken segmentation cases
+
+- **ニュームーン → ニューム + ーン (katakana long-vowel run split wrong)** — the katakana
+  loanword ニュームーン ("new moon") mis-segments into ニューム + ーン, with the second
+  piece (ーン, a bare long-vowel mark + ン) unrecognized. The katakana long-vowel mark (ー)
+  inside a loanword run is being treated as a segment boundary instead of part of the
+  preceding mora. Should resolve to a single segment ニュームーン. Likely the same
+  katakana long-vowel handling that the トキメク / ショーブ expansion cases exercise — audit
+  how ー is normalized/expanded mid-run during longest-match. Add a pin in
+  `SegmentationKnownGoodTests` once fixed.
 
 - **の + またたく → のまたたく (fused)** — sentence `命は闇の中のまたたく光だ`
   parses to 8 segments instead of 9. The Viterbi/MeCab path fuses the possessive
@@ -58,6 +91,40 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ## Read View
 
+- [x] **Scroll back to the top when opening a note** — Done 2026-06-04. Root cause: the
+      active CoreText renderer (`KiokuScrollingTextView`) owns its own scroll offset and was
+      never wired to the `sharedScrollOffsetY = 0` reset in `ReadView+Persistence.swift` (that
+      reset only drove the now-disabled `FuriganaTextRenderer` path). Added a one-shot
+      `scrollToTopToken` to `KiokuCoreTextRendererView` keyed on `activeNoteID?.hashValue`;
+      on a token transition `scrollToTopIfTokenChanged` resets the offset to `-inset.top`
+      exactly once (a token, not a binding, so it can't fight the user's own scrolling). Runs
+      before the playback auto-scroll so an active cue can still win the rare overlap.
+- [x] **Split segments show dashes instead of frequency scores** — Done 2026-06-04. Root
+      cause was an optional-chain emptiness trap, not a missing lookup: every frequency
+      resolver did `if let data = surfaceReadingData[surface]?.frequencyByReading { return data }`.
+      A surface present in `surface_readings` but carrying no jpdb/wordfreq signal has an
+      *empty* `frequencyByReading`, so the early return fired with `[:]` (non-nil) and
+      short-circuited the lemma fallback — `normalizedSheetFrequencyScore([:])` then returned
+      nil and the split editor rendered "surface –". Bare split fragments routinely land on
+      such frequency-less-but-present entries, which is why it read as split-only. Fix:
+      extracted one shared `frequencyData(forSurface:)` resolver on ReadView
+      (`ReadView+SheetSelection.swift`) with a `data.isEmpty == false` guard on both the direct
+      and lemma lookups, and routed `pathSegmentFrequencyProvider`, `frequencyRankForCurrentSelectedSegment`,
+      and the nested-compound `frequencyForSurface` through it (was three near-identical inline
+      copies of the buggy pattern).
+- [x] **Overscroll doesn't lift the tapped word above the lookup sheet** — Done 2026-06-04.
+      The overscroll mechanism (`temporaryBottomInset` in `ReadViewSheetVisibilityScrollPlanner`)
+      was already present; the bug was in the coverage estimate. `expectedCoveredHeight =
+      min(max(360, vh*0.64), vh*0.5)` — the `maximumCoveredHeightRatio: 0.5` cap sat *below* the
+      `estimatedRelativeCoverage: 0.64` estimate, so the cap unconditionally won and the planner
+      only ever reserved 50% of the viewport. But the `.medium()` lookup sheet covers ~64% of the
+      (nav/tab-bar-excluded) read viewport, so words tapped in the 50–64% band landed behind the
+      sheet. Raised the cap to 0.72 so the 0.64 estimate governs while still guarding against
+      degenerate over-reservation (`ReadView+SheetSelection.swift`).
+- [ ] **In-place context menu on the Read tab** — offer a lightweight context menu anchored
+      at the tapped word for quick actions, instead of always presenting the full lookup
+      sheet. Build it first; decide replace-vs-additional (tap→menu vs long-press→menu +
+      tap→sheet) after evaluating how it looks and feels.
 - [ ] Note-level TTS: play/pause, rate and voice controls, spoken-range highlighting
       (basic `AVSpeechSynthesizer` speak exists in `SurfaceSheetViewController+Build.swift` —
       missing controls and highlight)
@@ -141,6 +208,63 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 - [x] Spaced repetition scheduling — basic streak-based SRS shipped (`SRSScheduler.swift` + `ReviewWordStats.swift`: due dates, `consecutiveCorrect`, interval ladder). FSRS-style ease-factor algorithm is a possible future upgrade, not yet implemented.
 - [x] Auto clipboard paste/search (`ClipboardLookupCoordinator.swift`, wired in `ContentView.swift`)
+- [x] **Restore the kana chart as a Learn tab** — Done 2026-06-04. Brought back the
+      `Kioku/Learn/KanaChart/` files (+ a new `KanaChartData.swift`) and wired `KanaChartView`
+      as a fourth `LearnPage.kanaChart` in `CardsTabView.swift` (flashcards → multipleChoice →
+      cloze → kanaChart), inserted into `LearnPagerView`'s HStack and dot overlay. The pager's
+      `clampedIndex` guard makes the page-count bump safe against a stale persisted index — no
+      migration needed. Builds clean.
+- [x] **Fix the swipe animation between Learn pages** — Done 2026-06-02. Root cause: the
+      page offset read `pageIndex` from `@AppStorage`, whose writes don't reliably animate
+      inside a `withAnimation` transaction, so the `-pageIndex*width` term jumped a full page
+      while `dragOffset` sprang → snap/teleport. Fix in `CardsTabView.swift`: drive the
+      offset from a plain `@State pageIndex` (animates reliably) and mirror it to
+      `@AppStorage` via `.onChange` (persistence as a side effect). Also added edge
+      rubber-banding (0.3× damping past the first/last page) so the ends resist instead of
+      sliding into blank space.
+- [x] **Multiple-choice study mode in the Learn tab** — Done 2026-06-02:
+      `Kioku/Learn/MultipleChoice/MultipleChoiceView.swift`, added as the second `LearnPage`
+      (`flashcards → multipleChoice → cloze`) and inserted into `LearnPagerView`'s HStack.
+      Modeled on `FlashcardsView`: home (reused `FlashcardNotePicker` — de-`private`d — +
+      `FlashcardScope` + direction picker + count gate) → quiz → summary. Two directions
+      (`日本語 → English`, `English → 日本語`). The question pool is resolved once at session
+      start via the same `fetchWordDisplayData` path the cards use, then questions assemble
+      synchronously; correct→`reviewStore.recordCorrect`, wrong→`recordAgain` (shares SRS +
+      lifetime accuracy with flashcards). Objective grading with green/red feedback + Next.
+      Gated at ≥4 words in selection. Emits the `CardsPageDotsHidden`/`StudySessionActive`
+      preferences so the pager locks swipe + hides dots mid-quiz.
+      - **Deferred:** dictionary-fallback distractors when the saved-word pool has fewer
+        than 4 distinct answer-side strings. Today distractors come only from the pool, so a
+        thin/duplicate-meaning selection yields 2–3 options instead of 4 (still valid, just
+        easier). Wire dictionary-sampled distractors (random common entries of the same POS)
+        as a follow-up if the small-pool case proves common.
+      - **Enhancements (2026-06-02):** added a **Mixed** direction (per-question, seeded by
+        entry id) and a question-count cap (numeric field, blank/0 = all) with swipe-down +
+        keyboard-Done dismissal. Fixed answered-state feedback to paint explicit green ✓ /
+        red ✗ fills (was washed out by `.disabled` greying — switched to `allowsHitTesting`).
+- [x] **Standardize the three Learn start screens** — Done 2026-06-02. New
+      `Kioku/Learn/LearnHomeScaffold.swift`: `LearnHomeForm` (Form + a uniform prominent Start
+      section), `LearnHomeTitle` (shared principal toolbar title), and `LearnCountField`
+      (shared session-size numeric field). All three home screens (Flashcards, Multiple
+      Choice, Cloze) render through them; navigation models stay per-host (Flashcards/MC share
+      their stack with the in-place session, Cloze pushes via `navigationDestination`).
+      Unified the direction controls onto shared `StudyDirection` (日本語→English /
+      English→日本語 / Mixed) and `StudyJapaneseForm` (原文 / 漢字 / かな) axes
+      (`Kioku/Learn/StudyDirection.swift`) — Flashcards' old combined 6-way enum is gone;
+      both modes now show the identical Direction + Japanese pickers and both have a count
+      field. Flashcards' 漢字 form uses the true dictionary kanji headword (distinct from
+      原文, the encountered surface).
+- [x] **Full bidirectionality for flashcard directions** — `FlashcardCardDirection`
+      (`FlashcardsView.swift`) now offers six directions: 原文→English / English→原文,
+      かな→English / English→かな, 漢字→かな / かな→漢字. Done 2026-06-02: refactored
+      `FlashcardCard.swift` from two duplicated per-direction `switch`es into a
+      `FlashcardFaceContent` model (`encounteredSurface` / `kana` / `kanjiWithReading` /
+      `english`) with a `faces(for:)` mapping table + single `faceView(_:)` renderer, so
+      adding directions is a one-row change. Production reverses answer in Japanese,
+      revealing the kanji headword with the kana reading stacked beneath ("inclusion of
+      both"). Direction picker changed from `.segmented` → `.menu` (six multi-char labels
+      don't fit a segmented control). `direction` stays `@State` (defaults to
+      かな→English), so no persistence migration.
 
 ## Kanji
 

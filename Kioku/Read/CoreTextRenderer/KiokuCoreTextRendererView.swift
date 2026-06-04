@@ -99,6 +99,14 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // them drift the card off the active line.
     var isScrollEnabled: Bool = true
 
+    // One-shot scroll-to-top trigger. When this value CHANGES between body re-evaluations,
+    // the scroll view resets to the top of the content exactly once. Keyed on the active
+    // note id so opening a different note starts at the top instead of inheriting the prior
+    // note's scroll position. A token (act on the transition) rather than a binding (pin the
+    // offset continuously) so it can't fight the user's own scrolling mid-read. Default 0 so
+    // the lyrics/song call sites that don't need it need not pass it.
+    var scrollToTopToken: Int = 0
+
     // Horizontal alignment of laid-out lines within the available width. `.natural`/`.left`
     // = engine default (origins at the content inset). `.center` = each line gets a per-
     // line origin shift so it sits centered in the available width; used by LyricsView's
@@ -453,6 +461,12 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         }
         uiView.contentView.highlightBands = bands
 
+        // Reset to the top of the content when the active note changed (token transition).
+        // Runs before the playback auto-scroll below so a genuinely-active cue can still win
+        // the rare case where both fire in the same pass; on a normal note open the playback
+        // range is nil and the top reset stands.
+        uiView.scrollToTopIfTokenChanged(scrollToTopToken)
+
         // Auto-scroll the playback range into view so the active cue stays visible during
         // audio playback. The anchor fraction is configurable so LyricsView can center
         // the active cue in its small viewport without bleeding the next cue's line.
@@ -718,6 +732,23 @@ final class KiokuScrollingTextView: UIScrollView {
     // Tracks the last range we scrolled to so we don't fight the user when they scroll away
     // and the playback range hasn't changed.
     private var lastScrolledRange: NSRange?
+
+    // Token of the last scroll-to-top request we honored. A change signals "a new note was
+    // opened," so we reset to the top exactly once rather than continuously pinning the
+    // offset (which would fight the user's own scrolling).
+    private var lastScrollToTopToken: Int?
+
+    // Resets the scroll position to the top of the content when `token` differs from the last
+    // one honored; a no-op on repeat tokens. The top (−inset.top) is a stable target
+    // independent of contentSize, so this is safe to apply even before the new note's content
+    // has finished laying out. Also clears the playback-scroll memo so a same-range cue scroll
+    // can still fire afterward for the freshly opened note.
+    func scrollToTopIfTokenChanged(_ token: Int) {
+        guard lastScrollToTopToken != token else { return }
+        lastScrollToTopToken = token
+        setContentOffset(CGPoint(x: 0, y: -adjustedContentInset.top), animated: false)
+        lastScrolledRange = nil
+    }
 
     // Scrolls so the first rect covering `range` sits `anchorFraction` from the top of the
     // viewport. Idempotent against repeated calls with the same range.

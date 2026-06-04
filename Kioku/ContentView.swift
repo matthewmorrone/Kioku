@@ -83,7 +83,7 @@ struct ContentView: View {
             }
 
             // Renders the Words tab entry point; pendingWordsRoute carries notification and read-tab routes.
-            WordsView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, pendingRoute: $pendingWordsRoute)
+            WordsView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, surfaceReadingData: readResources.surfaceReadingData, kanjiReadingFallback: readResources.kanjiReadingFallback, pendingRoute: $pendingWordsRoute)
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .environmentObject(historyStore)
@@ -93,7 +93,7 @@ struct ContentView: View {
             }
 
             // Renders the Learn tab entry point, passing the dictionary store for flashcard lookups.
-            LearnView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter)
+            LearnView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, surfaceReadingData: readResources.surfaceReadingData, kanjiReadingFallback: readResources.kanjiReadingFallback)
             .tag(ContentTab.learn)
             .tabItem {
                 Label("Learn", systemImage: "rectangle.on.rectangle.angled")

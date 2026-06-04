@@ -512,13 +512,11 @@ extension ReadView {
                     return reading.isEmpty ? nil : reading
                 },
                 pathSegmentFrequencyProvider: { surface in
-                    if let data = surfaceReadingData[surface]?.frequencyByReading { return data }
-                    // Inflected surfaces won't appear in the frequency map; fall back through lemmas.
-                    guard let lexicon else { return nil }
-                    for lemma in lexicon.lemma(surface: surface) {
-                        if let data = surfaceReadingData[lemma]?.frequencyByReading { return data }
-                    }
-                    return nil
+                    // Shared resolver: direct surface entry, then deinflected lemmas, skipping
+                    // frequency-less entries so a bare split fragment still reports its lemma's
+                    // score instead of a "—". (Was an inline copy that short-circuited on the
+                    // empty-but-present case — see frequencyData(forSurface:).)
+                    frequencyData(forSurface: surface)
                 },
                 sheetDictionaryEntryProvider: {
                     resolvedDictionaryEntryForCurrentSelectedSegment()

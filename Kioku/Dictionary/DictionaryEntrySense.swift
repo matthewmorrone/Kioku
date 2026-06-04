@@ -11,6 +11,9 @@ nonisolated public struct DictionaryEntrySense: Equatable, Sendable {
     public let field: String?
     // Dialect or regional usage (e.g. "ksb", "tsug"), comma-joined.
     public let dialect: String?
+    // s_inf sense-level usage notes (e.g. "after the -te form of a verb", "esp. as 持ってる").
+    // Newline-joined in the database when a sense carries several; nil when absent.
+    public let info: String?
     public let glosses: [String]
     // JMdict stagk restrictions: kanji forms this sense applies to. Empty = applies to all kanji forms.
     public let applicableKanji: [String]
@@ -24,6 +27,7 @@ nonisolated public struct DictionaryEntrySense: Equatable, Sendable {
         misc: String?,
         field: String?,
         dialect: String?,
+        info: String? = nil,
         glosses: [String],
         applicableKanji: [String] = [],
         applicableReadings: [String] = []
@@ -33,6 +37,7 @@ nonisolated public struct DictionaryEntrySense: Equatable, Sendable {
         self.misc = misc
         self.field = field
         self.dialect = dialect
+        self.info = info
         self.glosses = glosses
         self.applicableKanji = applicableKanji
         self.applicableReadings = applicableReadings

@@ -49,6 +49,28 @@ struct VerbConjugator {
         let past     = groups.first(where: { $0.name == "Plain"    })?.rows.first(where: { $0.label == "Past" })
         return [teForm, negative, past].compactMap { $0 }
     }
+
+    // True when the POS tags mark an i-adjective (adj-i / adj-ix), which conjugates like 欲しい.
+    // aux-adj alone (without adj-i) is not enough — those entries don't take the い-adjective
+    // paradigm on their own dictionary form.
+    static func isIAdjective(fromJMDictPosTags tags: [String]) -> Bool {
+        let normalized = tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        return normalized.contains("adj-i") || normalized.contains("adj-ix")
+    }
+
+    // Conjugation groups for an i-adjective dictionary form (ends in い).
+    static func adjectiveConjugationGroups(for dictionaryForm: String) -> [ConjugationGroup] {
+        adjectiveGroups(dictionaryForm.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    // Key inline forms for an i-adjective: te-form, negative, past — mirroring keyForms(for:verbClass:).
+    static func adjectiveKeyForms(for dictionaryForm: String) -> [ConjugationRow] {
+        let groups = adjectiveConjugationGroups(for: dictionaryForm)
+        let teForm   = groups.first(where: { $0.name == "Te-form" })?.rows.first
+        let negative = groups.first(where: { $0.name == "Plain"   })?.rows.first(where: { $0.label == "Negative" })
+        let past     = groups.first(where: { $0.name == "Plain"   })?.rows.first(where: { $0.label == "Past" })
+        return [teForm, negative, past].compactMap { $0 }
+    }
 }
 
 // MARK: - Group builders
@@ -63,6 +85,47 @@ private extension VerbConjugator {
             ConjugationRow(label: "Past",          surface: past),
             ConjugationRow(label: "Negative past", surface: negativePast),
         ])
+    }
+
+    // MARK: I-adjective
+
+    // Produces the paradigm for i-adjectives (dictionary form ends in い), e.g. 欲しい, 高い, 良い.
+    // いい is irregular: every inflected form uses the よ stem (よく, よかった…) while the present
+    // form stays いい. 良い and all regular i-adjectives inflect off the stem (form minus final い).
+    static func adjectiveGroups(_ base: String) -> [ConjugationGroup] {
+        guard base.hasSuffix("い"), base.count >= 2 else { return [] }
+        let stem = (base == "いい") ? "よ" : String(base.dropLast())
+
+        return [
+            fullGroup(
+                name: "Plain",
+                form: base,
+                negative: stem + "くない",
+                past: stem + "かった",
+                negativePast: stem + "くなかった"
+            ),
+            fullGroup(
+                name: "Polite",
+                form: base + "です",
+                negative: stem + "くないです",
+                past: stem + "かったです",
+                negativePast: stem + "くなかったです"
+            ),
+            ConjugationGroup(name: "Te-form", rows: [
+                ConjugationRow(label: "Te-form", surface: stem + "くて"),
+            ]),
+            ConjugationGroup(name: "Conditional", rows: [
+                ConjugationRow(label: "Conditional (ば)",  surface: stem + "ければ"),
+                ConjugationRow(label: "Conditional (たら)", surface: stem + "かったら"),
+            ]),
+            ConjugationGroup(name: "Adverbial", rows: [
+                ConjugationRow(label: "Adverbial", surface: stem + "く"),
+            ]),
+            ConjugationGroup(name: "Presumptive", rows: [
+                ConjugationRow(label: "Plain",  surface: base + "だろう"),
+                ConjugationRow(label: "Polite", surface: base + "でしょう"),
+            ]),
+        ]
     }
 
     // MARK: Ichidan

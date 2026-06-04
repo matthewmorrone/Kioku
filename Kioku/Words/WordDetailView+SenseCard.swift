@@ -87,17 +87,35 @@ extension WordDetailView {
                 }
             }
 
-            // Per-sense Tatoeba examples routed by SentenceSenseRouter.
+            // s_inf usage notes (e.g. "after the -te form of a verb", "esp. as 持ってる").
+            // Newline-joined in the DB when a sense carries several; one line each here.
+            if let info = sense.info, info.isEmpty == false {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(info.components(separatedBy: "\n"), id: \.self) { note in
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+
+            // Per-sense Tatoeba examples routed by SentenceSenseRouter. Same furigana +
+            // highlight + speaker treatment as the unrouted Examples section.
             if sentences.isEmpty == false {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(sentences, id: \.japanese) { pair in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(pair.japanese)
-                                .font(.footnote)
-                            Text(pair.english)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                        ExampleSentenceView(
+                            japanese: pair.japanese,
+                            english: pair.english,
+                            highlightSurfaces: exampleHighlightSurfaces,
+                            segmenter: segmenter,
+                            surfaceReadingData: surfaceReadingData,
+                            kanjiReadingFallback: kanjiReadingFallback,
+                            textSize: 15,
+                            onSpeak: { speak($0) }
+                        )
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 6)
                         .padding(.horizontal, 10)
