@@ -33,6 +33,9 @@ enum WordsRoute: Equatable {
 struct WordsView: View {
     let dictionaryStore: DictionaryStore?
     let segmenter: (any TextSegmenting)?
+    // Read-tab reading maps, forwarded to WordDetailView so example sentences get furigana.
+    var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
+    var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
     // Receives cross-tab routing requests from ContentView.
     var pendingRoute: Binding<WordsRoute?> = .constant(nil)
 
@@ -153,7 +156,9 @@ struct WordsView: View {
                     reading: selectedDetailReading,
                     dictionaryStore: dictionaryStore,
                     segmenter: segmenter,
-                    initialSublatticePaths: selectedDetailSublatticePaths
+                    initialSublatticePaths: selectedDetailSublatticePaths,
+                    surfaceReadingData: surfaceReadingData,
+                    kanjiReadingFallback: kanjiReadingFallback
                 )
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
@@ -279,6 +284,17 @@ struct WordsView: View {
             .onChange(of: wordsStore.words.map(\.canonicalEntryID)) { _, _ in
                 refreshMaterializedHistory()
             }
+            // Consume cross-tab routes from ContentView (e.g. the lookup sheet's magnifying-glass
+            // "open in Words" action). onAppear catches a route set before this tab appeared;
+            // onChange catches one set while it's already on screen. This wiring was dropped in
+            // the Words-tab rebuild, which left consumePendingRoute orphaned — so the magnifying
+            // glass switched tabs but never opened the detail view.
+            .onAppear {
+                consumePendingRoute(pendingRoute.wrappedValue)
+            }
+            .onChange(of: pendingRoute.wrappedValue) { _, route in
+                consumePendingRoute(route)
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
         }
@@ -303,6 +319,34 @@ struct WordsView: View {
                     isCSVImportPresented = true
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
+                }
+
+                // Kanji-discovery entry points. These four destination views + their
+                // presentation flags survived the Words rebuild but were orphaned when the
+                // toolbar that triggered them was deleted (nothing set the flags to `true`).
+                // Re-homed here in the overflow menu. GUARD AGAINST RECURRENCE: if this menu is
+                // ever restructured, grep for `isBrowseFrequencyPresented = true` (and the other
+                // three flags) to confirm each trigger still exists before assuming it's wired.
+                Divider()
+                Button {
+                    isBrowseFrequencyPresented = true
+                } label: {
+                    Label("Browse by Frequency", systemImage: "chart.bar.fill")
+                }
+                Button {
+                    isSentenceSearchPresented = true
+                } label: {
+                    Label("Search Example Sentences", systemImage: "text.bubble")
+                }
+                Button {
+                    isRadicalInputPresented = true
+                } label: {
+                    Label("Find Kanji by Radical", systemImage: "square.grid.3x3")
+                }
+                Button {
+                    isHandwritingPresented = true
+                } label: {
+                    Label("Handwriting Input", systemImage: "pencil.and.scribble")
                 }
 
                 // One selection menu for every tab. Because every word row selects into the

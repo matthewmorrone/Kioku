@@ -170,7 +170,14 @@ extension ReadView {
             selectedSegmentRectInContent: tappedSegmentRect,
             estimatedSheetHeight: 360,
             estimatedRelativeCoverage: 0.64,
-            maximumCoveredHeightRatio: 0.5,
+            // Must sit ABOVE estimatedRelativeCoverage or the cap unconditionally wins and the
+            // estimate is dead. The lookup sheet is a `.medium()` detent (~half the SCREEN), but
+            // this viewport is the shorter read area (no nav/tab bars), so the sheet actually
+            // covers ~64% of it — which is what estimatedRelativeCoverage encodes. The previous
+            // 0.5 cap clamped reserved room back down to half the viewport, leaving words tapped
+            // in the 50–64% band still behind the sheet. 0.72 lets the 0.64 estimate govern while
+            // still guarding against a degenerate over-reservation.
+            maximumCoveredHeightRatio: 0.72,
             topPadding: 24,
             bottomPadding: 16
         )
@@ -490,6 +497,37 @@ extension ReadView {
         return (lemma: info.lemma, chain: info.chain)
     }
 
+    // Resolves the reading→FrequencyData map for an arbitrary surface: the direct surface
+    // entry first, then each deinflected lemma. The single source of truth for surface→
+    // frequency resolution across the lookup sheet (current selection, split editor pieces,
+    // nested-compound rows) so all of them agree.
+    //
+    // EMPTINESS GUARD: a surface can be present in `surface_readings` (so the map lookup
+    // succeeds) while carrying no jpdb/wordfreq signal — its `frequencyByReading` is then an
+    // empty dict. Bare fragments produced by splitting a segment routinely land on such
+    // entries. Returning that empty dict would be non-nil and short-circuit the lemma fallback,
+    // so the piece's lemma (which usually DOES have a frequency) is never consulted and the
+    // split editor renders "surface –". Skipping empty maps lets the fallback run.
+    func frequencyData(forSurface surface: String) -> [String: FrequencyData]? {
+        if let data = surfaceReadingData[surface]?.frequencyByReading, data.isEmpty == false {
+            return data
+        }
+
+        // Inflected / sub-word surfaces won't appear in the frequency map, which is keyed by
+        // dictionary forms. lemma() returns only max-depth candidates (true base forms).
+        guard let lexicon else {
+            return nil
+        }
+
+        for lemma in lexicon.lemma(surface: surface) {
+            if let data = surfaceReadingData[lemma]?.frequencyByReading, data.isEmpty == false {
+                return data
+            }
+        }
+
+        return nil
+    }
+
     // Returns the reading→FrequencyData map for the currently selected segment surface,
     // or nil if no frequency data is available. The inner dict is keyed by reading (kana text)
     // so callers can look up frequency for whichever reading is currently displayed.
@@ -503,23 +541,7 @@ extension ReadView {
         let endIndex = segmentEdges[selectedBounds.upperBound].end
         let surface = String(text[startIndex..<endIndex])
 
-        if let data = surfaceReadingData[surface]?.frequencyByReading {
-            return data
-        }
-
-        // Inflected surfaces (e.g. 話していた) won't appear in the frequency map, which is
-        // keyed by dictionary forms. lemma() returns only max-depth candidates (true base forms).
-        guard let lexicon else {
-            return nil
-        }
-
-        for lemma in lexicon.lemma(surface: surface) {
-            if let data = surfaceReadingData[lemma]?.frequencyByReading {
-                return data
-            }
-        }
-
-        return nil
+        return frequencyData(forSurface: surface)
     }
 
     // Captures lattice edges enclosed by the currently selected merged segment span for future sheet UI usage.

@@ -185,7 +185,13 @@ extension ReadView {
                             // view that owns the rendered text. UIScrollView is a superclass of
                             // UITextView, so handleReadModeSegmentTap accepts either path.
                             handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: scrollView)
-                        }
+                        },
+                        // Reset scroll to the top whenever the active note changes. Keyed on
+                        // the note id's hash so each note open is a distinct token transition;
+                        // 0 when no note is active. (`sharedScrollOffsetY = 0` on load is a
+                        // no-op for the CoreText path, which owns its own offset — this is the
+                        // signal that actually moves it.)
+                        scrollToTopToken: activeNoteID?.hashValue ?? 0
                     )
                     .opacity(isEditMode ? 0 : 1)
                     .allowsHitTesting(isEditMode == false)

@@ -1,12 +1,14 @@
 import SwiftUI
 
-// The swipeable pages in the Learn tab. Breakdown (formerly `songs`) moved to the Read
-// tab as a per-note sheet, so Learn is back to Flashcards + Cloze. `LearnPagerView`'s
-// persisted page index clamps on read, so a stale `2` in UserDefaults from a previous
-// install snaps back into range on next launch without crashing.
+// The swipeable pages in the Learn tab: Flashcards, Multiple Choice, and Cloze.
+// (Breakdown, formerly `songs`, moved to the Read tab as a per-note sheet.) `LearnPagerView`'s
+// persisted page index clamps on read, so a stale index from a previous install with a
+// different page count snaps back into range on next launch without crashing.
 enum LearnPage: Int, CaseIterable, Identifiable {
     case flashcards
+    case multipleChoice
     case cloze
+    case kanaChart
     var id: Int { rawValue }
 }
 
@@ -31,32 +33,41 @@ struct CardsStudySessionActivePreferenceKey: PreferenceKey {
 struct LearnPagerView: View {
     let dictionaryStore: DictionaryStore?
     let segmenter: (any TextSegmenting)?
+    // Read-tab reading maps, forwarded to FlashcardsView → WordDetailView for example furigana.
+    var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
+    var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
 
-    // Persisted across navigations and launches so returning to the Learn tab puts you back
-    // on the page you were last using (Flashcards / Cloze / Breakdown). Defaults to 0
-    // (Flashcards) for new installs. Read access goes through `clampedPageIndex` so an
-    // out-of-range UserDefaults value from a future build with fewer pages can't crash.
+    // Durable mirror of the current page — survives navigations and launches so returning to the
+    // Learn tab restores the page you were last on. NOT read directly by the offset: @AppStorage
+    // writes don't reliably animate inside a withAnimation transaction, which made the page snap a
+    // full width instead of gliding. The visual index lives in `pageIndex` (@State) and is synced
+    // here whenever it settles.
     @AppStorage("learn.pageIndex") private var storedPageIndex: Int = 0
+
+    // Visual/animated source of truth for the page offset. A plain @State animates under
+    // withAnimation where the @AppStorage value did not. Seeded from storage in `.onAppear`.
+    @State private var pageIndex: Int = 0
 
     @State private var dragOffset: CGFloat = 0
     @State private var dotsHidden: Bool = false
     @State private var sessionActive: Bool = false
 
-    // Always in [0, LearnPage.allCases.count). Writes go through here so a snap also
-    // normalises the persisted value.
-    private var pageIndex: Int {
-        get { clampedPageIndex }
-        nonmutating set {
-            storedPageIndex = max(0, min(LearnPage.allCases.count - 1, newValue))
-        }
+    // Clamps any index into the valid page range so a stale stored value (e.g. from a build with
+    // more pages) can't drive the offset out of bounds.
+    private func clampedIndex(_ raw: Int) -> Int {
+        max(0, min(LearnPage.allCases.count - 1, raw))
     }
 
-    private var clampedPageIndex: Int {
-        max(0, min(LearnPage.allCases.count - 1, storedPageIndex))
+    // Dampens drag past the first/last page so the edge resists (rubber-bands) instead of sliding
+    // the row into blank space, which read as a broken transition at the ends.
+    private func rubberBanded(_ raw: CGFloat) -> CGFloat {
+        let pullingBeforeFirst = pageIndex == 0 && raw > 0
+        let pullingPastLast = pageIndex == LearnPage.allCases.count - 1 && raw < 0
+        return (pullingBeforeFirst || pullingPastLast) ? raw * 0.3 : raw
     }
 
     private var currentPage: LearnPage {
-        LearnPage.allCases[clampedPageIndex]
+        LearnPage.allCases[clampedIndex(pageIndex)]
     }
 
     var body: some View {
@@ -64,9 +75,13 @@ struct LearnPagerView: View {
             let width = geo.size.width
 
             HStack(spacing: 0) {
-                FlashcardsView(dictionaryStore: dictionaryStore, segmenter: segmenter)
+                FlashcardsView(dictionaryStore: dictionaryStore, segmenter: segmenter, surfaceReadingData: surfaceReadingData, kanjiReadingFallback: kanjiReadingFallback)
+                    .frame(width: width)
+                MultipleChoiceView(dictionaryStore: dictionaryStore, segmenter: segmenter)
                     .frame(width: width)
                 ClozeStudyHomeView()
+                    .frame(width: width)
+                KanaChartView()
                     .frame(width: width)
             }
             .frame(width: width, alignment: .leading)
@@ -85,7 +100,7 @@ struct LearnPagerView: View {
                 DragGesture(minimumDistance: 20)
                     .onChanged { value in
                         guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                        dragOffset = value.translation.width
+                        dragOffset = rubberBanded(value.translation.width)
                     }
                     .onEnded { value in
                         let threshold = width * 0.25
@@ -103,6 +118,11 @@ struct LearnPagerView: View {
             )
         }
         .clipped()
+        // Seed the visual index from storage on first appearance, then mirror every settle back to
+        // @AppStorage. Keeping persistence as a side effect (not the animation source) is what lets
+        // the swipe glide smoothly.
+        .onAppear { pageIndex = clampedIndex(storedPageIndex) }
+        .onChange(of: pageIndex) { _, newValue in storedPageIndex = newValue }
         .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHidden = $0 }
         .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActive = $0 }
         .overlay(alignment: .bottom) {

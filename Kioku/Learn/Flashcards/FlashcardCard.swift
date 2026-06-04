@@ -5,6 +5,7 @@ import SwiftUI
 // it falls back to the entry's first sense when the saved word has no explicit selection.
 private struct FlashcardLiveContent {
     let surface: String
+    let kanji: String?
     let kana: String?
     let meanings: [String]
 }
@@ -28,7 +29,8 @@ struct FlashcardCard: View {
     let word: SavedWord
     let dictionaryStore: DictionaryStore?
     let isTop: Bool
-    let direction: FlashcardCardDirection
+    let direction: StudyDirection
+    let japaneseForm: StudyJapaneseForm
     let preferredNoteID: UUID?
     @Binding var showBack: Bool
     @Binding var dragOffset: CGSize
@@ -122,6 +124,8 @@ struct FlashcardCard: View {
                 selectedGlosses: selectedGlosses,
                 senseRestrictions: senseRestrictions
             )
+            // Dictionary kanji headword (most common written form) for the 漢字 study form.
+            let kanji = data.entry.kanjiForms.first?.text
 
             var sensesByID: [Int64: DictionaryEntrySense] = [:]
             for sense in data.entry.senses { sensesByID[sense.senseID] = sense }
@@ -152,7 +156,7 @@ struct FlashcardCard: View {
                 append(first)
             }
 
-            return FlashcardLiveContent(surface: surface, kana: kana, meanings: meanings)
+            return FlashcardLiveContent(surface: surface, kanji: kanji, kana: kana, meanings: meanings)
         }.value
     }
 
@@ -245,53 +249,49 @@ struct FlashcardCard: View {
         }
     }
 
-    @ViewBuilder
-    private var frontFace: some View {
-        let displaySurface = displaySurfaceForCard()
-        let displayKana = displayKanaForCard(displaySurface: displaySurface)
-        VStack(alignment: .center, spacing: 10) {
-            Spacer(minLength: 0)
-            switch direction {
-            case .kanjiToKana:
-                Text(displaySurface)
-                    .font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
-            case .kanaToEnglish:
-                // Hold off rendering kanji as a fallback while the dictionary lookup is still
-                // in flight — flashing the kanji would defeat the kana → English drill.
-                if let displayKana, displayKana.isEmpty == false {
-                    Text(displayKana)
-                        .font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
-                } else if liveContent != nil {
-                    Text(displaySurface)
-                        .font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
-                }
-            case .noteToEnglish:
-                // Show the form the user saw in the source note exactly (kanji, kana, inflected
-                // — whatever the saved surface is). Drills recognition of the encountered form
-                // rather than the dictionary form.
-                Text(displaySurface)
-                    .font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
-            }
-            Spacer(minLength: 0)
+    // One face's content. The Japanese cases carry the chosen written form (原文/漢字/かな);
+    // the `answer` variant adds the kana reading beneath the headword ("inclusion of both").
+    // Defined once so the front (prompt) and back (answer) share `faceView`.
+    private enum FlashcardFaceContent {
+        case english
+        case japanesePrompt(StudyJapaneseForm)
+        case japaneseAnswer(StudyJapaneseForm)
+    }
+
+    // Maps the (direction, form) pair to the front (prompt) and back (answer) content. `.mixed` is
+    // resolved per card from the entry id so a card doesn't swap its sides between re-renders.
+    private var faces: (front: FlashcardFaceContent, back: FlashcardFaceContent) {
+        switch direction.resolved(seed: word.canonicalEntryID) {
+        case .japaneseToEnglish, .mixed:
+            return (.japanesePrompt(japaneseForm), .english)
+        case .englishToJapanese:
+            return (.english, .japaneseAnswer(japaneseForm))
         }
     }
 
+    private var frontFace: some View { faceView(faces.front) }
+    private var backFace: some View { faceView(faces.back) }
+
+    // The Japanese string for a written form, falling back to the encountered surface when the
+    // dictionary kanji headword / reading isn't available.
+    private func japaneseText(for form: StudyJapaneseForm, displaySurface: String, displayKana: String?) -> String {
+        switch form {
+        case .original: return displaySurface
+        case .kanji: return liveContent?.kanji ?? displaySurface
+        case .kana: return displayKana ?? displaySurface
+        }
+    }
+
+    // Renders one face's content, shared by both the front (prompt) and back (answer) so each
+    // direction's wording is defined once in `faces`.
     @ViewBuilder
-    private var backFace: some View {
+    private func faceView(_ content: FlashcardFaceContent) -> some View {
         let displaySurface = displaySurfaceForCard()
         let displayKana = displayKanaForCard(displaySurface: displaySurface)
         VStack(alignment: .center, spacing: 10) {
             Spacer(minLength: 0)
-            switch direction {
-            case .kanjiToKana:
-                if let kana = displayKana, kana.isEmpty == false {
-                    Text(kana).font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
-                } else if isKanaOnly(displaySurface) {
-                    Text(displaySurface).font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
-                } else {
-                    Text("—").font(.title2.weight(.semibold)).foregroundStyle(.secondary)
-                }
-            case .kanaToEnglish, .noteToEnglish:
+            switch content {
+            case .english:
                 let meanings = liveContent?.meanings ?? []
                 if meanings.isEmpty == false {
                     VStack(spacing: 8) {
@@ -304,9 +304,33 @@ struct FlashcardCard: View {
                 } else {
                     Text("—").font(.title2.weight(.semibold)).foregroundStyle(.secondary)
                 }
+            case .japanesePrompt(let form):
+                // Single line. For the kana form, hold off the kanji fallback while the reading is
+                // still loading so a kana prompt doesn't flash the kanji.
+                if form == .kana, displayKana == nil, isKanaOnly(displaySurface) == false, liveContent == nil {
+                    EmptyView()
+                } else {
+                    headword(japaneseText(for: form, displaySurface: displaySurface, displayKana: displayKana))
+                }
+            case .japaneseAnswer(let form):
+                let text = japaneseText(for: form, displaySurface: displaySurface, displayKana: displayKana)
+                headword(text)
+                // Reading beneath the headword, except when the form already IS the reading.
+                if form != .kana, let displayKana, displayKana.isEmpty == false, isKanaOnly(text) == false {
+                    Text(displayKana)
+                        .font(.title3).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
             Spacer(minLength: 0)
         }
+    }
+
+    // The large centered headword styling shared by every Japanese face.
+    private func headword(_ text: String) -> some View {
+        Text(text)
+            .font(.largeTitle.weight(.bold))
+            .multilineTextAlignment(.center)
     }
 
     // Prefers showing the form that appears in the source note to give reading context.

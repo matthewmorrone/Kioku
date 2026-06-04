@@ -100,6 +100,9 @@ def create_schema(conn):
             misc TEXT,
             field TEXT,
             dialect TEXT,
+            -- s_inf sense-level usage notes (e.g. "after the -te form of a verb",
+            -- "esp. as 持ってる"), newline-joined when a sense carries several.
+            info TEXT,
             FOREIGN KEY(entry_id) REFERENCES entries(id)
         );
 
@@ -485,10 +488,13 @@ def insert_entry(conn, entry, ent_seq):
         misc = ",".join(sense.get("misc", []) or []) or None
         field = ",".join(sense.get("field", []) or []) or None
         dialect = ",".join(sense.get("dialect", []) or []) or None
+        # s_inf notes may individually contain commas, so join with newline (never a comma)
+        # and split on newline in Swift.
+        info = "\n".join(sense.get("info", []) or []) or None
 
         cur = conn.execute(
-            "INSERT INTO senses (entry_id, order_index, pos, misc, field, dialect) VALUES (?, ?, ?, ?, ?, ?)",
-            (entry_id, s_idx, pos, misc, field, dialect),
+            "INSERT INTO senses (entry_id, order_index, pos, misc, field, dialect, info) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (entry_id, s_idx, pos, misc, field, dialect, info),
         )
         sense_id = cur.lastrowid
 

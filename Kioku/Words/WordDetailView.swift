@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 // Renders the full-screen word detail screen shown from Words list rows.
 // Major sections: title/header (furigana + lemma), definitions (all matching entries), alternate spellings, examples, components.
@@ -12,6 +13,11 @@ struct WordDetailView: View {
     let segmenter: (any TextSegmenting)?
     // Pre-computed sublattice paths from the lookup sheet. When empty, computed from the segmenter.
     var initialSublatticePaths: [[String]] = []
+    // Reading data for furigana over example sentences. Defaults to empty maps so call sites
+    // that don't have them (Flashcards, segment list) still compile and degrade to plain
+    // example text — only the Words tab threads the real Read-tab maps through.
+    var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
+    var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
 
     // Provides per-word review statistics keyed by canonicalEntryID.
     @EnvironmentObject private var reviewStore: ReviewStore
@@ -25,17 +31,71 @@ struct WordDetailView: View {
     @State private var allDisplayData: [WordDisplayData] = []
     @State private var personalNoteText: String = ""
     @State private var sentencesExpanded: Bool = false
+    @State private var relatedExpanded: Bool = false
     @State private var presentedKanjiInfo: KanjiInfo? = nil
     @State private var wordComponents: [(surface: String, gloss: String?)] = []
     @State private var kanjiInfos: [KanjiInfo] = []
+    @State private var relatedEntries: [DictionaryEntry] = []
     @State private var loanwordSources: [LoanwordSource] = []
     @State private var senseReferences: [SenseReference] = []
     @State private var showingConjugations: Bool = false
     @State private var conjugationGroups: [ConjugationGroup] = []
     @State private var sublatticePaths: [[String]] = []
+    // Retained for the lifetime of the view so on-demand word/sentence pronunciation
+    // finishes even after the tap handler returns. Reference type → @State keeps it alive.
+    @State private var speechSynthesizer = AVSpeechSynthesizer()
 
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
+
+    // Distinct part-of-speech labels across the saved entry's senses, in first-seen order,
+    // expanded to full English and title-cased — e.g. "Transitive Verb · Auxiliary Adjective".
+    // Shown as a summary line under the headword, mirroring the reference layout.
+    private var entryPOSSummary: String? {
+        guard let entry = savedDisplayData?.entry else { return nil }
+        var seen = Set<String>()
+        var labels: [String] = []
+        for sense in entry.senses {
+            guard let pos = sense.pos, pos.isEmpty == false else { continue }
+            for tag in pos.components(separatedBy: ",") where tag.isEmpty == false {
+                let label = JMdictTagExpander.expand(tag)
+                if seen.insert(label).inserted { labels.append(label) }
+            }
+        }
+        guard labels.isEmpty == false else { return nil }
+        return labels.map(Self.titleCased).joined(separator: " · ")
+    }
+
+    // Title-cases a space/hyphen-delimited POS label while leaving parenthetical detail intact.
+    private static func titleCased(_ label: String) -> String {
+        label.split(separator: " ").map { word -> String in
+            guard let first = word.first else { return String(word) }
+            return first.uppercased() + word.dropFirst()
+        }.joined(separator: " ")
+    }
+
+    // Speaks arbitrary Japanese text using the system Japanese voice. Used by the header
+    // speaker button and the per-example speaker buttons.
+    func speak(_ text: String) {
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+        speechSynthesizer.speak(utterance)
+    }
+
+    // Surfaces to highlight inside example sentences — the saved surface plus the entry's
+    // kanji/kana forms, de-duplicated and longest-first so the fullest form is highlighted
+    // rather than a one-character kana substring.
+    var exampleHighlightSurfaces: [String] {
+        var surfaces: [String] = [word.surface]
+        if let entry = savedDisplayData?.entry {
+            surfaces.append(contentsOf: entry.kanjiForms.map(\.text))
+            surfaces.append(contentsOf: entry.kanaForms.map(\.text))
+        }
+        var seen = Set<String>()
+        return surfaces
+            .filter { $0.isEmpty == false && seen.insert($0).inserted }
+            .sorted { $0.count > $1.count }
+    }
 
     // Returns true when the saved entry is flagged as a common word in JMdict priority data.
     // Checks all kanji and kana forms for ichi1/news1/spec1 priority tags.
@@ -53,6 +113,17 @@ struct WordDetailView: View {
         let posTags = entry.senses.compactMap(\.pos).flatMap { $0.components(separatedBy: ",") }
         return VerbConjugator.detectVerbClass(fromJMDictPosTags: posTags)
     }
+
+    // True when the saved entry is an i-adjective — drives the same Forms / "View Conjugations"
+    // affordances as verbs, using the adjective paradigm instead of the verb one.
+    private var isIAdjective: Bool {
+        guard let entry = savedDisplayData?.entry else { return false }
+        let posTags = entry.senses.compactMap(\.pos).flatMap { $0.components(separatedBy: ",") }
+        return VerbConjugator.isIAdjective(fromJMDictPosTags: posTags)
+    }
+
+    // Whether this entry has a conjugation paradigm to show (verb or i-adjective).
+    private var canConjugate: Bool { verbClass != nil || isIAdjective }
 
     // Static set of known grammaticalized auxiliary verb surfaces — hoisted to avoid allocating on every call.
     private static let auxiliaryComponents: Set<String> = [
@@ -90,12 +161,69 @@ struct WordDetailView: View {
                 }
                 return entry?.firstEverydayKanji?.text
             }()
-            SegmentLookupSheetHeader(
-                surface: word.surface,
-                reading: surfaceReading,
-                lemma: lemma
-            )
-            .frame(maxWidth: .infinity)
+            VStack(spacing: 10) {
+                SegmentLookupSheetHeader(
+                    surface: word.surface,
+                    reading: surfaceReading,
+                    lemma: lemma
+                )
+                .frame(maxWidth: .infinity)
+                // COMMON badge — outlined pill in the top-trailing corner, matching the
+                // reference. Driven by the same ichi1/news1/spec1 priority heuristic.
+                .overlay(alignment: .topTrailing) {
+                    if isCommonWord {
+                        Text("COMMON")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .overlay(
+                                Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1)
+                            )
+                            .padding(.trailing, 16)
+                    }
+                }
+
+                // POS summary + speaker + "View Conjugations" — a single row beneath the
+                // headword. Speaker pronounces the word; the conjugations link opens the
+                // existing sheet for conjugable parts of speech.
+                HStack(spacing: 10) {
+                    Button {
+                        speak(word.surface)
+                    } label: {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.subheadline)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+
+                    if let posSummary = entryPOSSummary {
+                        Text(posSummary)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if canConjugate {
+                        Button {
+                            showingConjugations = true
+                        } label: {
+                            HStack(spacing: 2) {
+                                Text("View Conjugations")
+                                    .font(.subheadline)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+                        .fixedSize()
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
             .padding(.top, 24)
             .padding(.bottom, 16)
 
@@ -120,8 +248,12 @@ struct WordDetailView: View {
                 }
                 if sortedData.isEmpty == false {
                     Section("Definition") {
-                        if wordComponents.isEmpty == false {
-                            // Compound word: one card per component showing that component's definition.
+                        // Prefer the word's own definition when it has one; fall back to the
+                        // component decomposition only when no entry has senses. The breakdown
+                        // still appears in the separate Components section regardless.
+                        let hasDefinition = sortedData.contains { $0.entry.senses.isEmpty == false }
+                        if wordComponents.isEmpty == false && hasDefinition == false {
+                            // No definition for the whole word — show its component breakdown.
                             ForEach(wordComponents, id: \.surface) { component in
                                 VStack(alignment: .leading, spacing: 0) {
                                     // Component label row with optional auxiliary badge.
@@ -193,10 +325,11 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Forms section — shown for verbs only. Displays te-form / negative / past inline,
-                // with an "All conjugations" row that opens ConjugationSheetView.
-                if let vc = verbClass {
-                    let keyForms = VerbConjugator.keyForms(for: word.surface, verbClass: vc)
+                // Forms section — shown for verbs and i-adjectives. Displays te-form / negative /
+                // past inline, with an "All conjugations" row that opens ConjugationSheetView.
+                if canConjugate {
+                    let keyForms = verbClass.map { VerbConjugator.keyForms(for: word.surface, verbClass: $0) }
+                        ?? VerbConjugator.adjectiveKeyForms(for: word.surface)
                     if keyForms.isEmpty == false {
                         Section("Forms") {
                             ForEach(keyForms, id: \.label) { form in
@@ -252,14 +385,16 @@ struct WordDetailView: View {
                     let shown = sentencesExpanded ? unrouted : Array(unrouted.prefix(1))
                     Section("Examples") {
                         ForEach(shown, id: \.japanese) { pair in
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(pair.japanese)
-                                    .font(.subheadline)
-                                Text(pair.english)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 2)
+                            ExampleSentenceView(
+                                japanese: pair.japanese,
+                                english: pair.english,
+                                highlightSurfaces: exampleHighlightSurfaces,
+                                segmenter: segmenter,
+                                surfaceReadingData: surfaceReadingData,
+                                kanjiReadingFallback: kanjiReadingFallback,
+                                textSize: 17,
+                                onSpeak: { speak($0) }
+                            )
                         }
                         if unrouted.count > 1 {
                             Button(sentencesExpanded ? "Show fewer" : "Show \(unrouted.count - 1) more…") {
@@ -301,6 +436,23 @@ struct WordDetailView: View {
                                 kanjiRowContent(info)
                             }
                             .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // Related words — kanji-family vocabulary sharing the headword's primary kanji.
+                if relatedEntries.isEmpty == false {
+                    let shownRelated = relatedExpanded ? relatedEntries : Array(relatedEntries.prefix(5))
+                    Section("Related Words") {
+                        ForEach(shownRelated, id: \.entryId) { entry in
+                            relatedWordRow(entry)
+                        }
+                        if relatedEntries.count > 5 {
+                            Button(relatedExpanded ? "Show fewer" : "Show \(relatedEntries.count - 5) more…") {
+                                relatedExpanded.toggle()
+                            }
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
                         }
                     }
                 }
@@ -409,42 +561,34 @@ struct WordDetailView: View {
                         }
                 }
 
-                // Save date, source notes, and word list membership — always shown for context.
-                Section("Saved") {
-                    // Hidden for now — the save timestamp adds clutter without much value.
-                    // HStack {
-                    //     Text("Added")
-                    //         .foregroundStyle(.secondary)
-                    //     Spacer()
-                    //     Text(word.savedAt, style: .date)
-                    //         .foregroundStyle(.secondary)
-                    // }
-                    // .font(.subheadline)
-
-                    // Source notes (songs) this word was saved from — many-to-many relationship.
-                    let sourceNotes = word.sourceNoteIDs.compactMap { notesStore.note(withID: $0) }
-                        .sorted { $0.title < $1.title }
-                    ForEach(sourceNotes, id: \.id) { note in
-                        Label(note.title, systemImage: "doc.text")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    // Resolve list objects from IDs so the user sees human-readable labels keyed by stable UUID.
-                    let memberLists = wordListsStore.lists
-                        .filter { word.wordListIDs.contains($0.id) }
-                        .sorted { $0.name < $1.name }
-                    ForEach(memberLists, id: \.id) { list in
-                        Label(list.name, systemImage: "list.bullet")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                // Source notes (songs) this word was saved from — many-to-many relationship.
+                let sourceNotes = word.sourceNoteIDs.compactMap { notesStore.note(withID: $0) }
+                    .sorted { $0.title < $1.title }
+                // Resolve list objects from IDs so the user sees human-readable labels keyed by stable UUID.
+                let memberLists = wordListsStore.lists
+                    .filter { word.wordListIDs.contains($0.id) }
+                    .sorted { $0.name < $1.name }
+                // Only show the "Saved" section when the word actually belongs to a source note
+                // or a list — otherwise the header reads "Saved" over nothing.
+                if sourceNotes.isEmpty == false || memberLists.isEmpty == false {
+                    Section("Saved") {
+                        ForEach(sourceNotes, id: \.id) { note in
+                            Label(note.title, systemImage: "doc.text")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(memberLists, id: \.id) { list in
+                            Label(list.name, systemImage: "list.bullet")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
             }
             .listStyle(.insetGrouped)
             .sheet(isPresented: $showingConjugations) {
-                if verbClass != nil {
+                if canConjugate {
                     ConjugationSheetView(
                         dictionaryForm: word.surface,
                         groups: conjugationGroups,
@@ -567,6 +711,23 @@ struct WordDetailView: View {
         }.value
         kanjiInfos = infos
 
+        // Related words — other entries sharing the headword's primary (first) kanji, ranked
+        // by frequency. Approximates the reference's kanji-family "Related Words" list.
+        // Excludes the saved entry and any entry whose kanji form is exactly the saved surface.
+        if let primaryKanji = uniqueKanji.first {
+            let savedID = word.canonicalEntryID
+            let savedSurface = word.surface
+            let related = await Task { @MainActor in
+                (try? store.searchEntriesContainingKanji(literal: primaryKanji, limit: 40)) ?? []
+            }.value
+            relatedEntries = Array(
+                related
+                    .filter { $0.entryId != savedID }
+                    .filter { entry in entry.kanjiForms.contains { $0.text == savedSurface } == false }
+                    .prefix(30)
+            )
+        }
+
         // Fetch cross-references, antonyms, and loanword origins for the saved entry.
         let savedID = word.canonicalEntryID
         let sources = await Task { @MainActor in
@@ -579,10 +740,12 @@ struct WordDetailView: View {
         }.value
         senseReferences = refs
 
-        // Compute conjugation groups if this is a verb — conjugates against the surface the user saved
-        // so kana-only saves (e.g., じゃない) don't get promoted to a canonical kanji form (じゃ無い).
+        // Compute conjugation groups for verbs or i-adjectives — conjugates against the surface the
+        // user saved so kana-only saves (e.g., じゃない) don't get promoted to a canonical kanji form.
         if let vc = verbClass {
             conjugationGroups = VerbConjugator.conjugationGroups(for: word.surface, verbClass: vc)
+        } else if isIAdjective {
+            conjugationGroups = VerbConjugator.adjectiveConjugationGroups(for: word.surface)
         }
     }
 
@@ -645,12 +808,56 @@ struct WordDetailView: View {
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
     }
 
+    // One related-word row: POS label, surface + reading, and the leading glosses — the same
+    // at-a-glance information the reference shows for each related entry.
+    @ViewBuilder
+    private func relatedWordRow(_ entry: DictionaryEntry) -> some View {
+        let surface = entry.firstEverydayKanji?.text ?? entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? ""
+        let reading = entry.kanaForms.first?.text
+        let firstSense = entry.senses.first
+        let posLabel: String? = {
+            guard let pos = firstSense?.pos, pos.isEmpty == false else { return nil }
+            return pos.components(separatedBy: ",")
+                .filter { $0.isEmpty == false }
+                .map { Self.titleCased(JMdictTagExpander.expand($0)) }
+                .joined(separator: " · ")
+        }()
+        let glossText = (firstSense?.glosses ?? []).prefix(3).joined(separator: ", ")
+
+        VStack(alignment: .leading, spacing: 2) {
+            if let posLabel {
+                Text(posLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(surface)
+                    .font(.body.weight(.medium))
+                if let reading, reading != surface {
+                    Text(reading)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+            }
+            if glossText.isEmpty == false {
+                Text(glossText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
     // Compact tappable row content for one kanji character — extracted so the Kanji section
     // can wrap it in a Button without duplicating the layout.
     @ViewBuilder
     private func kanjiRowContent(_ info: KanjiInfo) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            // Center the large glyph against the meanings + metadata block (the first two
+            // rows) rather than baseline-aligning it to the meanings row alone.
+            HStack(alignment: .center, spacing: 10) {
                 Text(info.literal)
                     .font(.system(size: 28, weight: .medium))
 

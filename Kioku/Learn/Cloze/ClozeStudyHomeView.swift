@@ -14,7 +14,11 @@ struct ClozeStudyHomeView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            LearnHomeForm(
+                startTitle: "Start Cloze",
+                startEnabled: selectedNoteID != nil,
+                onStart: { startCloze() }
+            ) {
                 Section {
                     Picker("Order", selection: $mode) {
                         ForEach(ClozeMode.allCases) { m in
@@ -49,31 +53,10 @@ struct ClozeStudyHomeView: View {
                 } header: {
                     Text("Source")
                 }
-
-                Section {
-                    Button {
-                        guard let id = selectedNoteID else { return }
-                        activeNote = notesStore.notes.first { $0.id == id }
-                    } label: {
-                        Label("Start Cloze", systemImage: "play.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(selectedNoteID == nil)
-                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "rectangle.and.pencil.and.ellipsis")
-                        Text("Cloze")
-                    }
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Cloze")
-                }
+                LearnHomeTitle(title: "Cloze", systemImage: "rectangle.and.pencil.and.ellipsis")
             }
             .navigationDestination(item: $activeNote) { note in
                 ClozeStudyView(
@@ -90,5 +73,11 @@ struct ClozeStudyHomeView: View {
                 }
             }
         }
+    }
+
+    // Resolves the selected note and pushes into the cloze session.
+    private func startCloze() {
+        guard let id = selectedNoteID else { return }
+        activeNote = notesStore.notes.first { $0.id == id }
     }
 }

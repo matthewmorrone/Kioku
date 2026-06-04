@@ -1,14 +1,8 @@
 import SwiftUI
 
-// Which side of each card is the prompt vs. the answer.
-enum FlashcardCardDirection: String, CaseIterable, Identifiable {
-    // Front shows the form the user encountered in the source note (saved surface, possibly
-    // inflected) — useful for reading-comprehension drill.
-    case noteToEnglish = "原文 → English"
-    case kanaToEnglish = "かな → English"
-    case kanjiToKana = "漢字 → かな"
-    var id: String { rawValue }
-}
+// Direction (which side is the prompt) and Japanese form (原文 / 漢字 / かな) are the shared
+// `StudyDirection` / `StudyJapaneseForm` axes — Flashcards and Multiple Choice present the
+// identical control. See `FlashcardCard` for how the pair maps to the front/back faces.
 
 // Which slice of the saved-word collection feeds the next flashcard session.
 enum FlashcardScope: String, CaseIterable, Identifiable {
@@ -30,6 +24,9 @@ enum FlashcardScope: String, CaseIterable, Identifiable {
 struct FlashcardsView: View {
     let dictionaryStore: DictionaryStore?
     let segmenter: (any TextSegmenting)?
+    // Read-tab reading maps, forwarded to WordDetailView for example-sentence furigana.
+    var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
+    var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
@@ -51,7 +48,10 @@ struct FlashcardsView: View {
     @State private var reviewedCount: Int = 0
 
     @State private var showEndSessionConfirm: Bool = false
-    @State private var direction: FlashcardCardDirection = .kanaToEnglish
+    @State private var direction: StudyDirection = .japaneseToEnglish
+    @State private var japaneseForm: StudyJapaneseForm = .kanji
+    // Cap on how many cards a session runs. 0 (blank field) means "all in selection".
+    @State private var cardCount: Int = 20
     @State private var scope: FlashcardScope = .all
     @State private var selectedNoteIDs: Set<UUID> = []
     @State private var detailWord: SavedWord?
@@ -80,16 +80,7 @@ struct FlashcardsView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "rectangle.on.rectangle.angled")
-                        Text("Flashcards")
-                    }
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Flashcards")
-                }
+                LearnHomeTitle(title: "Flashcards", systemImage: "rectangle.on.rectangle.angled")
                 ToolbarItem(placement: .topBarLeading) {
                     if session.isEmpty == false {
                         Button { showEndSessionConfirm = true } label: {
@@ -122,7 +113,7 @@ struct FlashcardsView: View {
             }
         }
         .sheet(item: $detailWord) { word in
-            WordDetailView(word: word, reading: nil, dictionaryStore: dictionaryStore, segmenter: segmenter)
+            WordDetailView(word: word, reading: nil, dictionaryStore: dictionaryStore, segmenter: segmenter, surfaceReadingData: surfaceReadingData, kanjiReadingFallback: kanjiReadingFallback)
                 .environmentObject(wordsStore)
                 .presentationDetents([.large])
         }
@@ -164,6 +155,7 @@ struct FlashcardsView: View {
                     dictionaryStore: dictionaryStore,
                     isTop: word.canonicalEntryID == topID,
                     direction: direction,
+                    japaneseForm: japaneseForm,
                     preferredNoteID: selectedNoteIDs.count == 1 ? selectedNoteIDs.first : nil,
                     showBack: $showBack,
                     dragOffset: $dragOffset,
@@ -261,16 +253,26 @@ struct FlashcardsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // Scope / direction / shuffle pickers and session start button.
+    // Note / direction / scope / shuffle pickers and session start button, on the shared scaffold.
     private var reviewHome: some View {
-        Form {
+        let matchingCount = wordsMatchingSelection().count
+        return LearnHomeForm(
+            startTitle: "Start Flashcards",
+            startEnabled: matchingCount > 0,
+            onStart: { startSessionFromHome() }
+        ) {
             Section {
                 FlashcardNotePicker(selectedNoteIDs: $selectedNoteIDs)
             }
 
             Section {
                 Picker("Direction", selection: $direction) {
-                    ForEach(FlashcardCardDirection.allCases) { d in Text(d.rawValue).tag(d) }
+                    ForEach(StudyDirection.allCases) { d in Text(d.rawValue).tag(d) }
+                }
+                .pickerStyle(.menu)
+
+                Picker("Japanese", selection: $japaneseForm) {
+                    ForEach(StudyJapaneseForm.allCases) { f in Text(f.rawValue).tag(f) }
                 }
                 .pickerStyle(.segmented)
             }
@@ -285,8 +287,10 @@ struct FlashcardsView: View {
             }
 
             Section {
-                let matchingCount = wordsMatchingSelection().count
+                LearnCountField(label: "Cards", count: $cardCount)
+            }
 
+            Section {
                 Button {
                     shuffled.toggle()
                 } label: {
@@ -308,12 +312,6 @@ struct FlashcardsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 6)
-
-                Button { startSessionFromHome() } label: {
-                    Label("Start Flashcards", systemImage: "play.fill").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(matchingCount == 0)
             }
         }
     }
@@ -327,6 +325,9 @@ struct FlashcardsView: View {
         sessionCorrect = 0; sessionAgain = 0; reviewedCount = 0
         session = sessionSource
         if shuffled { session.shuffle() }
+        // A positive cardCount caps the deck (after the shuffle, so a capped session is a random
+        // subset); 0 / blank means run every card in the selection.
+        if cardCount > 0 { session = Array(session.prefix(cardCount)) }
         sessionTotalCount = session.count
         index = 0; showBack = false; dragOffset = .zero
     }
@@ -407,7 +408,8 @@ struct FlashcardsView: View {
 // Multiselect dropdown scoping the session to saved words from one or more notes.
 // An empty selection ("None") means no note filter — all saved words are eligible.
 // Only notes that contain at least one saved word are listed.
-private struct FlashcardNotePicker: View {
+// Internal (not private) so the multiple-choice study mode can reuse the same picker.
+struct FlashcardNotePicker: View {
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var wordsStore: WordsStore
     @Binding var selectedNoteIDs: Set<UUID>

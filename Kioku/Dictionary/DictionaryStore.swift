@@ -773,7 +773,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     // Fetches senses and ordered glosses for one entry, including misc, field, and dialect tags.
     private func fetchSenses(entryID: Int64) throws -> [DictionaryEntrySense] {
         let sql = """
-        SELECT s.id, s.pos, s.misc, s.field, s.dialect, g.gloss
+        SELECT s.id, s.pos, s.misc, s.field, s.dialect, s.info, g.gloss
         FROM senses s
         LEFT JOIN glosses g ON g.sense_id = s.id
         WHERE s.entry_id = ?1
@@ -796,6 +796,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
         var currentMisc: String?
         var currentField: String?
         var currentDialect: String?
+        var currentInfo: String?
         var currentGlosses: [String] = []
 
         var stepCode = sqlite3_step(statement)
@@ -806,7 +807,8 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             let misc = sqlite3_column_text(statement, 2).map { String(cString: $0) }
             let field = sqlite3_column_text(statement, 3).map { String(cString: $0) }
             let dialect = sqlite3_column_text(statement, 4).map { String(cString: $0) }
-            let gloss = sqlite3_column_text(statement, 5).map { String(cString: $0) }
+            let info = sqlite3_column_text(statement, 5).map { String(cString: $0) }
+            let gloss = sqlite3_column_text(statement, 6).map { String(cString: $0) }
 
             if currentSenseID != senseID {
                 // Flush the previous sense before starting the next grouped row set.
@@ -818,6 +820,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
                         misc: currentMisc,
                         field: currentField,
                         dialect: currentDialect,
+                        info: currentInfo,
                         glosses: currentGlosses,
                         applicableKanji: r?.kanji ?? [],
                         applicableReadings: r?.readings ?? []
@@ -828,6 +831,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
                 currentMisc = misc
                 currentField = field
                 currentDialect = dialect
+                currentInfo = info
                 currentGlosses = []
             }
 
@@ -851,6 +855,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
                 misc: currentMisc,
                 field: currentField,
                 dialect: currentDialect,
+                info: currentInfo,
                 glosses: currentGlosses,
                 applicableKanji: r?.kanji ?? [],
                 applicableReadings: r?.readings ?? []
