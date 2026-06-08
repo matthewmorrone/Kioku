@@ -108,52 +108,40 @@ extension ReadView {
         furiganaByLocation: [Int: String] = [:],
         furiganaLengthByLocation: [Int: Int] = [:]
     ) -> [SegmentRange] {
-        let effectiveText = sourceText ?? text
-        return edges.compactMap { edge in
-            let nsRange = NSRange(edge.start..<edge.end, in: effectiveText)
-            guard nsRange.location != NSNotFound, nsRange.length > 0 else {
-                return nil
-            }
-
-            // Collect all furigana annotations whose absolute range falls within this segment,
-            // then rebase them to surface-relative offsets.
-            let segStart = nsRange.location
-            let segEnd = nsRange.location + nsRange.length
-            let annotations: [FuriganaAnnotation] = furiganaByLocation.compactMap { location, reading in
-                guard let length = furiganaLengthByLocation[location],
-                      location >= segStart, location + length <= segEnd else { return nil }
-                let relativeStart = location - segStart
-                return FuriganaAnnotation(start: relativeStart, end: relativeStart + length, reading: reading)
-            }.sorted { $0.start < $1.start }
-
-            return SegmentRange(
-                surface: edge.surface,
-                furigana: annotations.isEmpty ? nil : annotations
-            )
-        }
+        SegmentRange.ranges(
+            from: edges,
+            in: sourceText ?? text,
+            furiganaByLocation: furiganaByLocation,
+            furiganaLengthByLocation: furiganaLengthByLocation
+        )
     }
 
     // Rebuilds segmentation edges from persisted order-only segments by walking the source
     // text with a cursor equal to the cumulative UTF-16 surface length.
     // Returns nil if concatenated surfaces do not match the source text exactly.
     func edgesFromSegmentRanges(_ segments: [SegmentRange], in sourceText: String) -> [LatticeEdge]? {
-        let utf16TotalLength = sourceText.utf16.count
+        let utf16View = sourceText.utf16
+        let utf16TotalLength = utf16View.count
         guard utf16TotalLength > 0, segments.isEmpty == false else {
             return nil
         }
 
         var rebuiltEdges: [LatticeEdge] = []
-        var cursor = 0
+        rebuiltEdges.reserveCapacity(segments.count)
+        // Walk ONE index forward by each segment's UTF-16 length. Advancing within the UTF-16 view is
+        // O(length), so the whole pass is O(n). The previous code recomputed
+        // String.Index(utf16Offset:in:) from the string start each iteration — O(offset) per call,
+        // O(n²) overall — which blocked the main thread on large notes' synchronous fast-path restore.
+        var startIndex = sourceText.startIndex
+        var consumed = 0
         for segmentRange in segments {
             let surfaceLength = segmentRange.surface.utf16.count
             guard surfaceLength > 0 else { continue }
-            let startOffset = cursor
-            let endOffset = cursor + surfaceLength
-            guard endOffset <= utf16TotalLength else { return nil }
-
-            let startIndex = String.Index(utf16Offset: startOffset, in: sourceText)
-            let endIndex = String.Index(utf16Offset: endOffset, in: sourceText)
-            guard startIndex < endIndex else { return nil }
+            guard consumed + surfaceLength <= utf16TotalLength,
+                  let endIndex = utf16View.index(startIndex, offsetBy: surfaceLength, limitedBy: sourceText.endIndex),
+                  startIndex < endIndex else {
+                return nil
+            }
 
             let actualSurface = String(sourceText[startIndex..<endIndex])
             guard actualSurface == segmentRange.surface else { return nil }
@@ -165,10 +153,11 @@ extension ReadView {
                     surface: actualSurface
                 )
             )
-            cursor = endOffset
+            startIndex = endIndex
+            consumed += surfaceLength
         }
 
-        guard cursor == utf16TotalLength else { return nil }
+        guard consumed == utf16TotalLength else { return nil }
         return rebuiltEdges.isEmpty ? nil : rebuiltEdges
     }
 
@@ -210,19 +199,24 @@ extension ReadView {
         let filtered = segments.filter { $0.surface.isEmpty == false }
         guard filtered.isEmpty == false else { return nil }
 
-        var cursor = 0
+        // Walk one index forward per segment (O(n) total) rather than recomputing a UTF-16 offset
+        // index from the string start each iteration (O(n²)) — the latter stalled the synchronous
+        // fast-path load on large notes.
+        let utf16View = sourceText.utf16
+        var startIndex = sourceText.startIndex
+        var consumed = 0
         for segmentRange in filtered {
             let surfaceLength = segmentRange.surface.utf16.count
-            guard cursor + surfaceLength <= utf16TotalLength else { return nil }
-            let startIndex = String.Index(utf16Offset: cursor, in: sourceText)
-            let endIndex = String.Index(utf16Offset: cursor + surfaceLength, in: sourceText)
-            guard startIndex < endIndex,
+            guard consumed + surfaceLength <= utf16TotalLength,
+                  let endIndex = utf16View.index(startIndex, offsetBy: surfaceLength, limitedBy: sourceText.endIndex),
+                  startIndex < endIndex,
                   String(sourceText[startIndex..<endIndex]) == segmentRange.surface else {
                 return nil
             }
-            cursor += surfaceLength
+            startIndex = endIndex
+            consumed += surfaceLength
         }
-        guard cursor == utf16TotalLength else { return nil }
+        guard consumed == utf16TotalLength else { return nil }
 
         return filtered
     }

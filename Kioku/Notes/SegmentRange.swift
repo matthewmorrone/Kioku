@@ -4,7 +4,7 @@ import Foundation
 // segment.surface values in array order must equal the note's content. This replaces
 // start/end offsets so that text edits preserve customizations in regions whose surfaces
 // still match the new content (see reconcileSegments).
-struct SegmentRange: Codable, Equatable, Hashable {
+nonisolated struct SegmentRange: Codable, Equatable, Hashable {
     static let currentSchemaVersion = 2
 
     var surface: String

@@ -32,6 +32,17 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     ]
     private var boundaryCharacters: Set<Character> { Self.boundaryCharacters }
 
+    // Characters that can never begin a Japanese word and so must never begin a segment: small kana
+    // (ya-row, a-row, wa, small ka/ke) in both hiragana and katakana, plus the prolonged sound mark
+    // (ー / halfwidth ｰ). When the greedy walk strands one of these at a segment start it is absorbed
+    // into the preceding segment. Small tsu (っ/ッ) is handled separately in the selection loop
+    // because って/った are legitimate casual segment heads.
+    static let neverInitialKana: Set<Character> = [
+        "ぁ", "ぃ", "ぅ", "ぇ", "ぉ", "ゃ", "ゅ", "ょ", "ゎ", "ゕ", "ゖ",
+        "ァ", "ィ", "ゥ", "ェ", "ォ", "ャ", "ュ", "ョ", "ヮ", "ヵ", "ヶ",
+        "ー", "ｰ"
+    ]
+
     // Stores trie dependency used for prefix lookup when constructing lattices.
     init(
         trie: DictionaryTrie,
@@ -317,6 +328,36 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                         end: nextIndex,
                         surface: fallbackSurface
                     )
+                )
+                index = nextIndex
+            }
+
+            // Absorb a bound character that can never begin a word into the segment just selected,
+            // so no segment starts with an orphaned glyph. Two classes:
+            //  • Small kana (ゃゅょ, ぁぃぅぇぉ, ゎ, ゕゖ + katakana) and the prolonged sound mark (ー):
+            //    categorically never word-initial — always absorb.
+            //  • Small tsu (っ/ッ): a sokuon, also bound, but って/った are legitimate casual segment
+            //    heads — so absorb only when the tsu is NOT followed by kana (end-of-text / boundary).
+            // A genuinely line-initial bound char (previous token is a boundary) is left alone.
+            while index < text.endIndex,
+                  let last = selectedEdges.last,
+                  !(last.surface.count == 1 && (boundaryCharacters.contains(last.surface.first!) || isLineBreakCharacter(last.surface.first!))) {
+                let character = text[index]
+                let isSmallTsu = (character == "っ" || character == "ッ")
+                if isSmallTsu {
+                    let afterTsu = text.index(after: index)
+                    let followedByKana = afterTsu < text.endIndex
+                        && boundaryCharacters.contains(text[afterTsu]) == false
+                        && isLineBreakCharacter(text[afterTsu]) == false
+                        && ScriptClassifier.isPureKana(String(text[afterTsu]))
+                    if followedByKana { break }
+                } else if Self.neverInitialKana.contains(character) == false {
+                    break
+                }
+                let nextIndex = text.index(after: index)
+                selectedEdges.removeLast()
+                selectedEdges.append(
+                    LatticeEdge(start: last.start, end: nextIndex, surface: String(text[last.start..<nextIndex]))
                 )
                 index = nextIndex
             }
