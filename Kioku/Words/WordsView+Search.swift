@@ -35,6 +35,62 @@ extension WordsView {
         }
     }
 
+    // Live dictionary-search filter/sort control. Shown in the search bar's trailing slot while a
+    // query is active (replacing the note/list funnel, which only applies to the saved/history
+    // lists). Drives `filteredSearchResults` via the same @State the helpers below read/write.
+    // The label uses the filled funnel when any control is narrowing/reordering so the active
+    // state is glanceable, matching the note/list funnel's affordance.
+    var dictionarySearchFilterMenu: some View {
+        Menu {
+            Picker("Sort", selection: $searchSortMode) {
+                ForEach(DictionarySearchSortMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+
+            Divider()
+
+            Toggle(isOn: $searchCommonWordsOnly) {
+                Label("Common Words Only", systemImage: "star")
+            }
+
+            let partsOfSpeech = availableSearchPartsOfSpeech
+            if partsOfSpeech.isEmpty == false {
+                Menu {
+                    ForEach(partsOfSpeech, id: \.self) { label in
+                        Button {
+                            toggleSearchPartOfSpeech(label)
+                        } label: {
+                            if searchSelectedPartsOfSpeech.contains(label) {
+                                Label(label, systemImage: "checkmark")
+                            } else {
+                                Text(label)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Part of Speech: \(searchPartOfSpeechSummary)", systemImage: "textformat.abc")
+                }
+            }
+
+            if hasActiveSearchControls {
+                Divider()
+                Button(role: .destructive) {
+                    resetSearchControls()
+                } label: {
+                    Label("Reset Filters", systemImage: "arrow.counterclockwise")
+                }
+            }
+        } label: {
+            Image(systemName: hasActiveSearchControls
+                ? "line.3.horizontal.decrease.circle.fill"
+                : "line.3.horizontal.decrease.circle")
+                .font(.system(size: 22))
+                .foregroundStyle(hasActiveSearchControls ? Color.accentColor : Color.secondary)
+        }
+        .accessibilityLabel("Filter Search Results")
+    }
+
     // MARK: - Search helpers
 
     // Returns available POS labels from the current raw search result set.

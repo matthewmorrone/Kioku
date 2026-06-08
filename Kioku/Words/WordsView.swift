@@ -59,6 +59,8 @@ struct WordsView: View {
     @State var isBatchRemoveHistoryConfirmPresented = false
     @State var isBatchListSheetPresented = false
     @State var isCSVImportPresented = false
+    @State var isSubtitleImportPresented = false
+    @State var isSubtitleSearchPresented = false
     @State var isBrowseFrequencyPresented = false
     @State var isSentenceSearchPresented = false
     @State var isRadicalInputPresented = false
@@ -197,6 +199,32 @@ struct WordsView: View {
                     .presentationDragIndicator(.visible)
                     .interactiveDismissDisabled()
             }
+            .sheet(isPresented: $isSubtitleImportPresented) {
+                SubtitleImportView(
+                    dictionaryStore: dictionaryStore,
+                    segmenter: segmenter,
+                    surfaceReadingData: surfaceReadingData,
+                    kanjiReadingFallback: kanjiReadingFallback
+                )
+                    .environmentObject(wordsStore)
+                    .environmentObject(wordListsStore)
+                    .environmentObject(notesStore)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $isSubtitleSearchPresented) {
+                SubtitleSearchView(
+                    dictionaryStore: dictionaryStore,
+                    segmenter: segmenter,
+                    surfaceReadingData: surfaceReadingData,
+                    kanjiReadingFallback: kanjiReadingFallback
+                )
+                    .environmentObject(wordsStore)
+                    .environmentObject(wordListsStore)
+                    .environmentObject(notesStore)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $isHandwritingPresented) {
                 HandwritingInputView(onSelectCharacter: handleHandwritingSelect)
                     .presentationDetents([.large])
@@ -318,7 +346,17 @@ struct WordsView: View {
                 Button {
                     isCSVImportPresented = true
                 } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
+                    Label("Import CSV", systemImage: "square.and.arrow.down")
+                }
+                Button {
+                    isSubtitleImportPresented = true
+                } label: {
+                    Label("Import Subtitles", systemImage: "captions.bubble")
+                }
+                Button {
+                    isSubtitleSearchPresented = true
+                } label: {
+                    Label("Search Subtitles Online", systemImage: "magnifyingglass.circle")
                 }
 
                 // Kanji-discovery entry points. These four destination views + their
@@ -429,20 +467,26 @@ struct WordsView: View {
             .padding(.vertical, 10)
             .background(Color(.secondarySystemBackground), in: Capsule())
 
-            // Filter sheet entrypoint sits outside the search capsule so the active-filter
-            // pill-fill state reads as separate UI. Icon flips to its filled variant when
-            // any note/list filter is on.
-            Button {
-                isFilterSheetPresented = true
-            } label: {
-                Image(systemName: isFilterActive
-                    ? "line.3.horizontal.decrease.circle.fill"
-                    : "line.3.horizontal.decrease.circle")
-                    .font(.system(size: 22))
-                    .foregroundStyle(isFilterActive ? Color.accentColor : Color.secondary)
+            // Trailing filter control. Context-aware: while a dictionary query is active it
+            // exposes the live search sort/filter menu (note/list scopes don't apply to
+            // dictionary results); otherwise it's the note/list filter sheet for the
+            // saved/history lists. One slot, two meanings — both use the funnel idiom and
+            // flip to the filled variant when their respective filters are active.
+            if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                dictionarySearchFilterMenu
+            } else {
+                Button {
+                    isFilterSheetPresented = true
+                } label: {
+                    Image(systemName: isFilterActive
+                        ? "line.3.horizontal.decrease.circle.fill"
+                        : "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 22))
+                        .foregroundStyle(isFilterActive ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Filter by Note or List")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Filter by Note or List")
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -470,7 +514,11 @@ struct WordsView: View {
                 // one row per token rather than chasing a literal dictionary lookup.
                 parsedSegmentsResultsSection
             } else {
-                ForEach(searchResults, id: \.entryId) { entry in
+                // filteredSearchResults applies the live sort + common-only + POS controls
+                // (WordsView+Search.swift) on top of the raw `searchResults` the fan-out search
+                // populates. With no controls active it returns the set unchanged, so the default
+                // experience is identical to rendering `searchResults` directly.
+                ForEach(filteredSearchResults, id: \.entryId) { entry in
                     wordRow(
                         entryID: entry.entryId,
                         surface: entry.primarySearchSurface,
@@ -711,6 +759,9 @@ struct WordsView: View {
             case .success(let merged):
                 searchResults = merged
                 searchError = nil
+                // Drop any POS selections that no longer appear in the fresh result set so a
+                // stale filter from a prior query can't silently hide every new hit.
+                pruneUnavailableSearchPartsOfSpeech()
             case .failure(let error):
                 searchResults = []
                 searchError = String(describing: error)
