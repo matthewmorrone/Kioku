@@ -36,15 +36,49 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 - [ ] Ruby persistent overhang spacing on the left edge
 - [ ] Distribute spacing better for multikanji ruby headwords
 - [x] Combining or splitting words: save button state not refreshed after merge/split
-- [ ] Clicking the star button doesn't always trigger bookmarking (bookmark button works)
-- [ ] Typing freely in English in the paste area is super laggy
+- [x] Clicking the star button doesn't always trigger bookmarking (bookmark button works) —
+      Done 2026-06-04. The lookup sheet's star (`saveButton` → `sheetSaveToggle`) guarded on
+      `SegmentLookupSheet.shared.currentSheetDictionaryEntry`, which is resolved *asynchronously*
+      after the sheet presents (so the open animation isn't blocked by SQL). Tapping during that
+      window hit a nil entry and silently no-op'd — intermittent by nature. Fix: fall back to the
+      synchronous `resolvedDictionaryEntryForCurrentSelectedSegment()` when the async entry hasn't
+      landed (`?? `), mirroring the sibling `sheetOpenWordDetail` closure
+      (`ReadView+Segmentation.swift`). The async entry stays preferred (it's reading-disambiguated
+      for homographs).
+- [x] Typing freely in English in the paste area is super laggy — Done 2026-06-04. ReadView keeps
+      the read-only `KiokuCoreTextRendererView` mounted behind the editable `RichTextEditor` (for
+      instant edit↔view toggles), hidden via `.opacity(0)` in edit mode. But it stayed in the view
+      tree, so SwiftUI called its `updateUIView` on every keystroke, and its typography fingerprint
+      includes the full `text` — so each character triggered a complete off-screen CoreText
+      re-typeset of the whole note. Added an `isActive` param (default true); `updateUIView`
+      early-returns when inactive, and the call site passes `isActive: isEditMode == false`. The
+      renderer keeps its last view-mode content and rebuilds once when editing ends. (`RichTextEditor`
+      itself already guarded correctly — `lastRenderedText` is synced in `textViewDidChange` before
+      `updateUIView` runs.)
 - [ ] **Favorited word not highlighted when favorited more than once in one note** — e.g.
       なびかせて (lemma 靡かす/靡かせる) is favorited but shows no favorite highlight (glow/star)
       in Read view. Suspected cause: the **same word/surface favorited multiple times within
       a single note** — the duplicate membership breaks the highlight-matching path. Relates
-      to the recent "unify favoriting state across stars + glow" work (`af01ffe`). Check how
-      duplicate favorite entries for one note collapse (or fail to) when resolving the
-      highlight set.
+      to the recent "unify favoriting state across stars + glow" work (`af01ffe`).
+      - **2026-06-04 investigation (no fix yet):** Traced the full matching path
+        (`SegmentListView+SavedWords.swift` → `computeSavedWordState` → `ComputedSavedWordState.isStarFilled`
+        → `resolvedSavedKey`) and `WordsStore.toggle`. Every scenario reproducible *statically*
+        WORKS: single sheet-path save (encountered = lemma), mixed sheet+extract-list saves
+        (encountered = {lemma, inflected}), and duplicate encountered surfaces all resolve the
+        glow correctly. The glow bridges なびかせて → `preferredLemma(なびかせて)` → saved key.
+      - **Prime suspect:** the bridge depends entirely on `segmenter.preferredLemma("なびかせて")`
+        returning the SAME lemma that was stored at save time. なびかせて is a causative te-form
+        with an ambiguous lemma pair (靡かす vs 靡かせる) plus a possible root (靡く). If the save
+        stored one member but `preferredLemma` resolves a different one at glow time,
+        `resolvedSavedKey` returns nil → no glow. This is MeCab/deinflector-data-driven and
+        can't be confirmed by static reading; needs the real segmenter output for なびかせて or
+        exact repro steps (which save path: lookup-sheet star vs extract-list star; star vs glow;
+        how many times).
+      - **Candidate fix (if confirmed):** make `resolvedSavedKey` try ALL `lemmaCandidates(for:)`
+        rather than only `preferredLemma`, so the bridge succeeds regardless of which member of
+        an ambiguous lemma pair was saved. CAUTION: `isStarFilled` is the shared predicate behind
+        glow + extract-list stars + lookup-sheet star — broadening it risks over-lighting; needs
+        the multi-candidate resolver threaded through and a regression test before shipping.
 
 ## Segmentation & Lookup
 
@@ -199,7 +233,20 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 - [x] Custom reading popup is prefilled — `SurfaceSheetViewController.presentCustomReadingAlert()` sets `field.text = self.displayedReading()` at line 212, so the prompt opens with the current reading already in the field.
 - [ ] Custom reading popup should default to Japanese keyboard — blocked by `UIAlertController.addTextField(configurationHandler:)`: it hands you a UIKit-managed `UITextField` whose class you can't change, and UIKit has no public "prefer Japanese input mode" API short of overriding `textInputMode` on a `UITextField` subclass. Clean fix: replace the alert with a custom modal hosting a `JapaneseTextField` that overrides `textInputMode` to prefer `UITextInputMode.activeInputModes.first { $0.primaryLanguage?.hasPrefix("ja") == true }`.
 - [x] Make saving to the words list more responsive — shipped via `WordsStore.persistQueue` (serial utility-QoS DispatchQueue) so star-toggles return immediately and persist off-main; lemma-cache + off-main hydration on `SegmentLookupSheet` load eliminates the redundant SQL pass that was making first-tap latency visible. `WordsStore.flushPendingWritesForTesting()` provides the sync surface for tests.
-- [ ] Add advanced dictionary filters/sorting (JLPT, POS, frequency, commonness toggles)
+- [~] Add advanced dictionary filters/sorting (JLPT, POS, frequency, commonness toggles) —
+      Partially done 2026-06-04. The filter/sort *logic* was fully built but orphaned (same
+      pattern as the kanji-discovery regression — `WordsView+Search.swift` even carried a "filter
+      UI removed; helpers kept so a replacement can rewire later" comment, and none of
+      `filteredSearchResults`/`startSearchTask`/`resetSearchControls`/etc. had any caller). Wired
+      it into the active search path: (a) `resultsList` now renders `filteredSearchResults` instead
+      of raw `searchResults`; (b) added `dictionarySearchFilterMenu` (sort: Relevance/Common First/
+      A-Z, "Common Words Only" toggle, per-POS submenu, Reset) exposed via a context-aware trailing
+      funnel that replaces the note/list funnel while a query is active; (c) `runDictionarySearch`
+      now calls `pruneUnavailableSearchPartsOfSpeech()` after results land. DONE: POS, commonness,
+      sort (incl. common-first ≈ frequency-ordered). STILL TODO: explicit JLPT-level filter and a
+      numeric frequency-threshold control (no JLPT data plumbed to search entries yet). Note the
+      dead parallel renderer `searchResultsContent` (uses `DictionarySearchResultRow`) and the
+      unused `startSearchTask` remain — candidates for removal in a cleanup pass.
 - [ ] Romaji display option (romaji→kana *search* shipped; *display* toggle not implemented)
 - [x] alternateSpellings(): include kanji variants — extracted from `WordDetailView` to `Kioku/Words/WordVariants.swift` so it's unit-testable; now surfaces both kanji-form and kana-form alternates (was kana-only), filters out `oK`/`sK`/`ok`/`sk` archaic + search-only forms, keeps irregular (`iK`/`ik`) variants. Pinned by `WordVariantsTests.swift` (6 tests). The previous `count > 1` noise-suppression gate is dropped — for kanji-bearing surfaces, even a single alternate is informative now that kanji variants are included. Pure-kana saved surfaces still return [] (false-uniqueness guard preserved).
 - [ ] CSV import: explicit option to fill kanji from the dictionary when the surface column is missing (today the importer silently substitutes kanji even when only kana was provided)
