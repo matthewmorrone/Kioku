@@ -67,7 +67,7 @@ extension SurfaceSheetViewController {
         splitPanelContainer = UIStackView()
         splitPanelContainer.translatesAutoresizingMaskIntoConstraints = false
         splitPanelContainer.axis = .vertical
-        splitPanelContainer.spacing = 14
+        splitPanelContainer.spacing = 8
         splitPanelContainer.isHidden = true
         // isHidden doesn't collapse Auto Layout frames — explicit zero height prevents the
         // hidden split panel from pushing content out of the sheet's visible bounds.
@@ -191,14 +191,38 @@ extension SurfaceSheetViewController {
             applySplitButton.heightAnchor.constraint(equalToConstant: 44),
         ])
 
+        // One row per possible split, each with its full score breakdown (numberOfLines = 0,
+        // left-aligned). Per-line font/weight is set via attributedText in updateSplitFrequencyLabel.
         let frequencyLabel = UILabel()
-        frequencyLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        frequencyLabel.translatesAutoresizingMaskIntoConstraints = false
+        frequencyLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         frequencyLabel.textColor = .secondaryLabel
-        frequencyLabel.textAlignment = .center
-        frequencyLabel.numberOfLines = 1
-        frequencyLabel.adjustsFontSizeToFitWidth = true
-        frequencyLabel.minimumScaleFactor = 0.7
+        frequencyLabel.textAlignment = .left
+        frequencyLabel.numberOfLines = 0
+        frequencyLabel.lineBreakMode = .byClipping
         splitFrequencyLabel = frequencyLabel
+
+        // The fixed `.medium` detent can't always fit a row per cut (a long word has many), so the
+        // readout lives in a scroll view: it hugs its content up to a cap, and scrolls beyond it,
+        // instead of silently clipping the last rows or crowding the title/buttons.
+        let frequencyScroll = UIScrollView()
+        frequencyScroll.translatesAutoresizingMaskIntoConstraints = false
+        frequencyScroll.showsVerticalScrollIndicator = true
+        frequencyScroll.clipsToBounds = true
+        frequencyScroll.addSubview(frequencyLabel)
+        let frequencyHugsContent = frequencyScroll.heightAnchor.constraint(equalTo: frequencyScroll.contentLayoutGuide.heightAnchor)
+        frequencyHugsContent.priority = .defaultHigh
+        let frequencyHeightCap = frequencyScroll.heightAnchor.constraint(lessThanOrEqualToConstant: 96)
+        NSLayoutConstraint.activate([
+            frequencyLabel.topAnchor.constraint(equalTo: frequencyScroll.contentLayoutGuide.topAnchor),
+            frequencyLabel.bottomAnchor.constraint(equalTo: frequencyScroll.contentLayoutGuide.bottomAnchor),
+            frequencyLabel.leadingAnchor.constraint(equalTo: frequencyScroll.contentLayoutGuide.leadingAnchor),
+            frequencyLabel.trailingAnchor.constraint(equalTo: frequencyScroll.contentLayoutGuide.trailingAnchor),
+            frequencyLabel.widthAnchor.constraint(equalTo: frequencyScroll.frameLayoutGuide.widthAnchor),
+            frequencyHugsContent,
+            frequencyHeightCap,
+        ])
+        splitFrequencyScroll = frequencyScroll
 
         // Selectable candidate chips sit above the inputs so the full set of valid two-way splits
         // is visible at a glance (and one-tap selectable), not just the single auto-proposed best.
@@ -226,9 +250,13 @@ extension SurfaceSheetViewController {
         splitCandidatesScroll = candidatesScroll
         splitCandidatesRow = candidatesRow
 
-        splitPanelContainer.addArrangedSubview(candidatesScroll)
+        // Candidate chips removed at user request — the score readout below already lists every
+        // available sublattice path with its calculation, so the chip row is redundant. The chip
+        // machinery (candidatesScroll/Row, rebuildSplitCandidates, refreshSplitCandidateSelection)
+        // is left intact and dormant; re-add this line to restore the row.
+        // splitPanelContainer.addArrangedSubview(candidatesScroll)
         splitPanelContainer.addArrangedSubview(splitInputsRow)
-        splitPanelContainer.addArrangedSubview(frequencyLabel)
+        splitPanelContainer.addArrangedSubview(frequencyScroll)
         splitPanelContainer.addArrangedSubview(splitActionsRow)
         updateSplitFrequencyLabel()
     }
@@ -382,6 +410,10 @@ extension SurfaceSheetViewController {
             actionMenuContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             actionMenuContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
         ])
+
+        // Inactive by default; setSplitEditorVisible(true) activates it to reclaim the definitions'
+        // vertical space for the split panel so the header title isn't clipped in the medium detent.
+        middleContentCollapsedConstraint = middleContentContainer.heightAnchor.constraint(equalToConstant: 0)
     }
 
     // Connects all button and gesture targets after the view hierarchy is established.

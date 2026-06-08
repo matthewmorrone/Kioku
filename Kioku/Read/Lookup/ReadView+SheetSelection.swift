@@ -515,13 +515,23 @@ extension ReadView {
 
         // Inflected / sub-word surfaces won't appear in the frequency map, which is keyed by
         // dictionary forms. lemma() returns only max-depth candidates (true base forms).
-        guard let lexicon else {
-            return nil
-        }
-
-        for lemma in lexicon.lemma(surface: surface) {
+        let lemmas = lexicon?.lemma(surface: surface) ?? []
+        for lemma in lemmas {
             if let data = surfaceReadingData[lemma]?.frequencyByReading, data.isEmpty == false {
                 return data
+            }
+        }
+
+        // surface_readings carries jpdb_rank only on kanji writings — its kana rows are NULL by
+        // construction — so common kana pieces produced by splitting (こと, する, の, …) fall through
+        // both checks above and would render a bare "–". Consult the per-entry-propagated rank map
+        // (the same source the segmenter scores against) for the surface and then its lemmas,
+        // synthesizing a FrequencyData so normalizedSheetFrequencyScore yields the same number it
+        // would for a ranked kanji piece. Keyed by candidate surface; the only reader reduces over
+        // values, so the key is immaterial.
+        for candidate in [surface] + lemmas {
+            if let rank = frequencyRankBySurface[candidate] {
+                return [candidate: FrequencyData(jpdbRank: rank, wordfreqZipf: nil)]
             }
         }
 
@@ -553,12 +563,27 @@ extension ReadView {
         let selectedStart = segmentEdges[selectedBounds.lowerBound].start
         let selectedEnd = segmentEdges[selectedBounds.upperBound].end
 
-        return Lattice.sectionEdges(
+        let sectionEdges = Lattice.sectionEdges(
             from: segmentLatticeEdges,
             in: text,
             selectedStart: selectedStart,
             selectedEnd: selectedEnd
         )
+        if sectionEdges.isEmpty == false {
+            return sectionEdges
+        }
+
+        // Fast-path / imported notes (subtitle & lyric imports) restore persisted segment ranges
+        // WITHOUT ever building the note's lattice — segmentLatticeEdges stays empty (see
+        // refreshSegmentationRanges' early return). With no lattice there's no sublattice to
+        // enumerate, so the split editor had no candidate chips, no frequency breakdown, and fell
+        // back to a blind character-midpoint split. Build the sublattice on demand over just the
+        // selected segment's surface: it's a handful of characters, costs a single longestMatchResult
+        // (the same call WordDetailView uses), and the edges' indices are self-consistent within the
+        // surface — all sublatticeValidPaths needs, since it returns surfaces, not text offsets.
+        let surface = String(text[selectedStart..<selectedEnd])
+        guard surface.isEmpty == false else { return [] }
+        return segmenter.longestMatchResult(for: surface).latticeEdges
     }
 
     // Returns the merged surface text for the currently selected segment bounds, or nil when nothing is selected.

@@ -40,6 +40,13 @@ extension ReadView {
             } message: {
                 Text(lyricAlignmentErrorMessage)
             }
+            .alert("Re-align Failed", isPresented: cueRealignErrorPresented) {
+                Button("OK", role: .cancel) {
+                    cueRealignErrorMessage = ""
+                }
+            } message: {
+                Text(cueRealignErrorMessage)
+            }
             .confirmationDialog(
                 "\(subtitleMismatchCount) subtitle\(subtitleMismatchCount == 1 ? "" : "s") differ from note text",
                 isPresented: $isShowingSubtitleMismatchDialog,
@@ -259,6 +266,21 @@ extension ReadView {
                     StartupTimer.mark("no persisted segments, running full segmentation")
                     refreshSegmentationRanges()
                 }
+
+                // Resources just became ready. A lookup/split sheet opened while they were still
+                // loading captured empty frequency maps and shows all-zero scores; re-install the
+                // provider with the now-loaded `self` so the open readout fills in automatically.
+                SegmentLookupSheet.shared.refreshOpenSheetFrequencyProvider { surface in
+                    frequencyData(forSurface: surface)
+                }
+            }
+            // The surface-reading/frequency map publishes in Stage 1, ahead of the full engine. When it
+            // lands, fill in a split readout that opened during loading — without waiting for the trie.
+            .onChange(of: frequencyDataReady) { _, ready in
+                guard ready else { return }
+                SegmentLookupSheet.shared.refreshOpenSheetFrequencyProvider { surface in
+                    frequencyData(forSurface: surface)
+                }
             }
     }
 
@@ -316,7 +338,11 @@ extension ReadView {
                     },
                     onDismiss: {
                         isShowingLyricsView = false
-                    }
+                    },
+                    onCueEdit: { edit in
+                        applyLyricCueEdit(edit)
+                    },
+                    realigningCueIndex: realigningCueIndex
                 )
                 .opacity(isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(isShowingLyricsView)

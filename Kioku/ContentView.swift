@@ -7,6 +7,11 @@ nonisolated private struct ReadResources {
     var lexicon: Lexicon?
     var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
+    var frequencyRankBySurface: FrequencyRankMap = FrequencyRankMap()
+    // True once `surfaceReadingData` is populated — published in Stage 1, BEFORE the heavy trie/lexicon
+    // build (`ready`). The lookup/split frequency readout only needs the reading map, so this lets it
+    // resolve scores in ~1s instead of waiting for the full engine. Distinct from `ready`.
+    var frequencyDataReady: Bool = false
     var ready: Bool = false
     var segmenterRevision: Int = 0
 }
@@ -57,6 +62,8 @@ struct ContentView: View {
                 lexicon: readResources.lexicon,
                 surfaceReadingData: readResources.surfaceReadingData,
                 kanjiReadingFallback: readResources.kanjiReadingFallback,
+                frequencyRankBySurface: readResources.frequencyRankBySurface,
+                frequencyDataReady: readResources.frequencyDataReady,
                 segmenterRevision: readResources.segmenterRevision,
                 readResourcesReady: readResources.ready,
                 onOpenWordDetail: handleOpenWordDetail,
@@ -321,19 +328,32 @@ struct ContentView: View {
 
         let currentRevision = readResources.segmenterRevision
         Task.detached(priority: .userInitiated) {
-            // Stage 1 — fast path: open the read-only SQLite handle so the dictionary
-            // search bar is usable while the prewarming pass below is still running.
-            if let earlyStore = try? DictionaryStore() {
+            // Stage 1 — fast path: open the read-only SQLite handle so the dictionary search bar is
+            // usable, AND build the surface-reading/frequency map (a ~0.3s scan) so the lookup/split
+            // frequency readout can resolve scores now, instead of waiting for the slow trie+lexicon.
+            let earlyStore = try? DictionaryStore()
+            var earlyReadingData: [String: SurfaceReadingData]? = nil
+            if let earlyStore {
+                earlyReadingData = try? StartupTimer.measure("fetchSurfaceReadingData (early)") {
+                    try earlyStore.fetchSurfaceReadingData()
+                }
+                let publishedReadingData = earlyReadingData
                 await MainActor.run {
                     if readResources.dictionaryStore == nil {
                         readResources.dictionaryStore = earlyStore
                         StartupTimer.mark("dictionaryStore published (fast path)")
                     }
+                    if let publishedReadingData {
+                        readResources.surfaceReadingData = SurfaceReadingDataMap(publishedReadingData)
+                        readResources.frequencyDataReady = true
+                        StartupTimer.mark("surfaceReadingData published (early)")
+                    }
                 }
             }
 
-            // Stage 2 — slow path: full segmenter/lexicon build + DictionaryStore prewarming.
-            let result = Self.makeReadResources(backend: backend, mecabDictionary: mecabDict)
+            // Stage 2 — slow path: full segmenter/lexicon build + DictionaryStore prewarming. Reuses
+            // the reading map already built above so it isn't scanned a second time.
+            let result = Self.makeReadResources(backend: backend, mecabDictionary: mecabDict, prebuiltSurfaceReadingData: earlyReadingData)
             await MainActor.run {
                 readResources = ReadResources(
                     segmenter: result.segmenter,
@@ -341,6 +361,8 @@ struct ContentView: View {
                     lexicon: result.lexicon,
                     surfaceReadingData: result.surfaceReadingData,
                     kanjiReadingFallback: result.kanjiReadingFallback,
+                    frequencyRankBySurface: result.frequencyRankBySurface,
+                    frequencyDataReady: true,
                     ready: true,
                     segmenterRevision: currentRevision + 1
                 )
@@ -351,7 +373,7 @@ struct ContentView: View {
 
     // Builds the read-tab segmenter and dictionary store used for furigana lookup.
     // Uses the specified backend and MeCab dictionary when MeCab is selected.
-    private nonisolated static func makeReadResources(backend: String, mecabDictionary: String) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap, kanjiReadingFallback: KanjiReadingFallbackMap) {
+    private nonisolated static func makeReadResources(backend: String, mecabDictionary: String, prebuiltSurfaceReadingData: [String: SurfaceReadingData]? = nil) -> (segmenter: any TextSegmenting, dictionaryStore: DictionaryStore?, lexicon: Lexicon?, surfaceReadingData: SurfaceReadingDataMap, kanjiReadingFallback: KanjiReadingFallbackMap, frequencyRankBySurface: FrequencyRankMap) {
         StartupTimer.mark("makeReadResources started")
         let overallStart = CFAbsoluteTimeGetCurrent()
 
@@ -389,9 +411,15 @@ struct ContentView: View {
                 try store.populateSurfacePOSBitsMap()
             }} catch { print("populateSurfacePOSBitsMap failed: \(error)") }
 
-            do { surfaceReadingData = try StartupTimer.measure("fetchSurfaceReadingData") {
-                try store.fetchSurfaceReadingData()
-            }} catch { print("fetchSurfaceReadingData failed: \(error)") }
+            // Reuse the map already built on the Stage 1 fast path when available, so the heavy
+            // surface-reading scan isn't run twice.
+            if let prebuiltSurfaceReadingData {
+                surfaceReadingData = prebuiltSurfaceReadingData
+            } else {
+                do { surfaceReadingData = try StartupTimer.measure("fetchSurfaceReadingData") {
+                    try store.fetchSurfaceReadingData()
+                }} catch { print("fetchSurfaceReadingData failed: \(error)") }
+            }
 
             // Last-resort per-kanji furigana source. Loaded alongside the word-level map so any
             // kanji without a dictionary word/lemma reading still gets *some* ruby (see
@@ -431,12 +459,19 @@ struct ContentView: View {
             print("Deinflector initialization failed: \(error)")
         }
 
-        // Frequency scores for segmentation come straight from word_frequency (the table that
-        // carries jpdb_rank), NOT from surface_readings.jpdb_rank — that column is NULL for kana
-        // surfaces, so the previous build produced an empty map and the segmenter's frequency term
-        // was inert. fetchFrequencyScoreBySurface reads the populated source the rest of the app uses.
-        let frequencyScoreBySurface: [String: Double] = StartupTimer.measure("frequencyScoreBySurface build") {
-            (try? dictionaryStore?.fetchFrequencyScoreBySurface()) ?? [:]
+        // Frequency comes straight from word_frequency (the table that carries jpdb_rank), NOT from
+        // surface_readings.jpdb_rank — that column is NULL for kana surfaces, so reading it produced
+        // an empty map and left the segmenter's frequency term inert. fetchBestRankBySurface reads the
+        // populated source with per-entry rank propagation. The segmenter consumes the derived SCORE
+        // map; the lookup/split-editor frequency fallback consumes the RANK map directly (so a kana
+        // split piece like こと / する reports its entry's rank instead of rendering a bare "–").
+        let frequencyRankBySurface: [String: Int] = StartupTimer.measure("frequencyRankBySurface build") {
+            (try? dictionaryStore?.fetchBestRankBySurface()) ?? [:]
+        }
+        let frequencyScoreBySurface: [String: Double] = frequencyRankBySurface.reduce(into: [:]) { result, pair in
+            if let score = FrequencyData(jpdbRank: pair.value, wordfreqZipf: nil).normalizedScore, score > 0 {
+                result[pair.key] = score
+            }
         }
 
         // Choose segmenter based on the user's backend preference.
@@ -473,7 +508,8 @@ struct ContentView: View {
             dictionaryStore: dictionaryStore,
             lexicon: lexicon,
             surfaceReadingData: SurfaceReadingDataMap(surfaceReadingData),
-            kanjiReadingFallback: KanjiReadingFallbackMap(kanjiReadingFallback)
+            kanjiReadingFallback: KanjiReadingFallbackMap(kanjiReadingFallback),
+            frequencyRankBySurface: FrequencyRankMap(frequencyRankBySurface)
         )
     }
 }

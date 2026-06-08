@@ -16,6 +16,12 @@ struct ReadView: View {
     let lexicon: Lexicon?
     let surfaceReadingData: SurfaceReadingDataMap
     let kanjiReadingFallback: KanjiReadingFallbackMap
+    // Per-entry-propagated JPDB rank per surface. Frequency fallback for lookup/split-editor pieces
+    // whose surface carries no rank in surface_readings (notably kana writings). See frequencyData(forSurface:).
+    let frequencyRankBySurface: FrequencyRankMap
+    // True once the surface-reading/frequency map is loaded (published early, before the full engine).
+    // Drives the split readout's loading state and its refresh when frequency data arrives.
+    let frequencyDataReady: Bool
     let segmenterRevision: Int
     let readResourcesReady: Bool
     // (entryID, surface, reading, sublatticePaths) — carries pre-computed data from the lookup sheet.
@@ -126,6 +132,13 @@ struct ReadView: View {
     @State var playbackHighlightRangeOverride: NSRange?
     @State var activePlaybackCueIndex: Int? = nil
     @State var activeAudioAttachmentID: UUID? = nil
+    // Cue index currently being re-aligned by the lyric view's in-place "fix word sweep"
+    // control; nil when idle. Drives the per-cue spinner in the lyric editing row and
+    // gates concurrent re-align requests to one at a time.
+    @State var realigningCueIndex: Int? = nil
+    // Surfaced in a dedicated alert when an in-place cue re-alignment fails, so the
+    // failure doesn't ride in under the unrelated "Generate SRT Failed" title.
+    @State var cueRealignErrorMessage = ""
 
     @State var isShowingLyricsView = false
     @AppStorage(LyricsHighlightGranularity.storageKey) var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
@@ -184,6 +197,8 @@ struct ReadView: View {
         lexicon: Lexicon? = nil,
         surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
         kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap(),
+        frequencyRankBySurface: FrequencyRankMap = FrequencyRankMap(),
+        frequencyDataReady: Bool = false,
         segmenterRevision: Int,
         readResourcesReady: Bool,
         onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil,
@@ -196,6 +211,8 @@ struct ReadView: View {
         self.lexicon = lexicon
         self.surfaceReadingData = surfaceReadingData
         self.kanjiReadingFallback = kanjiReadingFallback
+        self.frequencyRankBySurface = frequencyRankBySurface
+        self.frequencyDataReady = frequencyDataReady
         self.segmenterRevision = segmenterRevision
         self.readResourcesReady = readResourcesReady
         self.onOpenWordDetail = onOpenWordDetail
