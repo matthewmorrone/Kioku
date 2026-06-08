@@ -15,10 +15,13 @@ struct NotesView: View {
     var onOCRImportedNote: ((Note) -> Void)? = nil
 
     @EnvironmentObject private var store: NotesStore
+    @EnvironmentObject private var wordsStore: WordsStore
     @State private var editMode: EditMode = .inactive
     @State private var selectedNoteIDs = Set<UUID>()
     @State private var notePendingRename: Note?
-    @State private var notePendingDelete: Note?
+    // Notes awaiting delete confirmation (single, swipe, or bulk). `title` is set only for a
+    // single-note delete so the dialog can name it; nil for a multi-note delete.
+    @State private var pendingDeletion: PendingNoteDeletion?
     @State private var renameDraft = ""
     @State private var isShowingBulkImportSheet = false
     @State private var subtitleEditorAttachmentID: UUID?
@@ -75,7 +78,15 @@ struct NotesView: View {
                     .deleteDisabled(editMode == .active)
                 }
                 .onMove(perform: store.moveNotes)
-                .onDelete(perform: store.deleteNotes)
+                .onDelete { offsets in
+                    // Route swipe-to-delete through the same confirmation so the associated-word
+                    // offer applies here too (it previously deleted immediately).
+                    let notes = offsets.map { store.notes[$0] }
+                    pendingDeletion = PendingNoteDeletion(
+                        noteIDs: Set(notes.map(\.id)),
+                        title: notes.count == 1 ? resolvedTitle(for: notes[0]) : nil
+                    )
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: editMode) { _, newValue in
@@ -93,18 +104,28 @@ struct NotesView: View {
                 }
             }
             .confirmationDialog(
-                "Delete Note?",
+                deleteDialogTitle,
                 isPresented: deleteDialogPresented,
                 titleVisibility: .visible
             ) {
-                Button("Delete", role: .destructive) {
-                    confirmDelete()
+                let wordCount = pendingAssociatedWordCount
+                if wordCount > 0 {
+                    Button("Delete Note\(pendingNoteCountSuffix) & \(wordCount) Word\(wordCount == 1 ? "" : "s")", role: .destructive) {
+                        performDelete(deletingWords: true)
+                    }
+                    Button("Delete Note\(pendingNoteCountSuffix) Only", role: .destructive) {
+                        performDelete(deletingWords: false)
+                    }
+                } else {
+                    Button("Delete", role: .destructive) {
+                        performDelete(deletingWords: false)
+                    }
                 }
                 Button("Cancel", role: .cancel) {
-                    notePendingDelete = nil
+                    pendingDeletion = nil
                 }
             } message: {
-                Text("This permanently removes the note.")
+                Text(deleteDialogMessage)
             }
             .sheet(isPresented: $isShowingBulkImportSheet) {
                 BulkImportSheet(store: store)
@@ -150,8 +171,7 @@ struct NotesView: View {
                     // Shows bulk-delete action while edit mode is active.
                     if editMode == .active {
                         Button {
-                            store.deleteNotes(ids: selectedNoteIDs)
-                            selectedNoteIDs.removeAll()
+                            pendingDeletion = PendingNoteDeletion(noteIDs: selectedNoteIDs, title: nil)
                         } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 16))
@@ -275,16 +295,47 @@ struct NotesView: View {
         )
     }
 
-    // Binds delete-dialog presentation directly to the currently pending note.
+    // Describes a pending note deletion for the unified confirmation dialog.
+    private struct PendingNoteDeletion {
+        let noteIDs: Set<UUID>
+        let title: String?
+    }
+
+    // Binds delete-dialog presentation directly to the pending deletion.
     private var deleteDialogPresented: Binding<Bool> {
         Binding(
-            get: { notePendingDelete != nil },
+            get: { pendingDeletion != nil },
             set: { isPresented in
                 if isPresented == false {
-                    notePendingDelete = nil
+                    pendingDeletion = nil
                 }
             }
         )
+    }
+
+    // Title for the delete dialog: names a single note, or counts multiple.
+    private var deleteDialogTitle: String {
+        guard let pendingDeletion else { return "Delete Note?" }
+        if let title = pendingDeletion.title { return "Delete “\(title)”?" }
+        return "Delete \(pendingDeletion.noteIDs.count) Notes?"
+    }
+
+    // "" for one pending note, "s" for several — pluralizes the dialog copy.
+    private var pendingNoteCountSuffix: String {
+        (pendingDeletion?.noteIDs.count ?? 1) == 1 ? "" : "s"
+    }
+
+    // Count of saved words sourced from the pending note(s).
+    private var pendingAssociatedWordCount: Int {
+        pendingDeletion.map { wordsStore.associatedWordCount(forNoteIDs: $0.noteIDs) } ?? 0
+    }
+
+    // Explains the delete options, including the associated-word behavior.
+    private var deleteDialogMessage: String {
+        let count = pendingAssociatedWordCount
+        guard count > 0 else { return "This permanently removes the note\(pendingNoteCountSuffix)." }
+        let noun = pendingNoteCountSuffix.isEmpty ? "this note" : "these notes"
+        return "\(count) saved word\(count == 1 ? "" : "s") came from \(noun). Words also saved from other notes are kept."
     }
 
     // Builds the per-note context menu shown from the notes list.
@@ -334,7 +385,7 @@ struct NotesView: View {
         }
 
         Button(role: .destructive) {
-            notePendingDelete = note
+            pendingDeletion = PendingNoteDeletion(noteIDs: [note.id], title: resolvedTitle(for: note))
         } label: {
             Label("Delete", systemImage: "trash")
         }
@@ -360,18 +411,19 @@ struct NotesView: View {
         self.notePendingRename = nil
     }
 
-    // Deletes one note after confirmation and clears the active read selection when that note was selected.
-    private func confirmDelete() {
-        guard let notePendingDelete else {
-            return
-        }
+    // Deletes the pending note(s) after confirmation, cascades word provenance per the user's choice
+    // (detach words shared with other notes; delete words sourced only from these), and clears the
+    // active read selection. Shared by context-menu, swipe, and bulk deletes.
+    private func performDelete(deletingWords: Bool) {
+        guard let pendingDeletion else { return }
+        let noteIDs = pendingDeletion.noteIDs
 
-        selectedNoteIDs.remove(notePendingDelete.id)
-        let deletedNote = store.deleteNote(id: notePendingDelete.id)
-        if deletedNote != nil {
-            onUpdateSelectedNote?(nil)
-        }
-        self.notePendingDelete = nil
+        // Cascade to saved words first so none is left pointing at a deleted note.
+        wordsStore.purgeNoteReferences(noteIDs: noteIDs, deletingWords: deletingWords)
+        store.deleteNotes(ids: noteIDs)
+        selectedNoteIDs.subtract(noteIDs)
+        onUpdateSelectedNote?(nil)
+        self.pendingDeletion = nil
     }
 
     // Inserts a duplicated note at the top of the list and keeps the active note in sync when appropriate.
