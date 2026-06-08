@@ -429,4 +429,48 @@ final class SegmenterIntegrationTests: XCTestCase {
             file: file, line: line
         )
     }
+
+    // A sokuon (っ/ッ) is phonologically bound and can never begin a word, so the selected
+    // segmentation must never emit a lone small-tsu segment — a stranded tsu is absorbed into the
+    // preceding segment. Casual/subtitle speech (好きっ, えっ, …) triggers this; pre-fix the greedy
+    // walk left っ as its own fallback segment.
+    func testStrandedSmallTsuNeverFormsOwnSegment() throws {
+        let segmenter = try sharedResources().segmenter
+        for text in ["好きっ", "えっ", "あっ。", "ありがとうっ", "だめっ"] {
+            let surfaces = segmenter.longestMatchEdges(for: text).map(\.surface)
+            XCTAssertFalse(
+                surfaces.contains { $0 == "っ" || $0 == "ッ" },
+                "Lone small-tsu segment in \"\(text)\": \(surfaces)"
+            )
+        }
+    }
+
+    // The absorb must NOT over-merge: a small-tsu that heads a multi-char run (って quotative, った …)
+    // keeps its own segment rather than being swallowed backward. Guards the fix against regressing
+    // legitimate っ-initial tokens.
+    func testSmallTsuHeadingMultiCharRunIsPreserved() throws {
+        let segmenter = try sharedResources().segmenter
+        let surfaces = segmenter.longestMatchEdges(for: "言うって").map(\.surface)
+        XCTAssertTrue(
+            surfaces.contains("言う"),
+            "Expected 言う to remain its own segment in \(surfaces)"
+        )
+    }
+
+    // Small kana (ゃゅょ, ぁぃぅぇぉ, …) and the prolonged sound mark are categorically never
+    // word-initial, so the selected segmentation must never start a segment with one — they are
+    // absorbed into the preceding segment, exactly like a stranded small-tsu.
+    func testNeverInitialKanaNeverBeginsSegment() throws {
+        let segmenter = try sharedResources().segmenter
+        for text in ["きゃっ", "ふぁ", "しょ", "ぎゃー"] {
+            let surfaces = segmenter.longestMatchEdges(for: text).map(\.surface)
+            for surface in surfaces {
+                let leadsWithBound = surface.first.map { Segmenter.neverInitialKana.contains($0) } ?? false
+                XCTAssertFalse(
+                    leadsWithBound,
+                    "Segment begins with a never-initial kana in \"\(text)\": \(surfaces)"
+                )
+            }
+        }
+    }
 }

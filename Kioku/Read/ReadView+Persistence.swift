@@ -132,19 +132,42 @@ extension ReadView {
         // When segments are already persisted, apply them directly without running the segmenter.
         // If furigana annotations are present on the segments, restore them directly too.
         // The trie is still loaded in the background for lookup and new notes.
-        if let loadedSegments, let edges = edgesFromSegmentRanges(loadedSegments, in: text) {
-            StartupTimer.mark("loadSelectedNoteIfNeeded restoring persisted segments")
-            segmentEdges = edges
-            segmentRanges = edges.map { $0.start..<$0.end }
+        if let loadedSegments {
+            // Cached segmentation exists (validated by normalizedSegmentRanges) — no segmenter run
+            // needed. BUT applying it (setting segmentEdges/segmentRanges + restoring furigana) forces
+            // a full enhanced CoreText re-typeset (per-segment colors + ruby). Doing that inline lands
+            // it in the same render cycle as `text = content`, so a large note reads BLANK until the
+            // enhanced typeset finishes — the same trap the else-branch documents for the segmenter.
+            // So: clear segment state now (renderer paints plain text THIS cycle), then apply the
+            // cached segmentation one main-actor turn later. Text-first, colors/furigana a beat after,
+            // with zero segmenter cost. Edges are rebuilt inside the task so their String.Index values
+            // are bound to the current `text`.
+            StartupTimer.mark("loadSelectedNoteIfNeeded deferring persisted-segment restore")
+            segmentEdges = []
+            segmentRanges = []
+            segmentLatticeEdges = []
             unknownSegmentLocations = []
-            let restoredFurigana = furiganaFromSegmentRanges(loadedSegments)
-            furiganaBySegmentLocation = restoredFurigana.byLocation
-            furiganaLengthBySegmentLocation = restoredFurigana.lengthByLocation
-            // Always schedule a compute pass — backfill semantics in scheduleFuriganaGeneration
-            // mean existing entries are preserved while gaps (e.g. a missing per-run annotation
-            // on the second kanji of 抜け殻) get filled in. The public scheduleFuriganaGeneration
-            // already early-returns on kana-only edge sets, so kana notes don't trigger a prompt.
-            scheduleFuriganaGeneration(for: text, edges: edges)
+            furiganaBySegmentLocation = [:]
+            furiganaLengthBySegmentLocation = [:]
+            let deferredNoteID = noteToLoad.id
+            let deferredContent = noteToLoad.content
+            Task { @MainActor in
+                guard activeNoteID == deferredNoteID, text == deferredContent else { return }
+                // Rebuild against the live text; fall back to the segmenter if validation now fails.
+                guard let edges = edgesFromSegmentRanges(loadedSegments, in: text) else {
+                    refreshSegmentationRanges()
+                    return
+                }
+                segmentEdges = edges
+                segmentRanges = edges.map { $0.start..<$0.end }
+                unknownSegmentLocations = []
+                let restoredFurigana = furiganaFromSegmentRanges(loadedSegments)
+                furiganaBySegmentLocation = restoredFurigana.byLocation
+                furiganaLengthBySegmentLocation = restoredFurigana.lengthByLocation
+                // Backfill semantics preserve restored annotations while filling gaps; early-returns
+                // on kana-only edge sets so kana notes don't trigger a prompt.
+                scheduleFuriganaGeneration(for: text, edges: edges)
+            }
         } else {
             // Clear stale segment state before kicking off async re-segmentation. The
             // previous note's ranges hold `Range<String.Index>` values bound to the
