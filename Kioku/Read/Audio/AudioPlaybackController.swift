@@ -78,6 +78,16 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         syncTimeAndCue()
     }
 
+    // Replaces the cue list in place without disturbing the loaded player or the current
+    // playback position. Used by in-place lyric editing where calling `load()` would be too
+    // heavy — `load()` stops playback and seeks to 0, which would yank the user out of the
+    // line they're correcting after every nudge. Re-resolves the active cue immediately so
+    // the karaoke highlight tracks the edited boundaries on the very next frame.
+    func updateCues(_ cues: [SubtitleCue]) {
+        self.cues = cues
+        syncTimeAndCue()
+    }
+
     // Unloads audio and resets all state when switching away from a note with audio.
     func unload() {
         stop()
@@ -227,7 +237,15 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         if wasPlaying && player.isPlaying == false {
             player.play()
         }
-        syncTimeAndCue()
+        // Resolve from the EXACT sought time — do NOT apply the output-latency correction here.
+        // That correction assumes audio is continuously buffered ahead of the decode position,
+        // which isn't true immediately after a seek (most visibly while paused). Subtracting
+        // latency from a freshly-sought cue boundary resolves `startMs − latency`, landing back
+        // in the previous cue (e.g. the ♪ line above) — that's the drag-to-line "rebound". The
+        // timer path keeps applying the correction during continuous playback.
+        let target = max(0, ms)
+        currentTimeMs = target
+        resolveActiveCue(atMs: target)
     }
 
     // Schedules a 50 ms polling timer to keep currentTimeMs and activeCueIndex fresh during playback.
@@ -312,7 +330,13 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         if currentTimeMs != ms {
             currentTimeMs = ms
         }
+        resolveActiveCue(atMs: ms)
+    }
 
+    // Resolves `activeCueIndex` for a given playback time. Split out of `syncTimeAndCue` so the
+    // seek path can resolve from the exact sought time (no latency correction) while the timer
+    // path resolves from the latency-corrected time — both share one cue-lookup rule.
+    private func resolveActiveCue(atMs ms: Int) {
         let currentCue = cues.firstIndex { ms >= $0.startMs && ms < $0.endMs }
         let nextCue = cues.firstIndex { $0.startMs > ms }
         let previousCue = cues.lastIndex { $0.endMs <= ms }

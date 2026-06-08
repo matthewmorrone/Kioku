@@ -215,6 +215,31 @@ enum OnDeviceLyricAligner {
         logger.info("alignment complete")
         return srt
     }
+
+    // Re-aligns a SINGLE lyric line against a bounded window of the audio, returning the
+    // line-level timing plus per-token checkpoints. Backs the lyric view's in-place "fix
+    // this line's word sweep" control: the caller passes a padded window around the cue's
+    // current bounds so the forced decoder only has to place this one line within a few
+    // seconds of audio. Mirrors `align` but keeps per-token granularity.
+    static func realignLine(
+        audioURL: URL,
+        line: String,
+        windowStartSeconds: Double,
+        windowEndSeconds: Double,
+        modelURL: URL,
+        cancellationCheck: (@Sendable () -> Bool)? = nil
+    ) async throws -> SwiftWhisperAlign.AlignedLineTokens {
+        let windowDesc = String(format: "[%.1fs, %.1fs]", windowStartSeconds, windowEndSeconds)
+        logger.info("re-aligning one line over \(windowDesc) using \(modelURL.lastPathComponent)")
+        let aligner = ForcedAligner(modelURL: modelURL)
+        return try await aligner.alignSingleLine(
+            audioURL: audioURL,
+            line: line,
+            windowStartSeconds: windowStartSeconds,
+            windowEndSeconds: windowEndSeconds,
+            cancellationCheck: cancellationCheck
+        )
+    }
 }
 
 // URLSession download delegate that forwards byte-level progress to a closure.

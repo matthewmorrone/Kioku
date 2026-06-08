@@ -13,29 +13,63 @@ extension LyricsView {
     // the active cue. Mismatch indicator (orange dot) survives because it conveys data, not style.
     @ViewBuilder
     func inactiveCueRow(index: Int, distance: Int) -> some View {
-        let metrics = inactiveCueMetrics(distance: distance)
-        let defaultSize = CGFloat(TypographySettings.defaultTextSize)
         let text = displayText(for: index)
-        let scaleFactor = distance == 0 ? scaleFactorForActiveCue(text: text, availableWidth: 280, defaultFontSize: defaultSize) : 1.0
-        let fontSize = defaultSize * scaleFactor
+        // When the "show ♪" toggle is off, non-speech (♪/♫) cues collapse to nothing so the
+        // scroller shows only sung lines. EmptyView has zero height, so vocal rows pack
+        // together with no gap where the marker used to be.
+        if showMusicNotes == false && SubtitleParser.isNonSpeechCue(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            EmptyView()
+        } else {
+            let metrics = inactiveCueMetrics(distance: distance)
+            let defaultSize = CGFloat(TypographySettings.defaultTextSize)
+            let scaleFactor = distance == 0 ? scaleFactorForActiveCue(text: text, availableWidth: 280, defaultFontSize: defaultSize) : 1.0
+            let fontSize = defaultSize * scaleFactor
 
-        HStack(spacing: 4) {
-            if hasMismatch(at: index) {
-                Circle()
-                    .fill(Color.orange)
-                    .frame(width: 6, height: 6)
+            HStack(spacing: 4) {
+                if hasMismatch(at: index) {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 6, height: 6)
+                }
+                Text(text)
+                    .font(.system(size: fontSize, weight: .regular))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
             }
-            Text(text)
-                .font(.system(size: fontSize, weight: .regular))
-                .multilineTextAlignment(.center)
-                .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(height: inactiveCueRowHeight)
+            .padding(.horizontal, 16)
+            .scaleEffect(metrics.scale, anchor: .center)
+            .opacity(metrics.opacity)
+            .blur(radius: metrics.blur)
         }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .frame(height: inactiveCueRowHeight)
-        .padding(.horizontal, 16)
-        .scaleEffect(metrics.scale, anchor: .center)
-        .opacity(metrics.opacity)
-        .blur(radius: metrics.blur)
+    }
+
+    // Whether the cue at `index` is a sung line rather than a ♪/♫ non-speech marker.
+    func isVocalCue(at index: Int) -> Bool {
+        guard cues.indices.contains(index) else { return false }
+        let trimmed = cues[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return SubtitleParser.isNonSpeechCue(trimmed) == false
+    }
+
+    // Nearest vocal cue to `index`: the index itself if it's vocal, else the next vocal cue
+    // ahead, else the previous one, else the original index (all-instrumental edge case).
+    // Used when the "show ♪" toggle is off so the active card and scroller split never land on
+    // a hidden non-speech cue (which would otherwise blank the card during instrumental gaps).
+    func nearestVocalCueIndex(from index: Int) -> Int {
+        guard cues.indices.contains(index) else { return index }
+        if isVocalCue(at: index) { return index }
+        var forward = index + 1
+        while forward < cues.count {
+            if isVocalCue(at: forward) { return forward }
+            forward += 1
+        }
+        var back = index - 1
+        while back >= 0 {
+            if isVocalCue(at: back) { return back }
+            back -= 1
+        }
+        return index
     }
 
     // Apple Music-style fall-off: closer rows are larger and brighter, distant rows shrink

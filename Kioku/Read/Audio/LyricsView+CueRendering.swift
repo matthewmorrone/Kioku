@@ -198,6 +198,44 @@ extension LyricsView {
         return Double(maxEnd) >= Double(cueLength) * 0.9
     }
 
+    // Returns the cue-local UTF-16 start locations of segments in the active cue that have NO
+    // per-word timing — i.e. no `CueCharTiming` checkpoint overlaps the segment. These are fed
+    // to the renderer's `unknownSegmentLocations` (with a muted color) so the "show untimed"
+    // toggle grays out exactly the words that still need a Fix word-sweep. When the cue has no
+    // checkpoints at all, every segment is untimed and the whole line grays out.
+    //
+    // Coordinate note: checkpoint `charOffsetInCue` and the segment locations are both cue-local
+    // UTF-16 against the cue text, so they compare directly. The renderer matches on each
+    // segment's start location, so that's what we return.
+    func untimedSegmentLocations(forCueAtIndex index: Int, cueInput: ActiveCueRenderInput) -> Set<Int> {
+        guard index >= 0, index < cues.count, cueInput.text.isEmpty == false else { return [] }
+
+        // Segment (start, end) pairs in cue-local UTF-16.
+        let segmentSpans: [(location: Int, end: Int)] = cueInput.segmentationRanges.compactMap { range in
+            let ns = NSRange(range, in: cueInput.text)
+            guard ns.location != NSNotFound else { return nil }
+            return (ns.location, ns.location + ns.length)
+        }
+        guard segmentSpans.isEmpty == false else { return [] }
+
+        let checkpoints = cueTimings[cues[index].index] ?? []
+        // No timing data → every segment is untimed.
+        guard checkpoints.isEmpty == false else {
+            return Set(segmentSpans.map { $0.location })
+        }
+
+        let coveredSpans = checkpoints.map { ($0.charOffsetInCue, $0.charOffsetInCue + $0.charLength) }
+        var untimed: Set<Int> = []
+        for seg in segmentSpans {
+            // A segment is timed if any checkpoint span overlaps it.
+            let isTimed = coveredSpans.contains { covStart, covEnd in
+                covStart < seg.end && covEnd > seg.location
+            }
+            if isTimed == false { untimed.insert(seg.location) }
+        }
+        return untimed
+    }
+
     // Returns `text` truncated at the first newline scalar (\n or \r), or the original
     // string when no newline is present. Used by the active-cue card to enforce a
     // single-song-line contract regardless of multi-line cue text or resolver overshoot.
