@@ -186,6 +186,9 @@ extension ReadView {
                             // UITextView, so handleReadModeSegmentTap accepts either path.
                             handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: scrollView)
                         },
+                        // Hidden in edit mode — gate updates so per-keystroke typing doesn't
+                        // re-typeset this off-screen renderer (the typing-lag fix).
+                        isActive: isEditMode == false,
                         // Reset scroll to the top whenever the active note changes. Keyed on
                         // the note id's hash so each note open is a distinct token transition;
                         // 0 when no note is active. (`sharedScrollOffsetY = 0` on load is a

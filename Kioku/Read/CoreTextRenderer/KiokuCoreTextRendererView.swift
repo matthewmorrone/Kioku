@@ -93,11 +93,27 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // imperative scroll-view reference plumbing.
     var onSegmentTapped: (Int?, CGRect?, UIScrollView?) -> Void = { _, _, _ in }
 
+    // Long-press callback, same coordinate contract as `onSegmentTapped`. Defaulted to a no-op
+    // so existing call sites (the ReadView page) are unaffected and never attach a long-press
+    // recognizer. The karaoke card sets this to route long-press → dictionary look-up while a
+    // plain tap seeks playback to the word.
+    var onSegmentLongPressed: (Int?, CGRect?, UIScrollView?) -> Void = { _, _, _ in }
+
     // When false, the host scroll view disables user scrolling. Used by the LyricsView
     // active-cue card, which renders the full noteText but pins the viewport to one cue
     // via `playbackHighlightRange`-driven auto-scroll — letting the user scroll would let
     // them drift the card off the active line.
     var isScrollEnabled: Bool = true
+
+    // When false, the renderer is mounted but hidden (ReadView keeps it in the tree behind
+    // the editable RichTextEditor so edit↔view toggles are instant). SwiftUI still calls
+    // updateUIView on every keystroke while editing, and the typography fingerprint includes
+    // the full `text`, so without this gate each character triggers a full CoreText re-typeset
+    // of a view nobody can see — the "typing is super laggy" bug. When inactive we skip the
+    // rebuild entirely; the view retains its last view-mode content and rebuilds once when edit
+    // mode exits (isActive flips true → body re-evaluates → updateUIView runs the build). Default
+    // true so the lyrics/song call sites (always visible) need not pass it.
+    var isActive: Bool = true
 
     // One-shot scroll-to-top trigger. When this value CHANGES between body re-evaluations,
     // the scroll view resets to the top of the content exactly once. Keyed on the active
@@ -163,6 +179,12 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // wide-ruby line-starts), feeds the debug overlay, and emits inset / segment-gap
     // measurement logs when the inset-guide debug flag is on.
     func updateUIView(_ uiView: KiokuScrollingTextView, context: Context) {
+        // Hidden behind the editable RichTextEditor (edit mode): skip all work. Every keystroke
+        // re-evaluates ReadView.body and would otherwise re-typeset the entire note here for a
+        // view nobody can see. The view keeps its last view-mode content and rebuilds once when
+        // editing ends (isActive flips back to true). See the `isActive` property comment.
+        guard isActive else { return }
+
         // Re-apply scroll enablement on every update so the LyricsView toggle is honored
         // when the host re-evaluates with a different value (e.g. dismiss vs. active).
         uiView.isScrollEnabled = isScrollEnabled
@@ -193,6 +215,27 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
             TapDiagnostics.mark("segment resolved (loc=\(match.location), len=\(match.length))")
             onSegmentTapped(match.location, rect, uiView)
             TapDiagnostics.mark("onSegmentTapped returned (back in KiokuCoreTextRendererView wiring)")
+        }
+
+        // Mirror the tap wiring for long-press. Only attaches a recognizer when the host set a
+        // non-default `onSegmentLongPressed` (the karaoke card does; the page does not), so the
+        // plain ReadView page keeps a single tap recognizer and unchanged behaviour.
+        uiView.onCharacterLongPressed = { [weak uiView, onSegmentLongPressed] characterIndex in
+            guard let uiView else { return }
+            guard let characterIndex else {
+                onSegmentLongPressed(nil, nil, uiView)
+                return
+            }
+            guard let match = KiokuCoreTextSegmentResolver.segmentRange(
+                forCharacterIndex: characterIndex,
+                in: uiView.cachedSegmentNSRanges
+            ) else {
+                onSegmentLongPressed(nil, nil, uiView)
+                return
+            }
+            let rect = uiView.contentView.layoutEngine.firstRect(forCharacterRange: match)
+                .map { uiView.convertContentRectToHost($0) }
+            onSegmentLongPressed(match.location, rect, uiView)
         }
         let font = UIFont.systemFont(ofSize: textSize)
         let furiganaFont = UIFont.systemFont(ofSize: furiganaSizeOverride ?? (textSize * 0.5))
@@ -541,6 +584,12 @@ final class KiokuScrollingTextView: UIScrollView {
         didSet { wireContentTap() }
     }
 
+    // Forwarded from the content view's long-press recognizer, same contract as
+    // `onCharacterTapped`. nil until a host wires it (only the karaoke card does).
+    var onCharacterLongPressed: ((Int?) -> Void)? {
+        didSet { wireContentLongPress() }
+    }
+
     // Pinch begin/change/end callbacks. Caller (the SwiftUI host) decides what to do
     // with the scale — typically multiply the starting text-size by the cumulative
     // recognizer.scale and clamp to the typography range.
@@ -771,6 +820,14 @@ final class KiokuScrollingTextView: UIScrollView {
     private func wireContentTap() {
         contentView.onTap = { [weak self] characterIndex, _ in
             self?.onCharacterTapped?(characterIndex)
+        }
+    }
+
+    // Hooks the content view's long-press recognizer to the host's forwarder.
+    // Re-runs whenever `onCharacterLongPressed` is set so the closure capture stays current.
+    private func wireContentLongPress() {
+        contentView.onLongPress = { [weak self] characterIndex, _ in
+            self?.onCharacterLongPressed?(characterIndex)
         }
     }
 }

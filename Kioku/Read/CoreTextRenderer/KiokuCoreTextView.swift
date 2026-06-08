@@ -34,6 +34,15 @@ final class KiokuCoreTextView: UIView {
     }
     private var tapGesture: UITapGestureRecognizer?
 
+    // Long-press handling: same hit-test as `onTap`, fired once per press at `.began`. A nil
+    // closure means no long-press recognizer is attached. Used by the karaoke card to keep
+    // dictionary look-up on long-press while a plain tap seeks playback to the tapped word —
+    // ReadView never sets this, so its plain page behaviour is unchanged.
+    var onLongPress: ((Int?, CGPoint) -> Void)? {
+        didSet { configureLongPressGesture() }
+    }
+    private var longPressGesture: UILongPressGestureRecognizer?
+
     // Highlight bands drawn under the text. The selection band sits below the playback band
     // so an actively-playing tapped segment shows the playback color on top. Ranges are
     // UTF-16 against the current attributed string.
@@ -548,6 +557,29 @@ final class KiokuCoreTextView: UIView {
         TapDiagnostics.mark("layoutEngine.characterIndex returned (index=\(index.map(String.init) ?? "nil"))")
         onTap?(index, point)
         TapDiagnostics.mark("onTap callback returned (KiokuCoreTextView.handleTap)")
+    }
+
+    // Installs or removes the long-press recognizer to match whether `onLongPress` is set.
+    // A quick tap won't trigger it (default 0.5 s minimum press), so it coexists with the tap
+    // recognizer: short touch → tap, held touch → long-press.
+    private func configureLongPressGesture() {
+        if let existing = longPressGesture {
+            removeGestureRecognizer(existing)
+            longPressGesture = nil
+        }
+        guard onLongPress != nil else { return }
+        let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        addGestureRecognizer(recognizer)
+        longPressGesture = recognizer
+    }
+
+    // Hit-tests the press location the same way `handleTap` does and forwards the resulting
+    // UTF-16 character index, once, on the gesture's begin transition.
+    @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began else { return }
+        let point = recognizer.location(in: self)
+        let index = layoutEngine.characterIndex(at: point)
+        onLongPress?(index, point)
     }
 
     // MARK: - Accessibility
