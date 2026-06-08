@@ -77,7 +77,7 @@ enum FuriganaAttributedString {
 
     // Detects contiguous kanji runs and returns character-index ranges within the surface.
     // Iteration marks (々) are treated as run continuations when they follow a kanji character.
-    static func kanjiRuns(in text: String) -> [(start: Int, end: Int)] {
+    nonisolated static func kanjiRuns(in text: String) -> [(start: Int, end: Int)] {
         let characters = Array(text)
         var runs: [(start: Int, end: Int)] = []
         var runStart: Int?
@@ -103,7 +103,7 @@ enum FuriganaAttributedString {
 
     // Splits a full reading into per-kanji-run readings using okurigana as delimiters.
     // Returns nil when okurigana anchors cannot be matched so the caller falls back.
-    static func projectRunReadings(surface: String, reading: String, runs: [(start: Int, end: Int)]? = nil) -> [String]? {
+    nonisolated static func projectRunReadings(surface: String, reading: String, runs: [(start: Int, end: Int)]? = nil) -> [String]? {
         let runs = runs ?? kanjiRuns(in: surface)
         guard !runs.isEmpty else { return nil }
 
@@ -159,7 +159,7 @@ enum FuriganaAttributedString {
 
     // Normalizes a segment reading into one per kanji run, trimming redundant okurigana when a
     // single-run surface was stored as one mixed annotation (for example 抱かれ + だかれ -> だ).
-    static func normalizedRunReadings(
+    nonisolated static func normalizedRunReadings(
         surface: String,
         reading: String,
         runs: [(start: Int, end: Int)]? = nil
@@ -195,7 +195,7 @@ enum FuriganaAttributedString {
 
     // Extracts the reading for a single kanji run by removing matching kana affixes from the full
     // segment reading using the same phonetic normalization used elsewhere in furigana alignment.
-    private static func isolatedRunReading(
+    nonisolated private static func isolatedRunReading(
         surface: String,
         reading: String,
         run: (start: Int, end: Int)
@@ -228,7 +228,7 @@ enum FuriganaAttributedString {
     }
 
     // Checks whether a reading starts with the same phonetic syllables as a kanji run prefix so prefix kana can be excluded from furigana.
-    private static func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
+    nonisolated private static func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
         guard reading.count >= surfacePrefix.count else {
             return false
         }
@@ -238,7 +238,7 @@ enum FuriganaAttributedString {
     }
 
     // Checks whether a reading ends with the same phonetic syllables as a kanji run suffix so trailing kana can be excluded from furigana.
-    private static func hasPhoneticSuffix(_ reading: String, matching surfaceSuffix: String) -> Bool {
+    nonisolated private static func hasPhoneticSuffix(_ reading: String, matching surfaceSuffix: String) -> Bool {
         guard reading.count >= surfaceSuffix.count else {
             return false
         }

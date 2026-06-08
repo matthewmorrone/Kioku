@@ -8,7 +8,9 @@ import Foundation
 //
 // Reference-type wrapper, mirroring SurfaceReadingDataMap, so SwiftUI compares a single pointer
 // instead of diffing the ~13k entries. Built once on a background thread and never mutated after.
-nonisolated final class KanjiReadingFallbackMap: Equatable {
+// @unchecked Sendable: deeply immutable (a single `let data` set at init, no mutators), so it is safe
+// to share across threads — e.g. captured by the subtitle importer's detached furigana-precompute task.
+nonisolated final class KanjiReadingFallbackMap: Equatable, @unchecked Sendable {
     let data: [Character: String]
 
     // Creates an empty map for initial state before resources are loaded (and for tests/previews,

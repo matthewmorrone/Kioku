@@ -12,7 +12,7 @@ import Foundation
 // per-run projection fails.
 //
 // Pure value type. Threadsafe under the segmenter's existing concurrency contract.
-struct FuriganaResolver {
+nonisolated struct FuriganaResolver {
     let segmenter: any TextSegmenting
     // Last-resort per-kanji reading source (KANJIDIC2). Defaults to empty so existing callers and
     // tests keep their exact behaviour — the fallback only fires when a populated map is supplied
