@@ -61,19 +61,7 @@ public final class ForcedAlignmentProvider {
         // Create whisper context with DTW enabled for accurate per-token timestamps.
         // DTW extracts timing from cross-attention weights, which is far more precise
         // than relying on timestamp tokens alone under forced alignment.
-        var cparams = whisper_context_default_params()
-        cparams.dtw_token_timestamps = true
-        cparams.dtw_aheads_preset = AlignmentTimestampMath.dtwPreset(for: modelURL)
-
-        guard let ctx = modelURL.path.withCString({ path in
-            whisper_init_from_file_with_params(path, cparams)
-        }) else {
-            throw NSError(
-                domain: "SwiftWhisperAlign.ForcedAlignment",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to load Whisper model from \(modelURL.lastPathComponent)."]
-            )
-        }
+        let ctx = try makeContext()
         defer { whisper_free(ctx) }
 
         // Build the full forced-alignment state up front so we have the
@@ -135,6 +123,171 @@ public final class ForcedAlignmentProvider {
         )
 
         return AlignmentResult(lines: combined)
+    }
+
+    // Creates a whisper context with DTW per-token timestamps enabled, using the
+    // model-specific alignment-heads preset. Shared by full-file alignment and the
+    // single-line re-alignment path so both compute timing the same way. Caller owns
+    // the returned context and must `whisper_free` it.
+    private func makeContext() throws -> OpaquePointer {
+        var cparams = whisper_context_default_params()
+        cparams.dtw_token_timestamps = true
+        cparams.dtw_aheads_preset = AlignmentTimestampMath.dtwPreset(for: modelURL)
+        guard let ctx = modelURL.path.withCString({ path in
+            whisper_init_from_file_with_params(path, cparams)
+        }) else {
+            throw NSError(
+                domain: "SwiftWhisperAlign.ForcedAlignment",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to load Whisper model from \(modelURL.lastPathComponent)."]
+            )
+        }
+        return ctx
+    }
+
+    // Re-aligns a SINGLE lyric line against a bounded window of the audio, returning
+    // both the line-level start/end and the per-token DTW timestamps mapped to the
+    // line's character offsets. This is the engine behind the lyric view's "fix this
+    // line's word sweep" control: the caller passes a padded window around the cue's
+    // current [start,end] so the forced decoder only has to place this one line's
+    // tokens within a few seconds of audio — far more reliable than re-running the
+    // whole song, and fast enough to feel interactive.
+    //
+    // Unlike `align`, this keeps the per-token granularity instead of collapsing it
+    // into one line span: the tokens become `CueCharTiming` checkpoints upstream.
+    public func alignSingleLine(
+        audioURL: URL,
+        line: String,
+        windowStartSeconds: Double,
+        windowEndSeconds: Double,
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> AlignedLineTokens {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else {
+            throw NSError(
+                domain: "SwiftWhisperAlign.ForcedAlignment",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Empty line — nothing to align."]
+            )
+        }
+
+        let frames = try await WhisperAudioFrameDecoder.decode(from: audioURL)
+        guard frames.isEmpty == false else {
+            throw NSError(
+                domain: "SwiftWhisperAlign.ForcedAlignment",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Audio decoded to zero frames."]
+            )
+        }
+
+        // Slice the decoded frames to the requested window (clamped to the file).
+        let sampleRate = 16_000
+        let totalFrames = frames.count
+        let startSample = max(0, min(totalFrames, Int(windowStartSeconds * Double(sampleRate))))
+        let endSample = max(startSample, min(totalFrames, Int(windowEndSeconds * Double(sampleRate))))
+        guard endSample > startSample else {
+            throw NSError(
+                domain: "SwiftWhisperAlign.ForcedAlignment",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "Empty audio window for re-alignment."]
+            )
+        }
+        let windowFrames = Array(frames[startSample..<endSample])
+        let windowOffsetSeconds = Double(startSample) / Double(sampleRate)
+        let windowEndClamped = Double(endSample) / Double(sampleRate)
+
+        Self.installSilentLogger()
+
+        let ctx = try makeContext()
+        defer { whisper_free(ctx) }
+
+        let state = try ForcedAlignmentState(lines: [trimmed], ctx: ctx)
+
+        // Band-limit the slice for silence detection exactly as the full-file path does;
+        // the unfiltered slice still feeds whisper inference.
+        let vocalBandFrames = voiceFreqFilter(frames: windowFrames)
+        let nonSpeech = NonSpeechDetector(frames: vocalBandFrames)
+
+        let windowTimestamps = try await runChunkedAlignment(
+            ctx: ctx,
+            frames: windowFrames,
+            fullTokens: state.tokenSequence,
+            nonSpeech: nonSpeech,
+            cancellationCheck: cancellationCheck,
+            onProgress: onProgress
+        )
+
+        let tokens = buildAlignedTokens(
+            ctx: ctx,
+            line: trimmed,
+            tokenSequence: state.tokenSequence,
+            windowTimestamps: windowTimestamps,
+            windowOffsetSeconds: windowOffsetSeconds
+        )
+
+        // Line-level bounds from the token spread, clamped inside the window. Used to
+        // tighten the cue's own start/end so a fully-wrong line is fixed in one action.
+        let lineStart = tokens.first?.start ?? windowOffsetSeconds
+        let lastTokenStart = tokens.last?.start ?? lineStart
+        let lineEnd = min(windowEndClamped, max(lastTokenStart + 0.3, lineStart + 0.3))
+        let alignedLine = AlignedLine(text: trimmed, start: lineStart, end: lineEnd)
+
+        return AlignedLineTokens(line: alignedLine, tokens: tokens)
+    }
+
+    // Decodes each line token back to its byte length and maps the running byte
+    // boundary onto the line's UTF-16 offsets, yielding one karaoke checkpoint per
+    // token. Token bytes are accumulated against a precomputed UTF-8→UTF-16 offset
+    // table for the line (the tokens came from tokenizing this exact line, so their
+    // concatenated bytes track the line's UTF-8 bytes; boundaries are clamped in case
+    // BPE artifacts push past the end). Timestamps are offset back onto the original
+    // audio timeline. Tokens past the committed-timestamp count (alignment ran short)
+    // and zero-width tokens are dropped — neither can advance the highlight.
+    private func buildAlignedTokens(
+        ctx: OpaquePointer,
+        line: String,
+        tokenSequence: [whisper_token],
+        windowTimestamps: [Double],
+        windowOffsetSeconds: Double
+    ) -> [AlignedToken] {
+        let lineUTF8Count = line.utf8.count
+        var byteToUTF16 = [Int](repeating: 0, count: lineUTF8Count + 1)
+        var byteCursor = 0
+        var utf16Cursor = 0
+        for scalar in line.unicodeScalars {
+            let scalarBytes = String(scalar).utf8.count
+            for k in 0..<scalarBytes where byteCursor + k <= lineUTF8Count {
+                byteToUTF16[byteCursor + k] = utf16Cursor
+            }
+            byteCursor += scalarBytes
+            utf16Cursor += String(scalar).utf16.count
+        }
+        byteToUTF16[lineUTF8Count] = utf16Cursor
+
+        var tokens: [AlignedToken] = []
+        var cumulativeBytes = 0
+        let count = min(tokenSequence.count, windowTimestamps.count)
+        for i in 0..<count {
+            let tokenBytes: Int
+            if let cString = whisper_token_to_str(ctx, tokenSequence[i]) {
+                tokenBytes = strlen(cString)
+            } else {
+                tokenBytes = 0
+            }
+            let prevByte = min(cumulativeBytes, lineUTF8Count)
+            cumulativeBytes += tokenBytes
+            let nextByte = min(cumulativeBytes, lineUTF8Count)
+            let charOffset = byteToUTF16[prevByte]
+            let charLength = max(0, byteToUTF16[nextByte] - charOffset)
+            guard charLength > 0 else { continue }
+            tokens.append(AlignedToken(
+                start: windowTimestamps[i] + windowOffsetSeconds,
+                charOffsetUTF16: charOffset,
+                charLengthUTF16: charLength
+            ))
+        }
+        return tokens
     }
 
     // Reads DTW-based per-token timestamps (t_dtw) from the whisper context

@@ -49,6 +49,28 @@ public struct ForcedAligner {
         try SRTWriter.write(result, to: outputURL)
     }
 
+    // Re-aligns a single lyric line against a bounded audio window, returning the
+    // line-level timing plus per-token checkpoints for the karaoke sweep. Backs the
+    // lyric view's in-place "fix this line" control.
+    public func alignSingleLine(
+        audioURL: URL,
+        line: String,
+        windowStartSeconds: Double,
+        windowEndSeconds: Double,
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> AlignedLineTokens {
+        let provider = ForcedAlignmentProvider(modelURL: modelURL)
+        return try await provider.alignSingleLine(
+            audioURL: audioURL,
+            line: line,
+            windowStartSeconds: windowStartSeconds,
+            windowEndSeconds: windowEndSeconds,
+            cancellationCheck: cancellationCheck,
+            onProgress: onProgress
+        )
+    }
+
     // Aligns and returns the SRT text as a string.
     public func alignToSRT(
         input: AlignmentInput,
