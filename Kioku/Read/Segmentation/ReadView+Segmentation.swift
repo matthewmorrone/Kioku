@@ -340,6 +340,10 @@ extension ReadView {
             TapDiagnostics.mark("about to preScroll")
             preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: tappedSegmentRect)
             TapDiagnostics.mark("preScroll returned, about to presentSheet")
+            // Tell the sheet whether frequency data is loaded yet so its split readout shows a loading
+            // state instead of all-zero scores when opened mid-startup; onChange(of: frequencyDataReady)
+            // flips it true and refreshes the open readout once the reading map lands (Stage 1, ~1s).
+            SegmentLookupSheet.shared.frequencyResourcesReady = frequencyDataReady
             SegmentLookupSheet.shared.presentSheet(
                 surface: segmentSurface,
                 leftNeighborSurface: adjacentSurfaces.left,
@@ -539,8 +543,15 @@ extension ReadView {
                     )
                 },
                 sheetSaveToggle: {
+                    // Prefer the reading-disambiguated async entry (currentSheetDictionaryEntry),
+                    // but fall back to the synchronous segment resolver when it hasn't landed yet.
+                    // That async entry is resolved AFTER the sheet presents (so the open animation
+                    // isn't blocked by SQL), leaving a brief window in which a tap on the star would
+                    // otherwise silently no-op — the "star doesn't always bookmark" bug. The sibling
+                    // sheetOpenWordDetail already uses the synchronous resolver for the same reason.
                     guard let surface = currentSelectedSurface(),
-                          let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry else { return }
+                          let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry
+                            ?? resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
                     // Key the save on the lemma (storedSurface == encounteredSurface == lemma) — the
                     // same thing the extract-words list does in lemma mode. This keeps toggling
                     // symmetric with what the star reflects: the star is filled because the *word*

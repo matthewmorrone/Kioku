@@ -130,18 +130,21 @@ extension DictionaryStore {
         }
     }
 
-    // Builds a surface → frequency-score map (~0–7 Zipf-equivalent, higher = more common) directly
-    // from `word_frequency`, the table that actually carries jpdb_rank.
+    // Builds a surface → best JPDB rank map (lower = more frequent) directly from `word_frequency`,
+    // the table that actually carries jpdb_rank.
     //
     // Propagation is per ENTRY, not per writing: jpdb ranks one written form (usually the kanji,
     // e.g. 喧嘩), but every writing of that entry is the same word, so we apply the entry's best
     // rank to ALL its kana and kanji surfaces. That rescues alternate writings the segmenter sees in
     // text — ケンカ inherits 喧嘩's rank (3207), わがまま inherits 我儘's (14647) — instead of those
     // kana spellings reading as rank-none. A genuinely unranked entry (たの, an `exp`) stays NONE,
-    // which is the signal that distinguishes real words from junk. Rank→score reuses FrequencyData
-    // so the mapping matches every other frequency consumer. (Conjugations like 会いたい aren't stored
-    // surfaces; they inherit frequency via the deinflected lemma in resolvedTrieLemmas.)
-    nonisolated func fetchFrequencyScoreBySurface() throws -> [String: Double] {
+    // which is the signal that distinguishes real words from junk. (Conjugations like 会いたい aren't
+    // stored surfaces; they inherit frequency via the deinflected lemma in resolvedTrieLemmas.)
+    //
+    // This is the propagation `surface_readings` lacks — its kana rows carry NULL jpdb_rank — so it
+    // backs both the segmenter (via fetchFrequencyScoreBySurface) and the lookup/split-editor
+    // frequency fallback (via FrequencyRankMap → frequencyData(forSurface:)).
+    nonisolated func fetchBestRankBySurface() throws -> [String: Int] {
         try withSerializedDatabaseAccess {
             var bestRankBySurface: [String: Int] = [:]
 
@@ -175,15 +178,23 @@ extension DictionaryStore {
                 FROM kanji kj JOIN entry_rank er ON er.entry_id = kj.entry_id
                 """)
 
-            var scoreBySurface: [String: Double] = [:]
-            scoreBySurface.reserveCapacity(bestRankBySurface.count)
-            for (surface, rank) in bestRankBySurface {
-                if let score = FrequencyData(jpdbRank: rank, wordfreqZipf: nil).normalizedScore, score > 0 {
-                    scoreBySurface[surface] = score
-                }
-            }
-            return scoreBySurface
+            return bestRankBySurface
         }
+    }
+
+    // Surface → frequency-score map (~0–7 Zipf-equivalent, higher = more common) used by the
+    // segmenter. Derived from the per-entry-propagated rank map so it agrees, surface-for-surface,
+    // with every other frequency consumer; rank→score reuses FrequencyData so the mapping matches.
+    nonisolated func fetchFrequencyScoreBySurface() throws -> [String: Double] {
+        let bestRankBySurface = try fetchBestRankBySurface()
+        var scoreBySurface: [String: Double] = [:]
+        scoreBySurface.reserveCapacity(bestRankBySurface.count)
+        for (surface, rank) in bestRankBySurface {
+            if let score = FrequencyData(jpdbRank: rank, wordfreqZipf: nil).normalizedScore, score > 0 {
+                scoreBySurface[surface] = score
+            }
+        }
+        return scoreBySurface
     }
 
     // Fetches all unique dictionary surfaces from kanji and kana_forms tables.

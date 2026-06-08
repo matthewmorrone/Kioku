@@ -2,7 +2,7 @@ import Foundation
 
 // Per-surface reading and frequency data, built once from the materialized surface_readings table.
 // Replaces the three separate startup maps (readingBySurface, readingCandidatesBySurface, frequencyDataBySurface).
-nonisolated struct SurfaceReadingData {
+nonisolated struct SurfaceReadingData: Sendable {
     // Readings ordered by JPDB rank (best first), capped at 8.
     let readings: [String]
     // Frequency metadata keyed by reading. Only populated for readings with at least one frequency signal.
@@ -11,7 +11,9 @@ nonisolated struct SurfaceReadingData {
 
 // Reference-type wrapper so SwiftUI compares a single pointer instead of diffing 327k dictionary entries.
 // The map is built once on a background thread and never mutated after assignment.
-nonisolated final class SurfaceReadingDataMap: Equatable {
+// @unchecked Sendable: deeply immutable (a single `let data` set at init, no mutators), so it is safe
+// to share across threads — e.g. captured by the subtitle importer's detached furigana-precompute task.
+nonisolated final class SurfaceReadingDataMap: Equatable, @unchecked Sendable {
     let data: [String: SurfaceReadingData]
 
     // Creates an empty map for initial state before resources are loaded.

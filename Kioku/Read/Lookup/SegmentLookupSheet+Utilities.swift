@@ -8,6 +8,17 @@ import UIKit
 // and the queue were removed.
 
 extension SegmentLookupSheet {
+    // Re-installs the split readout's frequency provider with freshly-loaded resources and recomputes
+    // the readout on an already-open sheet. A split editor opened before the frequency maps finished
+    // loading captures empty maps and shows all-zero scores; called when resources become ready so the
+    // open readout fills in by itself instead of forcing the user to dismiss, wait, and reopen.
+    @MainActor
+    func refreshOpenSheetFrequencyProvider(_ provider: @escaping (String) -> [String: FrequencyData]?) {
+        frequencyResourcesReady = true
+        pathSegmentFrequencyProvider = provider
+        (presentedSheetController as? SurfaceSheetViewController)?.updateSplitFrequencyLabel()
+    }
+
     // Picks the dictionary entry whose reading matches the one `SurfaceSheetViewController`
     // will paint first, so the gloss panel and the reading header agree on initial open.
     // Mirrors the controller's initial-reading-pick logic (override-if-known else readings[0]),

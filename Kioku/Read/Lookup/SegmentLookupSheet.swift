@@ -10,6 +10,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
 
     private weak var presentedController: UIViewController?
     weak var presentedSheetController: UIViewController?
+    // True once the app's frequency maps have finished loading. The split readout shows a loading
+    // state (not misleading zeros) until this flips; ReadView sets it at present time and on resource-ready.
+    var frequencyResourcesReady = false
     private var isPreparingSheetDismissal = false
     // Incremented on every refresh request. The deferred main-actor block captures the generation
     // it was scheduled at and only writes `currentSheet*` properties when the captured

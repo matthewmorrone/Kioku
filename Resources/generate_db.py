@@ -1216,21 +1216,35 @@ def build_database():
             wordfreq_zipf REAL
         );
 
+        WITH entry_rank AS (
+            -- Per-entry best (lowest) jpdb rank, sourced from the kanji-kana links that carry it.
+            -- JPDB ranks a single written form per entry (the kanji headword), so propagating that
+            -- rank to every writing lets kana spellings (こと, する) and alternate writings inherit it
+            -- instead of reading as rank-none. Mirrors fetchBestRankBySurface()/word_frequency so
+            -- surface_readings agrees, surface-for-surface, with every other frequency consumer.
+            SELECT k.entry_id AS entry_id, MIN(kkl.jpdb_rank) AS rank
+            FROM kanji_kana_links kkl
+            JOIN kanji k ON k.id = kkl.kanji_id
+            WHERE kkl.jpdb_rank IS NOT NULL
+            GROUP BY k.entry_id
+        )
         INSERT INTO surface_readings (surface, reading, best_rank, jpdb_rank, wordfreq_zipf)
         SELECT surface, reading,
                MIN(best_rank) AS best_rank,
                MIN(jpdb_rank) AS jpdb_rank,
                MAX(wordfreq_zipf) AS wordfreq_zipf
         FROM (
-            -- Kanji form as surface, kana form as reading. Carries jpdb rank when the
-            -- kanji-kana link is known, so common headwords sort to the top of lookups.
+            -- Kanji form as surface, kana form as reading. Prefers the exact (kanji,kana) pair rank,
+            -- then falls back to the entry's best rank so the headword still sorts/scores when the
+            -- specific pair is unranked.
             SELECT kj.text AS surface, kf.text AS reading,
-                   COALESCE(kkl.jpdb_rank, 9999999) AS best_rank,
-                   kkl.jpdb_rank AS jpdb_rank,
+                   COALESCE(kkl.jpdb_rank, er.rank, 9999999) AS best_rank,
+                   COALESCE(kkl.jpdb_rank, er.rank) AS jpdb_rank,
                    kj.wordfreq_zipf AS wordfreq_zipf
             FROM kanji kj
             JOIN kana_forms kf ON kf.entry_id = kj.entry_id
             LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
+            LEFT JOIN entry_rank er ON er.entry_id = kj.entry_id
             UNION ALL
             -- Every kana form as its own surface. Without this branch the segmenter
             -- could only see kana surfaces for entries with NO kanji form at all, which
@@ -1239,14 +1253,15 @@ def build_database():
             -- たゆたう (揺蕩う), and anything JMdict tags "usually written in kana alone."
             -- Hiragana-rendered text would then fall through to the unknown-token path,
             -- producing the kind of garbage segmentation 流されてたゆたうのこのまま showed.
-            -- wordfreq_zipf is carried from the kana form itself so frequency-based
-            -- tie-breaking remains meaningful; best_rank/jpdb_rank are left unset because
-            -- jpdb's ranking is keyed off the kanji headword, not the kana spelling.
+            -- jpdb_rank/best_rank are INHERITED from the entry's headword rank (er.rank) — was NULL —
+            -- so common kana spellings carry frequency instead of rendering "–" in the lookup/split
+            -- editor; wordfreq_zipf is still carried from the kana form itself.
             SELECT kf.text AS surface, kf.text AS reading,
-                   9999999 AS best_rank,
-                   NULL AS jpdb_rank,
+                   COALESCE(er.rank, 9999999) AS best_rank,
+                   er.rank AS jpdb_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf
             FROM kana_forms kf
+            LEFT JOIN entry_rank er ON er.entry_id = kf.entry_id
         )
         GROUP BY surface, reading
         ORDER BY surface ASC, MIN(best_rank) ASC, reading ASC;
