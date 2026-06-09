@@ -1,5 +1,22 @@
 import SwiftUI
 
+// Single source of truth for the Read tab's toggle appearance, modeled on the
+// furigana button: a constant neutral background, with the foreground switching
+// between accent (on) and secondary (off). Every toggle on the Read tab — the
+// icon buttons in the toolbar / title rows, the display-options popover rows,
+// and the pill filters in the segment list and lyrics views — routes its colors
+// through here so the whole tab speaks one visual language. The background never
+// changes with state; only the foreground signals on/off.
+enum ReadToggleAppearance {
+    static let background = Color(.tertiarySystemFill)
+
+    // Accent when the toggle is on, secondary when off — the only thing that
+    // changes with state, since the background stays constant.
+    static func foreground(isOn: Bool) -> Color {
+        isOn ? Color.accentColor : Color.secondary
+    }
+}
+
 // Toolbar buttons and display options popover for ReadView.
 extension ReadView {
     // Renders action buttons for segmentation and display controls. The lyrics (♪) and
@@ -58,7 +75,7 @@ extension ReadView {
             }
             .foregroundStyle(hasPendingLLMChanges ? Color.green : Color.accentColor)
             .frame(width: 36, height: 36)
-            .background(Circle().fill(hasPendingLLMChanges ? Color.green.opacity(0.15) : Color(.tertiarySystemFill)))
+            .background(Circle().fill(ReadToggleAppearance.background))
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(isEditMode)
@@ -69,7 +86,14 @@ extension ReadView {
     // Resets custom segment segmentation back to computed segmentation.
     // While LLM changes are pending, shows a red X badge to signal "reject all AI changes".
     var resetButton: some View {
-        Button {
+        // Enabled only when the user has actually changed this note's segmentation or readings
+        // (or there are pending AI changes to reject) and the note isn't in edit mode. Uses the
+        // explicit edit marker rather than `segments != nil`, which is true even for imported /
+        // precomputed notes that were never touched. Per the toggle standard, an enabled reset
+        // reads as "on" (accent) and a disabled one as "off" (secondary); the red reject badge
+        // overrides while AI changes are pending.
+        let isEnabled = (hasManualSegmentationEdits || hasPendingLLMChanges) && isEditMode == false
+        return Button {
             resetSegmentationToComputed()
         } label: {
             Group {
@@ -85,15 +109,15 @@ extension ReadView {
                 } else {
                     Image(systemName: "arrow.counterclockwise")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(segments == nil ? Color.secondary.opacity(0.5) : Color.secondary)
+                        .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
                 }
             }
             .frame(width: 36, height: 36)
-            .background(Circle().fill(hasPendingLLMChanges ? Color.red.opacity(0.15) : Color(.tertiarySystemFill)))
+            .background(Circle().fill(ReadToggleAppearance.background))
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled((segments == nil && hasPendingLLMChanges == false) || isEditMode)
-        .opacity((segments == nil && hasPendingLLMChanges == false) || isEditMode ? 0.5 : 0.7)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.5)
         .accessibilityLabel(hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
     }
 
@@ -127,7 +151,7 @@ extension ReadView {
     // visual peers — same capsule background, same accent treatment — so the row reads as
     // "actions for the currently-open note."
     var titleLyricsButton: some View {
-        titleActionLabel(systemImage: "music.note", isActive: isShowingLyricsView)
+        titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: isShowingLyricsView))
             .contentShape(Capsule())
             .onTapGesture {
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the
@@ -156,7 +180,7 @@ extension ReadView {
         Button {
             isShowingSegmentList = true
         } label: {
-            titleActionLabel(systemImage: "list.bullet", isActive: false)
+            titleActionLabel(systemImage: "list.bullet", foreground: .accentColor)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Extract Words")
@@ -166,7 +190,7 @@ extension ReadView {
         Button {
             isShowingBreakdownSheet = true
         } label: {
-            titleActionLabel(systemImage: "sparkles.rectangle.stack", isActive: false)
+            titleActionLabel(systemImage: "sparkles.rectangle.stack", foreground: .accentColor)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open Breakdown")
@@ -178,12 +202,12 @@ extension ReadView {
     // is laid out with default `HStack` spacing. Previously the visible pill was 30×30
     // wrapped in a 44×44 hit frame, which made HStack measure ~14pt of invisible padding
     // per button and pushed the top row's perceived spacing well past the bottom row's.
-    private func titleActionLabel(systemImage: String, isActive: Bool) -> some View {
+    private func titleActionLabel(systemImage: String, foreground: Color) -> some View {
         Image(systemName: systemImage)
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(isActive ? Color(.systemOrange) : Color.accentColor)
+            .foregroundStyle(foreground)
             .frame(width: 36, height: 36)
-            .background(Capsule().fill(Color(.tertiarySystemFill)))
+            .background(Capsule().fill(ReadToggleAppearance.background))
             .contentShape(Rectangle())
     }
 
@@ -192,9 +216,9 @@ extension ReadView {
         Image(isFuriganaVisible ? "furigana.on" : "furigana.off")
             .renderingMode(.template)
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(isFuriganaVisible ? Color.accentColor : Color.secondary)
+            .foregroundStyle(ReadToggleAppearance.foreground(isOn: isFuriganaVisible))
             .frame(width: 36, height: 36)
-            .background(Circle().fill(Color(.tertiarySystemFill)))
+            .background(Circle().fill(ReadToggleAppearance.background))
     }
 
     // Presents display option toggles with persistent enabled-state styling.
@@ -267,12 +291,12 @@ extension ReadView {
             HStack(spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(isEnabled ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
                     .frame(width: 20)
 
                 Text(title)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(isEnabled ? Color.accentColor : Color.primary)
+                    .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .allowsTightening(true)
@@ -289,7 +313,7 @@ extension ReadView {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isEnabled ? Color.accentColor.opacity(0.16) : Color(.tertiarySystemFill))
+                    .fill(ReadToggleAppearance.background)
             )
         }
         .buttonStyle(.plain)
@@ -307,9 +331,9 @@ extension ReadView {
         } label: {
             Image(systemName: "character.cursor.ibeam.ja")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(isEditMode ? Color.white : Color.secondary)
+                .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEditMode))
                 .frame(width: 36, height: 36)
-                .background(Circle().fill(isEditMode ? Color.accentColor : Color(.tertiarySystemFill)))
+                .background(Circle().fill(ReadToggleAppearance.background))
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(isRequestingLLMCorrection)

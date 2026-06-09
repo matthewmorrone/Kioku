@@ -18,6 +18,11 @@ KRADFILE_PATH = RESOURCES_DIR / "kradfile2.utf8"
 KANJIVG_PATH = RESOURCES_DIR / "kanjivg.xml"
 OUTPUT_DB = RESOURCES_DIR / "dictionary.sqlite"
 
+# Sort key written for surfaces with no frequency signal, so unranked rows sort last.
+# MUST match the app's DictionaryStore.FrequencySQL.unrankedSort — the two encode the
+# same "no rank" sentinel and ranking disagrees if they drift apart.
+UNRANKED_RANK_SENTINEL = 9999999
+
 
 def sha256_of_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -1207,7 +1212,7 @@ def build_database():
 
     print("Materializing surface_readings lookup table...")
     conn.executescript(
-        """
+        f"""
         CREATE TABLE surface_readings (
             surface TEXT NOT NULL,
             reading TEXT NOT NULL,
@@ -1238,7 +1243,7 @@ def build_database():
             -- then falls back to the entry's best rank so the headword still sorts/scores when the
             -- specific pair is unranked.
             SELECT kj.text AS surface, kf.text AS reading,
-                   COALESCE(kkl.jpdb_rank, er.rank, 9999999) AS best_rank,
+                   COALESCE(kkl.jpdb_rank, er.rank, {UNRANKED_RANK_SENTINEL}) AS best_rank,
                    COALESCE(kkl.jpdb_rank, er.rank) AS jpdb_rank,
                    kj.wordfreq_zipf AS wordfreq_zipf
             FROM kanji kj
@@ -1257,7 +1262,7 @@ def build_database():
             -- so common kana spellings carry frequency instead of rendering "–" in the lookup/split
             -- editor; wordfreq_zipf is still carried from the kana form itself.
             SELECT kf.text AS surface, kf.text AS reading,
-                   COALESCE(er.rank, 9999999) AS best_rank,
+                   COALESCE(er.rank, {UNRANKED_RANK_SENTINEL}) AS best_rank,
                    er.rank AS jpdb_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf
             FROM kana_forms kf

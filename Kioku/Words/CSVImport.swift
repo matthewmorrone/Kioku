@@ -266,11 +266,7 @@ nonisolated enum CSVImport {
     // MARK: - Script classification helpers
 
     private static func containsKanji(_ text: String) -> Bool {
-        text.unicodeScalars.contains {
-            (0x3400...0x4DBF).contains($0.value)
-            || (0x4E00...0x9FFF).contains($0.value)
-            || (0xF900...0xFAFF).contains($0.value)
-        }
+        ScriptClassifier.containsKanji(text)
     }
 
     // Returns true when the text consists entirely of kana with no kanji or Latin characters.
@@ -292,15 +288,7 @@ nonisolated enum CSVImport {
 
     // Returns true when the text contains at least one hiragana, katakana, or kanji scalar.
     private static func containsJapaneseScript(_ text: String) -> Bool {
-        text.unicodeScalars.contains {
-            let v = $0.value
-            return (0x3040...0x309F).contains(v)
-                || (0x30A0...0x30FF).contains(v)
-                || (0xFF66...0xFF9F).contains(v)
-                || (0x3400...0x4DBF).contains(v)
-                || (0x4E00...0x9FFF).contains(v)
-                || (0xF900...0xFAFF).contains(v)
-        }
+        ScriptClassifier.containsJapanese(text)
     }
 
     // Returns true when the text has Latin letters but no Japanese script, used to skip gloss columns.

@@ -188,7 +188,18 @@ nonisolated struct FuriganaResolver {
         _ segmentSurface: String,
         surfaceReadingData: SurfaceReadingDataMap
     ) -> String? {
-        surfaceReadingData[segmentSurface]?.readings.first
+        guard let readings = surfaceReadingData[segmentSurface]?.readings,
+              readings.isEmpty == false else {
+            return nil
+        }
+        // Furigana over kanji is conventionally hiragana. The readings list is ordered by
+        // frequency rank, and that ordering can lead with a katakana variant (e.g. ウソ for 噓):
+        // when a katakana reading has no JPDB rank of its own it inherits the entry's headword
+        // rank in the generated DB, which can out-rank the form-specific hiragana reading. Pick
+        // the highest-ranked non-katakana reading so the default ruby is hiragana, and only fall
+        // back to the leading reading for words whose only reading is genuinely katakana (ateji
+        // loanwords like 煙草 → タバコ). The user can still pin a katakana reading explicitly.
+        return readings.first(where: { ScriptClassifier.isPureKatakana($0) == false }) ?? readings.first
     }
 
     // Produces kanji-run furigana annotations, including mixed forms with multiple kanji
@@ -372,19 +383,11 @@ nonisolated struct FuriganaResolver {
 
     // Checks a reading prefix against surface okurigana using phonetic-normalized kana matching.
     private static func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
-        guard reading.count >= surfacePrefix.count else {
-            return false
-        }
-        let readingPrefix = String(reading.prefix(surfacePrefix.count))
-        return KanaNormalizer.normalizeForFuriganaAlignment(readingPrefix) == KanaNormalizer.normalizeForFuriganaAlignment(surfacePrefix)
+        KanaNormalizer.hasPhoneticPrefix(reading, matching: surfacePrefix)
     }
 
     // Checks a reading suffix against surface okurigana using phonetic-normalized kana matching.
     private static func hasPhoneticSuffix(_ reading: String, matching surfaceSuffix: String) -> Bool {
-        guard reading.count >= surfaceSuffix.count else {
-            return false
-        }
-        let readingSuffix = String(reading.suffix(surfaceSuffix.count))
-        return KanaNormalizer.normalizeForFuriganaAlignment(readingSuffix) == KanaNormalizer.normalizeForFuriganaAlignment(surfaceSuffix)
+        KanaNormalizer.hasPhoneticSuffix(reading, matching: surfaceSuffix)
     }
 }

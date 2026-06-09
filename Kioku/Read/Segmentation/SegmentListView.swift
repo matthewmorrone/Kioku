@@ -363,12 +363,12 @@ struct SegmentListView: View {
         } label: {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                .foregroundStyle(ReadToggleAppearance.foreground(isOn: isOn))
                 .padding(.horizontal, 10)
                 .frame(height: 30)
                 .background(
                     Capsule()
-                        .fill(isOn ? Color.accentColor.opacity(0.18) : Color(.tertiarySystemFill))
+                        .fill(ReadToggleAppearance.background)
                 )
         }
         .buttonStyle(.plain)

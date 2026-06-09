@@ -252,7 +252,10 @@ struct SubtitleImportView: View {
                 id: nil,
                 title: title,
                 content: assembledText,
-                segments: precomputedSegments.isEmpty ? nil : precomputedSegments
+                segments: precomputedSegments.isEmpty ? nil : precomputedSegments,
+                // Precompute persists the *computed* segmentation, not a user edit — keep the
+                // marker false so the read screen's reset button stays disabled on first open.
+                segmentsAreUserEdited: false
             )
             noteIDs = [noteID]
         }

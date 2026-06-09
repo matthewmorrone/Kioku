@@ -375,12 +375,7 @@ struct FlashcardCard: View {
     private func isKanaOnly(_ text: String) -> Bool {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard t.isEmpty == false else { return false }
-        return t.unicodeScalars.allSatisfy { s in
-            (0x3040...0x309F).contains(s.value) ||
-            (0x30A0...0x30FF).contains(s.value) ||
-            s.value == 0x30FC ||
-            (0xFF66...0xFF9F).contains(s.value)
-        }
+        return t.unicodeScalars.allSatisfy(ScriptClassifier.isKanaScalar)
     }
 
     @ViewBuilder

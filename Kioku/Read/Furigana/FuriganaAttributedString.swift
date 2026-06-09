@@ -229,21 +229,11 @@ enum FuriganaAttributedString {
 
     // Checks whether a reading starts with the same phonetic syllables as a kanji run prefix so prefix kana can be excluded from furigana.
     nonisolated private static func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
-        guard reading.count >= surfacePrefix.count else {
-            return false
-        }
-
-        let readingPrefix = String(reading.prefix(surfacePrefix.count))
-        return KanaNormalizer.normalizeForFuriganaAlignment(readingPrefix) == KanaNormalizer.normalizeForFuriganaAlignment(surfacePrefix)
+        KanaNormalizer.hasPhoneticPrefix(reading, matching: surfacePrefix)
     }
 
     // Checks whether a reading ends with the same phonetic syllables as a kanji run suffix so trailing kana can be excluded from furigana.
     nonisolated private static func hasPhoneticSuffix(_ reading: String, matching surfaceSuffix: String) -> Bool {
-        guard reading.count >= surfaceSuffix.count else {
-            return false
-        }
-
-        let readingSuffix = String(reading.suffix(surfaceSuffix.count))
-        return KanaNormalizer.normalizeForFuriganaAlignment(readingSuffix) == KanaNormalizer.normalizeForFuriganaAlignment(surfaceSuffix)
+        KanaNormalizer.hasPhoneticSuffix(reading, matching: surfaceSuffix)
     }
 }

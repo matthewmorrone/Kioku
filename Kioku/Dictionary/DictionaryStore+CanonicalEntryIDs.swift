@@ -41,7 +41,7 @@ extension DictionaryStore {
                              OR sp.pos LIKE 'aux-%' OR sp.pos LIKE '%,aux-%'
                              OR sp.pos = 'adj-pn' OR sp.pos LIKE 'adj-pn,%' OR sp.pos LIKE '%,adj-pn,%' OR sp.pos LIKE '%,adj-pn')
                        ) AS is_particle,
-                       COALESCE(MIN(sn.order_index), 2147483647) AS min_sense
+                       COALESCE(MIN(sn.order_index), \(FrequencySQL.noSenseSort)) AS min_sense
                 FROM surfaces_with_entries s
                 LEFT JOIN word_frequency wf ON wf.entry_id = s.entry_id
                     AND (EXISTS (SELECT 1 FROM kana_forms kf2 WHERE kf2.id = wf.kana_id AND kf2.text = s.surface)
@@ -68,22 +68,7 @@ extension DictionaryStore {
                                -- wordfreq Zipf score, else the catch-all. Mirrors the live
                                -- lookup query in DictionaryStore.fetchMatchedEntries so the
                                -- canonical id at app start matches an interactive lookup.
-                               COALESCE(
-                                   rank,
-                                   CASE
-                                       WHEN best_zipf >= 7.0 THEN 5
-                                       WHEN best_zipf >= 6.5 THEN 25
-                                       WHEN best_zipf >= 6.0 THEN 100
-                                       WHEN best_zipf >= 5.5 THEN 300
-                                       WHEN best_zipf >= 5.0 THEN 1000
-                                       WHEN best_zipf >= 4.5 THEN 3000
-                                       WHEN best_zipf >= 4.0 THEN 10000
-                                       WHEN best_zipf >= 3.5 THEN 30000
-                                       WHEN best_zipf >= 3.0 THEN 100000
-                                       ELSE 500000
-                                   END,
-                                   9999999
-                               ) ASC,
+                               \(FrequencySQL.effectiveRank(jpdbExpr: "rank", zipfExpr: "best_zipf")) ASC,
                                min_sense ASC,
                                entry_id ASC
                        ) AS rn

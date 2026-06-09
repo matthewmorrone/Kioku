@@ -102,18 +102,11 @@ extension DictionaryStore {
         return deduped
     }
 
-    // True if any character in the term is Hiragana, Katakana, or CJK Unified Ideographs.
-    // Cheap O(n) Unicode-range scan; used to gate Japanese-side SQL scans for ASCII queries.
+    // Cheap O(n) scan used to gate Japanese-side SQL scans for ASCII queries.
+    // Delegates to the canonical block set so search agrees with import/clipboard/etc.
+    // (was an inline copy that omitted phonetic-ext + compatibility ideographs).
     nonisolated private func containsJapaneseScript(_ term: String) -> Bool {
-        for scalar in term.unicodeScalars {
-            let v = scalar.value
-            if (0x3040...0x309F).contains(v) { return true }  // Hiragana
-            if (0x30A0...0x30FF).contains(v) { return true }  // Katakana
-            if (0x4E00...0x9FFF).contains(v) { return true }  // CJK Unified Ideographs
-            if (0x3400...0x4DBF).contains(v) { return true }  // CJK Extension A
-            if (0xFF66...0xFF9D).contains(v) { return true }  // Halfwidth katakana
-        }
-        return false
+        ScriptClassifier.containsJapanese(term)
     }
 
     // Returns entry ids whose kanji surface OR kana form contains the literal term as
