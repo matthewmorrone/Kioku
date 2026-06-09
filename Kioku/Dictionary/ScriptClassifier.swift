@@ -78,37 +78,47 @@ nonisolated enum ScriptClassifier {
         return false
     }
 
-    // Detects whether any scalar belongs to hiragana, katakana (full or half-width),
-    // katakana phonetic extensions, or the supported CJK unified ideograph blocks —
-    // i.e. the codepoint set that could plausibly be Japanese text. Used by the
+    // MARK: - Canonical block membership (single source of truth)
+    //
+    // Every "is this scalar/text Japanese / kana / kanji?" question in the app routes
+    // through these three scalar predicates. Before consolidation the same Unicode
+    // ranges were re-typed inline in DictionaryStore+Search, CSVImport, RomajiToKana,
+    // and others — and the copies disagreed (some omitted half-width katakana, some
+    // omitted CJK Compatibility Ideographs), so 「﨑」 counted as Japanese on import but
+    // not in search. Keep the union here and call these from every consumer.
+
+    // True for any kanji scalar: CJK Unified, Extension A, and Compatibility Ideographs.
+    static func isKanjiScalar(_ scalar: Unicode.Scalar) -> Bool {
+        let value = scalar.value
+        return (0x4E00...0x9FFF).contains(value)   // CJK Unified Ideographs
+            || (0x3400...0x4DBF).contains(value)   // CJK Unified Ideographs Extension A
+            || (0xF900...0xFAFF).contains(value)   // CJK Compatibility Ideographs
+    }
+
+    // True for any kana scalar: hiragana, katakana, phonetic extensions, half-width katakana.
+    static func isKanaScalar(_ scalar: Unicode.Scalar) -> Bool {
+        let value = scalar.value
+        return (0x3040...0x309F).contains(value)   // Hiragana
+            || (0x30A0...0x30FF).contains(value)   // Katakana
+            || (0x31F0...0x31FF).contains(value)   // Katakana Phonetic Extensions
+            || (0xFF65...0xFF9F).contains(value)   // Half-width Katakana
+    }
+
+    // True for any scalar that could plausibly be Japanese text (kana or kanji).
+    static func isJapaneseScalar(_ scalar: Unicode.Scalar) -> Bool {
+        isKanaScalar(scalar) || isKanjiScalar(scalar)
+    }
+
+    // Detects whether any scalar could plausibly be Japanese text. Used by the
     // clipboard-lookup coordinator to filter out non-Japanese clipboards before
-    // surfacing a lookup banner.
+    // surfacing a lookup banner, and to gate Japanese-side SQL scans for ASCII queries.
     static func containsJapanese(_ text: String) -> Bool {
-        for scalar in text.unicodeScalars {
-            let value = scalar.value
-            if (0x3040...0x309F).contains(value) { return true }   // Hiragana
-            if (0x30A0...0x30FF).contains(value) { return true }   // Katakana
-            if (0x31F0...0x31FF).contains(value) { return true }   // Katakana Phonetic Extensions
-            if (0xFF65...0xFF9F).contains(value) { return true }   // Half-width Katakana
-            if (0x4E00...0x9FFF).contains(value) { return true }   // CJK Unified Ideographs
-            if (0x3400...0x4DBF).contains(value) { return true }   // CJK Unified Ideographs Ext A
-        }
-        return false
+        text.unicodeScalars.contains(where: isJapaneseScalar)
     }
 
     // Detects whether any scalar belongs to the supported kanji blocks.
     static func containsKanji(_ text: String) -> Bool {
-        for scalar in text.unicodeScalars {
-            let value = scalar.value
-            let isCJKUnifiedIdeographs = (0x4E00...0x9FFF).contains(value) // CJK Unified Ideographs
-            let isCJKExtensionA = (0x3400...0x4DBF).contains(value) // CJK Unified Ideographs Extension A
-
-            if isCJKUnifiedIdeographs || isCJKExtensionA {
-                return true
-            }
-        }
-
-        return false
+        text.unicodeScalars.contains(where: isKanjiScalar)
     }
 
     // Classifies known Japanese punctuation symbols used by segment boundaries.
@@ -258,12 +268,6 @@ nonisolated enum ScriptClassifier {
         }
 
         return [String(String.UnicodeScalarView(resolvedScalars))]
-    }
-
-    // Detects whether one scalar belongs to supported CJK Unified Ideograph blocks.
-    private static func isKanjiScalar(_ scalar: UnicodeScalar) -> Bool {
-        let value = scalar.value
-        return (0x4E00...0x9FFF).contains(value) || (0x3400...0x4DBF).contains(value)
     }
 
     // Detects whether one scalar is in the hiragana block.

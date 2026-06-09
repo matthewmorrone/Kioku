@@ -55,6 +55,8 @@ extension ReadView {
                 applyPerRunFurigana(surface: selectedSurface, reading: reading, at: targetLocation)
             }
         }
+        // A pinned reading is a genuine user edit — enable the reset button.
+        hasManualSegmentationEdits = true
         // Rebuild segments with updated furigana then persist.
         rebuildAndPersistSegments()
     }
@@ -65,6 +67,9 @@ extension ReadView {
     // user's old override would briefly remain visible during the async backfill.
     func clearReadingOverrideForCurrentSegment() {
         guard let location = selectedSegmentLocation else { return }
+        // Unpinning a reading is a user edit too (it overrides the persisted reading back to the
+        // auto-derived default), so the reset button should stay available.
+        hasManualSegmentationEdits = true
         transientBlankReadingSegmentLocation = location
         furiganaBySegmentLocation.removeValue(forKey: location)
         furiganaLengthBySegmentLocation.removeValue(forKey: location)
@@ -80,6 +85,7 @@ extension ReadView {
     // (otherwise the post-segmenter backfill leaves stale overrides in place).
     func resetSegmentationToComputed() {
         segments = nil
+        hasManualSegmentationEdits = false
         illegalMergeBoundaryLocation = nil
         illegalMergeFlashTask?.cancel()
         selectedSegmentLocation = nil

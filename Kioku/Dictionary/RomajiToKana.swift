@@ -152,14 +152,10 @@ nonisolated enum RomajiToKana {
 
     // MARK: - Predicates
 
-    // True for any scalar in the hiragana, katakana, or CJK ideograph blocks — signals "already Japanese".
+    // True for any scalar that is "already Japanese" (kana or kanji), so romaji
+    // conversion passes it through untouched. Routes through the canonical block set.
     private static func isKanaOrKanji(_ scalar: Unicode.Scalar) -> Bool {
-        let v = scalar.value
-        return (0x3040...0x309F).contains(v) ||  // Hiragana
-               (0x30A0...0x30FF).contains(v) ||  // Katakana
-               (0x31F0...0x31FF).contains(v) ||  // Katakana phonetic extensions
-               (0x3400...0x4DBF).contains(v) ||  // CJK Extension A
-               (0x4E00...0x9FFF).contains(v)     // CJK Unified Ideographs
+        ScriptClassifier.isJapaneseScalar(scalar)
     }
 
     // True for ASCII letters a–z excluding the five vowels.

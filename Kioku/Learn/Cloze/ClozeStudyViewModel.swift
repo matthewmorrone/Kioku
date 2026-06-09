@@ -344,12 +344,7 @@ final class ClozeStudyViewModel: ObservableObject {
 
     // Guards that a candidate sentence has at least some Japanese script before building a question from it.
     private func containsJapanese(_ string: String) -> Bool {
-        string.unicodeScalars.contains { s in
-            switch s.value {
-            case 0x3040...0x309F, 0x30A0...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF: return true
-            default: return false
-            }
-        }
+        ScriptClassifier.containsJapanese(string)
     }
 
     // Splits note text into sentences using SentenceRangeResolver, optionally deduplicating lines.

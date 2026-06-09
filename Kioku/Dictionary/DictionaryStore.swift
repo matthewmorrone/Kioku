@@ -526,7 +526,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
                MIN(wf.jpdb_rank) AS best_jpdb,
                MAX(wf.wordfreq_zipf) AS best_zipf,
                EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = e.id) AS has_kanji,
-               COALESCE(MIN(s.order_index), 2147483647) AS min_sense
+               COALESCE(MIN(s.order_index), \(FrequencySQL.noSenseSort)) AS min_sense
         FROM entries e
         \(frequencyJoin)
         LEFT JOIN senses s ON s.entry_id = e.id
@@ -546,22 +546,7 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
             -- crashing to 9999999. Zipf 7+ ≈ top-30 word, 6+ ≈ top-1k, etc.; bucket
             -- boundaries are deliberately wider than JPDB's so a high-confidence corpus
             -- signal beats a low-confidence JPDB ranking.
-            COALESCE(
-                MIN(wf.jpdb_rank),
-                CASE
-                    WHEN MAX(wf.wordfreq_zipf) >= 7.0 THEN 5
-                    WHEN MAX(wf.wordfreq_zipf) >= 6.5 THEN 25
-                    WHEN MAX(wf.wordfreq_zipf) >= 6.0 THEN 100
-                    WHEN MAX(wf.wordfreq_zipf) >= 5.5 THEN 300
-                    WHEN MAX(wf.wordfreq_zipf) >= 5.0 THEN 1000
-                    WHEN MAX(wf.wordfreq_zipf) >= 4.5 THEN 3000
-                    WHEN MAX(wf.wordfreq_zipf) >= 4.0 THEN 10000
-                    WHEN MAX(wf.wordfreq_zipf) >= 3.5 THEN 30000
-                    WHEN MAX(wf.wordfreq_zipf) >= 3.0 THEN 100000
-                    ELSE 500000
-                END,
-                9999999
-            ) ASC,
+            \(FrequencySQL.effectiveRank(jpdbExpr: "MIN(wf.jpdb_rank)", zipfExpr: "MAX(wf.wordfreq_zipf)")) ASC,
             min_sense ASC,
             e.id ASC
         """

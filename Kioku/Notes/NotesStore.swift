@@ -301,17 +301,24 @@ final class NotesStore: ObservableObject {
     }
 
     // Inserts or updates one note in memory so editing does not re-read the full store.
-    func upsertNote(id: UUID?, title: String, content: String, segments: [SegmentRange]?) -> UUID {
+    // `segmentsAreUserEdited` uses preserve-on-nil semantics: pass an explicit Bool to set the
+    // marker (read editor / import), or leave it nil to keep the existing value on update (and
+    // default to false on insert). This stops callers that don't care about the marker — bridge
+    // routes, transcription — from clobbering a note's user-edited status.
+    func upsertNote(id: UUID?, title: String, content: String, segments: [SegmentRange]?, segmentsAreUserEdited: Bool? = nil) -> UUID {
         let now = Date()
         if let id, let index = notes.firstIndex(where: { $0.id == id }) {
             notes[index].title = title
             notes[index].content = content
             notes[index].segments = segments
+            if let segmentsAreUserEdited {
+                notes[index].segmentsAreUserEdited = segmentsAreUserEdited
+            }
             notes[index].modifiedAt = now
             return id
         }
 
-        let newNote = Note(title: title, content: content, segments: segments, createdAt: now, modifiedAt: now)
+        let newNote = Note(title: title, content: content, segments: segments, segmentsAreUserEdited: segmentsAreUserEdited ?? false, createdAt: now, modifiedAt: now)
         notes.insert(newNote, at: 0)
         return newNote.id
     }
@@ -329,8 +336,8 @@ final class NotesStore: ObservableObject {
     // Persists a read-screen edit by upserting into the in-memory store and writing to disk immediately.
     // Uses upsertNote so writes are coalesced in memory and can be flushed explicitly when needed.
     @discardableResult
-    func scheduleReadEditorPersist(id: UUID?, title: String, content: String, segments: [SegmentRange]?) -> UUID {
-        upsertNote(id: id, title: title, content: content, segments: segments)
+    func scheduleReadEditorPersist(id: UUID?, title: String, content: String, segments: [SegmentRange]?, segmentsAreUserEdited: Bool? = nil) -> UUID {
+        upsertNote(id: id, title: title, content: content, segments: segments, segmentsAreUserEdited: segmentsAreUserEdited)
     }
 
     // Cancels any pending detached save and synchronously flushes whatever's in memory

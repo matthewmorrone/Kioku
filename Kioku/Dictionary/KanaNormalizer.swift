@@ -31,4 +31,27 @@ nonisolated enum KanaNormalizer {
         }
         return result
     }
+
+    // Checks whether `reading` starts with the same phonetic syllables as `surfacePrefix`,
+    // using furigana-alignment normalization so equivalent kana spellings match. Lets prefix
+    // okurigana be excluded from a kanji run's furigana. Shared by FuriganaResolver and
+    // FuriganaAttributedString (previously identical private copies in each).
+    static func hasPhoneticPrefix(_ reading: String, matching surfacePrefix: String) -> Bool {
+        guard reading.count >= surfacePrefix.count else {
+            return false
+        }
+        let readingPrefix = String(reading.prefix(surfacePrefix.count))
+        return normalizeForFuriganaAlignment(readingPrefix) == normalizeForFuriganaAlignment(surfacePrefix)
+    }
+
+    // Checks whether `reading` ends with the same phonetic syllables as `surfaceSuffix`,
+    // using furigana-alignment normalization. Lets trailing okurigana be excluded from a
+    // kanji run's furigana.
+    static func hasPhoneticSuffix(_ reading: String, matching surfaceSuffix: String) -> Bool {
+        guard reading.count >= surfaceSuffix.count else {
+            return false
+        }
+        let readingSuffix = String(reading.suffix(surfaceSuffix.count))
+        return normalizeForFuriganaAlignment(readingSuffix) == normalizeForFuriganaAlignment(surfaceSuffix)
+    }
 }

@@ -61,6 +61,7 @@ extension ReadView {
             fallbackTitle = ""
             text = ""
             segments = nil
+            hasManualSegmentationEdits = false
             segmentLatticeEdges = []
             segmentEdges = []
             segmentRanges = []
@@ -122,6 +123,10 @@ extension ReadView {
             for: noteToLoad.content
         )
         segments = loadedSegments
+        // Restore the persisted user-edited marker. Import precompute writes this false even
+        // though it persists segments, so precomputed-but-unedited notes load with the reset
+        // button disabled; notes the user actually customized load with it enabled.
+        hasManualSegmentationEdits = noteToLoad.hasUserEditedSegments
         // if let encoded = try? JSONEncoder().encode(noteToLoad), let json = String(data: encoded, encoding: .utf8) {
         //     print("[NOTE LOAD] \(json)")
         // }
@@ -244,7 +249,8 @@ extension ReadView {
             id: activeNoteID,
             title: titleToSave,
             content: text,
-            segments: segments
+            segments: segments,
+            segmentsAreUserEdited: hasManualSegmentationEdits
         )
         activeNoteID = savedNoteID
         onActiveNoteChanged?(savedNoteID)

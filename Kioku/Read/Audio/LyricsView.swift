@@ -628,10 +628,10 @@ struct LyricsView: View {
                 } label: {
                     Image(systemName: showMusicNotes ? "music.note" : "music.note.list")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(showMusicNotes ? Color(.systemPink) : Color.secondary)
+                        .foregroundStyle(ReadToggleAppearance.foreground(isOn: showMusicNotes))
                         .padding(.horizontal, 9)
                         .frame(height: 22)
-                        .background((showMusicNotes ? Color(.systemPink) : Color(.systemGray)).opacity(0.16))
+                        .background(ReadToggleAppearance.background)
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -646,10 +646,10 @@ struct LyricsView: View {
                         Text("Untimed")
                             .font(.system(size: 10, weight: .semibold))
                     }
-                    .foregroundStyle(showUntimedWords ? Color(.systemTeal) : Color.secondary)
+                    .foregroundStyle(ReadToggleAppearance.foreground(isOn: showUntimedWords))
                     .padding(.horizontal, 9)
                     .frame(height: 22)
-                    .background((showUntimedWords ? Color(.systemTeal) : Color(.systemGray)).opacity(0.16))
+                    .background(ReadToggleAppearance.background)
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)

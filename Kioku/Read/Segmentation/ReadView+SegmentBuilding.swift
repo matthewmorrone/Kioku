@@ -39,6 +39,12 @@ extension ReadView {
 
     // Applies active segmentation edges to UI state and refreshes furigana using those exact segment boundaries.
     func applySegmentEdges(_ edges: [LatticeEdge], persistOverride: Bool) {
+        // A persisted override here is always a genuine user mutation — merge, split, or an
+        // applied LLM correction (the only three callers). Mark the note edited so the reset
+        // button reads as enabled; the load/reset paths clear this flag back to false.
+        if persistOverride {
+            hasManualSegmentationEdits = true
+        }
         segmentEdges = edges
         segmentRanges = edges.map { edge in
             edge.start..<edge.end

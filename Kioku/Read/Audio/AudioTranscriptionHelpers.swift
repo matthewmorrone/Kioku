@@ -347,9 +347,7 @@ enum AudioTranscriptionHelpers {
                 return true
             }
 
-            let containsJapanese = segment.unicodeScalars.contains { scalar in
-                (0x3040...0x30FF).contains(Int(scalar.value)) || (0x4E00...0x9FFF).contains(Int(scalar.value))
-            }
+            let containsJapanese = ScriptClassifier.containsJapanese(segment)
 
             // Allows single-character Japanese segments while filtering noisy short latin fragments.
             if containsJapanese || segment.count >= 2 {

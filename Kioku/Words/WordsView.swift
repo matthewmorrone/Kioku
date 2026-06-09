@@ -669,9 +669,7 @@ struct WordsView: View {
             let isWildcardQuery = trimmed.contains("*") || trimmed.contains("?")
             if isWildcardQuery == false,
                let parseSegmenter = capturedSegmenter,
-               trimmed.unicodeScalars.contains(where: { (0x3040...0x309F).contains($0.value)
-                                                       || (0x30A0...0x30FF).contains($0.value)
-                                                       || (0x4E00...0x9FFF).contains($0.value) }) {
+               ScriptClassifier.containsJapanese(trimmed) {
                 let tokens = await Task.detached(priority: .userInitiated) {
                     WordsView.parseTokens(trimmed, using: parseSegmenter)
                 }.value

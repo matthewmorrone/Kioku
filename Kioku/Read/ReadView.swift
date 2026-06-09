@@ -76,6 +76,13 @@ struct ReadView: View {
     @State var selectedBounds: ClosedRange<Int>?
     @State var transientBlankReadingSegmentLocation: Int?
     @State var segments: [SegmentRange]?
+    // True once the user has manually changed this note's segmentation (merge/split) or its
+    // readings (pin/unpin furigana), or applied an LLM correction. Drives the reset button's
+    // enabled state. `segments != nil` can't stand in for this: import precompute persists the
+    // *computed* segmentation to disk, so a freshly-loaded, never-edited note still has non-nil
+    // segments. This flag is set only at genuine user-mutation funnels and cleared on note load
+    // and reset, so it stays false for precomputed-but-unedited notes.
+    @State var hasManualSegmentationEdits = false
     @State var furiganaBySegmentLocation: [Int: String] = [:]
     @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
     // Locations whose wide furigana entries came from the synthesis pass (per-character
