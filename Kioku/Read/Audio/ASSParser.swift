@@ -114,20 +114,8 @@ nonisolated enum ASSParser {
 
     // Converts an ASS timecode "H:MM:SS.cc" (centiseconds, one-digit hours) to milliseconds. Returns
     // nil for malformed stamps so the Dialogue line is skipped rather than crashing the import.
+    // Shares SubtitleTimecode with the SRT path — fraction-width padding makes centiseconds work.
     private static func parseTimecode(_ raw: String) -> Int? {
-        let stamp = raw.trimmingCharacters(in: .whitespaces)
-        let colonParts = stamp.components(separatedBy: ":")
-        guard colonParts.count == 3,
-              let hours = Int(colonParts[0]),
-              let minutes = Int(colonParts[1]) else {
-            return nil
-        }
-        let secParts = colonParts[2].components(separatedBy: ".")
-        guard let seconds = Int(secParts[0]) else { return nil }
-        // ASS fractional part is centiseconds (2 digits); pad/truncate to milliseconds.
-        let fracStr = secParts.count > 1 ? secParts[1] : "0"
-        let paddedFrac = (fracStr + "000").prefix(3)
-        let milliseconds = Int(paddedFrac) ?? 0
-        return hours * 3_600_000 + minutes * 60_000 + seconds * 1_000 + milliseconds
+        SubtitleTimecode.parseToMilliseconds(raw)
     }
 }

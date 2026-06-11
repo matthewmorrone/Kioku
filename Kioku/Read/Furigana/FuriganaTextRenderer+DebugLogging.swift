@@ -10,7 +10,7 @@ extension FuriganaTextRenderer {
     // Kept out of updateUIView so the hot path stays clean.
     func logLeftInsetGuide(textView: UITextView) {
         let insetLeft = textView.textContainerInset.left
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * TypographySettings.furiganaSizeFactor)
         let overhangsByLocation = lineStartOverhangsByLocation(furiganaFont: furiganaFont)
         NSLog("[inset-guide] insetLeft=%.2f", Double(insetLeft))
         let ignoredScalars = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)

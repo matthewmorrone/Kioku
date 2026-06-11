@@ -13,6 +13,16 @@ final class FavoritedGlowMemo {
     var lemmaBySurface: [String: String?] = [:]
 }
 
+// Reference-type mirror of the CoreText read view's live scroll offset. The CT renderer reports
+// every offset change here instead of into @State, so view-mode scrolling costs no SwiftUI body
+// re-eval per frame (each eval re-hashes the whole note for the typography fingerprint). The
+// value is snapshotted into `sharedScrollOffsetY` exactly when edit mode is entered — the only
+// moment the editor needs it. Held by @State so it survives body re-evaluations (same pattern
+// as FavoritedGlowMemo above).
+final class ReadScrollOffsetMemo {
+    var value: CGFloat = 0
+}
+
 // Editor surface for ReadView: keeps the CoreText reader and the rich-text editor mounted
 // together so mode toggles are instant, and exposes the helpers that resolve renderer-side
 // segmentation/highlight state.
@@ -47,10 +57,12 @@ extension ReadView {
     }
 
     // Keeps both read and edit renderers mounted so mode toggles are instant.
-    // UTF-16 locations of segments the extract-words list shows a FILLED star for — drives the glow.
-    // 1:1 with the extract-list stars by construction: both go through the same shared predicate
-    // (ComputedSavedWordState.isStarFilled) over the same WordsStore snapshot, grounded in encountered
-    // surfaces (+ lemma bridging + note attribution). So inflected forms light up (消える saved →
+    // UTF-16 locations of segments the extract-words list shows a YELLOW star for (filled OR
+    // hollow) — drives the glow. The list's color channel carries "saved anywhere"; the glow
+    // mirrors that, so a word favorited in a different note still lights up here. 1:1 with the
+    // extract-list star color by construction: both go through the same shared predicate
+    // (ComputedSavedWordState.isSavedSurface) over the same WordsStore snapshot, grounded in
+    // encountered surfaces (+ lemma bridging). So inflected forms light up (消える saved →
     // 消えて / 消えてゆく glow) and unfavoriting clears the glow immediately.
     //
     // MEMOIZED: `body` re-evaluates constantly (scroll, playback highlight, selection) but the glow
@@ -118,7 +130,10 @@ extension ReadView {
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
             let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
             let isFilled = verdictBySurface[surface] ?? {
-                let v = state.isStarFilled(surface, noteID: activeNoteID, lemmaResolver: resolver)
+                // Glow = "saved anywhere" so favorites from other notes still highlight; matches
+                // the extract-list star's yellow color channel rather than its filled shape.
+                // let v = state.isStarFilled(surface, noteID: activeNoteID, lemmaResolver: resolver)
+                let v = state.isSavedSurface(surface, lemmaResolver: resolver)
                 verdictBySurface[surface] = v
                 return v
             }()
@@ -189,11 +204,18 @@ extension ReadView {
                         // Hidden in edit mode — gate updates so per-keystroke typing doesn't
                         // re-typeset this off-screen renderer (the typing-lag fix).
                         isActive: isEditMode == false,
+                        // Edit↔view scroll sync: applied once when edit mode exits (restores
+                        // the editor's position); reported into the reference-type memo so
+                        // view-mode scrolling stays free of per-frame body re-evals. The memo
+                        // is snapshotted into sharedScrollOffsetY on entering edit
+                        // (ReadView+Lifecycle's onChange(of: isEditMode)).
+                        externalContentOffsetY: sharedScrollOffsetY,
+                        onScrollOffsetYChanged: { [readScrollOffsetMemo] newOffsetY in
+                            readScrollOffsetMemo.value = newOffsetY
+                        },
                         // Reset scroll to the top whenever the active note changes. Keyed on
                         // the note id's hash so each note open is a distinct token transition;
-                        // 0 when no note is active. (`sharedScrollOffsetY = 0` on load is a
-                        // no-op for the CoreText path, which owns its own offset — this is the
-                        // signal that actually moves it.)
+                        // 0 when no note is active.
                         scrollToTopToken: activeNoteID?.hashValue ?? 0
                     )
                     .opacity(isEditMode ? 0 : 1)

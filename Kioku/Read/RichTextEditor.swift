@@ -63,6 +63,7 @@ struct RichTextEditor: UIViewRepresentable {
         let needsStyleUpdate = context.coordinator.lastAppliedStyle != styleSignature
 
         if needsStyleUpdate || needsTextUpdate {
+            let rebuildStart = CFAbsoluteTimeGetCurrent()
             let selectedRange = uiView.selectedRange
             applyTypography(to: uiView, text: text)
             if selectedRange.location <= uiView.text.utf16.count {
@@ -70,6 +71,13 @@ struct RichTextEditor: UIViewRepresentable {
             }
             context.coordinator.lastRenderedText = text
             context.coordinator.lastAppliedStyle = styleSignature
+            // Full attributedText resets are the editor's most expensive operation (whole-note
+            // TK2 re-typeset). This should fire on note switches and typography changes only —
+            // if it shows up on edit↔view toggles, a behavior-only input leaked back into the
+            // style signature.
+            NSLog("[kioku.editor] full attributedText rebuild: %.1f ms (text=%d style=%d, %d chars)",
+                  (CFAbsoluteTimeGetCurrent() - rebuildStart) * 1000,
+                  needsTextUpdate ? 1 : 0, needsStyleUpdate ? 1 : 0, text.utf16.count)
         }
 
         // Configure wrapping after typography so text container inset is finalized before calculating available width.
@@ -198,8 +206,8 @@ struct RichTextEditor: UIViewRepresentable {
             textSize: textSize,
             lineSpacing: lineSpacing,
             kerning: kerning,
-            isLineWrappingEnabled: isLineWrappingEnabled,
-            isEditMode: isEditMode
+            isLineWrappingEnabled: isLineWrappingEnabled
+            // isEditMode: isEditMode — excluded; see RichTextEditorStyleSignature.
         )
     }
 

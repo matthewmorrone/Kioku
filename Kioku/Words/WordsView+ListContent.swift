@@ -20,8 +20,14 @@ extension WordsView {
         onTap: @escaping () -> Void
     ) -> some View {
         let saved = isSavedByID(entryID)
-        let headword = entry?.kanjiForms.first?.text
-        let reading = entry?.kanaForms.first?.text
+        // Respect the form the word was saved/looked up as: a pure-kana surface (あなた, たとえ)
+        // means the user used the kana word — showing the entry's first kanji form (貴方, 例え)
+        // attaches script they never saw. Kanji-bearing surfaces keep the kanji headword.
+        let surfaceIsKana = surface.isEmpty == false && ScriptClassifier.containsKanji(surface) == false
+        // let headword = entry?.kanjiForms.first?.text
+        // let reading = entry?.kanaForms.first?.text
+        let headword = surfaceIsKana ? nil : entry?.kanjiForms.first?.text
+        let reading = surfaceIsKana ? surface : entry?.kanaForms.first?.text
 
         // Plain content so List(selection:) keeps its native selection gestures (incl. the
         // swipe-across-rows multiselect in edit mode). The detail tap rides on a
@@ -183,7 +189,10 @@ extension WordsView {
                         entry: materialized,
                         gloss: materialized?.senses.first?.glosses.first,
                         onTap: {
-                            historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
+                            // Deliberately NOT re-recorded: revisiting a word from the history
+                            // list shouldn't refresh its timestamp and yank it to the top —
+                            // history reflects when the word was originally looked up.
+                            // historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
                             selectedDetailWord = wordForHistory(entry)
                         }
                     )

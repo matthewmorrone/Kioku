@@ -25,6 +25,9 @@ struct ReadTextStyleResolver {
     let furiganaBySegmentLocation: [Int: String]
     let furiganaLengthBySegmentLocation: [Int: Int]
     var textAlignment: NSTextAlignment = .natural
+    // Optional range whose text (and furigana) is tinted blue — the example-sentence
+    // target-word marker. Text color, not a background band.
+    var accentTextRange: NSRange? = nil
 
     // Produces the read-mode attributed string and segment foreground map for one render pass.
     func makePayload() -> ReadTextStylePayload {
@@ -102,6 +105,19 @@ struct ReadTextStyleResolver {
             }
         }
 
+        // Accent-tint the example target word LAST (after alternation/unknown styling) so it
+        // always reads blue regardless of the other styling toggles. Tints the furigana over
+        // the word too, via the same per-offset map the changed-segment glow uses.
+        if let accentTextRange,
+           accentTextRange.location != NSNotFound,
+           accentTextRange.length > 0,
+           accentTextRange.upperBound <= attributedText.length {
+            attributedText.addAttribute(.foregroundColor, value: accentTextColor, range: accentTextRange)
+            for offset in 0..<accentTextRange.length {
+                segmentForegroundByLocation[accentTextRange.location + offset] = accentTextColor
+            }
+        }
+
         // Pre-layout envelope padding was removed: spacing adjustments are handled entirely by
         // the post-layout kern pass, which measures real TextKit geometry rather than estimating
         // from font metrics. Keeping both systems was letting them fight; this is the single
@@ -139,6 +155,12 @@ struct ReadTextStyleResolver {
         }
         */
         UIColor.label
+    }
+
+    // Blue text tint for the example-sentence target word — matches the accent-colored run
+    // the plain (no-furigana) example fallback renders.
+    private var accentTextColor: UIColor {
+        .systemBlue
     }
 
     // Glow shadow for segments changed by a pending LLM correction.

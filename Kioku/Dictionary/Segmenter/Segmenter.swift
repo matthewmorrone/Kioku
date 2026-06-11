@@ -341,14 +341,13 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // A genuinely line-initial bound char (previous token is a boundary) is left alone.
             while index < text.endIndex,
                   let last = selectedEdges.last,
-                  !(last.surface.count == 1 && (boundaryCharacters.contains(last.surface.first!) || isLineBreakCharacter(last.surface.first!))) {
+                  !(last.surface.count == 1 && isSpanBreak(last.surface.first!)) {
                 let character = text[index]
                 let isSmallTsu = (character == "っ" || character == "ッ")
                 if isSmallTsu {
                     let afterTsu = text.index(after: index)
                     let followedByKana = afterTsu < text.endIndex
-                        && boundaryCharacters.contains(text[afterTsu]) == false
-                        && isLineBreakCharacter(text[afterTsu]) == false
+                        && isSpanBreak(text[afterTsu]) == false
                         && ScriptClassifier.isPureKana(String(text[afterTsu]))
                     if followedByKana { break }
                 } else if Self.neverInitialKana.contains(character) == false {
@@ -394,9 +393,8 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         // forms (e.g. つないだ→つなぐ over つな, かなえて→かなえる over かなえ) to win on raw length.
         // The bonus is intentionally restricted to single-char kana: applying it to multi-char stems
         // like かなえ causes them to tie with — and then beat — longer deinflected forms like かなえて.
-        let kanaExactBonus = 1
-        let lhsAdjustedLength = lhsLength + (lhs.surface.count == 1 && ScriptClassifier.isPureKana(lhs.surface) && trie.contains(lhs.surface) ? kanaExactBonus : 0)
-        let rhsAdjustedLength = rhsLength + (rhs.surface.count == 1 && ScriptClassifier.isPureKana(rhs.surface) && trie.contains(rhs.surface) ? kanaExactBonus : 0)
+        let lhsAdjustedLength = lhsLength + singleCharKanaExactBonus(for: lhs.surface)
+        let rhsAdjustedLength = rhsLength + singleCharKanaExactBonus(for: rhs.surface)
         if lhsAdjustedLength != rhsAdjustedLength {
             return lhsAdjustedLength < rhsAdjustedLength
         }
@@ -429,7 +427,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
         while currentIndex < text.endIndex && groupedLength < config.maxMatchLength {
             let character = text[currentIndex]
-            if boundaryCharacters.contains(character) || isLineBreakCharacter(character) { break }
+            if isSpanBreak(character) { break }
 
             if ScriptClassifier.unknownGrouping(for: character) != group { break }
 
@@ -650,19 +648,19 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         var score = 0
 
         if lemma == sourceSurface {
-            score += 100
+            score += LemmaScoring.surfaceEqualityBonus
         }
 
         if ScriptClassifier.containsKanji(sourceSurface) {
             if ScriptClassifier.containsKanji(lemma) {
-                score += 40
+                score += LemmaScoring.kanjiPreservedBonus
             } else if ScriptClassifier.isPureKana(lemma) {
-                score -= 20
+                score += LemmaScoring.kanjiToKanaPenalty
             }
         }
 
         if ScriptClassifier.isPureKana(sourceSurface) && ScriptClassifier.isPureKana(lemma) {
-            score += 10
+            score += LemmaScoring.pureKanaBonus
         }
 
         // Prefer lemmas whose leading chars match the surface — the closer the
@@ -673,13 +671,26 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         // mora — enough to break ties without overpowering wordfreq or the
         // surface-equality bonus.
         let commonPrefixCount = lemma.commonPrefix(with: sourceSurface).count
-        score += commonPrefixCount * 5
+        score += commonPrefixCount * LemmaScoring.prefixMatchPerChar
 
         if let freqScore = frequencyScoreBySurface[lemma], freqScore > 0 {
-            score += Int(freqScore * 5)
+            score += Int(freqScore * LemmaScoring.frequencyMultiplier)
         }
 
         return score
+    }
+
+    // Tunable weights for preferredLemmaScore. Grouped (like SegmenterScoring's transition
+    // costs) so the empirical calibration lives in one place instead of as bare literals
+    // scattered through the scoring body. Magnitudes are interdependent — see the
+    // preferredLemmaScore doc comment for why ±40 script signals must outweigh frequency.
+    private enum LemmaScoring {
+        static let surfaceEqualityBonus = 100   // lemma identical to the surface form
+        static let kanjiPreservedBonus = 40     // kanji surface → kanji lemma (script preserved)
+        static let kanjiToKanaPenalty = -20     // kanji surface → kana-only lemma (script lost)
+        static let pureKanaBonus = 10           // both surface and lemma are pure kana
+        static let prefixMatchPerChar = 5       // per shared leading character
+        static let frequencyMultiplier = 5.0    // scales the wordfreq Zipf signal into points
     }
 
     // Prints greedy longest-match segments line-by-line for segmenter debugging.
@@ -700,6 +711,19 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         }
 
         return false
+    }
+
+    // True for any character that ends a scan span: a configured boundary character or a
+    // Unicode line break. Centralizes the boundary-or-newline test the span scanners share.
+    private func isSpanBreak(_ character: Character) -> Bool {
+        boundaryCharacters.contains(character) || isLineBreakCharacter(character)
+    }
+
+    // +1 length bonus for a single-char pure-kana surface that exists verbatim in the trie,
+    // so single-char deinflection-only kana edges can't beat genuine single-char particles.
+    // See compareEdgePriority for why the bonus is restricted to single-char kana.
+    private func singleCharKanaExactBonus(for surface: String) -> Int {
+        (surface.count == 1 && ScriptClassifier.isPureKana(surface) && trie.contains(surface)) ? 1 : 0
     }
 
     // Escapes control line-break characters for stable single-line debug output.

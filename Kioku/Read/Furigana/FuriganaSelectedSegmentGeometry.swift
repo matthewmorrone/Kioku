@@ -26,7 +26,7 @@ enum FuriganaSelectedSegmentGeometry {
         kerning: CGFloat = 0
     ) -> CGRect {
         let baseFont = UIFont.systemFont(ofSize: textSize)
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * TypographySettings.furiganaSizeFactor)
         let visualHeadwordWidth = measureWidth(surface, font: baseFont, kerning: kerning)
         var envelopeMinX = selectedRect.minX
         var envelopeMaxX = selectedRect.minX + visualHeadwordWidth

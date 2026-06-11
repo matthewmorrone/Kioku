@@ -71,7 +71,7 @@ enum FuriganaAttributedString {
         CTRubyAnnotationCreateWithAttributes(
             .center, .auto, .before,
             text as CFString,
-            [kCTRubyAnnotationSizeFactorAttributeName: 0.5] as CFDictionary
+            [kCTRubyAnnotationSizeFactorAttributeName: TypographySettings.furiganaSizeFactor] as CFDictionary
         )
     }
 

@@ -564,12 +564,16 @@ final class SurfaceSheetViewController: UIViewController {
         )
     }
 
-    // Refreshes the save button icon and tint to reflect the current saved state.
+    // Refreshes the save button icon and tint to reflect the current saved state. Same
+    // three-state encoding as the extract-words list stars: filled yellow = saved for this
+    // note, hollow yellow = saved only in other notes, hollow gray = not saved anywhere.
+    // Shape carries "saved here"; color carries "saved anywhere".
     func updateSaveButtonAppearance() {
         let isSaved = sheet?.sheetIsSavedProvider?() ?? false
+        let isSavedElsewhere = isSaved == false && (sheet?.sheetIsSavedElsewhereProvider?() ?? false)
         saveButton.setImage(UIImage(systemName: isSaved ? "star.fill" : "star"), for: .normal)
-        saveButton.tintColor = isSaved ? .systemYellow : .secondaryLabel
-        saveButton.accessibilityLabel = isSaved ? "Unsave" : "Save"
+        saveButton.tintColor = (isSaved || isSavedElsewhere) ? .systemYellow : .secondaryLabel
+        saveButton.accessibilityLabel = isSaved ? "Unsave" : (isSavedElsewhere ? "Save to This Note" : "Save")
     }
 
     // Reflects whether the current surface resolved to a dictionary entry that can be opened.

@@ -90,8 +90,23 @@ extension ReadView {
             },
             sheetDictionaryEntryProvider: { resolvedEntry() },
             sheetIsSavedProvider: { [weak nestedSheet] in
-                guard let entry = nestedSheet?.currentSheetDictionaryEntry else { return false }
-                return wordsStore.words.contains { $0.canonicalEntryID == entry.entryId }
+                // Filled star = saved AND attributed to this note (or saved with no note
+                // attribution at all) — matches the extract-words list's isStarFilled encoding
+                // now that the hollow-yellow "saved elsewhere" state exists below.
+                guard let entry = nestedSheet?.currentSheetDictionaryEntry,
+                      let word = wordsStore.words.first(where: { $0.canonicalEntryID == entry.entryId })
+                else { return false }
+                // return wordsStore.words.contains { $0.canonicalEntryID == entry.entryId }
+                guard let activeNoteID else { return true }
+                return word.sourceNoteIDs.isEmpty || word.sourceNoteIDs.contains(activeNoteID)
+            },
+            sheetIsSavedElsewhereProvider: { [weak nestedSheet] in
+                // Hollow-yellow star: saved, but attributed only to other notes.
+                guard let entry = nestedSheet?.currentSheetDictionaryEntry,
+                      let word = wordsStore.words.first(where: { $0.canonicalEntryID == entry.entryId }),
+                      let activeNoteID
+                else { return false }
+                return word.sourceNoteIDs.isEmpty == false && word.sourceNoteIDs.contains(activeNoteID) == false
             },
             sheetSaveToggle: { [weak nestedSheet] in
                 guard let entry = nestedSheet?.currentSheetDictionaryEntry else { return }

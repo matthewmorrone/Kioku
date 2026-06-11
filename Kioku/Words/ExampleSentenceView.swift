@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // One example sentence in the word detail view, rendered to match the reference layout:
 //   - furigana over kanji (when a segmenter + reading data are available)
@@ -26,6 +27,15 @@ struct ExampleSentenceView: View {
     // Computed once per appearance; nil before the resolver has run for this sentence.
     @State private var cache: LineFuriganaCache?
 
+    // Height of the ruby band above the first text line when furigana is rendered, so the
+    // leading speaker button can align with the first HEADWORD line instead of the ruby.
+    // Zero on the plain-text fallback path.
+    private var speakerTopInset: CGFloat {
+        guard let cache, cache.furiganaBySegmentLocation.isEmpty == false else { return 0 }
+        let rubyFont = UIFont.systemFont(ofSize: textSize * TypographySettings.furiganaSizeFactor)
+        return ceil(rubyFont.lineHeight) + CGFloat(furiganaGap)
+    }
+
     // UTF-16 range of the first highlight surface present in the sentence, for the renderer's
     // selected-highlight overlay (and the plain-text fallback's colored run).
     private var highlightRange: NSRange? {
@@ -39,9 +49,9 @@ struct ExampleSentenceView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Speaker leads the row so the play affordance is in a consistent spot for every
+            // example, instead of ragged-right after sentences of varying width.
             HStack(alignment: .top, spacing: 8) {
-                sentenceView
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
                     onSpeak(japanese)
                 } label: {
@@ -50,6 +60,11 @@ struct ExampleSentenceView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
+                // The furigana path reserves a ruby band above the first text line; drop the
+                // speaker by that band so it aligns with the headword line, not the ruby.
+                .padding(.top, speakerTopInset)
+                sentenceView
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Text(english)
                 .font(.caption)
@@ -73,7 +88,11 @@ struct ExampleSentenceView: View {
                 segmentationRanges: cache.segmentationRanges,
                 selectedSegmentLocation: nil,
                 blankSelectedSegmentLocation: nil,
-                selectedHighlightRangeOverride: highlightRange,
+                // Blue TEXT for the target word, not a highlight band — matches the plain
+                // fallback's accent-colored run.
+                // selectedHighlightRangeOverride: highlightRange,
+                selectedHighlightRangeOverride: nil,
+                accentTextRange: highlightRange,
                 playbackHighlightRangeOverride: nil,
                 activePlaybackCueIndex: nil,
                 illegalMergeBoundaryLocation: nil,

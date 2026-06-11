@@ -93,6 +93,29 @@ extension WordsView {
 
     // MARK: - Search helpers
 
+    // True if the query text appears in the entry's *primary* representation: the first
+    // kanji headword, first kana reading, or any gloss of the first sense. Used to bubble
+    // entries whose canonical meaning matches above entries that merely have the query
+    // hidden in a later sense (e.g. ranks ハロー/今日は above どうも/毎度 for "hello").
+    nonisolated static func isPrimarySenseMatch(_ entry: DictionaryEntry, needle: String) -> Bool {
+        if let kanji = entry.kanjiForms.first?.text, kanji.lowercased().contains(needle) { return true }
+        if let kana = entry.kanaForms.first?.text, kana.lowercased().contains(needle) { return true }
+        if let firstSense = entry.senses.first {
+            for gloss in firstSense.glosses where gloss.lowercased().contains(needle) {
+                return true
+            }
+        }
+        return false
+    }
+
+    // True when any headword or kana form equals one of the needles exactly (case-insensitive).
+    // Keeps exact matches above substring hits in search results regardless of entry id
+    // (まさか must beat たまさか for query "masaka").
+    nonisolated static func isExactSurfaceMatch(_ entry: DictionaryEntry, needles: [String]) -> Bool {
+        entry.kanjiForms.contains { needles.contains($0.text.lowercased()) }
+            || entry.kanaForms.contains { needles.contains($0.text.lowercased()) }
+    }
+
     // Returns available POS labels from the current raw search result set.
     var availableSearchPartsOfSpeech: [String] {
         var seen = Set<String>()

@@ -1,6 +1,10 @@
+import CoreGraphics
 import Foundation
 
-enum TypographySettings {
+// `nonisolated` so the off-main furigana builders (FuriganaAttributedString,
+// KiokuCoreTextAttributedStringBuilder) can read these pure constants. They're immutable,
+// so MainActor callers (Settings views) keep reading them unchanged.
+nonisolated enum TypographySettings {
     static let textSizeKey = "kioku.settings.textSize"
     static let lineSpacingKey = "kioku.settings.lineSpacing"
     static let kerningKey = "kioku.settings.kerning"
@@ -10,6 +14,11 @@ enum TypographySettings {
     // Off (default) preserves the legacy `textSize * 0.5` derivation everywhere.
     static let customFuriganaSizeEnabledKey = "kioku.settings.customFuriganaSizeEnabled"
     static let furiganaSizeKey = "kioku.settings.furiganaSize"
+
+    // The implicit ruby-to-base size ratio: furigana defaults to half the headword font size.
+    // Single source for the `textSize * 0.5` derivation that the renderers apply (and that
+    // defaultFuriganaSize = defaultTextSize * this factor mirrors).
+    static let furiganaSizeFactor: CGFloat = 0.5
 
     static let defaultTextSize = 18.0
     static let defaultLineSpacing = 6.0

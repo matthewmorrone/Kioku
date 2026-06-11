@@ -32,6 +32,9 @@ struct SubtitleImportView: View {
     // Whole-body segmentation computed at import time and persisted on the saved note so it opens
     // via ReadView's synchronous fast path instead of re-segmenting a large episode on first open.
     @State private var precomputedSegments: [SegmentRange] = []
+    // Entry IDs the user has left enabled in the tag picker. Reset to ALL extracted words on
+    // every (re)process, so the default is everything on and deselections are deliberate.
+    @State private var selectedVocabIDs: Set<Int64> = []
     @State private var isProcessing = false
     @State private var errorText: String? = nil
 
@@ -39,6 +42,14 @@ struct SubtitleImportView: View {
     @State private var selectedExistingListID: UUID? = nil
     @State private var newListName: String = ""
     @State private var saveAsNote = true
+    // Fansubs decorate otherwise-legit words with wave dashes (なに〜, 行くぞ～), which break
+    // dictionary matching during extraction. On by default; flipping it reprocesses the cached
+    // file text so the preview counts update live.
+    @State private var stripWaveDashes = true
+    // Raw file contents cached after the first read, so toggling stripWaveDashes reprocesses
+    // from memory instead of re-reading a security-scoped URL.
+    @State private var rawSubtitleText: String? = nil
+    @State private var isPickedFileASS = false
 
     var body: some View {
         NavigationStack {
@@ -50,6 +61,7 @@ struct SubtitleImportView: View {
                     summary
                     listControls
                     Toggle("Also save subtitles as a note", isOn: $saveAsNote)
+                    Toggle("Remove 〜 decorations", isOn: $stripWaveDashes)
                 }
                 if let errorText {
                     Text(errorText)
@@ -57,7 +69,11 @@ struct SubtitleImportView: View {
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Spacer()
+                if extracted.isEmpty == false {
+                    vocabTagPicker
+                } else {
+                    Spacer()
+                }
                 importButton
             }
             .padding()
@@ -86,6 +102,13 @@ struct SubtitleImportView: View {
                     processFile(at: initialFileURL)
                 }
             }
+            .onChange(of: stripWaveDashes) {
+                // Re-run extraction from the cached file text so the vocab/cue preview reflects
+                // the toggle immediately — no re-read of the security-scoped URL needed.
+                if let rawSubtitleText {
+                    processText(rawSubtitleText, isASS: isPickedFileASS)
+                }
+            }
         }
     }
 
@@ -109,7 +132,7 @@ struct SubtitleImportView: View {
                 }
             } else {
                 Text("\(cueCount) subtitle lines")
-                Text("\(extracted.count) vocabulary words to save")
+                Text("\(selectedVocabIDs.count) of \(extracted.count) vocabulary words to save")
                     .fontWeight(.semibold)
             }
         }
@@ -149,15 +172,53 @@ struct SubtitleImportView: View {
         }
     }
 
+    // Scrollable tag cloud of every extracted word. Each chip toggles inclusion; all start
+    // enabled (deselections are deliberate opt-outs). Variable-width chips via the shared
+    // FlowLayout so short particles and long compounds each take their natural width.
+    private var vocabTagPicker: some View {
+        ScrollView {
+            FlowLayout(spacing: 8) {
+                ForEach(extracted, id: \.canonicalEntryID) { item in
+                    let isOn = selectedVocabIDs.contains(item.canonicalEntryID)
+                    Button {
+                        if isOn {
+                            selectedVocabIDs.remove(item.canonicalEntryID)
+                        } else {
+                            selectedVocabIDs.insert(item.canonicalEntryID)
+                        }
+                    } label: {
+                        Text(item.lemma)
+                            .font(.subheadline)
+                            .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                Capsule().fill(isOn ? Color.accentColor.opacity(0.15) : Color(.tertiarySystemFill))
+                            )
+                            .overlay(
+                                Capsule().strokeBorder(
+                                    isOn ? Color.accentColor.opacity(0.45) : Color.clear,
+                                    lineWidth: 1
+                                )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private var importButton: some View {
         Button {
             performImport()
         } label: {
-            Text("Save \(extracted.count) Words")
+            Text("Save \(selectedVocabIDs.count) Words")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(extracted.isEmpty || isProcessing)
+        .disabled(selectedVocabIDs.isEmpty || isProcessing)
     }
 
     // Reads the picked subtitle file, parses it by format, assembles the note body, and runs vocab
@@ -182,10 +243,6 @@ struct SubtitleImportView: View {
         if newListName.isEmpty { newListName = stem }
 
         let isASS = ["ass", "ssa"].contains(url.pathExtension.lowercased())
-        let segmenter = segmenter
-        let store = dictionaryStore
-        let surfaceReadingData = surfaceReadingData
-        let kanjiReadingFallback = kanjiReadingFallback
         isProcessing = true
 
         Task.detached(priority: .userInitiated) {
@@ -196,7 +253,36 @@ struct SubtitleImportView: View {
                 }
                 return
             }
-            let cues = isASS ? ASSParser.parse(text) : SubtitleParser.parse(text)
+            await MainActor.run {
+                rawSubtitleText = text
+                isPickedFileASS = isASS
+                processText(text, isASS: isASS)
+            }
+        }
+    }
+
+    // Parses already-loaded subtitle text and runs segmentation + vocab extraction off-main.
+    // Split from processFile so the strip-〜 toggle can reprocess without re-reading the file.
+    private func processText(_ text: String, isASS: Bool) {
+        let segmenter = segmenter
+        let store = dictionaryStore
+        let surfaceReadingData = surfaceReadingData
+        let kanjiReadingFallback = kanjiReadingFallback
+        let stripWaveDashes = stripWaveDashes
+        isProcessing = true
+
+        Task.detached(priority: .userInitiated) {
+            var cues = isASS ? ASSParser.parse(text) : SubtitleParser.parse(text)
+            if stripWaveDashes {
+                // Both wave-dash variants appear in the wild: 〜 (U+301C) and the fullwidth
+                // tilde ～ (U+FF5E). Strip from cue text BEFORE segmentation so decorated
+                // words (なに〜) match their dictionary entries during extraction.
+                for index in cues.indices {
+                    cues[index].text = cues[index].text
+                        .replacingOccurrences(of: "\u{301C}", with: "")
+                        .replacingOccurrences(of: "\u{FF5E}", with: "")
+                }
+            }
             let body = SubtitleParser.assembleNoteContent(from: cues)
             // Segment the body ONCE: the same selected edges drive vocab extraction AND the note's
             // persisted segmentation+furigana. Resolving furigana here too means the saved note opens
@@ -222,6 +308,9 @@ struct SubtitleImportView: View {
                 cueCount = cues.count
                 assembledText = body
                 extracted = vocab
+                // Default everything ON — including after a strip-〜 reprocess, which can
+                // change the extracted set; stale deselections would be confusing to carry over.
+                selectedVocabIDs = Set(vocab.map { $0.canonicalEntryID })
                 precomputedSegments = noteSegments
                 isProcessing = false
                 if cues.isEmpty {
@@ -234,7 +323,9 @@ struct SubtitleImportView: View {
     // Saves the extracted vocab to the chosen list (creating it if needed) and, when enabled, stores
     // the subtitle text as a note. One batched WordsStore.add so the persist cost is paid once.
     private func performImport() {
-        guard extracted.isEmpty == false else { return }
+        // Only the chips the user left enabled get saved.
+        let chosen = extracted.filter { selectedVocabIDs.contains($0.canonicalEntryID) }
+        guard chosen.isEmpty == false else { return }
         let listIDs = resolveListIDs()
 
         // Create the note FIRST (when requested) so its id can attribute the saved words. Attribution
@@ -260,7 +351,7 @@ struct SubtitleImportView: View {
             noteIDs = [noteID]
         }
 
-        let words = extracted.map { item in
+        let words = chosen.map { item in
             SavedWord(
                 canonicalEntryID: item.canonicalEntryID,
                 surface: item.lemma,

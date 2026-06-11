@@ -101,6 +101,9 @@ struct ReadView: View {
     @State var isEditMode = false
     @State var isSheetSwipeTransitionActive = false
     @State var sharedScrollOffsetY: CGFloat = 0
+    // Live mirror of the CT read view's scroll offset; snapshotted into sharedScrollOffsetY
+    // when edit mode is entered. See ReadScrollOffsetMemo for why it's not @State itself.
+    @State var readScrollOffsetMemo = ReadScrollOffsetMemo()
     // Extra contentInset.bottom currently injected into the read scroll view so the lookup
     // sheet can keep the selected segment visible even when it sits past the natural bottom
     // of the note. Tracked here so dismissal removes exactly what was added, regardless of

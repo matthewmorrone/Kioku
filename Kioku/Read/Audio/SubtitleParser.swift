@@ -176,42 +176,17 @@ nonisolated enum SubtitleParser {
 
     // Formats a millisecond offset as the SRT "HH:MM:SS,mmm" timecode string.
     private static func formatTimecode(_ ms: Int) -> String {
-        let hours = ms / 3_600_000
-        let minutes = (ms % 3_600_000) / 60_000
-        let seconds = (ms % 60_000) / 1_000
-        let millis = ms % 1_000
-        return String(format: "%02d:%02d:%02d,%03d", hours, minutes, seconds, millis)
+        SubtitleTimecode.formatSRT(ms)
     }
 
     // Parses "HH:MM:SS,mmm --> HH:MM:SS,mmm" into a (startMs, endMs) tuple.
     private static func parseTimecodeRow(_ line: String) -> (Int, Int)? {
         let parts = line.components(separatedBy: " --> ")
         guard parts.count == 2,
-              let start = parseTimestamp(parts[0].trimmingCharacters(in: .whitespaces)),
-              let end = parseTimestamp(parts[1].trimmingCharacters(in: .whitespaces)) else {
+              let start = SubtitleTimecode.parseToMilliseconds(parts[0]),
+              let end = SubtitleTimecode.parseToMilliseconds(parts[1]) else {
             return nil
         }
         return (start, end)
-    }
-
-    // Converts "HH:MM:SS,mmm" (comma or period as fractional separator) to milliseconds.
-    private static func parseTimestamp(_ raw: String) -> Int? {
-        let normalized = raw.replacingOccurrences(of: ",", with: ".")
-        let colonParts = normalized.components(separatedBy: ":")
-        guard colonParts.count == 3,
-              let hours = Int(colonParts[0]),
-              let minutes = Int(colonParts[1]) else {
-            return nil
-        }
-
-        let secParts = colonParts[2].components(separatedBy: ".")
-        guard let seconds = Int(secParts[0]) else { return nil }
-
-        // Normalise fractional part to exactly three digits for milliseconds.
-        let fracStr = secParts.count > 1 ? secParts[1] : "0"
-        let paddedFrac = (fracStr + "000").prefix(3)
-        let milliseconds = Int(paddedFrac) ?? 0
-
-        return hours * 3_600_000 + minutes * 60_000 + seconds * 1_000 + milliseconds
     }
 }

@@ -48,6 +48,10 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var currentSheetDictionaryEntry: DictionaryEntry? = nil
     // Returns true when the current segment's resolved lemma is already saved.
     var sheetIsSavedProvider: (() -> Bool)?
+    // Returns true when the lemma is saved but attributed only to OTHER notes — the
+    // hollow-yellow star state, mirroring the extract-words list (shape = saved for this
+    // note, color = saved anywhere).
+    var sheetIsSavedElsewhereProvider: (() -> Bool)?
     // Toggles the saved state for the current segment's resolved lemma.
     var sheetSaveToggle: (() -> Void)?
     // Opens the word detail screen for the current segment's resolved lemma.
@@ -231,6 +235,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         pathSegmentFrequencyProvider: ((String) -> [String: FrequencyData]?)? = nil,
         sheetDictionaryEntryProvider: (() -> DictionaryEntry?)? = nil,
         sheetIsSavedProvider: (() -> Bool)? = nil,
+        sheetIsSavedElsewhereProvider: (() -> Bool)? = nil,
         sheetSaveToggle: (() -> Void)? = nil,
         sheetOpenWordDetail: (() -> Void)? = nil,
         sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
@@ -255,6 +260,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.sheetLemmaInfoByReadingProvider = sheetLemmaInfoByReadingProvider
         self.sheetDictionaryEntryProvider = sheetDictionaryEntryProvider
         self.sheetIsSavedProvider = sheetIsSavedProvider
+        self.sheetIsSavedElsewhereProvider = sheetIsSavedElsewhereProvider
         self.sheetSaveToggle = sheetSaveToggle
         self.sheetOpenWordDetail = sheetOpenWordDetail
         self.sheetWordComponentsProvider = sheetWordComponentsProvider
@@ -348,6 +354,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         pathSegmentFrequencyProvider = nil
         sheetDictionaryEntryProvider = nil
         sheetIsSavedProvider = nil
+        sheetIsSavedElsewhereProvider = nil
         sheetSaveToggle = nil
         sheetOpenWordDetail = nil
         sheetWordComponentsProvider = nil
