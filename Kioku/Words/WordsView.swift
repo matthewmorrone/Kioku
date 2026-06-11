@@ -226,8 +226,13 @@ struct WordsView: View {
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $isHandwritingPresented) {
-                HandwritingInputView(onSelectCharacter: handleHandwritingSelect)
-                    .presentationDetents([.large])
+                // Opens at ~2/3 height so the search field / results above stay visible while
+                // drawing; still draggable to full height for more canvas room.
+                HandwritingInputView(
+                    onSelectCharacter: handleHandwritingSelect,
+                    onDeleteBackward: handleHandwritingDeleteBackward
+                )
+                    .presentationDetents([.fraction(0.66), .large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $isBrowseFrequencyPresented) {
@@ -624,20 +629,8 @@ struct WordsView: View {
         return entry.senses.first?.glosses.first
     }
 
-    // True if the query text appears in the entry's *primary* representation: the first
-    // kanji headword, first kana reading, or any gloss of the first sense. Used to bubble
-    // entries whose canonical meaning matches above entries that merely have the query
-    // hidden in a later sense (e.g. ranks ハロー/今日は above どうも/毎度 for "hello").
-    nonisolated private static func isPrimarySenseMatch(_ entry: DictionaryEntry, needle: String) -> Bool {
-        if let kanji = entry.kanjiForms.first?.text, kanji.lowercased().contains(needle) { return true }
-        if let kana = entry.kanaForms.first?.text, kana.lowercased().contains(needle) { return true }
-        if let firstSense = entry.senses.first {
-            for gloss in firstSense.glosses where gloss.lowercased().contains(needle) {
-                return true
-            }
-        }
-        return false
-    }
+    // (isPrimarySenseMatch / isExactSurfaceMatch moved to WordsView+Search.swift — they're
+    // search-ranking helpers, and this file sits at the 1000-line invariant cap.)
 
     // Fan-out search: queries the dictionary in both Japanese and English modes,
     // dedupes by entryId (Japanese hits first so kanji/kana queries lead the list),
@@ -739,11 +732,20 @@ struct WordsView: View {
                             secondary.append(entry)
                         }
                     }
-                    // Within primary, sort by entry_id ASC. JMdict IDs are roughly insertion
-                    // order, and older entries are the canonical/common words — for greetings
-                    // like ハロー (8516) vs 你好 (112034), this picks the right one even when
-                    // JPDB frequency data is missing (as it is for most basic greetings).
-                    primary.sort { $0.entryId < $1.entryId }
+                    // Within primary: EXACT surface/kana matches first (まさか must beat たまさか
+                    // for query "masaka" — both are primary because たまさか contains まさか, and
+                    // the entry-id tiebreak alone happened to rank たまさか higher). Then entry_id
+                    // ASC: JMdict IDs are roughly insertion order, and older entries are the
+                    // canonical/common words — for greetings like ハロー (8516) vs 你好 (112034),
+                    // this picks the right one even when JPDB frequency data is missing.
+                    let exactNeedles = [needle, kanaNeedle].compactMap { $0 }
+                    // primary.sort { $0.entryId < $1.entryId }
+                    primary.sort { lhs, rhs in
+                        let lhsExact = Self.isExactSurfaceMatch(lhs, needles: exactNeedles)
+                        let rhsExact = Self.isExactSurfaceMatch(rhs, needles: exactNeedles)
+                        if lhsExact != rhsExact { return lhsExact }
+                        return lhs.entryId < rhs.entryId
+                    }
                     return .success(primary + secondary)
                 } catch {
                     return .failure(error)
@@ -956,8 +958,17 @@ struct WordsView: View {
 
     // Routes a recognized character from the handwriting sheet into the search field.
     func handleHandwritingSelect(_ character: String) {
-        isHandwritingPresented = false
-        searchText = character
+        // Append (don't replace) and keep the sheet up: characters compose directly in the
+        // search field, visible above the 2/3-height handwriting sheet.
+        // isHandwritingPresented = false
+        // searchText = character
+        searchText += character
+    }
+
+    // Backspace from the handwriting sheet — undoes the last appended character.
+    func handleHandwritingDeleteBackward() {
+        guard searchText.isEmpty == false else { return }
+        searchText.removeLast()
     }
 
     // Opens one browse-frequency result in the detail sheet, dismissing the browse sheet first.

@@ -11,6 +11,10 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let selectedSegmentLocation: Int?
     let blankSelectedSegmentLocation: Int?
     let selectedHighlightRangeOverride: NSRange?
+    // Optional range whose TEXT is tinted blue (no background band). ExampleSentenceView
+    // uses this to mark the target word in example sentences, matching the plain-text
+    // fallback's accent-colored run.
+    var accentTextRange: NSRange? = nil
     let playbackHighlightRangeOverride: NSRange?
     let activePlaybackCueIndex: Int?
     let illegalMergeBoundaryLocation: Int?

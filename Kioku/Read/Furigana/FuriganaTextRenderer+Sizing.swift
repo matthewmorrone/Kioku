@@ -11,7 +11,7 @@ extension FuriganaTextRenderer {
         guard !uiView.isScrollEnabled else { return nil }
         let width = proposal.width ?? uiView.bounds.width
         let bodyFont = UIFont.systemFont(ofSize: textSize)
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * TypographySettings.furiganaSizeFactor)
         // Compute actual content height from attributed text bounds when multi-line.
         let insets = uiView.textContainerInset
         let textWidth = max(width - insets.left - insets.right, 0)

@@ -548,6 +548,23 @@ extension ReadView {
                         lemmaResolver: resolver
                     )
                 },
+                sheetIsSavedElsewhereProvider: {
+                    // Hollow-yellow star: saved, but attributed only to other notes. Same shared
+                    // predicate the extract-words list uses for its yellow outline star, so the
+                    // sheet and the list always agree.
+                    guard let surface = currentSelectedSurface() else { return false }
+                    let resolver: (String) -> String? = { segmenter.preferredLemma(for: $0) }
+                    let (state, _) = SegmentListView.computeSavedWordState(
+                        entries: wordsStore.words,
+                        lemmaResolver: resolver,
+                        lemmaCache: [:]
+                    )
+                    return state.isSavedForOtherNotes(
+                        surface.trimmingCharacters(in: .whitespacesAndNewlines),
+                        noteID: activeNoteID,
+                        lemmaResolver: resolver
+                    )
+                },
                 sheetSaveToggle: {
                     // Prefer the reading-disambiguated async entry (currentSheetDictionaryEntry),
                     // but fall back to the synchronous segment resolver when it hasn't landed yet.

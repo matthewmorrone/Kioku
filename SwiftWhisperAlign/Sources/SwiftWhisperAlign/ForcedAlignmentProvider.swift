@@ -12,6 +12,11 @@ import whisper_cpp
 // filter callback forces the decoder to emit exactly the provided lyric tokens
 // while Whisper handles timing via natural timestamp token insertion and DTW.
 public final class ForcedAlignmentProvider {
+    // Whisper operates on a fixed 16 kHz mono input; every frame-count↔seconds conversion
+    // in this file uses this rate. Single constant so the three former inline 16_000 literals
+    // can't drift.
+    private static let sampleRate = 16_000
+
     private let modelURL: URL
 
     // modelURL must point to a GGML .bin file.
@@ -50,7 +55,7 @@ public final class ForcedAlignmentProvider {
         }
 
         // Total audio duration in seconds (16 kHz sample rate).
-        let audioDuration = Double(frames.count) / 16_000.0
+        let audioDuration = Double(frames.count) / Double(Self.sampleRate)
 
         // Silence whisper.cpp / ggml stderr chatter (e.g. repeated
         // "ggml_gallocr_needs_realloc" during graph rebuilds). Installed once
@@ -182,7 +187,7 @@ public final class ForcedAlignmentProvider {
         }
 
         // Slice the decoded frames to the requested window (clamped to the file).
-        let sampleRate = 16_000
+        let sampleRate = Self.sampleRate
         let totalFrames = frames.count
         let startSample = max(0, min(totalFrames, Int(windowStartSeconds * Double(sampleRate))))
         let endSample = max(startSample, min(totalFrames, Int(windowEndSeconds * Double(sampleRate))))
@@ -371,7 +376,6 @@ public final class ForcedAlignmentProvider {
             lines.append(AlignedLine(text: inputLines[i], start: lineStart, end: lineEnd))
         }
 
-        _ = tokenTimestamps
         return lines
     }
 
@@ -397,7 +401,7 @@ public final class ForcedAlignmentProvider {
         cancellationCheck: (@Sendable () -> Bool)?,
         onProgress: (@Sendable (Double) -> Void)?
     ) async throws -> [Double] {
-        let sampleRate = 16_000
+        let sampleRate = Self.sampleRate
         let windowSamples = 30 * sampleRate
         // Mirrors stable-ts's token_step=100 default. Longer batches
         // accumulate timing drift; shorter batches pay more inference calls

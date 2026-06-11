@@ -62,7 +62,7 @@ actor JimakuProvider: SubtitleProvider {
         guard let fileURL = URL(string: result.downloadToken) else { throw SubtitleProviderError.noDownloadLink }
 
         let ext = (result.releaseName as NSString).pathExtension.lowercased()
-        guard ["srt", "ass", "ssa"].contains(ext) else {
+        guard SubtitleFormat.supportedExtensions.contains(ext) else {
             throw SubtitleProviderError.unsupportedFormat(ext.isEmpty ? "?" : ext)
         }
 

@@ -35,6 +35,18 @@ protocol SubtitleProvider: Sendable {
     func download(_ result: SubtitleSearchResult) async throws -> SubtitleDownload
 }
 
+// The subtitle container formats the import pipeline can parse: SubtitleParser handles SRT,
+// ASSParser handles ASS/SSA. Single source of truth so the download accept-list and the
+// user-facing error message can never disagree (the message used to drop ".ssa").
+nonisolated enum SubtitleFormat {
+    static let supportedExtensions = ["srt", "ass", "ssa"]
+
+    // Human-readable list for error copy, e.g. ".srt, .ass, .ssa".
+    static var supportedListDescription: String {
+        supportedExtensions.map { ".\($0)" }.joined(separator: ", ")
+    }
+}
+
 // Errors surfaced to the search UI as readable messages.
 enum SubtitleProviderError: LocalizedError {
     case notConfigured
@@ -47,7 +59,7 @@ enum SubtitleProviderError: LocalizedError {
         case .notConfigured: return "Add your Jimaku API key in Settings first."
         case .badResponse: return "The subtitle provider returned an unexpected response."
         case .noDownloadLink: return "No download link was returned for that file."
-        case .unsupportedFormat(let ext): return "Can't read “.\(ext)” subtitles — only .srt and .ass are supported."
+        case .unsupportedFormat(let ext): return "Can't read “.\(ext)” subtitles — only \(SubtitleFormat.supportedListDescription) are supported."
         }
     }
 }

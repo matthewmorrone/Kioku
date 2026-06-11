@@ -162,11 +162,28 @@ struct WordDetailView: View {
                 return entry?.firstEverydayKanji?.text
             }()
             VStack(spacing: 10) {
-                SegmentLookupSheetHeader(
+                // Headword row: the title hugs its content (.fixedSize) and centers as if it
+                // were alone — the speaker rides as a trailing OVERLAY offset past the word's
+                // edge, so neither it nor the star (also an overlay, below) shifts the title.
+                LookupHeaderView(
                     surface: word.surface,
                     reading: surfaceReading,
                     lemma: lemma
                 )
+                .fixedSize()
+                .overlay(alignment: .trailing) {
+                    Button {
+                        speak(word.surface)
+                    } label: {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.title3)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    // Push fully outside the title's bounds: anchored at the trailing edge,
+                    // shifted right by its own footprint plus a gap.
+                    .offset(x: 34)
+                }
                 .frame(maxWidth: .infinity)
                 // COMMON badge — outlined pill in the top-trailing corner, matching the
                 // reference. Driven by the same ichi1/news1/spec1 priority heuristic.
@@ -183,20 +200,27 @@ struct WordDetailView: View {
                             .padding(.trailing, 16)
                     }
                 }
-
-                // POS summary + speaker + "View Conjugations" — a single row beneath the
-                // headword. Speaker pronounces the word; the conjugations link opens the
-                // existing sheet for conjugable parts of speech.
-                HStack(spacing: 10) {
+                .overlay(alignment: .trailing) {
+                    let isSaved = wordsStore.words.contains { $0.canonicalEntryID == word.canonicalEntryID }
                     Button {
-                        speak(word.surface)
+                        wordsStore.toggle(
+                            canonicalEntryID: word.canonicalEntryID,
+                            storedSurface: word.surface,
+                            defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
+                        )
                     } label: {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .font(.subheadline)
+                        Image(systemName: isSaved ? "star.fill" : "star")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(isSaved ? Color.yellow : Color.secondary)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(Color.accentColor)
+                    .padding(.trailing, 16)
+                    .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
+                }
 
+                // POS summary + "View Conjugations" — a single row beneath the headword.
+                // (Speaker moved up beside the headword itself.)
+                HStack(spacing: 10) {
                     if let posSummary = entryPOSSummary {
                         Text(posSummary)
                             .font(.subheadline)
@@ -548,20 +572,8 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Personal note — editable free-form text for mnemonics, context, etc.
-                Section("Note") {
-                    TextField("Add a personal note…", text: $personalNoteText, axis: .vertical)
-                        .lineLimit(1...6)
-                        .onChange(of: personalNoteText) {
-                            let trimmed = personalNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
-                            wordsStore.updatePersonalNote(
-                                id: word.canonicalEntryID,
-                                note: trimmed.isEmpty ? nil : trimmed
-                            )
-                        }
-                }
-
                 // Source notes (songs) this word was saved from — many-to-many relationship.
+                // Sits ABOVE the personal-note section so membership context comes first.
                 let sourceNotes = word.sourceNoteIDs.compactMap { notesStore.note(withID: $0) }
                     .sorted { $0.title < $1.title }
                 // Resolve list objects from IDs so the user sees human-readable labels keyed by stable UUID.
@@ -583,6 +595,19 @@ struct WordDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                }
+
+                // Personal note — editable free-form text for mnemonics, context, etc.
+                Section("Note") {
+                    TextField("Add a personal note…", text: $personalNoteText, axis: .vertical)
+                        .lineLimit(1...6)
+                        .onChange(of: personalNoteText) {
+                            let trimmed = personalNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            wordsStore.updatePersonalNote(
+                                id: word.canonicalEntryID,
+                                note: trimmed.isEmpty ? nil : trimmed
+                            )
+                        }
                 }
 
             }

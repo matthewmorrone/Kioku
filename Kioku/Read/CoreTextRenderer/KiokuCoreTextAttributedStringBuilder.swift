@@ -205,7 +205,7 @@ enum KiokuCoreTextAttributedStringBuilder {
         // consumes these and positions each reading using the layout engine's kanji rect.
         var rubyEntries: [RubyEntry] = []
         if inputs.isVisualEnhancementsEnabled, inputs.isFuriganaVisible {
-            let furiganaFont = UIFont.systemFont(ofSize: inputs.furiganaSizeOverride ?? (inputs.textSize * 0.5))
+            let furiganaFont = UIFont.systemFont(ofSize: inputs.furiganaSizeOverride ?? (inputs.textSize * TypographySettings.furiganaSizeFactor))
             // Cache segment NSRanges so spacing compensation can route the trailing .kern
             // to the segment's LAST character rather than the kanji's — keeps okurigana
             // tucked against its kanji and pushes the gap to the segment boundary, where
@@ -363,7 +363,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                 let annotation = CTRubyAnnotationCreateWithAttributes(
                     .center, .auto, .before,
                     runReading as CFString,
-                    [kCTRubyAnnotationSizeFactorAttributeName: 0.5] as CFDictionary
+                    [kCTRubyAnnotationSizeFactorAttributeName: TypographySettings.furiganaSizeFactor] as CFDictionary
                 )
                 attributed.addAttribute(
                     NSAttributedString.Key(kCTRubyAnnotationAttributeName as String),

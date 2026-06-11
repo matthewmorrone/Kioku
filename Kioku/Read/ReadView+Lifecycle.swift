@@ -217,6 +217,13 @@ extension ReadView {
             }
             .onChange(of: isEditMode) { _, editing in
                 if editing {
+                    // Hand the CT read view's live scroll position to the editor. The CT
+                    // renderer reports into the reference-type memo (not @State) while the
+                    // user scrolls in view mode; this is the one moment the shared offset
+                    // needs to catch up so RichTextEditor's applyExternalScrollIfNeeded
+                    // restores the same position. Without this, the editor opened at a stale
+                    // offset (last edit position or last sheet adjustment).
+                    sharedScrollOffsetY = readScrollOffsetMemo.value
                     // Suspends in-progress furigana / segmentation work and clears transient
                     // selection state. Note: we deliberately do NOT clear furiganaBySegmentLocation
                     // here. The renderer is gated by `isActive: isEditMode == false`, so it

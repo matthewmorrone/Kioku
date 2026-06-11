@@ -2,7 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UserNotifications
 
-// Presents typography controls, Word of the Day configuration, and a live preview for reading settings.
+// Single-screen settings, organized top-to-bottom: appearance (preview, typography, colors),
+// reading behavior (audio, word of the day, clipboard), segmentation tuning, AI correction,
+// developer tools, and data transfer. Footer prose is intentionally omitted — rows stand alone.
 struct SettingsView: View {
     let dictionaryStore: DictionaryStore?
     // Hosts the on-demand local-network MCP listener whose UI lives in BridgeSettingsSection.
@@ -30,7 +32,6 @@ struct SettingsView: View {
     @AppStorage(LLMSettings.openAIKeyStorageKey) private var openAIKey: String = ""
     @AppStorage(LLMSettings.claudeKeyStorageKey) private var claudeKey: String = ""
     @AppStorage(LLMSettings.useLLMKey) private var useLLM: Bool = false
-    @AppStorage(LLMSettings.stubResponseKey) private var stubResponse: String = ""
     @AppStorage(LLMSettings.temperatureKey) private var temperature: Double = LLMSettings.defaultTemperature
 
     @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
@@ -60,7 +61,6 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.karaokeDebugHUDKey) private var debugKaraokeHUD: Bool = false
     // CoreText renderer is now the only path; toggle hidden, key kept for migration.
     // @AppStorage(DebugSettings.useCoreTextRendererKey) private var useCoreTextRenderer: Bool = true
-    @AppStorage(DebugSettings.startupSegmentationDiffsKey) private var debugStartupSegmentationDiffs: Bool = false
 
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
     @State private var wotdPendingCount: Int = 0
@@ -89,9 +89,8 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Hosts typography sliders that update read and preview rendering.
+                // MARK: Appearance — live preview + typography sliders.
                 Section {
-                        // Shows live typography preview.
                     SettingsPreviewRenderer(
                         textSize: $textSize,
                         lineSpacing: lineSpacing,
@@ -120,10 +119,7 @@ struct SettingsView: View {
                             .fill(Color(.secondarySystemBackground))
                     )
 
-
-                    // Controls base font size. Label switches to "Headword Size" when the
-                    // user has decoupled the furigana size, to make clear that this slider
-                    // now drives only the kanji/kana body glyphs.
+                    // Label switches to "Headword Size" when furigana size is decoupled.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text(customFuriganaSizeEnabled ? "Headword Size" : "Text Size")
@@ -134,9 +130,6 @@ struct SettingsView: View {
                         Slider(value: $textSize, in: TypographySettings.textSizeRange, step: 1)
                     }
 
-                    // Independent furigana font size. Only visible when the user has
-                    // explicitly opted in via the toggle below; otherwise the renderer
-                    // falls back to the implicit headword * 0.5 ratio.
                     if customFuriganaSizeEnabled {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -149,7 +142,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Controls additional line spacing.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Line Spacing")
@@ -160,7 +152,6 @@ struct SettingsView: View {
                         Slider(value: $lineSpacing, in: TypographySettings.lineSpacingRange, step: 1)
                     }
 
-                    // Controls vertical gap between furigana text and the kanji below it.
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Furigana Spacing")
@@ -170,7 +161,7 @@ struct SettingsView: View {
                         }
                         Slider(value: $furiganaGap, in: TypographySettings.furiganaGapRange, step: 0.5)
                     }
-                    // Controls character spacing.
+
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Kerning")
@@ -181,31 +172,32 @@ struct SettingsView: View {
                         Slider(value: $kerning, in: TypographySettings.kerningRange, step: 1)
                     }
 
-                    // Decouples furigana size from headword size. Off (default) keeps the
-                    // implicit `textSize * 0.5` ratio; on reveals the Furigana Size slider
-                    // above and relabels the body slider to "Headword Size".
                     Toggle("Custom Furigana Size", isOn: $customFuriganaSizeEnabled)
+                } header: {
+                    Text("Typography")
+                }
 
-                    // Lets the user override the default system-color segment alternation palette.
-                    // Flipping the toggle off restores the defaults visually without touching the
-                    // stored hex picks, so no explicit reset control is needed.
+                // MARK: Colors
+                Section {
                     Toggle("Custom Token Colors", isOn: $customTokenColorsEnabled)
-                    // Curated palettes — tap one to apply its pair (and turn custom colors on).
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 14) {
-                            ForEach(TokenColorSettings.presets) { preset in
-                                tokenPresetSwatch(preset)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
                     if customTokenColorsEnabled {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 14) {
+                                ForEach(TokenColorSettings.presets) { preset in
+                                    tokenPresetSwatch(preset)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
                         ColorPicker("Primary Color", selection: tokenColorABinding, supportsOpacity: false)
                         ColorPicker("Secondary Color", selection: tokenColorBBinding, supportsOpacity: false)
                     }
                     ColorPicker("Highlight Color", selection: tokenHighlightBinding, supportsOpacity: false)
+                } header: {
+                    Text("Colors")
                 }
 
+                // MARK: Audio
                 Section {
                     Picker("Highlight Granularity", selection: $lyricsHighlightGranularityRaw) {
                         ForEach(LyricsHighlightGranularity.allCases, id: \.rawValue) { granularity in
@@ -216,45 +208,60 @@ struct SettingsView: View {
                     Toggle("Background Audio", isOn: $backgroundPlayback)
                 } header: {
                     Text("Audio")
-                } footer: {
-                    Text("When on, audio keeps playing when the phone is silenced or the app is backgrounded.")
                 }
 
-                // Inline chip editor for the single-kana allowlist used during lattice path filtering.
+                // MARK: Word of the Day
                 Section {
-                    ParticleTagEditor(tags: particlesBinding)
-                    HStack {
-                        Spacer()
-                        Button("Reset to Defaults") {
-                            ParticleSettings.reset()
-                            particlesRaw = ParticleSettings.defaultRawValue
+                    Toggle("Word of the Day", isOn: $wotdEnabled)
+                        .onChange(of: wotdEnabled) { _, _ in rescheduleWordOfTheDay() }
+
+                    if wotdEnabled {
+                        // Time picker binds to a synthetic Date so the system wheel renders correctly.
+                        DatePicker("Time", selection: wotdTimeDateBinding, displayedComponents: .hourAndMinute)
+                            .onChange(of: wotdHour)   { _, _ in rescheduleWordOfTheDay() }
+                            .onChange(of: wotdMinute) { _, _ in rescheduleWordOfTheDay() }
+
+                        HStack {
+                            Text("Permission")
+                            Spacer()
+                            Text(wotdPermissionStatus.displayLabel)
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.bordered)
-                        .font(.footnote)
+
+                        if wotdPermissionStatus == .notDetermined || wotdPermissionStatus == .denied {
+                            Button("Request Permission") {
+                                Task {
+                                    _ = await WordOfTheDayScheduler.requestAuthorization()
+                                    await refreshWotdStatus()
+                                }
+                            }
+                            .disabled(wotdPermissionStatus == .denied)
+                        }
+
+                        Button("Send Test") {
+                            let word = wordsStore.words.randomElement()
+                            let store = dictionaryStore
+                            Task {
+                                await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
+                            }
+                        }
+                        .disabled(wordsStore.words.isEmpty)
                     }
                 } header: {
-                    Text("Allowed Particles")
+                    Text("Notifications")
+                }
+                .task {
+                    await refreshWotdStatus()
                 }
 
-                // Inline chip editor for the segmentation demotion denylist (surfaces to deprioritize).
+                // MARK: Clipboard
                 Section {
-                    ParticleTagEditor(tags: demotionsBinding)
-                    HStack {
-                        Spacer()
-                        Button("Reset to Defaults") {
-                            SegmentationDemotions.reset()
-                            demotionsRaw = SegmentationDemotions.defaultRawValue
-                        }
-                        .buttonStyle(.bordered)
-                        .font(.footnote)
-                    }
+                    Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
                 } header: {
-                    Text("Segmentation Demotions")
-                } footer: {
-                    Text("Surfaces to deprioritize during segmentation — spurious fusions like のか or のす. The segmenter avoids these unless they're the only option. Applies the next time text is segmented.")
+                    Text("Clipboard")
                 }
 
-                // Selects which segmentation engine to use and which MeCab dictionary to load.
+                // MARK: Segmentation — engine, then the two tuning chip-editors.
                 Section {
                     Picker("Engine", selection: $segmenterBackend) {
                         ForEach(SegmenterBackend.allCases, id: \.rawValue) { backend in
@@ -276,27 +283,45 @@ struct SettingsView: View {
                             set: { segmentationStrategy = $0 ? .globalLongestMatch : .localLongestMatch }
                         ))
                     }
-
                 } header: {
                     Text("Segmentation")
-                } footer: {
-                    if segmenterBackend == SegmenterBackend.mecab.rawValue {
-                        Text("MeCab uses statistical morphological analysis. IPAdic is smaller; UniDic provides finer-grained segmentation.")
-                    } else if segmenterBackend == SegmenterBackend.nlTokenizer.rawValue {
-                        Text("Apple's built-in ICU tokenizer. No external dictionary needed.")
-                    } else if segmentationStrategy == .globalLongestMatch {
-                        Text("Trie segmenter with global longest-match: the whole-line minimum-cost path (POS bigram + node costs), computed by the Viterbi DP. Toggle off to revert to local (greedy) longest-match.")
-                    } else {
-                        Text("Dictionary trie uses the built-in word list with deinflection rules.")
-                    }
                 }
 
-                // Configures the LLM provider and API keys used by the segmentation correction feature.
+                Section {
+                    ParticleTagEditor(tags: particlesBinding)
+                    HStack {
+                        Spacer()
+                        Button("Reset to Defaults") {
+                            ParticleSettings.reset()
+                            particlesRaw = ParticleSettings.defaultRawValue
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.footnote)
+                    }
+                } header: {
+                    Text("Allowed Particles")
+                }
+
+                Section {
+                    ParticleTagEditor(tags: demotionsBinding)
+                    HStack {
+                        Spacer()
+                        Button("Reset to Defaults") {
+                            SegmentationDemotions.reset()
+                            demotionsRaw = SegmentationDemotions.defaultRawValue
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.footnote)
+                    }
+                } header: {
+                    Text("Segmentation Demotions")
+                }
+
+                // MARK: AI Correction
                 Section {
                     Toggle("Use LLM API", isOn: $useLLM)
 
                     if useLLM {
-                        // Picker selects which provider's key is active. Shown as a menu on iOS.
                         Picker("Provider", selection: $llmProviderRaw) {
                             ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
                                 Text(provider.displayName).tag(provider.rawValue)
@@ -328,65 +353,10 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("AI Correction")
-                } footer: {
-                    if useLLM {
-                        Text("When enabled, the correction button calls the LLM API and costs tokens.")
-                            .foregroundStyle(.orange)
-                    } else {
-                        Text("Using stub response. Enable \"Use LLM API\" to call the real API.")
-                    }
-                }
-
-                // Controls daily Word of the Day push notifications from the saved word list.
-                Section {
-                    Toggle("Word of the Day", isOn: $wotdEnabled)
-                        .onChange(of: wotdEnabled) { _, _ in rescheduleWordOfTheDay() }
-
-                    if wotdEnabled {
-                        // Time picker binds to a synthetic Date so the system wheel renders correctly.
-                        DatePicker("Time", selection: wotdTimeDateBinding, displayedComponents: .hourAndMinute)
-                            .onChange(of: wotdHour)   { _, _ in rescheduleWordOfTheDay() }
-                            .onChange(of: wotdMinute) { _, _ in rescheduleWordOfTheDay() }
-
-                        // Authorization status row
-                        HStack {
-                            Text("Permission")
-                            Spacer()
-                            Text(wotdPermissionStatus.displayLabel)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if wotdPermissionStatus == .notDetermined || wotdPermissionStatus == .denied {
-                            Button("Request Permission") {
-                                Task {
-                                    _ = await WordOfTheDayScheduler.requestAuthorization()
-                                    await refreshWotdStatus()
-                                }
-                            }
-                            .disabled(wotdPermissionStatus == .denied)
-                        }
-
-                        Button("Send Test") {
-                            let word = wordsStore.words.randomElement()
-                            let store = dictionaryStore
-                            Task {
-                                await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
-                            }
-                        }
-                        .disabled(wordsStore.words.isEmpty)
-                    }
-                } footer: {
-                    if wotdEnabled && wotdPermissionStatus == .denied {
-                        Text("Notifications are denied. Enable them in Settings → Notifications → Kioku.")
-                            .foregroundStyle(.orange)
-                    }
-                }
-                .task {
-                    await refreshWotdStatus()
                 }
 
                 #if DEBUG
-                // Read-mode visual debugging aids — hidden in release builds.
+                // MARK: Debug overlays — hidden in release builds.
                 Section {
                     Toggle("Pixel Ruler", isOn: $debugPixelRuler)
                     Toggle("Furigana Rects", isOn: $debugFuriganaRects)
@@ -402,28 +372,19 @@ struct SettingsView: View {
                     Toggle("Karaoke HUD", isOn: $debugKaraokeHUD)
                     // Toggle hidden — CoreText is now the only renderer.
                     // Toggle("Use CoreText Renderer (experimental)", isOn: $useCoreTextRenderer)
+                } header: {
+                    Text("Debug Overlays")
                 }
                 #endif
 
                 BridgeSettingsSection(bridgeServer: bridgeServer)
 
                 Section {
-                    Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
-                } header: {
-                    Text("Clipboard")
-                } footer: {
-                    Text("When on, Kioku checks your clipboard for Japanese text each time the app opens and offers to look it up. iOS shows its standard \u{201C}Pasted from\u{201D} notification when this happens — turn off to disable both.")
-                }
-
-                Section {
-                    // Lists CrashLogger's persisted records (exceptions, signals, MetricKit
-                    // post-mortems including OOM kills). Tap a record to view JSON + share.
                     NavigationLink {
                         CrashLogsView()
                     } label: {
                         Label("Crash Logs", systemImage: "exclamationmark.triangle")
                     }
-                    // Pushes the About / Credits screen — dataset attributions and library acks.
                     NavigationLink {
                         AboutView()
                     } label: {
@@ -431,25 +392,25 @@ struct SettingsView: View {
                     }
                 }
 
+                // MARK: Data transfer
                 Section {
-                    // Exports the full app state to one JSON backup file.
                     Button {
                         beginAppExport()
                     } label: {
                         Label("Export", systemImage: "square.and.arrow.up")
                     }
-                    // Imports a full-app backup and replaces the current persisted state.
                     Button {
                         isShowingImporter = true
                     } label: {
                         Label("Import", systemImage: "square.and.arrow.down")
                     }
-                    // Erases all user data (notes, words, lists, history, review stats).
                     Button(role: .destructive) {
                         isShowingResetConfirmation = true
                     } label: {
                         Label("Reset", systemImage: "trash")
                     }
+                } header: {
+                    Text("Data")
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -484,10 +445,10 @@ struct SettingsView: View {
         }
         .alert("Replace All Data?", isPresented: $isShowingImportConfirmation) {
             Button("Import", role: .destructive) {
-                if let document = pendingImportDocument {
-                    importAppBackup(document)
-                    pendingImportDocument = nil
+                if let pendingImportDocument {
+                    importAppBackup(pendingImportDocument)
                 }
+                pendingImportDocument = nil
             }
             Button("Cancel", role: .cancel) {
                 pendingImportDocument = nil
@@ -648,8 +609,9 @@ struct SettingsView: View {
         }
     }
 
-    // A tappable two-tone swatch for a token-color preset. Applies the pair and turns custom colors
-    // on; outlined in the accent color when it's the currently-active pair.
+    // A tappable three-tone swatch for a token-color preset: token A, token B, and the
+    // coordinating highlight/glow color. Applies all three and turns custom colors on;
+    // outlined in the accent color when it's the currently-active pair.
     private func tokenPresetSwatch(_ preset: TokenColorSettings.Preset) -> some View {
         let isSelected = customTokenColorsEnabled
             && tokenColorAHex.caseInsensitiveCompare(preset.aHex) == .orderedSame
@@ -664,8 +626,9 @@ struct SettingsView: View {
                 HStack(spacing: 0) {
                     Color(UIColor(hexString: preset.aHex) ?? .gray)
                     Color(UIColor(hexString: preset.bHex) ?? .gray)
+                    Color(UIColor(hexString: preset.highlightHex) ?? .gray)
                 }
-                .frame(width: 48, height: 24)
+                .frame(width: 60, height: 24)
                 .clipShape(RoundedRectangle(cornerRadius: 7))
                 .overlay(
                     RoundedRectangle(cornerRadius: 7)
@@ -745,7 +708,7 @@ struct SettingsView: View {
 }
 
 // Chip grid for adding and removing individual kana from the particle allowlist.
-private struct ParticleTagEditor: View {
+struct ParticleTagEditor: View {
     @Binding var tags: [String]
     @State private var draft: String = ""
     @FocusState private var draftFocused: Bool
@@ -825,54 +788,7 @@ private struct ParticleTagEditor: View {
     }
 }
 
-// Wrapping flow layout: each subview takes its natural width and wraps to the next row when it would
-// overflow the available width — no fixed columns. Used by the tag-chip editors so chips size to
-// their content. (iOS 16+ Layout protocol; deployment target is well above that.)
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    // Measures the wrapped rows to report the total height for the proposed width.
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        let maxWidth = proposal.width ?? .greatestFiniteMagnitude
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var widestRow: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > maxWidth {
-                widestRow = max(widestRow, x - spacing)
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        widestRow = max(widestRow, x - spacing)
-        let resolvedWidth = proposal.width ?? widestRow
-        return CGSize(width: resolvedWidth, height: y + rowHeight)
-    }
-
-    // Places each subview left-to-right at its natural size, wrapping to a new row on overflow.
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-    }
-}
-
+// FlowLayout lives in Kioku/FlowLayout.swift (shared with SubtitleImportView's vocab tag picker).
 
 #Preview {
     ContentView(selectedTab: .settings)

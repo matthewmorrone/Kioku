@@ -55,6 +55,11 @@ nonisolated enum SubtitleVocabExtractor {
             let lemma = edge.lemma.isEmpty ? edge.surface : edge.lemma
             guard lemma.isEmpty == false else { continue }
 
+            // Latin letters and numbers (ASCII or fullwidth) aren't vocabulary — subtitle files
+            // carry romaji credits, episode numbers, "OK", etc. Keep anything containing at
+            // least one kana/kanji scalar, so number+counter compounds (２人) still survive.
+            guard ScriptClassifier.containsJapanese(lemma) else { continue }
+
             // Exclude grammatical particles via the canonical allowlist — by lemma and by the
             // raw surface, so both は and a conjugated-away particle form drop out.
             if particles.contains(lemma) || particles.contains(edge.surface) { continue }

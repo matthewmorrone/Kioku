@@ -76,11 +76,12 @@ extension FuriganaTextRenderer {
             customOddSegmentColor: customOddSegmentColorHex.isEmpty ? nil : UIColor(hexString: customOddSegmentColorHex),
             furiganaBySegmentLocation: furiganaBySegmentLocation,
             furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
-            textAlignment: textAlignment
+            textAlignment: textAlignment,
+            accentTextRange: accentTextRange
         ).makePayload()
         // Top inset must accommodate the furigana row above the first line so it matches
         // the spacing above all other lines (which comes from paragraph lineSpacing).
-        let furiganaFont = UIFont.systemFont(ofSize: textSize * 0.5)
+        let furiganaFont = UIFont.systemFont(ofSize: textSize * TypographySettings.furiganaSizeFactor)
         textView.textContainerInset = UIEdgeInsets(
             top: furiganaFont.lineHeight + CGFloat(furiganaGap) + 4,
             left: 4, bottom: 8, right: 4

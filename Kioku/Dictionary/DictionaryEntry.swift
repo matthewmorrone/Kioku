@@ -31,12 +31,19 @@ nonisolated public struct DictionaryEntry: Equatable, Sendable {
     }
 
     // Picks the first sense whose JMdict stagk/stagr restrictions are compatible with the given
-    // reading and kanji form. A sense matches when its restriction list is empty (applies to all
-    // forms) or contains the supplied value. When no sense matches — typically because the caller
-    // passed a reading not represented in the entry, e.g. a user-supplied custom reading — falls
-    // back to senses.first so callers still get a gloss to display.
+    // reading and kanji form. See senses(forReading:kanji:) for the matching rules.
     public func sense(forReading reading: String?, kanji: String? = nil) -> DictionaryEntrySense? {
-        let match = senses.first { sense in
+        senses(forReading: reading, kanji: kanji).first
+    }
+
+    // Returns every sense whose JMdict stagk/stagr restrictions are compatible with the given
+    // reading and kanji form, preserving JMdict order (most common meaning first). A sense matches
+    // when its restriction list is empty (applies to all forms) or contains the supplied value.
+    // When no sense matches — typically because the caller passed a reading not represented in the
+    // entry, e.g. a user-supplied custom reading — falls back to the full sense list so callers
+    // still get glosses to display.
+    public func senses(forReading reading: String?, kanji: String? = nil) -> [DictionaryEntrySense] {
+        let matches = senses.filter { sense in
             let readingOK: Bool
             if sense.applicableReadings.isEmpty {
                 readingOK = true
@@ -55,6 +62,6 @@ nonisolated public struct DictionaryEntry: Equatable, Sendable {
             }
             return readingOK && kanjiOK
         }
-        return match ?? senses.first
+        return matches.isEmpty ? senses : matches
     }
 }

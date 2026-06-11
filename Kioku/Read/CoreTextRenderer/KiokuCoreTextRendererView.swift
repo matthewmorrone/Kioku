@@ -115,6 +115,17 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // true so the lyrics/song call sites (always visible) need not pass it.
     var isActive: Bool = true
 
+    // Edit↔view scroll sync. `onScrollOffsetYChanged` reports every offset change (including
+    // programmatic scrolls) — ReadView routes it into a reference-type memo, NOT @State, so
+    // view-mode scrolling doesn't pay a SwiftUI body re-eval per frame (the typography
+    // fingerprint hashes the whole note per eval; per-frame evals made long-note scrolling
+    // expensive on the legacy renderer). `externalContentOffsetY` is applied exactly ONCE per
+    // inactive→active transition — the moment edit mode exits — never on routine updates,
+    // so it cannot fight the user's own scrolling. nil defaults keep the lyrics/song call
+    // sites out of the sync entirely.
+    var externalContentOffsetY: CGFloat? = nil
+    var onScrollOffsetYChanged: ((CGFloat) -> Void)? = nil
+
     // One-shot scroll-to-top trigger. When this value CHANGES between body re-evaluations,
     // the scroll view resets to the top of the content exactly once. Keyed on the active
     // note id so opening a different note starts at the top instead of inheriting the prior
@@ -179,11 +190,21 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // wide-ruby line-starts), feeds the debug overlay, and emits inset / segment-gap
     // measurement logs when the inset-guide debug flag is on.
     func updateUIView(_ uiView: KiokuScrollingTextView, context: Context) {
+        // Inactive→active edge detection MUST happen before the isActive guard — the guard
+        // returns while hidden, so it can never record "I was inactive" itself. The edge is
+        // when edit mode just exited; that's the one moment the external scroll offset (the
+        // editor's last position) should be applied. See `externalContentOffsetY`.
+        let becameActive = isActive && uiView.wasActiveInLastUpdate == false
+        uiView.wasActiveInLastUpdate = isActive
+
         // Hidden behind the editable RichTextEditor (edit mode): skip all work. Every keystroke
         // re-evaluates ReadView.body and would otherwise re-typeset the entire note here for a
         // view nobody can see. The view keeps its last view-mode content and rebuilds once when
         // editing ends (isActive flips back to true). See the `isActive` property comment.
         guard isActive else { return }
+
+        // Re-wire per body re-evaluation (same staleness rationale as the tap callback below).
+        uiView.onScrollOffsetYChanged = onScrollOffsetYChanged
 
         // Re-apply scroll enablement on every update so the LyricsView toggle is honored
         // when the host re-evaluates with a different value (e.g. dismiss vs. active).
@@ -504,6 +525,15 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         }
         uiView.contentView.highlightBands = bands
 
+        // Restore the editor's scroll position when edit mode just exited. Edge-triggered only:
+        // applying on routine updates would snap the view back to a stale offset on every body
+        // re-eval while the user scrolls (the shared offset is NOT updated per frame in view
+        // mode — see `externalContentOffsetY`). The toggle case leaves content unchanged, so
+        // contentSize is valid for clamping here.
+        if becameActive, let externalContentOffsetY {
+            uiView.applyExternalScrollOffsetY(externalContentOffsetY)
+        }
+
         // Reset to the top of the content when the active note changed (token transition).
         // Runs before the playback auto-scroll below so a genuinely-active cue can still win
         // the rare case where both fire in the same pass; on a normal note open the playback
@@ -546,9 +576,23 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
 // UIScrollView host for the CoreText content view. Owns layout passing — the content
 // view's intrinsicContentSize is height-only, so we drive width from the scroll view's
 // bounds and read height back to set contentSize.
-final class KiokuScrollingTextView: UIScrollView {
+final class KiokuScrollingTextView: UIScrollView, UIScrollViewDelegate {
 
     let contentView = KiokuCoreTextView()
+
+    // True between updateUIView calls while the renderer was active. Lives on the UIView (not
+    // the SwiftUI struct, which is recreated every body eval) so the inactive→active edge —
+    // "edit mode just exited" — survives across updates. See updateUIView.
+    var wasActiveInLastUpdate = false
+
+    // Reports every contentOffset change (user pan, deceleration, programmatic scrolls) so the
+    // host can mirror the live offset for edit↔view scroll sync. nil for call sites that opted
+    // out (lyrics/song cards).
+    var onScrollOffsetYChanged: ((CGFloat) -> Void)?
+
+    // Reentrancy guard so an externally-applied offset doesn't echo back out through
+    // `onScrollOffsetYChanged` — same pattern as RichTextEditorCoordinator.
+    private var isApplyingExternalScrollOffset = false
     // Dev-only debug overlay sibling. Lives at the same coordinate origin as the
     // text content view so all rect math uses one space (no conversions). Hidden
     // when no flags are set so it's a no-op for normal users.
@@ -606,6 +650,10 @@ final class KiokuScrollingTextView: UIScrollView {
         addSubview(debugOverlay)
         backgroundColor = .clear
         contentInsetAdjustmentBehavior = .never
+        // Self-delegation for scroll reporting. UIScrollView's pan-driven scrolling moves
+        // bounds.origin directly (it does not go through the contentOffset setter), so a
+        // property observer can't see it — the delegate callback is the reliable hook.
+        delegate = self
         // UIScrollView defaults to delaying content touches by ~150ms so it can decide
         // whether the gesture is a scroll. For the read view this turns every tap into
         // a perceptible "lag" — the pan recognizer still claims real drags, so we lose
@@ -768,6 +816,28 @@ final class KiokuScrollingTextView: UIScrollView {
         // prior layout pass. Only push when we actually have something to apply.
         guard shifts.isEmpty == false else { return }
         contentView.setLineOriginShifts(shifts)
+    }
+
+    // Mirrors every offset change out to the host (reference-type memo on the ReadView side,
+    // so this costs no SwiftUI invalidation per frame). Skipped while WE are applying an
+    // external offset, so the apply can't echo back.
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard isApplyingExternalScrollOffset == false else { return }
+        onScrollOffsetYChanged?(contentOffset.y)
+    }
+
+    // Applies an externally-tracked offset (the editor's last scroll position), clamped to the
+    // current content bounds — same clamping/tolerance contract as
+    // RichTextEditorCoordinator.applyExternalScrollIfNeeded so the two directions of the
+    // edit↔view handoff behave identically.
+    func applyExternalScrollOffsetY(_ targetOffsetY: CGFloat) {
+        let minOffsetY = -adjustedContentInset.top
+        let maxOffsetY = max(minOffsetY, contentSize.height - bounds.height + adjustedContentInset.bottom)
+        let clampedTargetY = min(max(targetOffsetY, minOffsetY), maxOffsetY)
+        guard abs(contentOffset.y - clampedTargetY) >= 0.5 else { return }
+        isApplyingExternalScrollOffset = true
+        setContentOffset(CGPoint(x: contentOffset.x, y: clampedTargetY), animated: false)
+        isApplyingExternalScrollOffset = false
     }
 
     // Translates a rect from the content view's coordinate space to this scroll-view-relative

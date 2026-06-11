@@ -129,7 +129,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
     // Renders the base text and per-run furigana annotations directly into the view's graphics context.
     override func draw(_ rect: CGRect) {
         let baseAttrString = baseAttributedString()
-        let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * 0.5)
+        let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
         let topInset = furiganaFont.lineHeight + gap
 
         let drawWidth = bounds.width > 0 ? bounds.width : rect.width
@@ -195,7 +195,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
             CGSize(width: width, height: CGFloat.greatestFiniteMagnitude),
             nil
         )
-        let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * 0.5)
+        let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
         // Reserve room for furigana text plus the gap above the first baseline.
         return ceil(size.height) + furiganaFont.lineHeight + gap
     }
@@ -213,7 +213,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
             CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
             nil
         )
-        let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * 0.5)
+        let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
         // Also account for the furigana text width, which may be wider than the kanji surface.
         let furiganaWidth = (reading as NSString).size(
             withAttributes: [.font: furiganaFont]

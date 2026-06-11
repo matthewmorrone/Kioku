@@ -4,10 +4,13 @@ import Zinnia_Swift
 
 // Handwriting input sheet. User draws a character with a finger or Apple Pencil; strokes are
 // passed to the bundled Tegaki/Zinnia Japanese model and top candidates appear as tappable chips.
-// Owned by WordsView; presented as a sheet from the toolbar pencil icon.
-// Tapping a candidate dismisses the sheet and routes the character into the search field.
+// Owned by WordsView; presented as a 2/3-height sheet from the toolbar pencil icon, so the
+// search field stays visible above. Tapping a candidate appends it to the search field LIVE
+// (the sheet stays up for the next character); the toolbar backspace removes the last one.
 struct HandwritingInputView: View {
     let onSelectCharacter: (String) -> Void
+    // Removes the last character from the destination text field — backspace for a wrong pick.
+    var onDeleteBackward: (() -> Void)? = nil
 
     @State private var drawing = PKDrawing()
     @State private var canvasSize: CGSize = CGSize(width: 256, height: 256)
@@ -31,8 +34,26 @@ struct HandwritingInputView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { dismiss() }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        onDeleteBackward?()
+                    } label: {
+                        Image(systemName: "delete.left")
+                    }
+                    .accessibilityLabel("Delete last character")
+                }
             }
             .task { loadRecognizer() }
+            // Auto-recognize after every stroke: PencilKit's drawingDidChange fires once per
+            // completed stroke, and Zinnia classification is fast enough to run inline, so
+            // candidates refresh live as the character takes shape — no Recognize button.
+            .onChange(of: drawing) {
+                if drawing.strokes.isEmpty {
+                    results = []
+                } else {
+                    recognize()
+                }
+            }
         }
     }
 
@@ -49,8 +70,8 @@ struct HandwritingInputView: View {
                     .padding(.horizontal, 12)
             } else if results.isEmpty {
                 Text(drawing.strokes.isEmpty
-                     ? "Draw a character below, then tap Recognize."
-                     : "Tap Recognize for candidates.")
+                     ? "Draw a character below."
+                     : "Recognizing…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 56)
@@ -59,8 +80,11 @@ struct HandwritingInputView: View {
                     HStack(spacing: 6) {
                         ForEach(Array(results.prefix(20).enumerated()), id: \.offset) { _, candidate in
                             Button {
+                                // Append straight into the search field (visible above the
+                                // 2/3-height sheet) and clear the canvas for the next character.
                                 onSelectCharacter(candidate.character)
-                                dismiss()
+                                drawing = PKDrawing()
+                                results = []
                             } label: {
                                 Text(candidate.character)
                                     .font(.title)
@@ -71,7 +95,7 @@ struct HandwritingInputView: View {
                                     )
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Insert \(candidate.character)")
+                            .accessibilityLabel("Add \(candidate.character)")
                         }
                     }
                     .padding(.horizontal, 12)
@@ -104,7 +128,8 @@ struct HandwritingInputView: View {
         .padding(16)
     }
 
-    // Bottom action bar — Clear (wipes the drawing) and Recognize (runs Zinnia classify).
+    // Bottom action bar — Clear wipes the drawing. (Recognition runs automatically after every
+    // stroke now, so the Recognize button is retired.)
     @ViewBuilder
     private var actionBar: some View {
         HStack(spacing: 12) {
@@ -118,14 +143,14 @@ struct HandwritingInputView: View {
             .buttonStyle(.bordered)
             .disabled(drawing.strokes.isEmpty)
 
-            Button {
-                recognize()
-            } label: {
-                Label("Recognize", systemImage: "wand.and.stars")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(drawing.strokes.isEmpty || recognizer == nil)
+            // Button {
+            //     recognize()
+            // } label: {
+            //     Label("Recognize", systemImage: "wand.and.stars")
+            //         .frame(maxWidth: .infinity)
+            // }
+            // .buttonStyle(.borderedProminent)
+            // .disabled(drawing.strokes.isEmpty || recognizer == nil)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

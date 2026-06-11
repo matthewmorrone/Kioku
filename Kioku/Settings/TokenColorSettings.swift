@@ -26,12 +26,15 @@ enum TokenColorSettings {
         let highlightHex: String
     }
 
+    // Each highlight is chosen to complete the pair as a triad — visibly distinct from both
+    // token colors (it marks glow/selection, not a third token) and unique across presets.
     static let presets: [Preset] = [
-        Preset(name: "Classic", aHex: "#FF9500", bHex: "#32ADE6", highlightHex: "#FFD60A"),
-        Preset(name: "Coral",   aHex: "#FF6B6B", bHex: "#1ABC9C", highlightHex: "#FFE066"),
-        Preset(name: "Berry",   aHex: "#E84393", bHex: "#00B894", highlightHex: "#FFD43B"),
-        Preset(name: "Dusk",    aHex: "#E8B339", bHex: "#5C6BC0", highlightHex: "#FF8FAB"),
-        Preset(name: "Bloom",   aHex: "#F06595", bHex: "#4DABF7", highlightHex: "#FFE066"),
-        Preset(name: "Ember",   aHex: "#FB8C45", bHex: "#9775FA", highlightHex: "#74F0C8"),
+        Preset(name: "Classic", aHex: "#FF9500", bHex: "#32ADE6", highlightHex: "#FFD60A"),  // gold
+        Preset(name: "Coral",   aHex: "#FF6B6B", bHex: "#1ABC9C", highlightHex: "#FFE066"),  // soft yellow
+        Preset(name: "Berry",   aHex: "#E84393", bHex: "#00B894", highlightHex: "#FFD43B"),  // amber
+        Preset(name: "Dusk",    aHex: "#E8B339", bHex: "#5C6BC0", highlightHex: "#FF8FAB"),  // rose
+        // Bloom's old #FFE066 duplicated Coral's highlight; mint completes the pink/blue triad.
+        Preset(name: "Bloom",   aHex: "#F06595", bHex: "#4DABF7", highlightHex: "#8CE99A"),  // mint
+        Preset(name: "Ember",   aHex: "#FB8C45", bHex: "#9775FA", highlightHex: "#74F0C8"),  // aqua
     ]
 }

@@ -45,7 +45,13 @@ struct LookupHeaderView: UIViewRepresentable {
 
     // Asks the UIStackView for its compressed height so SwiftUI can allocate the exact space needed.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIStackView, context: Context) -> CGSize? {
-        let width = proposal.width ?? uiView.window?.screen.bounds.width ?? 390
+        guard let width = proposal.width else {
+            // Unspecified proposal — what .fixedSize() sends (WordDetailView's headword row).
+            // Report the natural compressed size so the header hugs the headword. Falling back
+            // to screen width here made the header claim the full row and shoved the adjacent
+            // speaker/star buttons to the right edge.
+            return uiView.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+        }
         return uiView.systemLayoutSizeFitting(
             CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
             withHorizontalFittingPriority: .required,

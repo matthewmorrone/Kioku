@@ -28,6 +28,7 @@ extension SegmentLookupSheet {
         let capturedSheetLemmaInfoByReadingProvider = self.sheetLemmaInfoByReadingProvider
         let capturedSheetDictionaryEntryProvider = self.sheetDictionaryEntryProvider
         let capturedSheetIsSavedProvider = self.sheetIsSavedProvider
+        let capturedSheetIsSavedElsewhereProvider = self.sheetIsSavedElsewhereProvider
         let capturedSheetSaveToggle = self.sheetSaveToggle
         let capturedSheetOpenWordDetail = self.sheetOpenWordDetail
         let capturedSheetWordComponentsProvider = self.sheetWordComponentsProvider
@@ -48,6 +49,7 @@ extension SegmentLookupSheet {
             self.sheetLemmaInfoByReadingProvider = capturedSheetLemmaInfoByReadingProvider
             self.sheetDictionaryEntryProvider = capturedSheetDictionaryEntryProvider
             self.sheetIsSavedProvider = capturedSheetIsSavedProvider
+            self.sheetIsSavedElsewhereProvider = capturedSheetIsSavedElsewhereProvider
             self.sheetSaveToggle = capturedSheetSaveToggle
             self.sheetOpenWordDetail = capturedSheetOpenWordDetail
             self.sheetWordComponentsProvider = capturedSheetWordComponentsProvider
