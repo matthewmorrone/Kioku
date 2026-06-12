@@ -1,39 +1,11 @@
 import SwiftUI
 
-// Dictionary-search content, filters, and the debounced search task that powers them.
-// Covers the search results list section and the helpers that compute available POS labels,
-// sort/filter results, and toggle save state for hits. The filter UI itself (toolbar menu)
-// has been removed — these helpers are kept so a replacement UI can rewire to them later.
+// Dictionary-search filter menu and ranking/filter helpers. The debounced search task
+// itself lives in WordsView.runDictionarySearch; this file covers the controls that
+// narrow or reorder its results (sort mode, common-only, part-of-speech) and the
+// shared open/toggle-save actions for search hits.
 extension WordsView {
-    // MARK: - Search results view
-
-    @ViewBuilder
-    var searchResultsContent: some View {
-        if parsedSegments.isEmpty == false {
-            parsedSegmentsResultsSection
-        } else if filteredSearchResults.isEmpty {
-            Section {
-                Text(searchText.isEmpty ? "" : "No results")
-                    .foregroundStyle(.secondary)
-            }
-        } else {
-            Section {
-                ForEach(filteredSearchResults, id: \.entryId) { entry in
-                    DictionarySearchResultRow(
-                        entry: entry,
-                        isSaved: isSaved(entry),
-                        onToggleSave: { toggleSave(entry) }
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        openSearchResult(entry)
-                    }
-                }
-            } header: {
-                Text("\(filteredSearchResults.count) Result\(filteredSearchResults.count == 1 ? "" : "s")")
-            }
-        }
-    }
+    // MARK: - Search filter menu
 
     // Live dictionary-search filter/sort control. Shown in the search bar's trailing slot while a
     // query is active (replacing the note/list funnel, which only applies to the saved/history
@@ -176,89 +148,6 @@ extension WordsView {
     // True when any live dictionary-search control is narrowing or reordering the result set.
     var hasActiveSearchControls: Bool {
         searchCommonWordsOnly || searchSortMode != .relevance || searchSelectedPartsOfSpeech.isEmpty == false
-    }
-
-    // Starts or replaces the debounced dictionary-search task for the current query and mode.
-    func startSearchTask(for query: String) {
-        searchTask?.cancel()
-        searchTask = nil
-
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedQuery.isEmpty == false else {
-            searchResults = []
-            parsedSegments = []
-            return
-        }
-
-        let alternateKana = convertedKana?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isWildcardQuery = trimmedQuery.contains("*") || trimmedQuery.contains("?")
-        // Only consider sentence-parse mode for Japanese input — English headword lookups
-        // ("light", "to shine") should always stay in entry-list mode.
-        let sentenceCandidateSegmenter: (any TextSegmenting)? = (isWildcardQuery == false && searchMode == .japanese) ? segmenter : nil
-
-        searchTask = Task {
-            do {
-                try await Task.sleep(nanoseconds: 300_000_000)
-            } catch {
-                return
-            }
-
-            guard let store = dictionaryStore, Task.isCancelled == false else { return }
-            let mode = searchMode
-
-            // Run segmentation first. If the query produces ≥2 non-boundary tokens, switch
-            // to Pleco-style row-per-segment mode and skip the literal entry search entirely.
-            if let parseSegmenter = sentenceCandidateSegmenter {
-                let tokens = await Task.detached(priority: .userInitiated) {
-                    WordsView.parseTokens(trimmedQuery, using: parseSegmenter)
-                }.value
-                if tokens.count >= 2 {
-                    let segments = await Task.detached(priority: .userInitiated) {
-                        WordsView.resolveParsedSegments(tokens: tokens, store: store)
-                    }.value
-                    guard Task.isCancelled == false,
-                          searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery,
-                          searchMode == mode else {
-                        return
-                    }
-                    parsedSegments = segments
-                    searchResults = []
-                    return
-                }
-            }
-
-            let results = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    if isWildcardQuery {
-                        var entries = (try? store.searchEntriesByPattern(trimmedQuery)) ?? []
-                        if let alt = alternateKana, alt.isEmpty == false, alt != trimmedQuery {
-                            let altEntries = (try? store.searchEntriesByPattern(alt)) ?? []
-                            let existing = Set(entries.map(\.entryId))
-                            entries += altEntries.filter { existing.contains($0.entryId) == false }
-                        }
-                        continuation.resume(returning: entries)
-                        return
-                    }
-                    var entries = (try? store.searchEntries(term: trimmedQuery, mode: mode)) ?? []
-                    if let alt = alternateKana, alt.isEmpty == false, alt != trimmedQuery {
-                        let altEntries = (try? store.searchEntries(term: alt, mode: .japanese)) ?? []
-                        let existing = Set(entries.map(\.entryId))
-                        entries += altEntries.filter { existing.contains($0.entryId) == false }
-                    }
-                    continuation.resume(returning: entries)
-                }
-            }
-
-            guard Task.isCancelled == false,
-                  searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery,
-                  searchMode == mode else {
-                return
-            }
-
-            searchResults = results
-            parsedSegments = []
-            pruneUnavailableSearchPartsOfSpeech()
-        }
     }
 
     // Removes POS selections that are no longer available after a new search result set arrives.

@@ -64,35 +64,13 @@ final class WordsStore: ObservableObject {
         persist(words.filter { !ids.contains($0.canonicalEntryID) })
     }
 
-    // Counts saved words that list any of these notes as a source. Drives the "delete associated
-    // words?" prompt shown when a note is deleted.
-    func associatedWordCount(forNoteIDs noteIDs: Set<UUID>) -> Int {
-        guard noteIDs.isEmpty == false else { return 0 }
-        return words.reduce(0) { count, word in
-            count + (word.sourceNoteIDs.contains { noteIDs.contains($0) } ? 1 : 0)
-        }
-    }
-
-    // Cascades a note deletion onto saved-word provenance in one persist cycle. Every affected word
-    // has the deleted note(s) stripped from its sourceNoteIDs. When `deletingWords` is true, a word
-    // left with no remaining source notes is deleted outright; words still sourced from OTHER notes
-    // survive (detached). When false, words are only detached — but the dangling note reference is
-    // always cleaned up so no word points at a note that no longer exists.
-    func purgeNoteReferences(noteIDs: Set<UUID>, deletingWords: Bool) {
+    // Detaches deleted-note provenance without deleting saved vocabulary.
+    func detachNoteReferences(noteIDs: Set<UUID>) {
         guard noteIDs.isEmpty == false else { return }
-        var updated: [SavedWord] = []
-        updated.reserveCapacity(words.count)
-        for word in words {
-            guard word.sourceNoteIDs.contains(where: { noteIDs.contains($0) }) else {
-                updated.append(word)
-                continue
-            }
+        let updated = words.map { word in
             var detached = word
             detached.sourceNoteIDs.removeAll { noteIDs.contains($0) }
-            if deletingWords && detached.sourceNoteIDs.isEmpty {
-                continue // sole-source word → delete
-            }
-            updated.append(detached)
+            return detached
         }
         persist(updated)
     }

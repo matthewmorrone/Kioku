@@ -108,6 +108,26 @@ final class WordsStoreTests: XCTestCase {
         XCTAssertEqual(store.words.map(\.canonicalEntryID), [1])
     }
 
+    // Deleting a source note never deletes saved vocabulary. The note reference is
+    // detached while every other card field remains available for study and review.
+    func testDetachNoteReferencesPreservesSoleSourceWords() {
+        let deletedNoteID = UUID()
+        let survivingNoteID = UUID()
+        let store = makeStore()
+        store.replaceAll(with: [
+            SavedWord(canonicalEntryID: 1, surface: "sole", sourceNoteIDs: [deletedNoteID]),
+            SavedWord(canonicalEntryID: 2, surface: "shared", sourceNoteIDs: [deletedNoteID, survivingNoteID]),
+            SavedWord(canonicalEntryID: 3, surface: "unrelated", sourceNoteIDs: [survivingNoteID]),
+        ])
+
+        store.detachNoteReferences(noteIDs: [deletedNoteID])
+
+        XCTAssertEqual(store.words.map(\.canonicalEntryID), [1, 2, 3])
+        XCTAssertEqual(store.words[0].sourceNoteIDs, [])
+        XCTAssertEqual(store.words[1].sourceNoteIDs, [survivingNoteID])
+        XCTAssertEqual(store.words[2].sourceNoteIDs, [survivingNoteID])
+    }
+
     // MARK: - List membership
 
     // toggleListMembership flips the list ID: adds when absent, removes when present.

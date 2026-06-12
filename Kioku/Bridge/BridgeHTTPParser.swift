@@ -10,17 +10,29 @@ enum BridgeHTTPParser {
     // from buffering arbitrary data on a process the user trusted to host their notes.
     static let maxBodyBytes: Int = 1_048_576
 
+    // Hard cap on the header block. Real bridge requests carry a handful of short
+    // headers; without this cap a client that never sends the CRLFCRLF terminator
+    // could grow the connection buffer without bound.
+    static let maxHeaderBytes: Int = 16_384
+
     // Returns the parsed request together with any remaining buffer bytes when the
     // header block is intact and the body has fully arrived. Returns nil when more
     // bytes are needed; throws on malformed wire data so the caller can close the
     // connection rather than wait forever.
     static func parse(_ buffer: Data) throws -> (request: BridgeHTTPRequest, remaining: Data)? {
         guard let headerEndRange = buffer.range(of: Data([0x0D, 0x0A, 0x0D, 0x0A])) else {
-            // Header block not yet complete; ask for more bytes.
+            // Header block not yet complete; ask for more bytes — unless the block
+            // is already past the cap, in which case it will never be accepted.
+            if buffer.count > maxHeaderBytes {
+                throw BridgeHTTPParserError.headersTooLarge
+            }
             return nil
         }
 
         let headerData = buffer[..<headerEndRange.lowerBound]
+        guard headerData.count <= maxHeaderBytes else {
+            throw BridgeHTTPParserError.headersTooLarge
+        }
         guard let headerString = String(data: headerData, encoding: .utf8) else {
             throw BridgeHTTPParserError.invalidHeaderEncoding
         }
@@ -78,6 +90,25 @@ enum BridgeHTTPParser {
         return (request, remaining)
     }
 
+    // Returns the lowercase header dictionary as soon as the header block is complete,
+    // or nil while it is still arriving (or undecodable — full parse reports that).
+    // Lets the server reject unauthenticated requests before buffering any body bytes.
+    static func headerFields(_ buffer: Data) -> [String: String]? {
+        guard let headerEndRange = buffer.range(of: Data([0x0D, 0x0A, 0x0D, 0x0A])) else {
+            return nil
+        }
+        guard let headerString = String(data: buffer[..<headerEndRange.lowerBound], encoding: .utf8) else {
+            return nil
+        }
+        var headers: [String: String] = [:]
+        for line in headerString.split(separator: "\r\n").dropFirst() {
+            guard let colonIndex = line.firstIndex(of: ":") else { continue }
+            let name = line[..<colonIndex].lowercased()
+            headers[String(name)] = line[line.index(after: colonIndex)...].trimmingCharacters(in: .whitespaces)
+        }
+        return headers
+    }
+
     // Splits a request target into the path component and a parsed query dictionary.
     private static func splitTarget(_ target: String) -> (path: String, query: [String: String]) {
         guard let questionMarkIndex = target.firstIndex(of: "?") else {
@@ -103,4 +134,5 @@ enum BridgeHTTPParserError: Error {
     case malformedHeader
     case invalidHeaderEncoding
     case bodyTooLarge
+    case headersTooLarge
 }

@@ -2,7 +2,7 @@ import Foundation
 
 // Manages audio files and subtitle cue data on disk under the app's Documents/audio directory.
 // Each attachment is keyed by a UUID shared between the Note model and the stored files.
-final class NotesAudioStore {
+final class NotesAudioStore: NotesAttachmentDeleting {
     // Shared instance so both NotesView (import) and ReadView (playback) access the same storage.
     static let shared = NotesAudioStore(audioDirectory: NotesAudioStore.defaultAudioDirectory())
 
@@ -268,8 +268,31 @@ final class NotesAudioStore {
         )
         try? FileManager.default.removeItem(at: cueTimingsURL(for: attachmentID))
 
-        // Clean up translation cache when the attachment is deleted
+        // Clean up translation cache when the attachment is deleted.
+        // Both the legacy index-keyed entry and the current text-keyed entry must go,
+        // otherwise per-attachment translations accumulate in UserDefaults forever.
         UserDefaults.standard.removeObject(forKey: "kioku.lyricsTranslations.\(attachmentID.uuidString)")
+        UserDefaults.standard.removeObject(forKey: "kioku.lyricsTranslationsByText.\(attachmentID.uuidString)")
+    }
+
+    // Removes every stored attachment file and all persisted translation caches.
+    // Supports "Reset All Data": orphaned files with no surviving note reference
+    // would otherwise survive a store-level reset.
+    func deleteAllStoredFiles() {
+        if let fileURLs = try? FileManager.default.contentsOfDirectory(
+            at: audioDirectory,
+            includingPropertiesForKeys: nil
+        ) {
+            for url in fileURLs {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys
+        where key.hasPrefix("kioku.lyricsTranslations.") || key.hasPrefix("kioku.lyricsTranslationsByText.") {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     // Searches the audio directory for the first file that matches the attachment ID and an allowed extension.

@@ -40,8 +40,14 @@ struct WhisperDownloadableModel: Identifiable {
         WhisperDownloadableModel(id: "medium", displayName: "Medium", filename: "ggml-medium.bin", parameters: "769M", sizeMB: 1500),
     ]
 
+    // Downloads are pinned to an immutable commit, not `main`: a moving branch means a
+    // future repo compromise or force-push silently changes the bytes every install
+    // receives. Bump this hash deliberately when adopting newer model conversions.
+    // Commit 5359861 = repo state as of 2024-10-29.
+    static let pinnedRevision = "5359861c739e955e79d9a303bcbc70fb988958b1"
+
     var remoteURL: URL {
-        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(filename)")!
+        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/\(Self.pinnedRevision)/\(filename)")!
     }
 }
 

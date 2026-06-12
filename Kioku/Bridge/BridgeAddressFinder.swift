@@ -45,7 +45,9 @@ enum BridgeAddressFinder {
             )
             guard result == 0 else { continue }
 
-            let host = String(cString: hostBuffer)
+            // Decode up to the NUL terminator; String(cString:) on [CChar] is deprecated.
+            let nameBytes = hostBuffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }
+            let host = String(decoding: nameBytes, as: UTF8.self)
             // Drop link-local 169.254.x.x — those won't be reachable from the Pi.
             if host.hasPrefix("169.254.") { continue }
             results.append(host)

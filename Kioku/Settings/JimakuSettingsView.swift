@@ -1,17 +1,21 @@
 import SwiftUI
 
-// Credentials form for Jimaku (Feature B): a single API-key field bound directly to the UserDefaults
-// key JimakuSettings reads, via @AppStorage. Reachable from the search screen's toolbar; can also be
+// Credentials form for Jimaku (Feature B): a single API-key field whose value lives in the
+// Keychain via JimakuSettings. @State holds the editing copy; onChange writes through so the
+// secret never touches UserDefaults. Reachable from the search screen's toolbar; can also be
 // linked from the main SettingsView.
 struct JimakuSettingsView: View {
-    @AppStorage(JimakuSettings.apiKeyStorageKey) private var apiKey = ""
+    @State private var apiKey = JimakuSettings.apiKey() ?? ""
 
     var body: some View {
         Form {
             Section {
-                TextField("API Key", text: $apiKey)
+                SecureField("API Key", text: $apiKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .onChange(of: apiKey) {
+                        JimakuSettings.setAPIKey(apiKey)
+                    }
             } header: {
                 Text("Jimaku")
             } footer: {

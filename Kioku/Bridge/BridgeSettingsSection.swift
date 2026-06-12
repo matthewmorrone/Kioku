@@ -15,7 +15,9 @@ struct BridgeSettingsSection: View {
 
     @AppStorage(BridgeSettings.enabledKey) private var enabled: Bool = false
     @AppStorage(BridgeSettings.portKey) private var port: Int = BridgeSettings.defaultPort
-    @AppStorage(BridgeSettings.tokenKey) private var token: String = ""
+    // The token authenticates LAN clients, so it lives in the Keychain; this is the
+    // display copy. Only this view mutates the token, so @State stays in sync.
+    @State private var token: String = ""
 
     @State private var lanAddresses: [String] = []
     @State private var revealToken: Bool = false
@@ -41,9 +43,7 @@ struct BridgeSettingsSection: View {
         .onAppear {
             refreshLANAddresses()
             // Provision a token on first reveal so the field never appears blank.
-            if token.isEmpty {
-                token = BridgeSettings.makeToken()
-            }
+            token = BridgeSettings.currentOrProvisionedToken()
             // Reflect on-disk enabled state into the live server when the screen first appears.
             if enabled, case .stopped = bridgeServer.state {
                 bridgeServer.start()
@@ -134,9 +134,7 @@ struct BridgeSettingsSection: View {
     // Drives the listener on/off in response to the toggle.
     private func handleToggle(newValue: Bool) {
         if newValue {
-            if token.isEmpty {
-                token = BridgeSettings.makeToken()
-            }
+            token = BridgeSettings.currentOrProvisionedToken()
             refreshLANAddresses()
             bridgeServer.start()
         } else {
@@ -153,7 +151,7 @@ struct BridgeSettingsSection: View {
     // Invalidates the current token, generating a fresh one. The Pi-side env
     // file must be updated to match before the next request will be accepted.
     private func regenerateToken() {
-        token = BridgeSettings.makeToken()
+        token = BridgeSettings.regenerateToken()
         if enabled {
             bridgeServer.stop()
             bridgeServer.start()

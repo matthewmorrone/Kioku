@@ -24,6 +24,11 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
 
     private static let crashesDirectoryName = "crashes"
 
+    // System info captured once at install() (main thread, app launch) so crash
+    // handlers can embed it without touching MainActor-isolated UIDevice from an
+    // arbitrary thread mid-crash. Written once before any handler can fire.
+    nonisolated(unsafe) private static var systemInfoSnapshot: (iosVersion: String, deviceModel: String) = ("?", "?")
+
     // Public so Settings UI can list and dump entries. Read on the main thread when the user
     // taps "Crash Logs"; writes happen on background queues or signal handlers.
     var crashesDirectory: URL {
@@ -37,6 +42,12 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
     func install() {
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: crashesDirectory, withIntermediateDirectories: true)
+
+        // install() is called from app launch on the main thread, so reading UIDevice
+        // here is safe; handlers later read the snapshot from any thread.
+        if Thread.isMainThread {
+            Self.systemInfoSnapshot = MainActor.assumeIsolated { Self.currentSystemInfo() }
+        }
 
         // One-off maintenance hatch: launching with `-clearCrashes` wipes the on-disk crash
         // records before anything reads them. The files live in the app sandbox, which host
@@ -58,9 +69,13 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
             let userInfo = String(describing: exception.userInfo ?? [:])
             let callStack = exception.callStackSymbols
 
-            Task { @MainActor in
-                CrashLogger.writeExceptionCrash(name: name, reason: reason, userInfo: userInfo, callStack: callStack)
-            }
+            // Write SYNCHRONOUSLY: the process aborts as soon as this handler returns,
+            // so an async hop loses the record — the same dead-on-dispatch bug the
+            // signal path already fixed (see installSignalHandlers).
+            // Task { @MainActor in
+            //     CrashLogger.writeExceptionCrash(name: name, reason: reason, userInfo: userInfo, callStack: callStack)
+            // }
+            CrashLogger.writeExceptionCrash(name: name, reason: reason, userInfo: userInfo, callStack: callStack)
         }
 
         installSignalHandlers()
@@ -70,8 +85,11 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
 
     // Persists an ObjC exception with its callStackSymbols. NSSetUncaughtExceptionHandler runs
     // synchronously before the process dies, so we can use full Foundation APIs here.
-    @MainActor private static func writeExceptionCrash(name: String, reason: String, userInfo: String, callStack: [String]) {
-        let info = currentSystemInfo()
+    // nonisolated (not @MainActor): the handler may fire on any thread and the process
+    // terminates when it returns, so this must complete inline. System info comes from
+    // the launch-time snapshot rather than UIDevice.
+    nonisolated private static func writeExceptionCrash(name: String, reason: String, userInfo: String, callStack: [String]) {
+        let info = systemInfoSnapshot
         let systemVersion = info.iosVersion
         let entry: [String: Any] = [
             "kind": "exception",
