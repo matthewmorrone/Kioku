@@ -8,11 +8,22 @@ import Foundation
 
 enum ZipExtractor {
 
+    // Allocation ceilings for untrusted archives. The downloaded model archives are
+    // ~100–400 MB uncompressed; anything past these limits is a corrupt or hostile
+    // file, not a bigger model. Bounding both per-entry and total prevents a crafted
+    // header from forcing multi-gigabyte allocations out of a tiny download.
+    static let maxEntryUncompressedSize = 1 << 30        // 1 GiB per entry
+    static let maxTotalUncompressedSize = 2 << 30        // 2 GiB per archive
+
     // Extracts all entries from a ZIP archive into destinationURL.
     // Creates the destination directory and all subdirectories as needed.
+    // Entry names are untrusted: each resolved path must stay inside
+    // destinationURL or the archive is rejected (zip-slip traversal).
     static func extract(zipData: Data, to destinationURL: URL) throws {
         try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+        let containerPath = destinationURL.standardizedFileURL.path + "/"
 
+        var totalUncompressed = 0
         var offset = 0
         while offset + 30 <= zipData.count {
             let signature: UInt32 = zipData.read(at: offset)
@@ -49,7 +60,22 @@ enum ZipExtractor {
             let fileName = String(data: fileNameData, encoding: .utf8) ?? ""
 
             if !fileName.isEmpty {
+                guard fileName.hasPrefix("/") == false else {
+                    throw ZipError.unsafeEntryPath(fileName)
+                }
                 let dest = destinationURL.appendingPathComponent(fileName)
+                // Containment check on the standardized path defeats "../" segments
+                // and any other construction that escapes the destination directory.
+                guard dest.standardizedFileURL.path.hasPrefix(containerPath) else {
+                    throw ZipError.unsafeEntryPath(fileName)
+                }
+
+                totalUncompressed += Int(uncompressedSize)
+                guard Int(uncompressedSize) <= maxEntryUncompressedSize,
+                      totalUncompressed <= maxTotalUncompressedSize else {
+                    throw ZipError.entryTooLarge(fileName)
+                }
+
                 if fileName.hasSuffix("/") {
                     // Directory entry.
                     try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
@@ -177,6 +203,8 @@ private enum ZipError: LocalizedError {
     case unsupportedMethod(UInt16)
     case zlibInitFailed(Int32)
     case inflateFailed(Int32)
+    case unsafeEntryPath(String)
+    case entryTooLarge(String)
 
     var errorDescription: String? {
         switch self {
@@ -185,6 +213,8 @@ private enum ZipError: LocalizedError {
         case .unsupportedMethod(let m): return "Unsupported ZIP compression method \(m)"
         case .zlibInitFailed(let s): return "zlib inflateInit2 failed (status \(s))"
         case .inflateFailed(let s): return "zlib inflate failed (status \(s))"
+        case .unsafeEntryPath(let name): return "ZIP entry path escapes the destination: \(name)"
+        case .entryTooLarge(let name): return "ZIP entry exceeds the allowed size: \(name)"
         }
     }
 }

@@ -128,8 +128,10 @@ enum OnDeviceLyricAligner {
         }
 
         // Derive the zip filename, e.g. "ggml-base-encoder.mlmodelc.zip"
+        // Pinned to the same immutable commit as the GGML model downloads so the
+        // encoder bytes cannot change out from under shipped installs.
         let zipName = encoderDir.lastPathComponent + ".zip"
-        guard let zipURL = URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(zipName)") else {
+        guard let zipURL = URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/\(WhisperDownloadableModel.pinnedRevision)/\(zipName)") else {
             return
         }
 

@@ -9,8 +9,8 @@ import Foundation
 // - .query — a free-text search phrase the user submitted (Enter / Done on the keyboard).
 //   canonicalEntryID is 0 since no specific entry is implied; surface holds the full query text.
 //   Each distinct query string appears at most once; re-submitting moves it to the front.
-struct HistoryEntry: Codable, Identifiable {
-    enum Kind: String, Codable {
+nonisolated struct HistoryEntry: Codable, Identifiable {
+    nonisolated enum Kind: String, Codable {
         case entry
         case query
     }

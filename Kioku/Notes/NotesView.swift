@@ -108,18 +108,8 @@ struct NotesView: View {
                 isPresented: deleteDialogPresented,
                 titleVisibility: .visible
             ) {
-                let wordCount = pendingAssociatedWordCount
-                if wordCount > 0 {
-                    Button("Delete Note\(pendingNoteCountSuffix) & \(wordCount) Word\(wordCount == 1 ? "" : "s")", role: .destructive) {
-                        performDelete(deletingWords: true)
-                    }
-                    Button("Delete Note\(pendingNoteCountSuffix) Only", role: .destructive) {
-                        performDelete(deletingWords: false)
-                    }
-                } else {
-                    Button("Delete", role: .destructive) {
-                        performDelete(deletingWords: false)
-                    }
+                Button("Delete Note\(pendingNoteCountSuffix)", role: .destructive) {
+                    performDelete()
                 }
                 Button("Cancel", role: .cancel) {
                     pendingDeletion = nil
@@ -325,17 +315,9 @@ struct NotesView: View {
         (pendingDeletion?.noteIDs.count ?? 1) == 1 ? "" : "s"
     }
 
-    // Count of saved words sourced from the pending note(s).
-    private var pendingAssociatedWordCount: Int {
-        pendingDeletion.map { wordsStore.associatedWordCount(forNoteIDs: $0.noteIDs) } ?? 0
-    }
-
-    // Explains the delete options, including the associated-word behavior.
+    // Explains that note deletion never removes independent saved vocabulary.
     private var deleteDialogMessage: String {
-        let count = pendingAssociatedWordCount
-        guard count > 0 else { return "This permanently removes the note\(pendingNoteCountSuffix)." }
-        let noun = pendingNoteCountSuffix.isEmpty ? "this note" : "these notes"
-        return "\(count) saved word\(count == 1 ? "" : "s") came from \(noun). Words also saved from other notes are kept."
+        "This permanently removes the note\(pendingNoteCountSuffix) and its attachments. Saved words are kept."
     }
 
     // Builds the per-note context menu shown from the notes list.
@@ -411,15 +393,12 @@ struct NotesView: View {
         self.notePendingRename = nil
     }
 
-    // Deletes the pending note(s) after confirmation, cascades word provenance per the user's choice
-    // (detach words shared with other notes; delete words sourced only from these), and clears the
-    // active read selection. Shared by context-menu, swipe, and bulk deletes.
-    private func performDelete(deletingWords: Bool) {
+    // Deletes the pending notes, detaches saved-word provenance, and clears the active selection.
+    private func performDelete() {
         guard let pendingDeletion else { return }
         let noteIDs = pendingDeletion.noteIDs
 
-        // Cascade to saved words first so none is left pointing at a deleted note.
-        wordsStore.purgeNoteReferences(noteIDs: noteIDs, deletingWords: deletingWords)
+        wordsStore.detachNoteReferences(noteIDs: noteIDs)
         store.deleteNotes(ids: noteIDs)
         selectedNoteIDs.subtract(noteIDs)
         onUpdateSelectedNote?(nil)

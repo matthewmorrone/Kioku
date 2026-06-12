@@ -9,6 +9,10 @@ import SwiftUI
 
 @main
 struct KiokuApp: App {
+    // Registers the notification deep-link handler in didFinishLaunchingWithOptions — early enough
+    // to catch notification taps that cold-launch the app, which ContentView.onAppear missed.
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     // Fires once when SwiftUI first evaluates the app body to signal launch timing.
     init() {
         // Install crash capture BEFORE anything else so a crash during dictionary load /

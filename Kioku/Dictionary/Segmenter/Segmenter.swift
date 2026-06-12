@@ -407,6 +407,12 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             return lhsLemmaScore < rhsLemmaScore
         }
 
+        let lhsFrequencyScore = preferredLemmaFrequencyScore(for: lhsDerivedLemma)
+        let rhsFrequencyScore = preferredLemmaFrequencyScore(for: rhsDerivedLemma)
+        if lhsFrequencyScore != rhsFrequencyScore {
+            return lhsFrequencyScore < rhsFrequencyScore
+        }
+
         if lhsDerivedLemma.count != rhsDerivedLemma.count {
             return lhsDerivedLemma.count < rhsDerivedLemma.count
         }
@@ -511,6 +517,11 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             if lhsScore != rhsScore {
                 return lhsScore > rhsScore
             }
+            let lhsFrequencyScore = preferredLemmaFrequencyScore(for: lhs)
+            let rhsFrequencyScore = preferredLemmaFrequencyScore(for: rhs)
+            if lhsFrequencyScore != rhsFrequencyScore {
+                return lhsFrequencyScore > rhsFrequencyScore
+            }
             if lhs.count != rhs.count {
                 return lhs.count < rhs.count
             }
@@ -545,7 +556,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // base is a legitimate alternate lemma the user may want to see — so re-deinflect each
             // first-pass れる-form once more and add any trie-backed base as an ADDITIONAL candidate.
             // preferredLemmaScore still ranks the surface-closest lexicalized form first, so this
-            // only widens the candidate set (feeding the frequency term + the lemma picker); it does
+            // only widens the candidate set (feeding the frequency tiebreak + lemma picker); it does
             // not change the chosen primary lemma. Gated on the れる suffix to keep it cheap and
             // scoped to the passive/spontaneous/potential class where the base carries the frequency.
             let firstPassLemmas = lemmas
@@ -636,14 +647,10 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
     // Scores competing lemmas so furigana and segmentation can favor script-preserving dictionary forms.
     //
-    // Frequency term (`wordfreqZipfByLemma`) breaks ties between candidates
-    // that the script-based rules above can't distinguish. The classic case
-    // is the past-tense collision なった ⇒ {なう, なる}: both are pure-kana
-    // lemmas of the same length, so without a frequency signal the prior
-    // Unicode-codepoint tiebreaker arbitrarily picked the rarer なう. Zipf
-    // is roughly 1 (very rare) to 7 (extremely common); scaling by 5 puts
-    // a Zipf-6 word ~30 points ahead of a Zipf-0 word, enough to dominate
-    // the existing ±40-point script signals when they're tied.
+    // Frequency is deliberately excluded from this score. Callers compare it
+    // separately only after the structural signals tie, so a common but weak
+    // deinflection candidate cannot outrank a lemma that preserves more of the
+    // source stem.
     private func preferredLemmaScore(for lemma: String, sourceSurface: String) -> Int {
         var score = 0
 
@@ -673,24 +680,22 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         let commonPrefixCount = lemma.commonPrefix(with: sourceSurface).count
         score += commonPrefixCount * LemmaScoring.prefixMatchPerChar
 
-        if let freqScore = frequencyScoreBySurface[lemma], freqScore > 0 {
-            score += Int(freqScore * LemmaScoring.frequencyMultiplier)
-        }
-
         return score
     }
 
-    // Tunable weights for preferredLemmaScore. Grouped (like SegmenterScoring's transition
-    // costs) so the empirical calibration lives in one place instead of as bare literals
-    // scattered through the scoring body. Magnitudes are interdependent — see the
-    // preferredLemmaScore doc comment for why ±40 script signals must outweigh frequency.
+    // Returns the corpus score used only to break structurally equal lemma candidates.
+    private func preferredLemmaFrequencyScore(for lemma: String) -> Double {
+        frequencyScoreBySurface[lemma] ?? 0
+    }
+
+    // Tunable structural weights for preferredLemmaScore. Grouped like SegmenterScoring's
+    // transition costs so empirical calibration lives in one place instead of bare literals.
     private enum LemmaScoring {
         static let surfaceEqualityBonus = 100   // lemma identical to the surface form
         static let kanjiPreservedBonus = 40     // kanji surface → kanji lemma (script preserved)
         static let kanjiToKanaPenalty = -20     // kanji surface → kana-only lemma (script lost)
         static let pureKanaBonus = 10           // both surface and lemma are pure kana
         static let prefixMatchPerChar = 5       // per shared leading character
-        static let frequencyMultiplier = 5.0    // scales the wordfreq Zipf signal into points
     }
 
     // Prints greedy longest-match segments line-by-line for segmenter debugging.

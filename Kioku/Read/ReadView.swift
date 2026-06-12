@@ -192,10 +192,11 @@ struct ReadView: View {
     // so we can see at a glance whether persisted data round-trips correctly.
     @State var loadInfoToastMessage: String?
     @State var loadInfoToastClearTask: Task<Void, Never>?
-    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false 
+    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false
     @AppStorage(LLMSettings.stubResponseKey) private var llmStubResponse = ""
-    @AppStorage(LLMSettings.openAIKeyStorageKey) private var llmOpenAIKey = ""
-    @AppStorage(LLMSettings.claudeKeyStorageKey) private var llmClaudeKey = ""
+    // Keys themselves live in the Keychain; the revision counter is the reactive
+    // signal that a key was added or cleared in Settings.
+    @AppStorage(LLMSettings.keysRevisionKey) private var llmKeysRevision = 0
     @Environment(\.scenePhase) var scenePhase
 
     // Initializes the read screen with the active note selection and shared read resources.
@@ -231,11 +232,13 @@ struct ReadView: View {
 
     let prefersSheetDirectSegmentActions = true
 
-    // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM setting changes.
+    // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM
+    // setting changes. Reading llmKeysRevision ties body invalidation to key edits;
+    // the actual presence check goes to the Keychain.
     private var isLLMConfigured: Bool {
+        _ = llmKeysRevision
         if llmUseLLM {
-            let key = llmOpenAIKey.isEmpty == false ? llmOpenAIKey : llmClaudeKey
-            return key.isEmpty == false
+            return LLMSettings.apiKey(for: .openAI) != nil || LLMSettings.apiKey(for: .claude) != nil
         } else {
             return llmStubResponse.isEmpty == false
         }

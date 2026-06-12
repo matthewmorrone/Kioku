@@ -9,13 +9,18 @@ import Foundation
 // settings, sent as the `Authorization` header on every request. No login, no token exchange, no
 // per-app consumer registration — the whole reason we swapped away from OpenSubtitles.
 nonisolated enum JimakuSettings {
+    // Keychain account name; also the legacy UserDefaults key migrated on first read.
     static let apiKeyStorageKey = "kioku.jimaku.apiKey"
     static let apiBaseURL = "https://jimaku.cc/api"
 
     // Returns the configured API key, or nil when the user hasn't entered one.
     static func apiKey() -> String? {
-        let value = UserDefaults.standard.string(forKey: apiKeyStorageKey) ?? ""
-        return value.isEmpty ? nil : value
+        KeychainStore.string(forKey: apiKeyStorageKey, migratingFromUserDefaultsKey: apiKeyStorageKey)
+    }
+
+    // Stores or clears the API key in the Keychain.
+    static func setAPIKey(_ key: String?) {
+        KeychainStore.setString(key, forKey: apiKeyStorageKey)
     }
 
     // Both searching and downloading require only the API key.

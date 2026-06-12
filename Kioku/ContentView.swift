@@ -37,11 +37,11 @@ struct ContentView: View {
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionarySetting = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategySetting: SegmentationStrategy = SegmenterSettings.defaultStrategy
-    @StateObject private var wotdNavigation = WordOfTheDayNavigation()
+    // Observes the same shared instance the AppDelegate registered the notification handler against,
+    // so a deep-link target published from didReceive reaches this view.
+    @ObservedObject private var wotdNavigation = WordOfTheDayNavigation.shared
     @StateObject private var clipboardCoordinator = ClipboardLookupCoordinator()
     @Environment(\.scenePhase) private var scenePhase
-    // Retained for its delegate lifetime; nil until onAppear.
-    @State private var notificationHandler: NotificationDeepLinkHandler?
     // Set by notification and read-tab actions; consumed by WordsView.
     @State private var pendingWordsRoute: WordsRoute? = nil
     @State private var wotdRefreshTask: Task<Void, Never>?
@@ -124,19 +124,21 @@ struct ContentView: View {
             StartupTimer.mark("onAppear fired")
             restoreLastActiveNote()
             loadReadResourcesIfNeeded()
-            setupNotificationHandlerIfNeeded()
             // Wires the live notes store into the bridge so any MCP-side mutations route
             // through the same single-writer store the UI binds against.
             bridgeServer.attach(notesStore: notesStore)
         }
         // Navigate to Words tab and open the word detail when a notification deep link arrives.
-        .onChange(of: wotdNavigation.pendingEntryID) { _, entryID in
-            guard let entryID else { return }
+        // The notification's surface is threaded into the route so WordsView.detailWord can resolve
+        // the target even before the dictionary store loads or if the word left the saved set.
+        .onChange(of: wotdNavigation.pendingTarget) { _, target in
+            guard let target else { return }
+            WOTDDiag.log("ContentView route entryID=\(target.entryID) hasSurface=\(target.surface != nil) -> Words tab")
             selectedTab = .words
             DispatchQueue.main.async {
-                pendingWordsRoute = .detail(entryID: entryID, surface: nil)
+                pendingWordsRoute = .detail(entryID: target.entryID, surface: target.surface)
             }
-            wotdNavigation.pendingEntryID = nil
+            wotdNavigation.pendingTarget = nil
         }
         // Rebuild the segmenter when the user switches backend or MeCab dictionary in Settings.
         .onChange(of: segmenterBackendSetting) { _, _ in
@@ -269,13 +271,6 @@ struct ContentView: View {
         selectedReadNote = note
         selectedTab = .read
     }
-
-    // Creates the notification handler once; subsequent onAppear calls are no-ops.
-    private func setupNotificationHandlerIfNeeded() {
-        guard notificationHandler == nil else { return }
-        notificationHandler = NotificationDeepLinkHandler(navigation: wotdNavigation)
-    }
-
 
     // Loads heavy read resources asynchronously so initial app launch stays responsive.
     private func loadReadResourcesIfNeeded() {

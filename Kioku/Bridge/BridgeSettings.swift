@@ -4,6 +4,7 @@ import Foundation
 // Keys use the kioku.bridge prefix to avoid colliding with other settings.
 enum BridgeSettings {
     static let enabledKey = "kioku.bridge.enabled"
+    // Keychain account name; also the legacy UserDefaults key migrated on first read.
     static let tokenKey = "kioku.bridge.token"
     static let portKey = "kioku.bridge.port"
 
@@ -30,13 +31,21 @@ enum BridgeSettings {
     }
 
     // Returns the persisted token, creating and saving one on first read so callers
-    // never have to deal with a nil/empty token.
-    static func currentOrProvisionedToken(userDefaults: UserDefaults = .standard) -> String {
-        if let existing = userDefaults.string(forKey: tokenKey), existing.isEmpty == false {
+    // never have to deal with a nil/empty token. Stored in the Keychain — the token
+    // authenticates LAN clients and must not sit in the unencrypted defaults plist.
+    static func currentOrProvisionedToken() -> String {
+        if let existing = KeychainStore.string(forKey: tokenKey, migratingFromUserDefaultsKey: tokenKey) {
             return existing
         }
         let token = makeToken()
-        userDefaults.set(token, forKey: tokenKey)
+        KeychainStore.setString(token, forKey: tokenKey)
+        return token
+    }
+
+    // Replaces the stored token with a freshly generated one and returns it.
+    static func regenerateToken() -> String {
+        let token = makeToken()
+        KeychainStore.setString(token, forKey: tokenKey)
         return token
     }
 

@@ -21,8 +21,14 @@ enum LLMProvider: String, CaseIterable {
 // Keys use the kioku.llm prefix to avoid collisions with other app settings.
 enum LLMSettings {
     static let providerKey = "kioku.llm.provider"
+    // API keys live in the Keychain. These constants double as the Keychain account
+    // names and the legacy UserDefaults keys that pre-Keychain installs migrate from.
     static let openAIKeyStorageKey = "kioku.llm.openaiKey"
     static let claudeKeyStorageKey = "kioku.llm.claudeKey"
+    // Non-secret counter bumped whenever a key is edited. Views that previously
+    // observed the key strings via @AppStorage observe this instead, so key-presence
+    // UI stays reactive without the secrets living in UserDefaults.
+    static let keysRevisionKey = "kioku.llm.keysRevision"
     // When false (default), the stub response is used instead of a real API call.
     static let useLLMKey = "kioku.llm.useLLM"
     // Compact-format stub used when useLLM is false. Parsed by the same pipeline as real responses.
@@ -39,18 +45,33 @@ enum LLMSettings {
         return LLMProvider(rawValue: raw) ?? .none
     }
 
-    // Returns the API key for the currently configured provider, or nil if not set.
-    static func activeAPIKey() -> String? {
-        switch activeProvider() {
+    // Returns the API key for the given provider from the Keychain, or nil if not set.
+    static func apiKey(for provider: LLMProvider) -> String? {
+        switch provider {
         case .none:
             return nil
         case .openAI:
-            let key = UserDefaults.standard.string(forKey: openAIKeyStorageKey) ?? ""
-            return key.isEmpty ? nil : key
+            return KeychainStore.string(forKey: openAIKeyStorageKey, migratingFromUserDefaultsKey: openAIKeyStorageKey)
         case .claude:
-            let key = UserDefaults.standard.string(forKey: claudeKeyStorageKey) ?? ""
-            return key.isEmpty ? nil : key
+            return KeychainStore.string(forKey: claudeKeyStorageKey, migratingFromUserDefaultsKey: claudeKeyStorageKey)
         }
+    }
+
+    // Stores or clears a provider's API key in the Keychain.
+    static func setAPIKey(_ key: String?, for provider: LLMProvider) {
+        switch provider {
+        case .none:
+            break
+        case .openAI:
+            KeychainStore.setString(key, forKey: openAIKeyStorageKey)
+        case .claude:
+            KeychainStore.setString(key, forKey: claudeKeyStorageKey)
+        }
+    }
+
+    // Returns the API key for the currently configured provider, or nil if not set.
+    static func activeAPIKey() -> String? {
+        apiKey(for: activeProvider())
     }
 
     // Returns true when useLLM is on and an API key is set, or when useLLM is off and a stub is set.

@@ -153,10 +153,37 @@ final class SegmenterIntegrationTests: XCTestCase {
     func testBuildLatticeUsesPotentialNegativeRecoveryCandidate() throws {
         let resources = try sharedResources()
         let latticeEdges = try resources.segmenter.buildLattice(for: "できない")
+        let candidates = resources.segmenter.lemmaCandidates(for: "できない")
+        let inclusion = try inclusionLines(for: "できない").joined(separator: "\n")
 
         XCTAssertTrue(latticeEdges.contains { edge in
             edge.surface == "できない" && resources.segmenter.preferredLemma(for: edge.surface) == "できる"
-        })
+        }, "Expected できない → できる; candidates=\(candidates)\nlattice:\n\(inclusion)")
+    }
+
+    // docs/INVARIANTS.md "Segmentation" #5 (lemma resolution) — pins the
+    // frequency-tiebreak contract after frequency was demoted from a weighted
+    // term in `preferredLemmaScore` to a pure post-structural tiebreak.
+    //
+    // The past-tense なった deinflects to two pure-kana, length-2 verb lemmas,
+    // {なう, なる}, that the structural signals (surface-equality, script,
+    // prefix) cannot separate — their `preferredLemmaScore` is identical. Only
+    // the corpus frequency breaks the tie, and it must favor the common なる
+    // over the rare なう. Were frequency ever dropped from the comparison (or
+    // ordered after the lexicographic fallback), なう would win and furigana
+    // would resolve to the wrong reading.
+    func testPreferredLemmaUsesFrequencyTiebreakForNattaCollision() throws {
+        let resources = try sharedResources()
+        let candidates = resources.segmenter.lemmaCandidates(for: "なった")
+
+        XCTAssertTrue(
+            candidates.contains("なる") && candidates.contains("なう"),
+            "Expected both tie candidates present; candidates=\(candidates)"
+        )
+        XCTAssertEqual(
+            resources.segmenter.preferredLemma(for: "なった"), "なる",
+            "Frequency tiebreak must pick the common なる over the rare なう; candidates=\(candidates)"
+        )
     }
 
     // Verifies godan te-forms ending in って recover their dictionary lemma.

@@ -49,6 +49,7 @@ nonisolated struct AppBackupDocument: FileDocument {
                 userInfo: [NSLocalizedDescriptionKey: "Unsupported app backup version \(payload.version). Expected version \(AppBackupPayload.currentVersion)."]
             )
         }
+        try AppBackupValidator.validate(payload)
         return payload
     }
 }

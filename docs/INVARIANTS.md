@@ -200,10 +200,18 @@ invariants govern coverage (no character orphaned) and user-intent persistence
 
 5. **Lemma resolution is deterministic**: for any (surface, context),
    `Segmenter.preferredLemma(for:)` returns the same lemma every call within
-   a single segmenter lifetime.
+   a single segmenter lifetime. Corpus frequency only breaks ties that the
+   structural signals (surface-equality, script preservation, prefix match)
+   leave equal — it is compared *after* `preferredLemmaScore`, never folded
+   into it, so a common-but-weak deinflection candidate cannot outrank a
+   lemma that preserves more of the source stem.
    - *Rationale*: non-determinism here causes furigana to flicker between
-     readings on re-renders.
-   - *Status*: ❌.
+     readings on re-renders; the structural-before-frequency ordering keeps
+     a frequent kana lemma from displacing a script-preserving one.
+   - *Status*: ⚠️ (frequency-tiebreak ordering pinned by
+     `SegmenterIntegrationTests.testPreferredLemmaUsesFrequencyTiebreakForNattaCollision`,
+     which fixes the なった ⇒ {なう, なる} collision the tiebreak exists to
+     resolve; full call-to-call stability across the corpus still untested).
 
 ---
 
@@ -221,8 +229,15 @@ Notes hold user-authored content. The contract is data integrity above all.
    observable.
    - *Rationale*: a crash mid-save must not produce a half-written note
      file.
-   - *Status*: ❌ (relies on `.atomic` write semantics; not explicitly
-     tested).
+   - *Status*: ⚠️ (commit-or-leave-intact pinned by
+     `NotesStoreTests.testFailedWriteIsReportedAndRetried`: a failing
+     `NotesFileWriting` leaves the prior on-disk state readable, sets
+     `persistenceError`, and the disk snapshot is *not* advanced so the next
+     flush retries. The per-file no-half-written-file guarantee still rides
+     on `.atomic` in `NotesFileWriter` and is not directly exercised.
+     `testFailedDeletionDefersAttachmentCleanupUntilRetrySucceeds` pins the
+     companion rule that irreversible attachment deletes wait for the
+     note-state write to commit.).
 
 3. **Schema-version forward compat**: when loading a note written by an
    older app version, unknown fields in the older format are preserved and
@@ -278,6 +293,71 @@ survive normal app lifecycle and not silently misapply.
    - *Rationale*: established by `SongBreakdownStore` design — automatic
      invalidation would discard expensive LLM output on every trivial edit.
    - *Status*: ⚠️ (logic exists; not directly tested).
+
+---
+
+## Backup & Restore (`AppBackupValidator`, `SettingsView.importAppBackup`)
+
+Restore replaces every store at once; a bad backup or a mid-restore failure must
+never leave the app in mixed old/new state.
+
+1. **Validate before confirm**: a backup is structurally validated (unique IDs,
+   intact note/list references, non-negative counters, referenced audio,
+   exact UTF-16 span coverage) before the destructive replace-all confirmation
+   is offered. Invalid backups are rejected with no store mutated.
+   - *Rationale*: `Dictionary(uniqueKeysWithValues:)` traps on duplicate review
+     IDs; broken references poison persisted state.
+   - *Status*: ✅ (`AppBackupValidatorTests`).
+
+2. **Stage-then-swap restore**: audio files are written to disk before any
+   store is replaced; any audio failure rolls back the staged files (never an
+   ID a live note still references) and aborts with stores untouched. Store
+   replacement itself is non-throwing, so after staging succeeds the swap
+   cannot partially fail.
+   - *Rationale*: "Import Complete" after a partial restore is silent data loss.
+   - *Status*: ⚠️ (ordering enforced in `importAppBackup`; rollback path not
+     directly exercised by a test).
+
+3. **Reset means everything derived from user data**: "Reset All Data" clears
+   stores, attachment files (including orphans), song breakdowns, lyric
+   translation caches, and crash logs. Settings, credentials, and downloaded
+   models are kept, and the confirmation text says so.
+   - *Rationale*: a reset that claims "all data erased" while leaving private
+     audio/derived text behind is a privacy bug.
+   - *Status*: ⚠️ (implemented; not directly tested).
+
+---
+
+## Secrets & Untrusted Input (`KeychainStore`, `ZipExtractor`, `BridgeHTTPParser`)
+
+1. **No secrets in UserDefaults**: API keys (OpenAI/Claude, Jimaku) and the
+   bridge bearer token live in the Keychain. Legacy plaintext values migrate
+   on first read and the UserDefaults copy is deleted.
+   - *Rationale*: the defaults plist is unencrypted on disk and lands in
+     unencrypted device backups.
+   - *Status*: ✅ (`KeychainStoreTests`).
+
+2. **Archive containment**: ZIP entries extract only inside the destination
+   directory, and declared sizes past 1 GiB/entry (2 GiB/archive) are rejected
+   before allocation.
+   - *Rationale*: downloaded model archives are untrusted input; zip-slip and
+     header-driven allocation are the two classic attacks.
+   - *Status*: ✅ (`ZipExtractorTests`).
+
+3. **Pinned model downloads**: Hugging Face model/encoder downloads reference
+   an immutable commit (`WhisperDownloadableModel.pinnedRevision`), never a
+   moving branch.
+   - *Rationale*: `resolve/main` lets a future repo compromise change the bytes
+     shipped installs receive.
+   - *Status*: ✅ (by construction; URL built from the pinned constant).
+
+4. **Bridge resource bounds**: the LAN bridge caps header blocks (16 KiB),
+   bodies (1 MiB), concurrent connections (16), and per-connection lifetime
+   (15 s), and rejects unauthenticated requests as soon as headers complete.
+   - *Rationale*: an open LAN port must not let a peer hold unbounded memory
+     or buffer bodies for unauthenticated requests.
+   - *Status*: ⚠️ (parser caps pinned by `BridgeHTTPParserTests`; connection
+     limits enforced in `KiokuBridgeServer` but not integration-tested).
 
 ---
 

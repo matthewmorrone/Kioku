@@ -62,17 +62,40 @@ final class NotesStoreTests: XCTestCase {
     // deleteNote removes the in-memory entry AND the on-disk file, so a fresh
     // instance doesn't resurrect the deleted note from leftover JSON.
     func testDeleteNoteRemovesFromDisk() {
-        let writer = NotesStore(fileManager: fileManager)
-        writer.addNote(Note(title: "Keep", content: "k"))
-        writer.addNote(Note(title: "Drop", content: "d"))
+        let attachmentStore = RecordingNotesAttachmentStore()
+        let writer = NotesStore(fileManager: fileManager, attachmentStore: attachmentStore)
+        let keepAttachmentID = UUID()
+        let dropAttachmentID = UUID()
+        writer.addNote(Note(title: "Keep", content: "k", audioAttachmentID: keepAttachmentID))
+        writer.addNote(Note(title: "Drop", content: "d", audioAttachmentID: dropAttachmentID))
         writer.flushPendingSave()
 
         let drop = writer.notes.first(where: { $0.title == "Drop" })!
         writer.deleteNote(id: drop.id)
         writer.flushPendingSave()
 
-        let reader = NotesStore(fileManager: fileManager)
+        let reader = NotesStore(fileManager: fileManager, attachmentStore: attachmentStore)
         XCTAssertEqual(reader.notes.map(\.title), ["Keep"])
+        XCTAssertEqual(attachmentStore.deletedAttachmentIDs, [dropAttachmentID])
+        XCTAssertFalse(attachmentStore.deletedAttachmentIDs.contains(keepAttachmentID))
+    }
+
+    // Bulk deletion removes each deleted note's attachment while preserving files
+    // still referenced by a surviving note.
+    func testDeleteNotesRemovesOnlyUnreferencedAttachments() {
+        let attachmentStore = RecordingNotesAttachmentStore()
+        let store = NotesStore(fileManager: fileManager, attachmentStore: attachmentStore)
+        let sharedAttachmentID = UUID()
+        let removedAttachmentID = UUID()
+        let keep = Note(title: "Keep", content: "k", audioAttachmentID: sharedAttachmentID)
+        let sharesAttachment = Note(title: "Shared", content: "s", audioAttachmentID: sharedAttachmentID)
+        let remove = Note(title: "Remove", content: "r", audioAttachmentID: removedAttachmentID)
+        store.replaceAll(with: [keep, sharesAttachment, remove])
+
+        store.deleteNotes(ids: [sharesAttachment.id, remove.id])
+
+        XCTAssertEqual(store.notes.map(\.id), [keep.id])
+        XCTAssertEqual(attachmentStore.deletedAttachmentIDs, [removedAttachmentID])
     }
 
     // renameNote updates the title and the change persists. (Skips a
@@ -125,11 +148,10 @@ final class NotesStoreTests: XCTestCase {
         let saboteur = NotesStore(fileManager: fileManager)
         XCTAssertEqual(saboteur.notes.count, 2, "Setup precondition")
 
-        // Use deleteNotes(ids:) to empty the in-memory state without going
-        // through replaceAll (which resets the disk snapshot intentionally).
+        // Direct array replacement bypasses the store's explicit deletion APIs.
         // This mirrors the historical bug: an in-memory state went to zero
-        // through some path that didn't intend to clear disk.
-        saboteur.deleteNotes(ids: Set(saboteur.notes.map(\.id)))
+        // through a path that did not intend to clear disk.
+        saboteur.notes = []
         // didSet fires per remove, triggering save() — which sees empty + disk
         // populated and SHOULD refuse. The refusal isn't observable from here
         // without reading the console; the observable effect is that disk
@@ -155,6 +177,53 @@ final class NotesStoreTests: XCTestCase {
 
         let reader = NotesStore(fileManager: fileManager)
         XCTAssertTrue(reader.notes.isEmpty)
+    }
+
+    // A failed write must remain observable and retry from the last confirmed disk
+    // snapshot. Advancing the snapshot after failure would make the retry a no-op.
+    func testFailedWriteIsReportedAndRetried() {
+        let fileWriter = ControllableNotesFileWriter()
+        fileWriter.shouldFailWrites = true
+        let store = NotesStore(fileManager: fileManager, fileWriter: fileWriter)
+
+        store.addNote(Note(title: "Retry me", content: "失敗"))
+
+        XCTAssertNotNil(store.persistenceError)
+        XCTAssertTrue(NotesStore(fileManager: fileManager).notes.isEmpty)
+
+        fileWriter.shouldFailWrites = false
+        store.flushPendingSave()
+
+        XCTAssertNil(store.persistenceError)
+        XCTAssertEqual(NotesStore(fileManager: fileManager).notes.map(\.title), ["Retry me"])
+    }
+
+    // Attachment files are irreversible side effects, so a failed note deletion
+    // must retain them until the corresponding note-state write succeeds.
+    func testFailedDeletionDefersAttachmentCleanupUntilRetrySucceeds() {
+        let fileWriter = ControllableNotesFileWriter()
+        let attachmentStore = RecordingNotesAttachmentStore()
+        let store = NotesStore(
+            fileManager: fileManager,
+            attachmentStore: attachmentStore,
+            fileWriter: fileWriter
+        )
+        let attachmentID = UUID()
+        let note = Note(title: "Audio", content: "音", audioAttachmentID: attachmentID)
+        store.addNote(note)
+        store.flushPendingSave()
+
+        fileWriter.shouldFailWrites = true
+        store.deleteNote(id: note.id)
+
+        XCTAssertNotNil(store.persistenceError)
+        XCTAssertTrue(attachmentStore.deletedAttachmentIDs.isEmpty)
+
+        fileWriter.shouldFailWrites = false
+        store.flushPendingSave()
+
+        XCTAssertNil(store.persistenceError)
+        XCTAssertEqual(attachmentStore.deletedAttachmentIDs, [attachmentID])
     }
 
     // docs/INVARIANTS.md "Note Persistence" #5 — `_index.json` and the
@@ -266,5 +335,33 @@ private final class TestFileManager: FileManager {
             return testRoot
         }
         return try super.url(for: directory, in: domain, appropriateFor: url, create: shouldCreate)
+    }
+}
+
+// Records attachment deletion requests without touching the production Documents directory.
+@MainActor
+private final class RecordingNotesAttachmentStore: NotesAttachmentDeleting {
+    private(set) var deletedAttachmentIDs: [UUID] = []
+
+    // Records one attachment cleanup request for lifecycle assertions.
+    func deleteAttachment(_ attachmentID: UUID) {
+        deletedAttachmentIDs.append(attachmentID)
+    }
+}
+
+private final class ControllableNotesFileWriter: NotesFileWriting {
+    var shouldFailWrites = false
+
+    // Writes data atomically unless the test has enabled its failure mode.
+    func write(_ data: Data, to url: URL) throws {
+        if shouldFailWrites {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        try data.write(to: url, options: .atomic)
+    }
+
+    // Removes a persisted note file using the production filesystem behavior.
+    func removeItem(at url: URL) throws {
+        try FileManager.default.removeItem(at: url)
     }
 }

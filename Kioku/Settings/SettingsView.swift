@@ -15,6 +15,7 @@ struct SettingsView: View {
     @EnvironmentObject private var wordListsStore: WordListsStore
     @EnvironmentObject private var historyStore: HistoryStore
     @EnvironmentObject private var reviewStore: ReviewStore
+    @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
 
     @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
     @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
@@ -29,8 +30,12 @@ struct SettingsView: View {
     @AppStorage(SegmentationDemotions.storageKey) private var demotionsRaw: String = SegmentationDemotions.defaultRawValue
 
     @AppStorage(LLMSettings.providerKey) private var llmProviderRaw: String = LLMSettings.defaultProvider
-    @AppStorage(LLMSettings.openAIKeyStorageKey) private var openAIKey: String = ""
-    @AppStorage(LLMSettings.claudeKeyStorageKey) private var claudeKey: String = ""
+    // API keys live in the Keychain, not UserDefaults; @State holds the editing copy
+    // and onChange writes through. keysRevision is a non-secret change counter other
+    // views observe to re-check key presence without touching the secret itself.
+    @State private var openAIKey: String = LLMSettings.apiKey(for: .openAI) ?? ""
+    @State private var claudeKey: String = LLMSettings.apiKey(for: .claude) ?? ""
+    @AppStorage(LLMSettings.keysRevisionKey) private var llmKeysRevision: Int = 0
     @AppStorage(LLMSettings.useLLMKey) private var useLLM: Bool = false
     @AppStorage(LLMSettings.temperatureKey) private var temperature: Double = LLMSettings.defaultTemperature
 
@@ -64,6 +69,11 @@ struct SettingsView: View {
 
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
     @State private var wotdPendingCount: Int = 0
+    // Transient confirmation for the "Send Test" button: shows which word was scheduled and
+    // auto-clears. wotdTestTapCount drives the success haptic and guards the auto-clear so a
+    // rapid re-tap doesn't get its status wiped by the previous tap's timer.
+    @State private var wotdTestStatus: String?
+    @State private var wotdTestTapCount = 0
 
     @State private var exportDocument = AppBackupDocument(
         payload: AppBackupPayload(
@@ -239,13 +249,27 @@ struct SettingsView: View {
                         }
 
                         Button("Send Test") {
+                            wotdTestTapCount += 1
+                            let tap = wotdTestTapCount
                             let word = wordsStore.words.randomElement()
                             let store = dictionaryStore
+                            wotdTestStatus = "Scheduling…"
                             Task {
                                 await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
+                                wotdTestStatus = word.map { "Sent “\($0.surface)” — arrives in ~1s, tap it" } ?? "No saved word available"
+                                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                                if wotdTestTapCount == tap { wotdTestStatus = nil }
                             }
                         }
                         .disabled(wordsStore.words.isEmpty)
+                        .sensoryFeedback(.success, trigger: wotdTestTapCount)
+
+                        if let wotdTestStatus {
+                            Text(wotdTestStatus)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .transition(.opacity)
+                        }
                     }
                 } header: {
                     Text("Notifications")
@@ -329,15 +353,23 @@ struct SettingsView: View {
                         }
 
                         // Key entry rows are always visible so both keys can be saved independently.
-                        // SecureField hides the entry but does not prevent UserDefaults storage.
+                        // Edits write through to the Keychain; nothing secret touches UserDefaults.
                         SecureField("OpenAI API Key", text: $openAIKey)
                             .textContentType(.password)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .onChange(of: openAIKey) {
+                                LLMSettings.setAPIKey(openAIKey, for: .openAI)
+                                llmKeysRevision += 1
+                            }
                         SecureField("Claude API Key", text: $claudeKey)
                             .textContentType(.password)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .onChange(of: claudeKey) {
+                                LLMSettings.setAPIKey(claudeKey, for: .claude)
+                                llmKeysRevision += 1
+                            }
                     }
 
                     // Lower temperature = more deterministic output; higher = more varied corrections.
@@ -441,7 +473,7 @@ struct SettingsView: View {
             Button("Reset", role: .destructive) { resetAllData() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will permanently erase all notes, saved words, word lists, history, and review progress. This cannot be undone.")
+            Text("This will permanently erase all notes, saved words, word lists, history, review progress, audio attachments, song breakdowns, and crash logs. App settings are kept. This cannot be undone.")
         }
         .alert("Replace All Data?", isPresented: $isShowingImportConfirmation) {
             Button("Import", role: .destructive) {
@@ -516,6 +548,9 @@ struct SettingsView: View {
 
             do {
                 let document = try AppBackupDocument(contentsOf: fileURL)
+                // Reject structurally invalid backups before the destructive
+                // replace-all confirmation is ever offered.
+                try AppBackupValidator.validate(document.payload)
                 pendingImportDocument = document
                 isShowingImportConfirmation = true
             } catch {
@@ -527,18 +562,41 @@ struct SettingsView: View {
     }
 
     // Applies one validated app-backup snapshot to every persisted store in a single replace-all pass.
-    // Audio attachments are written to disk before notes are restored so playback paths resolve immediately.
+    //
+    // Restore ordering makes the operation effectively atomic for the user:
+    // 1. The payload was already validated before the confirmation dialog.
+    // 2. Audio files are staged to disk first; any write failure rolls back the
+    //    staged files (skipping IDs a live note still references) and aborts
+    //    before a single store has been mutated.
+    // 3. Store replacement itself is non-throwing, so once staging succeeds the
+    //    swap cannot leave mixed old/new state.
     private func importAppBackup(_ document: AppBackupDocument) {
         let payload = document.payload
-        let stats = Dictionary(uniqueKeysWithValues: payload.reviewStats.map { ($0.canonicalEntryID, $0.reviewWordStats()) })
+        // Validation already rejected duplicate review IDs; uniquingKeysWith is a
+        // defense-in-depth guard so a missed case degrades instead of trapping.
+        let stats = Dictionary(
+            payload.reviewStats.map { ($0.canonicalEntryID, $0.reviewWordStats()) },
+            uniquingKeysWith: { current, _ in current }
+        )
 
         let audioStore = NotesAudioStore.shared
-        var audioFailures = 0
+        let liveAttachmentIDs = Set(notesStore.notes.compactMap(\.audioAttachmentID))
+        var stagedAttachmentIDs: [UUID] = []
         for attachment in payload.audioAttachments {
             do {
                 try audioStore.importAttachment(attachment)
+                stagedAttachmentIDs.append(attachment.attachmentID)
             } catch {
-                audioFailures += 1
+                // Roll back files staged by this import; an ID also referenced by a
+                // live note predates the import and must survive the abort.
+                for stagedID in stagedAttachmentIDs where liveAttachmentIDs.contains(stagedID) == false {
+                    audioStore.deleteAttachment(stagedID)
+                }
+                showTransferAlert(
+                    title: "Import Failed",
+                    message: "An audio attachment could not be restored, so no data was changed. \(error.localizedDescription)"
+                )
+                return
             }
         }
 
@@ -555,23 +613,25 @@ struct SettingsView: View {
 
         var message = "Imported \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.history.count) history entries, and \(payload.reviewStats.count) review records."
         if payload.audioAttachments.isEmpty == false {
-            let succeeded = payload.audioAttachments.count - audioFailures
-            message += " Restored \(succeeded) of \(payload.audioAttachments.count) audio attachment(s)."
-        }
-        if audioFailures > 0 {
-            message += " \(audioFailures) audio file(s) could not be restored."
+            message += " Restored \(payload.audioAttachments.count) audio attachment(s)."
         }
 
         showTransferAlert(title: "Import Complete", message: message)
     }
 
-    // Clears all persisted user data by replacing every store with empty state.
+    // Clears all persisted user data: every store, attachment files (including
+    // orphans no note references), derived song breakdowns, cached lyric
+    // translations, and recorded crash logs. Settings, credentials, and
+    // downloaded models are intentionally kept — the confirmation text says so.
     private func resetAllData() {
         wordListsStore.replaceAll(with: [])
         wordsStore.replaceAll(with: [])
         historyStore.replaceAll(with: [])
         reviewStore.replaceAll(stats: [:], markedWrong: [], lifetimeCorrect: 0, lifetimeAgain: 0)
         notesStore.replaceAll(with: [])
+        songBreakdownStore.clearAll()
+        NotesAudioStore.shared.deleteAllStoredFiles()
+        CrashLogger.shared.clearCrashFiles()
         showTransferAlert(title: "Reset Complete", message: "All user data has been erased.")
     }
 

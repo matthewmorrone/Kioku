@@ -156,6 +156,27 @@ final class SongBreakdownStore: ObservableObject {
         }
     }
 
+    // Removes every cached breakdown from memory and disk. Supports "Reset All Data":
+    // breakdowns are derived from note text, so a full reset must not leave them behind.
+    // Running generations are cancelled first so a late completion cannot re-persist
+    // a breakdown for a note that no longer exists.
+    func clearAll() {
+        for (noteID, task) in generationTasksByNoteID {
+            task.cancel()
+            generationTasksByNoteID.removeValue(forKey: noteID)
+        }
+        generationStateByNoteID = [:]
+        breakdownsByNoteID = [:]
+        diskMemoCache = [:]
+        knownNoteIDsOnDisk = []
+
+        if let fileURLs = try? fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil) {
+            for url in fileURLs {
+                try? fileManager.removeItem(at: url)
+            }
+        }
+    }
+
     // MARK: - Background generation
 
     // Returns true while there's an in-flight (running) generation Task for the note.
