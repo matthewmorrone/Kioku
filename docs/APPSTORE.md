@@ -10,7 +10,7 @@ or your phone.
 
 | Field | Value |
 |---|---|
-| Name | **Kioku: Japanese Reader** |
+| Name | **Kioku** |
 | Subtitle | Read, look up, and study Japanese |
 | Bundle ID | `matthewmorrone.Kioku` |
 | SKU | `kioku-ios` |
@@ -18,10 +18,10 @@ or your phone.
 | Category | Education (primary), Reference (secondary) |
 | Price | Free |
 
-"Kioku" alone is not registered on the App Store today, but several
-"Kioku: …" study apps exist; the suffixed name disambiguates and adds search
-keywords. The product name inside the bundle ("Kioku Reader") does not need to
-match the store name.
+Checked 2026-06-12: no app holds the bare name "Kioku", so claim it. If App
+Store Connect reports it unavailable at registration time, fall back to
+"Kioku: Japanese Reader". The bundle product name ("Kioku Reader") does not
+need to match the store name.
 
 ## Promotional text (170 chars max)
 
@@ -67,7 +67,7 @@ match the store name.
 
 ## Keywords (100 chars max)
 
-> japanese,dictionary,furigana,kanji,jlpt,reader,flashcards,study,offline,handwriting,lyrics
+> japanese,reader,dictionary,furigana,kanji,jlpt,flashcards,study,offline,handwriting,lyrics
 
 (97 characters. Don't repeat "kioku" — the app name already indexes.)
 
