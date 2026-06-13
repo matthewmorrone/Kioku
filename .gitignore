@@ -28,3 +28,6 @@ node_modules/
 .superpowers/
 .playwright-mcp/
 asc-*.png
+
+# Python venv for dictionary generation (wordfreq)
+.venv/

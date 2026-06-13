@@ -23,13 +23,21 @@ nonisolated public struct FrequencyData: Sendable {
     }
 
     // Human-readable frequency tier derived from the normalized score.
+    //
+    // Thresholds are calibrated against the ACTUAL score distribution across the dictionary
+    // (~204k scored entries, after wordfreq_zipf is populated — see repopulate_frequency.py),
+    // not picked off intuition. The earlier 6/5/4/3 cutoffs put the median word (score ~3.7)
+    // in "Rare" and labeled only ~6% of entries Common-or-better, so everyday words like
+    // 日 (6.38) read "Uncommon". The bands below sit roughly at distribution breakpoints so
+    // labels track learner intuition: 日/人/時間 → Very Common, 水/猫/食べる → Common,
+    // 瞳/薔薇 → Uncommon, 引力/麒麟 → Rare. Resulting spread ≈ 2% / 13% / 44% / 27% / 14%.
     public var frequencyLabel: String? {
         guard let score = normalizedScore else { return nil }
         switch score {
-        case 6.0...: return "Very Common"
-        case 5.0...: return "Common"
-        case 4.0...: return "Uncommon"
-        case 3.0...: return "Rare"
+        case 5.5...: return "Very Common"
+        case 4.5...: return "Common"
+        case 3.5...: return "Uncommon"
+        case 2.5...: return "Rare"
         default:     return "Very Rare"
         }
     }
