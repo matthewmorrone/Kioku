@@ -174,7 +174,10 @@ struct WordDetailView: View {
                     lemma: lemma
                 )
                 .fixedSize()
-                .overlay(alignment: .trailing) {
+                // Speaker rides past the title's LEADING edge (left of the word); the star rides
+                // past the TRAILING edge (right of the word). Both are overlays on the fixedSize
+                // title so neither shifts the centered headword.
+                .overlay(alignment: .leading) {
                     Button {
                         speak(word.surface)
                     } label: {
@@ -183,9 +186,24 @@ struct WordDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.accentColor)
-                    // Push fully outside the title's bounds: anchored at the trailing edge,
-                    // shifted right by its own footprint plus a gap.
+                    .offset(x: -34)
+                }
+                .overlay(alignment: .trailing) {
+                    let isSaved = wordsStore.words.contains { $0.canonicalEntryID == word.canonicalEntryID }
+                    Button {
+                        wordsStore.toggle(
+                            canonicalEntryID: word.canonicalEntryID,
+                            storedSurface: word.surface,
+                            defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
+                        )
+                    } label: {
+                        Image(systemName: isSaved ? "star.fill" : "star")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(isSaved ? Color.yellow : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
                     .offset(x: 34)
+                    .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
                 }
                 .frame(maxWidth: .infinity)
                 // COMMON badge — outlined pill in the top-trailing corner, matching the
@@ -203,24 +221,6 @@ struct WordDetailView: View {
                             .padding(.trailing, 16)
                     }
                 }
-                .overlay(alignment: .trailing) {
-                    let isSaved = wordsStore.words.contains { $0.canonicalEntryID == word.canonicalEntryID }
-                    Button {
-                        wordsStore.toggle(
-                            canonicalEntryID: word.canonicalEntryID,
-                            storedSurface: word.surface,
-                            defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
-                        )
-                    } label: {
-                        Image(systemName: isSaved ? "star.fill" : "star")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(isSaved ? Color.yellow : Color.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.trailing, 16)
-                    .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
-                }
-
                 // POS summary + "View Conjugations" — a single row beneath the headword.
                 // (Speaker moved up beside the headword itself.)
                 HStack(spacing: 10) {
@@ -233,21 +233,25 @@ struct WordDetailView: View {
 
                     Spacer(minLength: 8)
 
-                    if canConjugate {
-                        Button {
-                            showingConjugations = true
-                        } label: {
-                            HStack(spacing: 2) {
-                                Text("View Conjugations")
-                                    .font(.subheadline)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.accentColor)
-                        .fixedSize()
-                    }
+                    // "View Conjugations" removed by request: it opened an empty sheet for
+                    // suru-verb nouns like 記憶 (the noun itself doesn't conjugate). The Forms
+                    // section below still offers conjugations for true verbs/i-adjectives.
+                    // Uncomment to restore the header shortcut.
+                    // if canConjugate {
+                    //     Button {
+                    //         showingConjugations = true
+                    //     } label: {
+                    //         HStack(spacing: 2) {
+                    //             Text("View Conjugations")
+                    //                 .font(.subheadline)
+                    //             Image(systemName: "chevron.right")
+                    //                 .font(.caption2)
+                    //         }
+                    //     }
+                    //     .buttonStyle(.plain)
+                    //     .foregroundStyle(Color.accentColor)
+                    //     .fixedSize()
+                    // }
                 }
                 .padding(.horizontal, 16)
             }
