@@ -72,6 +72,12 @@ nonisolated enum Attributions {
             sourceURL: "https://www.edrdg.org/wiki/index.php/KRADFILE-KRADFILE2"
         ),
         Dataset(
+            name: "KanjiVG",
+            description: "Kanji stroke-order paths driving the stroke-order animation in kanji detail.",
+            license: "Ulrich Apel / KanjiVG — CC BY-SA 3.0",
+            sourceURL: "https://kanjivg.tagaini.net"
+        ),
+        Dataset(
             name: "Tegaki-Zinnia (Japanese)",
             description: "Handwriting recognition model used for kanji handwriting input.",
             license: "BSD-style (Tegaki / Zinnia project)",

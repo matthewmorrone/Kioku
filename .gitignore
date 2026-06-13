@@ -26,3 +26,5 @@ Packages/zinnia-swift/
 node_modules/
 .claude/scheduled_tasks.lock
 .superpowers/
+.playwright-mcp/
+asc-*.png

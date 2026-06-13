@@ -18,6 +18,7 @@ final class AttributionsTests: XCTestCase {
             "wordfreq",
             "UniDic Pitch Accent",
             "RADKFILE2 / KRADFILE2",
+            "KanjiVG",
             "Tegaki-Zinnia (Japanese)",
         ]
         let missing = required.subtracting(names)

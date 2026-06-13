@@ -76,9 +76,9 @@
       "path": "Resources/radkfile2.utf8",
       "required": false,
       "derived": false,
-      "url": "http://ftp.edrdg.org/pub/Nihongo/radkfile2.gz",
+      "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
       "sha256": null,
-      "provenance": "EDRDG RADKFILE2 (radical→kanji index, extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/radkfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/radkfile2.gz | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/radkfile2.utf8"
+      "provenance": "EDRDG RADKFILE2 (radical→kanji index, extended radical set). License: CC BY-SA 4.0 (Electronic Dictionary Research and Development Group). Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/radkfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/kradzip.zip | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/radkfile2.utf8"
     },
     {
       "name": "kradfile2",
@@ -86,9 +86,9 @@
       "path": "Resources/kradfile2.utf8",
       "required": false,
       "derived": false,
-      "url": "http://ftp.edrdg.org/pub/Nihongo/kradfile2.gz",
+      "url": "http://ftp.edrdg.org/pub/Nihongo/kradzip.zip",
       "sha256": null,
-      "provenance": "EDRDG KRADFILE2 (kanji→radical index, extended radical set). License: CC BY-SA 4.0. Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/kradfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/kradfile2.gz | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/kradfile2.utf8"
+      "provenance": "EDRDG KRADFILE2 (kanji→radical index, extended radical set). License: CC BY-SA 4.0. Download, gunzip, convert from EUC-JP to UTF-8 and save as Resources/kradfile2.utf8. Example: curl -sL http://ftp.edrdg.org/pub/Nihongo/kradzip.zip | gunzip | iconv -f EUC-JP -t UTF-8 > Resources/kradfile2.utf8"
     },
     {
       "name": "handwriting-ja",
