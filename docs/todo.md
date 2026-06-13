@@ -361,6 +361,20 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       validating/shifting checkpoints against the edited cue bounds at load time.
       Groundwork already landed (2026-06-01): `SubtitleSourceLoader.swift` is the
       shared load/parse/bind seam the lyric-button media picker now uses.
+- [ ] **Reconsider: import subtitles as a note, then extract words the usual way?**
+      Open design question, not yet decided. Today subtitle import is its own pipeline —
+      parse (`ASSParser`/SRT) + optional `JimakuProvider` fetch, precompute segmentation at
+      import time, and produce a note carrying an `audioAttachmentID` with cues/SRT in
+      `NotesAudioStore`, plus a subtitle-specific vocab path. That's a parallel track to the
+      normal flow where a note's `content` is segmented in ReadView and words are saved via
+      the standard tap/extract → `WordsStore` path. Question is whether subtitle import should
+      just drop the cue text into a regular note's `content` (keeping the audio attachment +
+      timing for karaoke) and let the ordinary note→segmentation→save flow handle vocab —
+      collapsing two code paths into one and removing the bespoke subtitle vocab picker.
+      Trade-off to weigh: the dedicated path preserves per-cue structure (line boundaries,
+      timing) that a flat note `content` blob would lose, which the karaoke/alignment views
+      depend on; any unification must keep cue structure for audio even if vocab extraction
+      goes through the common path. Decide before investing further in the subtitle vocab UI.
 
 ## Settings
 

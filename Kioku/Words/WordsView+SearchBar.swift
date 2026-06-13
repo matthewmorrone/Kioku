@@ -47,11 +47,14 @@ extension WordsView {
                 } label: {
                     Label("Browse by Frequency", systemImage: "chart.bar.fill")
                 }
-                Button {
-                    isSentenceSearchPresented = true
-                } label: {
-                    Label("Search Example Sentences", systemImage: "text.bubble")
-                }
+                // Folded into the main search: example sentences now surface inline beneath
+                // entry results for phrase/sparse queries (WordsView.shouldShowSentenceResults).
+                // Uncomment to restore the standalone corpus-search sheet.
+                // Button {
+                //     isSentenceSearchPresented = true
+                // } label: {
+                //     Label("Search Example Sentences", systemImage: "text.bubble")
+                // }
                 Button {
                     isRadicalInputPresented = true
                 } label: {

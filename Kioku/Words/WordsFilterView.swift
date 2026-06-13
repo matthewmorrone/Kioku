@@ -16,6 +16,9 @@ struct WordsFilterView: View {
     // True when the screen shows the saved/favorites list rather than the lookup history.
     // History is the showSavedWords == false default.
     @Binding var showSavedWords: Bool
+    // True when the screen shows the typed-query Recent Searches scope. Mutually exclusive
+    // with Favorites/note/list/History.
+    @Binding var showRecentSearches: Bool
     @Binding var sortOrder: WordsSortOrder
 
     @State private var newListName = ""
@@ -79,6 +82,10 @@ struct WordsFilterView: View {
             Label("Favorites", systemImage: isFavoritesScope ? "checkmark" : "star.fill")
         }
 
+        Button { tapRecentSearches() } label: {
+            Label("Recent Searches", systemImage: showRecentSearches ? "checkmark" : "magnifyingglass")
+        }
+
         ForEach(notesWithSavedWords) { (note: Note) in
             Button { tapNote(note.id) } label: {
                 Label(resolvedTitle(for: note),
@@ -130,6 +137,7 @@ struct WordsFilterView: View {
 
     // Label shown on the collapsed dropdown — the one thing currently displayed.
     private var currentScopeLabel: String {
+        if showRecentSearches { return "Recent Searches" }
         if showSavedWords == false { return "History" }
         if let noteID = activeFilterNoteIDs.first,
            let note = notesStore.note(withID: noteID) {
@@ -159,11 +167,17 @@ struct WordsFilterView: View {
         if activeFilterListIDs.contains(listID) { selectHistory() } else { selectList(listID) }
     }
 
+    // Toggles the Recent Searches scope; re-tapping it returns to History.
+    private func tapRecentSearches() {
+        if showRecentSearches { selectHistory() } else { selectRecentSearches() }
+    }
+
     // Returns to the History default — the no-scope-selected state.
     private func selectHistory() {
         activeFilterNoteIDs = []
         activeFilterListIDs = []
         showSavedWords = false
+        showRecentSearches = false
     }
 
     // Shows all favorites with no note/list narrowing.
@@ -171,6 +185,7 @@ struct WordsFilterView: View {
         activeFilterNoteIDs = []
         activeFilterListIDs = []
         showSavedWords = true
+        showRecentSearches = false
     }
 
     // Filters the saved view to a single source note.
@@ -178,6 +193,7 @@ struct WordsFilterView: View {
         activeFilterNoteIDs = [noteID]
         activeFilterListIDs = []
         showSavedWords = true
+        showRecentSearches = false
     }
 
     // Filters the saved view to a single word list.
@@ -185,6 +201,15 @@ struct WordsFilterView: View {
         activeFilterListIDs = [listID]
         activeFilterNoteIDs = []
         showSavedWords = true
+        showRecentSearches = false
+    }
+
+    // Shows only the typed free-text searches; clears every other scope.
+    private func selectRecentSearches() {
+        activeFilterNoteIDs = []
+        activeFilterListIDs = []
+        showSavedWords = false
+        showRecentSearches = true
     }
 
     // MARK: - List CRUD

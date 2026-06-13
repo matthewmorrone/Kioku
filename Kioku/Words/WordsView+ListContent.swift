@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 // List content for the Words screen. ONE word-row builder (`wordRow`) renders every
 // dictionary word the app shows — live search results, saved favorites, and history
@@ -34,6 +35,20 @@ extension WordsView {
         // simultaneousGesture so it coexists with the List's tap-to-select; the star is
         // hidden in edit mode so the row has one clear tap target.
         return HStack(spacing: 12) {
+            // Leading pronunciation button. Hidden in edit mode so List(selection:)'s own
+            // selection circle takes the leading slot — i.e. the audio control is "replaced
+            // with the inputs" when CRUD selection is active, mirroring the trailing star.
+            if editMode != .active {
+                Button {
+                    speakRow(reading: reading, headword: headword, surface: surface)
+                } label: {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .foregroundStyle(Color.accentColor)
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Play pronunciation")
+            }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     if let headword {
@@ -76,6 +91,18 @@ extension WordsView {
         .contextMenu {
             wordRowMenu(entryID: entryID, surface: surface, entry: entry, onTap: onTap)
         }
+    }
+
+    // Speaks the row's Japanese pronunciation via ja-JP TTS. Prefers the kana reading (least
+    // ambiguous for the synthesizer), then the kanji headword, then the raw surface. Stops any
+    // in-flight utterance first so rapid taps don't queue up.
+    func speakRow(reading: String?, headword: String?, surface: String) {
+        let text = reading ?? headword ?? surface
+        guard text.isEmpty == false else { return }
+        rowSpeechSynthesizer.stopSpeaking(at: .immediate)
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+        rowSpeechSynthesizer.speak(utterance)
     }
 
     // The single context menu for every word row. Shared items first; then the global
@@ -172,34 +199,47 @@ extension WordsView {
         }
     }
 
-    // History: `.entry` rows reuse the unified wordRow (selectable, same menu as Favorites);
-    // `.query` rows are free-text searches with no word identity, so they keep their own row.
+    // History: word-lookup (`.entry`) rows only, via the unified wordRow. Typed `.query`
+    // searches used to interleave here but disrupted the flow, so they now live in their own
+    // Recent Searches scope (recentSearchesContent).
     @ViewBuilder
     var historyContent: some View {
-        if historyStore.entries.isEmpty {
+        let entries = sortedHistory.filter { $0.kind == .entry }
+        if entries.isEmpty {
             Text("No lookup history yet")
                 .foregroundStyle(.secondary)
         } else {
-            ForEach(sortedHistory) { entry in
-                if entry.kind == .entry {
-                    let materialized = materializedHistory[entry.canonicalEntryID]
-                    wordRow(
-                        entryID: entry.canonicalEntryID,
-                        surface: entry.surface,
-                        entry: materialized,
-                        gloss: materialized?.senses.first?.glosses.first,
-                        onTap: {
-                            // Deliberately NOT re-recorded: revisiting a word from the history
-                            // list shouldn't refresh its timestamp and yank it to the top —
-                            // history reflects when the word was originally looked up.
-                            // historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
-                            selectedDetailWord = wordForHistory(entry)
-                        }
-                    )
-                    .tag(entry.canonicalEntryID)
-                } else {
-                    queryHistoryRow(entry)
-                }
+            ForEach(entries) { entry in
+                let materialized = materializedHistory[entry.canonicalEntryID]
+                wordRow(
+                    entryID: entry.canonicalEntryID,
+                    surface: entry.surface,
+                    entry: materialized,
+                    gloss: materialized?.senses.first?.glosses.first,
+                    onTap: {
+                        // Deliberately NOT re-recorded: revisiting a word from the history
+                        // list shouldn't refresh its timestamp and yank it to the top —
+                        // history reflects when the word was originally looked up.
+                        // historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
+                        selectedDetailWord = wordForHistory(entry)
+                    }
+                )
+                .tag(entry.canonicalEntryID)
+            }
+        }
+    }
+
+    // Recent Searches scope: the typed free-text queries, newest first, each tappable to re-run
+    // the search. Lives apart from History so a word-lookup log stays uncluttered by phrases.
+    @ViewBuilder
+    var recentSearchesContent: some View {
+        let queries = sortedHistory.filter { $0.kind == .query }
+        if queries.isEmpty {
+            Text("No recent searches yet")
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(queries) { entry in
+                queryHistoryRow(entry)
             }
         }
     }
