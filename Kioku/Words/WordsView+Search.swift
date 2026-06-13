@@ -150,6 +150,35 @@ extension WordsView {
         searchCommonWordsOnly || searchSortMode != .relevance || searchSelectedPartsOfSpeech.isEmpty == false
     }
 
+    // Whether the inline Tatoeba example-sentence section belongs below the entry list for the
+    // current query/results. Thin wrapper over the pure decision so the view can read it directly.
+    var shouldShowSentenceResults: Bool {
+        Self.shouldSurfaceSentences(
+            query: searchText,
+            entryCount: filteredSearchResults.count,
+            sentenceCount: sentenceResults.count,
+            hasParsedSegments: parsedSegments.isEmpty == false
+        )
+    }
+
+    // Pure decision (unit-tested in WordsSentenceSurfacingTests): example sentences are worth
+    // showing inline only when they add something the word detail's own examples section doesn't.
+    // That's a phrase query — multi-token Japanese (`hasParsedSegments`) or a space-separated /
+    // English phrase — or a query whose entry matches are sparse. A plain single-word lookup with
+    // plenty of entries is left clean; its examples live one tap away in the word detail.
+    nonisolated static func shouldSurfaceSentences(
+        query: String,
+        entryCount: Int,
+        sentenceCount: Int,
+        hasParsedSegments: Bool
+    ) -> Bool {
+        guard sentenceCount > 0 else { return false }
+        if hasParsedSegments { return true }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains(" ") { return true }
+        return entryCount <= 2
+    }
+
     // Removes POS selections that are no longer available after a new search result set arrives.
     func pruneUnavailableSearchPartsOfSpeech() {
         searchSelectedPartsOfSpeech.formIntersection(Set(availableSearchPartsOfSpeech))

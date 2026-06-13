@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 // Tabs available in the Words screen.
 enum WordsTab { case saved, history }
@@ -54,6 +55,8 @@ struct WordsView: View {
     // Drives the "Choose Lemma…" disambiguation sheet for saved-word and history rows.
     @State var lemmaPickerContext: WordsLemmaPickerContext?
     @State var editMode: EditMode = .inactive
+    // ja-JP text-to-speech for the per-row pronunciation buttons (mirrors WordDetailView.speak).
+    @State var rowSpeechSynthesizer = AVSpeechSynthesizer()
     @State var selectedWordIDs: Set<Int64> = []
     @State var isBatchRemoveConfirmPresented = false
     @State var isBatchRemoveHistoryConfirmPresented = false
@@ -66,6 +69,10 @@ struct WordsView: View {
     @State var isRadicalInputPresented = false
     @State var isHandwritingPresented = false
     @State var activeTab: WordsTab = .history
+    // A "Show" scope alongside Favorites/note/list: when true the list shows only the typed
+    // free-text searches (.query history), which are otherwise kept out of the lookup History
+    // so they don't disrupt its flow. Mutually exclusive with the other scopes.
+    @State var showRecentSearches = false
     @AppStorage("savedWordsSortOrder") var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
     @AppStorage("historySortOrder") var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
     @State var searchText = ""
@@ -82,6 +89,11 @@ struct WordsView: View {
     // Populated when the query segments into multiple tokens — switches the search results
     // view from entry-list mode to one-row-per-segment mode (Pleco-style sentence parse).
     @State var parsedSegments: [ParsedSegment] = []
+    // Tatoeba example sentences matching the current query, surfaced inline below entry
+    // results. Folds the old standalone "Search Example Sentences" tool into the one search
+    // box — shown only when sentences add value (phrase query or sparse entry matches), so
+    // a plain single-word lookup (whose examples already live in the word detail) stays clean.
+    @State var sentenceResults: [SentencePair] = []
     @State var searchTask: Task<Void, Never>?
     // Surfaced as a red banner over the results list when either dictionary search mode
     // throws. Defaults to nil; populated only after a failed search task.
@@ -135,6 +147,7 @@ struct WordsView: View {
             WOTDDiag.log("consume .detail entryID=\(entryID) resolved=\(word != nil)")
             if let word {
                 activeTab = .saved
+                showRecentSearches = false
                 selectedDetailWord = word
                 selectedDetailReading = reading
                 selectedDetailSublatticePaths = sublatticePaths
@@ -142,6 +155,7 @@ struct WordsView: View {
 
         case let .search(query):
             activeTab = .saved
+            showRecentSearches = false
             selectedDetailWord = nil
             editMode = .inactive
             selectedWordIDs.removeAll()
@@ -272,6 +286,7 @@ struct WordsView: View {
                         get: { activeTab == .saved },
                         set: { activeTab = $0 ? .saved : .history }
                     ),
+                    showRecentSearches: $showRecentSearches,
                     // Sort writes to whichever list is currently visible — saved vs history
                     // have separate persisted AppStorage keys but the user only sees one
                     // sort menu at a time, so we delegate based on activeTab.
@@ -350,7 +365,11 @@ struct WordsView: View {
         // text searches with no word behind them) carry no Int64 tag, so they're simply not
         // selectable — which is correct, you can't add a search phrase to a list.
         List(selection: $selectedWordIDs) {
-            if searchText.isEmpty && activeTab == .saved {
+            if searchText.isEmpty && showRecentSearches {
+                // Recent Searches scope: only the typed free-text queries, separated out of
+                // History so they don't interrupt the word-lookup flow.
+                recentSearchesContent
+            } else if searchText.isEmpty && activeTab == .saved {
                 // Saved tab: all favorites (filtered by note/list when filters are on).
                 // filteredSavedContent uses visibleWords which already applies the filter,
                 // so this same view works for both the unfiltered "show all" and narrowed cases.
@@ -378,6 +397,25 @@ struct WordsView: View {
                             openSearchResult(entry)
                         }
                     )
+                }
+            }
+
+            // Inline example sentences from the Tatoeba corpus. Replaces the old standalone
+            // "Search Example Sentences" tool: it appears in the same results list, beneath the
+            // entries, but only for phrase/sparse queries (see shouldShowSentenceResults).
+            if shouldShowSentenceResults {
+                Section("Example Sentences") {
+                    ForEach(Array(sentenceResults.enumerated()), id: \.offset) { _, pair in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(pair.japanese)
+                                .font(.body)
+                            Text(pair.english)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                        .textSelection(.enabled)
+                    }
                 }
             }
         }
@@ -486,6 +524,7 @@ struct WordsView: View {
         guard trimmed.isEmpty == false else {
             searchResults = []
             parsedSegments = []
+            sentenceResults = []
             searchError = nil
             isSearching = false
             return
@@ -514,10 +553,16 @@ struct WordsView: View {
                     let segments = await Task.detached(priority: .userInitiated) {
                         WordsView.resolveParsedSegments(tokens: tokens, store: store)
                     }.value
+                    // A multi-token query is a phrase — pull matching corpus sentences so the
+                    // whole-phrase lookup the user almost certainly wants is one section away.
+                    let sentences = await Task.detached(priority: .userInitiated) {
+                        (try? store.searchSentences(query: trimmed, limit: 25)) ?? []
+                    }.value
                     if Task.isCancelled { return }
                     guard searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
                     parsedSegments = segments
                     searchResults = []
+                    sentenceResults = sentences
                     searchError = nil
                     isSearching = false
                     // Multi-token sentence parses are nearly always "looking up this whole
@@ -596,18 +641,27 @@ struct WordsView: View {
                 }
             }.value
 
+            // Corpus example sentences for the same query, loaded alongside the entries.
+            // Cheap FTS; `shouldShowSentenceResults` decides whether they actually render,
+            // so a single-word lookup that returns plenty of entries won't surface them.
+            let sentences = await Task.detached(priority: .userInitiated) {
+                (try? store.searchSentences(query: trimmed, limit: 25)) ?? []
+            }.value
+
             if Task.isCancelled { return }
             guard searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
 
             switch outcome {
             case .success(let merged):
                 searchResults = merged
+                sentenceResults = sentences
                 searchError = nil
                 // Drop any POS selections that no longer appear in the fresh result set so a
                 // stale filter from a prior query can't silently hide every new hit.
                 pruneUnavailableSearchPartsOfSpeech()
             case .failure(let error):
                 searchResults = []
+                sentenceResults = []
                 searchError = String(describing: error)
             }
             // Clear any prior parsed-segments view since this code path is the

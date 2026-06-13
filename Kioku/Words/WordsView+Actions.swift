@@ -42,6 +42,9 @@ extension WordsView {
     // `.entry` rows (query rows aren't words). Search/parse modes force edit mode off, so
     // they never reach the selection menu and default to empty here.
     var selectableWordIDs: [Int64] {
+        // Recent Searches shows only free-text query rows, which carry no word identity —
+        // nothing here is selectable, so don't let "Select All" reach hidden history entries.
+        if showRecentSearches { return [] }
         if searchText.isEmpty && activeTab == .saved {
             return visibleWords.map(\.canonicalEntryID)
         }
