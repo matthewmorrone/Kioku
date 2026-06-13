@@ -634,8 +634,16 @@ struct WordDetailView: View {
                     .presentationDragIndicator(.visible)
             }
         }
-        .task {
+        .onAppear {
             personalNoteText = word.personalNote ?? ""
+        }
+        // Keyed on store-readiness, not just view lifetime: when this view is opened via the
+        // Word of the Day deep link on a COLD LAUNCH, the dictionary SQLite is still loading and
+        // dictionaryStore is nil, so loadDisplayData() bails and every content section (Definition/
+        // Examples/Kanji/…) stays hidden behind the always-on shell. The store becomes non-nil once
+        // it finishes loading (ReadResources re-renders the tree), and keying the task on that flip
+        // re-runs the load so the content fills in. Mirrors WordsView's `.task(id: dictionaryStore != nil)`.
+        .task(id: dictionaryStore != nil) {
             await loadDisplayData()
         }
     }

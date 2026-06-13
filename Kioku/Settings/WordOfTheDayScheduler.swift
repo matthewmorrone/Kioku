@@ -119,13 +119,16 @@ enum WordOfTheDayScheduler {
         StartupTimer.mark("WOTD.refreshScheduleIfEnabled completed scheduleUpcoming")
     }
 
-    // Sends a test notification immediately with a 1-second delay using a random saved word.
+    // Sends a test notification with a 10-second delay using a random saved word. The delay is
+    // long enough to fully quit the app before it fires, so the tap exercises the real cold-launch
+    // deep-link path (dictionary still loading) — a 1-second delay only ever fired while the app
+    // was still foregrounded, which can't reproduce the cold-launch detail-load behavior.
     static func sendTestNotification(word: SavedWord?, dictionaryStore: DictionaryStore?) async {
         guard let word, let dictionaryStore else { return }
         let live = resolveLiveContent(for: [word], using: dictionaryStore)
         guard let liveContent = live[word.canonicalEntryID] else { return }
         let content = makeContent(for: word, liveContent: liveContent)
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)
         let request = UNNotificationRequest(
             identifier: requestPrefix + "test_\(UUID().uuidString)",
             content: content,
