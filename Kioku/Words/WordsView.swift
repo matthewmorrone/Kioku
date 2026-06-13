@@ -151,6 +151,10 @@ struct WordsView: View {
                 selectedDetailWord = word
                 selectedDetailReading = reading
                 selectedDetailSublatticePaths = sublatticePaths
+                // Opening a word via a deep link (e.g. the Word of the Day notification) is a
+                // lookup like any other, so record it to history — the search-result and browse
+                // paths already do this alongside their own `selectedDetailWord =` assignments.
+                historyStore.record(canonicalEntryID: word.canonicalEntryID, surface: word.surface)
             }
 
         case let .search(query):
