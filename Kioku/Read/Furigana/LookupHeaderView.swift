@@ -95,6 +95,12 @@ struct LookupHeaderView: UIViewRepresentable {
             segments.append(Segment(text: String(chars[cursor...]), ruby: nil))
         }
 
+        // No ruby on any segment (e.g. a kana-only headword like なる): return no columns so
+        // buildHeaderRow falls back to a plain headword label. Otherwise each column reserves an
+        // empty ruby row above the glyphs, which pushes the title down and lifts the vertically
+        // centered leading/trailing speaker & star overlays above the actual characters.
+        if segments.allSatisfy({ $0.ruby == nil }) { return [] }
+
         return segments.map { segment in
             let headwordLabel = UILabel()
             headwordLabel.font = headwordFont

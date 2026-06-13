@@ -26,7 +26,7 @@ extension DictionaryStore {
             try bindText(word, index: 1, statement: statement)
             try bindText(katakana, index: 2, statement: statement)
 
-            return try stepRows(statement: statement) { stmt in
+            let rows: [PitchAccent] = try stepRows(statement: statement) { stmt in
                 guard
                     let wordPointer = sqlite3_column_text(stmt, 0),
                     let kanaPointer = sqlite3_column_text(stmt, 1)
@@ -50,6 +50,14 @@ extension DictionaryStore {
                     morae: Int(sqlite3_column_int(stmt, 4))
                 )
             }
+
+            // UniDic stores one row per POS category, so a reading with a single accent pattern
+            // appears several times (e.g. なる/ナル: 固有名詞・非自立可能・一般 all atamadaka=1).
+            // PitchAccentView draws purely from (accent, morae) and never shows `kind`, so those
+            // rows render as identical diagrams. Collapse them by what's actually drawn, keeping
+            // first-seen order — leaving なる with its two real patterns (頭高 + 平板).
+            var seen = Set<String>()
+            return rows.filter { seen.insert("\($0.accent)|\($0.morae)").inserted }
         }
     }
 
