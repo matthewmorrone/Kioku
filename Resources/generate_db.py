@@ -1210,9 +1210,25 @@ def build_database():
     print("Importing KanjiVG stroke data...")
     import_kanjivg(conn)
 
+    materialize_surface_readings(conn)
+    materialize_word_frequency(conn)
+
+    conn.commit()
+    conn.execute("ANALYZE")
+    conn.execute("PRAGMA optimize")
+    conn.close()
+
+
+# The two materialization passes below are split into standalone functions so both the full
+# build (main) and the frequency-only refresh (repopulate_frequency.py) drive them from one
+# source of truth — re-running after import_wordfreq must rebuild these exactly the same way.
+# DROP ... IF EXISTS makes them safe to re-run against an already-built database.
+def materialize_surface_readings(conn):
     print("Materializing surface_readings lookup table...")
     conn.executescript(
         f"""
+        DROP TABLE IF EXISTS surface_readings;
+
         CREATE TABLE surface_readings (
             surface TEXT NOT NULL,
             reading TEXT NOT NULL,
@@ -1277,6 +1293,8 @@ def build_database():
     surface_count = conn.execute("SELECT COUNT(*) FROM surface_readings").fetchone()[0]
     print(f"  Done: {surface_count} surface_readings rows materialized")
 
+
+def materialize_word_frequency(conn):
     # Materialize word_frequency as an indexed table now that wordfreq_zipf (on kanji/kana_forms)
     # and jpdb_rank (on kanji_kana_links) are fully populated. See the schema-phase note above for
     # why this is a table, not a view: the per-lookup LEFT JOIN was re-materializing the whole
@@ -1285,6 +1303,8 @@ def build_database():
     print("Materializing word_frequency table...")
     conn.executescript(
         """
+        DROP TABLE IF EXISTS word_frequency;
+
         CREATE TABLE word_frequency AS
             SELECT k.entry_id, k.id AS kanji_id, kf.id AS kana_id,
                    kkl.jpdb_rank, k.wordfreq_zipf
@@ -1303,11 +1323,6 @@ def build_database():
     )
     wf_count = conn.execute("SELECT COUNT(*) FROM word_frequency").fetchone()[0]
     print(f"  Done: {wf_count} word_frequency rows materialized")
-
-    conn.commit()
-    conn.execute("ANALYZE")
-    conn.execute("PRAGMA optimize")
-    conn.close()
 
 
 def main():

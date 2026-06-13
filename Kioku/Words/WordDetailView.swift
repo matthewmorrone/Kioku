@@ -327,7 +327,6 @@ struct WordDetailView: View {
                                         senseCard(
                                             sense: sense,
                                             isSavedEntry: isSavedEntry,
-                                            isFirstSenseInEntry: idx == 0,
                                             freqLabel: freqLabel,
                                             refs: senseRefs,
                                             sentences: senseSentences

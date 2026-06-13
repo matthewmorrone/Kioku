@@ -47,7 +47,7 @@ extension WordDetailView {
     // that one gloss (with mutual-exclusion handling above). `sentences` are Tatoeba examples
     // routed to this specific sense by SentenceSenseRouter.
     @ViewBuilder
-    func senseCard(sense: DictionaryEntrySense, isSavedEntry: Bool, isFirstSenseInEntry: Bool, freqLabel: String?, refs: [SenseReference], sentences: [SentencePair] = []) -> some View {
+    func senseCard(sense: DictionaryEntrySense, isSavedEntry: Bool, freqLabel: String?, refs: [SenseReference], sentences: [SentencePair] = []) -> some View {
         let senseSelected = isSavedEntry && currentSelectedSenseIDs.contains(sense.senseID)
         let selectedGlossIndices: Set<Int> = {
             guard isSavedEntry else { return [] }
@@ -55,7 +55,7 @@ extension WordDetailView {
         }()
 
         VStack(alignment: .leading, spacing: 10) {
-            senseHeaderStrip(sense: sense, isSavedEntry: isSavedEntry, isFirstSenseInEntry: isFirstSenseInEntry, freqLabel: freqLabel)
+            senseHeaderStrip(sense: sense, isSavedEntry: isSavedEntry, freqLabel: freqLabel)
                 .contentShape(Rectangle())
                 .onTapGesture { if isSavedEntry { toggleSenseSelection(sense.senseID) } }
 
@@ -164,7 +164,7 @@ extension WordDetailView {
     // misc/field/dialect tags (uk, arch, etc.). Renders all sense-level metadata together so
     // misc tags don't sit alone below the gloss list as before.
     @ViewBuilder
-    func senseHeaderStrip(sense: DictionaryEntrySense, isSavedEntry: Bool, isFirstSenseInEntry: Bool, freqLabel: String?) -> some View {
+    func senseHeaderStrip(sense: DictionaryEntrySense, isSavedEntry: Bool, freqLabel: String?) -> some View {
         let posLabel: String? = (sense.pos?.isEmpty == false) ? JMdictTagExpander.expandAll(sense.pos ?? "") : nil
         let metaTags: [String] = [sense.misc, sense.field, sense.dialect]
             .compactMap { $0 }
@@ -177,7 +177,7 @@ extension WordDetailView {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
             }
-            if isFirstSenseInEntry, let freqLabel {
+            if let freqLabel {
                 Text(freqLabel)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
