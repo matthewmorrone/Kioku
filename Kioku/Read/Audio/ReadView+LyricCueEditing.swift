@@ -124,8 +124,7 @@ extension ReadView {
             return
         }
 
-        var timings = audioAttachmentCueTimings
-        var checkpoints = timings[cue.index] ?? []
+        var checkpoints = cue.checkpoints
         if let existing = checkpoints.firstIndex(where: { $0.charOffsetInCue == targetOffset }) {
             checkpoints[existing].timeMs = clampedMs
         } else {
@@ -134,15 +133,16 @@ extension ReadView {
         }
         // Keep checkpoints ordered by position so the sweep advances left-to-right.
         checkpoints.sort { $0.charOffsetInCue < $1.charOffsetInCue }
-        timings[cue.index] = checkpoints
-        audioAttachmentCueTimings = timings
+        audioAttachmentCues[cueIndex].checkpoints = checkpoints
 
         do {
-            try NotesAudioStore.shared.saveCueTimings(timings, attachmentID: attachmentID)
+            try NotesAudioStore.shared.saveCues(audioAttachmentCues, attachmentID: attachmentID)
         } catch {
-            print("[ReadView] saveCueTimings after word-timing edit failed: \(error.localizedDescription)")
+            print("[ReadView] saveCues after word-timing edit failed: \(error.localizedDescription)")
         }
-        // Timings feed the highlight observer reactively; the controller's cue list is unchanged.
+        // The updated cues feed the highlight observer reactively. updateCues keeps the controller's
+        // copy in sync; its boundaries are unchanged but its checkpoints now match.
+        audioController.updateCues(audioAttachmentCues)
     }
 
     // Re-runs on-device forced alignment for a single cue over a padded window around its
@@ -195,8 +195,7 @@ extension ReadView {
             audioAttachmentCues[cueIndex].startMs = newStart
             audioAttachmentCues[cueIndex].endMs = newEnd
 
-            // Build per-character checkpoints keyed by the cue's stable SRT index.
-            let cueKey = audioAttachmentCues[cueIndex].index
+            // Rebuild this cue's per-character checkpoints inline (empty when the sweep found none).
             let checkpoints = result.tokens
                 .map { token in
                     CueCharTiming(
@@ -206,18 +205,10 @@ extension ReadView {
                     )
                 }
                 .sorted { $0.timeMs < $1.timeMs }
-
-            var timings = audioAttachmentCueTimings
-            if checkpoints.isEmpty {
-                timings.removeValue(forKey: cueKey)
-            } else {
-                timings[cueKey] = checkpoints
-            }
-            audioAttachmentCueTimings = timings
+            audioAttachmentCues[cueIndex].checkpoints = checkpoints
 
             do {
                 try NotesAudioStore.shared.saveCues(audioAttachmentCues, attachmentID: attachmentID)
-                try NotesAudioStore.shared.saveCueTimings(timings, attachmentID: attachmentID)
             } catch {
                 print("[ReadView] persist after cue re-align failed: \(error.localizedDescription)")
             }

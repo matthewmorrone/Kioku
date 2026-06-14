@@ -307,7 +307,6 @@ extension ReadView {
                 controller: audioController,
                 cues: audioAttachmentCues,
                 highlightRanges: audioAttachmentHighlightRanges,
-                timings: audioAttachmentCueTimings,
                 granularity: lyricsHighlightGranularity,
                 segmentationRanges: segmentRanges,
                 noteText: text,
@@ -338,7 +337,6 @@ extension ReadView {
                     noteText: text,
                     attachmentID: activeAudioAttachmentID,
                     playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : playbackHighlightRangeOverride,
-                    cueTimings: audioAttachmentCueTimings,
                     granularity: lyricsHighlightGranularity,
                     onSegmentTapped: { location, rect, sourceView in
                         handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: sourceView)
