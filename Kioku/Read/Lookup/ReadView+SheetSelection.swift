@@ -161,6 +161,7 @@ extension ReadView {
             minOffsetY,
             sourceView.contentSize.height - sourceView.bounds.height + naturalBottomInset
         )
+
         let context = ReadViewSheetVisibilityScrollContext(
             currentOffsetY: sourceView.contentOffset.y,
             minOffsetY: minOffsetY,
@@ -183,13 +184,17 @@ extension ReadView {
         )
 
         guard let adjustment = ReadViewSheetVisibilityScrollPlanner.adjustment(for: context) else {
-            // Already in a good spot. Drop any leftover injected inset (the only @State write
-            // we want here) and return — DO NOT touch `sharedScrollOffsetY` when no scroll is
-            // needed. Writing it triggers a SwiftUI body re-eval which makes the CoreText
-            // renderer's updateUIView re-build the entire attributed string for the note. On
-            // long notes that's the dominant per-tap cost.
-            if priorAppliedInset > 0 {
-                applyAdditionalBottomInset(0, on: sourceView, animated: animated)
+            // Already in a good spot — no scroll. But the CURRENT offset may itself rely on
+            // overscroll injected by a PRIOR tap (a word near the bottom, where the planner pushed
+            // past the natural max and `appliedSheetBottomInset > 0`). Removing that inset wholesale
+            // shrinks maxOffsetY below the current offset, so the scroll view bounces back down and
+            // drops the just-tapped word under the sheet — the "second tap at the bottom hides the
+            // word" bug. Keep exactly the inset still needed to hold the current offset; trim only
+            // the excess. (Do NOT touch `sharedScrollOffsetY` here: writing it forces a SwiftUI body
+            // re-eval that rebuilds the whole attributed string — the dominant per-tap cost.)
+            let insetNeededToHoldCurrentOffset = max(0, sourceView.contentOffset.y - maxContentOffsetY)
+            if abs(insetNeededToHoldCurrentOffset - priorAppliedInset) > 0.5 {
+                applyAdditionalBottomInset(insetNeededToHoldCurrentOffset, on: sourceView, animated: animated)
             }
             completion?()
             return
