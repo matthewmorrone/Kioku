@@ -256,21 +256,23 @@ extension ReadView {
 
         do {
             _ = try NotesAudioStore.shared.saveAudio(from: audioURL, attachmentID: newAttachmentID)
-            try NotesAudioStore.shared.saveCues(cues, attachmentID: newAttachmentID)
+            // Optional karaoke checkpoints from a paired TextGrid, folded into the cues before saving.
+            // Best-effort: a TextGrid that doesn't bind (wrong format, no matching intervals) just
+            // means no per-character timing, never a failed import — so it's gated on a non-empty
+            // result and uses `try?` for the read/bind.
+            var cuesToSave = cues
+            if let textGridURL,
+               let content = try? SubtitleSourceLoader.readText(from: textGridURL),
+               let timings = SubtitleSourceLoader.bindCheckpoints(textGridContent: content, cues: cues),
+               timings.isEmpty == false {
+                cuesToSave = cues.applyingCheckpoints(timings)
+            }
+            try NotesAudioStore.shared.saveCues(cuesToSave, attachmentID: newAttachmentID)
             _ = try NotesAudioStore.shared.saveSRT(
                 srtText,
                 attachmentID: newAttachmentID,
                 preferredFilename: NotesAudioStore.preferredSubtitleFilename(forAudioFilename: originalAudioFilename)
             )
-            // Optional karaoke checkpoints from a paired TextGrid. Best-effort: a TextGrid that
-            // doesn't bind (wrong format, no matching intervals) just means no per-character timing,
-            // never a failed import — so it's gated on a non-empty result and uses `try?`.
-            if let textGridURL,
-               let content = try? SubtitleSourceLoader.readText(from: textGridURL),
-               let timings = SubtitleSourceLoader.bindCheckpoints(textGridContent: content, cues: cues),
-               timings.isEmpty == false {
-                try? NotesAudioStore.shared.saveCueTimings(timings, attachmentID: newAttachmentID)
-            }
         } catch {
             NotesAudioStore.shared.deleteAttachment(newAttachmentID)
             throw error

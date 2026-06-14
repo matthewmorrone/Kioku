@@ -136,9 +136,10 @@ struct ReadView: View {
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
     @State var audioController = AudioPlaybackController()
+    // Cues carry their per-cue karaoke checkpoints inline (cue.checkpoints); there is no separate
+    // timings state to keep in sync.
     @State var audioAttachmentCues: [SubtitleCue] = []
     @State var audioAttachmentHighlightRanges: [NSRange?] = []
-    @State var audioAttachmentCueTimings: CueCharTimings = [:]
     @State var playbackHighlightRangeOverride: NSRange?
     @State var activePlaybackCueIndex: Int? = nil
     @State var activeAudioAttachmentID: UUID? = nil

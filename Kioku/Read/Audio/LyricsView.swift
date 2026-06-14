@@ -18,10 +18,8 @@ struct LyricsView: View {
     // Narrowed playback highlight in noteText UTF-16 coords, computed upstream from the granularity
     // setting + cue timings. nil means no sub-cue highlight (Sentence behavior).
     let playbackHighlightRangeOverride: NSRange?
-    // TextGrid-derived per-cue checkpoints, surfaced here so the on-screen debug HUD can show
-    // whether the active cue has karaoke data without requiring console log inspection.
-    let cueTimings: CueCharTimings
-    // Current granularity setting, surfaced for the HUD.
+    // Current granularity setting, surfaced for the HUD. Per-cue checkpoints now ride on each cue
+    // (cue.checkpoints) rather than a separate dictionary.
     let granularity: LyricsHighlightGranularity
     let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
     let onDismiss: () -> Void
@@ -70,7 +68,7 @@ struct LyricsView: View {
     private func seekToTappedWord(cueLocalLocation: Int?, cueIndex: Int) {
         guard cues.indices.contains(cueIndex) else { return }
         let cue = cues[cueIndex]
-        let checkpoints = cueTimings[cue.index] ?? []
+        let checkpoints = cue.checkpoints
 
         guard checkpoints.isEmpty == false else {
             controller.seek(toMs: cue.startMs)

@@ -189,11 +189,8 @@ extension LyricsView {
     // override.upperBound == cueLength so they short-circuit this anyway.
     func cueHasReliableDimCoverage(forCueAtIndex displayIndex: Int, cueLength: Int) -> Bool {
         guard displayIndex >= 0, displayIndex < cues.count, cueLength > 0 else { return false }
-        // Use the cue's `.index` field (its original SRT/numeric ID) as the timings
-        // dict key, matching the lookup convention in the karaokeDebugHUDText and the
-        // observer — array position alone would desync after a skipped/malformed cue.
-        let key = cues[displayIndex].index
-        guard let checkpoints = cueTimings[key], checkpoints.isEmpty == false else { return false }
+        let checkpoints = cues[displayIndex].checkpoints
+        guard checkpoints.isEmpty == false else { return false }
         let maxEnd = checkpoints.map { $0.charOffsetInCue + $0.charLength }.max() ?? 0
         return Double(maxEnd) >= Double(cueLength) * 0.9
     }
@@ -218,7 +215,7 @@ extension LyricsView {
         }
         guard segmentSpans.isEmpty == false else { return [] }
 
-        let checkpoints = cueTimings[cues[index].index] ?? []
+        let checkpoints = cues[index].checkpoints
         // No timing data → every segment is untimed.
         guard checkpoints.isEmpty == false else {
             return Set(segmentSpans.map { $0.location })
