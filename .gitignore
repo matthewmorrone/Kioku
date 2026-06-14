@@ -1,5 +1,7 @@
 __pycache__
 Resources/dictionary.sqlite
+# Reassembled from the committed dictionary.sqlite.zst.part-* chunks; transient.
+Resources/dictionary.sqlite.zst
 Resources/jmdict-eng-3.6.2.json
 Resources/JPDB_v2.2_Frequency_Kana.json
 Resources/ggml-tiny.bin
