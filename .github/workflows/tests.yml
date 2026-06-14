@@ -50,6 +50,12 @@ jobs:
       - name: Decompress dictionary.sqlite
         run: bash scripts/ensure_dictionary.sh
 
+      # The handwriting model is committed as a zstd archive (~14 MB) and
+      # decompressed on demand; the raw file (~25 MB) is gitignored. Without
+      # this the Copy Bundle Resources phase fails (CpResource handwriting-ja.model).
+      - name: Decompress handwriting-ja.model
+        run: bash scripts/ensure_handwriting_model.sh
+
       - name: Build & test
         run: |
           set -o pipefail
