@@ -19,9 +19,11 @@ fi
 chmod +x .githooks/pre-commit .githooks/pre-push \
          scripts/validate_invariants.sh scripts/hook_check_invariants.sh
 
-# 3. Decompress the committed dictionary archive if the raw sqlite is missing.
+# 3. Decompress the committed dictionary + handwriting-model archives if the raw
+#    files are missing.
 echo
 bash scripts/ensure_dictionary.sh
+bash scripts/ensure_handwriting_model.sh
 
 # 4. Verify the validator runs cleanly against the current tree.
 echo
