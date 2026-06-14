@@ -9,8 +9,8 @@ import SwiftUI
 //   - .word:     the segmentationRanges entry containing the current checkpoint's character.
 //   - .mora:     the raw checkpoint slice (one character/mora group at a time).
 //
-// When no checkpoint data exists for the active cue (timings[cue.index] is empty), .word and .mora
-// silently fall back to .sentence behavior.
+// When the active cue has no checkpoints (cue.checkpoints is empty), .word and .mora silently fall
+// back to .sentence behavior.
 struct AudioCueHighlightObserver: View {
     // Throttles per-tick logging so the log file doesn't fill up.
     nonisolated(unsafe) private static var lastTickLog: Date = .distantPast
@@ -18,7 +18,6 @@ struct AudioCueHighlightObserver: View {
     @ObservedObject var controller: AudioPlaybackController
     let cues: [SubtitleCue]
     let highlightRanges: [NSRange?]
-    let timings: CueCharTimings
     let granularity: LyricsHighlightGranularity
     let segmentationRanges: [Range<String.Index>]
     let noteText: String
@@ -29,7 +28,8 @@ struct AudioCueHighlightObserver: View {
         Color.clear
             .frame(width: 0, height: 0)
             .onAppear {
-                KaraokeDebugLog.log("observer: onAppear timingsCount=\(timings.count) hlCount=\(highlightRanges.count) cuesCount=\(cues.count) granularity=\(granularity.rawValue)")
+                let timedCueCount = cues.filter { $0.checkpoints.isEmpty == false }.count
+                KaraokeDebugLog.log("observer: onAppear timedCues=\(timedCueCount) hlCount=\(highlightRanges.count) cuesCount=\(cues.count) granularity=\(granularity.rawValue)")
                 for (i, cue) in cues.enumerated() {
                     let preview = cue.text.replacingOccurrences(of: "\n", with: "/").prefix(40)
                     KaraokeDebugLog.log("cue[\(i)] idx=\(cue.index) \(cue.startMs)-\(cue.endMs)ms text=\"\(preview)\"")
@@ -53,7 +53,7 @@ struct AudioCueHighlightObserver: View {
         let now = Date()
         if now.timeIntervalSince(Self.lastTickLog) > 1.0 {
             Self.lastTickLog = now
-            KaraokeDebugLog.log("observer.tick isPlaying=\(isPlaying) cueIndex=\(cueIndex.map(String.init) ?? "nil") t=\(currentTimeMs)ms hlCount=\(highlightRanges.count) timingsCount=\(timings.count)")
+            KaraokeDebugLog.log("observer.tick isPlaying=\(isPlaying) cueIndex=\(cueIndex.map(String.init) ?? "nil") t=\(currentTimeMs)ms hlCount=\(highlightRanges.count)")
         }
         guard isPlaying, let cueIndex, cueIndex < cues.count else {
             playbackHighlightRangeOverride = nil
@@ -84,16 +84,12 @@ struct AudioCueHighlightObserver: View {
         let previousCueIndex = activePlaybackCueIndex
         activePlaybackCueIndex = cueIndex
 
-        // AudioPlaybackController.activeCueIndex is the 0-based array position.
-        // Look up the actual SubtitleCue.index (the field the binder uses as a dictionary key) so a
-        // skipped/malformed cue in the array can't desynchronize the checkpoint lookup.
-        let lookupKey: Int = cueIndex < cues.count ? cues[cueIndex].index : (cueIndex + 1)
-        let checkpoints = timings[lookupKey] ?? []
+        // Checkpoints ride on the cue at this array position — no index-keyed lookup to desync.
+        let checkpoints = cues[cueIndex].checkpoints
 
         // One log per cue transition is enough — per-tick logging would flood the file.
         if previousCueIndex != cueIndex {
-            let keysPreview = timings.keys.sorted().prefix(8).map { String($0) }.joined(separator: ",")
-            KaraokeDebugLog.log("observer: cue array=\(cueIndex) lookup=\(lookupKey) checkpoints=\(checkpoints.count) granularity=\(granularity.rawValue) timingsCueCount=\(timings.count) keys=[\(keysPreview)]")
+            KaraokeDebugLog.log("observer: cue array=\(cueIndex) idx=\(cues[cueIndex].index) checkpoints=\(checkpoints.count) granularity=\(granularity.rawValue)")
         }
 
         switch granularity {
