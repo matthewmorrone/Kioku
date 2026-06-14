@@ -33,10 +33,10 @@ final class TextGridParserTests: XCTestCase {
         XCTAssertEqual(grid.durationMs, 177_396)
         XCTAssertEqual(grid.tiers.count, 1)
         XCTAssertEqual(grid.tiers[0].name, "words")
-        XCTAssertEqual(grid.tiers[0].intervals.count, 1)
-        XCTAssertEqual(grid.tiers[0].intervals[0].startMs, 0)
-        XCTAssertEqual(grid.tiers[0].intervals[0].endMs, 1_234)
-        XCTAssertEqual(grid.tiers[0].intervals[0].text, "ご")
+        XCTAssertEqual(grid.tiers[0].spans.count, 1)
+        XCTAssertEqual(grid.tiers[0].spans[0].startMs, 0)
+        XCTAssertEqual(grid.tiers[0].spans[0].endMs, 1_234)
+        XCTAssertEqual(grid.tiers[0].spans[0].text, "ご")
     }
 
     func testParsesTwoTiersWithSilenceIntervals() throws {
@@ -73,12 +73,12 @@ final class TextGridParserTests: XCTestCase {
         let grid = try TextGridParser.parse(content)
         XCTAssertEqual(grid.tiers.count, 2)
         XCTAssertEqual(grid.tiers[0].name, "segments")
-        XCTAssertEqual(grid.tiers[0].intervals.count, 2)
-        XCTAssertEqual(grid.tiers[0].intervals[0].text, "")
-        XCTAssertEqual(grid.tiers[0].intervals[1].text, "ごめんね素直じゃなくて")
+        XCTAssertEqual(grid.tiers[0].spans.count, 2)
+        XCTAssertEqual(grid.tiers[0].spans[0].text, "")
+        XCTAssertEqual(grid.tiers[0].spans[1].text, "ごめんね素直じゃなくて")
         XCTAssertEqual(grid.tiers[1].name, "words")
-        XCTAssertEqual(grid.tiers[1].intervals.count, 3)
-        XCTAssertEqual(grid.tiers[1].intervals[2].text, "め")
+        XCTAssertEqual(grid.tiers[1].spans.count, 3)
+        XCTAssertEqual(grid.tiers[1].spans[2].text, "め")
     }
 
     func testRoundsTimesToNearestMillisecond() throws {
@@ -96,7 +96,7 @@ final class TextGridParserTests: XCTestCase {
 
         """
         let grid = try TextGridParser.parse(content)
-        XCTAssertEqual(grid.tiers[0].intervals[0].endMs, 1)
+        XCTAssertEqual(grid.tiers[0].spans[0].endMs, 1)
     }
 
     func testHandlesEscapedDoubleQuotesInLabels() throws {
@@ -117,7 +117,7 @@ final class TextGridParserTests: XCTestCase {
 
         """#
         let grid = try TextGridParser.parse(content)
-        XCTAssertEqual(grid.tiers[0].intervals[0].text, "she said \"hi\"")
+        XCTAssertEqual(grid.tiers[0].spans[0].text, "she said \"hi\"")
     }
 
     func testThrowsOnTruncatedInput() {
@@ -162,7 +162,7 @@ final class TextGridParserTests: XCTestCase {
         let grid = try TextGridParser.parse(content)
         XCTAssertEqual(grid.tiers.count, 1)
         XCTAssertEqual(grid.tiers[0].name, "events")
-        XCTAssertEqual(grid.tiers[0].intervals.count, 0)
+        XCTAssertEqual(grid.tiers[0].spans.count, 0)
     }
 
     // Round-trips a fixture lifted from the user's ムーンライト伝説.TextGrid (truncated to the first
@@ -211,8 +211,8 @@ final class TextGridParserTests: XCTestCase {
         """
         let grid = try TextGridParser.parse(content)
         XCTAssertEqual(grid.tiers.map(\.name), ["segments", "words"])
-        XCTAssertEqual(grid.tiers[0].intervals.last?.text, "思考回路はショート寸前")
-        XCTAssertEqual(grid.tiers[1].intervals.count, 4)
-        XCTAssertEqual(grid.tiers[1].intervals[3].text, "ん")
+        XCTAssertEqual(grid.tiers[0].spans.last?.text, "思考回路はショート寸前")
+        XCTAssertEqual(grid.tiers[1].spans.count, 4)
+        XCTAssertEqual(grid.tiers[1].spans[3].text, "ん")
     }
 }

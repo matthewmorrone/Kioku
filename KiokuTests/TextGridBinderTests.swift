@@ -6,13 +6,13 @@ import XCTest
 @MainActor
 final class TextGridBinderTests: XCTestCase {
 
-    // Builds a single-tier TextGridFile inline so tests don't depend on the parser.
-    private func makeFile(_ intervals: [(Double, Double, String)], tierName: String = "words") -> TextGridFile {
-        TextGridFile(
+    // Builds a single-tier TimedTextDocument inline so tests don't depend on the parser.
+    private func makeFile(_ intervals: [(Double, Double, String)], tierName: String = "words") -> TimedTextDocument {
+        TimedTextDocument(
             durationMs: Int(((intervals.last?.1 ?? 0.0) * 1000).rounded()),
-            tiers: [TextGridTier(
+            tiers: [TimedTier(
                 name: tierName,
-                intervals: intervals.map { TextGridInterval(
+                spans: intervals.map { TimedSpan(
                     startMs: Int(($0.0 * 1000).rounded()),
                     endMs: Int(($0.1 * 1000).rounded()),
                     text: $0.2
@@ -28,7 +28,7 @@ final class TextGridBinderTests: XCTestCase {
             (0.3, 0.6, "め"),
             (0.6, 0.9, "ん"),
         ])
-        let result = TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        let result = TextGridBinder.bindCheckpoints(document: grid, cues: cues)
         XCTAssertEqual(result[1]?.count, 3)
         XCTAssertEqual(result[1]?[0].charOffsetInCue, 0)
         XCTAssertEqual(result[1]?[0].charLength, 1)
@@ -44,7 +44,7 @@ final class TextGridBinderTests: XCTestCase {
             (0.4, 0.5, ""),
             (0.5, 0.7, "め"),
         ])
-        let result = TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        let result = TextGridBinder.bindCheckpoints(document: grid, cues: cues)
         XCTAssertEqual(result[1]?.count, 2)
         XCTAssertEqual(result[1]?[1].charOffsetInCue, 1)
     }
@@ -56,7 +56,7 @@ final class TextGridBinderTests: XCTestCase {
             (0.2, 0.3, "ショ"),
             (0.3, 0.5, "め"),
         ])
-        let result = TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        let result = TextGridBinder.bindCheckpoints(document: grid, cues: cues)
         XCTAssertEqual(result[1]?.count, 2)
         XCTAssertEqual(result[1]?[1].charOffsetInCue, 1)
         XCTAssertEqual(result[1]?[1].timeMs, 300)
@@ -68,7 +68,7 @@ final class TextGridBinderTests: XCTestCase {
             (0.0, 0.2, "だ"),
             (0.2, 0.6, "って"),
         ])
-        let result = TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        let result = TextGridBinder.bindCheckpoints(document: grid, cues: cues)
         XCTAssertEqual(result[1]?.count, 2)
         XCTAssertEqual(result[1]?[1].charOffsetInCue, 1)
         XCTAssertEqual(result[1]?[1].charLength, 2)
@@ -81,7 +81,7 @@ final class TextGridBinderTests: XCTestCase {
             (1.0, 1.2, "ご"),
             (5.0, 5.2, "y"),
         ])
-        let result = TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        let result = TextGridBinder.bindCheckpoints(document: grid, cues: cues)
         XCTAssertEqual(result[1]?.count, 1)
         XCTAssertNil(result[2])
     }
@@ -96,7 +96,7 @@ final class TextGridBinderTests: XCTestCase {
             (1.0, 1.2, "あ"),
             (1.2, 1.5, "り"),
         ])
-        let result = TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        let result = TextGridBinder.bindCheckpoints(document: grid, cues: cues)
         XCTAssertEqual(result[1]?.count, 1)
         XCTAssertEqual(result[2]?.count, 2)
         XCTAssertEqual(result[2]?[0].charOffsetInCue, 0)
@@ -104,23 +104,23 @@ final class TextGridBinderTests: XCTestCase {
 
     func testTierSelectionPicksHighestResolution() {
         let cues = [SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "ごめん")]
-        let coarse = TextGridTier(name: "segments", intervals: [
-            TextGridInterval(startMs: 0, endMs: 1000, text: "ごめん"),
+        let coarse = TimedTier(name: "segments", spans: [
+            TimedSpan(startMs: 0, endMs: 1000, text: "ごめん"),
         ])
-        let fine = TextGridTier(name: "words", intervals: [
-            TextGridInterval(startMs: 0,   endMs: 300, text: "ご"),
-            TextGridInterval(startMs: 300, endMs: 600, text: "め"),
-            TextGridInterval(startMs: 600, endMs: 900, text: "ん"),
+        let fine = TimedTier(name: "words", spans: [
+            TimedSpan(startMs: 0,   endMs: 300, text: "ご"),
+            TimedSpan(startMs: 300, endMs: 600, text: "め"),
+            TimedSpan(startMs: 600, endMs: 900, text: "ん"),
         ])
-        let grid = TextGridFile(durationMs: 1000, tiers: [coarse, fine])
-        let result = TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        let grid = TimedTextDocument(durationMs: 1000, tiers: [coarse, fine])
+        let result = TextGridBinder.bindCheckpoints(document: grid, cues: cues)
         XCTAssertEqual(result[1]?.count, 3)
     }
 
     func testSingleLineTierIsUsedAsFallback() {
         let cues = [SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "ごめん")]
         let grid = makeFile([(0.0, 1.0, "ごめん")], tierName: "segments")
-        let result = TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        let result = TextGridBinder.bindCheckpoints(document: grid, cues: cues)
         XCTAssertEqual(result[1]?.count, 1)
         XCTAssertEqual(result[1]?[0].charLength, 3)
     }
@@ -131,7 +131,7 @@ final class TextGridBinderTests: XCTestCase {
             (0.1, 0.2, "x"),
             (0.3, 0.4, "y"),
         ])
-        let result = TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        let result = TextGridBinder.bindCheckpoints(document: grid, cues: cues)
         XCTAssertNil(result[1])
     }
 }

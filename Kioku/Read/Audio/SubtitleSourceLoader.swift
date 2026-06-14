@@ -50,36 +50,18 @@ nonisolated enum SubtitleSourceLoader {
     }
 
     // Derives line-level cues from a TextGrid's lowest-resolution IntervalTier so a `.TextGrid` can
-    // stand in for an SRT when no subtitle file is supplied. The coarsest tier (fewest intervals)
-    // is the line/phrase tier; finer tiers (words, phones) drive karaoke checkpoints, not cue text.
+    // stand in for an SRT when no subtitle file is supplied. The coarsest tier (fewest spans) is the
+    // line/phrase tier; finer tiers (words, phones) drive karaoke checkpoints, not cue text.
     static func deriveCues(fromTextGrid content: String) throws -> [SubtitleCue] {
-        let grid = try TextGridParser.parse(content)
-        let candidates = grid.tiers.filter { tier in
-            tier.intervals.contains { $0.text.isEmpty == false }
-        }
-        guard let lineTier = candidates.min(by: { $0.intervals.count < $1.intervals.count }) else {
-            return []
-        }
-        var cues: [SubtitleCue] = []
-        var index = 1
-        for interval in lineTier.intervals where interval.text.isEmpty == false {
-            cues.append(SubtitleCue(
-                index: index,
-                startMs: interval.startMs,
-                endMs: interval.endMs,
-                text: interval.text
-            ))
-            index += 1
-        }
-        return cues
+        try TextGridParser.parse(content).lineCues()
     }
 
     // Parses a TextGrid and binds per-cue character checkpoints against the supplied cues. Returns
     // nil when the file is unreadable/unparseable so callers can silently skip — a TextGrid is an
     // optional karaoke companion, never a hard requirement.
     static func bindCheckpoints(textGridContent content: String, cues: [SubtitleCue]) -> CueCharTimings? {
-        guard let grid = try? TextGridParser.parse(content) else { return nil }
-        return TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        guard let document = try? TextGridParser.parse(content) else { return nil }
+        return TextGridBinder.bindCheckpoints(document: document, cues: cues)
     }
 }
 

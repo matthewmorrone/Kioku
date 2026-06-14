@@ -386,34 +386,16 @@ final class BulkImportRunner: ObservableObject {
     // optional companion, never a hard requirement.
     private nonisolated static func bindTextGridCheckpoints(textGridURL: URL, cues: [SubtitleCue]) -> CueCharTimings? {
         guard let content = try? readText(from: textGridURL) else { return nil }
-        guard let grid = try? TextGridParser.parse(content) else { return nil }
-        return TextGridBinder.bindCheckpoints(textGrid: grid, cues: cues)
+        guard let document = try? TextGridParser.parse(content) else { return nil }
+        return TextGridBinder.bindCheckpoints(document: document, cues: cues)
     }
 
     // Derives line-level SubtitleCues from a TextGrid's lowest-resolution IntervalTier so a user
-    // can import a `.TextGrid`-only bundle (no SRT) and still get a playable note. Mirrors the
-    // single-import-sheet TextGrid-only path.
+    // can import a `.TextGrid`-only bundle (no SRT) and still get a playable note. Lowers through the
+    // same TimedTextDocument.lineCues() as the single-import-sheet path so the two can't drift.
     private nonisolated static func readDerivedCuesFromTextGrid(at url: URL) throws -> [SubtitleCue] {
         let raw = try readText(from: url)
-        let grid = try TextGridParser.parse(raw)
-        let candidates = grid.tiers.filter { tier in
-            tier.intervals.contains { $0.text.isEmpty == false }
-        }
-        guard let lineTier = candidates.min(by: { $0.intervals.count < $1.intervals.count }) else {
-            return []
-        }
-        var cues: [SubtitleCue] = []
-        var index = 1
-        for interval in lineTier.intervals where interval.text.isEmpty == false {
-            cues.append(SubtitleCue(
-                index: index,
-                startMs: interval.startMs,
-                endMs: interval.endMs,
-                text: interval.text
-            ))
-            index += 1
-        }
-        return cues
+        return try TextGridParser.parse(raw).lineCues()
     }
 
     // Resamples the audio file to 16 kHz mono Float32 PCM via AVAssetReader. Whisper requires
