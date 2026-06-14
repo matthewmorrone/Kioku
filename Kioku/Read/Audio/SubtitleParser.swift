@@ -34,6 +34,14 @@ nonisolated enum SubtitleParser {
         return cues
     }
 
+    // Parses SRT into the unified TimedTextDocument: one "subtitles" tier whose spans are the cues in
+    // file order. The line-only counterpart to TextGridParser.parse — lets SRT and TextGrid feed the
+    // same downstream model. The runtime path still uses parse(_:) directly so the SRT's own cue
+    // indices round-trip unchanged; this is the seam Phase 2 will lower the whole pipeline through.
+    static func parseDocument(_ srtContent: String) -> TimedTextDocument {
+        TimedTextDocument(subtitleCues: parse(srtContent))
+    }
+
     // Joins all cue texts with newlines to form the note body.
     static func assembleNoteContent(from cues: [SubtitleCue]) -> String {
         cues.map(\.text).joined(separator: "\n")

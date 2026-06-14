@@ -1,23 +1,6 @@
 import Foundation
 
-// Read-only model of one parsed TextGrid file. Times are normalized to integer milliseconds at parse time.
-struct TextGridInterval: Equatable {
-    let startMs: Int
-    let endMs: Int
-    let text: String
-}
-
-struct TextGridTier: Equatable {
-    let name: String
-    let intervals: [TextGridInterval]
-}
-
-struct TextGridFile: Equatable {
-    let durationMs: Int
-    let tiers: [TextGridTier]
-}
-
-// Parses Praat short-form TextGrid text into a TextGridFile.
+// Parses Praat short-form TextGrid text into the unified TimedTextDocument.
 // Long-form (xmin = / text = labels) is intentionally out of scope for v1.
 nonisolated enum TextGridParser {
 
@@ -25,10 +8,10 @@ nonisolated enum TextGridParser {
         case malformed(String)
     }
 
-    // Parses a short-form Praat TextGrid string into a TextGridFile.
+    // Parses a short-form Praat TextGrid string into a TimedTextDocument.
     // Times are converted from seconds to integer milliseconds at parse time.
     // Throws ParseError.malformed for long-form input or unrecoverable structural problems.
-    static func parse(_ content: String) throws -> TextGridFile {
+    static func parse(_ content: String) throws -> TimedTextDocument {
         if content.contains("item []:") || content.range(of: #"\bxmin\s*="#, options: .regularExpression) != nil {
             throw ParseError.malformed("Long-form TextGrid is not supported in v1; convert to short-form.")
         }
@@ -56,7 +39,7 @@ nonisolated enum TextGridParser {
         }
         let tierCount = Int(tierCountValue)
 
-        var tiers: [TextGridTier] = []
+        var tiers: [TimedTier] = []
         for _ in 0..<tierCount {
             guard case let .string(tierKind)? = tokens.popFirst() else {
                 throw ParseError.malformed("Missing tier kind.")
@@ -73,7 +56,7 @@ nonisolated enum TextGridParser {
             }
             let intervalCount = Int(intervalCountValue)
 
-            var intervals: [TextGridInterval] = []
+            var spans: [TimedSpan] = []
             if tierKind == "IntervalTier" {
                 for _ in 0..<intervalCount {
                     guard case let .number(xmin)? = tokens.popFirst(),
@@ -81,8 +64,8 @@ nonisolated enum TextGridParser {
                           case let .string(label)? = tokens.popFirst() else {
                         throw ParseError.malformed("Truncated interval in tier \(tierName).")
                     }
-                    intervals.append(
-                        TextGridInterval(
+                    spans.append(
+                        TimedSpan(
                             startMs: Int((xmin * 1000).rounded()),
                             endMs: Int((xmax * 1000).rounded()),
                             text: label
@@ -90,7 +73,7 @@ nonisolated enum TextGridParser {
                     )
                 }
             } else {
-                // PointTier / TextTier — parse structurally, model as tier with zero intervals.
+                // PointTier / TextTier — parse structurally, model as tier with zero spans.
                 for _ in 0..<intervalCount {
                     guard tokens.popFirst() != nil, tokens.popFirst() != nil else {
                         throw ParseError.malformed("Truncated point in tier \(tierName).")
@@ -98,10 +81,10 @@ nonisolated enum TextGridParser {
                 }
             }
 
-            tiers.append(TextGridTier(name: tierName, intervals: intervals))
+            tiers.append(TimedTier(name: tierName, spans: spans))
         }
 
-        return TextGridFile(
+        return TimedTextDocument(
             durationMs: Int((fileXmax * 1000).rounded()),
             tiers: tiers
         )

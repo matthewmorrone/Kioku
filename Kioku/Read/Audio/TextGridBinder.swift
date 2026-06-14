@@ -11,13 +11,13 @@ nonisolated enum TextGridBinder {
     // non-matching intervals are dropped silently so noisy forced-aligner output doesn't crash
     // the pipeline. The per-cue cursor never rewinds, preventing an out-of-order noisy interval
     // from re-matching an earlier character.
-    static func bindCheckpoints(textGrid: TextGridFile, cues: [SubtitleCue]) -> CueCharTimings {
-        let intervalTiers = textGrid.tiers.filter { $0.intervals.isEmpty == false }
+    static func bindCheckpoints(document: TimedTextDocument, cues: [SubtitleCue]) -> CueCharTimings {
+        let intervalTiers = document.tiers.filter { $0.spans.isEmpty == false }
         guard let tier = pickFinestTier(intervalTiers) else {
-            KaraokeDebugLog.log("binder: no usable IntervalTier (tier count=\(textGrid.tiers.count))")
+            KaraokeDebugLog.log("binder: no usable IntervalTier (tier count=\(document.tiers.count))")
             return [:]
         }
-        KaraokeDebugLog.log("binder: selected tier '\(tier.name)' (\(tier.intervals.count) intervals); \(cues.count) cues; firstCueText=\(cues.first?.text.prefix(30) ?? "")")
+        KaraokeDebugLog.log("binder: selected tier '\(tier.name)' (\(tier.spans.count) intervals); \(cues.count) cues; firstCueText=\(cues.first?.text.prefix(30) ?? "")")
 
         let sortedCues = cues.sorted { $0.startMs < $1.startMs }
 
@@ -28,7 +28,7 @@ nonisolated enum TextGridBinder {
         var droppedSilence = 0
         var sampleNoMatchExamples: [String] = []
 
-        for interval in tier.intervals {
+        for interval in tier.spans {
             if interval.text.isEmpty { droppedSilence += 1; continue }
             guard let cue = findContainingCue(timeMs: interval.startMs, in: sortedCues) else {
                 droppedNoCue += 1
@@ -64,11 +64,11 @@ nonisolated enum TextGridBinder {
         return result
     }
 
-    // Picks the tier with the most intervals. Ties broken by name preference: phones > words > anything else.
-    private static func pickFinestTier(_ tiers: [TextGridTier]) -> TextGridTier? {
+    // Picks the tier with the most spans. Ties broken by name preference: phones > words > anything else.
+    private static func pickFinestTier(_ tiers: [TimedTier]) -> TimedTier? {
         guard tiers.isEmpty == false else { return nil }
-        let maxCount = tiers.map { $0.intervals.count }.max() ?? 0
-        let candidates = tiers.filter { $0.intervals.count == maxCount }
+        let maxCount = tiers.map { $0.spans.count }.max() ?? 0
+        let candidates = tiers.filter { $0.spans.count == maxCount }
         if candidates.count == 1 { return candidates[0] }
         let preference: [String: Int] = ["phones": 0, "words": 1]
         return candidates.min { a, b in
