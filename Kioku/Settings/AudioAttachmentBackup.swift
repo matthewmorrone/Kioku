@@ -12,9 +12,7 @@ struct AudioAttachmentBackup: Codable, Equatable {
     var audioData: Data
     // Raw SRT text — nil when no subtitle file exists for this attachment.
     var srtText: String?
-    // Decoded subtitle cues — nil when no cues have been generated.
+    // Decoded subtitle cues — nil when no cues have been generated. Each cue carries its karaoke
+    // checkpoints inline (cue.checkpoints), so the cue list is the whole subtitle/timing payload.
     var cues: [SubtitleCue]?
-    // Per-cue character checkpoints from a TextGrid forced-alignment file. Optional for backward
-    // compatibility with backups taken before karaoke data existed.
-    var timings: CueCharTimings? = nil
 }

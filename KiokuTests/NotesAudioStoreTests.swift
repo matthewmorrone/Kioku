@@ -47,45 +47,20 @@ final class NotesAudioStoreTests: XCTestCase {
         XCTAssertTrue(store.loadCues(for: UUID()).isEmpty)
     }
 
-    // saveCueTimings -> loadCueTimings round-trips the nested dictionary contents. CueCharTimings
-    // is a typealias for [Int: [CueCharTiming]] so encoder/decoder behavior on integer-keyed
-    // dictionaries is on the hook here; JSONEncoder serializes those as string keys.
-    func testSaveCueTimingsRoundTrips() throws {
+    // Checkpoints ride inside each cue and round-trip through the single cue file. Pins the inline
+    // schema so a change to CueCharTiming serialization has to update this test before silently
+    // breaking on-disk compatibility.
+    func testSaveCuesRoundTripsInlineCheckpoints() throws {
         let id = UUID()
-        let timings: CueCharTimings = [
-            1: [
+        let cues = [
+            SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "猫", checkpoints: [
                 CueCharTiming(timeMs: 0, charOffsetInCue: 0, charLength: 1),
                 CueCharTiming(timeMs: 250, charOffsetInCue: 1, charLength: 2),
-            ],
-            2: [CueCharTiming(timeMs: 1100, charOffsetInCue: 0, charLength: 3)],
+            ]),
+            SubtitleCue(index: 2, startMs: 1000, endMs: 2500, text: "犬", checkpoints: []),
         ]
-        try store.saveCueTimings(timings, attachmentID: id)
-        XCTAssertEqual(store.loadCueTimings(for: id), timings)
-    }
-
-    // saveCueTimings([:]) is the canonical "remove karaoke data" path: the production comment
-    // calls this out explicitly because callers must not have to know whether a stale file
-    // remains from a previous run. Without this contract, importAttachment of an older backup
-    // would silently leave prior checkpoints driving the per-word band.
-    func testSaveCueTimingsEmptyRemovesFile() throws {
-        let id = UUID()
-        try store.saveCueTimings(
-            [1: [CueCharTiming(timeMs: 100, charOffsetInCue: 0, charLength: 1)]],
-            attachmentID: id
-        )
-        XCTAssertTrue(FileManager.default.fileExists(atPath: store.cueTimingsURL(for: id).path))
-
-        try store.saveCueTimings([:], attachmentID: id)
-        XCTAssertFalse(
-            FileManager.default.fileExists(atPath: store.cueTimingsURL(for: id).path),
-            "Empty timings must remove the stale file; otherwise loadCueTimings keeps returning prior data"
-        )
-    }
-
-    // loadCueTimings returns an empty dictionary when the sidecar is missing — same
-    // "missing = empty, never error" contract as loadCues.
-    func testLoadCueTimingsMissingFileReturnsEmpty() {
-        XCTAssertTrue(store.loadCueTimings(for: UUID()).isEmpty)
+        try store.saveCues(cues, attachmentID: id)
+        XCTAssertEqual(store.loadCues(for: id), cues)
     }
 
     // saveSRT -> loadSRT round-trips UTF-8 text — the common path when our own SRT writers
@@ -132,8 +107,7 @@ final class NotesAudioStoreTests: XCTestCase {
             audioFilename: "song.mp3",
             audioData: Data("fake-mp3-bytes".utf8),
             srtText: "1\n00:00:00,000 --> 00:00:01,000\nhi\n",
-            cues: [SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "hi")],
-            timings: nil
+            cues: [SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "hi")]
         )
         try store.importAttachment(backup)
         let after1 = try FileManager.default.contentsOfDirectory(atPath: testRoot.path).sorted()
@@ -158,8 +132,7 @@ final class NotesAudioStoreTests: XCTestCase {
             audioFilename: "song.mp3",
             audioData: audioBytes,
             srtText: srt,
-            cues: nil,
-            timings: nil
+            cues: nil
         )
         try store.importAttachment(backup)
 
@@ -172,49 +145,20 @@ final class NotesAudioStoreTests: XCTestCase {
         XCTAssertEqual(store.loadSRT(for: id), srt, "SRT must round-trip via loadSRT")
     }
 
-    // importAttachment with timings=nil must clear any stale .timings.json on disk. The
-    // production-file comment calls this out: restoring an older backup over an attachment
-    // that had karaoke checkpoints would otherwise leave the stale file and loadCueTimings
-    // would keep returning the old data.
-    func testImportAttachmentClearsStaleTimingsWhenBackupHasNone() throws {
-        let id = UUID()
-        try store.saveCueTimings(
-            [1: [CueCharTiming(timeMs: 0, charOffsetInCue: 0, charLength: 1)]],
-            attachmentID: id
-        )
-        XCTAssertTrue(FileManager.default.fileExists(atPath: store.cueTimingsURL(for: id).path))
-
-        let backup = AudioAttachmentBackup(
-            attachmentID: id,
-            audioFilename: "song.mp3",
-            audioData: Data("bytes".utf8),
-            srtText: nil,
-            cues: nil,
-            timings: nil
-        )
-        try store.importAttachment(backup)
-
-        XCTAssertFalse(
-            FileManager.default.fileExists(atPath: store.cueTimingsURL(for: id).path),
-            "importAttachment must remove stale .timings.json when backup carries no timings"
-        )
-        XCTAssertTrue(store.loadCueTimings(for: id).isEmpty)
-    }
-
-    // exportAttachment -> importAttachment round-trips the audio bytes, SRT text, cues, and
-    // timings into a fresh store rooted at a different directory — simulating restoring on
-    // a clean install. Pins the whole backup contract end-to-end.
+    // exportAttachment -> importAttachment round-trips the audio bytes, SRT text, and cues (with
+    // their inline checkpoints) into a fresh store rooted at a different directory — simulating
+    // restoring on a clean install. Pins the whole backup contract end-to-end.
     func testExportImportRoundTripPreservesAllArtifacts() throws {
         let originID = UUID()
         let audioBytes = Data("fake-mp3-content".utf8)
         let audioURL = testRoot.appendingPathComponent("\(originID.uuidString)-song.mp3")
         try audioBytes.write(to: audioURL)
-        let cues = [SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "hi")]
-        let timings: CueCharTimings = [
-            1: [CueCharTiming(timeMs: 200, charOffsetInCue: 0, charLength: 1)],
+        let cues = [
+            SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "hi", checkpoints: [
+                CueCharTiming(timeMs: 200, charOffsetInCue: 0, charLength: 1),
+            ]),
         ]
         try store.saveCues(cues, attachmentID: originID)
-        try store.saveCueTimings(timings, attachmentID: originID)
         _ = try store.saveSRT(
             "1\n00:00:00,000 --> 00:00:01,000\nhi\n",
             attachmentID: originID,
@@ -230,7 +174,6 @@ final class NotesAudioStoreTests: XCTestCase {
         try restored.importAttachment(backup)
 
         XCTAssertEqual(restored.loadCues(for: backup.attachmentID), cues)
-        XCTAssertEqual(restored.loadCueTimings(for: backup.attachmentID), timings)
         let restoredAudio = try XCTUnwrap(restored.audioURL(for: backup.attachmentID))
         XCTAssertEqual(try Data(contentsOf: restoredAudio), audioBytes)
         XCTAssertEqual(restored.loadSRT(for: backup.attachmentID), "1\n00:00:00,000 --> 00:00:01,000\nhi\n")
@@ -246,17 +189,12 @@ final class NotesAudioStoreTests: XCTestCase {
         let legacyAudio = testRoot.appendingPathComponent("\(id.uuidString).m4a")
         try Data("b".utf8).write(to: legacyAudio)
         try store.saveCues([SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "hi")], attachmentID: id)
-        try store.saveCueTimings(
-            [1: [CueCharTiming(timeMs: 0, charOffsetInCue: 0, charLength: 1)]],
-            attachmentID: id
-        )
         _ = try store.saveSRT("hi", attachmentID: id)
 
         store.deleteAttachment(id)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: modernAudio.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: legacyAudio.path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: store.cueTimingsURL(for: id).path))
         XCTAssertNil(store.audioURL(for: id))
         XCTAssertNil(store.subtitleURL(for: id))
     }

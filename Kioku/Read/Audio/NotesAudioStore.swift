@@ -54,42 +54,6 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         try data.write(to: destination, options: .atomic)
     }
 
-    // Persists the TextGrid-derived per-cue character checkpoints for an attachment.
-    // Absence of the file is the canonical "no karaoke data" signal — readers must treat the
-    // missing file as a normal empty case, not an error. Empty input removes any existing file.
-    func saveCueTimings(_ timings: CueCharTimings, attachmentID: UUID) throws {
-        let destination = cueTimingsURL(for: attachmentID)
-        if timings.isEmpty {
-            try? FileManager.default.removeItem(at: destination)
-            KaraokeDebugLog.log("saveCueTimings: empty → removed file for attachment=\(attachmentID.uuidString.prefix(8))")
-            return
-        }
-        let data = try JSONEncoder().encode(timings)
-        try data.write(to: destination, options: .atomic)
-        let total = timings.values.reduce(0) { $0 + $1.count }
-        KaraokeDebugLog.log("saveCueTimings: wrote \(total) checkpoints across \(timings.count) cues for attachment=\(attachmentID.uuidString.prefix(8))")
-    }
-
-    // Loads checkpoints for an attachment, returning empty on any failure or missing file.
-    func loadCueTimings(for attachmentID: UUID) -> CueCharTimings {
-        let source = cueTimingsURL(for: attachmentID)
-        guard
-            let data = try? Data(contentsOf: source),
-            let timings = try? JSONDecoder().decode(CueCharTimings.self, from: data)
-        else {
-            KaraokeDebugLog.log("loadCueTimings: empty (no file or decode failed) for attachment=\(attachmentID.uuidString.prefix(8))")
-            return [:]
-        }
-        let total = timings.values.reduce(0) { $0 + $1.count }
-        KaraokeDebugLog.log("loadCueTimings: \(total) checkpoints across \(timings.count) cues for attachment=\(attachmentID.uuidString.prefix(8))")
-        return timings
-    }
-
-    // URL where the timings JSON is stored alongside cues for an attachment.
-    func cueTimingsURL(for attachmentID: UUID) -> URL {
-        audioDirectory.appendingPathComponent(attachmentID.uuidString + ".timings.json")
-    }
-
     // Persists the raw SRT response for one attachment so it can be copied or exported later.
     func saveSRT(_ srtText: String, attachmentID: UUID, preferredFilename: String? = nil) throws -> URL {
         if let existingURL = subtitleURL(for: attachmentID) {
@@ -120,7 +84,8 @@ final class NotesAudioStore: NotesAttachmentDeleting {
             .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    // Loads and decodes the subtitle cues for an attachment. Returns empty array on any failure.
+    // Loads and decodes the subtitle cues (with their inline checkpoints) for an attachment.
+    // Returns empty array on any failure.
     func loadCues(for attachmentID: UUID) -> [SubtitleCue] {
         let source = audioDirectory.appendingPathComponent(attachmentID.uuidString + ".cues.json")
         guard
@@ -148,15 +113,15 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         guard let audioURL = audioURL(for: attachmentID) else { return nil }
         guard let audioData = try? Data(contentsOf: audioURL) else { return nil }
         let srtText = loadSRT(for: attachmentID)
+        // Cues carry their checkpoints inline (loadCues migrates any legacy sidecar), so the backup
+        // needs only the cue list — `timings` stays nil and exists solely to decode old backups.
         let cues = loadCues(for: attachmentID)
-        let timings = loadCueTimings(for: attachmentID)
         return AudioAttachmentBackup(
             attachmentID: attachmentID,
             audioFilename: readableFilename(fromStoredURL: audioURL, defaultExtension: audioURL.pathExtension),
             audioData: audioData,
             srtText: srtText,
-            cues: cues.isEmpty ? nil : cues,
-            timings: timings.isEmpty ? nil : timings
+            cues: cues.isEmpty ? nil : cues
         )
     }
 
@@ -187,14 +152,9 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         }
 
         if let cues = backup.cues {
+            // Checkpoints ride inside the cues, so the cue file is the whole story.
             try saveCues(cues, attachmentID: backup.attachmentID)
         }
-
-        // Always invoke saveCueTimings — when the backup carries no timings it removes any
-        // stale .timings.json on disk. Without this, restoring an older backup over an
-        // attachment that has karaoke checkpoints would leave the previous file in place
-        // and loadCueTimings would keep returning the old data.
-        try saveCueTimings(backup.timings ?? [:], attachmentID: backup.attachmentID)
     }
 
     // Loads the saved raw SRT text when present.
@@ -266,7 +226,6 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         try? FileManager.default.removeItem(
             at: audioDirectory.appendingPathComponent(attachmentID.uuidString + ".cues.json")
         )
-        try? FileManager.default.removeItem(at: cueTimingsURL(for: attachmentID))
 
         // Clean up translation cache when the attachment is deleted.
         // Both the legacy index-keyed entry and the current text-keyed entry must go,

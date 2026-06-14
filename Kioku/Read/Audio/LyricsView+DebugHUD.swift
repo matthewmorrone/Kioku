@@ -8,9 +8,10 @@ extension LyricsView {
     // the karaoke pipeline is doing. Kept terse — every field is one short token.
     var karaokeDebugHUDText: String {
         let cueIdx = controller.activeCueIndex ?? -1
-        let lookupKey: Int? = (cueIdx >= 0 && cueIdx < cues.count) ? cues[cueIdx].index : nil
-        let cpCount = lookupKey.flatMap { cueTimings[$0]?.count } ?? 0
-        let totalKeys = cueTimings.count
+        let activeCue: SubtitleCue? = (cueIdx >= 0 && cueIdx < cues.count) ? cues[cueIdx] : nil
+        let lookupKey: Int? = activeCue?.index
+        let cpCount = activeCue?.checkpoints.count ?? 0
+        let totalKeys = cues.filter { $0.checkpoints.isEmpty == false }.count
         let overrideText: String = {
             guard let r = playbackHighlightRangeOverride else { return "nil" }
             return "[\(r.location),\(r.length)]"
