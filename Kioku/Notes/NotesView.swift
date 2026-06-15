@@ -103,19 +103,26 @@ struct NotesView: View {
                     commitRename()
                 }
             }
+            // Drive the dialog from the pending deletion itself (`presenting:`) rather than a bare
+            // isPresented Bool. SwiftUI caches confirmationDialog content across presentations, so a
+            // Bool-driven dialog that reads `pendingDeletion` separately can show/act on a stale note
+            // from a previous invocation — i.e. the confirmation "points at" the wrong note. Binding the
+            // content to the presented value keeps the title, buttons, and delete action in lockstep
+            // with the note actually being deleted.
             .confirmationDialog(
                 deleteDialogTitle,
                 isPresented: deleteDialogPresented,
-                titleVisibility: .visible
-            ) {
-                Button("Delete Note\(pendingNoteCountSuffix)", role: .destructive) {
-                    performDelete()
+                titleVisibility: .visible,
+                presenting: pendingDeletion
+            ) { deletion in
+                Button("Delete Note\(countSuffix(for: deletion))", role: .destructive) {
+                    performDelete(deletion)
                 }
                 Button("Cancel", role: .cancel) {
                     pendingDeletion = nil
                 }
-            } message: {
-                Text(deleteDialogMessage)
+            } message: { deletion in
+                Text(deleteDialogMessage(for: deletion))
             }
             .sheet(isPresented: $isShowingBulkImportSheet) {
                 BulkImportSheet(store: store)
@@ -311,13 +318,13 @@ struct NotesView: View {
     }
 
     // "" for one pending note, "s" for several — pluralizes the dialog copy.
-    private var pendingNoteCountSuffix: String {
-        (pendingDeletion?.noteIDs.count ?? 1) == 1 ? "" : "s"
+    private func countSuffix(for deletion: PendingNoteDeletion) -> String {
+        deletion.noteIDs.count == 1 ? "" : "s"
     }
 
     // Explains that note deletion never removes independent saved vocabulary.
-    private var deleteDialogMessage: String {
-        "This permanently removes the note\(pendingNoteCountSuffix) and its attachments. Saved words are kept."
+    private func deleteDialogMessage(for deletion: PendingNoteDeletion) -> String {
+        "This permanently removes the note\(countSuffix(for: deletion)) and its attachments. Saved words are kept."
     }
 
     // Builds the per-note context menu shown from the notes list.
@@ -394,9 +401,10 @@ struct NotesView: View {
     }
 
     // Deletes the pending notes, detaches saved-word provenance, and clears the active selection.
-    private func performDelete() {
-        guard let pendingDeletion else { return }
-        let noteIDs = pendingDeletion.noteIDs
+    // Takes the deletion the dialog was presenting so we act on exactly that note set, never a value
+    // that may have been replaced between presentation and confirmation.
+    private func performDelete(_ deletion: PendingNoteDeletion) {
+        let noteIDs = deletion.noteIDs
 
         wordsStore.detachNoteReferences(noteIDs: noteIDs)
         store.deleteNotes(ids: noteIDs)
