@@ -34,6 +34,10 @@ struct WordDetailView: View {
     @State private var relatedExpanded: Bool = false
     @State private var presentedKanjiInfo: KanjiInfo? = nil
     @State var wordComponents: [(surface: String, gloss: String?)] = []
+    // Derivation description shown in place of the plain POS line when the saved word is a
+    // recognized derived form (弱さ → "Derived noun — from い-adjective 弱い + nominalizing
+    // suffix さ"). Computed in loadDisplayData; nil for non-derived words. See DerivationAnalyzer.
+    @State var derivationSummary: String? = nil
     @State var kanjiInfos: [KanjiInfo] = []
     @State var relatedEntries: [DictionaryEntry] = []
     @State var loanwordSources: [LoanwordSource] = []
@@ -44,6 +48,20 @@ struct WordDetailView: View {
     // Retained for the lifetime of the view so on-demand word/sentence pronunciation
     // finishes even after the tap handler returns. Reference type → @State keeps it alive.
     @State private var speechSynthesizer = AVSpeechSynthesizer()
+
+    // Live re-point target. Nil until the user taps a homonym definition card to switch which
+    // dictionary entry this card is saved as; once set, it overrides word.canonicalEntryID as the
+    // "active" entry everywhere (highlight, selection, review stats, reordering, persistence). The
+    // view's `word` is a `let`, so this @State is how the switch survives within the open detail view.
+    @State var repointedEntryID: Int64? = nil
+    // The entry this card is currently saved as: the live re-point target if one was chosen this
+    // session, otherwise the entry the view was opened with. Single source of truth for all
+    // "which entry is mine" decisions across the main view and its extension files.
+    var activeEntryID: Int64 { repointedEntryID ?? word.canonicalEntryID }
+    // Set by a homonym re-point tap so the List scrolls the now-saved card into view once the
+    // async reload settles (the card the user tapped may sit far down the list). Cleared after
+    // the scroll fires. See the .onChange(of: allDisplayData.first…) below.
+    @State var scrollTargetEntryID: Int64? = nil
 
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
@@ -128,18 +146,12 @@ struct WordDetailView: View {
     // Whether this entry has a conjugation paradigm to show (verb or i-adjective).
     private var canConjugate: Bool { verbClass != nil || isIAdjective }
 
-    // Static set of known grammaticalized auxiliary verb surfaces — hoisted to avoid allocating on every call.
-    private static let auxiliaryComponents: Set<String> = [
-        "続ける", "始める", "終わる", "出す", "込む", "合う", "切る",
-        "もらう", "あげる", "くれる", "いく", "くる", "おく", "みる",
-        "しまう", "ある", "いる", "させる", "もらえる",
-    ]
-
     // Returns true when a component surface is a grammaticalized auxiliary verb in this compound context.
     // These are ichidan verbs that function as aspect/voice markers when suffixed to a masu-stem.
-    // Checked by exact match against known auxiliary surfaces.
+    // The canonical set lives on DerivationAnalyzer so the component badge and the header
+    // derivation description stay in sync.
     private func isAuxiliaryComponent(_ surface: String) -> Bool {
-        Self.auxiliaryComponents.contains(surface)
+        DerivationAnalyzer.auxiliaryVerbs.contains(surface)
     }
 
     var body: some View {
@@ -189,10 +201,10 @@ struct WordDetailView: View {
                     .offset(x: -34)
                 }
                 .overlay(alignment: .trailing) {
-                    let isSaved = wordsStore.words.contains { $0.canonicalEntryID == word.canonicalEntryID }
+                    let isSaved = wordsStore.words.contains { $0.canonicalEntryID == activeEntryID }
                     Button {
                         wordsStore.toggle(
-                            canonicalEntryID: word.canonicalEntryID,
+                            canonicalEntryID: activeEntryID,
                             storedSurface: word.surface,
                             defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
                         )
@@ -224,7 +236,9 @@ struct WordDetailView: View {
                 // POS summary + "View Conjugations" — a single row beneath the headword.
                 // (Speaker moved up beside the headword itself.)
                 HStack(spacing: 10) {
-                    if let posSummary = entryPOSSummary {
+                    // Derived forms (弱さ, お酒, 食べ始める …) describe their derivation in place
+                    // of the bare POS tag; everything else keeps the plain expanded POS summary.
+                    if let posSummary = derivationSummary ?? entryPOSSummary {
                         Text(posSummary)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -258,6 +272,7 @@ struct WordDetailView: View {
             .padding(.top, 24)
             .padding(.bottom, 16)
 
+            ScrollViewReader { proxy in
             List {
                 // Single Definition section with all matching entries sorted most- to least-common.
                 // Each entry's senses are preceded by an entry label + frequency tier. Non-saved
@@ -265,7 +280,7 @@ struct WordDetailView: View {
                 // — these are kana-natural homonyms whose archive-only kanji forms add noise
                 // without helping the learner. The user's saved entry is always kept so they
                 // can manage selection on it.
-                let savedEntryID = word.canonicalEntryID
+                let savedEntryID = activeEntryID
                 let filteredData = allDisplayData.filter { data in
                     if data.entry.entryId == savedEntryID { return true }
                     let kanjiHopeless = data.entry.hasNoEverydayKanji
@@ -322,7 +337,7 @@ struct WordDetailView: View {
                             ForEach(sortedData, id: \.entry.entryId) { data in
                                 if data.entry.senses.isEmpty == false {
                                     let freqLabel = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel
-                                    let isSavedEntry = data.entry.entryId == word.canonicalEntryID
+                                    let isSavedEntry = data.entry.entryId == activeEntryID
                                     ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
                                         let senseRefs = isSavedEntry
                                             ? senseReferences.filter { $0.senseOrderIndex == idx }
@@ -330,6 +345,7 @@ struct WordDetailView: View {
                                         let senseSentences = data.sentencesBySenseID[sense.senseID] ?? []
                                         senseCard(
                                             sense: sense,
+                                            entryID: data.entry.entryId,
                                             isSavedEntry: isSavedEntry,
                                             freqLabel: freqLabel,
                                             refs: senseRefs,
@@ -337,6 +353,8 @@ struct WordDetailView: View {
                                         )
                                         .listRowSeparator(.hidden)
                                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                        // Scroll anchor so a homonym re-point can bring this card into view.
+                                        .id("def-\(data.entry.entryId)-\(idx)")
                                     }
                                 }
                             }
@@ -526,7 +544,7 @@ struct WordDetailView: View {
 
                 // Review statistics section — always shown; "Not yet reviewed" for words never studied.
                 Section("Review") {
-                    if let stats = reviewStore.stats[word.canonicalEntryID] {
+                    if let stats = reviewStore.stats[activeEntryID] {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Correct")
@@ -580,11 +598,13 @@ struct WordDetailView: View {
 
                 // Source notes (songs) this word was saved from — many-to-many relationship.
                 // Sits ABOVE the personal-note section so membership context comes first.
-                let sourceNotes = word.sourceNoteIDs.compactMap { notesStore.note(withID: $0) }
+                // Read from the live saved word (currentSavedWord) rather than the immutable `word`
+                // so a re-point's carried-over notes/lists are reflected without reopening the view.
+                let sourceNotes = currentSavedWord.sourceNoteIDs.compactMap { notesStore.note(withID: $0) }
                     .sorted { $0.title < $1.title }
                 // Resolve list objects from IDs so the user sees human-readable labels keyed by stable UUID.
                 let memberLists = wordListsStore.lists
-                    .filter { word.wordListIDs.contains($0.id) }
+                    .filter { currentSavedWord.wordListIDs.contains($0.id) }
                     .sorted { $0.name < $1.name }
                 // Only show the "Saved" section when the word actually belongs to a source note
                 // or a list — otherwise the header reads "Saved" over nothing.
@@ -610,7 +630,7 @@ struct WordDetailView: View {
                         .onChange(of: personalNoteText) {
                             let trimmed = personalNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
                             wordsStore.updatePersonalNote(
-                                id: word.canonicalEntryID,
+                                id: activeEntryID,
                                 note: trimmed.isEmpty ? nil : trimmed
                             )
                         }
@@ -636,6 +656,17 @@ struct WordDetailView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            // After a homonym re-point, loadDisplayData reorders the now-saved entry to the front
+            // of allDisplayData. Waiting for that first-entry flip (rather than scrolling on the tap
+            // itself) means the scroll fires once the reload has settled, so it lands on stable rows
+            // instead of fighting the in-flight data swap. Frequency still orders the visible cards,
+            // so this brings the tapped card into view wherever it sits.
+            .onChange(of: allDisplayData.first?.entry.entryId) { _, firstID in
+                guard let target = scrollTargetEntryID, firstID == target else { return }
+                withAnimation { proxy.scrollTo("def-\(target)-0", anchor: .center) }
+                scrollTargetEntryID = nil
+            }
+            }
         }
         .onAppear {
             personalNoteText = word.personalNote ?? ""
@@ -646,7 +677,10 @@ struct WordDetailView: View {
         // Examples/Kanji/…) stays hidden behind the always-on shell. The store becomes non-nil once
         // it finishes loading (ReadResources re-renders the tree), and keying the task on that flip
         // re-runs the load so the content fills in. Mirrors WordsView's `.task(id: dictionaryStore != nil)`.
-        .task(id: dictionaryStore != nil) {
+        // Also keyed on activeEntryID so tapping a homonym definition (which re-points the card to a
+        // different entry) re-runs the load: that re-orders the saved entry to the front and refreshes
+        // its sense references / loanword / conjugation data for the newly-active entry.
+        .task(id: "\(dictionaryStore != nil)|\(activeEntryID)") {
             await loadDisplayData()
         }
     }
