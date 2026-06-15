@@ -49,25 +49,37 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Play pronunciation")
             }
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if let headword {
-                        Text(headword).font(.title3.weight(.semibold))
-                        if let reading, reading != headword {
-                            Text(reading).font(.subheadline).foregroundStyle(.secondary)
+            // Central content is the only open-detail tap target. The leading speaker and
+            // trailing star buttons sit OUTSIDE this region, so tapping either fires just its
+            // own action — the row's simultaneousGesture (below) never covers them. (A row-wide
+            // simultaneous tap would fire alongside the buttons, opening detail on a speaker tap.)
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        if let headword {
+                            Text(headword).font(.title3.weight(.semibold))
+                            if let reading, reading != headword {
+                                Text(reading).font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        } else if let reading {
+                            Text(reading).font(.title3.weight(.semibold))
+                        } else {
+                            // Pending materialization (or dict-drift orphan) — show the surface.
+                            Text(surface).font(.title3.weight(.semibold))
                         }
-                    } else if let reading {
-                        Text(reading).font(.title3.weight(.semibold))
-                    } else {
-                        // Pending materialization (or dict-drift orphan) — show the surface.
-                        Text(surface).font(.title3.weight(.semibold))
+                    }
+                    if let gloss {
+                        Text(gloss).font(.callout).foregroundStyle(.secondary).lineLimit(2)
                     }
                 }
-                if let gloss {
-                    Text(gloss).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    if editMode != .active { onTap() }
+                }
+            )
             if editMode != .active {
                 Button {
                     toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
@@ -83,11 +95,6 @@ extension WordsView {
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                if editMode != .active { onTap() }
-            }
-        )
         .contextMenu {
             wordRowMenu(entryID: entryID, surface: surface, entry: entry, onTap: onTap)
         }
@@ -183,11 +190,20 @@ extension WordsView {
         } else {
             ForEach(visibleWords) { word in
                 let entry = materializedHistory[word.canonicalEntryID]
+                // Show the user's chosen definition(s), not always the entry's first gloss, so a
+                // selection change in WordDetailView is reflected here. Same resolution the
+                // flashcard/multiple-choice paths use; joined for the single-line row preview.
+                let rowGloss: String? = {
+                    guard let joined = entry?
+                        .selectedMeanings(selectedSenseIDs: word.selectedSenseIDs, selectedGlosses: word.selectedGlosses)
+                        .joined(separator: "; "), joined.isEmpty == false else { return nil }
+                    return joined
+                }()
                 wordRow(
                     entryID: word.canonicalEntryID,
                     surface: word.surface,
                     entry: entry,
-                    gloss: entry?.senses.first?.glosses.first,
+                    gloss: rowGloss,
                     onTap: {
                         isSearchFieldFocused = false
                         selectedDetailWord = word

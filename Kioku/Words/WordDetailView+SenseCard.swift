@@ -14,7 +14,7 @@ extension WordDetailView {
             senses.append(senseID)
             glosses.removeAll { $0.senseID == senseID }
         }
-        wordsStore.setSelection(id: word.canonicalEntryID, senseIDs: senses, glosses: glosses)
+        wordsStore.setSelection(id: activeEntryID, senseIDs: senses, glosses: glosses)
     }
 
     // Toggle one gloss. If the parent sense is currently whole-selected, narrow down: clear the
@@ -39,7 +39,21 @@ extension WordDetailView {
                 senses.append(senseID)
             }
         }
-        wordsStore.setSelection(id: word.canonicalEntryID, senseIDs: senses, glosses: glosses)
+        wordsStore.setSelection(id: activeEntryID, senseIDs: senses, glosses: glosses)
+    }
+
+    // Re-points this saved card to a different dictionary entry (a homonym shown for context) and
+    // selects the tapped definition on it. Triggered by tapping a NON-saved entry's sense/gloss.
+    // The shared surface carries over as the stored surface (homonyms spell identically); the old
+    // surface folds into encounteredSurfaces and the prior selection resets (it referenced the old
+    // entry's senses). Updating repointedEntryID flips activeEntryID so the highlight, selection,
+    // review stats, and saved-first ordering all follow within the open view.
+    func switchSavedEntry(to entryID: Int64) {
+        guard entryID != activeEntryID else { return }
+        wordsStore.repoint(fromEntryID: activeEntryID, toEntryID: entryID, lemma: word.surface)
+        repointedEntryID = entryID
+        // Ask the List to scroll this card into view once the reload reorders it to the front.
+        scrollTargetEntryID = entryID
     }
 
     // Renders one sense card: tappable header strip carrying POS / frequency / misc tags above
@@ -47,7 +61,7 @@ extension WordDetailView {
     // that one gloss (with mutual-exclusion handling above). `sentences` are Tatoeba examples
     // routed to this specific sense by SentenceSenseRouter.
     @ViewBuilder
-    func senseCard(sense: DictionaryEntrySense, isSavedEntry: Bool, freqLabel: String?, refs: [SenseReference], sentences: [SentencePair] = []) -> some View {
+    func senseCard(sense: DictionaryEntrySense, entryID: Int64, isSavedEntry: Bool, freqLabel: String?, refs: [SenseReference], sentences: [SentencePair] = []) -> some View {
         let senseSelected = isSavedEntry && currentSelectedSenseIDs.contains(sense.senseID)
         let selectedGlossIndices: Set<Int> = {
             guard isSavedEntry else { return [] }
@@ -57,7 +71,19 @@ extension WordDetailView {
         VStack(alignment: .leading, spacing: 10) {
             senseHeaderStrip(sense: sense, isSavedEntry: isSavedEntry, freqLabel: freqLabel)
                 .contentShape(Rectangle())
-                .onTapGesture { if isSavedEntry { toggleSenseSelection(sense.senseID) } }
+                // .onTapGesture { if isSavedEntry { toggleSenseSelection(sense.senseID) } }
+                .onTapGesture {
+                    if isSavedEntry {
+                        // Already the saved entry → toggle the whole sense (existing behavior).
+                        toggleSenseSelection(sense.senseID)
+                    } else {
+                        // Homonym entry → re-point this card to it (switch which homonym is saved),
+                        // then select the tapped sense. Written explicitly (not via toggleSenseSelection)
+                        // so it doesn't depend on the @State activeEntryID flip being visible same-tick.
+                        switchSavedEntry(to: entryID)
+                        wordsStore.setSelection(id: entryID, senseIDs: [sense.senseID], glosses: [])
+                    }
+                }
 
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(sense.glosses.enumerated()), id: \.offset) { gIdx, gloss in
@@ -79,9 +105,21 @@ extension WordDetailView {
                                 )
                         )
                         .contentShape(Rectangle())
+                        // .onTapGesture { if isSavedEntry { toggleGlossSelection(...) } }
                         .onTapGesture {
                             if isSavedEntry {
+                                // Already the saved entry → toggle this gloss (existing behavior).
                                 toggleGlossSelection(senseID: sense.senseID, glossIndex: gIdx, totalGlossesInSense: sense.glosses.count)
+                            } else {
+                                // Homonym entry → re-point this card to it, then pin the tapped gloss on
+                                // the newly-saved entry. A single-gloss sense promotes to a whole-sense
+                                // selection, mirroring toggleGlossSelection's promote rule.
+                                switchSavedEntry(to: entryID)
+                                if sense.glosses.count == 1 {
+                                    wordsStore.setSelection(id: entryID, senseIDs: [sense.senseID], glosses: [])
+                                } else {
+                                    wordsStore.setSelection(id: entryID, senseIDs: [], glosses: [GlossRef(senseID: sense.senseID, glossIndex: gIdx)])
+                                }
                             }
                         }
                 }

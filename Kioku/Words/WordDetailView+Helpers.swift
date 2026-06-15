@@ -9,7 +9,7 @@ extension WordDetailView {
     // Falls back to the SavedWord the view was opened with for the brief window before the store
     // publish reaches @EnvironmentObject.
     var currentSavedWord: SavedWord {
-        wordsStore.words.first { $0.canonicalEntryID == word.canonicalEntryID } ?? word
+        wordsStore.words.first { $0.canonicalEntryID == activeEntryID } ?? word
     }
     var currentSelectedSenseIDs: [Int64] { currentSavedWord.selectedSenseIDs }
     var currentSelectedGlosses: [GlossRef] { currentSavedWord.selectedGlosses }
@@ -31,7 +31,7 @@ extension WordDetailView {
     func loadDisplayData() async {
         guard let dictionaryStore else { return }
         let surface = word.surface
-        let savedEntryID = word.canonicalEntryID
+        let savedEntryID = activeEntryID
 
         let results = await Task { @MainActor in
             // Look up all entries matching the surface in both kanji and kana columns. The
@@ -66,9 +66,34 @@ extension WordDetailView {
         guard results.isEmpty == false else { return }
         let store = dictionaryStore
 
+        // Analyze the dictionary base form, not the (possibly inflected) saved surface, so the
+        // derivation rules match conjugated saves too (生まれた → 生まれる, 生きてゆいた → 生きてゆく).
+        // Use the saved surface when it is itself a base form; otherwise fall back to the entry's
+        // primary kanji/kana headword.
+        let analysisForm: String = {
+            guard let entry = results.first?.entry else { return surface }
+            let forms = entry.kanjiForms.map(\.text) + entry.kanaForms.map(\.text)
+            if forms.contains(surface) { return surface }
+            return entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? surface
+        }()
+
         // Fetch components and sublattice paths via segmenter when available.
         if let segmenter {
             let result = segmenter.longestMatchResult(for: surface)
+            // Per-position lemmas of the chosen path, reused for compound-verb derivation detection.
+            let componentLemmas = result.selectedEdges.map { $0.lemma.isEmpty ? $0.surface : $0.lemma }
+
+            // Derivation description for the header — names the base word + affix for derived
+            // forms (弱さ, お酒, 生まれる, 生きてゆく). The resolver hands the analyzer the JMdict POS
+            // tags of any candidate lemma so it can confirm and label the base. nil → plain POS line.
+            let derivation = await Task { @MainActor in
+                DerivationAnalyzer.analyze(surface: analysisForm, components: componentLemmas, baseResolver: { lemma in
+                    let entries = (try? store.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
+                    return entries.flatMap { $0.senses.compactMap(\.pos) }
+                        .flatMap { $0.components(separatedBy: ",") }
+                })
+            }.value
+            derivationSummary = derivation?.summary
 
             // Compound word breakdown uses the selected (best) path. Each component looks up
             // by the segmenter-resolved lemma when one is available — `edge.surface` alone
@@ -108,7 +133,7 @@ extension WordDetailView {
         // by frequency. Approximates the reference's kanji-family "Related Words" list.
         // Excludes the saved entry and any entry whose kanji form is exactly the saved surface.
         if let primaryKanji = uniqueKanji.first {
-            let savedID = word.canonicalEntryID
+            let savedID = activeEntryID
             let savedSurface = word.surface
             let related = await Task { @MainActor in
                 (try? store.searchEntriesContainingKanji(literal: primaryKanji, limit: 40)) ?? []
@@ -122,7 +147,7 @@ extension WordDetailView {
         }
 
         // Fetch cross-references, antonyms, and loanword origins for the saved entry.
-        let savedID = word.canonicalEntryID
+        let savedID = activeEntryID
         let sources = await Task { @MainActor in
             (try? store.fetchLoanwordSources(entryID: savedID)) ?? []
         }.value
