@@ -6,11 +6,17 @@ import UIKit
 // @State wrapper (which would be illegal during a view update). `signature` is the hash of the
 // glow's inputs at the time `locations` was computed; `lemmaBySurface` memoizes per-segment lemma
 // resolution for one text (keyed by `lemmaTextKey`).
+//
+// `lemmaBySurface` stores only SUCCESSFUL (non-nil) resolutions. Caching a nil here was a bug: the
+// first glow pass can run before the segmenter's deinflection resources are loaded, so a conjugated
+// surface (消えて) resolves to nil; with the cache keyed by the unchanging note text, that nil stuck
+// for the session and the form never bridged to its saved lemma (消える) — base forms glowed,
+// conjugations never did. Not caching misses means each recompute retries until resources are ready.
 final class FavoritedGlowMemo {
     var signature: Int?
     var locations: Set<Int> = []
     var lemmaTextKey: Int = 0
-    var lemmaBySurface: [String: String?] = [:]
+    var lemmaBySurface: [String: String] = [:]
 }
 
 // Reference-type mirror of the CoreText read view's live scroll offset. The CT renderer reports
@@ -111,7 +117,9 @@ extension ReadView {
         let resolver: (String) -> String? = { [segmenter, favoritedGlowMemo] surface in
             if let cached = favoritedGlowMemo.lemmaBySurface[surface] { return cached }
             let value = segmenter.preferredLemma(for: surface)
-            favoritedGlowMemo.lemmaBySurface[surface] = value
+            // Cache only successful resolutions — a nil here usually means resources weren't ready
+            // yet, and caching it would freeze a conjugated surface as "no lemma" for the session.
+            if let value { favoritedGlowMemo.lemmaBySurface[surface] = value }
             return value
         }
 
