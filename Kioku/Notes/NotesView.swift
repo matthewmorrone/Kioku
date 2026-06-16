@@ -63,6 +63,25 @@ struct NotesView: View {
                     .contextMenu {
                         noteContextMenu(for: note)
                     }
+                    // Own the single-note delete confirmation on the row itself so the popover anchors
+                    // to the note being deleted. A single List-level dialog shared across every row took
+                    // a stale source frame — the arrow pointed at a previously-interacted row while the
+                    // text named the correct note. Per-row ownership makes the anchor unambiguous.
+                    .confirmationDialog(
+                        deleteDialogTitle,
+                        isPresented: singleDeletePresented(for: note.id),
+                        titleVisibility: .visible,
+                        presenting: pendingDeletion
+                    ) { deletion in
+                        Button("Delete Note", role: .destructive) {
+                            performDelete(deletion)
+                        }
+                        Button("Cancel", role: .cancel) {
+                            pendingDeletion = nil
+                        }
+                    } message: { deletion in
+                        Text(deleteDialogMessage(for: deletion))
+                    }
                     .onTapGesture {
                         if editMode == .active {
                             if selectedNoteIDs.contains(note.id) {
@@ -103,15 +122,15 @@ struct NotesView: View {
                     commitRename()
                 }
             }
-            // Drive the dialog from the pending deletion itself (`presenting:`) rather than a bare
-            // isPresented Bool. SwiftUI caches confirmationDialog content across presentations, so a
-            // Bool-driven dialog that reads `pendingDeletion` separately can show/act on a stale note
-            // from a previous invocation — i.e. the confirmation "points at" the wrong note. Binding the
-            // content to the presented value keeps the title, buttons, and delete action in lockstep
-            // with the note actually being deleted.
+            // Bulk delete (multi-select) is raised from the toolbar trash button, so anchor its
+            // confirmation at the List/toolbar level — that is the frame it actually originates from.
+            // Single-note deletes use a per-row dialog (attached inside the ForEach) so their popover
+            // anchors to the specific note instead of a stale shared source frame. `presenting:` keeps
+            // the title, buttons, and action bound to the pending deletion so the content can't go
+            // stale either.
             .confirmationDialog(
                 deleteDialogTitle,
-                isPresented: deleteDialogPresented,
+                isPresented: bulkDeletePresented,
                 titleVisibility: .visible,
                 presenting: pendingDeletion
             ) { deletion in
@@ -298,10 +317,25 @@ struct NotesView: View {
         let title: String?
     }
 
-    // Binds delete-dialog presentation directly to the pending deletion.
-    private var deleteDialogPresented: Binding<Bool> {
+    // Presents the single-note delete confirmation on the row it belongs to, so the popover anchors
+    // to that note. True only when the pending deletion targets exactly this one note — guaranteeing
+    // at most one row's dialog is ever active.
+    private func singleDeletePresented(for id: UUID) -> Binding<Bool> {
         Binding(
-            get: { pendingDeletion != nil },
+            get: { pendingDeletion?.noteIDs == Set([id]) },
+            set: { isPresented in
+                if isPresented == false {
+                    pendingDeletion = nil
+                }
+            }
+        )
+    }
+
+    // Presents the multi-note (bulk) delete confirmation at the List/toolbar level, where the trash
+    // button that raises it lives.
+    private var bulkDeletePresented: Binding<Bool> {
+        Binding(
+            get: { (pendingDeletion?.noteIDs.count ?? 0) > 1 },
             set: { isPresented in
                 if isPresented == false {
                     pendingDeletion = nil
