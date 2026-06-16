@@ -1,5 +1,5 @@
 {
-  "originHash" : "505828d28be85dddaf8f674b9fd49d286da441dcbc90d345eb79e303c8cc629b",
+  "originHash" : "e0d3bf0b6c89a33846401747dbdfe702b594b65f59f8bf6957e2fec4482ba4fb",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -44,15 +44,6 @@
       "state" : {
         "revision" : "716c54294152c6d3301a6239a1d74db57cbcd6dc",
         "version" : "2.6.0"
-      }
-    },
-    {
-      "identity" : "mecab",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/matthewmorrone/mecab.git",
-      "state" : {
-        "branch" : "master",
-        "revision" : "ca8b10d0f9859a1ee8064d71f75ffe8094c1b3e4"
       }
     },
     {
