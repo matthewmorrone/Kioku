@@ -73,9 +73,16 @@ extension ReadView {
         }
     }
 
-    // Runs built-in Apple speech recognition for one imported audio file and creates a new note with transcript and karaoke timing data.
+    // Runs the selected transcription engine for one imported audio file and creates a new note with transcript and karaoke timing data.
     func transcribeAudioFile(at sourceURL: URL) async {
         guard isPerformingAudioTranscription == false else {
+            return
+        }
+
+        // Route to the on-device Whisper engine when selected; otherwise fall through
+        // to the built-in Apple Speech path below. Forced alignment is unaffected.
+        if TranscriptionEngine.current == .whisper {
+            await transcribeAudioFileWithWhisper(at: sourceURL)
             return
         }
 

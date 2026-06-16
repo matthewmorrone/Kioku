@@ -12,6 +12,9 @@
 import Foundation
 import OSLog
 import SwiftWhisperAlign
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // Subsystem-tagged so Console.app filtering ("subsystem:matthewmorrone.Kioku
 // category:OnDeviceAlign") shows only alignment pipeline output.
@@ -203,11 +206,33 @@ enum OnDeviceLyricAligner {
             )
         }
 
-        logger.info("force-aligning \(lines.count) line(s) using \(modelURL.lastPathComponent)")
+        logger.info("force-aligning \(lines.count) line(s) via CTC")
 
-        let aligner = ForcedAligner(modelURL: modelURL)
         let input = AlignmentInput(audioURL: audioURL, lines: lines)
-        let srt = try await aligner.alignToSRT(
+
+        // Hold a background-task assertion across the CTC pass. If the app is
+        // backgrounded mid-alignment (screen lock / app switch), iOS otherwise
+        // SIGKILLs it (RUNNINGBOARD 0xDEAD10CC) for holding a resource lock while
+        // suspending. This buys the seconds the on-device compute needs.
+        #if canImport(UIKit)
+        let bgTask = await beginAlignmentActivity()
+        defer { Task { @MainActor in endAlignmentActivity(bgTask) } }
+        #endif
+
+        // DTW (Whisper cross-attention) collapsed on full songs (~101s median error
+        // vs the stable-ts oracle, 0% within ±500ms). Replaced by the CTC forced
+        // aligner (soniqo Qwen3ForcedAligner): ~3.9s median on the vocal stem, 26×
+        // better. `modelURL` is now unused (CTC downloads its own model via
+        // fromPretrained); kept in the signature for call-site stability. To revert,
+        // uncomment the ForcedAligner block below and comment out the CTC call.
+        // let aligner = ForcedAligner(modelURL: modelURL)
+        // let srt = try await aligner.alignToSRT(
+        //     input: input,
+        //     cancellationCheck: cancellationCheck,
+        //     onProgress: onProgress,
+        //     onSegment: onSegment
+        // )
+        let srt = try await CTCForcedAligner().alignToSRT(
             input: input,
             cancellationCheck: cancellationCheck,
             onProgress: onProgress,
@@ -217,6 +242,21 @@ enum OnDeviceLyricAligner {
         logger.info("alignment complete")
         return srt
     }
+
+    #if canImport(UIKit)
+    // Requests background execution time so a backgrounded alignment isn't suspended
+    // (and SIGKILLed) mid-run. Returns .invalid if unavailable.
+    @MainActor
+    private static func beginAlignmentActivity() -> UIBackgroundTaskIdentifier {
+        UIApplication.shared.beginBackgroundTask(withName: "kioku.lyric-alignment")
+    }
+
+    // Ends the background-task assertion. Safe no-op for .invalid.
+    @MainActor
+    private static func endAlignmentActivity(_ id: UIBackgroundTaskIdentifier) {
+        if id != .invalid { UIApplication.shared.endBackgroundTask(id) }
+    }
+    #endif
 
     // Re-aligns a SINGLE lyric line against a bounded window of the audio, returning the
     // line-level timing plus per-token checkpoints. Backs the lyric view's in-place "fix

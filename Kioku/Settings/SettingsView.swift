@@ -52,6 +52,8 @@ struct SettingsView: View {
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
 
+    @AppStorage(TranscriptionEngine.storageKey) private var transcriptionEngine: String = TranscriptionEngine.appleSpeech.rawValue
+
     @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
     @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
@@ -283,6 +285,23 @@ struct SettingsView: View {
                     Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
                 } header: {
                     Text("Clipboard")
+                }
+
+                // MARK: Transcription — engine for importing audio → note.
+                Section {
+                    Picker("Engine", selection: $transcriptionEngine) {
+                        ForEach(TranscriptionEngine.allCases, id: \.rawValue) { engine in
+                            Text(engine.displayName).tag(engine.rawValue)
+                        }
+                    }
+                } header: {
+                    Text("Transcription")
+                } footer: {
+                    if transcriptionEngine == TranscriptionEngine.whisper.rawValue {
+                        Text("On-device Whisper (Small) downloads ~466 MB on first use and is slower than Apple Speech, but holds up better on noisy or sung audio. Forced alignment is unaffected and stays on the Base model.")
+                    } else {
+                        Text("Apple Speech is fast and near real-time, and strong on clean spoken Japanese.")
+                    }
                 }
 
                 // MARK: Segmentation — engine, then the two tuning chip-editors.
