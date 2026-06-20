@@ -20,11 +20,14 @@ nonisolated enum KanaData {
     // and 生 rendered with NO furigana. Canonicalizing both sides to いく restores the match (the
     // okurigana crop then leaves い over 生). The two-kana key means a stray ゆ alone never matches
     // い — only the 行く-family ゆく/いく alternation does. Applied to both operands, so it is
-    // symmetric (surface ゆく ↔ reading いく and vice versa).
+    // symmetric (surface ゆく ↔ reading いく and vice versa). The katakana ユク→イク form is carried
+    // for parity with the voicing pairs above (which all list both scripts); it only matters for
+    // the rare kanji-plus-katakana-okurigana surface, but costs nothing and keeps the table
+    // script-symmetric.
     static let alignmentNormalizations: [String: String] = [
         "づ": "ず", "ぢ": "じ", "ゔ": "ぶ",
         "ヅ": "ズ", "ヂ": "ジ", "ヴ": "ブ",
-        "ゆく": "いく"
+        "ゆく": "いく", "ユク": "イク"
     ]
 
     // Unvoiced→voiced kana pairs used to expand voiced iteration marks (ゞ ヾ).
