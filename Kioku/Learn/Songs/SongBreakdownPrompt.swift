@@ -72,4 +72,16 @@ enum SongBreakdownPrompt {
         }
         return template + "\n\n" + lyrics
     }
+
+    // The static instruction portion of the template — everything up to and including the
+    // "## Lyrics" header, with the per-song lyrics marker stripped. Used as a cacheable system
+    // prompt for the Claude path so the large static instructions bill at ~0.1x on repeat calls;
+    // the lyrics travel separately in the user turn. The OpenAI path keeps using the combined
+    // `instantiated(withLyrics:)` form unchanged.
+    static func staticInstructions() -> String {
+        if let range = template.range(of: lyricsMarker) {
+            return String(template[..<range.lowerBound])
+        }
+        return template
+    }
 }
