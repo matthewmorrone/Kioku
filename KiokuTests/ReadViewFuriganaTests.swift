@@ -42,6 +42,27 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertEqual(readView.firstKanjiRunReading(in: "近づく", using: "ちかづく"), "ちか")
     }
 
+    // Regression: the 行く-family ゆく/いく spelling variant. Surfaces use 〜ゆく (生きてゆく) while
+    // the stored reading uses 〜いく (いきていく); the okurigana suffix きてゆく must phonetically
+    // match the reading tail きていく so the kanji-run reading is accepted and 生 keeps its い ruby.
+    // Before the ゆく↔いく alignment normalization the suffix mismatched and 生 rendered bare.
+    func testFirstKanjiRunReadingAcceptsYukuIkuOkuriganaVariant() throws {
+        let readView = try makeReadView()
+
+        XCTAssertEqual(readView.firstKanjiRunReading(in: "生きてゆく", using: "いきていく"), "い")
+        XCTAssertEqual(readView.firstKanjiRunReading(in: "生きていく", using: "いきていく"), "い")
+        // The standalone verb spelled with ゆく against an いく reading and vice-versa.
+        XCTAssertEqual(readView.firstKanjiRunReading(in: "行く", using: "いく"), "い")
+    }
+
+    // Guard: the ゆく↔いく equivalence must not erode the 私たち rejection — わたくし still has no
+    // たち okurigana to match, so it must stay unattached regardless of the new normalization.
+    func testYukuIkuNormalizationDoesNotWeakenUnrelatedOkuriganaRejection() throws {
+        let readView = try makeReadView()
+
+        XCTAssertNil(readView.firstKanjiRunReading(in: "私たち", using: "わたくし"))
+    }
+
     // Verifies mixed kanji+kana segments only annotate the kanji run with its local reading, not the full lemma reading.
     func testBuildFuriganaBySegmentLocationKeepsLocalReadingForNearCompound() throws {
         let readView = try makeReadView()
@@ -156,6 +177,36 @@ final class ReadViewFuriganaTests: XCTestCase {
         XCTAssertEqual(furigana.lengthByLocation[0], 1)
         XCTAssertEqual(furigana.furiganaByLocation[2], "から")
         XCTAssertEqual(furigana.lengthByLocation[2], 1)
+    }
+
+    // Regression (second screenshot, pendulum): 振り子 carries two same-rank readings — しんし (the
+    // 振子 reading) and ふりこ. しんし has no okurigana り to project across the 振 / り / 子 runs, so
+    // blindly taking the leading reading leaves 振 with no furigana at all. The resolver must skip
+    // the non-projecting candidate and pick ふりこ, which splits cleanly to ふ over 振 and こ over 子.
+    func testBuildFuriganaBySegmentLocationPicksProjectingReadingForFuriko() throws {
+        let readView = try makeReadView()
+        let sourceText = "振り子"
+        let edge = LatticeEdge(
+            start: sourceText.startIndex,
+            end: sourceText.endIndex,
+            surface: sourceText
+        )
+
+        let surfaceReadingData = makeSurfaceReadingData([
+            "振り子": ["しんし", "ふりこ"]
+        ])
+        let furigana = readView.buildFuriganaBySegmentLocation(
+            for: sourceText,
+            edges: [edge],
+            surfaceReadingData: surfaceReadingData
+        )
+
+        // 振 at UTF-16 location 0, 子 at location 2 (り is one unit between them).
+        XCTAssertEqual(furigana.furiganaByLocation[0], "ふ")
+        XCTAssertEqual(furigana.lengthByLocation[0], 1)
+        XCTAssertEqual(furigana.furiganaByLocation[2], "こ")
+        XCTAssertEqual(furigana.lengthByLocation[2], 1)
+        XCTAssertNil(furigana.furiganaByLocation[1], "no ruby should attach to the kana り")
     }
 
     // Regression: 眩しげ (the appearance "-げ" form of 眩しい) doesn't deinflect to its base
