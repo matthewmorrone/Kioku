@@ -7,23 +7,34 @@ import SwiftUI
 extension WordsView {
     // MARK: - Helpers
 
-    // True when any filter is active across notes or lists.
+    // True when any filter is active across notes, lists, or stat scope.
     var isFilterActive: Bool {
-        !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty
+        !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty || statScope != .none
     }
 
-    // Returns saved words filtered by active note/list selection and sorted by the current saved sort order.
+    // Returns saved words filtered by active note/list/stat selection and sorted by the current saved sort order.
     var visibleWords: [SavedWord] {
-        let filtered: [SavedWord]
-        if isFilterActive {
-            filtered = wordsStore.words.filter { word in
+        var filtered = wordsStore.words
+
+        if !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty {
+            filtered = filtered.filter { word in
                 let matchesNote = activeFilterNoteIDs.isEmpty || activeFilterNoteIDs.contains { word.sourceNoteIDs.contains($0) }
                 let matchesList = activeFilterListIDs.isEmpty || activeFilterListIDs.contains { word.wordListIDs.contains($0) }
                 return matchesNote && matchesList
             }
-        } else {
-            filtered = wordsStore.words
         }
+
+        switch statScope {
+        case .none:
+            break
+        case .markedWrong:
+            filtered = filtered.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
+        case .dueForReview:
+            filtered = filtered.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
+        case .neverReviewed:
+            filtered = filtered.filter { reviewStore.stats[$0.canonicalEntryID] == nil }
+        }
+
         return sorted(filtered, by: savedSort)
     }
 
@@ -75,6 +86,29 @@ extension WordsView {
         case .oldestFirst: return words.sorted { $0.savedAt < $1.savedAt }
         case .aToZ:        return words.sorted { $0.surface < $1.surface }
         case .zToA:        return words.sorted { $0.surface > $1.surface }
+        case .mostWrong:
+            return words.sorted {
+                (reviewStore.stats[$0.canonicalEntryID]?.again ?? 0) >
+                (reviewStore.stats[$1.canonicalEntryID]?.again ?? 0)
+            }
+        case .worstAccuracy:
+            // Words with reviews sort by accuracy ascending (worst first).
+            // Unreviewed words (nil accuracy) go at the end.
+            return words.sorted { lhs, rhs in
+                let la = reviewStore.stats[lhs.canonicalEntryID]?.accuracy
+                let ra = reviewStore.stats[rhs.canonicalEntryID]?.accuracy
+                switch (la, ra) {
+                case (nil, nil): return lhs.surface < rhs.surface
+                case (nil, _):   return false
+                case (_, nil):   return true
+                case let (l?, r?): return l < r
+                }
+            }
+        case .mostReviewed:
+            return words.sorted {
+                (reviewStore.stats[$0.canonicalEntryID]?.total ?? 0) >
+                (reviewStore.stats[$1.canonicalEntryID]?.total ?? 0)
+            }
         }
     }
 
