@@ -10,6 +10,9 @@ enum WordsSortOrder: String, CaseIterable, Identifiable {
     case oldestFirst
     case aToZ
     case zToA
+    case mostWrong
+    case worstAccuracy
+    case mostReviewed
 
     var id: String { rawValue }
 
@@ -19,8 +22,19 @@ enum WordsSortOrder: String, CaseIterable, Identifiable {
         case .oldestFirst: "Oldest First"
         case .aToZ: "A to Z"
         case .zToA: "Z to A"
+        case .mostWrong: "Most Wrong"
+        case .worstAccuracy: "Worst Accuracy"
+        case .mostReviewed: "Most Reviewed"
         }
     }
+}
+
+// Stat-based scope applied on top of the note/list filter in the saved-words view.
+enum WordsStatScope: String {
+    case none
+    case markedWrong
+    case dueForReview
+    case neverReviewed
 }
 
 // Cross-tab routing for the Words screen.
@@ -44,6 +58,7 @@ struct WordsView: View {
     @EnvironmentObject var wordListsStore: WordListsStore
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
+    @EnvironmentObject var reviewStore: ReviewStore
 
     @State var selectedDetailWord: SavedWord?
     // Reading that was active in the lookup sheet when this word detail was opened, if available.
@@ -51,6 +66,7 @@ struct WordsView: View {
     @State var selectedDetailSublatticePaths: [[String]] = []
     @State var activeFilterNoteIDs: Set<UUID> = []
     @State var activeFilterListIDs: Set<UUID> = []
+    @State var statScope: WordsStatScope = .none
     @State var isFilterSheetPresented = false
     // Drives the "Choose Lemma…" disambiguation sheet for saved-word and history rows.
     @State var lemmaPickerContext: WordsLemmaPickerContext?
@@ -286,6 +302,7 @@ struct WordsView: View {
                 WordsFilterView(
                     activeFilterNoteIDs: $activeFilterNoteIDs,
                     activeFilterListIDs: $activeFilterListIDs,
+                    statScope: $statScope,
                     showSavedWords: Binding(
                         get: { activeTab == .saved },
                         set: { activeTab = $0 ? .saved : .history }
@@ -310,6 +327,7 @@ struct WordsView: View {
                 .environmentObject(wordListsStore)
                 .environmentObject(wordsStore)
                 .environmentObject(notesStore)
+                .environmentObject(reviewStore)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
