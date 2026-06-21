@@ -10,9 +10,11 @@ struct WordsFilterView: View {
     @EnvironmentObject private var wordListsStore: WordListsStore
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
+    @EnvironmentObject private var reviewStore: ReviewStore
 
     @Binding var activeFilterNoteIDs: Set<UUID>
     @Binding var activeFilterListIDs: Set<UUID>
+    @Binding var statScope: WordsStatScope
     // True when the screen shows the saved/favorites list rather than the lookup history.
     // History is the showSavedWords == false default.
     @Binding var showSavedWords: Bool
@@ -74,12 +76,27 @@ struct WordsFilterView: View {
 
     // MARK: - Dropdown content
 
-    // The items inside the "Show" dropdown: Favorites first, then notes, then list submenus,
-    // then "New List…" last. Active scope carries a checkmark; tapping it again clears to History.
+    // The items inside the "Show" dropdown: Favorites first, then stat scopes, then notes,
+    // then list submenus, then "New List…" last. Active scope carries a checkmark; tapping it again clears to History.
     @ViewBuilder
     private var scopeMenuContent: some View {
         Button { tapFavorites() } label: {
             Label("Favorites", systemImage: isFavoritesScope ? "checkmark" : "star.fill")
+        }
+
+        Button { tapStatScope(.markedWrong) } label: {
+            let active = statScope == .markedWrong
+            Label(markedWrongLabel, systemImage: active ? "checkmark" : "xmark.circle")
+        }
+
+        Button { tapStatScope(.dueForReview) } label: {
+            let active = statScope == .dueForReview
+            Label(dueForReviewLabel, systemImage: active ? "checkmark" : "clock")
+        }
+
+        Button { tapStatScope(.neverReviewed) } label: {
+            let active = statScope == .neverReviewed
+            Label(neverReviewedLabel, systemImage: active ? "checkmark" : "circle.dashed")
         }
 
         Button { tapRecentSearches() } label: {
@@ -130,9 +147,9 @@ struct WordsFilterView: View {
 
     // MARK: - Current scope
 
-    // Favorites is active when showing saved words with no note/list narrowing.
+    // Favorites is active when showing saved words with no note/list/stat narrowing.
     private var isFavoritesScope: Bool {
-        showSavedWords && activeFilterNoteIDs.isEmpty && activeFilterListIDs.isEmpty
+        showSavedWords && activeFilterNoteIDs.isEmpty && activeFilterListIDs.isEmpty && statScope == .none
     }
 
     // Label shown on the collapsed dropdown — the one thing currently displayed.
@@ -147,7 +164,28 @@ struct WordsFilterView: View {
            let list = wordListsStore.lists.first(where: { $0.id == listID }) {
             return list.name
         }
-        return "Favorites"
+        switch statScope {
+        case .markedWrong:   return "Marked Wrong"
+        case .dueForReview:  return "Due for Review"
+        case .neverReviewed: return "Never Reviewed"
+        case .none:          return "Favorites"
+        }
+    }
+
+    // Badge labels showing counts for each stat scope option.
+    private var markedWrongLabel: String {
+        let count = wordsStore.words.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }.count
+        return count > 0 ? "Marked Wrong (\(count))" : "Marked Wrong"
+    }
+
+    private var dueForReviewLabel: String {
+        let count = wordsStore.words.filter { reviewStore.isDue(id: $0.canonicalEntryID) }.count
+        return "Due for Review (\(count))"
+    }
+
+    private var neverReviewedLabel: String {
+        let count = wordsStore.words.filter { reviewStore.stats[$0.canonicalEntryID] == nil }.count
+        return count > 0 ? "Never Reviewed (\(count))" : "Never Reviewed"
     }
 
     // MARK: - Scope selection (single-value; tapping the active scope returns to History)
@@ -155,6 +193,11 @@ struct WordsFilterView: View {
     // Toggles Favorites; when already active, falls back to the History default.
     private func tapFavorites() {
         if isFavoritesScope { selectHistory() } else { selectFavorites() }
+    }
+
+    // Toggles a stat scope; re-tapping the active one returns to History.
+    private func tapStatScope(_ scope: WordsStatScope) {
+        if statScope == scope { selectHistory() } else { selectStatScope(scope) }
     }
 
     // Toggles a note filter; re-tapping the active note returns to History.
@@ -176,14 +219,25 @@ struct WordsFilterView: View {
     private func selectHistory() {
         activeFilterNoteIDs = []
         activeFilterListIDs = []
+        statScope = .none
         showSavedWords = false
         showRecentSearches = false
     }
 
-    // Shows all favorites with no note/list narrowing.
+    // Shows all favorites with no note/list/stat narrowing.
     private func selectFavorites() {
         activeFilterNoteIDs = []
         activeFilterListIDs = []
+        statScope = .none
+        showSavedWords = true
+        showRecentSearches = false
+    }
+
+    // Filters the saved view to a stat-based scope.
+    private func selectStatScope(_ scope: WordsStatScope) {
+        activeFilterNoteIDs = []
+        activeFilterListIDs = []
+        statScope = scope
         showSavedWords = true
         showRecentSearches = false
     }
@@ -192,6 +246,7 @@ struct WordsFilterView: View {
     private func selectNote(_ noteID: UUID) {
         activeFilterNoteIDs = [noteID]
         activeFilterListIDs = []
+        statScope = .none
         showSavedWords = true
         showRecentSearches = false
     }
@@ -200,6 +255,7 @@ struct WordsFilterView: View {
     private func selectList(_ listID: UUID) {
         activeFilterListIDs = [listID]
         activeFilterNoteIDs = []
+        statScope = .none
         showSavedWords = true
         showRecentSearches = false
     }
@@ -208,6 +264,7 @@ struct WordsFilterView: View {
     private func selectRecentSearches() {
         activeFilterNoteIDs = []
         activeFilterListIDs = []
+        statScope = .none
         showSavedWords = false
         showRecentSearches = true
     }
