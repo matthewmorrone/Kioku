@@ -202,6 +202,44 @@ nonisolated struct FuriganaResolver {
         return readings.first(where: { ScriptClassifier.isPureKatakana($0) == false }) ?? readings.first
     }
 
+    // All candidate readings for a surface, ordered the way `readingForSegment` prefers them:
+    // non-katakana (hiragana) readings first in rank order, then any pure-katakana readings as a
+    // last resort. `candidateReadingsForSegment(...).first` therefore equals `readingForSegment`,
+    // so single-reading surfaces behave identically — the extra entries only matter when the
+    // top-ranked reading fails to align with the surface (homographs like 振り子 → しんし/ふりこ,
+    // where the leading reading しんし has no okurigana り to project across 振 / り / 子).
+    static func candidateReadingsForSegment(
+        _ segmentSurface: String,
+        surfaceReadingData: SurfaceReadingDataMap
+    ) -> [String] {
+        guard let readings = surfaceReadingData[segmentSurface]?.readings,
+              readings.isEmpty == false else {
+            return []
+        }
+        let nonKatakana = readings.filter { ScriptClassifier.isPureKatakana($0) == false }
+        let katakana = readings.filter { ScriptClassifier.isPureKatakana($0) }
+        return nonKatakana + katakana
+    }
+
+    // Picks the highest-priority candidate reading that cleanly projects onto every kanji run of
+    // `surface` (its okurigana separators must appear in the reading, in order). Returns the
+    // per-run readings, or nil when no candidate aligns. This is what lets 振り子 resolve to ふりこ
+    // (projects: ふ / こ) instead of the leading しんし (no り → projection fails → 振 left bare).
+    static func projectedRunReadings(
+        surface: String,
+        runs: [(start: Int, end: Int)],
+        surfaceReadingData: SurfaceReadingDataMap
+    ) -> [String]? {
+        for reading in candidateReadingsForSegment(surface, surfaceReadingData: surfaceReadingData) {
+            if let projected = FuriganaAttributedString.projectRunReadings(
+                surface: surface, reading: reading, runs: runs
+            ), projected.count == runs.count {
+                return projected
+            }
+        }
+        return nil
+    }
+
     // Produces kanji-run furigana annotations, including mixed forms with multiple kanji
     // clusters. The "annotation" tuple lives here rather than as a struct because it has
     // exactly one call site (the build loop above) and a struct would be ceremony.
@@ -223,36 +261,43 @@ nonisolated struct FuriganaResolver {
             lemmaReference: lemmaReference
         )
 
-        if runs.count == 1,
-              let lemmaReading = FuriganaResolver.readingForSegment(
-                     furiganaLemmaReference,
-                     surfaceReadingData: surfaceReadingData
-              ),
-           let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: lemmaReading) {
-            return [
-                (
-                    reading: lemmaCoreReading,
-                    localStartOffset: runs[0].start,
-                    localLength: runs[0].end - runs[0].start
-                )
-            ]
+        // Single kanji run: take the highest-priority candidate reading whose okurigana aligns
+        // with the surface (firstKanjiRunReading rejects readings whose affixes don't match, e.g.
+        // わたくし against 私たち). Iterating candidates — not just the top reading — lets a lower-
+        // ranked but okurigana-compatible reading win when the leading one doesn't fit.
+        if runs.count == 1 {
+            for candidate in FuriganaResolver.candidateReadingsForSegment(
+                furiganaLemmaReference,
+                surfaceReadingData: surfaceReadingData
+            ) {
+                if let lemmaCoreReading = firstKanjiRunReading(in: furiganaLemmaReference, using: candidate) {
+                    return [
+                        (
+                            reading: lemmaCoreReading,
+                            localStartOffset: runs[0].start,
+                            localLength: runs[0].end - runs[0].start
+                        )
+                    ]
+                }
+            }
         }
 
         let lemmaRuns = FuriganaAttributedString.kanjiRuns(in: furiganaLemmaReference)
         var projectedReadings: [String]?
-        if let lemmaReading = FuriganaResolver.readingForSegment(
-            furiganaLemmaReference,
-            surfaceReadingData: surfaceReadingData
-        ), lemmaRuns.count == runs.count {
-            projectedReadings = FuriganaAttributedString.projectRunReadings(surface: furiganaLemmaReference, reading: lemmaReading)
+        if lemmaRuns.count == runs.count {
+            projectedReadings = FuriganaResolver.projectedRunReadings(
+                surface: furiganaLemmaReference,
+                runs: lemmaRuns,
+                surfaceReadingData: surfaceReadingData
+            )
         }
 
-        if projectedReadings == nil,
-           let surfaceReading = FuriganaResolver.readingForSegment(
-                segmentSurface,
+        if projectedReadings == nil {
+            projectedReadings = FuriganaResolver.projectedRunReadings(
+                surface: segmentSurface,
+                runs: runs,
                 surfaceReadingData: surfaceReadingData
-           ) {
-            projectedReadings = FuriganaAttributedString.projectRunReadings(surface: segmentSurface, reading: surfaceReading)
+            )
         }
 
         var annotations: [(reading: String, localStartOffset: Int, localLength: Int)] = []
