@@ -63,6 +63,25 @@ struct NotesView: View {
                     .contextMenu {
                         noteContextMenu(for: note)
                     }
+                    // Own the single-note delete confirmation on the row itself so the popover anchors
+                    // to the note being deleted. A single List-level dialog shared across every row took
+                    // a stale source frame — the arrow pointed at a previously-interacted row while the
+                    // text named the correct note. Per-row ownership makes the anchor unambiguous.
+                    .confirmationDialog(
+                        deleteDialogTitle,
+                        isPresented: singleDeletePresented(for: note.id),
+                        titleVisibility: .visible,
+                        presenting: pendingDeletion
+                    ) { deletion in
+                        Button("Delete Note", role: .destructive) {
+                            performDelete(deletion)
+                        }
+                        Button("Cancel", role: .cancel) {
+                            pendingDeletion = nil
+                        }
+                    } message: { deletion in
+                        Text(deleteDialogMessage(for: deletion))
+                    }
                     .onTapGesture {
                         if editMode == .active {
                             if selectedNoteIDs.contains(note.id) {
@@ -76,22 +95,6 @@ struct NotesView: View {
                     }
                     .tag(note.id)
                     .deleteDisabled(editMode == .active)
-                    // Anchored to THIS row: presents only when this note is the single pending
-                    // deletion, so the popover arrow points here rather than at a default row.
-                    .confirmationDialog(
-                        deleteDialogTitle,
-                        isPresented: rowDeletePresented(note),
-                        titleVisibility: .visible
-                    ) {
-                        Button("Delete Note", role: .destructive) {
-                            performDelete()
-                        }
-                        Button("Cancel", role: .cancel) {
-                            pendingDeletion = nil
-                        }
-                    } message: {
-                        Text(deleteDialogMessage)
-                    }
                 }
                 .onMove(perform: store.moveNotes)
                 .onDelete { offsets in
@@ -119,22 +122,26 @@ struct NotesView: View {
                     commitRename()
                 }
             }
-            // Multi-note deletes (toolbar / Edit mode) have no source row to anchor to, so they use
-            // a top-level dialog. Single-note deletes are confirmed per-row (see rowDeletePresented)
-            // so the popover arrow points at the note being deleted.
+            // Bulk delete (multi-select) is raised from the toolbar trash button, so anchor its
+            // confirmation at the List/toolbar level — that is the frame it actually originates from.
+            // Single-note deletes use a per-row dialog (attached inside the ForEach) so their popover
+            // anchors to the specific note instead of a stale shared source frame. `presenting:` keeps
+            // the title, buttons, and action bound to the pending deletion so the content can't go
+            // stale either.
             .confirmationDialog(
                 deleteDialogTitle,
-                isPresented: bulkDeleteDialogPresented,
-                titleVisibility: .visible
-            ) {
-                Button("Delete Note\(pendingNoteCountSuffix)", role: .destructive) {
-                    performDelete()
+                isPresented: bulkDeletePresented,
+                titleVisibility: .visible,
+                presenting: pendingDeletion
+            ) { deletion in
+                Button("Delete Note\(countSuffix(for: deletion))", role: .destructive) {
+                    performDelete(deletion)
                 }
                 Button("Cancel", role: .cancel) {
                     pendingDeletion = nil
                 }
-            } message: {
-                Text(deleteDialogMessage)
+            } message: { deletion in
+                Text(deleteDialogMessage(for: deletion))
             }
             .sheet(isPresented: $isShowingBulkImportSheet) {
                 BulkImportSheet(store: store)
@@ -310,10 +317,12 @@ struct NotesView: View {
         let title: String?
     }
 
-    // Binds delete-dialog presentation directly to the pending deletion.
-    private var deleteDialogPresented: Binding<Bool> {
+    // Presents the single-note delete confirmation on the row it belongs to, so the popover anchors
+    // to that note. True only when the pending deletion targets exactly this one note — guaranteeing
+    // at most one row's dialog is ever active.
+    private func singleDeletePresented(for id: UUID) -> Binding<Bool> {
         Binding(
-            get: { pendingDeletion != nil },
+            get: { pendingDeletion?.noteIDs == Set([id]) },
             set: { isPresented in
                 if isPresented == false {
                     pendingDeletion = nil
@@ -322,21 +331,16 @@ struct NotesView: View {
         )
     }
 
-    // Per-row delete-confirmation binding: true only when exactly THIS note is the pending deletion.
-    // The confirmationDialog is attached to each row, so iOS anchors its popover arrow to the row
-    // that triggered the delete (a top-level dialog can't track the source row → arrow points wrong).
-    private func rowDeletePresented(_ note: Note) -> Binding<Bool> {
-        Binding(
-            get: { pendingDeletion?.noteIDs == [note.id] },
-            set: { if $0 == false { pendingDeletion = nil } }
-        )
-    }
-
-    // Multi-note (toolbar) deletes have no single source row, so they keep a top-level dialog.
-    private var bulkDeleteDialogPresented: Binding<Bool> {
+    // Presents the multi-note (bulk) delete confirmation at the List/toolbar level, where the trash
+    // button that raises it lives.
+    private var bulkDeletePresented: Binding<Bool> {
         Binding(
             get: { (pendingDeletion?.noteIDs.count ?? 0) > 1 },
-            set: { if $0 == false { pendingDeletion = nil } }
+            set: { isPresented in
+                if isPresented == false {
+                    pendingDeletion = nil
+                }
+            }
         )
     }
 
@@ -348,13 +352,13 @@ struct NotesView: View {
     }
 
     // "" for one pending note, "s" for several — pluralizes the dialog copy.
-    private var pendingNoteCountSuffix: String {
-        (pendingDeletion?.noteIDs.count ?? 1) == 1 ? "" : "s"
+    private func countSuffix(for deletion: PendingNoteDeletion) -> String {
+        deletion.noteIDs.count == 1 ? "" : "s"
     }
 
     // Explains that note deletion never removes independent saved vocabulary.
-    private var deleteDialogMessage: String {
-        "This permanently removes the note\(pendingNoteCountSuffix) and its attachments. Saved words are kept."
+    private func deleteDialogMessage(for deletion: PendingNoteDeletion) -> String {
+        "This permanently removes the note\(countSuffix(for: deletion)) and its attachments. Saved words are kept."
     }
 
     // Builds the per-note context menu shown from the notes list.
@@ -431,9 +435,10 @@ struct NotesView: View {
     }
 
     // Deletes the pending notes, detaches saved-word provenance, and clears the active selection.
-    private func performDelete() {
-        guard let pendingDeletion else { return }
-        let noteIDs = pendingDeletion.noteIDs
+    // Takes the deletion the dialog was presenting so we act on exactly that note set, never a value
+    // that may have been replaced between presentation and confirmation.
+    private func performDelete(_ deletion: PendingNoteDeletion) {
+        let noteIDs = deletion.noteIDs
 
         wordsStore.detachNoteReferences(noteIDs: noteIDs)
         store.deleteNotes(ids: noteIDs)
