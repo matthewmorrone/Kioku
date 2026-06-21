@@ -16,14 +16,20 @@ import SwiftWhisperAlign
 enum LyricCueEdit {
     case setStart(cueIndex: Int)
     case setEnd(cueIndex: Int)
+    // Like setStart, but ALSO shifts every following line up to the next ♪ marker by the same delta.
+    // Fixes a whole section that drifted uniformly (the common residual: a span of lines all a few
+    // seconds late because their anchorless window was bounded slightly off) with a single tap.
+    case setStartRipple(cueIndex: Int)
     // Set the line's start/end boundary to an EXPLICIT timestamp (vs. the live playhead used by
     // setStart/setEnd). Emitted by the long-press word menu to snap the cue boundary to the tapped
     // word's time, letting the user retime a line they're looking at without scrubbing playback to it.
     case setStartToMs(cueIndex: Int, ms: Int)
     case setEndToMs(cueIndex: Int, ms: Int)
-    case nudgeStart(cueIndex: Int, deltaMs: Int)
-    case nudgeEnd(cueIndex: Int, deltaMs: Int)
     case realignWord(cueIndex: Int)
+    // Re-run the FULL alignment pipeline (CTC + vocal separation) over the whole note's lyrics
+    // against the attached audio, replacing the entire cue list — the lyric view's top "Re-align"
+    // action. Unlike `realignWord` (one line, windowed) this is a from-scratch realign of everything.
+    case realignAll
     // Per-word karaoke timing from the long-press menu: snap the start (or end) of the word at
     // `charOffset`/`charLength` (cue-local UTF-16) to `ms`. Edits the cue's `CueCharTiming`
     // checkpoints — creating them if the line had none, so word timing can be hand-built by ear.
@@ -47,6 +53,9 @@ extension ReadView {
         case .realignWord(let idx):
             Task { await realignActiveCueWord(cueIndex: idx) }
             return
+        case .realignAll:
+            Task { await realignWholeNote() }
+            return
         case .setWordStartToPlayhead(let idx, let off, let len, let ms):
             setWordTiming(cueIndex: idx, charOffset: off, charLength: len, ms: ms, isEnd: false)
             return
@@ -63,8 +72,44 @@ extension ReadView {
         switch edit {
         case .setStart(let idx):
             guard audioAttachmentCues.indices.contains(idx) else { return }
-            let end = audioAttachmentCues[idx].endMs
-            audioAttachmentCues[idx].startMs = max(0, min(audioController.currentTimeMs, end - minCueDurationMs))
+            // "Start here": relocate the WHOLE line so it begins at the playhead, preserving its
+            // duration — start, end, and every word-checkpoint shift by the same delta. The old
+            // behavior clamped the new start to the line's own end, which made it impossible to move
+            // a line LATER than where it currently ends (the common fix for a line timed too early —
+            // it silently did almost nothing). Floor at the previous line's start so a move can't
+            // reorder cues; cap at the song length, not the line's own end.
+            let floor = idx > 0 ? audioAttachmentCues[idx - 1].startMs : 0
+            let desired = max(floor, min(audioController.currentTimeMs, durationMs - minCueDurationMs))
+            let delta = desired - audioAttachmentCues[idx].startMs
+            guard delta != 0 else { return }
+            let newStart = max(0, audioAttachmentCues[idx].startMs + delta)
+            audioAttachmentCues[idx].startMs = newStart
+            audioAttachmentCues[idx].endMs = min(durationMs, max(newStart + minCueDurationMs, audioAttachmentCues[idx].endMs + delta))
+            for k in audioAttachmentCues[idx].checkpoints.indices {
+                audioAttachmentCues[idx].checkpoints[k].timeMs = max(0, audioAttachmentCues[idx].checkpoints[k].timeMs + delta)
+            }
+        case .setStartRipple(let idx):
+            guard audioAttachmentCues.indices.contains(idx) else { return }
+            // Clamp the target's new start between the previous line's start and the song length, then
+            // shift it and every following line (until the next ♪) — boundaries AND checkpoints — by
+            // that same delta, so a uniformly-drifted section snaps into place in one tap. Capping at
+            // the song length (not the line's own end) lets a section be dragged forward past where it
+            // currently sits — without that, the ripple silently did almost nothing for late sections.
+            let floorMs = idx > 0 ? audioAttachmentCues[idx - 1].startMs : 0
+            let desired = max(floorMs, min(audioController.currentTimeMs, durationMs - minCueDurationMs))
+            let delta = desired - audioAttachmentCues[idx].startMs
+            guard delta != 0 else { return }
+            var i = idx
+            while i < audioAttachmentCues.count {
+                if i > idx, SubtitleParser.isNonSpeechCue(audioAttachmentCues[i].text) { break }
+                let ns = max(0, audioAttachmentCues[i].startMs + delta)
+                audioAttachmentCues[i].startMs = ns
+                audioAttachmentCues[i].endMs = min(durationMs, max(ns + minCueDurationMs, audioAttachmentCues[i].endMs + delta))
+                for k in audioAttachmentCues[i].checkpoints.indices {
+                    audioAttachmentCues[i].checkpoints[k].timeMs = max(0, audioAttachmentCues[i].checkpoints[k].timeMs + delta)
+                }
+                i += 1
+            }
         case .setEnd(let idx):
             guard audioAttachmentCues.indices.contains(idx) else { return }
             let start = audioAttachmentCues[idx].startMs
@@ -77,15 +122,7 @@ extension ReadView {
             guard audioAttachmentCues.indices.contains(idx) else { return }
             let start = audioAttachmentCues[idx].startMs
             audioAttachmentCues[idx].endMs = min(durationMs, max(ms, start + minCueDurationMs))
-        case .nudgeStart(let idx, let delta):
-            guard audioAttachmentCues.indices.contains(idx) else { return }
-            let end = audioAttachmentCues[idx].endMs
-            audioAttachmentCues[idx].startMs = max(0, min(audioAttachmentCues[idx].startMs + delta, end - minCueDurationMs))
-        case .nudgeEnd(let idx, let delta):
-            guard audioAttachmentCues.indices.contains(idx) else { return }
-            let start = audioAttachmentCues[idx].startMs
-            audioAttachmentCues[idx].endMs = min(durationMs, max(start + minCueDurationMs, audioAttachmentCues[idx].endMs + delta))
-        case .realignWord, .setWordStartToPlayhead, .setWordEndToPlayhead:
+        case .realignWord, .realignAll, .setWordStartToPlayhead, .setWordEndToPlayhead:
             return  // handled above
         }
 

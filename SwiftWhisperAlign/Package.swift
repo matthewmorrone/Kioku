@@ -13,6 +13,10 @@ let package = Package(
         // CTC forced aligner (Qwen3ForcedAligner) — replaces the Whisper-DTW path.
         // Model downloads at runtime via fromPretrained(); nothing is bundled.
         .package(url: "https://github.com/soniqo/speech-swift", branch: "main"),
+        // MLX is pulled transitively by soniqo; declared directly (same version) so we can
+        // call MLX.GPU.clearCache() between alignment windows — MLX's buffer cache grows
+        // unbounded across align() calls otherwise and OOM-kills the app on device.
+        .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.30.0"),
     ],
     targets: [
         .target(
@@ -20,6 +24,11 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftWhisper", package: "SwiftWhisper"),
                 .product(name: "Qwen3ASR", package: "speech-swift"),
+                .product(name: "SourceSeparation", package: "speech-swift"),
+                // FireRedVAD: voice-activity detection to gate alignment to the sung segments
+                // (skips instrumental gaps, sets window boundaries at vocal pauses).
+                .product(name: "SpeechVAD", package: "speech-swift"),
+                .product(name: "MLX", package: "mlx-swift"),
             ]
         ),
         .testTarget(

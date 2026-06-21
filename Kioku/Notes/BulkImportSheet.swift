@@ -21,6 +21,14 @@ struct BulkImportSheet: View {
     @State private var pickerError = ""
     @State private var modelError = ""
 
+    // Transcription engine for this import. Backed by the same UserDefaults key the runner reads via
+    // TranscriptionEngine.current, so picking here also sets the app-wide default.
+    @AppStorage(TranscriptionEngine.storageKey) private var selectedEngineRaw: String = TranscriptionEngine.qwen3.rawValue
+    private var selectedEngine: TranscriptionEngine { TranscriptionEngine(rawValue: selectedEngineRaw) ?? .qwen3 }
+
+    // Isolate the vocal stem before transcribing — engine-independent. Default on (best for songs).
+    @AppStorage(TranscriptionPreprocessing.isolateVocalsKey) private var isolateVocals = true
+
     @StateObject private var runner: BulkImportRunner
 
     // Captures the store at construction so the runner can mutate notes directly without
@@ -56,7 +64,8 @@ struct BulkImportSheet: View {
     private var canImport: Bool {
         guard runner.isRunning == false, runner.hasFinished == false else { return false }
         if plan.isEmpty { return false }
-        if needsTranscription, modelSource == nil { return false }
+        // Only Whisper requires a downloaded model; Qwen3 / Apple Speech never block Import.
+        if needsTranscription, modelSource == nil, selectedEngine == .whisper { return false }
         return true
     }
 
@@ -68,6 +77,11 @@ struct BulkImportSheet: View {
                     planSection
                 }
                 if needsTranscription {
+                    engineSection
+                }
+                // Whisper model picker only when transcription is needed AND Whisper is the selected
+                // engine — Qwen3-ASR and Apple Speech transcribe without a downloaded model.
+                if needsTranscription && selectedEngine == .whisper {
                     modelSection
                 }
             }
@@ -144,6 +158,35 @@ struct BulkImportSheet: View {
     }
 
     // Bottom section: Whisper model selection. Shown only when at least one plan item
+    // Transcription engine picker (shown whenever an item needs transcription). Writes the app-wide
+    // engine setting, so Apple Speech / Qwen3 / Whisper can be chosen right here in the import.
+    @ViewBuilder
+    private var engineSection: some View {
+        Section {
+            Picker("Engine", selection: $selectedEngineRaw) {
+                ForEach(TranscriptionEngine.allCases, id: \.rawValue) { engine in
+                    Text(engine.displayName).tag(engine.rawValue)
+                }
+            }
+            .disabled(runner.isRunning)
+            Toggle("Isolate vocals first", isOn: $isolateVocals)
+                .disabled(runner.isRunning)
+        } header: {
+            Text("Transcription Engine")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                switch selectedEngine {
+                case .qwen3:       Text("On-device Qwen3-ASR. No download.")
+                case .appleSpeech: Text("Apple's system recognizer — lowest memory. No download.")
+                case .whisper:     Text("On-device Whisper — needs the model selected below.")
+                }
+                Text(isolateVocals
+                     ? "Separates vocals from the backing track first — best for songs (heavier; cached)."
+                     : "Transcribes the raw mix — right for plain speech and lowest memory.")
+            }
+        }
+    }
+
     // needs transcription. Mirrors SubtitleImportSheet so the picker UX is consistent.
     @ViewBuilder
     private var modelSection: some View {
@@ -207,6 +250,17 @@ struct BulkImportSheet: View {
                 .foregroundStyle(.secondary)
 
             if case .running = progress?.status, BulkImportPlanner.requiresTranscription(item) {
+                // Stage + percentage above the bar (e.g. "Isolating vocals…   42%"), matching the
+                // alignment progress UI, so the user always sees what's happening and how far along.
+                let label = progress?.statusLabel ?? ""
+                let pct = Int(((progress?.transcriptionProgress ?? 0) * 100).rounded())
+                HStack(spacing: 6) {
+                    Text(label.isEmpty ? "Transcribing…" : label)
+                    Spacer(minLength: 4)
+                    Text("\(pct)%").monospacedDigit()
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 ProgressView(value: progress?.transcriptionProgress ?? 0)
             }
 

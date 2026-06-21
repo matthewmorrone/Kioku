@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftWhisperAlign
 import Translation
 import UIKit
 
@@ -30,10 +31,16 @@ struct LyricsView: View {
     // Cue index currently being re-aligned on device (Whisper running); the "Fix" button shows a
     // spinner for that cue and all edit buttons disable. nil when idle.
     var realigningCueIndex: Int? = nil
+    // True while a FULL from-scratch re-align (whole note) is running, with `reAlignMessage`
+    // carrying the live progress text. Drives the top Re-align bar's spinner + label.
+    var isReAligning: Bool = false
+    var reAlignMessage: String = ""
+    // Whether an isolated vocal stem is cached for this audio (so playback can switch to it) and
+    // the current toggle state. ReadView owns the state + the actual source swap; the bar just
+    // shows the control and flips the binding. Defaulted off/unavailable for other call sites.
+    var stemAvailable: Bool = false
+    var isListeningToStem: Binding<Bool> = .constant(false)
 
-    // Step for the ◀ / ▶ fine-transport buttons: 100 ms moves the playhead one perceptible
-    // notch at a time, fine enough to land on a syllable boundary by ear.
-    private let fineStepMs = 100
     // Horizontal fine-scrub sensitivity. 5 ms per point means a full ~300 pt swipe across the
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.
     private let fineScrubMsPerPoint = 5.0
@@ -43,13 +50,6 @@ struct LyricsView: View {
     // Clamped upper bound for seeks, in ms. Falls back generously when duration isn't known yet.
     private var durationMs: Int {
         controller.duration > 0 ? Int(controller.duration * 1000) : Int.max
-    }
-
-    // Seeks the playhead by a signed millisecond delta, clamped to [0, duration]. Backs the
-    // ◀ / ▶ fine-transport buttons — the granular "move the indicator" control.
-    private func fineSeek(byMs delta: Int) {
-        let target = max(0, min(durationMs, controller.currentTimeMs + delta))
-        controller.seek(toMs: target)
     }
 
     // Formats a millisecond position as M:SS.d (tenths) for the editing-row readouts, where
@@ -175,15 +175,18 @@ struct LyricsView: View {
     // Playhead time (ms) captured at the start of a horizontal fine-scrub, so the seek maps
     // the cumulative translation onto an absolute time rather than integrating per-frame.
     @State private var fineScrubBaseMs: Int? = nil
-    // When on, words in the active cue with no per-word timing are grayed out so you can see
-    // at a glance which words still need a Fix word-sweep. Toggled from the editing row;
-    // default off so the card reads clean during normal listening.
-    @State private var showUntimedWords = false
-    // When off, ♪/♫ instrumental-gap cues are hidden from both the scroller and the active
-    // card (which remaps to the nearest sung line). Persisted so the preference sticks across
-    // sessions, mirroring the other Read/lyrics display toggles. Default on = current behavior.
-    // Not `private` — read by the inactive-row builder in the LyricsView+InactiveRows extension.
-    @AppStorage("kioku.settings.showMusicNotes") var showMusicNotes = true
+    // Alignment-adjust mode: reveals the per-line fix row and pins the card to a chosen target
+    // line so the transport can move the playhead INDEPENDENTLY. A mistimed line isn't "active"
+    // at the moment you want to assign it, so target and playhead must decouple — that decoupling
+    // is the whole reason the old inline row felt broken. Default off so the card reads clean.
+    @State private var isAdjustingAlignment = false
+    // The line being retimed while adjusting (persists across scrubs); nil → fall back to the
+    // playing line. Set by entering Adjust (→ the active line) or by dragging/tapping to pick.
+    @State private var adjustTargetIndex: Int? = nil
+    // Peak envelope for the Adjust waveform editor (decoded from the cached vocal stem when present,
+    // else the mix). `waveformNoteID` records which note it belongs to so switching notes reloads it.
+    @State private var waveform: WaveformEnvelope? = nil
+    @State private var waveformNoteID: UUID? = nil
     // Long-press word context: when set, a confirmation dialog snaps the pressed word's START or
     // END timing to the playhead snapshot, plus dictionary look-up. nil = hidden.
     @State private var wordTimingMenu: WordTimingMenu? = nil
@@ -241,12 +244,15 @@ struct LyricsView: View {
         let panelWidth = geo.size.width * 0.9
         let panelHeight = geo.size.height * 0.55
         let rendererHeight = activeCueRendererHeight
-        // The cue shown on the active card (and the scroller split point). When ♪ are hidden,
-        // remap a non-speech active cue to the nearest sung line so the card never shows ♪ and
-        // there's no duplicate/empty card. Every downstream consumer reads `displayIndex`, so
-        // this single remap covers the card text, furigana, highlight, and editing-row target.
-        let rawDisplayIndex = dragDisplayIndex ?? activeIndex
-        let displayIndex = showMusicNotes ? rawDisplayIndex : nearestVocalCueIndex(from: rawDisplayIndex)
+        // The cue shown on the active card (and the scroller split point). ♪/♫ instrumental-gap
+        // cues are first-class rows — during an intro/gap the active card simply shows the ♪ cue,
+        // and the scroller shows the ♪ rows approaching and receding like any other line.
+        // In Adjust mode the card pins to the chosen target line (so the playhead can roam to a
+        // mistimed line's real start without the card following it); otherwise it tracks the live
+        // drag, then the playing line.
+        let displayIndex = dragDisplayIndex
+            ?? (isAdjustingAlignment ? adjustTargetIndex : nil)
+            ?? activeIndex
 
         // Clamp range upper bounds against lower bounds — `ForEach(a..<b)` traps when `b < a`,
         // and that can happen here when an audio note has zero cues (transcription returned
@@ -260,12 +266,16 @@ struct LyricsView: View {
         let belowLower = displayIndex + 1
         let belowUpper = max(belowLower, cues.count)
         return VStack(spacing: 0) {
-            // Persistent in-place editing row — always visible at the top of the card so a
-            // wrong cue can be corrected the moment it's heard, without leaving the karaoke
-            // view. Acts on `displayIndex` (the cue on the active card), which during a drag
-            // is the one the user is looking at, not necessarily the one playing.
-            if cues.isEmpty == false {
-                cueEditingRow(index: displayIndex)
+            // Top action row. Replaced the per-cue timing-editor row (Set Start / playhead /
+            // Set End / Fix word sweep) with a single full Re-align action — re-runs the whole
+            // CTC pipeline on the attached audio. The old row is preserved (commented) below and
+            // `cueEditingRow(index:)` is kept defined for a one-line revert.
+            reAlignBar()
+            // The per-line alignment-fix row only appears in Adjust mode (toggled in reAlignBar),
+            // so normal listening stays clean. It targets `displayIndex` — which in Adjust mode is
+            // the pinned target line, not the playing line.
+            if isAdjustingAlignment, cues.isEmpty == false {
+                alignmentFixRow(index: displayIndex)
             }
             // Karaoke diagnostics HUD — only laid out when the user has flipped
             // Settings → Debug → "Karaoke HUD". `if`-gated rather than
@@ -306,7 +316,13 @@ struct LyricsView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     guard cues.isEmpty == false else { return }
-                    controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
+                    if isAdjustingAlignment {
+                        // Step the target line up one (no seek) so you can retarget without losing
+                        // the playhead position you set.
+                        adjustTargetIndex = max(0, (adjustTargetIndex ?? activeIndex) - 1)
+                    } else {
+                        controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
+                    }
                 }
 
                 // Active cue renderer — fed ONLY the active cue's substring (with furigana
@@ -336,11 +352,7 @@ struct LyricsView: View {
                 let activeCueAvailableWidth = panelWidth - 16
                 let activeCueScale = activeCueFontScale(text: cueInput.text, availableWidth: activeCueAvailableWidth)
                 let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
-                // Untimed-word highlighting: only computed when the toggle is on. Reuses the
-                // renderer's segment-tint path to gray out words with no per-word checkpoint.
-                let untimedLocations: Set<Int> = showUntimedWords
-                    ? untimedSegmentLocations(forCueAtIndex: displayIndex, cueInput: cueInput)
-                    : []
+                let untimedLocations: Set<Int> = []
                 VStack(spacing: 0) {
                     // Pulsing ♪ during instrumental gaps was removed at user request.
                     // The active card now always shows the cue at `displayIndex` — during
@@ -384,7 +396,7 @@ struct LyricsView: View {
                             ? cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count).map { $0.location + $0.length }
                             : nil,
                         unknownSegmentLocations: untimedLocations,
-                        isHighlightUnknownEnabled: showUntimedWords,
+                        isHighlightUnknownEnabled: false,
                         unknownSegmentColor: .tertiaryLabel,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
@@ -461,7 +473,12 @@ struct LyricsView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     guard cues.isEmpty == false else { return }
-                    controller.seek(toMs: cues[min(cues.count - 1, activeIndex + 1)].startMs)
+                    if isAdjustingAlignment {
+                        // Step the target line down one (no seek), mirroring the upper tap zone.
+                        adjustTargetIndex = min(cues.count - 1, (adjustTargetIndex ?? activeIndex) + 1)
+                    } else {
+                        controller.seek(toMs: cues[min(cues.count - 1, activeIndex + 1)].startMs)
+                    }
                 }
             } // end lyric VStack
             .clipped()
@@ -509,7 +526,11 @@ struct LyricsView: View {
                 .onEnded { _ in
                     // Horizontal scrub already seeked live; nothing to commit on release.
                     if dragAxis == .vertical {
-                        if dragOverscrolledToStart {
+                        if isAdjustingAlignment {
+                            // Adjust mode: a vertical drag PICKS the target line — no seek, so the
+                            // playhead stays where you parked it to hear the real start.
+                            if let target = dragDisplayIndex { adjustTargetIndex = target }
+                        } else if dragOverscrolledToStart {
                             controller.seek(toMs: 0)
                         } else if let target = dragDisplayIndex {
                             controller.seek(toMs: cues[target].startMs)
@@ -568,90 +589,215 @@ struct LyricsView: View {
         cueIndex < cues.count ? cues[cueIndex].text : ""
     }
 
-    // Persistent timing-editor row. Top line: [Set Start] | granular ◀ playhead ▶ transport |
-    // [Set End]. Bottom line: the cue's measured span + duration on the left, the Whisper
-    // "Fix word sweep" action on the right. Set Start/End capture the live playhead into the
-    // cue; the ◀ / ▶ buttons (and a horizontal drag on the card) move the playhead in small
-    // steps so you can land on a boundary by ear before marking it.
-    private func cueEditingRow(index: Int) -> some View {
-        let isRealigning = realigningCueIndex == index
-        let anyRealigning = realigningCueIndex != nil
-        let cue: SubtitleCue? = index < cues.count ? cues[index] : nil
-        return VStack(spacing: 5) {
-            HStack(spacing: 8) {
-                cueMarkButton(title: "Set Start") {
-                    onCueEdit(.setStart(cueIndex: index))
-                }
-                .disabled(anyRealigning)
-
-                Spacer(minLength: 2)
-
+    // Top action bar for the karaoke view: a single full Re-align action that re-runs the whole
+    // CTC alignment pipeline (vocal separation + windowing) over the note's lyrics against the
+    // attached audio — no wipe / re-import. Replaces the old per-cue timing-editor row. While
+    // running it shows a spinner + live progress and disables so a second run can't stack.
+    private func reAlignBar() -> some View {
+        HStack(spacing: 8) {
+            if isReAligning {
+                // Live progress is its OWN non-interactive chip, not the disabled Button's
+                // label — a disabled Button dims its whole label, which made the status text
+                // read as greyed-out/inactive. `.primary` keeps it high-contrast over the bar.
                 HStack(spacing: 6) {
-                    transportStepButton("backward.fill", label: "Move playhead back 0.1 second") {
-                        fineSeek(byMs: -fineStepMs)
-                    }
-                    Text(formatTenths(ms: controller.currentTimeMs))
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundStyle(.primary)
-                        .frame(minWidth: 52)
-                    transportStepButton("forward.fill", label: "Move playhead forward 0.1 second") {
-                        fineSeek(byMs: fineStepMs)
-                    }
-                }
-                .disabled(anyRealigning)
-
-                Spacer(minLength: 2)
-
-                cueMarkButton(title: "Set End") {
-                    onCueEdit(.setEnd(cueIndex: index))
-                }
-                .disabled(anyRealigning)
-            }
-
-            HStack(spacing: 8) {
-                if let cue {
-                    let durationSec = Double(max(0, cue.endMs - cue.startMs)) / 1000
-                    Text("Line \(cue.index) · \(formatTenths(ms: cue.startMs))–\(formatTenths(ms: cue.endMs)) · \(String(format: "%.2fs", durationSec))")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                    ProgressView().controlSize(.mini)
+                    Text(reAlignMessage.isEmpty ? "Re-aligning…" : reAlignMessage)
+                        .font(.system(size: 12, weight: .semibold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.8)
                 }
-
-                Spacer(minLength: 4)
-
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 16)
+                .frame(height: 28)
+                .background(Color.accentColor.opacity(0.16))
+                .clipShape(Capsule())
+                .accessibilityLabel(reAlignMessage.isEmpty ? "Re-aligning" : reAlignMessage)
+            } else {
                 Button {
-                    showMusicNotes.toggle()
+                    onCueEdit(.realignAll)
                 } label: {
-                    Image(systemName: showMusicNotes ? "music.note" : "music.note.list")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(ReadToggleAppearance.foreground(isOn: showMusicNotes))
-                        .padding(.horizontal, 9)
-                        .frame(height: 22)
-                        .background(ReadToggleAppearance.background)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(showMusicNotes ? "Hide instrumental ♪ lines" : "Show instrumental ♪ lines")
-
-                Button {
-                    showUntimedWords.toggle()
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: showUntimedWords ? "eye.fill" : "eye.slash")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("Untimed")
-                            .font(.system(size: 10, weight: .semibold))
+                    HStack(spacing: 6) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Re-align")
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
-                    .foregroundStyle(ReadToggleAppearance.foreground(isOn: showUntimedWords))
-                    .padding(.horizontal, 9)
-                    .frame(height: 22)
-                    .background(ReadToggleAppearance.background)
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 16)
+                    .frame(height: 28)
+                    .background(Color.accentColor.opacity(0.16))
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Highlight words without timing")
+                .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Re-align all lyrics to the audio")
+            }
+
+            // Adjust toggle: reveal the per-line alignment-fix row. Off keeps the card clean while
+            // listening; on, the card pins to the target line and the transport moves the playhead
+            // independently so you can set a line's true start. Entering Adjust seeds the target
+            // with the line currently playing.
+            Button {
+                isAdjustingAlignment.toggle()
+                adjustTargetIndex = isAdjustingAlignment ? activeIndex : nil
+            } label: {
+                let on = isAdjustingAlignment
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Adjust")
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(on ? Color.accentColor : Color.secondary)
+                .padding(.horizontal, 14)
+                .frame(height: 28)
+                .background((on ? Color.accentColor : Color.secondary).opacity(0.16))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(cues.isEmpty)
+            .accessibilityLabel(isAdjustingAlignment ? "Hide alignment adjust controls" : "Show alignment adjust controls")
+
+            // Stem-listen toggle: swap playback between the original mix and the isolated vocal
+            // stem (what the aligner hears). Shown only when a stem is cached for this audio — i.e.
+            // after a Re-align — and hidden while a re-align is in flight (the stem may be mid-
+            // regeneration). ReadView's onChange does the position-preserving source swap.
+            if stemAvailable && isReAligning == false {
+                Button {
+                    isListeningToStem.wrappedValue.toggle()
+                } label: {
+                    let on = isListeningToStem.wrappedValue
+                    HStack(spacing: 6) {
+                        Image(systemName: on ? "waveform.circle.fill" : "waveform.circle")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(on ? "Vocals" : "Mix")
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(on ? Color.accentColor : Color.secondary)
+                    .padding(.horizontal, 14)
+                    .frame(height: 28)
+                    .background((on ? Color.accentColor : Color.secondary).opacity(0.16))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isListeningToStem.wrappedValue
+                    ? "Playing isolated vocals. Tap to hear the original mix."
+                    : "Playing original mix. Tap to hear the isolated vocals.")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity)
+        .background(Color.black.opacity(0.18))
+    }
+
+    // Per-line alignment editor (Adjust mode only): a draggable waveform for the targeted line plus
+    // ▲▼ retarget, "+ shift rest" section ripple, and "Fix sweep" word timing. See WaveformLineEditor.
+    private func alignmentFixRow(index: Int) -> some View {
+        let isRealigning = realigningCueIndex == index
+        let anyRealigning = realigningCueIndex != nil
+        let cue: SubtitleCue? = index < cues.count ? cues[index] : nil
+        let isMusic = cue.map { SubtitleParser.isNonSpeechCue($0.text) } ?? true
+        return VStack(spacing: 6) {
+            // Target line + exactly what a commit does: its CURRENT start → the playhead it'll get.
+            // The ▲▼ chevrons retarget without seeking (no hidden drag to discover).
+            HStack(spacing: 8) {
+                Button { adjustTargetIndex = max(0, (adjustTargetIndex ?? index) - 1) } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 30, height: 26)
+                        .background(Color(.systemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .disabled(index <= 0)
+                .accessibilityLabel("Target the previous line")
+
+                HStack(spacing: 5) {
+                    Text("Line \(cue?.index ?? index + 1)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.primary)
+                    Text(displayText(for: index))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button { adjustTargetIndex = min(cues.count - 1, (adjustTargetIndex ?? index) + 1) } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 30, height: 26)
+                        .background(Color(.systemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .disabled(index >= cues.count - 1)
+                .accessibilityLabel("Target the next line")
+            }
+
+            // Waveform editor: drag green START / red END onto the audio; touch elsewhere to scrub.
+            Group {
+                if let waveform, let cue, isMusic == false {
+                    let lineDur = max(0, cue.endMs - cue.startMs)
+                    let pad = max(1500, lineDur)
+                    WaveformLineEditor(
+                        envelope: waveform,
+                        windowStartMs: max(0, cue.startMs - pad),
+                        windowEndMs: min(durationMs, cue.endMs + pad),
+                        lineID: index,
+                        lineStartMs: cue.startMs,
+                        lineEndMs: cue.endMs,
+                        playheadMs: controller.currentTimeMs,
+                        onSetStart: { ms in onCueEdit(.setStartToMs(cueIndex: index, ms: ms)) },
+                        onSetEnd: { ms in onCueEdit(.setEndToMs(cueIndex: index, ms: ms)) },
+                        onSeek: { ms in controller.seek(toMs: ms) }
+                    )
+                    .frame(height: 66)
+                } else if isMusic {
+                    Text("♪ instrumental — no boundaries to drag")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 66)
+                } else {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text("Loading waveform…").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 66)
+                }
+            }
+
+            // Below: audition, ripple a drifted section, or re-run word timing.
+            HStack(spacing: 8) {
+                Button {
+                    if controller.isPlaying { controller.pause() } else { controller.play() }
+                } label: {
+                    Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 38, height: 26)
+                        .background(Color(.systemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
+
+                fixActionButton(title: "+ shift rest", system: "arrow.turn.down.right", tint: .systemBlue) {
+                    onCueEdit(.setStartRipple(cueIndex: index))
+                }
+                .disabled(anyRealigning || isMusic)
+
+                Spacer(minLength: 2)
 
                 Button {
                     onCueEdit(.realignWord(cueIndex: index))
@@ -663,55 +809,37 @@ struct LyricsView: View {
                             Image(systemName: "waveform.badge.magnifyingglass")
                                 .font(.system(size: 11, weight: .semibold))
                         }
-                        Text(isRealigning ? "Fixing…" : "Fix word sweep")
+                        Text(isRealigning ? "Fixing…" : "Fix sweep")
                             .font(.system(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(Color(.systemOrange))
                     .padding(.horizontal, 9)
-                    .frame(height: 22)
+                    .frame(height: 24)
                     .background(Color(.systemOrange).opacity(0.16))
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .disabled(anyRealigning)
-                .accessibilityLabel("Fix this line's word timing")
+                .disabled(anyRealigning || isMusic)
+                .accessibilityLabel("Re-run word timing for this line")
             }
         }
         .opacity(anyRealigning ? 0.7 : 1)
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(Color.black.opacity(0.18))
-    }
-
-    // Labeled "Set Start" / "Set End" button — captures the live playhead into the active cue.
-    // Text-first (not a bare icon) so its effect is unambiguous.
-    private func cueMarkButton(title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 11)
-                .frame(height: 26)
-                .background(Color(.systemFill))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
+        .background(Color.black.opacity(0.22))
+        .task(id: "\(isAdjustingAlignment)|\(attachmentID?.uuidString ?? "")") {
+            // Decode the waveform when Adjust opens — vocal stem if cached, else mix; once per note.
+            guard isAdjustingAlignment, let attachmentID,
+                  let mixURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
+            if waveform != nil, waveformNoteID == attachmentID { return }
+            let src = (stemAvailable ? VocalStemCache.stemWAVURL(for: mixURL) : nil) ?? mixURL
+            let env = await WaveformEnvelope.load(url: src)
+            if isAdjustingAlignment {
+                waveform = env
+                waveformNoteID = attachmentID
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(title) to current playhead time")
-    }
-
-    // ◀ / ▶ fine-transport button: nudges the playhead by one fine step.
-    private func transportStepButton(_ systemName: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 30, height: 26)
-                .background(Color(.systemFill))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
     }
 
     private var controls: some View {
@@ -740,8 +868,7 @@ struct LyricsView: View {
 
                 LyricsScrubber(
                     controller: controller,
-                    isScrubbing: $isScrubbing,
-                    overrideTimeMs: dragOverscrolledToStart ? 0 : dragDisplayIndex.map { cues[$0].startMs }
+                    isScrubbing: $isScrubbing
                 )
 
                 Circle()
@@ -773,18 +900,19 @@ struct LyricsView: View {
 private struct LyricsScrubber: View {
     @ObservedObject var controller: AudioPlaybackController
     @Binding var isScrubbing: Bool
-    var overrideTimeMs: Int? = nil
 
     @State private var scrubPositionSeconds: Double = 0
 
+    // The knob mirrors the controller's live time except while the user is actively dragging the
+    // slider itself (isScrubbing, toggled reliably by Slider.onEditingChanged). No external override:
+    // a stale one — e.g. a card-drag whose gesture-end was dropped — was what froze the knob out of
+    // sync with playback after jumping around.
     private var displayPositionSeconds: Double {
-        if let override = overrideTimeMs { return Double(override) / 1000 }
-        return isScrubbing ? scrubPositionSeconds : Double(controller.currentTimeMs) / 1000
+        isScrubbing ? scrubPositionSeconds : Double(controller.currentTimeMs) / 1000
     }
 
     private var displayTimeMs: Int {
-        if let override = overrideTimeMs { return override }
-        return isScrubbing ? Int(scrubPositionSeconds * 1000) : controller.currentTimeMs
+        isScrubbing ? Int(scrubPositionSeconds * 1000) : controller.currentTimeMs
     }
 
     var body: some View {

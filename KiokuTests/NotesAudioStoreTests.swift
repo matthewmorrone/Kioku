@@ -1,11 +1,12 @@
 import XCTest
 @testable import Kioku
 
-// Characterizes NotesAudioStore's file-backed persistence for audio attachments and their
-// SRT/cue/timing sidecars. Production reaches the store via the .shared singleton rooted at
-// Documents/audio; these tests construct instances against a per-case temp directory so they
-// never touch real user data. Pattern mirrors NotesStoreTests (per-case temp root in setUp /
-// tearDown, no UserDefaults state involved).
+// Characterizes NotesAudioStore's file-backed persistence for audio attachments and their cue
+// sidecar (cues.json — the single source of truth; checkpoints ride inline on each cue). The .srt
+// sidecar was removed: SRT is an export-only projection now, never persisted/read back. Production
+// reaches the store via the .shared singleton rooted at Documents/audio; these tests construct
+// instances against a per-case temp directory so they never touch real user data. Pattern mirrors
+// NotesStoreTests (per-case temp root in setUp / tearDown, no UserDefaults state involved).
 @MainActor
 final class NotesAudioStoreTests: XCTestCase {
 
@@ -63,32 +64,37 @@ final class NotesAudioStoreTests: XCTestCase {
         XCTAssertEqual(store.loadCues(for: id), cues)
     }
 
-    // saveSRT -> loadSRT round-trips UTF-8 text — the common path when our own SRT writers
-    // (BulkImportRunner, SubtitleEditorSheet) save what they generate.
-    func testSaveSRTRoundTripsUtf8() throws {
+    // hasCues reflects cues.json presence — the single "has subtitles" signal now that no .srt
+    // sidecar exists. False for an unknown attachment, true once non-empty cues are saved, and
+    // false again for an empty cue list (no subtitles to show).
+    func testHasCuesReflectsCuePresence() throws {
         let id = UUID()
-        let srt = "1\n00:00:00,000 --> 00:00:01,000\n猫\n"
-        _ = try store.saveSRT(srt, attachmentID: id)
-        XCTAssertEqual(store.loadSRT(for: id), srt)
+        XCTAssertFalse(store.hasCues(for: id))
+        try store.saveCues([SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "猫")], attachmentID: id)
+        XCTAssertTrue(store.hasCues(for: id))
+        try store.saveCues([], attachmentID: id)
+        XCTAssertFalse(store.hasCues(for: id))
     }
 
-    // loadSRT falls through encoders for non-UTF-8 files. UTF-16 with BOM exercises the
-    // fallback chain that exists because users sometimes import SRT files exported by Windows
-    // tools that default to UTF-16 LE with BOM. Pinning the fallback chain means a future
-    // "just use UTF-8" simplification would have to consciously break this case.
-    func testLoadSRTDecodesUtf16FallbackWhenNotUtf8() throws {
+    // purgeLegacySRTSidecars removes inert .srt files from the audio container exactly once, and
+    // never touches cues.json (the source of truth) or audio. The one-shot guard lives in
+    // UserDefaults, so the flag is cleared here to keep the test hermetic.
+    func testPurgeLegacySRTSidecarsRemovesSRTOnlyOnce() throws {
+        UserDefaults.standard.removeObject(forKey: "kioku.migration.purgedSRTSidecars")
         let id = UUID()
-        let srtText = "1\n00:00:00,000 --> 00:00:01,000\nテスト\n"
-        let url = testRoot.appendingPathComponent("\(id.uuidString).srt")
-        let data = srtText.data(using: .utf16)! // UTF-16 with BOM
-        try data.write(to: url)
-        XCTAssertEqual(store.loadSRT(for: id), srtText)
-    }
+        let strayURL = testRoot.appendingPathComponent("\(id.uuidString)-song.srt")
+        try Data("1\n00:00:00,000 --> 00:00:01,000\nhi\n".utf8).write(to: strayURL)
+        try store.saveCues([SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "hi")], attachmentID: id)
 
-    // loadSRT returns nil when no SRT exists — distinguishes "no subtitles" from "subtitles
-    // present but empty string", which is meaningful for the share-sheet export pipeline.
-    func testLoadSRTMissingReturnsNil() {
-        XCTAssertNil(store.loadSRT(for: UUID()))
+        store.purgeLegacySRTSidecars()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: strayURL.path), ".srt sidecar must be deleted")
+        XCTAssertFalse(store.loadCues(for: id).isEmpty, "cues.json must survive the purge")
+
+        // Runs once: a sidecar reappearing after the flag is set is left alone until the flag resets.
+        try Data("x".utf8).write(to: strayURL)
+        store.purgeLegacySRTSidecars()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: strayURL.path), "second purge is a no-op (guarded)")
+        UserDefaults.standard.removeObject(forKey: "kioku.migration.purgedSRTSidecars")
     }
 
     // exportAttachment returns nil when no audio file exists. The backup pipeline uses this
@@ -118,12 +124,10 @@ final class NotesAudioStoreTests: XCTestCase {
         XCTAssertEqual(after1, after2, "Second import should produce the same file listing as the first")
     }
 
-    // Regression: importAttachment with both audio and SRT must keep the audio bytes intact
-    // and produce a separately-loadable SRT. Previously saveSRT extracted the extension from
-    // the preferredFilename it was handed, so passing "song.mp3" caused the SRT to be written
-    // to a "{uuid}-song.mp3" path that collided with — and overwrote — the audio file. The fix
-    // routes through preferredSubtitleFilename(forAudioFilename:) so the SRT lands on ".srt".
-    func testImportAttachmentWithAudioAndSRTKeepsBothIntact() throws {
+    // A legacy backup that carries only SRT text (no cues) restores by PARSING that SRT into
+    // cues.json — the single source of truth — rather than writing a parallel .srt sidecar. Audio
+    // bytes stay intact, and no .srt file is left in the container.
+    func testImportAttachmentWithSRTOnlyBackupRestoresAsCues() throws {
         let id = UUID()
         let audioBytes = Data("fake-mp3-bytes-distinct-marker".utf8)
         let srt = "1\n00:00:00,000 --> 00:00:01,000\nhi\n"
@@ -137,17 +141,21 @@ final class NotesAudioStoreTests: XCTestCase {
         try store.importAttachment(backup)
 
         let resolvedAudio = try XCTUnwrap(store.audioURL(for: id), "audio file must exist after import")
+        XCTAssertEqual(try Data(contentsOf: resolvedAudio), audioBytes, "audio bytes must stay intact")
         XCTAssertEqual(
-            try Data(contentsOf: resolvedAudio),
-            audioBytes,
-            "audio bytes must not be overwritten by the SRT save"
+            store.loadCues(for: id),
+            [SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "hi")],
+            "SRT-only backup must restore as parsed cues"
         )
-        XCTAssertEqual(store.loadSRT(for: id), srt, "SRT must round-trip via loadSRT")
+        let srtFiles = try FileManager.default.contentsOfDirectory(atPath: testRoot.path)
+            .filter { $0.hasSuffix(".srt") }
+        XCTAssertTrue(srtFiles.isEmpty, "no .srt sidecar may be written on import")
     }
 
-    // exportAttachment -> importAttachment round-trips the audio bytes, SRT text, and cues (with
-    // their inline checkpoints) into a fresh store rooted at a different directory — simulating
-    // restoring on a clean install. Pins the whole backup contract end-to-end.
+    // exportAttachment -> importAttachment round-trips the audio bytes and cues (with their inline
+    // checkpoints) into a fresh store rooted at a different directory — simulating restoring on a
+    // clean install. The backup's SRT is GENERATED from the cues (a projection for old-app decode),
+    // and importing never writes a .srt sidecar. Pins the whole backup contract end-to-end.
     func testExportImportRoundTripPreservesAllArtifacts() throws {
         let originID = UUID()
         let audioBytes = Data("fake-mp3-content".utf8)
@@ -159,13 +167,13 @@ final class NotesAudioStoreTests: XCTestCase {
             ]),
         ]
         try store.saveCues(cues, attachmentID: originID)
-        _ = try store.saveSRT(
-            "1\n00:00:00,000 --> 00:00:01,000\nhi\n",
-            attachmentID: originID,
-            preferredFilename: "song.srt"
-        )
 
         let backup = try XCTUnwrap(store.exportAttachment(for: originID))
+        XCTAssertEqual(
+            backup.srtText,
+            SubtitleParser.formatSRT(from: cues),
+            "backup SRT must be generated from the cues, not read from a sidecar"
+        )
 
         let restoreRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("kioku-audio-tests-restore-\(UUID().uuidString)", isDirectory: true)
@@ -176,7 +184,9 @@ final class NotesAudioStoreTests: XCTestCase {
         XCTAssertEqual(restored.loadCues(for: backup.attachmentID), cues)
         let restoredAudio = try XCTUnwrap(restored.audioURL(for: backup.attachmentID))
         XCTAssertEqual(try Data(contentsOf: restoredAudio), audioBytes)
-        XCTAssertEqual(restored.loadSRT(for: backup.attachmentID), "1\n00:00:00,000 --> 00:00:01,000\nhi\n")
+        let srtFiles = try FileManager.default.contentsOfDirectory(atPath: restoreRoot.path)
+            .filter { $0.hasSuffix(".srt") }
+        XCTAssertTrue(srtFiles.isEmpty, "restore must not write a .srt sidecar")
     }
 
     // deleteAttachment removes both UUID-prefixed stored files AND legacy bare-UUID files —
@@ -188,15 +198,19 @@ final class NotesAudioStoreTests: XCTestCase {
         try Data("a".utf8).write(to: modernAudio)
         let legacyAudio = testRoot.appendingPathComponent("\(id.uuidString).m4a")
         try Data("b".utf8).write(to: legacyAudio)
+        // A stray .srt left by an older build is still swept (managedExtensions keeps "srt") even
+        // though nothing writes one anymore.
+        let straySRT = testRoot.appendingPathComponent("\(id.uuidString)-song.srt")
+        try Data("hi".utf8).write(to: straySRT)
         try store.saveCues([SubtitleCue(index: 1, startMs: 0, endMs: 1000, text: "hi")], attachmentID: id)
-        _ = try store.saveSRT("hi", attachmentID: id)
 
         store.deleteAttachment(id)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: modernAudio.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: legacyAudio.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: straySRT.path))
         XCTAssertNil(store.audioURL(for: id))
-        XCTAssertNil(store.subtitleURL(for: id))
+        XCTAssertTrue(store.loadCues(for: id).isEmpty)
     }
 
     // audioURL falls back to a bare "{uuid}.ext" file when no UUID-prefixed file is present.
@@ -236,12 +250,14 @@ final class NotesAudioStoreTests: XCTestCase {
         XCTAssertEqual(NotesAudioStore.preferredSubtitleFilename(forAudioFilename: ""), "subtitles.srt")
     }
 
-    // preferredSubtitleExportFilename uses the SRT's own basename when an SRT exists — this
-    // is what the user sees in the share-sheet save dialog, and matching the source filename
-    // is the trust-preserving default (no surprise renames).
-    func testPreferredSubtitleExportFilenameUsesSRTBasenameWhenPresent() throws {
+    // preferredSubtitleExportFilename derives from the audio basename (there's no stored .srt to
+    // read a name from) — this is what the user sees in the share-sheet save dialog, and pairing
+    // it with the audio name is the trust-preserving default.
+    func testPreferredSubtitleExportFilenameDerivesFromAudioBasename() throws {
         let id = UUID()
-        _ = try store.saveSRT("hi", attachmentID: id, preferredFilename: "my-song.srt")
+        let source = testRoot.appendingPathComponent("my-song.mp3")
+        try Data("audio".utf8).write(to: source)
+        _ = try store.saveAudio(from: source, attachmentID: id)
         XCTAssertEqual(store.preferredSubtitleExportFilename(for: id), "my-song.srt")
     }
 

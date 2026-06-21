@@ -1,7 +1,7 @@
 import Foundation
 import AVFoundation
 import Combine
-import SwiftWhisper
+import SwiftWhisperAlign   // StemTranscriber — Qwen3-ASR transcription
 
 // Executes a BulkImportPlan sequentially: parses txt/srt files, copies audio attachments,
 // and runs Whisper transcription in the background for audio-only items. Items run one at
@@ -117,10 +117,24 @@ final class BulkImportRunner: ObservableObject {
         }
 
         if bodyContent == nil, cues == nil, let audioURL = item.audioURL {
-            guard let modelURL = whisperModelURL else {
+            // One shared engine for every import path. Only Whisper needs a downloaded model.
+            let engine = TranscriptionEngine.current
+            if engine == .whisper, whisperModelURL == nil {
                 throw BulkImportError.noTranscriptionModel
             }
-            let transcribed = try await transcribe(audioURL: audioURL, modelURL: modelURL, itemID: item.id)
+            let itemID = item.id
+            let didStart = audioURL.startAccessingSecurityScopedResource()
+            defer { if didStart { audioURL.stopAccessingSecurityScopedResource() } }
+            let transcribed = try await AudioTranscriptionService.transcribe(
+                url: audioURL, engine: engine, isolateVocals: TranscriptionPreprocessing.isolateVocals,
+                whisperModelURL: whisperModelURL,
+                onProgress: { [weak self] frac in
+                    Task { @MainActor in self?.progressByItem[itemID]?.transcriptionProgress = frac }
+                },
+                onStatus: { [weak self] label in
+                    Task { @MainActor in self?.progressByItem[itemID]?.statusLabel = label }
+                }
+            )
             cues = transcribed
             srtText = SubtitleParser.formatSRT(from: transcribed)
             bodyContent = SubtitleParser.assembleNoteContent(from: transcribed)
@@ -170,13 +184,6 @@ final class BulkImportRunner: ObservableObject {
                 }
                 try NotesAudioStore.shared.saveCues(cuesToSave, attachmentID: newID)
             }
-            if let srtText, srtText.isEmpty == false {
-                _ = try NotesAudioStore.shared.saveSRT(
-                    srtText,
-                    attachmentID: newID,
-                    preferredFilename: baseName + ".srt"
-                )
-            }
         }
 
         let note = Note(title: title, content: content, audioAttachmentID: attachmentID)
@@ -218,14 +225,6 @@ final class BulkImportRunner: ObservableObject {
                 try NotesAudioStore.shared.saveCues(cuesForBinding.applyingCheckpoints(timings), attachmentID: attachmentID)
             }
         }
-        if let srtText, srtText.isEmpty == false {
-            _ = try NotesAudioStore.shared.saveSRT(
-                srtText,
-                attachmentID: attachmentID,
-                preferredFilename: preferredSubtitleFilename
-            )
-        }
-
         store.updateAudioAttachment(id: noteID, attachmentID: attachmentID)
     }
 
@@ -263,14 +262,6 @@ final class BulkImportRunner: ObservableObject {
             }
         }
 
-        if let srtText, srtText.isEmpty == false {
-            _ = try NotesAudioStore.shared.saveSRT(
-                srtText,
-                attachmentID: attachmentID,
-                preferredFilename: preferredSubtitleFilename
-            )
-        }
-
         store.updateAudioAttachment(id: noteID, attachmentID: attachmentID)
     }
 
@@ -295,56 +286,6 @@ final class BulkImportRunner: ObservableObject {
         }
         try NotesAudioStore.shared.saveCues(existingCues.applyingCheckpoints(timings), attachmentID: attachmentID)
         KaraokeDebugLog.log("bulkAttach: OK saved inline checkpoints for attachment=\(attachmentID.uuidString.prefix(8))")
-    }
-
-    // Runs Whisper transcription on a single audio file using the supplied model URL,
-    // forwarding progress to the matching plan item so the sheet can render per-row state.
-    // Returns one SubtitleCue per non-empty Whisper segment, indexed sequentially.
-    // nonisolated so the non-Sendable `whisper` instance doesn't cross actor boundaries
-    // at the await; progress updates are explicitly hopped to MainActor inside the
-    // delegate closure.
-    nonisolated private func transcribe(audioURL: URL, modelURL: URL, itemID: String) async throws -> [SubtitleCue] {
-        let didStartAudio = audioURL.startAccessingSecurityScopedResource()
-        let didStartModel = modelURL.startAccessingSecurityScopedResource()
-        defer {
-            if didStartAudio { audioURL.stopAccessingSecurityScopedResource() }
-            if didStartModel { modelURL.stopAccessingSecurityScopedResource() }
-        }
-
-        let audioFrames = try await Self.convertAudioTo16kHzMono(url: audioURL)
-
-        let params = WhisperParams.default
-        params.language = .japanese
-
-        let whisper = Whisper(fromFileURL: modelURL, withParams: params)
-        let delegate = WhisperTranscriptionDelegate()
-        delegate.onProgress = { [weak self] progress in
-            Task { @MainActor in
-                self?.progressByItem[itemID]?.transcriptionProgress = progress
-            }
-        }
-        whisper.delegate = delegate
-
-        let segments = try await whisper.transcribe(audioFrames: audioFrames)
-
-        var cues: [SubtitleCue] = []
-        for (index, segment) in segments.enumerated() {
-            let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard text.isEmpty == false else { continue }
-            cues.append(
-                SubtitleCue(
-                    index: index + 1,
-                    startMs: segment.startTime,
-                    endMs: segment.endTime,
-                    text: text
-                )
-            )
-        }
-
-        if cues.isEmpty {
-            throw BulkImportError.transcriptionEmpty
-        }
-        return cues
     }
 
     // Computes the note title for new notes. The user's file naming is authoritative — the
@@ -401,63 +342,11 @@ final class BulkImportRunner: ObservableObject {
         return try TextGridParser.parse(raw).lineCues()
     }
 
-    // Resamples the audio file to 16 kHz mono Float32 PCM via AVAssetReader. Whisper requires
-    // this exact format and AVAssetReader handles all common source formats (mp3, wav, m4a, …).
-    private nonisolated static func convertAudioTo16kHzMono(url: URL) async throws -> [Float] {
-        try await Task.detached(priority: .userInitiated) {
-            let asset = AVURLAsset(url: url)
-            let tracks = try await asset.loadTracks(withMediaType: .audio)
-            guard let audioTrack = tracks.first else {
-                throw BulkImportError.noAudioTrack
-            }
-
-            let reader = try AVAssetReader(asset: asset)
-            let outputSettings: [String: Any] = [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVSampleRateKey: 16_000.0,
-                AVNumberOfChannelsKey: 1,
-                AVLinearPCMBitDepthKey: 32,
-                AVLinearPCMIsFloatKey: true,
-                AVLinearPCMIsNonInterleaved: false,
-                AVLinearPCMIsBigEndianKey: false,
-            ]
-
-            let trackOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
-            trackOutput.alwaysCopiesSampleData = false
-            reader.add(trackOutput)
-
-            guard reader.startReading() else {
-                throw reader.error ?? BulkImportError.audioReadFailed
-            }
-
-            var samples: [Float] = []
-            while reader.status == .reading {
-                guard let sampleBuffer = trackOutput.copyNextSampleBuffer() else { break }
-                guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
-                let length = CMBlockBufferGetDataLength(blockBuffer)
-                var rawBytes = [UInt8](repeating: 0, count: length)
-                CMBlockBufferCopyDataBytes(blockBuffer, atOffset: 0, dataLength: length, destination: &rawBytes)
-                rawBytes.withUnsafeBytes { ptr in
-                    guard let base = ptr.baseAddress else { return }
-                    let floatPtr = base.assumingMemoryBound(to: Float.self)
-                    samples.append(contentsOf: UnsafeBufferPointer(start: floatPtr, count: length / MemoryLayout<Float>.size))
-                }
-            }
-
-            if reader.status == .failed, let error = reader.error {
-                throw error
-            }
-
-            return samples
-        }.value
-    }
 }
 
 // Errors surfaced as per-item failures in the bulk import sheet.
 private enum BulkImportError: LocalizedError {
     case noTranscriptionModel
-    case noAudioTrack
-    case audioReadFailed
     case unreadableTextFile
     case emptySubtitleFile
     case transcriptionEmpty
@@ -469,10 +358,6 @@ private enum BulkImportError: LocalizedError {
         switch self {
         case .noTranscriptionModel:
             return "Select a Whisper model to transcribe audio without text or subtitles."
-        case .noAudioTrack:
-            return "The audio file contains no audio track."
-        case .audioReadFailed:
-            return "Could not read audio data from the file."
         case .unreadableTextFile:
             return "Could not read the text file."
         case .emptySubtitleFile:

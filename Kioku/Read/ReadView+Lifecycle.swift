@@ -347,11 +347,18 @@ extension ReadView {
                     onCueEdit: { edit in
                         applyLyricCueEdit(edit)
                     },
-                    realigningCueIndex: realigningCueIndex
+                    realigningCueIndex: realigningCueIndex,
+                    isReAligning: isReAligningWholeNote,
+                    reAlignMessage: reAlignProgressMessage,
+                    stemAvailable: stemAvailableForActiveAudio,
+                    isListeningToStem: $isListeningToStem
                 )
                 .opacity(isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(isShowingLyricsView)
                 .animation(.easeInOut(duration: 0.2), value: isShowingLyricsView)
+                .onChange(of: isListeningToStem) { _, listening in
+                    switchLyricAudioSource(toStem: listening)
+                }
             }
         }
         .sheet(isPresented: $isShowingSegmentList) {

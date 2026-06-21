@@ -76,6 +76,22 @@ struct NotesView: View {
                     }
                     .tag(note.id)
                     .deleteDisabled(editMode == .active)
+                    // Anchored to THIS row: presents only when this note is the single pending
+                    // deletion, so the popover arrow points here rather than at a default row.
+                    .confirmationDialog(
+                        deleteDialogTitle,
+                        isPresented: rowDeletePresented(note),
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete Note", role: .destructive) {
+                            performDelete()
+                        }
+                        Button("Cancel", role: .cancel) {
+                            pendingDeletion = nil
+                        }
+                    } message: {
+                        Text(deleteDialogMessage)
+                    }
                 }
                 .onMove(perform: store.moveNotes)
                 .onDelete { offsets in
@@ -103,9 +119,12 @@ struct NotesView: View {
                     commitRename()
                 }
             }
+            // Multi-note deletes (toolbar / Edit mode) have no source row to anchor to, so they use
+            // a top-level dialog. Single-note deletes are confirmed per-row (see rowDeletePresented)
+            // so the popover arrow points at the note being deleted.
             .confirmationDialog(
                 deleteDialogTitle,
-                isPresented: deleteDialogPresented,
+                isPresented: bulkDeleteDialogPresented,
                 titleVisibility: .visible
             ) {
                 Button("Delete Note\(pendingNoteCountSuffix)", role: .destructive) {
@@ -269,7 +288,7 @@ struct NotesView: View {
 
         return (
             hasAudio: NotesAudioStore.shared.audioURL(for: attachmentID) != nil,
-            hasSubtitles: NotesAudioStore.shared.subtitleURL(for: attachmentID) != nil
+            hasSubtitles: NotesAudioStore.shared.hasCues(for: attachmentID)
         )
     }
 
@@ -300,6 +319,24 @@ struct NotesView: View {
                     pendingDeletion = nil
                 }
             }
+        )
+    }
+
+    // Per-row delete-confirmation binding: true only when exactly THIS note is the pending deletion.
+    // The confirmationDialog is attached to each row, so iOS anchors its popover arrow to the row
+    // that triggered the delete (a top-level dialog can't track the source row → arrow points wrong).
+    private func rowDeletePresented(_ note: Note) -> Binding<Bool> {
+        Binding(
+            get: { pendingDeletion?.noteIDs == [note.id] },
+            set: { if $0 == false { pendingDeletion = nil } }
+        )
+    }
+
+    // Multi-note (toolbar) deletes have no single source row, so they keep a top-level dialog.
+    private var bulkDeleteDialogPresented: Binding<Bool> {
+        Binding(
+            get: { (pendingDeletion?.noteIDs.count ?? 0) > 1 },
+            set: { if $0 == false { pendingDeletion = nil } }
         )
     }
 

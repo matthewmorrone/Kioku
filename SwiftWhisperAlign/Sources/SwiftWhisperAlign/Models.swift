@@ -34,7 +34,22 @@ public struct AlignedLine {
 
 public struct AlignmentResult {
     public let lines: [AlignedLine]
-    public init(lines: [AlignedLine]) { self.lines = lines }
+    /// Per-line sub-line checkpoints (one inner array per `lines` entry, same order). Each token's
+    /// char offset/length is UTF-16 into that line, so it drops directly onto a `CueCharTiming`
+    /// for the per-word/per-mora karaoke sweep. Empty (or empty inner arrays) → line-level only.
+    public let lineTokens: [[AlignedToken]]
+    /// Where the singer is actually singing — the energy-VAD vocal regions on the isolated stem,
+    /// in absolute song seconds. The COMPLEMENT of these (intro, inter-region gaps, outro) is where
+    /// no voice is present = the real instrumental / interlude stretches, so ♪ music markers are
+    /// driven from these rather than guessed from cue-time gaps. Empty → caller falls back to the
+    /// cue-time-gap heuristic.
+    public let vocalSegments: [(start: Double, end: Double)]
+    public init(lines: [AlignedLine], lineTokens: [[AlignedToken]] = [],
+                vocalSegments: [(start: Double, end: Double)] = []) {
+        self.lines = lines
+        self.lineTokens = lineTokens
+        self.vocalSegments = vocalSegments
+    }
 }
 
 /// One forced-aligned token within a single line: its DTW timestamp plus the

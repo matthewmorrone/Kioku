@@ -117,6 +117,52 @@ final class SongCapabilityHarness: XCTestCase {
         }
     }
 
+    // CTC MEASUREMENT: runs the CTCForcedAligner (the whole-note Re-align path) on audio+lyrics
+    // and reports start-time deviation against the oracle, coverage, a collapse/cram flag, and a
+    // per-line dump. This is the autonomous tuning loop for the windowing/feed/plateau logic:
+    //   KIOKU_AUDIO=.../tsukiiro-chainon.audio.mp3 \
+    //   KIOKU_NOTE=.../tsukiiro-chainon.note.txt \
+    //   KIOKU_ORACLE=.../tsukiiro-chainon.ground-truth.srt \
+    //   swift test --package-path SwiftWhisperAlign --filter testMeasureCTCAlignment
+    // Requires ~/Documents/HTDemucsSpec.mlmodelc (pulled from the device) for isolation.
+    func testMeasureCTCAlignment() async throws {
+        let e = ProcessInfo.processInfo.environment
+        guard let audio = e["KIOKU_AUDIO"], let note = e["KIOKU_NOTE"], let oracle = e["KIOKU_ORACLE"] else {
+            throw XCTSkip("Set KIOKU_AUDIO, KIOKU_NOTE, KIOKU_ORACLE to measure CTC alignment.")
+        }
+        let audioURL = URL(fileURLWithPath: audio)
+        let lines = try String(contentsOfFile: note, encoding: .utf8)
+            .components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        let oracleCues = Self.parseSRT(try String(contentsOfFile: oracle, encoding: .utf8)).filter { Self.isSpeech($0.text) }
+
+        let result = try await CTCForcedAligner().align(
+            input: AlignmentInput(audioURL: audioURL, lines: lines, language: "ja"),
+            cancellationCheck: { false }
+        )
+        let produced = result.lines
+            .map { Cue(startMs: Int(($0.start * 1000).rounded()), endMs: Int(($0.end * 1000).rounded()), text: $0.text) }
+            .filter { Self.isSpeech($0.text) }
+        let m = Self.metrics(produced: produced, oracle: oracleCues)
+        let lastEnd = Double(produced.map(\.endMs).max() ?? 0) / 1000
+        let oracleLastEnd = Double(oracleCues.map(\.endMs).max() ?? 0) / 1000
+
+        print(">>>CTC_MEASURE_BEGIN")
+        print(String(format: "produced %d  oracle %d  matched %d  median %dms  max %dms  <=200 %.0f%%  <=500 %.0f%%  <=1000 %.0f%%  lastEnd %.1fs/%.1fs",
+                     produced.count, oracleCues.count, m.matched, m.median, m.maxD, m.pct200, m.pct500, m.pct1000, lastEnd, oracleLastEnd))
+        // Per-line: produced start vs the oracle start for the same text (Δ in ms), to see WHERE drift starts.
+        func oracleStart(_ text: String) -> Int? {
+            func norm(_ s: String) -> String { s.components(separatedBy: .whitespacesAndNewlines).joined() }
+            return oracleCues.first { norm($0.text) == norm(text) }.map(\.startMs)
+        }
+        for (i, c) in produced.enumerated() {
+            let os = oracleStart(c.text)
+            let delta = os.map { String(format: "Δ%+5dms", c.startMs - $0) } ?? "  (no oracle)"
+            print(String(format: "[%2d] %7.2fs  %@  %@", i, Double(c.startMs) / 1000, delta as NSString, c.text as NSString))
+        }
+        print(">>>CTC_MEASURE_END")
+    }
+
     // MEASUREMENT: align audio+note with each model in KIOKU_MODELS (comma-separated
     // paths) and report per-line start-time deviation against a trusted oracle SRT
     // (KIOKU_ORACLE). Prints a table: matched lines, median/max Δ, and the share of

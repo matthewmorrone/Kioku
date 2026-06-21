@@ -130,34 +130,29 @@ extension ReadView {
         .buttonStyle(.plain)
     }
 
-    // During alignment: shows progress, streams partial SRT, and offers a cancel button.
+    // During alignment: the same capsule progress chip as the karaoke Re-align bar
+    // (mini spinner + high-contrast text in an accent capsule), plus a plain Cancel.
     private var alignmentProgressContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.regular)
-                Text(lyricAlignmentProgressMessage.isEmpty ? "Generating subtitles..." : lyricAlignmentProgressMessage)
-                    .font(.callout)
-                    .foregroundStyle(.primary)
+        VStack(spacing: 14) {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini)
+                Text(lyricAlignmentProgressMessage.isEmpty ? "Aligning…" : lyricAlignmentProgressMessage)
+                    .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .animation(.easeInOut(duration: 0.15), value: lyricAlignmentProgressMessage)
             }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 16)
+            .frame(height: 28)
+            .background(Color.accentColor.opacity(0.16))
+            .clipShape(Capsule())
 
-            if alignmentResultSRT.isEmpty == false {
-                ScrollView {
-                    Text(alignmentResultSRT)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 200)
-            }
-
-            Button("Cancel") {
-                cancelAlignment()
-            }
-            .buttonStyle(.bordered)
-            .disabled(isCancellingAlignment)
+            Button("Cancel") { cancelAlignment() }
+                .font(.system(size: 13, weight: .semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .disabled(isCancellingAlignment)
         }
     }
 

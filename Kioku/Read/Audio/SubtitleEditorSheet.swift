@@ -56,8 +56,15 @@ struct SubtitleEditorSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                StableTextEditor(text: $srtText, selectedRange: $editorSelection)
-                    .padding(.horizontal, 8)
+                StableTextEditor(
+                    text: $srtText,
+                    selectedRange: $editorSelection,
+                    // Color each cue's timestamp line green→red by how far its duration deviates
+                    // from its mora-count's expectation at the song's own pace — a quick visual map
+                    // of which cues' timings to trust vs. fix.
+                    lineColorizer: SubtitleTimingHeatmap.timestampColorRanges(forSRT:)
+                )
+                .padding(.horizontal, 8)
 
                 Divider()
                 subtitleToolsBar
@@ -65,22 +72,30 @@ struct SubtitleEditorSheet: View {
             .navigationTitle("Edit Subtitles")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
-                    Button {
-                        UIPasteboard.general.string = srtText
-                    } label: {
-                        Label("Copy", systemImage: "doc.on.doc")
+                // Re-align surfaced at the top for fast test/tune cycles: re-runs the CTC
+                // pipeline (reconcileFromNote → OnDeviceLyricAligner → CTCForcedAligner —
+                // vocal separation + windowing) on the already-attached audio, so there's
+                // no wipe-and-re-import dance. With reset cues it degenerates to a full
+                // from-scratch align of the note text. Replaces the old Copy/Export controls
+                // (commented out below, not deleted).
+                ToolbarItem(placement: .topBarLeading) {
+                    if isRetiming {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button {
+                            retimeTask = Task { await reconcileFromNote(ignoringCues: true) }
+                        } label: {
+                            Label("Re-align", systemImage: "wand.and.stars")
+                        }
+                        .disabled(isValidating || noteText.isEmpty)
                     }
-                    .disabled(srtText.isEmpty)
-
-                    Button {
-                        exportDocument = SRTDocument(text: srtText)
-                        isShowingExporter = true
-                    } label: {
-                        Label("Export", systemImage: "square.and.arrow.up")
-                    }
-                    .disabled(srtText.isEmpty)
                 }
+                // ToolbarItemGroup(placement: .topBarLeading) {
+                //     Button { UIPasteboard.general.string = srtText } label: { Label("Copy", systemImage: "doc.on.doc") }
+                //         .disabled(srtText.isEmpty)
+                //     Button { exportDocument = SRTDocument(text: srtText); isShowingExporter = true } label: { Label("Export", systemImage: "square.and.arrow.up") }
+                //         .disabled(srtText.isEmpty)
+                // }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
@@ -127,7 +142,10 @@ struct SubtitleEditorSheet: View {
             }
         }
         .onAppear {
-            srtText = NotesAudioStore.shared.loadSRT(for: attachmentID) ?? SubtitleParser.formatSRT(from: initialCues)
+            // Project the editor's SRT text from the model (the cues passed in from cues.json — the
+            // single source of truth). There is no on-disk .srt to read back: SRT is a one-way
+            // export projection now, never a parallel persisted truth.
+            srtText = SubtitleParser.formatSRT(from: initialCues)
         }
         .fileExporter(
             isPresented: $isShowingExporter,
@@ -413,8 +431,12 @@ struct SubtitleEditorSheet: View {
     // hand and re-run. Degenerates gracefully: if no cues match (empty or all-mismatched
     // SRT), the entire audio becomes one gap and the action behaves like a full-song
     // forced alignment with the note text.
+    // `ignoringCues: true` discards the current cues so the audio is aligned fresh from the
+    // note text (a true from-scratch re-run, used by the top Re-align button for testing).
+    // Default false keeps the incremental behavior the bottom menu wants (existing cues
+    // stay as anchors; only gaps re-align).
     @MainActor
-    private func reconcileFromNote() async {
+    private func reconcileFromNote(ignoringCues: Bool = false) async {
         defer {
             isRetiming = false
             retimeProgressMessage = ""
@@ -461,7 +483,7 @@ struct SubtitleEditorSheet: View {
             // production and AlignmentQualityTests both exercise the same code path.
             let merged = try await SubtitleReconciliation.reconcile(
                 audioURL: audioURL,
-                currentCues: liveCues,
+                currentCues: ignoringCues ? [] : liveCues,
                 noteLines: noteLines,
                 modelURL: modelURL,
                 cancellationCheck: { Task.isCancelled },
@@ -524,7 +546,7 @@ struct SubtitleEditorSheet: View {
         }
 
         let alignStartedAt = Date()
-        retimeProgressMessage = "Aligning \(lines.count) lines — 0%"
+        retimeProgressMessage = "Starting…"
 
         do {
             let srt = try await OnDeviceLyricAligner.align(
@@ -532,15 +554,14 @@ struct SubtitleEditorSheet: View {
                 lyrics: lyrics,
                 modelURL: modelURL,
                 cancellationCheck: { Task.isCancelled },
-                onProgress: { fraction in
-                    // Aligner emits the 0–1 fraction from a background dispatch; route
-                    // back to MainActor for the @State write. Format keeps the pill
-                    // compact: percentage + elapsed seconds so the user reads it as
-                    // "is this thing making progress" at a glance.
+                onStage: { stage in
+                    // Show the pipeline's OWN per-phase status ("Isolating vocals… 73%",
+                    // "Aligning lyrics… 45%") so each phase counts its own 0–100% — not a
+                    // combined bar that stalls isolation at 40% under an "Aligning" label.
+                    // Append elapsed seconds so the pill still reads as "making progress".
                     Task { @MainActor in
-                        let pct = Int((fraction * 100).rounded())
                         let elapsed = Int(Date().timeIntervalSince(alignStartedAt))
-                        retimeProgressMessage = "Aligning \(lines.count) lines — \(pct)% · \(elapsed)s"
+                        retimeProgressMessage = "\(stage) · \(elapsed)s"
                     }
                 }
             )
@@ -640,22 +661,22 @@ struct SubtitleEditorSheet: View {
         )
     }
 
-    // Re-parses the edited SRT text, saves the cues to disk, and notifies the caller.
+    // Re-parses the edited SRT text and saves it back onto the model, notifying the caller.
+    // Per-word checkpoints are carried over from the pre-edit cues so editing timings (or any
+    // untouched line) never destroys karaoke timing — only lines whose TEXT changed lose it.
+    // cues.json is the sole persisted truth; no .srt sidecar is written.
     private func performSave() {
-        let newCues = SubtitleParser.parse(srtText)
-        guard newCues.isEmpty == false else {
+        let parsed = SubtitleParser.parse(srtText)
+        guard parsed.isEmpty == false else {
             parseError = "No valid subtitle cues found. Check the format and try again."
             return
         }
 
+        let merged = SubtitleEditorTimingTools.mergeCheckpoints(into: parsed, from: initialCues)
+
         do {
-            try NotesAudioStore.shared.saveCues(newCues, attachmentID: attachmentID)
-            _ = try NotesAudioStore.shared.saveSRT(
-                srtText,
-                attachmentID: attachmentID,
-                preferredFilename: NotesAudioStore.shared.preferredSubtitleExportFilename(for: attachmentID)
-            )
-            onSave(newCues)
+            try NotesAudioStore.shared.saveCues(merged, attachmentID: attachmentID)
+            onSave(merged)
             dismiss()
         } catch {
             parseError = error.localizedDescription

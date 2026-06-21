@@ -22,6 +22,14 @@ struct KiokuApp: App {
         StartupTimer.mark("KiokuApp.init")
         KaraokeDebugLog.reset()
         KaraokeDebugLog.log("=== app launch ===")
+        // One-time cleanup: the .srt sidecar was demoted to an export-only projection of cues.json
+        // (the single source of truth), so remove the now-inert sidecars left by older builds.
+        NotesAudioStore.shared.purgeLegacySRTSidecars()
+        // (Startup dedup sweep temporarily disabled while diagnosing a launch crash — clone-on-import
+        // in saveAudio still prevents NEW duplicates; the one-time reclaim sweep is re-enabled once
+        // the launch path is confirmed clean.)
+        // Headless alignment-tuning harness — runs only when launched with KIOKU_ALIGN_HARNESS set.
+        AlignmentHarness.runIfRequested()
     }
 
     var body: some Scene {
