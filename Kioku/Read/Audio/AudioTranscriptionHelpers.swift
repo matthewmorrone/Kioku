@@ -13,6 +13,36 @@ import Foundation
 @preconcurrency import Speech
 import NaturalLanguage
 
+// Lock-guarded mutable state shared by the (background) recognition handler and the timeout task in
+// recognizeTranscription. `claim()` returns true to exactly one caller, so the checked continuation
+// is resumed once even though both closures race. @unchecked Sendable: the NSLock provides the safety.
+// Every member is `nonisolated` — the project builds with -default-isolation=MainActor, which would
+// otherwise make this class @MainActor and unusable from the background recognition callback.
+private final class SpeechResolveBox: @unchecked Sendable {
+    nonisolated private let lock = NSLock()
+    nonisolated(unsafe) private var resolved = false
+    nonisolated(unsafe) private var latest: SFTranscription?
+    nonisolated(unsafe) var task: SFSpeechRecognitionTask?
+
+    nonisolated init() {}
+
+    // Returns true to exactly one caller; the rest get false (so the continuation resumes once).
+    nonisolated func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if resolved { return false }
+        resolved = true
+        return true
+    }
+    // Stores the most recent partial, used as the fallback when the timeout fires.
+    nonisolated func setLatest(_ transcription: SFTranscription?) {
+        lock.lock(); latest = transcription; lock.unlock()
+    }
+    // The latest stored partial, read under the lock.
+    nonisolated var latestValue: SFTranscription? {
+        lock.lock(); defer { lock.unlock() }; return latest
+    }
+}
+
 enum AudioTranscriptionHelpers {
 
     // Copies an imported audio file into a temporary location so recognition can safely access it after file-importer scope ends.
@@ -38,14 +68,20 @@ enum AudioTranscriptionHelpers {
     }
 
     // Requests speech-recognition authorization so built-in transcription can process the imported audio file.
-    static func requestSpeechAuthorizationIfNeeded() async throws {
+    // nonisolated: the Speech framework calls requestAuthorization's completion on a BACKGROUND
+    // thread. Under the project's -default-isolation=MainActor, a closure here would be inferred
+    // @MainActor and the runtime SIGTRAPs (dispatch_assert_queue) when it runs off-main. Marking the
+    // function nonisolated makes its closures nonisolated, so the off-main callback is legal.
+    nonisolated static func requestSpeechAuthorizationIfNeeded() async throws {
         let authorizationStatus = SFSpeechRecognizer.authorizationStatus()
         if authorizationStatus == .authorized {
             return
         }
 
         let granted = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
+            // @Sendable forces the closure nonisolated so it can run on Speech's background callback
+            // thread; without it -default-isolation=MainActor infers @MainActor and the runtime SIGTRAPs.
+            SFSpeechRecognizer.requestAuthorization { @Sendable status in
                 continuation.resume(returning: status == .authorized)
             }
         }
@@ -59,8 +95,10 @@ enum AudioTranscriptionHelpers {
         }
     }
 
-    // Runs one-shot URL-based recognition using Apple Speech and returns the best transcription with segment timing.
-    static func recognizeTranscription(from fileURL: URL, contextualStrings: [String]) async throws -> SFTranscription {
+    // Runs one-shot URL-based recognition using Apple Speech and returns the best transcription with
+    // segment timing. nonisolated for the same reason as requestSpeechAuthorizationIfNeeded: the
+    // recognitionTask result handler fires on a background thread and must not be MainActor-inferred.
+    nonisolated static func recognizeTranscription(from fileURL: URL, contextualStrings: [String]) async throws -> SFTranscription {
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "ja_JP")) else {
             throw NSError(
                 domain: "Kioku.AudioTranscription",
@@ -82,46 +120,32 @@ enum AudioTranscriptionHelpers {
         request.requiresOnDeviceRecognition = false
         request.contextualStrings = contextualStrings
 
+        // The recognition handler runs on a background thread and races the timeout task, so its
+        // mutable state lives in a lock-guarded Sendable box (a bare captured `var` can't be shared
+        // across two @Sendable closures, and the lock guards against a double continuation-resume,
+        // which would itself SIGTRAP). @Sendable on the handler keeps it off the MainActor.
         return try await withCheckedThrowingContinuation { continuation in
-            var didResolve = false
-            var latestTranscription: SFTranscription?
-            let recognitionTask = recognizer.recognitionTask(with: request) { result, error in
-                if didResolve {
-                    return
-                }
-
+            let box = SpeechResolveBox()
+            box.task = recognizer.recognitionTask(with: request) { @Sendable result, error in
                 if let error {
-                    didResolve = true
-                    continuation.resume(throwing: error)
+                    if box.claim() { continuation.resume(throwing: error) }
                     return
                 }
-
-                guard let result else {
-                    return
+                guard let result else { return }
+                box.setLatest(result.bestTranscription)
+                if result.isFinal, box.claim() {
+                    continuation.resume(returning: result.bestTranscription)
                 }
-
-                latestTranscription = result.bestTranscription
-
-                guard result.isFinal else {
-                    return
-                }
-
-                didResolve = true
-                continuation.resume(returning: result.bestTranscription)
             }
 
             // Avoids hanging forever on music chunks that never emit a final result by falling back to the latest partial.
             Task.detached(priority: .userInitiated) {
                 try? await Task.sleep(nanoseconds: 25_000_000_000)
-                if didResolve {
-                    return
-                }
+                guard box.claim() else { return }
+                box.task?.cancel()
 
-                didResolve = true
-                recognitionTask.cancel()
-
-                if let latestTranscription {
-                    continuation.resume(returning: latestTranscription)
+                if let latest = box.latestValue {
+                    continuation.resume(returning: latest)
                 } else {
                     continuation.resume(throwing: NSError(
                         domain: "Kioku.AudioTranscription",

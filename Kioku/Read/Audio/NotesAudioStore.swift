@@ -1,4 +1,5 @@
 import Foundation
+import Darwin   // clonefile — APFS copy-on-write so duplicate songs don't duplicate bytes
 
 // Manages audio files and subtitle cue data on disk under the app's Documents/audio directory.
 // Each attachment is keyed by a UUID shared between the Note model and the stored files.
@@ -43,8 +44,80 @@ final class NotesAudioStore: NotesAttachmentDeleting {
             try FileManager.default.removeItem(at: destination)
         }
 
+        // De-dup: if this exact audio is already stored (the same song on another attachment), clone
+        // the existing copy — APFS copy-on-write shares the data blocks, so the duplicate costs ~0
+        // disk. Per-file deletion still works (the OS ref-counts blocks). Falls back to a real copy
+        // when there's no twin or cloning isn't supported.
+        if let twin = existingStoredTwin(ofSourceURL: sourceURL),
+           Self.cloneFile(at: twin, to: destination) {
+            return destination
+        }
         try FileManager.default.copyItem(at: sourceURL, to: destination)
         return destination
+    }
+
+    // Finds an already-stored audio file with byte-identical content to `sourceURL`, if any.
+    // `contentsEqual` compares size before bytes, so this stays cheap across a library.
+    private func existingStoredTwin(ofSourceURL sourceURL: URL) -> URL? {
+        let audioExts: Set<String> = ["mp3", "m4a", "aac", "wav", "caf"]
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: audioDirectory, includingPropertiesForKeys: nil
+        ) else { return nil }
+        return files.first {
+            audioExts.contains($0.pathExtension.lowercased())
+                && FileManager.default.contentsEqual(atPath: sourceURL.path, andPath: $0.path)
+        }
+    }
+
+    // APFS copy-on-write clone: `destination` shares `source`'s data blocks until either is modified
+    // (audio never is), so it adds no real disk. Returns false when cloning isn't possible (non-APFS,
+    // cross-volume) so the caller can fall back to a plain copy. Destination must not already exist.
+    @discardableResult
+    static func cloneFile(at source: URL, to destination: URL) -> Bool {
+        source.withUnsafeFileSystemRepresentation { src in
+            destination.withUnsafeFileSystemRepresentation { dst in
+                guard let src, let dst else { return false }
+                // COPYFILE_CLONE clones (copy-on-write) when the filesystem supports it and falls
+                // back to a plain copy otherwise. copyfile() lives in libSystem and is always
+                // bound at load — unlike a bare clonefile() reference, which can fail dyld linkage.
+                return copyfile(src, dst, nil, copyfile_flags_t(COPYFILE_CLONE)) == 0
+            }
+        }
+    }
+
+    // One-time sweep folding already-stored duplicate audio (the same song attached more than once
+    // before de-dup existed) into APFS clones of a single canonical copy, reclaiming wasted disk.
+    // Byte-identical only; each duplicate is atomically replaced by a clone of its canonical twin
+    // (same filename, shared blocks — attachments still resolve by UUID prefix). Runs once.
+    func dedupeStoredAudio() {
+        let flag = "kioku.migration.dedupedAudioV1"
+        guard UserDefaults.standard.bool(forKey: flag) == false else { return }
+        defer { UserDefaults.standard.set(true, forKey: flag) }
+        let audioExts: Set<String> = ["mp3", "m4a", "aac", "wav", "caf"]
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: audioDirectory, includingPropertiesForKeys: [.fileSizeKey]
+        ) else { return }
+        var bySize: [Int: [URL]] = [:]
+        for f in files where audioExts.contains(f.pathExtension.lowercased()) {
+            let size = (try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+            bySize[size, default: []].append(f)
+        }
+        for (_, group) in bySize where group.count > 1 {
+            for i in 1..<group.count {
+                let dup = group[i]
+                guard let canonical = group[0..<i].first(where: {
+                    FileManager.default.contentsEqual(atPath: $0.path, andPath: dup.path)
+                }) else { continue }
+                let tmp = audioDirectory.appendingPathComponent("\(UUID().uuidString).declone")
+                guard Self.cloneFile(at: canonical, to: tmp) else {
+                    try? FileManager.default.removeItem(at: tmp); continue
+                }
+                // Atomic swap: replace the duplicate with its byte-identical clone.
+                if (try? FileManager.default.replaceItemAt(dup, withItemAt: tmp)) == nil {
+                    try? FileManager.default.removeItem(at: tmp)
+                }
+            }
+        }
     }
 
     // Persists the subtitle cue list for an attachment as JSON.
@@ -54,21 +127,11 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         try data.write(to: destination, options: .atomic)
     }
 
-    // Persists the raw SRT response for one attachment so it can be copied or exported later.
-    func saveSRT(_ srtText: String, attachmentID: UUID, preferredFilename: String? = nil) throws -> URL {
-        if let existingURL = subtitleURL(for: attachmentID) {
-            try? FileManager.default.removeItem(at: existingURL)
-        }
-
-        let destination = audioDirectory.appendingPathComponent(
-            storedFilename(
-                attachmentID: attachmentID,
-                originalFilename: preferredFilename ?? "\(attachmentID.uuidString).srt",
-                fallbackExtension: "srt"
-            )
-        )
-        try Data(srtText.utf8).write(to: destination, options: .atomic)
-        return destination
+    // Whether an attachment has saved subtitle cues. This is the single persisted truth for
+    // "has subtitles" now that the .srt sidecar is gone (SRT is an export-only projection of
+    // cues.json) — replaces the former `subtitleURL(for:) != nil` probe.
+    func hasCues(for attachmentID: UUID) -> Bool {
+        loadCues(for: attachmentID).isEmpty == false
     }
 
     // Returns the URL of the stored audio file, trying common extensions.
@@ -97,14 +160,20 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         return cues
     }
 
-    // Returns the saved raw SRT file URL when one exists.
-    func subtitleURL(for attachmentID: UUID) -> URL? {
-        if let storedURL = storedFileURL(for: attachmentID, allowedExtensions: ["srt"]) {
-            return storedURL
+    // One-time sweep removing every legacy .srt sidecar from the audio container. The .srt was
+    // demoted to an export-only projection of cues.json (the single source of truth); nothing reads
+    // a stored .srt anymore, so these files are inert. A UserDefaults flag makes it run exactly once.
+    func purgeLegacySRTSidecars() {
+        let flag = "kioku.migration.purgedSRTSidecars"
+        guard UserDefaults.standard.bool(forKey: flag) == false else { return }
+        if let urls = try? FileManager.default.contentsOfDirectory(
+            at: audioDirectory, includingPropertiesForKeys: nil
+        ) {
+            for url in urls where url.pathExtension.lowercased() == "srt" {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
-
-        let legacyURL = audioDirectory.appendingPathComponent(attachmentID.uuidString).appendingPathExtension("srt")
-        return FileManager.default.fileExists(atPath: legacyURL.path) ? legacyURL : nil
+        UserDefaults.standard.set(true, forKey: flag)
     }
 
     // Reads all files for one attachment and returns a backup snapshot.
@@ -112,10 +181,12 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     func exportAttachment(for attachmentID: UUID) -> AudioAttachmentBackup? {
         guard let audioURL = audioURL(for: attachmentID) else { return nil }
         guard let audioData = try? Data(contentsOf: audioURL) else { return nil }
-        let srtText = loadSRT(for: attachmentID)
-        // Cues carry their checkpoints inline (loadCues migrates any legacy sidecar), so the backup
-        // needs only the cue list — `timings` stays nil and exists solely to decode old backups.
+        // Cues carry their checkpoints inline and are the single source of truth, so the backup
+        // needs only the cue list. The SRT is regenerated from those cues purely so an older app
+        // version (which restored a .srt sidecar) can still decode this backup; `timings` stays nil
+        // and exists solely to decode old backups.
         let cues = loadCues(for: attachmentID)
+        let srtText = cues.isEmpty ? nil : SubtitleParser.formatSRT(from: cues)
         return AudioAttachmentBackup(
             attachmentID: attachmentID,
             audioFilename: readableFilename(fromStoredURL: audioURL, defaultExtension: audioURL.pathExtension),
@@ -125,7 +196,7 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         )
     }
 
-    // Writes the audio file, SRT, and cues from a backup snapshot back to disk.
+    // Writes the audio file and cues from a backup snapshot back to disk.
     // Safe to call multiple times — existing files are overwritten.
     func importAttachment(_ backup: AudioAttachmentBackup) throws {
         let ext = (backup.audioFilename as NSString).pathExtension
@@ -141,36 +212,16 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         }
         try backup.audioData.write(to: destination, options: .atomic)
 
-        if let srtText = backup.srtText {
-            // Derive the SRT filename from the audio basename via the dedicated helper.
-            // Passing backup.audioFilename ("song.mp3") directly would propagate the audio
-            // extension through storedFilename and write the SRT to "{uuid}-song.mp3",
-            // overwriting the audio we just restored. Pinned by
-            // NotesAudioStoreTests.testImportAttachmentWithAudioAndSRTKeepsBothIntact.
-            let srtFilename = Self.preferredSubtitleFilename(forAudioFilename: backup.audioFilename)
-            _ = try saveSRT(srtText, attachmentID: backup.attachmentID, preferredFilename: srtFilename)
-        }
-
+        // cues.json is the only persisted truth — no .srt sidecar is written. Prefer the backup's
+        // cues; fall back to parsing its (legacy) SRT text so an old cues-less backup still restores.
         if let cues = backup.cues {
-            // Checkpoints ride inside the cues, so the cue file is the whole story.
             try saveCues(cues, attachmentID: backup.attachmentID)
+        } else if let srtText = backup.srtText {
+            let parsed = SubtitleParser.parse(srtText)
+            if parsed.isEmpty == false {
+                try saveCues(parsed, attachmentID: backup.attachmentID)
+            }
         }
-    }
-
-    // Loads the saved raw SRT text when present.
-    func loadSRT(for attachmentID: UUID) -> String? {
-        guard let subtitleURL = subtitleURL(for: attachmentID) else { return nil }
-        guard let data = try? Data(contentsOf: subtitleURL) else { return nil }
-        if let utf8 = String(data: data, encoding: .utf8) {
-            return utf8
-        }
-        if let utf16 = String(data: data, encoding: .utf16) {
-            return utf16
-        }
-        if let latin1 = String(data: data, encoding: .isoLatin1) {
-            return latin1
-        }
-        return String(decoding: data, as: UTF8.self)
     }
 
     // Returns the original audio file's basename (no extension) so callers can match a stored
@@ -183,14 +234,12 @@ final class NotesAudioStore: NotesAttachmentDeleting {
     }
 
     // Produces the preferred user-facing export filename for one attachment's subtitle file.
+    // Derived from the audio basename — there's no stored .srt to read a name from anymore (SRT is
+    // generated on export). Falls back to the attachment UUID when no audio is present.
     func preferredSubtitleExportFilename(for attachmentID: UUID) -> String {
-        if let subtitleURL = subtitleURL(for: attachmentID) {
-            return readableFilename(fromStoredURL: subtitleURL, defaultExtension: "srt")
-        }
         if let audioURL = audioURL(for: attachmentID) {
-            let audioBase = readableFilename(fromStoredURL: audioURL, defaultExtension: audioURL.pathExtension)
-                .replacingOccurrences(of: ".\(audioURL.pathExtension)", with: "")
-            return audioBase + ".srt"
+            let audioFilename = readableFilename(fromStoredURL: audioURL, defaultExtension: audioURL.pathExtension)
+            return Self.preferredSubtitleFilename(forAudioFilename: audioFilename)
         }
         return attachmentID.uuidString + ".srt"
     }

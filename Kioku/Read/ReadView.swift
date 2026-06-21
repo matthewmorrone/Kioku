@@ -150,6 +150,16 @@ struct ReadView: View {
     // Surfaced in a dedicated alert when an in-place cue re-alignment fails, so the
     // failure doesn't ride in under the unrelated "Generate SRT Failed" title.
     @State var cueRealignErrorMessage = ""
+    // Drives the lyric view's top "Re-align" action: a full from-scratch re-run of the CTC
+    // pipeline over the attached audio (vs. the per-cue "fix word sweep"). The bar shows a
+    // spinner + progress while this is true; the message carries the live percent.
+    @State var isReAligningWholeNote = false
+    @State var reAlignProgressMessage = ""
+    // True while the lyric view is playing the isolated vocal stem instead of the original mix
+    // (the "Vocals/Mix" toggle next to Re-align). ReadView swaps the AudioPlaybackController's
+    // source in onChange; reset to false whenever the audio source could change underneath it
+    // (attachment switch, re-align that regenerates the stem).
+    @State var isListeningToStem = false
 
     @State var isShowingLyricsView = false
     @AppStorage(LyricsHighlightGranularity.storageKey) var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue

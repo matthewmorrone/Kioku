@@ -8,6 +8,11 @@ struct StableTextEditor: UIViewRepresentable {
     @Binding var text: String
     @Binding var selectedRange: NSRange
     var font: UIFont = .monospacedSystemFont(ofSize: 13, weight: .regular)
+    // Optional foreground recoloring, recomputed from the live text on every change so it stays in
+    // sync as the user edits timings (e.g. the subtitle timing heatmap recoloring each cue's
+    // timestamp line). Given the current text, returns (UTF-16 range, text color) pairs; these are
+    // applied last, so they override the built-in timestamp color where they overlap.
+    var lineColorizer: ((String) -> [(NSRange, UIColor)])? = nil
 
     // Matches individual SRT timestamps: "HH:MM:SS,mmm"
     private static let timestampPattern = try! NSRegularExpression(
@@ -31,7 +36,7 @@ struct StableTextEditor: UIViewRepresentable {
             // Re-highlight after edits, preserving cursor.
             let sel = textView.selectedRange
             isUpdatingFromBinding = true
-            StableTextEditor.applyHighlightedText(to: textView, text: textView.text)
+            StableTextEditor.applyHighlightedText(to: textView, text: textView.text, font: parent.font, colorizer: parent.lineColorizer)
             isUpdatingFromBinding = false
             textView.selectedRange = sel
         }
@@ -98,7 +103,7 @@ struct StableTextEditor: UIViewRepresentable {
         tv.smartQuotesType = .no
         tv.smartDashesType = .no
         tv.allowsEditingTextAttributes = false
-        StableTextEditor.applyHighlightedText(to: tv, text: text, font: font)
+        StableTextEditor.applyHighlightedText(to: tv, text: text, font: font, colorizer: lineColorizer)
 
         // Add tap gesture for timestamp selection.
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
@@ -116,7 +121,7 @@ struct StableTextEditor: UIViewRepresentable {
         let savedOffset = textView.contentOffset
 
         context.coordinator.isUpdatingFromBinding = true
-        StableTextEditor.applyHighlightedText(to: textView, text: text, font: font)
+        StableTextEditor.applyHighlightedText(to: textView, text: text, font: font, colorizer: lineColorizer)
         context.coordinator.isUpdatingFromBinding = false
 
         // Clamp selection to new text length to avoid out-of-bounds crash.
@@ -136,16 +141,33 @@ struct StableTextEditor: UIViewRepresentable {
     }
 
     // Builds an attributed string with timestamps highlighted and applies it to the text view.
-    static func applyHighlightedText(to textView: UITextView, text: String, font: UIFont = .monospacedSystemFont(ofSize: 13, weight: .regular)) {
+    static func applyHighlightedText(
+        to textView: UITextView,
+        text: String,
+        font: UIFont = .monospacedSystemFont(ofSize: 13, weight: .regular),
+        colorizer: ((String) -> [(NSRange, UIColor)])? = nil
+    ) {
         let attr = NSMutableAttributedString(string: text, attributes: [
             .font: font,
             .foregroundColor: UIColor.label
         ])
 
-        let fullRange = NSRange(location: 0, length: (text as NSString).length)
+        let length = (text as NSString).length
+        let fullRange = NSRange(location: 0, length: length)
+
         let matches = Self.timestampPattern.matches(in: text, range: fullRange)
         for match in matches {
             attr.addAttribute(.foregroundColor, value: UIColor.systemCyan, range: match.range)
+        }
+
+        // Colorizer foreground tints last so they win over the cyan timestamp color (e.g. the timing
+        // heatmap recolors each cue's timestamp line). Ranges are clamped — the live text may have
+        // shifted under a colorizer computed a beat earlier.
+        if let colorizer {
+            for (range, color) in colorizer(text)
+            where range.location >= 0 && range.length > 0 && range.location + range.length <= length {
+                attr.addAttribute(.foregroundColor, value: color, range: range)
+            }
         }
 
         textView.attributedText = attr

@@ -190,6 +190,7 @@ enum OnDeviceLyricAligner {
         modelURL: URL,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onProgress: (@Sendable (Double) -> Void)? = nil,
+        onStage: (@Sendable (String) -> Void)? = nil,
         onSegment: (@Sendable ([SwiftWhisperAlign.AlignedLine]) -> Void)? = nil
     ) async throws -> String {
 
@@ -236,11 +237,58 @@ enum OnDeviceLyricAligner {
             input: input,
             cancellationCheck: cancellationCheck,
             onProgress: onProgress,
+            onStage: onStage,
             onSegment: onSegment
         )
 
         logger.info("alignment complete")
         return srt
+    }
+
+    // Whole-note force-alignment that returns the STRUCTURED result (per-line timings + per-unit
+    // sub-line checkpoints) instead of flattened SRT text. The caller builds cues directly from
+    // this so the karaoke checkpoints survive — an SRT round-trip is line-level and drops them,
+    // which is why whole-note Re-align used to highlight only per-line. Mirrors `align`'s setup
+    // (line filtering, background-task assertion); `modelURL` is unused by the CTC path (kept for
+    // call-site parity).
+    static func alignDetailed(
+        audioURL: URL,
+        lyrics: String,
+        modelURL: URL,
+        cancellationCheck: (@Sendable () -> Bool)? = nil,
+        onStage: (@Sendable (String) -> Void)? = nil,
+        onSegment: (@Sendable ([SwiftWhisperAlign.AlignedLine]) -> Void)? = nil
+    ) async throws -> SwiftWhisperAlign.AlignmentResult {
+        let lines = lyrics
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+
+        guard lines.isEmpty == false else {
+            throw NSError(
+                domain: "Kioku.OnDeviceAlignment",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No lyric lines to align. Add lyrics to the note before generating subtitles."]
+            )
+        }
+
+        logger.info("force-aligning \(lines.count) line(s) via CTC (detailed)")
+        let input = AlignmentInput(audioURL: audioURL, lines: lines)
+
+        #if canImport(UIKit)
+        let bgTask = await beginAlignmentActivity()
+        defer { Task { @MainActor in endAlignmentActivity(bgTask) } }
+        #endif
+
+        let result = try await CTCForcedAligner().align(
+            input: input,
+            cancellationCheck: cancellationCheck,
+            onProgress: nil,
+            onStage: onStage,
+            onSegment: onSegment
+        )
+        logger.info("alignment complete (detailed): \(result.lines.count) lines")
+        return result
     }
 
     #if canImport(UIKit)

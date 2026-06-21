@@ -78,6 +78,36 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         syncTimeAndCue()
     }
 
+    // Swaps the underlying audio file (original mix ↔ isolated vocal stem) WITHOUT changing cues
+    // or yanking the playhead: captures the current position + play state, opens the new file,
+    // seeks to the same time, and resumes if we were playing. The stem and the mix are the same
+    // length, so the position maps 1:1. Throws if the new file can't open (caller keeps the old
+    // source). No-op-safe: if no player is loaded yet it behaves like `load` with empty cues kept.
+    func switchSource(to audioURL: URL) throws {
+        let wasPlaying = isPlaying
+        let positionSec = player?.currentTime ?? 0
+        let keptCues = cues
+        let newPlayer = try AVAudioPlayer(contentsOf: audioURL)
+        newPlayer.isMeteringEnabled = true
+        newPlayer.prepareToPlay()
+        player?.pause()
+        stopTimer()
+        player = newPlayer
+        cues = keptCues
+        duration = newPlayer.duration
+        newPlayer.currentTime = min(max(0, positionSec), max(0, newPlayer.duration - 0.05))
+        if wasPlaying {
+            configureAudioSession()
+            try? AVAudioSession.sharedInstance().setActive(true)
+            newPlayer.play()
+            isPlaying = true
+            startTimer()
+        } else {
+            isPlaying = false
+        }
+        syncTimeAndCue()
+    }
+
     // Replaces the cue list in place without disturbing the loaded player or the current
     // playback position. Used by in-place lyric editing where calling `load()` would be too
     // heavy — `load()` stops playback and seeks to 0, which would yank the user out of the

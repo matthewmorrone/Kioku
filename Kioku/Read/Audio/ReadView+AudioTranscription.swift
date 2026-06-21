@@ -75,150 +75,56 @@ extension ReadView {
 
     // Runs the selected transcription engine for one imported audio file and creates a new note with transcript and karaoke timing data.
     func transcribeAudioFile(at sourceURL: URL) async {
-        guard isPerformingAudioTranscription == false else {
-            return
-        }
-
-        // Route to the on-device Whisper engine when selected; otherwise fall through
-        // to the built-in Apple Speech path below. Forced alignment is unaffected.
-        if TranscriptionEngine.current == .whisper {
-            await transcribeAudioFileWithWhisper(at: sourceURL)
-            return
-        }
-
+        guard isPerformingAudioTranscription == false else { return }
         isPerformingAudioTranscription = true
-        defer {
-            isPerformingAudioTranscription = false
-        }
+        defer { isPerformingAudioTranscription = false }
 
+        // One shared engine for every import path (see AudioTranscriptionService). Qwen3 isolates the
+        // vocal stem first; Apple Speech chunks; Whisper needs a model. The note shows a status line
+        // rather than streaming partial text — the tradeoff for a single transcription core.
+        let engine = TranscriptionEngine.current
+        let noteID = beginStreamingTranscriptionNote(totalChunks: 1)
         do {
             let copiedURL = try AudioTranscriptionHelpers.copyImportedAudioToTemporaryLocation(sourceURL)
-            defer {
-                try? FileManager.default.removeItem(at: copiedURL)
-            }
+            defer { try? FileManager.default.removeItem(at: copiedURL) }
 
-            try await AudioTranscriptionHelpers.requestSpeechAuthorizationIfNeeded()
-            let contextualStrings = AudioTranscriptionHelpers.makeSpeechContextualStrings(from: text, title: resolvedTitle)
-            let audioDuration = try await AudioTranscriptionHelpers.audioDuration(for: copiedURL)
-            var chunkRanges = try await Self.makeSpeechActiveChunkRanges(for: copiedURL, maxChunkDuration: 12.0, overlap: 0.4)
-            if chunkRanges.isEmpty {
-                // Falls back to fixed chunking when speech-activity detection finds no reliable active regions.
-                chunkRanges = try await Self.makeChunkRanges(for: copiedURL, chunkDuration: 12.0, overlap: 0.4)
-            }
-            guard chunkRanges.isEmpty == false else {
-                audioTranscriptionErrorMessage = "The selected audio file does not contain a usable duration."
-                return
-            }
+            let contextual = AudioTranscriptionHelpers.makeSpeechContextualStrings(from: text, title: resolvedTitle)
 
-            let transcriptionNoteID = beginStreamingTranscriptionNote(totalChunks: chunkRanges.count)
-            let firstPassResult = try await runChunkTranscriptionPass(
-                sourceURL: copiedURL,
-                chunkRanges: chunkRanges,
-                contextualStrings: contextualStrings,
-                transcriptionNoteID: transcriptionNoteID,
-                statusPrefix: "Transcribing audio"
-            )
-
-            var bestTranscript = firstPassResult.transcript
-            var bestSegments = firstPassResult.segments
-            var bestNonFatalErrorCount = firstPassResult.nonFatalChunkErrorCount
-
-            if AudioTranscriptionHelpers.shouldRetryForLowYield(transcript: firstPassResult.transcript, durationSeconds: audioDuration) {
-                let retryChunkRanges = try await Self.makeChunkRanges(for: copiedURL, chunkDuration: 8.0, overlap: 0.8)
-                let retryResult = try await runChunkTranscriptionPass(
-                    sourceURL: copiedURL,
-                    chunkRanges: retryChunkRanges,
-                    contextualStrings: [],
-                    transcriptionNoteID: transcriptionNoteID,
-                    statusPrefix: "Retrying transcription"
-                )
-
-                if retryResult.transcript.count > firstPassResult.transcript.count {
-                    bestTranscript = retryResult.transcript
-                    bestSegments = retryResult.segments
-                    bestNonFatalErrorCount = retryResult.nonFatalChunkErrorCount
+            // Whisper alone needs a downloaded model — fetch it (with download progress) first.
+            var modelURL: URL?
+            if engine == .whisper {
+                setWhisperTranscriptionNote(id: noteID, statusLine: "Preparing Whisper model…", body: "")
+                modelURL = try await TranscriptionModelProvider.ensureModel { [self] fraction in
+                    let pct = Int((fraction * 100).rounded())
+                    Task { @MainActor in
+                        setWhisperTranscriptionNote(id: noteID, statusLine: "Downloading Whisper model (\(TranscriptionModelProvider.downloadSizeText)) \(pct)%…", body: "")
+                    }
                 }
             }
 
-            guard bestTranscript.isEmpty == false else {
-                if bestNonFatalErrorCount > 0 {
-                    audioTranscriptionErrorMessage = "No speech was recognized. \(bestNonFatalErrorCount) chunk(s) also failed with non-speech errors."
-                } else {
-                    audioTranscriptionErrorMessage = "No speech was recognized in the selected audio file."
-                }
+            let isolate = TranscriptionPreprocessing.isolateVocals
+            setWhisperTranscriptionNote(id: noteID, statusLine: isolate ? "Isolating vocals…" : "Transcribing audio…", body: "")
+            let cues = try await AudioTranscriptionService.transcribe(
+                url: copiedURL, engine: engine, isolateVocals: isolate,
+                whisperModelURL: modelURL, contextualStrings: contextual
+            )
+            guard cues.isEmpty == false else {
+                audioTranscriptionErrorMessage = "No speech was recognized in the selected audio file."
+                setWhisperTranscriptionNote(id: noteID, statusLine: "No speech recognized", body: "")
                 return
             }
 
-            let lineLevelCues = AudioTranscriptionHelpers.makeLineLevelSubtitleCues(
-                from: bestSegments,
-                fallbackTranscript: bestTranscript,
-                audioDurationSeconds: audioDuration
-            )
-            let finalText = SubtitleParser.assembleNoteContent(from: lineLevelCues)
+            let finalText = SubtitleParser.assembleNoteContent(from: cues)
             let attachmentID = UUID()
             _ = try NotesAudioStore.shared.saveAudio(from: copiedURL, attachmentID: attachmentID)
-            try NotesAudioStore.shared.saveCues(lineLevelCues, attachmentID: attachmentID)
+            try NotesAudioStore.shared.saveCues(cues, attachmentID: attachmentID)
             await MainActor.run {
-                finalizeStreamingTranscriptionNote(
-                    id: transcriptionNoteID,
-                    finalText: finalText,
-                    attachmentID: attachmentID
-                )
+                finalizeStreamingTranscriptionNote(id: noteID, finalText: finalText, attachmentID: attachmentID)
             }
         } catch {
             audioTranscriptionErrorMessage = error.localizedDescription
+            setWhisperTranscriptionNote(id: noteID, statusLine: "Transcription failed", body: error.localizedDescription)
         }
-    }
-
-    // Processes one transcription pass over provided chunk ranges and streams progress updates into the in-flight note.
-    func runChunkTranscriptionPass(
-        sourceURL: URL,
-        chunkRanges: [(start: TimeInterval, end: TimeInterval)],
-        contextualStrings: [String],
-        transcriptionNoteID: UUID,
-        statusPrefix: String
-    ) async throws -> (transcript: String, segments: [SFTranscriptionSegment], nonFatalChunkErrorCount: Int) {
-        var accumulatedTranscript = ""
-        var collectedSegments: [SFTranscriptionSegment] = []
-        var nonFatalChunkErrorCount = 0
-
-        for (chunkIndex, chunkRange) in chunkRanges.enumerated() {
-            do {
-                let chunkURL = try await AudioTranscriptionHelpers.exportAudioChunk(
-                    from: sourceURL,
-                    start: chunkRange.start,
-                    end: chunkRange.end,
-                    index: chunkIndex
-                )
-                defer {
-                    try? FileManager.default.removeItem(at: chunkURL)
-                }
-
-                let chunkTranscription = try await AudioTranscriptionHelpers.recognizeTranscription(from: chunkURL, contextualStrings: contextualStrings)
-                collectedSegments.append(contentsOf: chunkTranscription.segments)
-
-                let chunkText = chunkTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
-                if chunkText.isEmpty == false {
-                    accumulatedTranscript = AudioTranscriptionHelpers.mergeChunkTranscript(accumulatedTranscript, chunkText)
-                }
-            } catch {
-                if AudioTranscriptionHelpers.isNoSpeechDetectedError(error) == false {
-                    nonFatalChunkErrorCount += 1
-                }
-            }
-
-            await MainActor.run {
-                updateStreamingTranscriptionNote(
-                    id: transcriptionNoteID,
-                    transcribedText: accumulatedTranscript,
-                    completedChunks: chunkIndex + 1,
-                    totalChunks: chunkRanges.count,
-                    statusPrefix: statusPrefix
-                )
-            }
-        }
-
-        return (accumulatedTranscript, collectedSegments, nonFatalChunkErrorCount)
     }
 
     // Creates and selects a placeholder note so chunked transcription text can stream into the read area while recognition is running.
@@ -285,16 +191,6 @@ extension ReadView {
             loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
             isLoadingSelectedNote = false
         }
-    }
-
-    // Creates and selects a new note populated from audio transcription so the current note remains untouched.
-    func createTranscriptionNote(with transcribedText: String) {
-        flushPendingNotePersistenceIfNeeded()
-
-        let recognizedNote = Note(content: transcribedText)
-        notesStore.addNote(recognizedNote)
-        shouldActivateEditModeOnLoad = true
-        selectedNote = recognizedNote
     }
 
 }

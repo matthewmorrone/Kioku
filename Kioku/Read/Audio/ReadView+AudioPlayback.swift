@@ -1,4 +1,5 @@
 import Foundation
+import SwiftWhisperAlign
 
 // Hosts audio attachment loading logic for ReadView so audio infrastructure stays isolated
 // from the main view body.
@@ -7,6 +8,9 @@ extension ReadView {
     // Highlight ranges are resolved from the current note text at load time so stale
     // import-time offsets can never silently break playback highlighting.
     func loadAudioAttachmentIfNeeded(attachmentID: UUID?) {
+        // A new (or cleared) attachment means a different audio source — start on the original
+        // mix so the Vocals/Mix toggle never carries a stale "Vocals" state onto another song.
+        isListeningToStem = false
         guard let attachmentID else {
             StartupTimer.mark("loadAudioAttachmentIfNeeded clearing attachment")
             audioController.unload()
@@ -56,5 +60,25 @@ extension ReadView {
             playbackHighlightRangeOverride = nil
             activePlaybackCueIndex = nil
         }
+    }
+
+    // Whether an isolated vocal stem is cached for the active audio — gates the lyric bar's
+    // Vocals/Mix toggle (only meaningful after a Re-align has produced and cached a stem).
+    var stemAvailableForActiveAudio: Bool {
+        guard let id = activeAudioAttachmentID,
+              let url = NotesAudioStore.shared.audioURL(for: id) else { return false }
+        return VocalStemCache.hasStem(for: url)
+    }
+
+    // Swaps lyric playback between the original mix and the isolated vocal stem, preserving the
+    // playhead and play/pause state. The stem's playable WAV is generated from the cached f32 on
+    // first use (a brief transcode). If no stem is actually available — e.g. the OS reclaimed the
+    // cache — it reverts the toggle rather than leave it half-switched.
+    func switchLyricAudioSource(toStem: Bool) {
+        guard let id = activeAudioAttachmentID,
+              let originalURL = NotesAudioStore.shared.audioURL(for: id) else { return }
+        let target = toStem ? VocalStemCache.stemWAVURL(for: originalURL) : originalURL
+        guard let target else { isListeningToStem = false; return }
+        try? audioController.switchSource(to: target)
     }
 }

@@ -125,22 +125,42 @@ struct AudioCueHighlightObserver: View {
                 playbackHighlightRangeOverride = nil
                 return
             }
-            guard let activeCheckpoint = lastCheckpoint(before: currentTimeMs, in: checkpoints) else {
+            guard let activeIndex = lastCheckpointIndex(before: currentTimeMs, in: checkpoints) else {
                 playbackHighlightRangeOverride = nil
                 return
             }
+            let activeCheckpoint = checkpoints[activeIndex]
             let cueLocation = cueRange.location
             let baseRange = NSRange(
                 location: cueLocation + activeCheckpoint.charOffsetInCue,
                 length: activeCheckpoint.charLength
             )
-            // Active word's range only — the band hugs just the current word, and
-            // LyricsView reads override.upperBound as the dim-from index so glyphs past the
-            // band fade. Played-but-not-current glyphs (before the band) get full alpha,
-            // matching Apple-Music-style karaoke: past = bright, present = banded, future
-            // = dim.
-            if granularity == .word, let segmentRange = enclosingSegmentRange(for: baseRange) {
-                playbackHighlightRangeOverride = segmentRange
+            // Active word's range only — the band hugs just the current word, and LyricsView reads
+            // override.upperBound as the dim-from index so glyphs past the band fade. Played-but-not-
+            // current glyphs (before the band) get full alpha: past = bright, present = banded,
+            // future = dim. (Even word-to-word advance comes from regularized checkpoint times in the
+            // aligner, not from animating between snaps.)
+            if granularity == .word {
+                // The aligner's tokens are often coarser than note words: one checkpoint can span
+                // several segments (e.g. "ゆくの" as one unit). Snapping to the token's FIRST
+                // segment holds the band there for the whole token and skips the rest — most
+                // visibly single-mora particles (の/を/は) that sit mid-token. Sub-divide the
+                // token's time window [this checkpoint, next checkpoint] across the segments it
+                // covers, by character share, and band the one active now — so every word, single-
+                // mora included, gets its moment instead of being jumped over. (Single-segment
+                // tokens take the fast path and behave exactly as before.)
+                let nextMs = activeIndex + 1 < checkpoints.count
+                    ? checkpoints[activeIndex + 1].timeMs
+                    : activeCheckpoint.timeMs + 600
+                if let seg = segmentActiveWithinToken(tokenRange: baseRange,
+                                                      startMs: activeCheckpoint.timeMs,
+                                                      endMs: nextMs, nowMs: currentTimeMs) {
+                    playbackHighlightRangeOverride = seg
+                } else if let segmentRange = enclosingSegmentRange(for: baseRange) {
+                    playbackHighlightRangeOverride = segmentRange
+                } else {
+                    playbackHighlightRangeOverride = baseRange
+                }
             } else {
                 playbackHighlightRangeOverride = baseRange
             }
@@ -154,6 +174,47 @@ struct AudioCueHighlightObserver: View {
             if cp.timeMs <= timeMs { match = cp } else { break }
         }
         return match
+    }
+
+    // Index variant of `lastCheckpoint` — needed so the caller can also read the NEXT checkpoint's
+    // time to bound a token's playback window when sub-dividing it across note segments.
+    private func lastCheckpointIndex(before timeMs: Int, in checkpoints: [CueCharTiming]) -> Int? {
+        var match: Int? = nil
+        for (i, cp) in checkpoints.enumerated() {
+            if cp.timeMs <= timeMs { match = i } else { break }
+        }
+        return match
+    }
+
+    // Within a token's character span and its playback window [startMs, endMs], returns the note
+    // segment active at nowMs. The segments overlapping the span share the window in proportion to
+    // how many of the token's characters each covers, so a multi-word token advances word-by-word
+    // and no segment (especially a single-mora particle) is skipped. Returns the sole overlapping
+    // segment when there's only one (the common per-word-token case), or nil if none overlaps (the
+    // caller then falls back to the enclosing-segment snap).
+    private func segmentActiveWithinToken(tokenRange: NSRange, startMs: Int, endMs: Int, nowMs: Int) -> NSRange? {
+        let spanStart = tokenRange.location
+        let spanEnd = tokenRange.location + tokenRange.length
+        var segs: [NSRange] = []
+        for segment in segmentationRanges {
+            let ns = NSRange(segment, in: noteText)
+            guard ns.location != NSNotFound else { continue }
+            if ns.location + ns.length <= spanStart { continue }
+            if ns.location >= spanEnd { break }
+            segs.append(ns)
+        }
+        guard segs.count > 1 else { return segs.first }
+        let span = max(1, endMs - startMs)
+        let overlap: (NSRange) -> Int = {
+            max(1, min($0.location + $0.length, spanEnd) - max($0.location, spanStart))
+        }
+        let totalChars = segs.reduce(0) { $0 + overlap($1) }
+        var acc = 0
+        for seg in segs {
+            acc += overlap(seg)
+            if nowMs < startMs + span * acc / totalChars { return seg }
+        }
+        return segs.last
     }
 
     // Finds the segmentationRanges entry containing `range.location` in noteText UTF-16 coords.
