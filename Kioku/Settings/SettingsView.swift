@@ -17,6 +17,9 @@ struct SettingsView: View {
     @EnvironmentObject private var reviewStore: ReviewStore
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
 
+    // Opt-in Japanese visual theme (washi paper, vermilion accent, Mincho type, styled flashcards).
+    @AppStorage(Theme.storageKey) private var japaneseTheme = false
+
     @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
     @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
     @AppStorage(TypographySettings.kerningKey) private var kerning = TypographySettings.defaultKerning
@@ -101,6 +104,20 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // MARK: Theme — opt-in Japanese visual style.
+                Section {
+                    Toggle(isOn: $japaneseTheme) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Japanese Theme")
+                            Text("Washi paper, vermilion accent, Mincho type, and styled flashcards.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Theme")
+                }
+
                 // MARK: Appearance — live preview + typography sliders.
                 Section {
                     SettingsPreviewRenderer(
@@ -465,6 +482,7 @@ struct SettingsView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+            .washiBackground()
             .navigationTitle("Settings")
         }
         .toolbar(.visible, for: .tabBar)
