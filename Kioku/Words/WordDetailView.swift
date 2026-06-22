@@ -42,6 +42,9 @@ struct WordDetailView: View {
     @State var relatedEntries: [DictionaryEntry] = []
     @State var loanwordSources: [LoanwordSource] = []
     @State var senseReferences: [SenseReference] = []
+    // Synonyms resolved from the saved entry's JMdict xref cross-references, shown as their own
+    // section beneath the structural/kanji-family related words. See loadDisplayData.
+    @State var synonymEntries: [DictionaryEntry] = []
     @State private var showingConjugations: Bool = false
     @State var conjugationGroups: [ConjugationGroup] = []
     @State var sublatticePaths: [[String]] = []
@@ -65,6 +68,14 @@ struct WordDetailView: View {
 
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
+
+    // Splits the kanji-family related entries into a tightly structural group (trans/intrans
+    // verb counterparts and same-stem forms, counterpart first) and the looser remainder that
+    // only shares the headword's primary kanji. Drives the two related-words sections below.
+    private var relatedPartition: (structural: [StructuralRelatedEntry], others: [DictionaryEntry]) {
+        guard let saved = savedDisplayData?.entry else { return ([], relatedEntries) }
+        return RelatedWordsOrganizer.partition(saved: saved, related: relatedEntries)
+    }
 
     // Distinct part-of-speech labels across the saved entry's senses, in first-seen order,
     // expanded to full English and title-cased — e.g. "Transitive Verb · Auxiliary Adjective".
@@ -488,15 +499,38 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Related words — kanji-family vocabulary sharing the headword's primary kanji.
-                if relatedEntries.isEmpty == false {
-                    let shownRelated = relatedExpanded ? relatedEntries : Array(relatedEntries.prefix(5))
+                // Related words, organized into two categories the reference distinguishes:
+                //   1. Structurally Related — words sharing the headword's exact kanji stem;
+                //      a verb's transitive/intransitive counterpart is pinned to the top.
+                //   2. Synonyms — JMdict cross-referenced "see also" entries.
+                // The looser kanji-family remainder (words sharing only the primary kanji)
+                // keeps the original "Related Words" section.
+                let partition = relatedPartition
+
+                if partition.structural.isEmpty == false {
+                    Section("Structurally Related") {
+                        ForEach(partition.structural, id: \.entry.entryId) { item in
+                            relatedWordRow(item.entry, relationLabel: RelatedWordsOrganizer.label(for: item.relation))
+                        }
+                    }
+                }
+
+                if synonymEntries.isEmpty == false {
+                    Section("Synonyms") {
+                        ForEach(synonymEntries, id: \.entryId) { entry in
+                            relatedWordRow(entry)
+                        }
+                    }
+                }
+
+                if partition.others.isEmpty == false {
+                    let shownRelated = relatedExpanded ? partition.others : Array(partition.others.prefix(5))
                     Section("Related Words") {
                         ForEach(shownRelated, id: \.entryId) { entry in
                             relatedWordRow(entry)
                         }
-                        if relatedEntries.count > 5 {
-                            Button(relatedExpanded ? "Show fewer" : "Show \(relatedEntries.count - 5) more…") {
+                        if partition.others.count > 5 {
+                            Button(relatedExpanded ? "Show fewer" : "Show \(partition.others.count - 5) more…") {
                                 relatedExpanded.toggle()
                             }
                             .font(.caption)
