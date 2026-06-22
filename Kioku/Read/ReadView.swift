@@ -28,6 +28,8 @@ struct ReadView: View {
     var onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
 
+    // Opt-in Japanese theme; gates the warm-paper reading pane fill (see ReadView+Editor).
+    @AppStorage(Theme.storageKey) var japaneseTheme = false
     @AppStorage(TypographySettings.textSizeKey) var textSize = TypographySettings.defaultTextSize
     @AppStorage(TypographySettings.lineSpacingKey) var lineSpacing = TypographySettings.defaultLineSpacing
     @AppStorage(TypographySettings.kerningKey) var kerning = TypographySettings.defaultKerning

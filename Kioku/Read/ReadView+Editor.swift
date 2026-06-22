@@ -314,7 +314,11 @@ extension ReadView {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(isEditMode ? Color(.systemBackground) : Color(.secondarySystemBackground))
+                .fill(
+                    japaneseTheme
+                        ? (isEditMode ? Theme.surface : Theme.surfaceSecondary)
+                        : (isEditMode ? Color(.systemBackground) : Color(.secondarySystemBackground))
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
