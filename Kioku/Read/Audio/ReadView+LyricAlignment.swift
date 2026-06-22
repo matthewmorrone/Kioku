@@ -391,6 +391,12 @@ extension ReadView {
 
         if activeNoteID == noteID {
             loadAudioAttachmentIfNeeded(attachmentID: newAttachmentID)
+            // loadAudioAttachmentIfNeeded resets isShowingLyricsView to false (correct on
+            // note-open, where the overlay should stay hidden). But this is an *explicit*
+            // import/align completion — the user just asked for these cues — so reveal the
+            // lyric overlay. Without this the cues load but sit at opacity 0 until the user
+            // manually taps the ♪ button, which reads as "the import did nothing."
+            isShowingLyricsView = true
         }
     }
 
