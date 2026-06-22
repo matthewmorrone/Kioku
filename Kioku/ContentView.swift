@@ -34,6 +34,8 @@ struct ContentView: View {
     @State private var readResources = ReadResources()
     @State private var hasLoadedReadResources = false
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
+    // Drives the live re-apply of nav/tab bar chrome when the user toggles the theme in Settings.
+    @AppStorage(Theme.storageKey) private var japaneseTheme = false
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackendSetting = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionarySetting = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategySetting: SegmentationStrategy = SegmenterSettings.defaultStrategy
@@ -113,6 +115,13 @@ struct ContentView: View {
                 Label("Settings", systemImage: "gear")
             }
         }
+        // Vermilion accent app-wide when the Japanese Theme is on (and the system accent when off).
+        // On iOS 26 SwiftUI's TabView applies its own tint that overrides both the AccentColor asset
+        // and UITabBar.appearance(), so the tint must be set explicitly here.
+        .themedTint()
+        // Re-apply or reset the nav/tab bar chrome the moment the toggle flips. Bars already on
+        // screen refresh on the next navigation; the rest of the theme updates live.
+        .onChange(of: japaneseTheme) { _, _ in Theme.refreshGlobalAppearance() }
         .environmentObject(notesStore)
         .environmentObject(wordsStore)
         .environmentObject(wordListsStore)

@@ -5,6 +5,8 @@ struct DictionarySearchResultRow: View {
     let entry: DictionaryEntry
     let isSaved: Bool
     let onToggleSave: () -> Void
+    // Opt-in Japanese theme; renders the favorite star white when on.
+    @AppStorage(Theme.storageKey) private var japaneseTheme = false
 
     // Picks the best display surface: first kanji form if present, else first kana form.
     private var displaySurface: String {
@@ -56,7 +58,7 @@ struct DictionarySearchResultRow: View {
                 onToggleSave()
             } label: {
                 Image(systemName: isSaved ? "star.fill" : "star")
-                    .foregroundStyle(isSaved ? Color.yellow : Color.secondary)
+                    .foregroundStyle(japaneseTheme ? Color.white : (isSaved ? Color.yellow : Color.secondary))
                     .font(.system(size: 16, weight: .semibold))
             }
             .buttonStyle(.plain)

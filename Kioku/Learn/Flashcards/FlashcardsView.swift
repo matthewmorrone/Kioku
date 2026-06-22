@@ -55,6 +55,8 @@ struct FlashcardsView: View {
     @State private var scope: FlashcardScope = .all
     @State private var selectedNoteIDs: Set<UUID> = []
     @State private var detailWord: SavedWord?
+    // Opt-in Japanese theme; switches the grading labels to Mincho また / わかった when on.
+    @AppStorage(Theme.storageKey) private var japaneseTheme = false
 
     var body: some View {
         NavigationStack {
@@ -173,7 +175,11 @@ struct FlashcardsView: View {
     private var controls: some View {
         HStack(spacing: 16) {
             Button { again() } label: {
-                HStack { Image(systemName: "arrow.uturn.left.circle"); Text("Again") }
+                HStack {
+                    Image(systemName: "arrow.uturn.left.circle")
+                    Text(japaneseTheme ? "また" : "Again")
+                        .font(japaneseTheme ? .custom("HiraMinProN-W6", size: 16) : nil)
+                }
             }
             .buttonStyle(.bordered)
             .tint(.red)
@@ -193,7 +199,11 @@ struct FlashcardsView: View {
             Spacer()
 
             Button { know() } label: {
-                HStack { Image(systemName: "checkmark.circle.fill"); Text("Know") }
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text(japaneseTheme ? "わかった" : "Know")
+                        .font(japaneseTheme ? .custom("HiraMinProN-W6", size: 16) : nil)
+                }
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)

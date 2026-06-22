@@ -91,6 +91,8 @@ struct WordsView: View {
     @State var showRecentSearches = false
     @AppStorage("savedWordsSortOrder") var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
     @AppStorage("historySortOrder") var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
+    // Opt-in Japanese theme; when on, the row's audio + favorite icons render white (see wordRow).
+    @AppStorage(Theme.storageKey) var japaneseTheme = false
     @State var searchText = ""
     // convertedKana removed — only the deleted startSearchTask duplicate read it;
     // the live search path derives romaji→kana inline in runDictionarySearch.
@@ -442,6 +444,7 @@ struct WordsView: View {
             }
         }
         .listStyle(.plain)
+        .washiBackground()
         // Edit-mode binding so List(selection:) shows the selection circles on every tab.
         .environment(\.editMode, $editMode)
         // Dismiss the keyboard the moment the user scrolls (system iOS behaviour)

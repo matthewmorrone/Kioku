@@ -41,6 +41,8 @@ struct FlashcardCard: View {
 
     @EnvironmentObject private var notesStore: NotesStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Opt-in Japanese theme: when off, every styled element below falls back to its original look.
+    @AppStorage(Theme.storageKey) private var japaneseTheme = false
 
     @State private var liveContent: FlashcardLiveContent?
     @State private var gestureMode: FlashcardGestureMode = .undecided
@@ -207,7 +209,13 @@ struct FlashcardCard: View {
 
         return ZStack {
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(UIColor.secondarySystemBackground))
+                .fill(japaneseTheme ? Theme.surface : Color(UIColor.secondarySystemBackground))
+                // Warm vermilion masthead rule along the top edge — only in the themed look.
+                .overlay(alignment: .top) {
+                    if japaneseTheme {
+                        Theme.accent.opacity(0.85).frame(height: 4)
+                    }
+                }
                 .overlay {
                     LinearGradient(
                         colors: [Color.white.opacity(0.02 + 0.07 * tilt), Color.clear],
@@ -239,12 +247,16 @@ struct FlashcardCard: View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 16)
-                        .strokeBorder(Color.white.opacity(0.06 + 0.10 * tilt), lineWidth: 1)
+                        .strokeBorder(
+                            japaneseTheme ? Theme.hairline : Color.white.opacity(0.06 + 0.10 * tilt),
+                            lineWidth: 1
+                        )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 16))
 
             content()
                 .padding(24)
+                .padding(.top, japaneseTheme ? 8 : 0)
                 .frame(maxWidth: .infinity, maxHeight: 320)
         }
     }
@@ -297,12 +309,14 @@ struct FlashcardCard: View {
                     VStack(spacing: 8) {
                         ForEach(meanings, id: \.self) { meaning in
                             Text(meaning)
-                                .font(.title2.weight(.semibold))
+                                .font(japaneseTheme ? .system(.title2, design: .serif).weight(.semibold) : .title2.weight(.semibold))
                                 .multilineTextAlignment(.center)
                         }
                     }
                 } else {
-                    Text("—").font(.title2.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("—")
+                        .font(japaneseTheme ? .system(.title2, design: .serif).weight(.semibold) : .title2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
             case .japanesePrompt(let form):
                 // Single line. For the kana form, hold off the kanji fallback while the reading is
@@ -318,7 +332,8 @@ struct FlashcardCard: View {
                 // Reading beneath the headword, except when the form already IS the reading.
                 if form != .kana, let displayKana, displayKana.isEmpty == false, isKanaOnly(text) == false {
                     Text(displayKana)
-                        .font(.title3).foregroundStyle(.secondary)
+                        .font(japaneseTheme ? .custom("HiraMinProN-W3", size: 20) : .title3)
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
             }
@@ -326,10 +341,12 @@ struct FlashcardCard: View {
         }
     }
 
-    // The large centered headword styling shared by every Japanese face.
+    // The large centered headword styling shared by every Japanese face. Hiragino Mincho in the
+    // themed look; the original bold large-title otherwise.
     private func headword(_ text: String) -> some View {
         Text(text)
-            .font(.largeTitle.weight(.bold))
+            .font(japaneseTheme ? .custom("HiraMinProN-W6", size: 44) : .largeTitle.weight(.bold))
+            .minimumScaleFactor(japaneseTheme ? 0.6 : 1)
             .multilineTextAlignment(.center)
     }
 
@@ -381,19 +398,56 @@ struct FlashcardCard: View {
     @ViewBuilder
     private var actionOverlays: some View {
         if isTop {
-            Group {
-                Text("Again").font(.headline).padding(8)
-                    .background(Color.red.opacity(0.2)).cornerRadius(8)
-                    .opacity(max(0, min(1, -dragOffset.width / 100)))
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            if japaneseTheme {
+                themedActionOverlays
+            } else {
+                Group {
+                    Text("Again").font(.headline).padding(8)
+                        .background(Color.red.opacity(0.2)).cornerRadius(8)
+                        .opacity(max(0, min(1, -dragOffset.width / 100)))
+                        .padding()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-                Text("Know").font(.headline).padding(8)
-                    .background(Color.green.opacity(0.2)).cornerRadius(8)
-                    .opacity(max(0, min(1, dragOffset.width / 100)))
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    Text("Know").font(.headline).padding(8)
+                        .background(Color.green.opacity(0.2)).cornerRadius(8)
+                        .opacity(max(0, min(1, dragOffset.width / 100)))
+                        .padding()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                }
             }
+        }
+    }
+
+    // Hanko (判子) stamp-style swipe indicators for the themed look: a tilted kanji inside a
+    // rectangular ink border, echoing the approval stamps used on Japanese documents.
+    @ViewBuilder
+    private var themedActionOverlays: some View {
+        let againRed = Color(red: 0.78, green: 0.21, blue: 0.23)
+        let knowBlue = Color(red: 0.18, green: 0.31, blue: 0.55)
+        Group {
+            Text("また")
+                .font(.custom("HiraMinProN-W6", size: 26))
+                .foregroundColor(againRed)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .overlay(Rectangle().stroke(againRed, lineWidth: 2.5))
+                .rotationEffect(.degrees(-15))
+                .opacity(max(0, min(1, -dragOffset.width / 80)))
+                .padding(.leading, 20)
+                .padding(.top, 20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            Text("知")
+                .font(.custom("HiraMinProN-W6", size: 26))
+                .foregroundColor(knowBlue)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .overlay(Rectangle().stroke(knowBlue, lineWidth: 2.5))
+                .rotationEffect(.degrees(15))
+                .opacity(max(0, min(1, dragOffset.width / 80)))
+                .padding(.trailing, 20)
+                .padding(.top, 20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
     }
 
