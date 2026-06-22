@@ -114,6 +114,11 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    // SwiftUI surfaces react to the @AppStorage flag on their own, but the UIKit
+                    // nav/tab bar chrome is installed via appearance proxies only at launch. Re-run
+                    // the global appearance pass when the toggle flips so newly-pushed screens match
+                    // immediately (bars already on screen refresh on the next push or relaunch).
+                    .onChange(of: japaneseTheme) { _, _ in Theme.refreshGlobalAppearance() }
                 } header: {
                     Text("Theme")
                 }
