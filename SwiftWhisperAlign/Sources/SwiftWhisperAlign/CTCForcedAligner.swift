@@ -146,6 +146,23 @@ public struct CTCForcedAligner {
         Self.breadcrumb("RUN START", reset: true)
         Self.breadcrumb("stem cache \(VocalStemCache.debugKeyInfo(for: input.audioURL))")
 
+        // JETSAM FIX (confirmed via on-device SIGKILL/EXC_CRASH + ctc-debug.log): bound MLX's
+        // retained GPU buffer cache for the whole run. By default MLX's cacheLimit equals its
+        // (very large) memoryLimit, so buffers freed after each ASR/aligner forward pass are
+        // RETAINED for reuse rather than returned to the OS — on-device this showed as ~800MB
+        // that never came back after the first transcription piece, steadily eating the jetsam
+        // headroom os_proc_available_memory() reports until a forward-pass spike crossed the
+        // limit and the OS killed us mid-StemTranscriber. Capping the cache forces those buffers
+        // back to the OS between passes (per-piece clearCache() still runs), lowering peak
+        // footprint. This is output-preserving: it changes only allocator retention, never any
+        // computation. Unlike memoryLimit, a low cacheLimit cannot stall allocation — allocations
+        // simply bypass the cache and hit the OS directly. Restored on exit so we don't perturb
+        // any other in-process MLX user.
+        let priorCacheLimit = MLX.Memory.cacheLimit
+        MLX.Memory.cacheLimit = 48 * 1024 * 1024   // 48 MB — small cap; MLX docs note even ~2MB rarely hurts throughput
+        defer { MLX.Memory.cacheLimit = priorCacheLimit }
+        Self.breadcrumb("MLX cacheLimit \(priorCacheLimit / (1024 * 1024))MB→48MB · active=\(MLX.Memory.activeMemory / (1024 * 1024))MB cache=\(MLX.Memory.cacheMemory / (1024 * 1024))MB")
+
         // Vocal isolation is the most expensive and memory-hungry stage (the HTDemucs CoreML pass
         // below — several seconds and the jetsam cliff on the A17), yet the isolated stem is a pure
         // function of the source audio. So before decoding + isolating, consult the on-disk stem
