@@ -158,6 +158,32 @@ extension WordDetailView {
         }.value
         senseReferences = refs
 
+        // Synonyms — resolve the saved entry's JMdict cross-references (xref "see also" links)
+        // to full dictionary entries so they can be shown as their own browsable section. The
+        // target may be a bare word or "word・reading・senseNum"; the leading element before the
+        // first middle dot is the headword to look up. Entries already shown among the kanji-family
+        // related words (and the saved entry itself) are skipped so nothing appears twice.
+        let xrefHeads = refs
+            .filter { $0.type == .xref }
+            .map { String($0.target.split(separator: "・").first ?? "") }
+            .filter { $0.isEmpty == false }
+        if xrefHeads.isEmpty {
+            synonymEntries = []
+        } else {
+            let excluded = Set(relatedEntries.map(\.entryId)).union([savedID])
+            synonymEntries = await Task { @MainActor in
+                var seen = excluded
+                var resolved: [DictionaryEntry] = []
+                for head in xrefHeads {
+                    let matches = (try? store.lookup(surface: head, mode: .kanjiAndKana)) ?? []
+                    guard let first = matches.first, seen.insert(first.entryId).inserted else { continue }
+                    resolved.append(first)
+                    if resolved.count >= 12 { break }
+                }
+                return resolved
+            }.value
+        }
+
         // Compute conjugation groups for verbs or i-adjectives — conjugates against the surface the
         // user saved so kana-only saves (e.g., じゃない) don't get promoted to a canonical kanji form.
         if let vc = verbClass {
@@ -226,10 +252,12 @@ extension WordDetailView {
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
     }
 
-    // One related-word row: POS label, surface + reading, and the leading glosses — the same
-    // at-a-glance information the reference shows for each related entry.
+    // One related-word row: an optional structural-relationship badge, the POS label, the
+    // surface + reading, and the leading glosses — the same at-a-glance information the
+    // reference shows for each related entry. `relationLabel` is non-nil only in the
+    // "Structurally Related" section, where it names the trans/intrans pair or same-stem form.
     @ViewBuilder
-    func relatedWordRow(_ entry: DictionaryEntry) -> some View {
+    func relatedWordRow(_ entry: DictionaryEntry, relationLabel: String? = nil) -> some View {
         let surface = entry.firstEverydayKanji?.text ?? entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? ""
         let reading = entry.kanaForms.first?.text
         let firstSense = entry.senses.first
@@ -243,6 +271,14 @@ extension WordDetailView {
         let glossText = (firstSense?.glosses ?? []).prefix(3).joined(separator: ", ")
 
         VStack(alignment: .leading, spacing: 2) {
+            if let relationLabel {
+                Text(relationLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.15), in: Capsule())
+            }
             if let posLabel {
                 Text(posLabel)
                     .font(.caption2.weight(.semibold))
