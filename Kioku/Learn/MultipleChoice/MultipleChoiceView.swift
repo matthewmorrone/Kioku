@@ -56,6 +56,8 @@ struct MultipleChoiceView: View {
     @State private var japaneseForm: StudyJapaneseForm = .kanji
     @State private var scope: FlashcardScope = .all
     @State private var selectedNoteIDs: Set<UUID> = []
+    // JLPT levels (N-number 5…1) to include; empty means no level filter. ANDs with scope + notes.
+    @State private var selectedJLPTLevels: Set<Int> = []
     // Cap on how many questions a quiz runs. 0 (empty field) means "all available".
     @State private var questionCount: Int = 20
 
@@ -268,6 +270,7 @@ struct MultipleChoiceView: View {
         ) {
             Section {
                 FlashcardNotePicker(selectedNoteIDs: $selectedNoteIDs)
+                FlashcardJLPTPicker(dictionaryStore: dictionaryStore, selectedLevels: $selectedJLPTLevels)
             }
 
             Section {
@@ -494,6 +497,12 @@ struct MultipleChoiceView: View {
         if selectedNoteIDs.isEmpty == false {
             base = base.filter { word in
                 word.sourceNoteIDs.contains(where: { selectedNoteIDs.contains($0) })
+            }
+        }
+        if selectedJLPTLevels.isEmpty == false {
+            base = base.filter { word in
+                guard let level = dictionaryStore?.jlptLevel(for: word.canonicalEntryID) else { return false }
+                return selectedJLPTLevels.contains(level)
             }
         }
         switch scope {

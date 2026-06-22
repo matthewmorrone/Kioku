@@ -13,6 +13,7 @@ JPDB_PATH = RESOURCES_DIR / "JPDB_v2.2_Frequency_Kana.json"
 KANJIDIC2_PATH = RESOURCES_DIR / "kanjidic2-all.json"
 PITCH_ACCENT_PATH = RESOURCES_DIR / "pitch-accent.tsv"
 SENTENCE_PAIRS_PATH = RESOURCES_DIR / "sentence-pairs.tsv"
+JLPT_VOCAB_PATH = RESOURCES_DIR / "jlpt-vocab.tsv"
 RADKFILE_PATH = RESOURCES_DIR / "radkfile2.utf8"
 KRADFILE_PATH = RESOURCES_DIR / "kradfile2.utf8"
 KANJIVG_PATH = RESOURCES_DIR / "kanjivg.xml"
@@ -925,6 +926,93 @@ def import_sentence_pairs(conn):
     print(f"  Done: {count} sentence pairs imported")
 
 
+def import_jlpt_levels(conn):
+    # Populates entry_jlpt_level from the Tanos-derived JLPT vocab list (Resources/jlpt-vocab.tsv,
+    # columns: surface, reading, level — where level is the N-number, 5 = N5 easiest … 1 = N1 hardest).
+    #
+    # JLPT is a *vocabulary* list, so levels attach to JMdict ENTRIES, not kanji characters
+    # (kanji_characters.jlpt_level is the separate, old 4-level per-character scale). Source rows are
+    # matched to entries by surface: kanji form first (preferring an entry whose kana reading also
+    # matches the list's reading, to disambiguate homographs), then a kana-form fallback for
+    # kana-only words. A surface shared by multiple entries (homographs) tags all of them — we can't
+    # know the intended sense, and over-tagging is the safe direction for a study filter.
+    #
+    # Owns its table + index (like materialize_word_frequency owns word_frequency) so the full build
+    # and the standalone migrate_add_jlpt_levels.py share one code path. Idempotent: re-running
+    # rebuilds the table from scratch.
+    #
+    # Source data: Jonathan Waller's JLPT lists (https://www.tanos.co.uk/jlpt/), CC BY. These are
+    # unofficial estimates — no official JLPT vocab lists exist post-2010.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS entry_jlpt_level (
+            entry_id INTEGER PRIMARY KEY,
+            level INTEGER NOT NULL,
+            FOREIGN KEY(entry_id) REFERENCES entries(id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_entry_jlpt_level ON entry_jlpt_level(level)")
+    conn.execute("DELETE FROM entry_jlpt_level")
+
+    if not JLPT_VOCAB_PATH.exists():
+        print(f"  JLPT vocab file not found at {JLPT_VOCAB_PATH} — skipping")
+        return
+
+    print(f"  Importing JLPT levels from {JLPT_VOCAB_PATH.name}...")
+
+    # Surface → entry ids, built once from the dictionary.
+    kanji_map = {}
+    for text, entry_id in conn.execute("SELECT text, entry_id FROM kanji"):
+        kanji_map.setdefault(text, set()).add(entry_id)
+    kana_map = {}
+    entry_readings = {}
+    for text, entry_id in conn.execute("SELECT text, entry_id FROM kana_forms"):
+        kana_map.setdefault(text, set()).add(entry_id)
+        entry_readings.setdefault(entry_id, set()).add(text)
+
+    best = {}  # entry_id → easiest (highest N-number) level seen
+    total_rows = 0
+    matched_rows = 0
+    with open(JLPT_VOCAB_PATH, encoding="utf-8") as f:
+        next(f, None)  # header
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 3:
+                continue
+            surface, reading, level_s = parts[0].strip(), parts[1].strip(), parts[2].strip()
+            if not surface or not level_s.isdigit():
+                continue
+            total_rows += 1
+            level = int(level_s)
+
+            ids = set()
+            if surface in kanji_map:
+                kanji_ids = kanji_map[surface]
+                if reading:
+                    reading_matched = {e for e in kanji_ids if reading in entry_readings.get(e, ())}
+                    ids = reading_matched or set(kanji_ids)
+                else:
+                    ids = set(kanji_ids)
+            elif surface in kana_map:
+                ids = set(kana_map[surface])
+
+            if not ids:
+                continue
+            matched_rows += 1
+            for entry_id in ids:
+                if entry_id not in best or level > best[entry_id]:
+                    best[entry_id] = level
+
+    conn.executemany(
+        "INSERT OR REPLACE INTO entry_jlpt_level (entry_id, level) VALUES (?, ?)",
+        list(best.items()),
+    )
+    print(
+        f"  Done: {len(best)} entries tagged ({matched_rows}/{total_rows} source rows matched)"
+    )
+
+
 def import_radicals(conn):
     # Populates `radicals` and `kanji_radicals` from RADKFILE2 + KRADFILE2 (EDRDG).
     # RADKFILE format: header lines start with '#' and are skipped. A '$' line introduces one
@@ -1193,6 +1281,9 @@ def build_database():
 
     print("Importing sentence pairs...")
     import_sentence_pairs(conn)
+
+    print("Importing JLPT vocabulary levels...")
+    import_jlpt_levels(conn)
 
     print("Building sentence FTS index...")
     conn.execute("INSERT INTO sentence_pairs_fts(sentence_pairs_fts) VALUES('rebuild')")

@@ -67,6 +67,10 @@ struct WordsView: View {
     @State var activeFilterNoteIDs: Set<UUID> = []
     @State var activeFilterListIDs: Set<UUID> = []
     @State var statScope: WordsStatScope = .none
+    // Active JLPT-level scope (the N-number, 5…1), or nil for no level filter. Single-value like
+    // the other "Show" scopes — selecting a level clears note/list/stat. Levels come from the
+    // dictionary's entry_jlpt_level map via dictionaryStore.jlptLevel(for:).
+    @State var jlptLevel: Int? = nil
     @State var isFilterSheetPresented = false
     // Drives the "Choose Lemma…" disambiguation sheet for saved-word and history rows.
     @State var lemmaPickerContext: WordsLemmaPickerContext?
@@ -81,6 +85,7 @@ struct WordsView: View {
     @State var isSubtitleImportPresented = false
     @State var isSubtitleSearchPresented = false
     @State var isBrowseFrequencyPresented = false
+    @State var isBrowseProficiencyPresented = false
     @State var isSentenceSearchPresented = false
     @State var isRadicalInputPresented = false
     @State var isHandwritingPresented = false
@@ -285,6 +290,16 @@ struct WordsView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $isBrowseProficiencyPresented) {
+                BrowseProficiencyView(
+                    dictionaryStore: dictionaryStore,
+                    isSaved: { entryID in wordsStore.words.contains(where: { $0.canonicalEntryID == entryID }) },
+                    onToggleSave: handleBrowseToggleSave,
+                    onSelectEntry: handleBrowseSelectEntry
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $isSentenceSearchPresented) {
                 SentenceSearchView(dictionaryStore: dictionaryStore)
                     .presentationDetents([.large])
@@ -303,6 +318,7 @@ struct WordsView: View {
                     activeFilterNoteIDs: $activeFilterNoteIDs,
                     activeFilterListIDs: $activeFilterListIDs,
                     statScope: $statScope,
+                    jlptLevel: $jlptLevel,
                     showSavedWords: Binding(
                         get: { activeTab == .saved },
                         set: { activeTab = $0 ? .saved : .history }

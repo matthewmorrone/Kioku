@@ -29,6 +29,12 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     // plus the shared keys with canonicalEntryIDMap).
     var surfacePOSBitsMap: [String: UInt64] = [:]
 
+    // entry_id → JLPT level (5 = N5 easiest … 1 = N1 hardest). Populated once at app start by
+    // populateJLPTLevelMap() and read-only thereafter; entries with no JLPT level are absent.
+    // Backs the in-memory jlptLevel(for:) used by the Words filter and study-mode pickers, so
+    // per-saved-word level checks are hashtable hits rather than SQL. See DictionaryStore+JLPT.
+    var jlptLevelMap: [Int64: Int] = [:]
+
     // Resolves and opens the bundled dictionary database by resource name.
     public convenience init(
         databaseName: String = "dictionary",

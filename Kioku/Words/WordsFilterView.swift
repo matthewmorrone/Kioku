@@ -15,6 +15,8 @@ struct WordsFilterView: View {
     @Binding var activeFilterNoteIDs: Set<UUID>
     @Binding var activeFilterListIDs: Set<UUID>
     @Binding var statScope: WordsStatScope
+    // Active JLPT-level scope (N-number 5…1) or nil. Single-value like the other scopes.
+    @Binding var jlptLevel: Int?
     // True when the screen shows the saved/favorites list rather than the lookup history.
     // History is the showSavedWords == false default.
     @Binding var showSavedWords: Bool
@@ -103,6 +105,21 @@ struct WordsFilterView: View {
             Label("Recent Searches", systemImage: showRecentSearches ? "checkmark" : "magnifyingglass")
         }
 
+        // JLPT proficiency level (N5 easiest … N1 hardest). Single-value, nested so it doesn't
+        // crowd the top-level list. Levels are unofficial estimates; only saved words with a
+        // known level appear. Re-tapping the active level clears back to History.
+        Menu {
+            // N-numbers descend 5→1 so the menu reads N5 (easiest) first.
+            ForEach(Array(stride(from: 5, through: 1, by: -1)), id: \.self) { level in
+                Button { tapJLPT(level) } label: {
+                    Label("N\(level)", systemImage: jlptLevel == level ? "checkmark" : "graduationcap")
+                }
+            }
+        } label: {
+            Label(jlptLevel == nil ? "JLPT Level" : "JLPT N\(jlptLevel ?? 0)",
+                  systemImage: jlptLevel == nil ? "graduationcap" : "checkmark")
+        }
+
         ForEach(notesWithSavedWords) { (note: Note) in
             Button { tapNote(note.id) } label: {
                 Label(resolvedTitle(for: note),
@@ -147,15 +164,17 @@ struct WordsFilterView: View {
 
     // MARK: - Current scope
 
-    // Favorites is active when showing saved words with no note/list/stat narrowing.
+    // Favorites is active when showing saved words with no note/list/stat/JLPT narrowing.
     private var isFavoritesScope: Bool {
-        showSavedWords && activeFilterNoteIDs.isEmpty && activeFilterListIDs.isEmpty && statScope == .none
+        showSavedWords && activeFilterNoteIDs.isEmpty && activeFilterListIDs.isEmpty
+            && statScope == .none && jlptLevel == nil
     }
 
     // Label shown on the collapsed dropdown — the one thing currently displayed.
     private var currentScopeLabel: String {
         if showRecentSearches { return "Recent Searches" }
         if showSavedWords == false { return "History" }
+        if let jlptLevel { return "JLPT N\(jlptLevel)" }
         if let noteID = activeFilterNoteIDs.first,
            let note = notesStore.note(withID: noteID) {
             return resolvedTitle(for: note)
@@ -222,6 +241,7 @@ struct WordsFilterView: View {
         statScope = .none
         showSavedWords = false
         showRecentSearches = false
+        jlptLevel = nil
     }
 
     // Shows all favorites with no note/list/stat narrowing.
@@ -231,6 +251,7 @@ struct WordsFilterView: View {
         statScope = .none
         showSavedWords = true
         showRecentSearches = false
+        jlptLevel = nil
     }
 
     // Filters the saved view to a stat-based scope.
@@ -240,6 +261,7 @@ struct WordsFilterView: View {
         statScope = scope
         showSavedWords = true
         showRecentSearches = false
+        jlptLevel = nil
     }
 
     // Filters the saved view to a single source note.
@@ -249,6 +271,7 @@ struct WordsFilterView: View {
         statScope = .none
         showSavedWords = true
         showRecentSearches = false
+        jlptLevel = nil
     }
 
     // Filters the saved view to a single word list.
@@ -258,6 +281,7 @@ struct WordsFilterView: View {
         statScope = .none
         showSavedWords = true
         showRecentSearches = false
+        jlptLevel = nil
     }
 
     // Shows only the typed free-text searches; clears every other scope.
@@ -267,6 +291,22 @@ struct WordsFilterView: View {
         statScope = .none
         showSavedWords = false
         showRecentSearches = true
+        jlptLevel = nil
+    }
+
+    // Toggles a JLPT-level scope; re-tapping the active level returns to History.
+    private func tapJLPT(_ level: Int) {
+        if jlptLevel == level { selectHistory() } else { selectJLPT(level) }
+    }
+
+    // Filters the saved view to a single JLPT level; clears every other scope.
+    private func selectJLPT(_ level: Int) {
+        activeFilterNoteIDs = []
+        activeFilterListIDs = []
+        statScope = .none
+        showSavedWords = true
+        showRecentSearches = false
+        jlptLevel = level
     }
 
     // MARK: - List CRUD

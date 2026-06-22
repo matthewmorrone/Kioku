@@ -47,6 +47,11 @@ extension WordsView {
                 } label: {
                     Label("Browse by Frequency", systemImage: "chart.bar.fill")
                 }
+                Button {
+                    isBrowseProficiencyPresented = true
+                } label: {
+                    Label("Browse by Proficiency Level", systemImage: "graduationcap.fill")
+                }
                 // Folded into the main search: example sentences now surface inline beneath
                 // entry results for phrase/sparse queries (WordsView.shouldShowSentenceResults).
                 // Uncomment to restore the standalone corpus-search sheet.

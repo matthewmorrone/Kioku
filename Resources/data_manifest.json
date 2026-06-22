@@ -71,6 +71,16 @@
       "provenance": "Built from Tatoeba export: 'Sentence pairs in Japanese-English - 2026-01-20.tsv' and 'Sentence pairs in English-Japanese - 2026-01-20.tsv' via scripts/build_sentence_pairs_tsv.py"
     },
     {
+      "name": "jlpt-vocab",
+      "type": "jlpt-vocabulary",
+      "path": "Resources/jlpt-vocab.tsv",
+      "required": false,
+      "derived": true,
+      "url": "https://www.tanos.co.uk/jlpt/",
+      "sha256": null,
+      "provenance": "JLPT vocabulary level lists (N5-N1) by Jonathan Waller, https://www.tanos.co.uk/jlpt/ — licensed CC BY. UNOFFICIAL community estimates; no official JLPT vocab lists exist post-2010. Built into Resources/jlpt-vocab.tsv (columns: surface, reading, level; level = N-number, 5=N5 easiest .. 1=N1 hardest) by scripts/build_jlpt_vocab_tsv.py from the cleaned CSV mirror at https://github.com/Bluskyo/JLPT_Vocabulary (MIT), file data/vocab/results/JLPT_vocab_ALL.csv. Consumed by generate_db.import_jlpt_levels to populate the entry_jlpt_level table."
+    },
+    {
       "name": "radkfile2",
       "type": "radical-decomposition",
       "path": "Resources/radkfile2.utf8",
