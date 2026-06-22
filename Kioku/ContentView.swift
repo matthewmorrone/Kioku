@@ -406,6 +406,13 @@ struct ContentView: View {
                 try store.populateSurfacePOSBitsMap()
             }} catch { print("populateSurfacePOSBitsMap failed: \(error)") }
 
+            // entry_id → JLPT level map. Backs the Words JLPT filter and the Flashcards/Multiple
+            // Choice level pickers with O(1) per-saved-word lookups instead of SQL. Empty (and
+            // harmless) on a dictionary built before the entry_jlpt_level migration.
+            do { try StartupTimer.measure("populateJLPTLevelMap") {
+                try store.populateJLPTLevelMap()
+            }} catch { print("populateJLPTLevelMap failed: \(error)") }
+
             // Reuse the map already built on the Stage 1 fast path when available, so the heavy
             // surface-reading scan isn't run twice.
             if let prebuiltSurfaceReadingData {

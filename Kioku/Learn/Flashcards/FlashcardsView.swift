@@ -54,6 +54,8 @@ struct FlashcardsView: View {
     @State private var cardCount: Int = 20
     @State private var scope: FlashcardScope = .all
     @State private var selectedNoteIDs: Set<UUID> = []
+    // JLPT levels (N-number 5…1) to include; empty means no level filter. ANDs with scope + notes.
+    @State private var selectedJLPTLevels: Set<Int> = []
     @State private var detailWord: SavedWord?
 
     var body: some View {
@@ -263,6 +265,7 @@ struct FlashcardsView: View {
         ) {
             Section {
                 FlashcardNotePicker(selectedNoteIDs: $selectedNoteIDs)
+                FlashcardJLPTPicker(dictionaryStore: dictionaryStore, selectedLevels: $selectedJLPTLevels)
             }
 
             Section {
@@ -370,12 +373,19 @@ struct FlashcardsView: View {
         sessionTotalCount = 0; reviewedCount = 0
     }
 
-    // Returns saved words filtered by the selected notes AND the active scope (all / due / wrong).
+    // Returns saved words filtered by the selected notes AND the active scope (all / due / wrong)
+    // AND the selected JLPT levels (empty = any level).
     private func wordsMatchingSelection() -> [SavedWord] {
         var base = wordsStore.words
         if selectedNoteIDs.isEmpty == false {
             base = base.filter { word in
                 word.sourceNoteIDs.contains(where: { selectedNoteIDs.contains($0) })
+            }
+        }
+        if selectedJLPTLevels.isEmpty == false {
+            base = base.filter { word in
+                guard let level = dictionaryStore?.jlptLevel(for: word.canonicalEntryID) else { return false }
+                return selectedJLPTLevels.contains(level)
             }
         }
         switch scope {
@@ -470,5 +480,68 @@ struct FlashcardNotePicker: View {
             return note.title.isEmpty ? "Untitled" : note.title
         }
         return "\(selectedNoteIDs.count) notes"
+    }
+}
+
+// Multiselect dropdown scoping the session to saved words at one or more JLPT levels (N5–N1).
+// An empty selection ("Any") means no level filter. Counts reflect saved words whose entry has
+// that level in the dictionary's entry_jlpt_level map (unofficial estimates). Internal so
+// Multiple Choice reuses it. Renders nothing when the dictionary carries no JLPT data at all.
+struct FlashcardJLPTPicker: View {
+    @EnvironmentObject private var wordsStore: WordsStore
+    let dictionaryStore: DictionaryStore?
+    @Binding var selectedLevels: Set<Int>
+
+    var body: some View {
+        // Hide entirely when no saved word has a known level — nothing to pick from.
+        if anyLevelAvailable {
+            HStack {
+                Text("JLPT")
+                Spacer()
+                Menu(summary) {
+                    Button { selectedLevels.removeAll() } label: {
+                        if selectedLevels.isEmpty {
+                            Label("Any", systemImage: "checkmark")
+                        } else {
+                            Text("Any")
+                        }
+                    }
+                    Divider()
+                    // N5 (easiest) first.
+                    ForEach(Array(stride(from: 5, through: 1, by: -1)), id: \.self) { level in
+                        Button {
+                            if selectedLevels.contains(level) {
+                                selectedLevels.remove(level)
+                            } else {
+                                selectedLevels.insert(level)
+                            }
+                        } label: {
+                            let title = "N\(level) (\(count(for: level)))"
+                            if selectedLevels.contains(level) {
+                                Label(title, systemImage: "checkmark")
+                            } else {
+                                Text(title)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Saved-word count whose entry sits at the given JLPT level.
+    private func count(for level: Int) -> Int {
+        wordsStore.words.filter { dictionaryStore?.jlptLevel(for: $0.canonicalEntryID) == level }.count
+    }
+
+    // True when at least one saved word has any known JLPT level.
+    private var anyLevelAvailable: Bool {
+        wordsStore.words.contains { dictionaryStore?.jlptLevel(for: $0.canonicalEntryID) != nil }
+    }
+
+    // Short label describing the current selection for the menu's trigger text.
+    private var summary: String {
+        if selectedLevels.isEmpty { return "Any" }
+        return selectedLevels.sorted(by: >).map { "N\($0)" }.joined(separator: ", ")
     }
 }

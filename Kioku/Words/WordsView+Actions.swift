@@ -7,9 +7,9 @@ import SwiftUI
 extension WordsView {
     // MARK: - Helpers
 
-    // True when any filter is active across notes, lists, or stat scope.
+    // True when any filter is active across notes, lists, stat scope, or JLPT level.
     var isFilterActive: Bool {
-        !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty || statScope != .none
+        !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty || statScope != .none || jlptLevel != nil
     }
 
     // Returns saved words filtered by active note/list/stat selection and sorted by the current saved sort order.
@@ -33,6 +33,10 @@ extension WordsView {
             filtered = filtered.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
         case .neverReviewed:
             filtered = filtered.filter { reviewStore.stats[$0.canonicalEntryID] == nil }
+        }
+
+        if let jlptLevel {
+            filtered = filtered.filter { dictionaryStore?.jlptLevel(for: $0.canonicalEntryID) == jlptLevel }
         }
 
         return sorted(filtered, by: savedSort)
