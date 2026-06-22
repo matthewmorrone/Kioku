@@ -43,7 +43,7 @@ extension WordsView {
                     speakRow(reading: reading, headword: headword, surface: surface)
                 } label: {
                     Image(systemName: "speaker.wave.2.fill")
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(japaneseTheme ? Color.white : Color.accentColor)
                         .font(.system(size: 15, weight: .semibold))
                 }
                 .buttonStyle(.plain)
@@ -85,7 +85,7 @@ extension WordsView {
                     toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
                 } label: {
                     Image(systemName: saved ? "star.fill" : "star")
-                        .foregroundStyle(saved ? Color.yellow : Color.secondary)
+                        .foregroundStyle(japaneseTheme ? Color.white : (saved ? Color.yellow : Color.secondary))
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .buttonStyle(.plain)

@@ -19,6 +19,9 @@ struct KiokuApp: App {
         // resource init still produces a persisted record. The handlers stay live for the
         // process lifetime; MetricKit will deliver any post-mortem payloads next launch.
         CrashLogger.shared.install()
+        // Install the Japanese nav/tab bar chrome before any UIKit-backed chrome is first laid out
+        // — but only when the user has opted into the theme (otherwise leave the system defaults).
+        Theme.refreshGlobalAppearance()
         StartupTimer.mark("KiokuApp.init")
         KaraokeDebugLog.reset()
         KaraokeDebugLog.log("=== app launch ===")

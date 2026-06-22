@@ -27,6 +27,7 @@ struct LearnHomeForm<Content: View>: View {
         // Swipe down over any start form to dismiss a numeric keyboard (the count field has no
         // return key); `LearnCountField` supplies a Done button as the explicit affordance.
         .scrollDismissesKeyboard(.interactively)
+        .washiBackground()
     }
 }
 

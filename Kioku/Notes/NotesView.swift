@@ -161,6 +161,7 @@ struct NotesView: View {
                     }
                 )
             }
+            .washiBackground()
             .toolbar {
                 // Leading group: file-based and image-based import entry points sit together
                 // on the left so the user reads "import sources" → "selection/editing" → "new"
