@@ -499,18 +499,29 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Related words, organized into two categories the reference distinguishes:
-                //   1. Structurally Related — words sharing the headword's exact kanji stem;
-                //      a verb's transitive/intransitive counterpart is pinned to the top.
-                //   2. Synonyms — JMdict cross-referenced "see also" entries.
-                // The looser kanji-family remainder (words sharing only the primary kanji)
-                // keeps the original "Related Words" section.
+                // Related words in a single "Related Words" list. The entries a learner most
+                // wants — transitive/intransitive verb counterparts and same-stem forms, each
+                // tagged with its relationship — are ordered first, followed by the looser
+                // kanji-family remainder that shares only the primary kanji. The combined list
+                // is capped with a "Show # more…" button. Synonyms (JMdict xref "see also"
+                // cross-references) stay in their own section below.
                 let partition = relatedPartition
+                let relatedItems: [(entry: DictionaryEntry, relationLabel: String?)] =
+                    partition.structural.map { ($0.entry, RelatedWordsOrganizer.label(for: $0.relation)) }
+                    + partition.others.map { ($0, nil) }
 
-                if partition.structural.isEmpty == false {
-                    Section("Structurally Related") {
-                        ForEach(partition.structural, id: \.entry.entryId) { item in
-                            relatedWordRow(item.entry, relationLabel: RelatedWordsOrganizer.label(for: item.relation))
+                if relatedItems.isEmpty == false {
+                    let shownRelated = relatedExpanded ? relatedItems : Array(relatedItems.prefix(5))
+                    Section("Related Words") {
+                        ForEach(shownRelated, id: \.entry.entryId) { item in
+                            relatedWordRow(item.entry, relationLabel: item.relationLabel)
+                        }
+                        if relatedItems.count > 5 {
+                            Button(relatedExpanded ? "Show fewer" : "Show \(relatedItems.count - 5) more…") {
+                                relatedExpanded.toggle()
+                            }
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
                         }
                     }
                 }
@@ -519,22 +530,6 @@ struct WordDetailView: View {
                     Section("Synonyms") {
                         ForEach(synonymEntries, id: \.entryId) { entry in
                             relatedWordRow(entry)
-                        }
-                    }
-                }
-
-                if partition.others.isEmpty == false {
-                    let shownRelated = relatedExpanded ? partition.others : Array(partition.others.prefix(5))
-                    Section("Related Words") {
-                        ForEach(shownRelated, id: \.entryId) { entry in
-                            relatedWordRow(entry)
-                        }
-                        if partition.others.count > 5 {
-                            Button(relatedExpanded ? "Show fewer" : "Show \(partition.others.count - 5) more…") {
-                                relatedExpanded.toggle()
-                            }
-                            .font(.caption)
-                            .foregroundStyle(Color.accentColor)
                         }
                     }
                 }

@@ -254,8 +254,9 @@ extension WordDetailView {
 
     // One related-word row: an optional structural-relationship badge, the POS label, the
     // surface + reading, and the leading glosses — the same at-a-glance information the
-    // reference shows for each related entry. `relationLabel` is non-nil only in the
-    // "Structurally Related" section, where it names the trans/intrans pair or same-stem form.
+    // reference shows for each related entry. `relationLabel` is non-nil for the structural
+    // entries ordered first in the Related Words list, where it names the trans/intrans pair
+    // or same-stem form.
     @ViewBuilder
     func relatedWordRow(_ entry: DictionaryEntry, relationLabel: String? = nil) -> some View {
         let surface = entry.firstEverydayKanji?.text ?? entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? ""
