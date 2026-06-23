@@ -114,7 +114,7 @@ final class LLMCorrectionService {
         let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
             ?? LLMSettings.defaultTemperature
         let body: [String: Any] = [
-            "model": "gpt-4o",
+            "model": LLMSettings.openAIModel(),
             "messages": [
                 ["role": "system", "content": messages.system],
                 ["role": "user", "content": messages.user]
@@ -145,7 +145,7 @@ final class LLMCorrectionService {
         return try parseCompactResponse(content)
     }
 
-    // Calls the Anthropic Messages API using the current stable claude-opus-4-6 model.
+    // Calls the Anthropic Messages API using the configured Claude model (Sonnet 4.6 by default).
     private func callClaude(apiKey: String, messages: (system: String, user: String)) async throws -> LLMCorrectionResponse {
         let url = URL(string: "https://api.anthropic.com/v1/messages")!
         var request = URLRequest(url: url)
@@ -156,11 +156,22 @@ final class LLMCorrectionService {
 
         let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
             ?? LLMSettings.defaultTemperature
+        // Send the static system prompt as an array of content blocks with a cache_control
+        // marker so Anthropic prompt caching bills the prompt at ~0.1x on repeat calls. The
+        // per-note user turn stays uncached. GA feature — no beta header required; the existing
+        // anthropic-version header suffices. (Sonnet 4.6's ~2048-token min cacheable prefix means
+        // this ~2000-token correction prompt is borderline and may silently not cache.)
         let body: [String: Any] = [
-            "model": "claude-opus-4-6",
+            "model": LLMSettings.claudeModel(),
             "max_tokens": 4096,
             "temperature": temperature,
-            "system": messages.system,
+            "system": [
+                [
+                    "type": "text",
+                    "text": messages.system,
+                    "cache_control": ["type": "ephemeral"]
+                ]
+            ],
             "messages": [
                 ["role": "user", "content": messages.user]
             ]
