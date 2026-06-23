@@ -208,7 +208,7 @@ struct WordDetailView: View {
                             .font(.title3)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Color.primary)
                     .offset(x: -34)
                 }
                 .overlay(alignment: .trailing) {
@@ -222,7 +222,7 @@ struct WordDetailView: View {
                     } label: {
                         Image(systemName: isSaved ? "star.fill" : "star")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(isSaved ? Color.yellow : Color.secondary)
+                            .foregroundStyle(Color.primary)
                     }
                     .buttonStyle(.plain)
                     .offset(x: 34)
