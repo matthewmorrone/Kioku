@@ -315,11 +315,18 @@ extension ReadView {
                                         text: line.text, checkpoints: checkpoints))
             }
 
+            // Ground-truth onset wall: pull any line whose onset drifted INTO a proven instrumental
+            // gap (anchor-fill char-rate slack) forward to where the vocal actually resumes. Without
+            // this a mis-timed line both sweeps "ghostly" over the silence and suppresses the gap's ♪.
+            let clampedCues = SubtitleEditorTimingTools.clampOnsetsToVocal(
+                cues: cues, durationMs: durationMs ?? 0, vocalSegments: result.vocalSegments
+            )
+
             // Fill the instrumental stretches (intro, breaks, outro) with ♪ markers — driven by the
             // aligner's vocal segments (real silence on the stem) rather than cue-time gaps, so a
             // marker only appears where the singer truly isn't singing. Timings/checkpoints untouched.
             let cuesWithMarkers = SubtitleEditorTimingTools.insertMusicMarkers(
-                cues: cues, durationMs: durationMs ?? 0, vocalSegments: result.vocalSegments
+                cues: clampedCues, durationMs: durationMs ?? 0, vocalSegments: result.vocalSegments
             )
 
             // Persist in place on the SAME attachment (the audio is unchanged), then swap cues
