@@ -38,10 +38,12 @@ extension DictionaryEntry {
     // JMdict ke_inf tags marking kanji forms that exist in the data but are essentially never
     // used in modern writing: rare, outdated, irregular, or search-only. We treat these
     // collectively as "non-everyday" and suppress them in display headers.
-    private static let nonEverydayKanjiTags: Set<String> = ["rK", "oK", "iK", "sK"]
+    nonisolated private static let nonEverydayKanjiTags: Set<String> = ["rK", "oK", "iK", "sK"]
 
     // Returns true when the given kanji-form info string carries any non-everyday tag.
-    static func kanjiFormIsNonEveryday(info: String?) -> Bool {
+    // nonisolated: a pure string/tag check over Sendable inputs, so it stays callable from
+    // off-main-actor code such as the synchronous RelatedWordsOrganizer.
+    nonisolated static func kanjiFormIsNonEveryday(info: String?) -> Bool {
         guard let info, info.isEmpty == false else { return false }
         let tags = info.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         return tags.contains { nonEverydayKanjiTags.contains(String($0)) }
@@ -49,7 +51,9 @@ extension DictionaryEntry {
 
     // First kanji form whose ke_inf isn't tagged rare/outdated/irregular/search-only. Used by
     // header rendering so a learner-facing display doesn't surface 此処/茲/爰 for ここ.
-    var firstEverydayKanji: KanjiForm? {
+    // nonisolated: reads only Sendable stored data and a pure static helper, so the synchronous
+    // RelatedWordsOrganizer (nonisolated) can compute kanji skeletons off the main actor.
+    nonisolated var firstEverydayKanji: KanjiForm? {
         kanjiForms.first { !DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) }
     }
 
