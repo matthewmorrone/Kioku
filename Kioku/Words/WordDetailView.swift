@@ -42,6 +42,9 @@ struct WordDetailView: View {
     @State var relatedEntries: [DictionaryEntry] = []
     @State var loanwordSources: [LoanwordSource] = []
     @State var senseReferences: [SenseReference] = []
+    // Synonyms resolved from the saved entry's JMdict xref cross-references, shown as their own
+    // section beneath the structural/kanji-family related words. See loadDisplayData.
+    @State var synonymEntries: [DictionaryEntry] = []
     @State private var showingConjugations: Bool = false
     @State var conjugationGroups: [ConjugationGroup] = []
     @State var sublatticePaths: [[String]] = []
@@ -65,6 +68,14 @@ struct WordDetailView: View {
 
     // The saved entry is used for header, examples, alternates, and components.
     private var savedDisplayData: WordDisplayData? { allDisplayData.first }
+
+    // Splits the kanji-family related entries into a tightly structural group (trans/intrans
+    // verb counterparts and same-stem forms, counterpart first) and the looser remainder that
+    // only shares the headword's primary kanji. Drives the two related-words sections below.
+    private var relatedPartition: (structural: [StructuralRelatedEntry], others: [DictionaryEntry]) {
+        guard let saved = savedDisplayData?.entry else { return ([], relatedEntries) }
+        return RelatedWordsOrganizer.partition(saved: saved, related: relatedEntries)
+    }
 
     // Distinct part-of-speech labels across the saved entry's senses, in first-seen order,
     // expanded to full English and title-cased — e.g. "Transitive Verb · Auxiliary Adjective".
@@ -488,19 +499,37 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Related words — kanji-family vocabulary sharing the headword's primary kanji.
-                if relatedEntries.isEmpty == false {
-                    let shownRelated = relatedExpanded ? relatedEntries : Array(relatedEntries.prefix(5))
+                // Related words in a single "Related Words" list. The entries a learner most
+                // wants — transitive/intransitive verb counterparts and same-stem forms, each
+                // tagged with its relationship — are ordered first, followed by the looser
+                // kanji-family remainder that shares only the primary kanji. The combined list
+                // is capped with a "Show # more…" button. Synonyms (JMdict xref "see also"
+                // cross-references) stay in their own section below.
+                let partition = relatedPartition
+                let relatedItems: [(entry: DictionaryEntry, relationLabel: String?)] =
+                    partition.structural.map { ($0.entry, RelatedWordsOrganizer.label(for: $0.relation)) }
+                    + partition.others.map { ($0, nil) }
+
+                if relatedItems.isEmpty == false {
+                    let shownRelated = relatedExpanded ? relatedItems : Array(relatedItems.prefix(5))
                     Section("Related Words") {
-                        ForEach(shownRelated, id: \.entryId) { entry in
-                            relatedWordRow(entry)
+                        ForEach(shownRelated, id: \.entry.entryId) { item in
+                            relatedWordRow(item.entry, relationLabel: item.relationLabel)
                         }
-                        if relatedEntries.count > 5 {
-                            Button(relatedExpanded ? "Show fewer" : "Show \(relatedEntries.count - 5) more…") {
+                        if relatedItems.count > 5 {
+                            Button(relatedExpanded ? "Show fewer" : "Show \(relatedItems.count - 5) more…") {
                                 relatedExpanded.toggle()
                             }
                             .font(.caption)
                             .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
+
+                if synonymEntries.isEmpty == false {
+                    Section("Synonyms") {
+                        ForEach(synonymEntries, id: \.entryId) { entry in
+                            relatedWordRow(entry)
                         }
                     }
                 }
