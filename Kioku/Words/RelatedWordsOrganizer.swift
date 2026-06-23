@@ -70,11 +70,13 @@ nonisolated public enum RelatedWordsOrganizer {
     }
 
     // Short accent-colored badge text describing the relationship, shown on the structural rows.
-    public static func label(for relation: StructuralRelation) -> String {
+    // Only transitivity pairs carry grammatical signal worth surfacing; same-stem forms return nil
+    // (no pill) since "Related form" merely restated that the word is in the Related Words list.
+    public static func label(for relation: StructuralRelation) -> String? {
         switch relation {
         case .transitiveCounterpart: return "Transitive pair"
         case .intransitiveCounterpart: return "Intransitive pair"
-        case .sameStemForm: return "Related form"
+        case .sameStemForm: return nil
         }
     }
 

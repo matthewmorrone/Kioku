@@ -204,6 +204,85 @@ enum SubtitleEditorTimingTools {
         return out
     }
 
+    // Ground-truth onset wall. The energy-VAD `vocalSegments` mark exactly where the singer IS
+    // singing on the isolated stem, so their complement (any gap ≥ `minGapMs`) is proven silence —
+    // and a sung line physically cannot BEGIN there. Anchor-fill's char-rate drift nonetheless
+    // sometimes parks a post-interlude line ~20 s early, inside the silence; left there it sweeps
+    // "ghostly" over no audio AND suppresses the ♪ (insertMusicMarkers skips a gap a cue starts
+    // inside). This pulls every in-gap onset forward to vocal resumption: a run of cues crammed into
+    // one gap is repacked across [gapEnd, ceiling], where ceiling is the first cue that legitimately
+    // starts at/after the gap (or durationMs). Checkpoints ride along, re-anchored by the onset
+    // delta and dropped if pushed past the new end. Cues already in real vocal time are untouched;
+    // with no VAD info there's no ground truth, so it's the identity. Run BEFORE insertMusicMarkers
+    // so the gap then reads as ♪ rather than as a line over silence.
+    static func clampOnsetsToVocal(
+        cues: [SubtitleCue], durationMs: Int,
+        vocalSegments: [(start: Double, end: Double)], minGapMs: Int = 4000
+    ) -> [SubtitleCue] {
+        guard vocalSegments.isEmpty == false else { return cues }
+
+        // Instrumental gaps (ms) = complement of the vocal segments — SAME computation as
+        // insertMusicMarkers, so a cue this leaves outside every gap is exactly one it won't suppress.
+        let segs = vocalSegments
+            .map { (start: max(0, Int(($0.start * 1000).rounded())), end: max(0, Int(($0.end * 1000).rounded()))) }
+            .filter { $0.end > $0.start }
+            .sorted { $0.start < $1.start }
+        var gaps: [(start: Int, end: Int)] = []
+        var cursor = 0
+        for s in segs {
+            if s.start - cursor >= minGapMs { gaps.append((cursor, s.start)) }
+            cursor = max(cursor, s.end)
+        }
+        if durationMs > 0, durationMs - cursor >= minGapMs { gaps.append((cursor, durationMs)) }
+        guard gaps.isEmpty == false else { return cues }
+
+        // The gap a given onset falls strictly inside, if any (boundaries are vocal, not gap).
+        func gapContaining(_ ms: Int) -> (start: Int, end: Int)? {
+            gaps.first { ms > $0.start && ms < $0.end }
+        }
+
+        var out = cues
+        var i = 0
+        while i < out.count {
+            guard SubtitleParser.isNonSpeechCue(out[i].text) == false,
+                  let gap = gapContaining(out[i].startMs) else { i += 1; continue }
+
+            // Consecutive run of speech cues whose onsets all fall inside THIS gap.
+            var j = i
+            while j < out.count,
+                  SubtitleParser.isNonSpeechCue(out[j].text) == false,
+                  let g = gapContaining(out[j].startMs), g.start == gap.start {
+                j += 1
+            }
+
+            // Repack [i, j) across [gapEnd, ceiling]. ceiling = the next cue's onset (the first line
+            // that legitimately resumes after the gap) or durationMs for a trailing cram.
+            let count = j - i
+            let ceiling = j < out.count ? max(gap.end, out[j].startMs) : max(gap.end, durationMs)
+            let slot = max(0, ceiling - gap.end) / count   // even split (see note below)
+            for k in i..<j {
+                let newStart = gap.end + slot * (k - i)
+                let newEnd = (k + 1 < j) ? gap.end + slot * (k - i + 1) : ceiling
+                out[k] = reanchorCue(out[k], newStart: newStart, newEnd: max(newStart + 50, newEnd))
+            }
+            i = j
+        }
+        return out
+    }
+
+    // Moves a cue to [newStart, newEnd], re-anchoring its checkpoints by the start delta and
+    // dropping any that the move pushes outside the new bounds (mirrors mergeCheckpoints' clamping).
+    private static func reanchorCue(_ cue: SubtitleCue, newStart: Int, newEnd: Int) -> SubtitleCue {
+        let delta = newStart - cue.startMs
+        let cps = cue.checkpoints.compactMap { c -> CueCharTiming? in
+            let t = c.timeMs + delta
+            guard t >= newStart, t <= newEnd else { return nil }
+            return CueCharTiming(timeMs: t, charOffsetInCue: c.charOffsetInCue, charLength: c.charLength)
+        }
+        return SubtitleCue(index: cue.index, startMs: newStart, endMs: newEnd,
+                           text: cue.text, checkpoints: cps)
+    }
+
     // Carries per-word checkpoints across a lossy text round-trip (the SRT editor can only
     // represent index/timecodes/text, never checkpoints). For each cue in `edited`, finds the
     // earliest not-yet-consumed cue in `previous` with byte-identical text and adopts its
