@@ -37,6 +37,14 @@ enum LLMSettings {
     static let temperatureKey = "kioku.llm.temperature"
     static let defaultTemperature: Double = 0.4
 
+    // Model identifiers sent to each provider. Configurable so the model can be changed
+    // without a rebuild. Claude defaults to Sonnet 4.6 — strong at Japanese and ~40% cheaper
+    // than Opus ($3/$15 per Mtok vs $5/$25). OpenAI defaults to gpt-4o.
+    static let claudeModelKey = "kioku.llm.claudeModel"
+    static let defaultClaudeModel = "claude-sonnet-4-6"
+    static let openAIModelKey = "kioku.llm.openaiModel"
+    static let defaultOpenAIModel = "gpt-4o"
+
     static let defaultProvider = LLMProvider.none.rawValue
 
     // Returns the active provider from UserDefaults, defaulting to none if unrecognized.
@@ -72,6 +80,18 @@ enum LLMSettings {
     // Returns the API key for the currently configured provider, or nil if not set.
     static func activeAPIKey() -> String? {
         apiKey(for: activeProvider())
+    }
+
+    // Returns the configured Claude model id, defaulting to Sonnet 4.6 when unset or blank.
+    static func claudeModel() -> String {
+        let stored = UserDefaults.standard.string(forKey: claudeModelKey) ?? ""
+        return stored.isEmpty ? defaultClaudeModel : stored
+    }
+
+    // Returns the configured OpenAI model id, defaulting to gpt-4o when unset or blank.
+    static func openAIModel() -> String {
+        let stored = UserDefaults.standard.string(forKey: openAIModelKey) ?? ""
+        return stored.isEmpty ? defaultOpenAIModel : stored
     }
 
     // Returns true when useLLM is on and an API key is set, or when useLLM is off and a stub is set.

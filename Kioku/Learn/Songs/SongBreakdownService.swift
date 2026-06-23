@@ -81,7 +81,7 @@ final class SongBreakdownService {
             raw = try await callOpenAI(apiKey: apiKey, prompt: prompt)
             producedBy = .openAI
         case .claude:
-            raw = try await callClaude(apiKey: apiKey, prompt: prompt)
+            raw = try await callClaude(apiKey: apiKey, lyrics: lyrics)
             producedBy = .claude
         }
         NSLog("[SongBreakdown] %@ response received bytes=%d duration=%.2fs — parsing",
@@ -118,8 +118,9 @@ final class SongBreakdownService {
 
         let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
             ?? LLMSettings.defaultTemperature
+        let model = LLMSettings.openAIModel()
         let body: [String: Any] = [
-            "model": "gpt-4o",
+            "model": model,
             "messages": [
                 ["role": "user", "content": prompt]
             ],
@@ -129,8 +130,8 @@ final class SongBreakdownService {
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
-        NSLog("[SongBreakdown] POST openai bodyBytes=%d temperature=%.2f model=gpt-4o",
-              bodyData.count, temperature)
+        NSLog("[SongBreakdown] POST openai bodyBytes=%d temperature=%.2f model=%@",
+              bodyData.count, temperature, model)
 
         let httpStart = Date()
         let (data, response) = try await urlSession.data(for: request)
@@ -152,9 +153,14 @@ final class SongBreakdownService {
         return content
     }
 
-    // Calls the Anthropic Messages API. Model is pinned to the latest stable Opus to match the
-    // depth the prompt asks for (etymology, register, cultural context).
-    private func callClaude(apiKey: String, prompt: String) async throws -> String {
+    // Calls the Anthropic Messages API using the configured Claude model (Sonnet 4.6 by default),
+    // chosen for the depth the prompt asks for (etymology, register, cultural context).
+    // The large static instruction prompt is sent as a cached system block (cache_control:
+    // ephemeral) so it bills at ~0.1x on repeat calls; the per-song lyrics travel uncached in
+    // the user turn. Prompt caching is GA — no beta header; the anthropic-version header above
+    // suffices. The song instructions (~2400 tokens) clear Sonnet 4.6's ~2048-token minimum
+    // cacheable prefix, so the cache marker takes effect here.
+    private func callClaude(apiKey: String, lyrics: String) async throws -> String {
         let url = URL(string: "https://api.anthropic.com/v1/messages")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -164,19 +170,27 @@ final class SongBreakdownService {
 
         let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
             ?? LLMSettings.defaultTemperature
+        let model = LLMSettings.claudeModel()
         let body: [String: Any] = [
-            "model": "claude-opus-4-6",
+            "model": model,
             "max_tokens": 8192,
             "temperature": temperature,
+            "system": [
+                [
+                    "type": "text",
+                    "text": SongBreakdownPrompt.staticInstructions(),
+                    "cache_control": ["type": "ephemeral"]
+                ]
+            ],
             "messages": [
-                ["role": "user", "content": prompt]
+                ["role": "user", "content": lyrics]
             ]
         ]
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
-        NSLog("[SongBreakdown] POST claude bodyBytes=%d temperature=%.2f model=claude-opus-4-6",
-              bodyData.count, temperature)
+        NSLog("[SongBreakdown] POST claude bodyBytes=%d temperature=%.2f model=%@",
+              bodyData.count, temperature, model)
 
         let httpStart = Date()
         let (data, response) = try await urlSession.data(for: request)
