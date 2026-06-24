@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import WidgetKit
 
 // Notification content resolved from the live dictionary for a specific saved word.
 private struct WordOfTheDayLiveContent {
@@ -77,6 +78,7 @@ enum WordOfTheDayScheduler {
         guard enabled else {
             await clearPendingWordOfTheDayRequests()
             clearPersistedScheduleState()
+            clearWidgetMirror()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled cleared pending because disabled")
             return
         }
@@ -86,6 +88,7 @@ enum WordOfTheDayScheduler {
         guard status == .authorized || status == .provisional else {
             await clearPendingWordOfTheDayRequests()
             clearPersistedScheduleState()
+            clearWidgetMirror()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled cleared pending because unauthorized")
             return
         }
@@ -137,6 +140,22 @@ enum WordOfTheDayScheduler {
         _ = await addRequest(request)
     }
 
+    // MARK: - Widget mirror
+
+    // Mirrors the scheduled batch into the App Group and refreshes the widget timeline so the
+    // "most recent word" widget reflects the current schedule without launching the app.
+    private static func writeWidgetMirror(_ entries: [WordOfTheDayMirrorEntry]) {
+        WordOfTheDayMirror.write(entries)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // Clears the mirror (and refreshes the widget) when WOTD is disabled, unauthorized, or has no
+    // words to schedule, so the widget falls back to its empty state instead of a stale word.
+    private static func clearWidgetMirror() {
+        WordOfTheDayMirror.clear()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     // MARK: - Internals
 
     // Clears the existing schedule and rebuilds it from a fresh word shuffle.
@@ -153,6 +172,7 @@ enum WordOfTheDayScheduler {
         await clearPendingWordOfTheDayRequests()
         guard words.isEmpty == false else {
             persistScheduleState(signature: scheduleSignature, requestCount: 0)
+            clearWidgetMirror()
             return
         }
 
@@ -168,6 +188,10 @@ enum WordOfTheDayScheduler {
             resolveLiveContent(for: wordsToResolve, using: dictionaryStore)
         }
 
+        // Accumulated alongside the notification requests so the widget can read the same
+        // date→word mapping the system will deliver.
+        var mirrorEntries: [WordOfTheDayMirrorEntry] = []
+
         for dayOffset in 0..<count {
             guard let day = calendar.date(byAdding: .day, value: dayOffset, to: now) else { continue }
             var comps = calendar.dateComponents([.year, .month, .day], from: day)
@@ -181,8 +205,18 @@ enum WordOfTheDayScheduler {
             let id = requestPrefix + identifierDateString(from: comps)
             let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
             _ = await addRequest(request)
+
+            let fireDate = calendar.date(from: comps) ?? day
+            mirrorEntries.append(WordOfTheDayMirrorEntry(
+                fireDate: fireDate,
+                surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
+                kana: liveContent.kana,
+                meaning: liveContent.meaning,
+                entryID: word.canonicalEntryID
+            ))
         }
         persistScheduleState(signature: scheduleSignature, requestCount: liveContentByEntryID.count)
+        writeWidgetMirror(mirrorEntries)
         StartupTimer.mark("WOTD.scheduleUpcoming enqueued \(count) requests")
     }
 
