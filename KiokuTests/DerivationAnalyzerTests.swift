@@ -59,6 +59,20 @@ final class DerivationAnalyzerTests: XCTestCase {
         XCTAssertEqual(result?.summary, "Collective noun — 子供 + pluralizing suffix たち")
     }
 
+    func testPluralizingRaFiresOnPronounBase() {
+        // 彼ら: 彼 is a pronoun, so the pluralizing ら applies.
+        let result = DerivationAnalyzer.analyze(
+            surface: "彼ら", components: [], baseResolver: resolver(["彼": ["pn"]]))
+        XCTAssertEqual(result?.summary, "Collective noun — 彼 + pluralizing suffix ら")
+    }
+
+    func testPluralizingRaSkippedOnNominalBase() {
+        // きよら (清ら): the trailing ら is the archaic 形容動詞-forming suffix, not the pluralizer,
+        // and きよ resolves only as a noun. A nominal base must NOT trigger the plural rule.
+        XCTAssertNil(DerivationAnalyzer.analyze(
+            surface: "きよら", components: [], baseResolver: resolver(["きよ": ["n"]])))
+    }
+
     func testAdjectivalTeki() {
         let result = DerivationAnalyzer.analyze(
             surface: "科学的", components: [], baseResolver: resolver(["科学": ["n"]]))
