@@ -72,6 +72,19 @@ nonisolated enum WordOfTheDayMirror {
             .max { $0.fireDate < $1.fireDate }
     }
 
+    // The single word the widget should display: the most recent one already sent, or — when none
+    // has fired yet — the soonest upcoming one. The fallback means a freshly enabled schedule shows
+    // today's (or the next) word immediately instead of an empty prompt, since every scheduled fire
+    // time is initially in the future.
+    static func currentEntry(in entries: [WordOfTheDayMirrorEntry], asOf now: Date) -> WordOfTheDayMirrorEntry? {
+        if let sent = mostRecentEntry(in: entries, asOf: now) {
+            return sent
+        }
+        return entries
+            .filter { $0.fireDate > now }
+            .min { $0.fireDate < $1.fireDate }
+    }
+
     // MARK: - Deep link
 
     // Builds the widget tap URL, e.g. kioku://word?id=123&surface=勉強.

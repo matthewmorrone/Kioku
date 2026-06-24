@@ -19,7 +19,7 @@ struct WordOfTheDayProvider: TimelineProvider {
     func getSnapshot(in context: Context, completion: @escaping (WordOfTheDayWidgetEntry) -> Void) {
         let now = Date()
         let mirror = WordOfTheDayMirror.load()
-        let word = WordOfTheDayMirror.mostRecentEntry(in: mirror, asOf: now)
+        let word = WordOfTheDayMirror.currentEntry(in: mirror, asOf: now)
             ?? (context.isPreview ? .preview : nil)
         completion(WordOfTheDayWidgetEntry(date: now, word: word))
     }
@@ -29,7 +29,7 @@ struct WordOfTheDayProvider: TimelineProvider {
         let mirror = WordOfTheDayMirror.load()
 
         var entries: [WordOfTheDayWidgetEntry] = [
-            WordOfTheDayWidgetEntry(date: now, word: WordOfTheDayMirror.mostRecentEntry(in: mirror, asOf: now))
+            WordOfTheDayWidgetEntry(date: now, word: WordOfTheDayMirror.currentEntry(in: mirror, asOf: now))
         ]
 
         // Each future fire date becomes the moment that word turns into the most-recent one.
