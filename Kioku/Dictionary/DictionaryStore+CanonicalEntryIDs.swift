@@ -112,4 +112,39 @@ extension DictionaryStore {
     nonisolated func populateCanonicalEntryIDMap() throws {
         canonicalEntryIDMap = try fetchCanonicalEntryIDMap()
     }
+
+    // Reads the ent_seq ⇄ entries.id mapping in one pass over the entries table.
+    nonisolated func fetchEntSeqMaps() throws -> (entryIDByEntSeq: [Int64: Int64], entSeqByEntryID: [Int64: Int64]) {
+        try withSerializedDatabaseAccess {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: "SELECT id, ent_seq FROM entries WHERE ent_seq IS NOT NULL", statement: &statement)
+
+            var byEntSeq: [Int64: Int64] = [:]
+            var byEntryID: [Int64: Int64] = [:]
+            byEntSeq.reserveCapacity(300_000)
+            byEntryID.reserveCapacity(300_000)
+
+            var stepCode = sqlite3_step(statement)
+            while stepCode == SQLITE_ROW {
+                let entryID = sqlite3_column_int64(statement, 0)
+                let entSeq = sqlite3_column_int64(statement, 1)
+                byEntSeq[entSeq] = entryID
+                byEntryID[entryID] = entSeq
+                stepCode = sqlite3_step(statement)
+            }
+            guard stepCode == SQLITE_DONE else {
+                throw DictionarySQLiteError.step(message: errorMessage())
+            }
+            return (byEntSeq, byEntryID)
+        }
+    }
+
+    // Populates the in-memory ent_seq maps. Same startup lifecycle contract as
+    // populateCanonicalEntryIDMap (run off-main before the store is published).
+    nonisolated func populateEntSeqMaps() throws {
+        let maps = try fetchEntSeqMaps()
+        entryIDByEntSeq = maps.entryIDByEntSeq
+        entSeqByEntryID = maps.entSeqByEntryID
+    }
 }
