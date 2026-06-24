@@ -48,6 +48,28 @@ final class WordOfTheDayMirrorTests: XCTestCase {
         XCTAssertEqual(result?.entryID, 3)
     }
 
+    // MARK: - currentEntry (display fallback)
+
+    func testCurrentEntryFallsBackToSoonestUpcomingWhenNothingFired() {
+        let now = Date(timeIntervalSinceReferenceDate: 50)
+        let entries = [entry(300, id: 3), entry(100, id: 1), entry(200, id: 2)]
+        // Nothing has fired yet, so it should show the soonest upcoming word (id 1 at t=100).
+        let result = WordOfTheDayMirror.currentEntry(in: entries, asOf: now)
+        XCTAssertEqual(result?.entryID, 1)
+    }
+
+    func testCurrentEntryPrefersAlreadyFiredOverUpcoming() {
+        let now = Date(timeIntervalSinceReferenceDate: 150)
+        let entries = [entry(100, id: 1), entry(200, id: 2)]
+        // id 1 has fired (t=100 <= 150); id 2 is upcoming. Prefer the most recent fired.
+        let result = WordOfTheDayMirror.currentEntry(in: entries, asOf: now)
+        XCTAssertEqual(result?.entryID, 1)
+    }
+
+    func testCurrentEntryReturnsNilForEmptyMirror() {
+        XCTAssertNil(WordOfTheDayMirror.currentEntry(in: [], asOf: Date()))
+    }
+
     // MARK: - Serialization
 
     func testMirrorEntriesRoundTripThroughCodable() throws {

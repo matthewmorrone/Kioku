@@ -95,6 +95,10 @@ enum WordOfTheDayScheduler {
 
         let pendingCount = await pendingWordOfTheDayRequestCount()
         if forceRefresh == false, pendingCount > 0 {
+            // The schedule already exists, so scheduleUpcoming (which writes the mirror) is skipped.
+            // Rebuild the widget mirror from the live queue so an already-scheduled install — e.g.
+            // WOTD enabled before the widget shipped — still populates the widget.
+            await syncWidgetMirrorFromPending()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled skipping because pending requests already exist (\(pendingCount))")
             return
         }
@@ -103,6 +107,7 @@ enum WordOfTheDayScheduler {
         let signature = scheduleSignature(words: words, hour: hour, minute: minute, daysToSchedule: daysToSchedule)
         if forceRefresh == false,
            isExistingScheduleFresh(signature: signature, expectedRequestCount: expectedRequestCount, pendingCount: pendingCount) {
+            await syncWidgetMirrorFromPending()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled keeping existing schedule pending=\(pendingCount)")
             return
         }
@@ -138,6 +143,20 @@ enum WordOfTheDayScheduler {
             trigger: trigger
         )
         _ = await addRequest(request)
+
+        // Surface the test word on the widget right away (fireDate = now → immediately "most
+        // recent") so issuing a test notification visibly populates the widget. Merged into the
+        // existing mirror so the upcoming scheduled batch is preserved; the next reschedule rewrites
+        // the whole mirror anyway.
+        var entries = WordOfTheDayMirror.load()
+        entries.append(WordOfTheDayMirrorEntry(
+            fireDate: Date(),
+            surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
+            kana: liveContent.kana,
+            meaning: liveContent.meaning,
+            entryID: word.canonicalEntryID
+        ))
+        writeWidgetMirror(entries)
     }
 
     // MARK: - Widget mirror
@@ -154,6 +173,50 @@ enum WordOfTheDayScheduler {
     private static func clearWidgetMirror() {
         WordOfTheDayMirror.clear()
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // Rebuilds the widget mirror from the live pending notification queue. Used when the schedule is
+    // already in place and scheduleUpcoming is skipped — the pending requests carry every field the
+    // mirror needs (surface/kana/meaning/wordID in userInfo, fire date from the calendar trigger),
+    // so the queue itself is an authoritative source for the widget.
+    private static func syncWidgetMirrorFromPending() async {
+        // Map to the Sendable mirror type inside the callback so no non-Sendable
+        // [UNNotificationRequest] crosses the continuation boundary (Swift 6 concurrency).
+        let entries: [WordOfTheDayMirrorEntry] = await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+                let mapped = requests
+                    .filter { $0.identifier.hasPrefix(requestPrefix) }
+                    .compactMap(mirrorEntry(from:))
+                    .sorted { $0.fireDate < $1.fireDate }
+                continuation.resume(returning: mapped)
+            }
+        }
+        guard entries.isEmpty == false else { return }
+        writeWidgetMirror(entries)
+    }
+
+    // Reconstructs a mirror entry from a pending notification request, or nil if it lacks the
+    // expected payload (e.g. a test notification using a time-interval trigger). nonisolated so it
+    // can run inside the getPendingNotificationRequests callback (off the main actor).
+    private nonisolated static func mirrorEntry(from request: UNNotificationRequest) -> WordOfTheDayMirrorEntry? {
+        let info = request.content.userInfo
+        guard
+            let surface = info["surface"] as? String,
+            let meaning = info["meaning"] as? String,
+            let idString = info["wordID"] as? String,
+            let entryID = Int64(idString),
+            let trigger = request.trigger as? UNCalendarNotificationTrigger,
+            let fireDate = trigger.nextTriggerDate()
+        else {
+            return nil
+        }
+        return WordOfTheDayMirrorEntry(
+            fireDate: fireDate,
+            surface: surface,
+            kana: info["kana"] as? String,
+            meaning: meaning,
+            entryID: entryID
+        )
     }
 
     // MARK: - Internals
