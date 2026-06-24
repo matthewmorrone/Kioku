@@ -54,7 +54,13 @@ struct WordOfTheDayWidget: Widget {
         }
         .configurationDisplayName("Word of the Day")
         .description("Shows the word from your most recent Word of the Day notification.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([
+            .systemSmall,
+            .systemMedium,
+            // Lock Screen: rectangular slot below the clock, plus the single-line slot above it.
+            .accessoryRectangular,
+            .accessoryInline,
+        ])
     }
 }
 
