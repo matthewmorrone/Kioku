@@ -71,6 +71,11 @@ public enum VocalStemCache {
         return "v\(formatVersion)|\(size)|\(String(format: "%016llx", hash))"
     }
 
+    // Stable, path-independent identity for this audio — the same hex token the stem cache filename
+    // is built from. Lets a SIBLING cache (e.g. the resumable anchor-transcript cache) key off the
+    // exact same audio identity, so its entry is shared across attachment vs. temp-copy paths too.
+    public static func identityKey(for audioURL: URL) -> String { fnv1a(contentKey(for: audioURL)) }
+
     // [DEBUG] Reports the computed cache filename, the source byte size, and whether a cache file
     // is present — so the harness can read the exact key off the breadcrumb and seed it precisely
     // instead of reverse-engineering the hash off-device (where any mismatch is invisible).
