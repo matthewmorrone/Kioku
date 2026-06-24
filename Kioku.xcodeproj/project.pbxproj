@@ -16,8 +16,8 @@
 		F5MECAB032FA0000100000002 /* MeCab in Resources */ = {isa = PBXBuildFile; fileRef = F5MECAB042FA0000100000002 /* MeCab */; };
 		Z1NN1A0012FB0000200000001 /* Zinnia-Swift in Frameworks */ = {isa = PBXBuildFile; productRef = Z1NN1A0022FB0000200000002 /* Zinnia-Swift */; };
 		Z1NN1A1012FB0000200000001 /* handwriting-ja.model in Resources */ = {isa = PBXBuildFile; fileRef = Z1NN1A1022FB0000200000002 /* handwriting-ja.model */; };
-		C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
-		C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
+		C0FFEE000000000000000011 /* WordOfTheDay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDay.swift */; };
+		C0FFEE000000000000000012 /* WordOfTheDay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDay.swift */; };
 		C0FFEE00000000000000000E /* KiokuWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -58,7 +58,7 @@
 		F5MECAB042FA0000100000002 /* MeCab */ = {isa = PBXFileReference; lastKnownFileType = folder; path = MeCab; sourceTree = "<group>"; };
 		Z1NN1A1022FB0000200000002 /* handwriting-ja.model */ = {isa = PBXFileReference; lastKnownFileType = file; path = "handwriting-ja.model"; sourceTree = "<group>"; };
 		C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KiokuWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordOfTheDayMirror.swift; sourceTree = "<group>"; };
+		C0FFEE000000000000000010 /* WordOfTheDay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordOfTheDay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -144,7 +144,7 @@
 		C0FFEE00000000000000000F /* Shared */ = {
 			isa = PBXGroup;
 			children = (
-				C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */,
+				C0FFEE000000000000000010 /* WordOfTheDay.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -451,7 +451,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */,
+				C0FFEE000000000000000011 /* WordOfTheDay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -459,7 +459,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */,
+				C0FFEE000000000000000012 /* WordOfTheDay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

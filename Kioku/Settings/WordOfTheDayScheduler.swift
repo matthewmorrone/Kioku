@@ -27,6 +27,7 @@ enum WordOfTheDayScheduler {
     static let minuteKey = "wordOfTheDay.minute"
     private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v1"
     private static let scheduleStateKey = "wordOfTheDay.scheduleState.v1"
+    private static let snapshotSignatureKey = "wordOfTheDay.snapshotSignature.v1"
     private static let scheduleSignatureVersion = 1
 
     // Notification request identifiers use this prefix for batch filtering.
@@ -78,7 +79,7 @@ enum WordOfTheDayScheduler {
         guard enabled else {
             await clearPendingWordOfTheDayRequests()
             clearPersistedScheduleState()
-            clearWidgetMirror()
+            clearWidgetSnapshot()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled cleared pending because disabled")
             return
         }
@@ -88,17 +89,27 @@ enum WordOfTheDayScheduler {
         guard status == .authorized || status == .provisional else {
             await clearPendingWordOfTheDayRequests()
             clearPersistedScheduleState()
-            clearWidgetMirror()
+            clearWidgetSnapshot()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled cleared pending because unauthorized")
             return
         }
 
+        // Keep the widget snapshot — the single deterministic source the widget reads — in sync with
+        // the current saved words and schedule time. Resolving content is gated by a signature so an
+        // unchanged launch does no dictionary work. The resolved list is reused for scheduling below.
+        var orderedResolved: [WordOfTheDayWord]?
+        if let dictionaryStore {
+            orderedResolved = refreshWidgetSnapshotIfNeeded(
+                words: words,
+                dictionaryStore: dictionaryStore,
+                hour: hour,
+                minute: minute,
+                forceRefresh: forceRefresh
+            )
+        }
+
         let pendingCount = await pendingWordOfTheDayRequestCount()
         if forceRefresh == false, pendingCount > 0 {
-            // The schedule already exists, so scheduleUpcoming (which writes the mirror) is skipped.
-            // Rebuild the widget mirror from the live queue so an already-scheduled install — e.g.
-            // WOTD enabled before the widget shipped — still populates the widget.
-            await syncWidgetMirrorFromPending()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled skipping because pending requests already exist (\(pendingCount))")
             return
         }
@@ -107,7 +118,6 @@ enum WordOfTheDayScheduler {
         let signature = scheduleSignature(words: words, hour: hour, minute: minute, daysToSchedule: daysToSchedule)
         if forceRefresh == false,
            isExistingScheduleFresh(signature: signature, expectedRequestCount: expectedRequestCount, pendingCount: pendingCount) {
-            await syncWidgetMirrorFromPending()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled keeping existing schedule pending=\(pendingCount)")
             return
         }
@@ -116,9 +126,9 @@ enum WordOfTheDayScheduler {
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled missing dictionaryStore")
             return
         }
+        let resolved = orderedResolved ?? orderedResolvedWords(words, using: dictionaryStore)
         await scheduleUpcoming(
-            words: words,
-            dictionaryStore: dictionaryStore,
+            words: resolved,
             hour: hour,
             minute: minute,
             daysToSchedule: daysToSchedule,
@@ -135,7 +145,13 @@ enum WordOfTheDayScheduler {
         guard let word, let dictionaryStore else { return }
         let live = resolveLiveContent(for: [word], using: dictionaryStore)
         guard let liveContent = live[word.canonicalEntryID] else { return }
-        let content = makeContent(for: word, liveContent: liveContent)
+        let testWord = WordOfTheDayWord(
+            entryID: word.canonicalEntryID,
+            surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
+            kana: liveContent.kana,
+            meaning: liveContent.meaning
+        )
+        let content = makeContent(for: testWord)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)
         let request = UNNotificationRequest(
             identifier: requestPrefix + "test_\(UUID().uuidString)",
@@ -143,89 +159,74 @@ enum WordOfTheDayScheduler {
             trigger: trigger
         )
         _ = await addRequest(request)
-
-        // Surface the test word on the widget right away (fireDate = now → immediately "most
-        // recent") so issuing a test notification visibly populates the widget. Merged into the
-        // existing mirror so the upcoming scheduled batch is preserved; the next reschedule rewrites
-        // the whole mirror anyway.
-        var entries = WordOfTheDayMirror.load()
-        entries.append(WordOfTheDayMirrorEntry(
-            fireDate: Date(),
-            surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
-            kana: liveContent.kana,
-            meaning: liveContent.meaning,
-            entryID: word.canonicalEntryID
-        ))
-        writeWidgetMirror(entries)
     }
 
-    // MARK: - Widget mirror
+    // MARK: - Widget snapshot
 
-    // Mirrors the scheduled batch into the App Group and refreshes the widget timeline so the
-    // "most recent word" widget reflects the current schedule without launching the app.
-    private static func writeWidgetMirror(_ entries: [WordOfTheDayMirrorEntry]) {
-        WordOfTheDayMirror.write(entries)
+    // Rebuilds and writes the widget snapshot when the saved words or schedule time have changed
+    // (always when forceRefresh). Returns the resolved, ordered word list when it (re)built one so
+    // the caller can reuse it for scheduling, or nil when nothing changed. Gating on a signature
+    // keeps unchanged launches free of dictionary work.
+    private static func refreshWidgetSnapshotIfNeeded(
+        words: [SavedWord],
+        dictionaryStore: DictionaryStore,
+        hour: Int,
+        minute: Int,
+        forceRefresh: Bool
+    ) -> [WordOfTheDayWord]? {
+        let signature = snapshotSignature(words: words, hour: hour, minute: minute)
+        let isFresh = signature == loadPersistedSnapshotSignature() && WordOfTheDay.loadSnapshot() != nil
+        guard forceRefresh || isFresh == false else { return nil }
+
+        let resolved = orderedResolvedWords(words, using: dictionaryStore)
+        let snapshot = WordOfTheDaySnapshot(enabled: true, hour: hour, minute: minute, words: resolved)
+        WordOfTheDay.write(snapshot)
+        persistSnapshotSignature(signature)
+        WidgetCenter.shared.reloadAllTimelines()
+        StartupTimer.mark("WOTD.refreshWidgetSnapshot wrote \(resolved.count) words")
+        return resolved
+    }
+
+    // Clears the snapshot (and refreshes the widget) when WOTD is disabled or unauthorized, so the
+    // widget shows its empty state instead of a stale word.
+    private static func clearWidgetSnapshot() {
+        WordOfTheDay.clear()
+        UserDefaults.standard.removeObject(forKey: snapshotSignatureKey)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
-    // Clears the mirror (and refreshes the widget) when WOTD is disabled, unauthorized, or has no
-    // words to schedule, so the widget falls back to its empty state instead of a stale word.
-    private static func clearWidgetMirror() {
-        WordOfTheDayMirror.clear()
-        WidgetCenter.shared.reloadAllTimelines()
-    }
-
-    // Rebuilds the widget mirror from the live pending notification queue. Used when the schedule is
-    // already in place and scheduleUpcoming is skipped — the pending requests carry every field the
-    // mirror needs (surface/kana/meaning/wordID in userInfo, fire date from the calendar trigger),
-    // so the queue itself is an authoritative source for the widget.
-    private static func syncWidgetMirrorFromPending() async {
-        // Map to the Sendable mirror type inside the callback so no non-Sendable
-        // [UNNotificationRequest] crosses the continuation boundary (Swift 6 concurrency).
-        let entries: [WordOfTheDayMirrorEntry] = await withCheckedContinuation { continuation in
-            UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
-                let mapped = requests
-                    .filter { $0.identifier.hasPrefix(requestPrefix) }
-                    .compactMap(mirrorEntry(from:))
-                    .sorted { $0.fireDate < $1.fireDate }
-                continuation.resume(returning: mapped)
-            }
+    // Resolves the saved words to display content in a stable, de-duplicated order (sorted by entry
+    // id) so the day→word rotation is deterministic and identical on the app and widget sides.
+    private static func orderedResolvedWords(_ words: [SavedWord], using dictionaryStore: DictionaryStore) -> [WordOfTheDayWord] {
+        let ordered = words.sorted { $0.canonicalEntryID < $1.canonicalEntryID }
+        var seen = Set<Int64>()
+        var unique: [SavedWord] = []
+        unique.reserveCapacity(ordered.count)
+        for word in ordered where seen.insert(word.canonicalEntryID).inserted {
+            unique.append(word)
         }
-        guard entries.isEmpty == false else { return }
-        writeWidgetMirror(entries)
-    }
 
-    // Reconstructs a mirror entry from a pending notification request, or nil if it lacks the
-    // expected payload (e.g. a test notification using a time-interval trigger). nonisolated so it
-    // can run inside the getPendingNotificationRequests callback (off the main actor).
-    private nonisolated static func mirrorEntry(from request: UNNotificationRequest) -> WordOfTheDayMirrorEntry? {
-        let info = request.content.userInfo
-        guard
-            let surface = info["surface"] as? String,
-            let meaning = info["meaning"] as? String,
-            let idString = info["wordID"] as? String,
-            let entryID = Int64(idString),
-            let trigger = request.trigger as? UNCalendarNotificationTrigger,
-            let fireDate = trigger.nextTriggerDate()
-        else {
-            return nil
+        let live = StartupTimer.measure("WOTD.resolveLiveContent") {
+            resolveLiveContent(for: unique, using: dictionaryStore)
         }
-        return WordOfTheDayMirrorEntry(
-            fireDate: fireDate,
-            surface: surface,
-            kana: info["kana"] as? String,
-            meaning: meaning,
-            entryID: entryID
-        )
+        return unique.compactMap { word in
+            guard let content = live[word.canonicalEntryID] else { return nil }
+            return WordOfTheDayWord(
+                entryID: word.canonicalEntryID,
+                surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
+                kana: content.kana,
+                meaning: content.meaning
+            )
+        }
     }
 
     // MARK: - Internals
 
-    // Clears the existing schedule and rebuilds it from a fresh word shuffle.
-    // Schedules up to 30 days (iOS caps pending notifications at 64).
+    // Clears the existing notification queue and rebuilds it deterministically: each upcoming day's
+    // notification announces the same word the widget computes for that day. Up to 30 days (iOS caps
+    // pending notifications at 64).
     private static func scheduleUpcoming(
-        words: [SavedWord],
-        dictionaryStore: DictionaryStore,
+        words: [WordOfTheDayWord],
         hour: Int,
         minute: Int,
         daysToSchedule: Int,
@@ -235,25 +236,13 @@ enum WordOfTheDayScheduler {
         await clearPendingWordOfTheDayRequests()
         guard words.isEmpty == false else {
             persistScheduleState(signature: scheduleSignature, requestCount: 0)
-            clearWidgetMirror()
             return
         }
 
-        // Shuffle once per scheduling run; rotate through shuffled order to avoid
-        // bias toward earlier items while keeping the batch varied.
-        let shuffled = words.shuffled()
         let calendar = Calendar.current
         let now = Date()
         let count = max(1, min(daysToSchedule, 30))
-        let wordsToResolve = selectedWords(forNotificationCount: count, from: shuffled)
-        StartupTimer.mark("WOTD.scheduleUpcoming resolving live content for \(wordsToResolve.count) selected words")
-        let liveContentByEntryID = StartupTimer.measure("WOTD.resolveLiveContent") {
-            resolveLiveContent(for: wordsToResolve, using: dictionaryStore)
-        }
-
-        // Accumulated alongside the notification requests so the widget can read the same
-        // date→word mapping the system will deliver.
-        var mirrorEntries: [WordOfTheDayMirrorEntry] = []
+        var scheduled = 0
 
         for dayOffset in 0..<count {
             guard let day = calendar.date(byAdding: .day, value: dayOffset, to: now) else { continue }
@@ -261,51 +250,25 @@ enum WordOfTheDayScheduler {
             comps.hour = max(0, min(23, hour))
             comps.minute = max(0, min(59, minute))
 
-            let word = pickWord(forDayOffset: dayOffset, from: shuffled)
-            guard let liveContent = liveContentByEntryID[word.canonicalEntryID] else { continue }
-            let content = makeContent(for: word, liveContent: liveContent)
+            // Same deterministic selection the widget uses, so notification and widget agree.
+            let dayNumber = WordOfTheDay.dayNumber(for: day, calendar: calendar)
+            guard let word = WordOfTheDay.word(forDayNumber: dayNumber, in: words) else { continue }
+            let content = makeContent(for: word)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
             let id = requestPrefix + identifierDateString(from: comps)
             let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
             _ = await addRequest(request)
-
-            let fireDate = calendar.date(from: comps) ?? day
-            mirrorEntries.append(WordOfTheDayMirrorEntry(
-                fireDate: fireDate,
-                surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
-                kana: liveContent.kana,
-                meaning: liveContent.meaning,
-                entryID: word.canonicalEntryID
-            ))
+            scheduled += 1
         }
-        persistScheduleState(signature: scheduleSignature, requestCount: liveContentByEntryID.count)
-        writeWidgetMirror(mirrorEntries)
-        StartupTimer.mark("WOTD.scheduleUpcoming enqueued \(count) requests")
+        persistScheduleState(signature: scheduleSignature, requestCount: scheduled)
+        StartupTimer.mark("WOTD.scheduleUpcoming enqueued \(scheduled) requests")
     }
 
-    // Resolves only the words that will actually be used in the pending notification batch.
-    // This avoids hitting the dictionary for the entire saved-word list on every startup refresh.
-    private static func selectedWords(forNotificationCount count: Int, from shuffledWords: [SavedWord]) -> [SavedWord] {
-        guard shuffledWords.isEmpty == false else { return [] }
-
-        var selected: [SavedWord] = []
-        selected.reserveCapacity(min(count, shuffledWords.count))
-        var seenEntryIDs = Set<Int64>()
-
-        for dayOffset in 0..<count {
-            let word = pickWord(forDayOffset: dayOffset, from: shuffledWords)
-            if seenEntryIDs.insert(word.canonicalEntryID).inserted {
-                selected.append(word)
-            }
-        }
-
-        return selected
-    }
-
-    // Counts the distinct words that would actually be scheduled for the next batch.
+    // The number of notifications a refresh will schedule: one per day in the horizon when there are
+    // words to announce, else none.
     private static func expectedScheduledRequestCount(words: [SavedWord], daysToSchedule: Int) -> Int {
-        let count = max(1, min(daysToSchedule, 30))
-        return selectedWords(forNotificationCount: count, from: words).count
+        guard words.isEmpty == false else { return 0 }
+        return max(1, min(daysToSchedule, 30))
     }
 
     // Computes a stable signature so the scheduler can keep existing notifications when nothing relevant changed.
@@ -315,6 +278,24 @@ enum WordOfTheDayScheduler {
         return "v\(scheduleSignatureVersion)|h:\(hour)|m:\(minute)|d:\(min(daysToSchedule, 30))|ids:\(idsPart)"
     }
 
+    // Signature of the widget snapshot's inputs (saved words + schedule time). The snapshot does not
+    // depend on how many days are scheduled, so it has its own signature distinct from the schedule.
+    private static func snapshotSignature(words: [SavedWord], hour: Int, minute: Int) -> String {
+        let uniqueEntryIDs = Array(Set(words.map(\.canonicalEntryID))).sorted()
+        let idsPart = uniqueEntryIDs.map(String.init).joined(separator: ",")
+        return "v\(scheduleSignatureVersion)|h:\(hour)|m:\(minute)|ids:\(idsPart)"
+    }
+
+    // Loads the signature of the inputs the last-written snapshot was built from.
+    private static func loadPersistedSnapshotSignature() -> String? {
+        UserDefaults.standard.string(forKey: snapshotSignatureKey)
+    }
+
+    // Persists the snapshot signature so unchanged launches can skip rebuilding it.
+    private static func persistSnapshotSignature(_ signature: String) {
+        UserDefaults.standard.set(signature, forKey: snapshotSignatureKey)
+    }
+
     // Returns true when the persisted schedule metadata still matches the current configuration and system queue.
     private static func isExistingScheduleFresh(signature: String, expectedRequestCount: Int, pendingCount: Int) -> Bool {
         guard let state = loadPersistedScheduleState() else { return false }
@@ -322,23 +303,15 @@ enum WordOfTheDayScheduler {
         return state.requestCount == expectedRequestCount && pendingCount == expectedRequestCount
     }
 
-    // Rotates through the shuffled list by day offset to reduce duplicates within a batch.
-    private static func pickWord(forDayOffset dayOffset: Int, from words: [SavedWord]) -> SavedWord {
-        let idx = abs(dayOffset) % max(1, words.count)
-        return words[idx]
-    }
-
-    // Builds the notification content using the saved word's surface plus dictionary-derived kana and gloss.
-    private static func makeContent(
-        for word: SavedWord,
-        liveContent: WordOfTheDayLiveContent
-    ) -> UNMutableNotificationContent {
+    // Builds the notification content for a resolved word. userInfo carries the fields the deep-link
+    // handler reads when the notification is tapped.
+    private static func makeContent(for word: WordOfTheDayWord) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = "Word of the Day"
 
         let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
-        let meaning = liveContent.meaning.trimmingCharacters(in: .whitespacesAndNewlines)
-        let kana = liveContent.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let meaning = word.meaning.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kana = word.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let kana, kana.isEmpty == false, kana != surface {
             content.body = "\(surface)【\(kana)】 \(meaning)"
@@ -351,7 +324,7 @@ enum WordOfTheDayScheduler {
         if let kana { content.userInfo["kana"] = kana }
         content.userInfo["meaning"] = meaning
         // canonicalEntryID stored as string since SavedWord has no UUID.
-        content.userInfo["wordID"] = String(word.canonicalEntryID)
+        content.userInfo["wordID"] = String(word.entryID)
 
         return content
     }

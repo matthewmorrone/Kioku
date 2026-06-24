@@ -131,13 +131,13 @@ struct WordOfTheDayWidgetView: View {
     // MARK: - Helpers
 
     // Kana worth showing: present, non-empty, and not identical to the surface (kana-only words).
-    private func displayKana(for word: WordOfTheDayMirrorEntry) -> String? {
+    private func displayKana(for word: WordOfTheDayWord) -> String? {
         guard let kana = word.kana, kana.isEmpty == false, kana != word.surface else { return nil }
         return kana
     }
 
     private var deepLink: URL? {
         guard let word = entry.word else { return nil }
-        return WordOfTheDayMirror.deepLinkURL(entryID: word.entryID, surface: word.surface)
+        return WordOfTheDay.deepLinkURL(entryID: word.entryID, surface: word.surface)
     }
 }
