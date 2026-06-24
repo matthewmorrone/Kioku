@@ -21,6 +21,23 @@ nonisolated public final class DictionaryStore: @unchecked Sendable {
     // hashtable hits over this map after Swift-side variant expansion.
     var canonicalEntryIDMap: [String: Int64] = [:]
 
+    // ent_seq ⇄ entries.id maps, populated once at app start by populateEntSeqMaps() and
+    // read-only thereafter. entries.id is a build-order autoincrement that is NOT stable across
+    // dictionary rebuilds; ent_seq (the JMdict sequence) is. Saved words persist ent_seq and
+    // resolve to the current row id through these maps, so a rebuild can't silently re-point them.
+    var entryIDByEntSeq: [Int64: Int64] = [:]
+    var entSeqByEntryID: [Int64: Int64] = [:]
+
+    // The stable JMdict ent_seq for a current row id, or nil if unknown.
+    nonisolated func entSeq(forEntryID entryID: Int64) -> Int64? {
+        entSeqByEntryID[entryID]
+    }
+
+    // The current row id for a stable JMdict ent_seq, or nil if that entry is absent from this build.
+    nonisolated func entryID(forEntSeq entSeq: Int64) -> Int64? {
+        entryIDByEntSeq[entSeq]
+    }
+
     // Surface → OR-ed POS bits across every sense of every entry that has this surface
     // as either a kanji form or a kana form. Populated once at app start by
     // populateSurfacePOSBitsMap() and read-only thereafter. Lets Lexicon's deinflection
