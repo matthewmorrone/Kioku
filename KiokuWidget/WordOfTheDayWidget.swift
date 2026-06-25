@@ -75,7 +75,9 @@ struct WordOfTheDayWidget: Widget {
             .systemSmall,
             .systemMedium,
             .systemLarge,
-            // Lock Screen: rectangular slot below the clock, plus the single-line slot above it.
+            // Lock Screen: the circular and rectangular slots below the clock, plus the inline slot
+            // above it.
+            .accessoryCircular,
             .accessoryRectangular,
             .accessoryInline,
         ])
