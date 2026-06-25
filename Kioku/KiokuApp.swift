@@ -41,7 +41,7 @@ struct KiokuApp: App {
                 // Widget taps open a kioku://word?id=… URL. Route it through the same navigation
                 // state that notification taps use so the app lands on the word detail.
                 .onOpenURL { url in
-                    guard let parsed = WordOfTheDay.parseDeepLink(url) else { return }
+                    guard let parsed = WordOfTheDayMirror.parseDeepLink(url) else { return }
                     WordOfTheDayNavigation.shared.pendingTarget = WordOfTheDayTarget(
                         entryID: parsed.entryID,
                         surface: parsed.surface
