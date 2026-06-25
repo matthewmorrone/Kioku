@@ -87,7 +87,7 @@ extension WordsView {
                 } label: {
                     // The mark rides on the star slot: checkmark when learned, question mark when
                     // explicitly not-learned, plain star otherwise (the word stays saved either way).
-                    // Tapping still toggles save/unsave; the learned mark is set via the menu below.
+                    // Tapping toggles save; the mark is set via the long-press context menu.
                     Image(systemName: learnedIcon(state: learnedState, saved: saved))
                         .foregroundStyle(learnedIconColor(state: learnedState, saved: saved))
                         .font(.system(size: 16, weight: .semibold))
@@ -95,7 +95,7 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave" : "Save")
                 .contextMenu {
-                    learnedMenuButtons(entryID: entryID, state: learnedState)
+                    learnedMenuButtons(entryID: entryID)
                 }
             }
         }
@@ -127,27 +127,28 @@ extension WordsView {
         return .secondary
     }
 
-    // The shared status picker used by the star's long-press menu and the row context menu.
-    // Three mutually-exclusive choices, each a direct "set to this" with its own plain glyph
-    // (no toggle, no selection checkmark — the star slot already shows the current mark).
-    // Favorite is the way back to a plain star without unsaving the word.
+    // The three status actions for the star's long-press context menu: each is a direct
+    // "set to this" (no toggle — the star slot already shows the current mark) with its own
+    // plain glyph. Favorite is the way back to a plain star without unsaving.
     @ViewBuilder
-    func learnedMenuButtons(entryID: Int64, state: LearnedState) -> some View {
-        Button {
-            reviewStore.setLearnedState(.unmarked, for: entryID)
-        } label: {
+    func learnedMenuButtons(entryID: Int64) -> some View {
+        Button { setLearnedDeferred(.unmarked, entryID) } label: {
             Label("Favorite", systemImage: "star")
         }
-        Button {
-            reviewStore.setLearnedState(.learned, for: entryID)
-        } label: {
+        Button { setLearnedDeferred(.learned, entryID) } label: {
             Label("Learned", systemImage: "checkmark")
         }
-        Button {
-            reviewStore.setLearnedState(.notLearned, for: entryID)
-        } label: {
+        Button { setLearnedDeferred(.notLearned, entryID) } label: {
             Label("Not Learned", systemImage: "questionmark")
         }
+    }
+
+    // Applies the mark on the next runloop instead of synchronously inside the menu action.
+    // A synchronous write lands while UIKit is still tearing the context menu down, so the
+    // resulting re-render queues behind that work and the glyph only flips a beat after the
+    // menu is gone. Deferring lets the teardown finish, then the icon updates immediately.
+    func setLearnedDeferred(_ state: LearnedState, _ entryID: Int64) {
+        DispatchQueue.main.async { reviewStore.setLearnedState(state, for: entryID) }
     }
 
     // Speaks the row's Japanese pronunciation via ja-JP TTS. Prefers the kana reading (least
@@ -201,9 +202,6 @@ extension WordsView {
         } label: {
             Label(saved ? "Unfavorite" : "Favorite", systemImage: saved ? "star.slash" : "star")
         }
-
-        // Learned / Not Learned marks, also reachable by long-pressing the star directly (see wordRow).
-        learnedMenuButtons(entryID: entryID, state: reviewStore.learnedState(for: entryID))
 
         // Contextual "remove from the thing you're viewing", independent of unfavorite.
         if let listID = singleActiveListID {

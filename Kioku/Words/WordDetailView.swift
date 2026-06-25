@@ -20,7 +20,8 @@ struct WordDetailView: View {
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
 
     // Provides per-word review statistics keyed by canonicalEntryID.
-    @EnvironmentObject private var reviewStore: ReviewStore
+    // Non-private (like wordsStore) so the WordDetailView+Helpers extension can read it.
+    @EnvironmentObject var reviewStore: ReviewStore
     // Provides the list of all user-created word lists so membership can be displayed.
     @EnvironmentObject private var wordListsStore: WordListsStore
     // Provides note titles for resolving sourceNoteIDs to human-readable labels.
@@ -232,19 +233,15 @@ struct WordDetailView: View {
                     .offset(x: 34)
                     .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
                     .contextMenu {
-                        Button {
-                            reviewStore.setLearnedState(.unmarked, for: activeEntryID)
-                        } label: {
+                        // Deferred so the mark applies after the context menu tears down, rather
+                        // than queuing the re-render behind that work (see setLearnedDeferred).
+                        Button { setLearnedDeferred(.unmarked) } label: {
                             Label("Favorite", systemImage: "star")
                         }
-                        Button {
-                            reviewStore.setLearnedState(.learned, for: activeEntryID)
-                        } label: {
+                        Button { setLearnedDeferred(.learned) } label: {
                             Label("Learned", systemImage: "checkmark")
                         }
-                        Button {
-                            reviewStore.setLearnedState(.notLearned, for: activeEntryID)
-                        } label: {
+                        Button { setLearnedDeferred(.notLearned) } label: {
                             Label("Not Learned", systemImage: "questionmark")
                         }
                     }
