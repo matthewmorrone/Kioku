@@ -51,6 +51,13 @@ struct SettingsView: View {
     @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
     @AppStorage(WordOfTheDayScheduler.minuteKey) private var wotdMinute: Int = 0
 
+    // Auto-mark-as-learned: a word clears the bar in flashcard reviews → it's flagged learned.
+    @AppStorage(LearnedSettings.enabledKey) private var autoLearnEnabled: Bool = false
+    @AppStorage(LearnedSettings.ruleKey) private var autoLearnRuleRaw: String = AutoLearnRule.accuracyAndMinReviews.rawValue
+    @AppStorage(LearnedSettings.thresholdKey) private var autoLearnThreshold: Double = LearnedSettings.defaultThreshold
+    @AppStorage(LearnedSettings.minReviewsKey) private var autoLearnMinReviews: Int = LearnedSettings.defaultMinReviews
+    @AppStorage(LearnedSettings.streakKey) private var autoLearnStreak: Int = LearnedSettings.defaultStreak
+
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
@@ -326,6 +333,41 @@ struct SettingsView: View {
                     }
                 }
 
+                // MARK: Learning — auto-mark words as learned past a chosen bar.
+                Section {
+                    Toggle("Auto-mark as learned", isOn: $autoLearnEnabled)
+                    if autoLearnEnabled {
+                        Picker("Rule", selection: $autoLearnRuleRaw) {
+                            ForEach(AutoLearnRule.allCases) { rule in
+                                Text(rule.title).tag(rule.rawValue)
+                            }
+                        }
+                        let rule = AutoLearnRule(rawValue: autoLearnRuleRaw) ?? .accuracyAndMinReviews
+                        if rule == .accuracyAndMinReviews || rule == .accuracyOnly {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Accuracy threshold")
+                                    Spacer()
+                                    Text("\(Int((autoLearnThreshold * 100).rounded()))%")
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                }
+                                Slider(value: $autoLearnThreshold, in: 0.5...1.0, step: 0.05)
+                            }
+                        }
+                        if rule == .accuracyAndMinReviews {
+                            Stepper("Minimum reviews: \(autoLearnMinReviews)", value: $autoLearnMinReviews, in: 1...20)
+                        }
+                        if rule == .consecutiveCorrect {
+                            Stepper("Correct in a row: \(autoLearnStreak)", value: $autoLearnStreak, in: 1...20)
+                        }
+                    }
+                } header: {
+                    Text("Learning")
+                } footer: {
+                    Text("When on, a word is automatically marked learned (checkbox) once it clears this bar in flashcard reviews. You can always mark words by hand by long-pressing any star.")
+                }
+
                 // MARK: Segmentation — engine, then the two tuning chip-editors.
                 Section {
                     Picker("Engine", selection: $segmenterBackend) {
@@ -554,6 +596,8 @@ struct SettingsView: View {
                 history: historyStore.entries,
                 reviewStats: reviewStats,
                 markedWrong: Array(reviewStore.markedWrong).sorted(),
+                learned: Array(reviewStore.learned).sorted(),
+                notLearned: Array(reviewStore.notLearned).sorted(),
                 lifetimeCorrect: reviewStore.lifetimeCorrect,
                 lifetimeAgain: reviewStore.lifetimeAgain,
                 audioAttachments: audioAttachments
@@ -649,7 +693,9 @@ struct SettingsView: View {
             stats: stats,
             markedWrong: Set(payload.markedWrong),
             lifetimeCorrect: payload.lifetimeCorrect,
-            lifetimeAgain: payload.lifetimeAgain
+            lifetimeAgain: payload.lifetimeAgain,
+            learned: Set(payload.learned),
+            notLearned: Set(payload.notLearned)
         )
         notesStore.replaceAll(with: payload.notes)
 
