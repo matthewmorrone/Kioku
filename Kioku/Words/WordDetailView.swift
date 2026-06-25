@@ -233,14 +233,19 @@ struct WordDetailView: View {
                     .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
                     .contextMenu {
                         Button {
-                            reviewStore.setLearnedState(learnedState == .learned ? .unmarked : .learned, for: activeEntryID)
+                            reviewStore.setLearnedState(.unmarked, for: activeEntryID)
                         } label: {
-                            Label("Learned", systemImage: learnedState == .learned ? "checkmark" : "checkmark.circle")
+                            Label("Favorite", systemImage: "star")
                         }
                         Button {
-                            reviewStore.setLearnedState(learnedState == .notLearned ? .unmarked : .notLearned, for: activeEntryID)
+                            reviewStore.setLearnedState(.learned, for: activeEntryID)
                         } label: {
-                            Label("Not Learned", systemImage: learnedState == .notLearned ? "checkmark" : "questionmark.circle")
+                            Label("Learned", systemImage: "checkmark")
+                        }
+                        Button {
+                            reviewStore.setLearnedState(.notLearned, for: activeEntryID)
+                        } label: {
+                            Label("Not Learned", systemImage: "questionmark")
                         }
                     }
                 }

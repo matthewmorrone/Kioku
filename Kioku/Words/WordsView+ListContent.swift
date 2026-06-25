@@ -109,12 +109,12 @@ extension WordsView {
 
     // MARK: - Learned state (star ↔ checkbox ↔ question mark)
 
-    // SF Symbol for the trailing toggle, by mark: checkmark for learned, question mark for
-    // explicitly not-learned, else the save star (filled when saved).
+    // SF Symbol for the trailing toggle, by mark: a plain checkmark for learned, a plain
+    // question mark for explicitly not-learned, else the save star (filled when saved).
     func learnedIcon(state: LearnedState, saved: Bool) -> String {
         switch state {
-        case .learned:    return "checkmark.circle.fill"
-        case .notLearned: return "questionmark.circle.fill"
+        case .learned:    return "checkmark"
+        case .notLearned: return "questionmark"
         case .unmarked:   return saved ? "star.fill" : "star"
         }
     }
@@ -127,20 +127,26 @@ extension WordsView {
         return .secondary
     }
 
-    // The shared Learned / Not Learned menu pair used by the star's long-press menu and the
-    // row context menu. Each row toggles its own mark — tapping the active one clears it
-    // (back to unmarked) — mirroring the "tap active scope to clear" idiom in the filter sheet.
+    // The shared status picker used by the star's long-press menu and the row context menu.
+    // Three mutually-exclusive choices, each a direct "set to this" with its own plain glyph
+    // (no toggle, no selection checkmark — the star slot already shows the current mark).
+    // Favorite is the way back to a plain star without unsaving the word.
     @ViewBuilder
     func learnedMenuButtons(entryID: Int64, state: LearnedState) -> some View {
         Button {
-            reviewStore.setLearnedState(state == .learned ? .unmarked : .learned, for: entryID)
+            reviewStore.setLearnedState(.unmarked, for: entryID)
         } label: {
-            Label("Learned", systemImage: state == .learned ? "checkmark" : "checkmark.circle")
+            Label("Favorite", systemImage: "star")
         }
         Button {
-            reviewStore.setLearnedState(state == .notLearned ? .unmarked : .notLearned, for: entryID)
+            reviewStore.setLearnedState(.learned, for: entryID)
         } label: {
-            Label("Not Learned", systemImage: state == .notLearned ? "checkmark" : "questionmark.circle")
+            Label("Learned", systemImage: "checkmark")
+        }
+        Button {
+            reviewStore.setLearnedState(.notLearned, for: entryID)
+        } label: {
+            Label("Not Learned", systemImage: "questionmark")
         }
     }
 

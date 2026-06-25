@@ -5,13 +5,13 @@ import SwiftUI
 // small reusable row/label view builders. Extracted from WordDetailView so the primary
 // file stays under the line-count invariant.
 extension WordDetailView {
-    // SF Symbol for the header's save/learned toggle: checkmark when learned, question mark
-    // when explicitly not-learned, else the save star (filled when saved). Mirrors the row's
-    // learnedIcon so the same mark reads identically in the list and the detail header.
+    // SF Symbol for the header's save/learned toggle: a plain checkmark when learned, a plain
+    // question mark when explicitly not-learned, else the save star (filled when saved). Mirrors
+    // the row's learnedIcon so the same mark reads identically in the list and the detail header.
     func detailLearnedIcon(state: LearnedState, saved: Bool) -> String {
         switch state {
-        case .learned:    return "checkmark.circle.fill"
-        case .notLearned: return "questionmark.circle.fill"
+        case .learned:    return "checkmark"
+        case .notLearned: return "questionmark"
         case .unmarked:   return saved ? "star.fill" : "star"
         }
     }
