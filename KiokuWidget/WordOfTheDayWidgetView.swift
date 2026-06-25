@@ -194,30 +194,35 @@ struct WordOfTheDayWidgetView: View {
             .foregroundStyle(WidgetTheme.vermilion)
     }
 
-    // The centered headword block: furigana + (optionally) part of speech + N glosses. Larger sizes
-    // pass more glosses and turn on the POS line so each tile shows progressively more definition.
-    private func definitionBlock(_ word: WordOfTheDayMirrorEntry, base: CGFloat, ruby: CGFloat,
-                                 glossSize: CGFloat, glossLimit: Int, glossLines: Int, showPOS: Bool) -> some View {
-        VStack(spacing: 6) {
-            FuriganaText(surface: word.surface, reading: word.kana,
-                         baseFont: WidgetTheme.mincho(base, bold: true), rubyFont: WidgetTheme.mincho(ruby))
-                .minimumScaleFactor(0.5)
-                .lineLimit(1)
-            if showPOS, let pos = word.partOfSpeech, pos.isEmpty == false {
+    // The centered furigana headword.
+    private func headword(_ word: WordOfTheDayMirrorEntry, base: CGFloat, ruby: CGFloat) -> some View {
+        FuriganaText(surface: word.surface, reading: word.kana,
+                     baseFont: WidgetTheme.mincho(base, bold: true), rubyFont: WidgetTheme.mincho(ruby))
+            .minimumScaleFactor(0.5)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+    }
+
+    // A JLPT badge + the primary part of speech, for the medium and large sizes.
+    private func metaLine(_ word: WordOfTheDayMirrorEntry, size: CGFloat) -> some View {
+        HStack(spacing: 8) {
+            if let jlpt = word.jlpt {
+                Text("N\(jlpt)")
+                    .font(.system(size: size - 1, weight: .medium))
+                    .foregroundStyle(WidgetTheme.vermilion)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(WidgetTheme.vermilion, lineWidth: 1))
+            }
+            if let pos = word.primaryPartOfSpeech, pos.isEmpty == false {
                 Text(pos)
-                    .font(WidgetTheme.serif(glossSize - 2))
+                    .font(WidgetTheme.serif(size))
                     .italic()
                     .foregroundStyle(WidgetTheme.inkSecondary)
-                    .multilineTextAlignment(.center)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            Text(word.displayGlosses.prefix(glossLimit).joined(separator: "; "))
-                .font(WidgetTheme.serif(glossSize))
-                .foregroundStyle(WidgetTheme.inkSecondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(glossLines)
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Small (2×2 — word + primary meaning)
@@ -228,7 +233,15 @@ struct WordOfTheDayWidgetView: View {
             VStack(spacing: 0) {
                 brandLabel
                 Spacer(minLength: 6)
-                definitionBlock(word, base: 26, ruby: 11, glossSize: 13, glossLimit: 1, glossLines: 2, showPOS: false)
+                VStack(spacing: 6) {
+                    headword(word, base: 26, ruby: 11)
+                    Text(word.displayGlosses.first ?? word.meaning)
+                        .font(WidgetTheme.serif(13))
+                        .foregroundStyle(WidgetTheme.inkSecondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity)
                 Spacer(minLength: 0)
             }
         } else {
@@ -236,15 +249,21 @@ struct WordOfTheDayWidgetView: View {
         }
     }
 
-    // MARK: - Medium (word + POS + several glosses)
+    // MARK: - Medium (word + JLPT/POS + glosses)
 
     @ViewBuilder
     private var mediumContent: some View {
         if let word = entry.word {
-            VStack(spacing: 0) {
+            VStack(spacing: 6) {
                 brandLabel
                 Spacer(minLength: 0)
-                definitionBlock(word, base: 34, ruby: 13, glossSize: 15, glossLimit: 3, glossLines: 3, showPOS: true)
+                headword(word, base: 32, ruby: 13)
+                metaLine(word, size: 12)
+                Text(word.displayGlosses.prefix(3).joined(separator: "; "))
+                    .font(WidgetTheme.serif(14))
+                    .foregroundStyle(WidgetTheme.inkSecondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
                 Spacer(minLength: 0)
             }
         } else {
@@ -252,16 +271,21 @@ struct WordOfTheDayWidgetView: View {
         }
     }
 
-    // MARK: - Large (word + POS + glosses + recent-days list)
+    // MARK: - Large (word + JLPT/POS + numbered senses + example + recent-days list)
 
     @ViewBuilder
     private var largeContent: some View {
         if let word = entry.word {
-            VStack(spacing: 0) {
-                brandLabel
-                Spacer(minLength: 0)
-                definitionBlock(word, base: 46, ruby: 17, glossSize: 17, glossLimit: 5, glossLines: 4, showPOS: true)
-                Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 0) {
+                brandLabel.frame(maxWidth: .infinity, alignment: .center)
+                Spacer(minLength: 8)
+                headword(word, base: 38, ruby: 15)
+                metaLine(word, size: 13).frame(maxWidth: .infinity, alignment: .center).padding(.top, 5)
+                numberedSenses(word, limit: 2).padding(.top, 12)
+                if let example = word.example {
+                    exampleBlock(example, highlight: word.surface).padding(.top, 10)
+                }
+                Spacer(minLength: 8)
                 if entry.recent.isEmpty == false {
                     recentList
                 }
@@ -271,19 +295,68 @@ struct WordOfTheDayWidgetView: View {
         }
     }
 
-    // The prior-days list beneath the headline word on the large family.
+    // Numbered senses (left-aligned) for the large size; falls back to the display glosses as a
+    // single entry for legacy mirror data without structured senses.
+    private func numberedSenses(_ word: WordOfTheDayMirrorEntry, limit: Int) -> some View {
+        let senses = word.senses.isEmpty
+            ? [WordOfTheDaySense(partOfSpeech: nil, glosses: word.displayGlosses)]
+            : Array(word.senses.prefix(limit))
+        return VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(senses.enumerated()), id: \.offset) { index, sense in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(index + 1)")
+                        .font(WidgetTheme.serif(13))
+                        .foregroundStyle(WidgetTheme.vermilion)
+                    Text(sense.glosses.joined(separator: "; "))
+                        .font(WidgetTheme.serif(15))
+                        .foregroundStyle(WidgetTheme.ink)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // An example sentence with the headword tinted vermilion, plus its translation.
+    private func exampleBlock(_ example: WordOfTheDayExample, highlight surface: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            exampleText(example.japanese, highlight: surface)
+                .font(WidgetTheme.mincho(15))
+                .lineLimit(2)
+            Text(example.english)
+                .font(WidgetTheme.serif(13))
+                .italic()
+                .foregroundStyle(WidgetTheme.inkSecondary)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // Builds the example's Japanese as a Text with the headword substring tinted, when it appears.
+    private func exampleText(_ japanese: String, highlight surface: String) -> Text {
+        guard surface.isEmpty == false, let range = japanese.range(of: surface) else {
+            return Text(japanese).foregroundColor(WidgetTheme.ink)
+        }
+        return Text(String(japanese[..<range.lowerBound])).foregroundColor(WidgetTheme.ink)
+            + Text(String(japanese[range])).foregroundColor(WidgetTheme.vermilion)
+            + Text(String(japanese[range.upperBound...])).foregroundColor(WidgetTheme.ink)
+    }
+
+    // The prior-days list beneath the detail on the large family (capped to keep the tile from
+    // overflowing alongside the senses and example).
     private var recentList: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 9) {
             Rectangle().fill(WidgetTheme.inkSecondary.opacity(0.25)).frame(height: 0.5)
-            ForEach(entry.recent, id: \.fireDate) { item in
+            ForEach(entry.recent.prefix(3), id: \.fireDate) { item in
                 HStack(alignment: .firstTextBaseline) {
                     Text(item.surface)
-                        .font(WidgetTheme.mincho(17))
+                        .font(WidgetTheme.mincho(16))
                         .foregroundStyle(WidgetTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Text(item.meaning)
-                        .font(WidgetTheme.serif(14))
+                        .font(WidgetTheme.serif(13))
                         .foregroundStyle(WidgetTheme.inkSecondary)
                         .lineLimit(1)
                 }
