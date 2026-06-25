@@ -223,9 +223,12 @@ public struct CTCForcedAligner {
                                   userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
                 }
                 Self.breadcrumb("isolated voice \(mono.count) frames (HTDemucs)")
+                #if DEBUG
                 // [DEBUG] Save the isolated stem so it can be played from Files → On My iPhone →
-                // Kioku → isolated-vocal.wav to judge isolation quality + what's in the intro.
+                // Kioku → isolated-vocal.wav to judge isolation quality + what's in the intro. Gated
+                // out of release: it's a 19 MB write per align with no user-facing purpose.
                 Self.saveDebugWAV(mono, sampleRate: 44_100, name: "isolated-vocal.wav")
+                #endif
                 // Persist the stem so the next Re-align of this exact audio skips isolation.
                 VocalStemCache.store(mono, for: input.audioURL)
                 Self.breadcrumb("vocal stem cached")
