@@ -188,6 +188,41 @@ enum WordOfTheDayScheduler {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
+    // Like writeWidgetMirror, but also upgrades retained history entries that predate the rich
+    // detail schema. Already-fired entries win on a shared fire date so the widget keeps showing the
+    // word that was actually delivered — but an entry written before senses/example/JLPT existed
+    // would win while carrying no detail, shadowing the new rich entry for the same day. We re-resolve
+    // detail for any senseless history entry (in place, preserving its identity) so today's delivered
+    // word gains POS/senses/example without changing which word is shown.
+    private static func writeMirrorRetainingHistory(_ newEntries: [WordOfTheDayMirrorEntry], using dictionaryStore: DictionaryStore) {
+        let now = Date()
+        let history = Array(WordOfTheDayMirror.load().filter { $0.fireDate <= now }.suffix(14))
+        let stale = history.filter { $0.senses.isEmpty }
+        let resolved = stale.isEmpty
+            ? [:]
+            : resolveLiveContent(for: stale.map { SavedWord(canonicalEntryID: $0.entryID, surface: $0.surface) }, using: dictionaryStore)
+        let enrichedHistory = history.map { entry -> WordOfTheDayMirrorEntry in
+            guard entry.senses.isEmpty, let live = resolved[entry.entryID] else { return entry }
+            return WordOfTheDayMirrorEntry(
+                fireDate: entry.fireDate,
+                surface: entry.surface,
+                kana: entry.kana ?? live.kana,
+                meaning: entry.meaning.isEmpty ? live.meaning : entry.meaning,
+                entryID: entry.entryID,
+                senses: live.senses,
+                example: live.example,
+                jlpt: live.jlpt
+            )
+        }
+        var seen = Set<Date>()
+        var merged: [WordOfTheDayMirrorEntry] = []
+        for entry in enrichedHistory where seen.insert(entry.fireDate).inserted { merged.append(entry) }
+        for entry in newEntries where seen.insert(entry.fireDate).inserted { merged.append(entry) }
+        merged.sort { $0.fireDate < $1.fireDate }
+        WordOfTheDayMirror.write(merged)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     // Clears the mirror (and refreshes the widget) when WOTD is disabled, unauthorized, or has no
     // words to schedule, so the widget falls back to its empty state instead of a stale word.
     private static func clearWidgetMirror() {
@@ -306,7 +341,7 @@ enum WordOfTheDayScheduler {
             ))
         }
         persistScheduleState(signature: scheduleSignature, requestCount: liveContentByEntryID.count)
-        writeWidgetMirror(mirrorEntries)
+        writeMirrorRetainingHistory(mirrorEntries, using: dictionaryStore)
         StartupTimer.mark("WOTD.scheduleUpcoming enqueued \(count) requests")
     }
 
