@@ -31,9 +31,13 @@ enum WordOfTheDayScheduler {
     static let enabledKey = "wordOfTheDay.enabled"
     static let hourKey = "wordOfTheDay.hour"
     static let minuteKey = "wordOfTheDay.minute"
-    private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v1"
+    // v2 adds glosses + part of speech; bumped so words cached by an older build are re-resolved
+    // with the richer detail the larger widgets show, instead of reusing the kana+meaning-only cache.
+    private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v2"
     private static let scheduleStateKey = "wordOfTheDay.scheduleState.v1"
-    private static let scheduleSignatureVersion = 1
+    // Bumped to 2 so a queue baked by an older build is seen as stale and re-baked once, repopulating
+    // the mirror with the richer per-word detail.
+    private static let scheduleSignatureVersion = 2
 
     // Notification request identifiers use this prefix for batch filtering.
     nonisolated static let requestPrefix = "wotd_"
@@ -99,16 +103,11 @@ enum WordOfTheDayScheduler {
             return
         }
 
+        // Keep an existing queue only when it is genuinely fresh — same signature (which includes the
+        // schedule-format version) AND the pending count matches. When it is stale (e.g. a new build
+        // bumped the version to add per-word detail), fall through and re-bake so the mirror picks up
+        // the richer data, rather than short-circuiting just because notifications already exist.
         let pendingCount = await pendingWordOfTheDayRequestCount()
-        if forceRefresh == false, pendingCount > 0 {
-            // The schedule already exists, so scheduleUpcoming (which writes the mirror) is skipped.
-            // Rebuild the widget mirror from the live queue so an already-scheduled install — e.g.
-            // WOTD enabled before the widget shipped — still populates the widget.
-            await syncWidgetMirrorFromPending()
-            StartupTimer.mark("WOTD.refreshScheduleIfEnabled skipping because pending requests already exist (\(pendingCount))")
-            return
-        }
-
         let expectedRequestCount = expectedScheduledRequestCount(words: words, daysToSchedule: daysToSchedule)
         let signature = scheduleSignature(words: words, hour: hour, minute: minute, daysToSchedule: daysToSchedule)
         if forceRefresh == false,
