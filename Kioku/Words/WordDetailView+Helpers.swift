@@ -16,6 +16,13 @@ extension WordDetailView {
         }
     }
 
+    // Applies the learned mark on the next runloop instead of synchronously inside the context
+    // menu action, so the header glyph's re-render doesn't queue behind the menu's teardown and
+    // flips promptly. Mirrors the row's setLearnedDeferred.
+    func setLearnedDeferred(_ state: LearnedState) {
+        DispatchQueue.main.async { reviewStore.setLearnedState(state, for: activeEntryID) }
+    }
+
     // Reads the live saved word from the store so the picker reflects toggled state immediately.
     // Falls back to the SavedWord the view was opened with for the brief window before the store
     // publish reaches @EnvironmentObject.
