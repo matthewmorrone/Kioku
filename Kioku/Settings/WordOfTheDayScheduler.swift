@@ -28,7 +28,10 @@ enum WordOfTheDayScheduler {
     private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v1"
     private static let scheduleStateKey = "wordOfTheDay.scheduleState.v1"
     private static let snapshotSignatureKey = "wordOfTheDay.snapshotSignature.v1"
-    private static let scheduleSignatureVersion = 1
+    // Bumped to 2 when scheduling switched from a random shuffle to deterministic day→word
+    // selection: the version is part of scheduleSignature, so a queue baked by an older build is
+    // seen as stale and regenerated once, realigning the notifications with the live widget.
+    private static let scheduleSignatureVersion = 2
 
     // Notification request identifiers use this prefix for batch filtering.
     nonisolated static let requestPrefix = "wotd_"
@@ -108,12 +111,13 @@ enum WordOfTheDayScheduler {
             )
         }
 
+        // Keep the existing queue only when it is genuinely fresh — same signature (which includes
+        // the algorithm version, schedule time, and word set) AND the pending count matches what we
+        // would schedule. The previous `pendingCount > 0` early-return skipped this check whenever
+        // ANY notifications were queued, so a queue baked by an older/different scheduling algorithm
+        // — or for a since-changed word set — was never regenerated, leaving the delivered
+        // notifications out of sync with the live widget.
         let pendingCount = await pendingWordOfTheDayRequestCount()
-        if forceRefresh == false, pendingCount > 0 {
-            StartupTimer.mark("WOTD.refreshScheduleIfEnabled skipping because pending requests already exist (\(pendingCount))")
-            return
-        }
-
         let expectedRequestCount = expectedScheduledRequestCount(words: words, daysToSchedule: daysToSchedule)
         let signature = scheduleSignature(words: words, hour: hour, minute: minute, daysToSchedule: daysToSchedule)
         if forceRefresh == false,
