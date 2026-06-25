@@ -91,10 +91,19 @@ nonisolated enum DerivationAnalyzer {
             }
         }
 
-        // Collective / plural suffixes: 子供 → 子供たち, 彼 → 彼ら. Gated on the base being a
-        // noun or pronoun so words coincidentally ending in ら/共 (さくら, から) don't misfire.
-        if let (affix, stem) = suffixMatch(surface, ["たち", "達", "ら", "等", "ども", "共"]), stem.isEmpty == false,
+        // Unambiguous collective suffixes: 子供 → 子供たち, 私 → 私ども. Gated on a noun or pronoun
+        // base so words coincidentally ending in these don't misfire.
+        if let (affix, stem) = suffixMatch(surface, ["たち", "達", "ども", "共"]), stem.isEmpty == false,
            baseResolver(stem).contains(where: { isNominal($0) || isPronoun($0) }) {
+            return Result(summary: "Collective noun — \(stem) + pluralizing suffix \(affix)")
+        }
+
+        // Pluralizing ら / 等: require a *pronoun* base (彼 → 彼ら, 我 → 我ら, 君 → 君ら). The bare ら is
+        // homophonous with the archaic 形容動詞-forming suffix ら (清ら/きよら, 安ら), whose root is a
+        // plain noun — so a nominal gate misfires there. Pronoun-only keeps the common plural
+        // pronouns and drops the rare, ambiguous noun+ら forms (子供ら), which read fine unannotated.
+        if let (affix, stem) = suffixMatch(surface, ["ら", "等"]), stem.isEmpty == false,
+           baseResolver(stem).contains(where: isPronoun) {
             return Result(summary: "Collective noun — \(stem) + pluralizing suffix \(affix)")
         }
 
