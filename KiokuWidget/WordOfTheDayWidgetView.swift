@@ -353,6 +353,10 @@ struct WordOfTheDayWidgetView: View {
     private var recentList: some View {
         VStack(spacing: 9) {
             Rectangle().fill(WidgetTheme.inkSecondary.opacity(0.25)).frame(height: 0.5)
+            // TODO: tapping a history row should open that row's word, not today's. The widget has a
+            // single `.widgetURL(deepLink)` for today's entry, so taps anywhere (including these rows)
+            // deep-link to today. Wrap each row in `Link(destination: WordOfTheDayMirror.deepLinkURL(
+            // entryID: item.entryID, surface: item.surface))` so each row carries its own URL.
             ForEach(entry.recent.prefix(3), id: \.fireDate) { item in
                 HStack(alignment: .firstTextBaseline) {
                     Text(item.surface)
