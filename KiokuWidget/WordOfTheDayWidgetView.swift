@@ -118,6 +118,11 @@ private struct FuriganaText: View {
     let reading: String?
     let baseFont: Font
     let rubyFont: Font
+    // Colors default to the paper-surface ink used by the home families. The Lock Screen accessory
+    // slots pass .primary/.secondary instead so the system's vibrant monochrome rendering keeps the
+    // text legible against any wallpaper (the fixed ink colors would wash out on a dark background).
+    var baseColor: AnyShapeStyle = AnyShapeStyle(WidgetTheme.ink)
+    var rubyColor: AnyShapeStyle = AnyShapeStyle(WidgetTheme.inkSecondary)
 
     var body: some View {
         let segments = FuriganaAligner.segments(surface: surface, reading: reading)
@@ -125,12 +130,12 @@ private struct FuriganaText: View {
             ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                 if let ruby = segment.ruby {
                     VStack(spacing: 1) {
-                        Text(ruby).font(rubyFont).foregroundStyle(WidgetTheme.inkSecondary)
-                        Text(segment.text).font(baseFont).foregroundStyle(WidgetTheme.ink)
+                        Text(ruby).font(rubyFont).foregroundStyle(rubyColor)
+                        Text(segment.text).font(baseFont).foregroundStyle(baseColor)
                     }
                     .fixedSize()
                 } else {
-                    Text(segment.text).font(baseFont).foregroundStyle(WidgetTheme.ink)
+                    Text(segment.text).font(baseFont).foregroundStyle(baseColor)
                 }
             }
         }
@@ -364,15 +369,33 @@ struct WordOfTheDayWidgetView: View {
         }
     }
 
+    // A furigana headword tinted for the Lock Screen: .primary/.secondary let the system's vibrant
+    // monochrome rendering keep it legible on any wallpaper. Mincho keeps it on-brand by typography
+    // (color is stripped by the system on the Lock Screen, so the font is the only brand signal left).
+    private func accessoryHeadword(_ word: WordOfTheDayMirrorEntry, base: CGFloat, ruby: CGFloat) -> some View {
+        FuriganaText(
+            surface: word.surface,
+            reading: word.kana,
+            baseFont: WidgetTheme.mincho(base, bold: true),
+            rubyFont: WidgetTheme.mincho(ruby),
+            baseColor: AnyShapeStyle(.primary),
+            rubyColor: AnyShapeStyle(.secondary)
+        )
+    }
+
     // MARK: - Lock Screen circular
 
     @ViewBuilder
     private var circularContent: some View {
         if let word = entry.word {
-            Text(String(word.surface.prefix(2)))
-                .font(.system(size: 22, weight: .semibold))
-                .minimumScaleFactor(0.4)
+            // Furigana can't fill a circle legibly, so the circular slot is a clean word badge: the
+            // surface centered and scaled to fill the round area, on the accessory backdrop.
+            Text(word.surface)
+                .font(WidgetTheme.mincho(22, bold: true))
+                .foregroundStyle(.primary)
+                .minimumScaleFactor(0.35)
                 .lineLimit(1)
+                .padding(4)
         } else {
             Image(systemName: "book.closed")
         }
@@ -383,13 +406,10 @@ struct WordOfTheDayWidgetView: View {
     @ViewBuilder
     private var rectangularContent: some View {
         if let word = entry.word {
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(word.surface).font(.headline).lineLimit(1).minimumScaleFactor(0.7)
-                    if let kana = displayKana(for: word) {
-                        Text(kana).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                }
+            VStack(alignment: .leading, spacing: 2) {
+                accessoryHeadword(word, base: 16, ruby: 8)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
                 Text(word.meaning).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
             }
         } else {
@@ -425,12 +445,6 @@ struct WordOfTheDayWidgetView: View {
     }
 
     // MARK: - Helpers
-
-    // Kana worth showing on the accessory layouts: present, non-empty, not identical to the surface.
-    private func displayKana(for word: WordOfTheDayMirrorEntry) -> String? {
-        guard let kana = word.kana, kana.isEmpty == false, kana != word.surface else { return nil }
-        return kana
-    }
 
     private var deepLink: URL? {
         guard let word = entry.word else { return nil }
