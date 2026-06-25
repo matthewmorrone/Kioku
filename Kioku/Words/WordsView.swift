@@ -35,6 +35,8 @@ enum WordsStatScope: String {
     case markedWrong
     case dueForReview
     case neverReviewed
+    case learned
+    case notLearned
 }
 
 // Cross-tab routing for the Words screen.

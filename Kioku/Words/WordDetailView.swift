@@ -213,6 +213,7 @@ struct WordDetailView: View {
                 }
                 .overlay(alignment: .trailing) {
                     let isSaved = wordsStore.words.contains { $0.canonicalEntryID == activeEntryID }
+                    let learnedState = reviewStore.learnedState(for: activeEntryID)
                     Button {
                         wordsStore.toggle(
                             canonicalEntryID: activeEntryID,
@@ -220,13 +221,28 @@ struct WordDetailView: View {
                             defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
                         )
                     } label: {
-                        Image(systemName: isSaved ? "star.fill" : "star")
+                        // Checkmark when learned, question mark when explicitly not-learned, star
+                        // otherwise — the mark sits on top of saved status, so the word stays in
+                        // favorites either way.
+                        Image(systemName: detailLearnedIcon(state: learnedState, saved: isSaved))
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(Color.primary)
                     }
                     .buttonStyle(.plain)
                     .offset(x: 34)
                     .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
+                    .contextMenu {
+                        Button {
+                            reviewStore.setLearnedState(learnedState == .learned ? .unmarked : .learned, for: activeEntryID)
+                        } label: {
+                            Label("Learned", systemImage: learnedState == .learned ? "checkmark" : "checkmark.circle")
+                        }
+                        Button {
+                            reviewStore.setLearnedState(learnedState == .notLearned ? .unmarked : .notLearned, for: activeEntryID)
+                        } label: {
+                            Label("Not Learned", systemImage: learnedState == .notLearned ? "checkmark" : "questionmark.circle")
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 // COMMON badge — outlined pill in the top-trailing corner, matching the

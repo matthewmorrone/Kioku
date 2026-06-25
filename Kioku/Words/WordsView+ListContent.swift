@@ -21,6 +21,7 @@ extension WordsView {
         onTap: @escaping () -> Void
     ) -> some View {
         let saved = isSavedByID(entryID)
+        let learnedState = reviewStore.learnedState(for: entryID)
         // Respect the form the word was saved/looked up as: a pure-kana surface (あなた, たとえ)
         // means the user used the kana word — showing the entry's first kanji form (貴方, 例え)
         // attaches script they never saw. Kanji-bearing surfaces keep the kanji headword.
@@ -43,7 +44,7 @@ extension WordsView {
                     speakRow(reading: reading, headword: headword, surface: surface)
                 } label: {
                     Image(systemName: "speaker.wave.2.fill")
-                        .foregroundStyle(japaneseTheme ? Color.white : Color.accentColor)
+                        .foregroundStyle(japaneseTheme ? Color.white : Color.primary)
                         .font(.system(size: 15, weight: .semibold))
                 }
                 .buttonStyle(.plain)
@@ -84,12 +85,18 @@ extension WordsView {
                 Button {
                     toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
                 } label: {
-                    Image(systemName: saved ? "star.fill" : "star")
-                        .foregroundStyle(japaneseTheme ? Color.white : (saved ? Color.yellow : Color.secondary))
+                    // The mark rides on the star slot: checkmark when learned, question mark when
+                    // explicitly not-learned, plain star otherwise (the word stays saved either way).
+                    // Tapping still toggles save/unsave; the learned mark is set via the menu below.
+                    Image(systemName: learnedIcon(state: learnedState, saved: saved))
+                        .foregroundStyle(learnedIconColor(state: learnedState, saved: saved))
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave" : "Save")
+                .contextMenu {
+                    learnedMenuButtons(entryID: entryID, state: learnedState)
+                }
             }
         }
         .padding(.vertical, 4)
@@ -97,6 +104,43 @@ extension WordsView {
         .contentShape(Rectangle())
         .contextMenu {
             wordRowMenu(entryID: entryID, surface: surface, entry: entry, onTap: onTap)
+        }
+    }
+
+    // MARK: - Learned state (star ↔ checkbox ↔ question mark)
+
+    // SF Symbol for the trailing toggle, by mark: checkmark for learned, question mark for
+    // explicitly not-learned, else the save star (filled when saved).
+    func learnedIcon(state: LearnedState, saved: Bool) -> String {
+        switch state {
+        case .learned:    return "checkmark.circle.fill"
+        case .notLearned: return "questionmark.circle.fill"
+        case .unmarked:   return saved ? "star.fill" : "star"
+        }
+    }
+
+    // Neutral (monochrome) icon color — no more yellow/blue. White under the Japanese theme,
+    // primary for any filled state (learned/not-learned/saved), secondary for the empty star.
+    func learnedIconColor(state: LearnedState, saved: Bool) -> Color {
+        if japaneseTheme { return .white }
+        if state != .unmarked || saved { return .primary }
+        return .secondary
+    }
+
+    // The shared Learned / Not Learned menu pair used by the star's long-press menu and the
+    // row context menu. Each row toggles its own mark — tapping the active one clears it
+    // (back to unmarked) — mirroring the "tap active scope to clear" idiom in the filter sheet.
+    @ViewBuilder
+    func learnedMenuButtons(entryID: Int64, state: LearnedState) -> some View {
+        Button {
+            reviewStore.setLearnedState(state == .learned ? .unmarked : .learned, for: entryID)
+        } label: {
+            Label("Learned", systemImage: state == .learned ? "checkmark" : "checkmark.circle")
+        }
+        Button {
+            reviewStore.setLearnedState(state == .notLearned ? .unmarked : .notLearned, for: entryID)
+        } label: {
+            Label("Not Learned", systemImage: state == .notLearned ? "checkmark" : "questionmark.circle")
         }
     }
 
@@ -151,6 +195,9 @@ extension WordsView {
         } label: {
             Label(saved ? "Unfavorite" : "Favorite", systemImage: saved ? "star.slash" : "star")
         }
+
+        // Learned / Not Learned marks, also reachable by long-pressing the star directly (see wordRow).
+        learnedMenuButtons(entryID: entryID, state: reviewStore.learnedState(for: entryID))
 
         // Contextual "remove from the thing you're viewing", independent of unfavorite.
         if let listID = singleActiveListID {

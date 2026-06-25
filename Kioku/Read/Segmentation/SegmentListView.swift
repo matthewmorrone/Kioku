@@ -133,7 +133,7 @@ struct SegmentListView: View {
                                 // with the current-note state.
                                 let isStarFilled = isSavedForCurrentNote || isSavedElsewhere
                                 let isAnySaved = isStarFilled || isSavedForOtherNotes
-                                let starColor: Color = isAnySaved ? .yellow : .secondary
+                                let starColor: Color = isAnySaved ? .primary : .secondary
                                 Image(systemName: isStarFilled ? "star.fill" : "star")
                                     .foregroundStyle(starColor)
                                     .font(.system(size: 16, weight: .semibold))
