@@ -85,6 +85,22 @@ nonisolated enum WordOfTheDayMirror {
             .min { $0.fireDate < $1.fireDate }
     }
 
+    // The most recently fired entries before `current`, newest first, up to `limit`. Drives the
+    // large widget's "recent days" list. Excludes the entry matching `current` (same fire date) so
+    // today's headline word isn't repeated in the list below it.
+    static func recentEntries(
+        in entries: [WordOfTheDayMirrorEntry],
+        asOf now: Date,
+        excluding current: WordOfTheDayMirrorEntry?,
+        limit: Int
+    ) -> [WordOfTheDayMirrorEntry] {
+        entries
+            .filter { $0.fireDate <= now && $0.fireDate != current?.fireDate }
+            .sorted { $0.fireDate > $1.fireDate }
+            .prefix(limit)
+            .map { $0 }
+    }
+
     // MARK: - Deep link
 
     // Builds the widget tap URL, e.g. kioku://word?id=123&surface=勉強.
