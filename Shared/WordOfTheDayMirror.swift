@@ -1,5 +1,17 @@
 import Foundation
 
+// One sense of a word: a friendly part-of-speech label plus its English glosses.
+nonisolated struct WordOfTheDaySense: Codable, Equatable, Sendable {
+    let partOfSpeech: String?
+    let glosses: [String]
+}
+
+// An example sentence with its translation, shown on the larger widget sizes.
+nonisolated struct WordOfTheDayExample: Codable, Equatable, Sendable {
+    let japanese: String
+    let english: String
+}
+
 // A single Word of the Day entry mirrored from the notification schedule into the App Group
 // container so the widget process can read it. Compiled into BOTH the app and widget targets;
 // it is plain Foundation with no app/widget dependencies so it can be unit tested directly.
@@ -12,24 +24,27 @@ nonisolated struct WordOfTheDayMirrorEntry: Codable, Equatable, Sendable {
     // The primary gloss — used by the notification body, the small widget, and the accessory slots.
     let meaning: String
     let entryID: Int64
-    // Additional glosses for the primary sense so larger widgets can show more definition; includes
-    // `meaning` as the first element when populated, empty for legacy entries.
-    let glosses: [String]
-    // A friendly part-of-speech label (e.g. "Godan verb, transitive"), shown on the larger sizes.
-    let partOfSpeech: String?
+    // Senses for the larger sizes: medium shows the first; large numbers two or three. Empty for
+    // legacy entries (the small/accessory layouts fall back to `meaning`).
+    let senses: [WordOfTheDaySense]
+    // An example sentence, when the dictionary has one for this word.
+    let example: WordOfTheDayExample?
+    // JLPT level (5…1), shown as a small badge on the larger sizes.
+    let jlpt: Int?
 
     init(fireDate: Date, surface: String, kana: String?, meaning: String, entryID: Int64,
-         glosses: [String] = [], partOfSpeech: String? = nil) {
+         senses: [WordOfTheDaySense] = [], example: WordOfTheDayExample? = nil, jlpt: Int? = nil) {
         self.fireDate = fireDate
         self.surface = surface
         self.kana = kana
         self.meaning = meaning
         self.entryID = entryID
-        self.glosses = glosses
-        self.partOfSpeech = partOfSpeech
+        self.senses = senses
+        self.example = example
+        self.jlpt = jlpt
     }
 
-    // Custom decode so mirror data written before glosses/partOfSpeech existed still loads.
+    // Custom decode so mirror data written before the rich fields existed still loads.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         fireDate = try c.decode(Date.self, forKey: .fireDate)
@@ -37,13 +52,20 @@ nonisolated struct WordOfTheDayMirrorEntry: Codable, Equatable, Sendable {
         kana = try c.decodeIfPresent(String.self, forKey: .kana)
         meaning = try c.decode(String.self, forKey: .meaning)
         entryID = try c.decode(Int64.self, forKey: .entryID)
-        glosses = try c.decodeIfPresent([String].self, forKey: .glosses) ?? []
-        partOfSpeech = try c.decodeIfPresent(String.self, forKey: .partOfSpeech)
+        senses = try c.decodeIfPresent([WordOfTheDaySense].self, forKey: .senses) ?? []
+        example = try c.decodeIfPresent(WordOfTheDayExample.self, forKey: .example)
+        jlpt = try c.decodeIfPresent(Int.self, forKey: .jlpt)
     }
 
-    // The glosses to display, guaranteed non-empty by falling back to the primary meaning.
+    // The primary sense's glosses, guaranteed non-empty by falling back to the primary meaning.
     var displayGlosses: [String] {
-        glosses.isEmpty ? [meaning] : glosses
+        if let first = senses.first, first.glosses.isEmpty == false { return first.glosses }
+        return [meaning]
+    }
+
+    // The primary sense's part of speech, for the medium layout.
+    var primaryPartOfSpeech: String? {
+        senses.first?.partOfSpeech
     }
 }
 

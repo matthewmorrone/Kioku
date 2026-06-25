@@ -6,17 +6,18 @@ import WidgetKit
 private struct WordOfTheDayLiveContent {
     let kana: String?
     let meaning: String
-    // The primary sense's glosses (includes `meaning` first); lets larger widgets show more.
-    let glosses: [String]
-    // Friendly part-of-speech label for the primary sense.
-    let partOfSpeech: String?
+    // Senses (POS + glosses), an example sentence, and JLPT level for the larger widget sizes.
+    let senses: [WordOfTheDaySense]
+    let example: WordOfTheDayExample?
+    let jlpt: Int?
 }
 
 private struct WordOfTheDayCachedContent: Codable {
     let kana: String?
     let meaning: String
-    let glosses: [String]?
-    let partOfSpeech: String?
+    let senses: [WordOfTheDaySense]?
+    let example: WordOfTheDayExample?
+    let jlpt: Int?
 }
 
 private struct WordOfTheDayScheduleState: Codable {
@@ -31,13 +32,13 @@ enum WordOfTheDayScheduler {
     static let enabledKey = "wordOfTheDay.enabled"
     static let hourKey = "wordOfTheDay.hour"
     static let minuteKey = "wordOfTheDay.minute"
-    // v2 adds glosses + part of speech; bumped so words cached by an older build are re-resolved
-    // with the richer detail the larger widgets show, instead of reusing the kana+meaning-only cache.
-    private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v2"
+    // v3 stores structured senses + an example sentence + JLPT; bumped so words cached by an older
+    // build are re-resolved with the full detail rather than reusing a thinner cache.
+    private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v3"
     private static let scheduleStateKey = "wordOfTheDay.scheduleState.v1"
-    // Bumped to 2 so a queue baked by an older build is seen as stale and re-baked once, repopulating
-    // the mirror with the richer per-word detail.
-    private static let scheduleSignatureVersion = 2
+    // Bumped so a queue baked by an older build is seen as stale and re-baked once, repopulating the
+    // mirror with the richer per-word detail.
+    private static let scheduleSignatureVersion = 3
 
     // Notification request identifiers use this prefix for batch filtering.
     nonisolated static let requestPrefix = "wotd_"
@@ -160,8 +161,9 @@ enum WordOfTheDayScheduler {
             kana: liveContent.kana,
             meaning: liveContent.meaning,
             entryID: word.canonicalEntryID,
-            glosses: liveContent.glosses,
-            partOfSpeech: liveContent.partOfSpeech
+            senses: liveContent.senses,
+            example: liveContent.example,
+            jlpt: liveContent.jlpt
         ))
         writeWidgetMirror(entries)
     }
@@ -228,14 +230,16 @@ enum WordOfTheDayScheduler {
         else {
             return nil
         }
+        let detail = decodeDetail(info["detail"] as? String)
         return WordOfTheDayMirrorEntry(
             fireDate: fireDate,
             surface: surface,
             kana: info["kana"] as? String,
             meaning: meaning,
             entryID: entryID,
-            glosses: info["glosses"] as? [String] ?? [],
-            partOfSpeech: info["partOfSpeech"] as? String
+            senses: detail?.senses ?? [],
+            example: detail?.example,
+            jlpt: detail?.jlpt
         )
     }
 
@@ -296,8 +300,9 @@ enum WordOfTheDayScheduler {
                 kana: liveContent.kana,
                 meaning: liveContent.meaning,
                 entryID: word.canonicalEntryID,
-                glosses: liveContent.glosses,
-                partOfSpeech: liveContent.partOfSpeech
+                senses: liveContent.senses,
+                example: liveContent.example,
+                jlpt: liveContent.jlpt
             ))
         }
         persistScheduleState(signature: scheduleSignature, requestCount: liveContentByEntryID.count)
@@ -372,10 +377,9 @@ enum WordOfTheDayScheduler {
         content.userInfo["surface"] = surface
         if let kana { content.userInfo["kana"] = kana }
         content.userInfo["meaning"] = meaning
-        // Richer detail for the larger widgets, threaded through userInfo so the mirror can be
-        // reconstructed from the pending queue (syncWidgetMirrorFromPending) with the same data.
-        if liveContent.glosses.isEmpty == false { content.userInfo["glosses"] = liveContent.glosses }
-        if let partOfSpeech = liveContent.partOfSpeech { content.userInfo["partOfSpeech"] = partOfSpeech }
+        // Richer detail for the larger widgets, threaded through userInfo (as JSON) so the mirror can
+        // be reconstructed from the pending queue (syncWidgetMirrorFromPending) with the same data.
+        if let detail = encodeDetail(liveContent) { content.userInfo["detail"] = detail }
         // canonicalEntryID stored as string since SavedWord has no UUID.
         content.userInfo["wordID"] = String(word.canonicalEntryID)
 
@@ -390,6 +394,38 @@ enum WordOfTheDayScheduler {
         return expanded.isEmpty ? nil : expanded
     }
 
+    // Finds the shortest example sentence matching any of the given terms (surface first), or nil.
+    private static func resolveExample(terms: [String], using dictionaryStore: DictionaryStore) -> WordOfTheDayExample? {
+        guard terms.isEmpty == false, let pair = try? dictionaryStore.fetchSentencePairs(terms: terms).first else {
+            return nil
+        }
+        return WordOfTheDayExample(japanese: pair.japanese, english: pair.english)
+    }
+
+    // The rich per-word detail carried in the notification payload so syncWidgetMirrorFromPending can
+    // reconstruct it; JSON-encoded into a single userInfo string since userInfo holds only plist types.
+    private nonisolated struct WordOfTheDayDetail: Codable {
+        let senses: [WordOfTheDaySense]
+        let example: WordOfTheDayExample?
+        let jlpt: Int?
+    }
+
+    // Encodes the rich detail to a JSON string for the notification userInfo, or nil when there's none.
+    private static func encodeDetail(_ liveContent: WordOfTheDayLiveContent) -> String? {
+        guard liveContent.senses.isEmpty == false || liveContent.example != nil || liveContent.jlpt != nil else {
+            return nil
+        }
+        let detail = WordOfTheDayDetail(senses: liveContent.senses, example: liveContent.example, jlpt: liveContent.jlpt)
+        guard let data = try? JSONEncoder().encode(detail) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    // Decodes the rich detail JSON string from a notification's userInfo.
+    private nonisolated static func decodeDetail(_ json: String?) -> WordOfTheDayDetail? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(WordOfTheDayDetail.self, from: data)
+    }
+
     // Fetches the kana reading and first gloss for each unique entry ID.
     // Runs synchronously on the caller's thread; DictionaryStore serializes access internally.
     private static func resolveLiveContent(
@@ -397,6 +433,11 @@ enum WordOfTheDayScheduler {
         using dictionaryStore: DictionaryStore
     ) -> [Int64: WordOfTheDayLiveContent] {
         let uniqueIDs = Array(Set(words.map(\.canonicalEntryID)))
+        // Saved surface per entry id, used as the priority term for example-sentence search.
+        var surfaceByEntryID: [Int64: String] = [:]
+        for word in words where surfaceByEntryID[word.canonicalEntryID] == nil {
+            surfaceByEntryID[word.canonicalEntryID] = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         var cached = loadCachedLiveContent()
         var out: [Int64: WordOfTheDayLiveContent] = [:]
         out.reserveCapacity(uniqueIDs.count)
@@ -407,8 +448,9 @@ enum WordOfTheDayScheduler {
                 out[entryID] = WordOfTheDayLiveContent(
                     kana: cachedContent.kana,
                     meaning: cachedContent.meaning,
-                    glosses: cachedContent.glosses ?? [cachedContent.meaning],
-                    partOfSpeech: cachedContent.partOfSpeech
+                    senses: cachedContent.senses ?? [],
+                    example: cachedContent.example,
+                    jlpt: cachedContent.jlpt
                 )
             } else {
                 missingIDs.append(entryID)
@@ -426,11 +468,21 @@ enum WordOfTheDayScheduler {
                 return trimmed.isEmpty ? nil : trimmed
             }
 
-            let glosses = Array((entry.senses.first?.glosses ?? []).prefix(6))
-            let meaning = glosses.first ?? ""
-            let partOfSpeech = friendlyPartOfSpeech(entry.senses.first?.pos)
-            out[entryID] = WordOfTheDayLiveContent(kana: kana, meaning: meaning, glosses: glosses, partOfSpeech: partOfSpeech)
-            cached[entryID] = WordOfTheDayCachedContent(kana: kana, meaning: meaning, glosses: glosses, partOfSpeech: partOfSpeech)
+            // Up to three senses, each with a friendly POS label and a few glosses.
+            let senses = entry.senses.prefix(3).map { sense in
+                WordOfTheDaySense(
+                    partOfSpeech: friendlyPartOfSpeech(sense.pos),
+                    glosses: Array(sense.glosses.prefix(4))
+                )
+            }
+            let meaning = senses.first?.glosses.first ?? ""
+            let example = resolveExample(
+                terms: [surfaceByEntryID[entryID], entry.kanjiForms.first?.text, entry.kanaForms.first?.text].compactMap { $0 },
+                using: dictionaryStore
+            )
+            let jlpt = dictionaryStore.jlptLevel(for: entryID)
+            out[entryID] = WordOfTheDayLiveContent(kana: kana, meaning: meaning, senses: Array(senses), example: example, jlpt: jlpt)
+            cached[entryID] = WordOfTheDayCachedContent(kana: kana, meaning: meaning, senses: Array(senses), example: example, jlpt: jlpt)
         }
 
         persistCachedLiveContent(cached)

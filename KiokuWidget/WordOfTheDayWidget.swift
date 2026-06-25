@@ -88,10 +88,16 @@ extension WordOfTheDayMirrorEntry {
     // Sample content for the widget gallery / placeholder rendering.
     static let preview = WordOfTheDayMirrorEntry(
         fireDate: Date(),
-        surface: "掬いあげる",
-        kana: "すくいあげる",
-        meaning: "to scoop up",
-        entryID: 0
+        surface: "繰り返す",
+        kana: "くりかえす",
+        meaning: "to repeat",
+        entryID: 0,
+        senses: [
+            WordOfTheDaySense(partOfSpeech: "Godan verb, transitive", glosses: ["to repeat", "to do over again"]),
+            WordOfTheDaySense(partOfSpeech: nil, glosses: ["to go over (and over)"]),
+        ],
+        example: WordOfTheDayExample(japanese: "彼は同じ間違いを繰り返した。", english: "He repeated the same mistake."),
+        jlpt: 3
     )
 
     // Sample prior-days list for the large family's gallery preview.
