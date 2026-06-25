@@ -163,8 +163,19 @@ enum WordOfTheDayScheduler {
 
     // Mirrors the scheduled batch into the App Group and refreshes the widget timeline so the
     // "most recent word" widget reflects the current schedule without launching the app.
+    // Retains recently-fired words from the previous mirror: the incoming batch is future-only, so
+    // without this the past words would be dropped on every reschedule and the large widget's
+    // "recent days" list would always be empty. Already-fired entries win over a new batch entry on
+    // a shared fire date, so the widget keeps showing the word that was actually delivered.
     private static func writeWidgetMirror(_ entries: [WordOfTheDayMirrorEntry]) {
-        WordOfTheDayMirror.write(entries)
+        let now = Date()
+        let history = WordOfTheDayMirror.load().filter { $0.fireDate <= now }.suffix(14)
+        var seen = Set<Date>()
+        var merged: [WordOfTheDayMirrorEntry] = []
+        for entry in history where seen.insert(entry.fireDate).inserted { merged.append(entry) }
+        for entry in entries where seen.insert(entry.fireDate).inserted { merged.append(entry) }
+        merged.sort { $0.fireDate < $1.fireDate }
+        WordOfTheDayMirror.write(merged)
         WidgetCenter.shared.reloadAllTimelines()
     }
 

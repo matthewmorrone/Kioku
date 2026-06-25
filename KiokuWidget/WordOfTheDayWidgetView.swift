@@ -103,9 +103,14 @@ struct WordOfTheDayWidgetView: View {
 
     var body: some View {
         content
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: family == .systemSmall ? .center : .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: contentAlignment)
             .containerBackground(for: .widget) { background }
             .widgetURL(deepLink)
+    }
+
+    // Accessory rectangular reads as a left-aligned line; everything else centers.
+    private var contentAlignment: Alignment {
+        family == .accessoryRectangular ? .leading : .center
     }
 
     // MARK: - Family routing
@@ -113,26 +118,26 @@ struct WordOfTheDayWidgetView: View {
     @ViewBuilder
     private var content: some View {
         switch family {
-        case .systemSmall:
-            appMark
         case .accessoryInline:
             inlineContent
+        case .accessoryCircular:
+            circularContent
         case .accessoryRectangular:
             rectangularContent
         case .systemLarge:
             largeContent
+        case .systemSmall:
+            smallContent
         default:
             mediumContent
         }
     }
 
-    // Small is vermilion (the app mark); home families sit on the paper/sumi surface; Lock Screen
-    // families use the system's vibrant backdrop.
+    // Home families sit on the paper/sumi surface; Lock Screen families use the system's vibrant
+    // backdrop.
     @ViewBuilder
     private var background: some View {
         switch family {
-        case .systemSmall:
-            WidgetTheme.vermilion
         case .accessoryRectangular, .accessoryCircular, .accessoryInline:
             AccessoryWidgetBackground()
         default:
@@ -140,42 +145,39 @@ struct WordOfTheDayWidgetView: View {
         }
     }
 
-    // The vermilion label rule shared by the medium and large home layouts.
+    // The centered vermilion label that tops the home layouts.
     private var brandLabel: some View {
-        HStack(spacing: 8) {
-            Rectangle().fill(WidgetTheme.vermilion).frame(width: 16, height: 2)
-            Text("今日の言葉")
-                .font(WidgetTheme.mincho(11))
-                .tracking(2)
-                .foregroundStyle(WidgetTheme.vermilion)
+        Text("今日の言葉")
+            .font(WidgetTheme.mincho(11))
+            .tracking(2)
+            .foregroundStyle(WidgetTheme.vermilion)
+    }
+
+    // The centered headword + meaning block shared by every home size.
+    private func wordBlock(_ word: WordOfTheDayMirrorEntry, base: CGFloat, ruby: CGFloat, meaning: CGFloat, meaningLines: Int) -> some View {
+        VStack(spacing: 8) {
+            FuriganaText(surface: word.surface, reading: word.kana,
+                         baseFont: WidgetTheme.mincho(base, bold: true), rubyFont: WidgetTheme.mincho(ruby))
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+            Text(word.meaning)
+                .font(WidgetTheme.serif(meaning))
+                .foregroundStyle(WidgetTheme.inkSecondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(meaningLines)
         }
+        .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Small (the app mark only)
-
-    private var appMark: some View {
-        Text("憶")
-            .font(WidgetTheme.mincho(70, bold: true))
-            .foregroundStyle(.white)
-    }
-
-    // MARK: - Medium (mark label + word + meaning)
+    // MARK: - Small (2×2 — centered word + meaning)
 
     @ViewBuilder
-    private var mediumContent: some View {
+    private var smallContent: some View {
         if let word = entry.word {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 0) {
                 brandLabel
-                Spacer(minLength: 8)
-                FuriganaText(surface: word.surface, reading: word.kana,
-                             baseFont: WidgetTheme.mincho(30, bold: true), rubyFont: WidgetTheme.mincho(12))
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-                Text(word.meaning)
-                    .font(WidgetTheme.serif(15))
-                    .foregroundStyle(WidgetTheme.inkSecondary)
-                    .lineLimit(2)
-                    .padding(.top, 6)
+                Spacer(minLength: 6)
+                wordBlock(word, base: 26, ruby: 11, meaning: 13, meaningLines: 2)
                 Spacer(minLength: 0)
             }
         } else {
@@ -183,24 +185,32 @@ struct WordOfTheDayWidgetView: View {
         }
     }
 
-    // MARK: - Large (medium + recent-days list)
+    // MARK: - Medium (centered word + meaning)
+
+    @ViewBuilder
+    private var mediumContent: some View {
+        if let word = entry.word {
+            VStack(spacing: 0) {
+                brandLabel
+                Spacer(minLength: 0)
+                wordBlock(word, base: 34, ruby: 13, meaning: 16, meaningLines: 2)
+                Spacer(minLength: 0)
+            }
+        } else {
+            emptyState
+        }
+    }
+
+    // MARK: - Large (centered word, recent-days list pinned below)
 
     @ViewBuilder
     private var largeContent: some View {
         if let word = entry.word {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 0) {
                 brandLabel
-                Spacer(minLength: 14)
-                FuriganaText(surface: word.surface, reading: word.kana,
-                             baseFont: WidgetTheme.mincho(40, bold: true), rubyFont: WidgetTheme.mincho(15))
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-                Text(word.meaning)
-                    .font(WidgetTheme.serif(16))
-                    .foregroundStyle(WidgetTheme.inkSecondary)
-                    .lineLimit(2)
-                    .padding(.top, 8)
-                Spacer(minLength: 12)
+                Spacer(minLength: 0)
+                wordBlock(word, base: 46, ruby: 17, meaning: 18, meaningLines: 2)
+                Spacer(minLength: 0)
                 if entry.recent.isEmpty == false {
                     recentList
                 }
@@ -212,21 +222,35 @@ struct WordOfTheDayWidgetView: View {
 
     // The prior-days list beneath the headline word on the large family.
     private var recentList: some View {
-        VStack(spacing: 9) {
+        VStack(spacing: 10) {
             Rectangle().fill(WidgetTheme.inkSecondary.opacity(0.25)).frame(height: 0.5)
             ForEach(entry.recent, id: \.fireDate) { item in
                 HStack(alignment: .firstTextBaseline) {
                     Text(item.surface)
-                        .font(WidgetTheme.mincho(16))
+                        .font(WidgetTheme.mincho(17))
                         .foregroundStyle(WidgetTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Text(item.meaning)
-                        .font(WidgetTheme.serif(13))
+                        .font(WidgetTheme.serif(14))
                         .foregroundStyle(WidgetTheme.inkSecondary)
                         .lineLimit(1)
                 }
             }
+        }
+    }
+
+    // MARK: - Lock Screen circular
+
+    @ViewBuilder
+    private var circularContent: some View {
+        if let word = entry.word {
+            Text(String(word.surface.prefix(2)))
+                .font(.system(size: 22, weight: .semibold))
+                .minimumScaleFactor(0.4)
+                .lineLimit(1)
+        } else {
+            Image(systemName: "book.closed")
         }
     }
 
@@ -266,14 +290,14 @@ struct WordOfTheDayWidgetView: View {
     // MARK: - Empty state (home families)
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(spacing: 8) {
             brandLabel
             Text("Enable Word of the Day in Settings to see your latest word here.")
                 .font(WidgetTheme.serif(14))
                 .foregroundStyle(WidgetTheme.inkSecondary)
-                .padding(.top, 8)
-            Spacer(minLength: 0)
+                .multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Helpers
