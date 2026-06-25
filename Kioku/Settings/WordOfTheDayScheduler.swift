@@ -6,11 +6,17 @@ import WidgetKit
 private struct WordOfTheDayLiveContent {
     let kana: String?
     let meaning: String
+    // The primary sense's glosses (includes `meaning` first); lets larger widgets show more.
+    let glosses: [String]
+    // Friendly part-of-speech label for the primary sense.
+    let partOfSpeech: String?
 }
 
 private struct WordOfTheDayCachedContent: Codable {
     let kana: String?
     let meaning: String
+    let glosses: [String]?
+    let partOfSpeech: String?
 }
 
 private struct WordOfTheDayScheduleState: Codable {
@@ -154,7 +160,9 @@ enum WordOfTheDayScheduler {
             surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
             kana: liveContent.kana,
             meaning: liveContent.meaning,
-            entryID: word.canonicalEntryID
+            entryID: word.canonicalEntryID,
+            glosses: liveContent.glosses,
+            partOfSpeech: liveContent.partOfSpeech
         ))
         writeWidgetMirror(entries)
     }
@@ -226,7 +234,9 @@ enum WordOfTheDayScheduler {
             surface: surface,
             kana: info["kana"] as? String,
             meaning: meaning,
-            entryID: entryID
+            entryID: entryID,
+            glosses: info["glosses"] as? [String] ?? [],
+            partOfSpeech: info["partOfSpeech"] as? String
         )
     }
 
@@ -286,7 +296,9 @@ enum WordOfTheDayScheduler {
                 surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
                 kana: liveContent.kana,
                 meaning: liveContent.meaning,
-                entryID: word.canonicalEntryID
+                entryID: word.canonicalEntryID,
+                glosses: liveContent.glosses,
+                partOfSpeech: liveContent.partOfSpeech
             ))
         }
         persistScheduleState(signature: scheduleSignature, requestCount: liveContentByEntryID.count)
@@ -361,10 +373,22 @@ enum WordOfTheDayScheduler {
         content.userInfo["surface"] = surface
         if let kana { content.userInfo["kana"] = kana }
         content.userInfo["meaning"] = meaning
+        // Richer detail for the larger widgets, threaded through userInfo so the mirror can be
+        // reconstructed from the pending queue (syncWidgetMirrorFromPending) with the same data.
+        if liveContent.glosses.isEmpty == false { content.userInfo["glosses"] = liveContent.glosses }
+        if let partOfSpeech = liveContent.partOfSpeech { content.userInfo["partOfSpeech"] = partOfSpeech }
         // canonicalEntryID stored as string since SavedWord has no UUID.
         content.userInfo["wordID"] = String(word.canonicalEntryID)
 
         return content
+    }
+
+    // Expands a comma-joined JMdict POS code string to a friendly label (e.g. "Godan verb, …"), or
+    // nil when absent.
+    private static func friendlyPartOfSpeech(_ pos: String?) -> String? {
+        guard let pos, pos.isEmpty == false else { return nil }
+        let expanded = JMdictTagExpander.expandAll(pos).trimmingCharacters(in: .whitespacesAndNewlines)
+        return expanded.isEmpty ? nil : expanded
     }
 
     // Fetches the kana reading and first gloss for each unique entry ID.
@@ -383,7 +407,9 @@ enum WordOfTheDayScheduler {
             if let cachedContent = cached[entryID] {
                 out[entryID] = WordOfTheDayLiveContent(
                     kana: cachedContent.kana,
-                    meaning: cachedContent.meaning
+                    meaning: cachedContent.meaning,
+                    glosses: cachedContent.glosses ?? [cachedContent.meaning],
+                    partOfSpeech: cachedContent.partOfSpeech
                 )
             } else {
                 missingIDs.append(entryID)
@@ -401,9 +427,11 @@ enum WordOfTheDayScheduler {
                 return trimmed.isEmpty ? nil : trimmed
             }
 
-            let meaning = entry.senses.first?.glosses.first ?? ""
-            out[entryID] = WordOfTheDayLiveContent(kana: kana, meaning: meaning)
-            cached[entryID] = WordOfTheDayCachedContent(kana: kana, meaning: meaning)
+            let glosses = Array((entry.senses.first?.glosses ?? []).prefix(6))
+            let meaning = glosses.first ?? ""
+            let partOfSpeech = friendlyPartOfSpeech(entry.senses.first?.pos)
+            out[entryID] = WordOfTheDayLiveContent(kana: kana, meaning: meaning, glosses: glosses, partOfSpeech: partOfSpeech)
+            cached[entryID] = WordOfTheDayCachedContent(kana: kana, meaning: meaning, glosses: glosses, partOfSpeech: partOfSpeech)
         }
 
         persistCachedLiveContent(cached)

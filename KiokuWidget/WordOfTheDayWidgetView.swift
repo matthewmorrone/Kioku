@@ -30,42 +30,89 @@ private enum WidgetTheme {
     }
 }
 
-// Splits a surface + reading so furigana sits only over the kanji: strips the kana shared at both
-// ends (掬いあげる / すくいあげる → base 掬, reading すく, suffix いあげる). Falls back to the whole
-// surface with no reading for kana-only or unsplittable words.
-private struct FuriganaSplit {
-    let prefix: String
-    let base: String
-    let readingCore: String
-    let suffix: String
-
-    init(surface: String, reading raw: String?) {
-        guard let reading = raw, reading.isEmpty == false, reading != surface else {
-            prefix = ""; base = surface; readingCore = ""; suffix = ""
-            return
-        }
-        let s = Array(surface)
-        let r = Array(reading)
-        var p = 0
-        while p < s.count, p < r.count, s[p] == r[p], s[p].isKanaCharacter { p += 1 }
-        var q = 0
-        while q < s.count - p, q < r.count - p, s[s.count - 1 - q] == r[r.count - 1 - q], s[s.count - 1 - q].isKanaCharacter { q += 1 }
-        prefix = String(s[0..<p])
-        base = String(s[p..<(s.count - q)])
-        readingCore = String(r[p..<(r.count - q)])
-        suffix = String(s[(s.count - q)..<s.count])
-    }
+// One piece of a furigana-aligned word: `text` is a run of the surface; `ruby` is its reading when
+// the run is kanji that takes furigana, nil for kana that stands on its own.
+private struct FuriganaSegment {
+    let text: String
+    let ruby: String?
 }
 
 private extension Character {
-    // True for hiragana / katakana (incl. the prolonged sound mark), used to find the kanji core.
+    // True for hiragana / katakana (incl. the prolonged sound mark).
     var isKanaCharacter: Bool {
         unicodeScalars.allSatisfy { (0x3040...0x30FF).contains($0.value) }
     }
 }
 
-// Renders a word with furigana over its kanji core. The reading rides above the base in a VStack
-// whose last text baseline aligns with the surrounding kana, so okurigana stays on the baseline.
+// Aligns a surface against its full kana reading so furigana lands over each kanji run individually
+// — handling kanji·kana·kanji words like 繰り返す (く over 繰, かえ over 返, り and す plain). The kana
+// runs in the surface are anchors that must appear in order within the reading; the reading between
+// anchors is the furigana for the intervening kanji run. Falls back to a single ruby over the whole
+// surface if the anchors don't line up.
+private enum FuriganaAligner {
+    static func segments(surface: String, reading: String?) -> [FuriganaSegment] {
+        guard let reading, reading.isEmpty == false, reading != surface else {
+            return [FuriganaSegment(text: surface, ruby: nil)]
+        }
+
+        // Group the surface into consecutive kana / non-kana runs.
+        var runs: [(text: String, isKana: Bool)] = []
+        for ch in surface {
+            let kana = ch.isKanaCharacter
+            if var last = runs.last, last.isKana == kana {
+                last.text.append(ch)
+                runs[runs.count - 1] = last
+            } else {
+                runs.append((String(ch), kana))
+            }
+        }
+
+        let r = Array(reading)
+        var ri = 0
+        var result: [FuriganaSegment] = []
+        for (index, run) in runs.enumerated() {
+            if run.isKana {
+                let runChars = Array(run.text)
+                guard ri + runChars.count <= r.count, Array(r[ri..<ri + runChars.count]) == runChars else {
+                    return [FuriganaSegment(text: surface, ruby: reading)]
+                }
+                result.append(FuriganaSegment(text: run.text, ruby: nil))
+                ri += runChars.count
+            } else {
+                let end: Int
+                if index + 1 < runs.count {
+                    let nextChars = Array(runs[index + 1].text)
+                    guard let found = firstIndex(of: nextChars, in: r, from: ri) else {
+                        return [FuriganaSegment(text: surface, ruby: reading)]
+                    }
+                    end = found
+                } else {
+                    end = r.count
+                }
+                guard end >= ri else { return [FuriganaSegment(text: surface, ruby: reading)] }
+                let ruby = String(r[ri..<end])
+                result.append(FuriganaSegment(text: run.text, ruby: ruby.isEmpty ? nil : ruby))
+                ri = end
+            }
+        }
+        guard ri == r.count else { return [FuriganaSegment(text: surface, ruby: reading)] }
+        return result
+    }
+
+    // Earliest index ≥ `start` where `needle` occurs contiguously in `haystack`.
+    private static func firstIndex(of needle: [Character], in haystack: [Character], from start: Int) -> Int? {
+        guard needle.isEmpty == false else { return start }
+        var i = start
+        while i + needle.count <= haystack.count {
+            if Array(haystack[i..<i + needle.count]) == needle { return i }
+            i += 1
+        }
+        return nil
+    }
+}
+
+// Renders a word with per-run furigana. Each kanji run rides its reading in a VStack whose last text
+// baseline aligns with the neighbouring kana, so okurigana stays on the baseline.
 private struct FuriganaText: View {
     let surface: String
     let reading: String?
@@ -73,24 +120,18 @@ private struct FuriganaText: View {
     let rubyFont: Font
 
     var body: some View {
-        let split = FuriganaSplit(surface: surface, reading: reading)
+        let segments = FuriganaAligner.segments(surface: surface, reading: reading)
         HStack(alignment: .lastTextBaseline, spacing: 0) {
-            if split.prefix.isEmpty == false {
-                Text(split.prefix).font(baseFont).foregroundStyle(WidgetTheme.ink)
-            }
-            if split.base.isEmpty == false {
-                if split.readingCore.isEmpty {
-                    Text(split.base).font(baseFont).foregroundStyle(WidgetTheme.ink)
-                } else {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                if let ruby = segment.ruby {
                     VStack(spacing: 1) {
-                        Text(split.readingCore).font(rubyFont).foregroundStyle(WidgetTheme.inkSecondary)
-                        Text(split.base).font(baseFont).foregroundStyle(WidgetTheme.ink)
+                        Text(ruby).font(rubyFont).foregroundStyle(WidgetTheme.inkSecondary)
+                        Text(segment.text).font(baseFont).foregroundStyle(WidgetTheme.ink)
                     }
                     .fixedSize()
+                } else {
+                    Text(segment.text).font(baseFont).foregroundStyle(WidgetTheme.ink)
                 }
-            }
-            if split.suffix.isEmpty == false {
-                Text(split.suffix).font(baseFont).foregroundStyle(WidgetTheme.ink)
             }
         }
     }
@@ -153,23 +194,33 @@ struct WordOfTheDayWidgetView: View {
             .foregroundStyle(WidgetTheme.vermilion)
     }
 
-    // The centered headword + meaning block shared by every home size.
-    private func wordBlock(_ word: WordOfTheDayMirrorEntry, base: CGFloat, ruby: CGFloat, meaning: CGFloat, meaningLines: Int) -> some View {
-        VStack(spacing: 8) {
+    // The centered headword block: furigana + (optionally) part of speech + N glosses. Larger sizes
+    // pass more glosses and turn on the POS line so each tile shows progressively more definition.
+    private func definitionBlock(_ word: WordOfTheDayMirrorEntry, base: CGFloat, ruby: CGFloat,
+                                 glossSize: CGFloat, glossLimit: Int, glossLines: Int, showPOS: Bool) -> some View {
+        VStack(spacing: 6) {
             FuriganaText(surface: word.surface, reading: word.kana,
                          baseFont: WidgetTheme.mincho(base, bold: true), rubyFont: WidgetTheme.mincho(ruby))
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
-            Text(word.meaning)
-                .font(WidgetTheme.serif(meaning))
+            if showPOS, let pos = word.partOfSpeech, pos.isEmpty == false {
+                Text(pos)
+                    .font(WidgetTheme.serif(glossSize - 2))
+                    .italic()
+                    .foregroundStyle(WidgetTheme.inkSecondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+            }
+            Text(word.displayGlosses.prefix(glossLimit).joined(separator: "; "))
+                .font(WidgetTheme.serif(glossSize))
                 .foregroundStyle(WidgetTheme.inkSecondary)
                 .multilineTextAlignment(.center)
-                .lineLimit(meaningLines)
+                .lineLimit(glossLines)
         }
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Small (2×2 — centered word + meaning)
+    // MARK: - Small (2×2 — word + primary meaning)
 
     @ViewBuilder
     private var smallContent: some View {
@@ -177,7 +228,7 @@ struct WordOfTheDayWidgetView: View {
             VStack(spacing: 0) {
                 brandLabel
                 Spacer(minLength: 6)
-                wordBlock(word, base: 26, ruby: 11, meaning: 13, meaningLines: 2)
+                definitionBlock(word, base: 26, ruby: 11, glossSize: 13, glossLimit: 1, glossLines: 2, showPOS: false)
                 Spacer(minLength: 0)
             }
         } else {
@@ -185,7 +236,7 @@ struct WordOfTheDayWidgetView: View {
         }
     }
 
-    // MARK: - Medium (centered word + meaning)
+    // MARK: - Medium (word + POS + several glosses)
 
     @ViewBuilder
     private var mediumContent: some View {
@@ -193,7 +244,7 @@ struct WordOfTheDayWidgetView: View {
             VStack(spacing: 0) {
                 brandLabel
                 Spacer(minLength: 0)
-                wordBlock(word, base: 34, ruby: 13, meaning: 16, meaningLines: 2)
+                definitionBlock(word, base: 34, ruby: 13, glossSize: 15, glossLimit: 3, glossLines: 3, showPOS: true)
                 Spacer(minLength: 0)
             }
         } else {
@@ -201,7 +252,7 @@ struct WordOfTheDayWidgetView: View {
         }
     }
 
-    // MARK: - Large (centered word, recent-days list pinned below)
+    // MARK: - Large (word + POS + glosses + recent-days list)
 
     @ViewBuilder
     private var largeContent: some View {
@@ -209,7 +260,7 @@ struct WordOfTheDayWidgetView: View {
             VStack(spacing: 0) {
                 brandLabel
                 Spacer(minLength: 0)
-                wordBlock(word, base: 46, ruby: 17, meaning: 18, meaningLines: 2)
+                definitionBlock(word, base: 46, ruby: 17, glossSize: 17, glossLimit: 5, glossLines: 4, showPOS: true)
                 Spacer(minLength: 0)
                 if entry.recent.isEmpty == false {
                     recentList

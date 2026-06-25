@@ -9,15 +9,41 @@ nonisolated struct WordOfTheDayMirrorEntry: Codable, Equatable, Sendable {
     let fireDate: Date
     let surface: String
     let kana: String?
+    // The primary gloss — used by the notification body, the small widget, and the accessory slots.
     let meaning: String
     let entryID: Int64
+    // Additional glosses for the primary sense so larger widgets can show more definition; includes
+    // `meaning` as the first element when populated, empty for legacy entries.
+    let glosses: [String]
+    // A friendly part-of-speech label (e.g. "Godan verb, transitive"), shown on the larger sizes.
+    let partOfSpeech: String?
 
-    init(fireDate: Date, surface: String, kana: String?, meaning: String, entryID: Int64) {
+    init(fireDate: Date, surface: String, kana: String?, meaning: String, entryID: Int64,
+         glosses: [String] = [], partOfSpeech: String? = nil) {
         self.fireDate = fireDate
         self.surface = surface
         self.kana = kana
         self.meaning = meaning
         self.entryID = entryID
+        self.glosses = glosses
+        self.partOfSpeech = partOfSpeech
+    }
+
+    // Custom decode so mirror data written before glosses/partOfSpeech existed still loads.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fireDate = try c.decode(Date.self, forKey: .fireDate)
+        surface = try c.decode(String.self, forKey: .surface)
+        kana = try c.decodeIfPresent(String.self, forKey: .kana)
+        meaning = try c.decode(String.self, forKey: .meaning)
+        entryID = try c.decode(Int64.self, forKey: .entryID)
+        glosses = try c.decodeIfPresent([String].self, forKey: .glosses) ?? []
+        partOfSpeech = try c.decodeIfPresent(String.self, forKey: .partOfSpeech)
+    }
+
+    // The glosses to display, guaranteed non-empty by falling back to the primary meaning.
+    var displayGlosses: [String] {
+        glosses.isEmpty ? [meaning] : glosses
     }
 }
 
