@@ -275,12 +275,12 @@ struct SettingsView: View {
                         Button("Send Test") {
                             wotdTestTapCount += 1
                             let tap = wotdTestTapCount
-                            let word = wordsStore.words.randomElement()
+                            let fallback = wordsStore.words.randomElement()
                             let store = dictionaryStore
                             wotdTestStatus = "Scheduling…"
                             Task {
-                                await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
-                                wotdTestStatus = word.map { "Sent “\($0.surface)” — quit the app now; it arrives in ~10s, then tap it" } ?? "No saved word available"
+                                let sentSurface = await WordOfTheDayScheduler.sendTestNotification(fallbackWord: fallback, dictionaryStore: store)
+                                wotdTestStatus = sentSurface.map { "Sent “\($0)” — quit the app now; it arrives in ~10s, then tap it" } ?? "No saved word available"
                                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                                 if wotdTestTapCount == tap { wotdTestStatus = nil }
                             }

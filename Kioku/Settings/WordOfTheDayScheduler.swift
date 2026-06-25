@@ -141,20 +141,34 @@ enum WordOfTheDayScheduler {
         StartupTimer.mark("WOTD.refreshScheduleIfEnabled completed scheduleUpcoming")
     }
 
-    // Sends a test notification with a 10-second delay using a random saved word. The delay is
-    // long enough to fully quit the app before it fires, so the tap exercises the real cold-launch
-    // deep-link path (dictionary still loading) — a 1-second delay only ever fired while the app
-    // was still foregrounded, which can't reproduce the cold-launch detail-load behavior.
-    static func sendTestNotification(word: SavedWord?, dictionaryStore: DictionaryStore?) async {
-        guard let word, let dictionaryStore else { return }
-        let live = resolveLiveContent(for: [word], using: dictionaryStore)
-        guard let liveContent = live[word.canonicalEntryID] else { return }
-        let testWord = WordOfTheDayWord(
-            entryID: word.canonicalEntryID,
-            surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
-            kana: liveContent.kana,
-            meaning: liveContent.meaning
-        )
+    // Sends a test notification with a 10-second delay previewing TODAY's word — the same
+    // deterministic word the widget shows — so the test is a true "what will my daily notification
+    // and widget say" check rather than a random pick that can never match. Falls back to a resolved
+    // random saved word only when no widget snapshot exists yet (WOTD not scheduled). Returns the
+    // surface it sent (for the caller's status line), or nil when nothing could be sent.
+    //
+    // The 10-second delay is long enough to fully quit the app before it fires, so the tap exercises
+    // the real cold-launch deep-link path (dictionary still loading) — a 1-second delay only ever
+    // fired while the app was still foregrounded, which can't reproduce the cold-launch behavior.
+    @discardableResult
+    static func sendTestNotification(fallbackWord: SavedWord?, dictionaryStore: DictionaryStore?) async -> String? {
+        let testWord: WordOfTheDayWord?
+        if let snapshot = WordOfTheDay.loadSnapshot(),
+           let current = WordOfTheDay.currentWord(asOf: Date(), snapshot: snapshot) {
+            testWord = current
+        } else if let fallbackWord, let dictionaryStore,
+                  let liveContent = resolveLiveContent(for: [fallbackWord], using: dictionaryStore)[fallbackWord.canonicalEntryID] {
+            testWord = WordOfTheDayWord(
+                entryID: fallbackWord.canonicalEntryID,
+                surface: fallbackWord.surface.trimmingCharacters(in: .whitespacesAndNewlines),
+                kana: liveContent.kana,
+                meaning: liveContent.meaning
+            )
+        } else {
+            testWord = nil
+        }
+        guard let testWord else { return nil }
+
         let content = makeContent(for: testWord)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)
         let request = UNNotificationRequest(
@@ -163,6 +177,7 @@ enum WordOfTheDayScheduler {
             trigger: trigger
         )
         _ = await addRequest(request)
+        return testWord.surface
     }
 
     // MARK: - Widget snapshot
