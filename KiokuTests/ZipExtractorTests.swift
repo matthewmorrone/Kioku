@@ -1,5 +1,5 @@
 import XCTest
-@testable import Kioku
+import SwiftWhisperAlign
 
 // Pins the untrusted-archive guarantees: entry paths cannot escape the destination
 // directory (zip-slip) and declared sizes cannot force unbounded allocation.

@@ -207,13 +207,14 @@ public struct CTCForcedAligner {
                 Self.breadcrumb("isolating (HTDemucs CoreML)")
                 let mono: [Float]
                 if #available(iOS 16.0, macOS 13.0, *) {
-                    mono = try HTDemucsCoreMLSeparator.isolateVocalsMono(
+                    mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
                         stereo: stereo,
                         cancellationCheck: cancellationCheck,
                         onProgress: { frac in
                             onProgress?(0.05 + 0.35 * frac)                       // global bar (legacy callers)
                             onStage?("Isolating vocals… \(Int((frac * 100).rounded()))%")  // per-phase %
-                        }
+                        },
+                        onStage: onStage                                          // first-run model download phases
                     )
                 } else {
                     throw NSError(domain: "SwiftWhisperAlign.CTC", code: 16,
@@ -401,7 +402,7 @@ public struct CTCForcedAligner {
             throw NSError(domain: "SwiftWhisperAlign.CTC", code: 16,
                           userInfo: [NSLocalizedDescriptionKey: "Vocal isolation needs iOS 16 or later."])
         }
-        let mono = try HTDemucsCoreMLSeparator.isolateVocalsMono(
+        let mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
             stereo: stereo, cancellationCheck: cancellationCheck, onProgress: onProgress)
         guard mono.isEmpty == false else {
             throw NSError(domain: "SwiftWhisperAlign.CTC", code: 15,

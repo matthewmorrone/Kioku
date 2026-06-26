@@ -41,29 +41,29 @@ enum HTDemucsCoreMLSeparator {
         return DSP(icos: icos, isin: isin, win: win, wsum: wsum, outLen: outLen)
     }
 
-    // ---- model loading (dev: from <Documents>/HTDemucsSpec.mlmodelc; later: bundle/download).
-    // NOT cached: a 269 MB MLModel left resident OOM-kills the aligner that runs right after. ----
-    static func loadModel() throws -> MLModel {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let url = docs.appendingPathComponent("HTDemucsSpec.mlmodelc")
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw NSError(domain: "SwiftWhisperAlign.HTDemucs", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "HTDemucs model not found at \(url.lastPathComponent)."])
-        }
+    // ---- model loading via [[HTDemucsModelStore]]: first-run download + Application
+    // Support cache, same purge-resistant placement as the ASR + CTC aligner weights.
+    // NOT cached in memory: a 269 MB MLModel left resident OOM-kills the aligner that
+    // runs right after, so we build → predict → drop on every isolation. ----
+    static func loadModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> MLModel {
+        let url = try await HTDemucsModelStore.ensureModel(onStage: onStage)
         let cfg = MLModelConfiguration(); cfg.computeUnits = .all
         return try MLModel(contentsOf: url, configuration: cfg)
     }
 
     // Isolates vocals from decoded stereo, returning full-length mono vocals at 44.1 kHz.
+    // The await is at the top (model-store check + any first-run download); the iSTFT
+    // overlap-add loop below runs synchronously on the caller's task.
     static func isolateVocalsMono(
         stereo: [[Float]],
         cancellationCheck: (@Sendable () -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil
-    ) throws -> [Float] {
+        onProgress: ((Double) -> Void)? = nil,
+        onStage: (@Sendable (String) -> Void)? = nil
+    ) async throws -> [Float] {
         guard stereo.count == 2 else { return [] }
         let L = min(stereo[0].count, stereo[1].count)
         guard L > 0 else { return [] }
-        let model = try loadModel()
+        let model = try await loadModel(onStage: onStage)
         let dsp = buildDSP()
 
         // 7.8 s chunks, 25% overlap, triangular transition weight (demucs apply_model style).
