@@ -43,7 +43,12 @@ public enum StemTranscriber {
         var doneChunks = 0
 
         progress?("loading ASR…")
-        let model = try await Qwen3ASRModel.fromPretrained()   // MLX checkpoint, already cached
+        // Pin to a non-purgeable Application Support path so a Caches eviction can't strand a
+        // mid-transfer download (see ModelStorage for the full rationale).
+        let model = try await Qwen3ASRModel.fromPretrained(
+            modelId: ModelStorage.asrModelId,
+            cacheDir: try ModelStorage.directory(for: ModelStorage.asrModelId)
+        )
 
         var out: [(start: Double, end: Double, text: String)] = []
         for reg in regs {

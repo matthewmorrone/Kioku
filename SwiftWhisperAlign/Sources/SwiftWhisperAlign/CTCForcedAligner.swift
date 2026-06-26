@@ -8,8 +8,9 @@
 // DTW timing-extraction hack did. Measured on the same fixture: ~3.9 s median on the
 // vocal stem — a 26× improvement.
 //
-// The 0.6B model is downloaded on first use via fromPretrained() and cached in the
-// app sandbox; nothing is bundled in the binary.
+// The 0.6B model is downloaded on first use via fromPretrained() and cached in Application
+// Support (see ModelStorage) — not in Caches, which iOS purges under storage pressure and
+// leaves the next launch stranded on a partial download. Nothing is bundled in the binary.
 
 import Foundation
 import AVFoundation
@@ -280,9 +281,13 @@ public struct CTCForcedAligner {
             if cancellationCheck?() == true { throw CancellationError() }
         }
 
-        // Downloads the CTC model on first use; cached thereafter.
+        // Downloads the CTC model on first use; cached thereafter (in Application Support,
+        // not the purgeable Caches dir — see ModelStorage).
         onStage?("Preparing alignment model…")
-        let aligner = try await Qwen3ForcedAligner.fromPretrained()
+        let aligner = try await Qwen3ForcedAligner.fromPretrained(
+            modelId: ModelStorage.forcedAlignerModelId,
+            cacheDir: try ModelStorage.directory(for: ModelStorage.forcedAlignerModelId)
+        )
         Self.breadcrumb("aligner loaded (fromPretrained returned)")
         if cancellationCheck?() == true { throw CancellationError() }
 
