@@ -20,28 +20,35 @@ struct StrokeOrderAnimationView: View {
             let side = min(proxy.size.width, proxy.size.height)
             let scale = side / svgCanvasSize
 
-            ZStack {
+            // ONE coordinate pipeline: every path inside this ZStack (grid + each stroke)
+            // is authored in the native 109-unit KanjiVG space, and a single .scaleEffect
+            // below maps the entire composition to pt. The previous per-leaf scaling pattern
+            // worked only as long as every leaf remembered to scale — the gridOverlay didn't,
+            // so its 109-unit content sat at the top-left of a side×side frame while the
+            // strokes filled it, and the kanji visibly drifted off the grid's center cross.
+            // A uniform single-transform pipeline makes that bug class structurally impossible.
+            ZStack(alignment: .topLeading) {
                 // Background grid for visual reference — center cross + outer box, faint.
                 gridOverlay
                     .stroke(Color.secondary.opacity(0.15), lineWidth: 0.5)
-                    .frame(width: side, height: side)
 
                 ForEach(Array(strokes.enumerated()), id: \.offset) { idx, stroke in
                     if let cg = SVGPathParser.cgPath(from: stroke.pathD) {
-                        let path = Path(cg)
                         // Trim trick: each stroke renders fully when its index is past, partially
                         // when it's the active stroke, and not at all when it's still upcoming.
                         let trimTo: CGFloat = idx < activeIndex ? 1
                                             : (idx == activeIndex ? activeProgress : 0)
-                        path
+                        Path(cg)
                             .trimmedPath(from: 0, to: trimTo)
-                            .stroke(strokeColor(for: idx), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                            .scaleEffect(scale, anchor: .topLeading)
-                            .frame(width: side, height: side, alignment: .topLeading)
+                            .stroke(strokeColor(for: idx),
+                                    style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                     }
                 }
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
+            .frame(width: svgCanvasSize, height: svgCanvasSize, alignment: .topLeading)
+            .scaleEffect(scale, anchor: .topLeading)
+            .frame(width: side, height: side, alignment: .topLeading)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
             .contentShape(Rectangle())
             .onTapGesture { restart() }
             .onAppear { restart() }

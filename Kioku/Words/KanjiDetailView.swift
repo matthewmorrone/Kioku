@@ -32,7 +32,14 @@ struct KanjiDetailView: View {
 
                 if info.onReadings.isEmpty == false {
                     Section("On'yomi") {
-                        Text(info.onReadings.joined(separator: "・"))
+                        // Display-time katakana→hiragana fold: KANJIDIC2 stores on'yomi as
+                        // katakana (per dictionary convention), but the user prefers both on
+                        // and kun readings shown in hiragana. The source data stays canonical;
+                        // only the rendered string is folded. KanaNormalizer is the same helper
+                        // used for furigana rendering of on'yomi.
+                        Text(info.onReadings
+                            .map(KanaNormalizer.katakanaToHiragana)
+                            .joined(separator: "・"))
                             .font(.body)
                             .textSelection(.enabled)
                     }
