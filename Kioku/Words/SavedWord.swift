@@ -13,6 +13,13 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     static let currentSchemaVersion = 1
 
     let canonicalEntryID: Int64
+    // Stable JMdict sequence id for this entry — the rebuild-safe anchor. `entries.id`
+    // (canonicalEntryID) is a build-order autoincrement that shifts when the dictionary is
+    // regenerated; ent_seq does not. Optional because cards saved before this field existed
+    // decode as nil and get it backfilled on first load after the dictionary is ready. Once set,
+    // canonicalEntryID is re-resolved from this on every load, so a rebuild can't silently
+    // re-point the card. See reconcilingStableKey(...).
+    let entSeq: Int64?
     let surface: String
     // Provenance: which notes this word was saved from. Mutable so a word can be detached
     // from a single note ("Remove from <note>") without rebuilding the whole record.
@@ -47,8 +54,9 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // Creates a saved-word value with optional note-list and word-list memberships.
     // `encounteredSurfaces` defaults to `[surface]` so call sites that already pass a
     // surface get a sensible per-surface star state without having to spell it out.
-    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil) {
+    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil, entSeq: Int64? = nil) {
         self.canonicalEntryID = canonicalEntryID
+        self.entSeq = entSeq
         self.surface = surface
         self.sourceNoteIDs = sourceNoteIDs
         self.wordListIDs = wordListIDs
@@ -65,6 +73,8 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         canonicalEntryID = try c.decode(Int64.self, forKey: .canonicalEntryID)
+        // Legacy cards predate the stable key; nil here is backfilled on first post-dictionary load.
+        entSeq = try c.decodeIfPresent(Int64.self, forKey: .entSeq)
         surface = try c.decode(String.self, forKey: .surface)
         sourceNoteIDs = try c.decodeIfPresent([UUID].self, forKey: .sourceNoteIDs) ?? []
         wordListIDs = try c.decodeIfPresent([UUID].self, forKey: .wordListIDs) ?? []
@@ -77,6 +87,42 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         // render path expands this in-memory with the derived lemma so legacy
         // cards starr on both surface and lemma rows — without writing back.
         encounteredSurfaces = try c.decodeIfPresent(Set<String>.self, forKey: .encounteredSurfaces) ?? Set([surface])
+    }
+
+    // Reconciles the stable key against the live dictionary, returning a corrected copy (or self
+    // when nothing changes). If ent_seq is known, canonicalEntryID is re-resolved from it so a
+    // dictionary rebuild can't leave the card pointing at a drifted row id. If ent_seq is missing
+    // (legacy card), it is backfilled from the current canonicalEntryID — taken as-is, never
+    // re-resolved by surface, so an already-mispointed card stays put until manually re-pointed.
+    // Pure: the two lookups are injected as closures so this is testable without a DictionaryStore.
+    func reconcilingStableKey(
+        entSeqForEntryID: (Int64) -> Int64?,
+        entryIDForEntSeq: (Int64) -> Int64?
+    ) -> SavedWord {
+        if let entSeq {
+            let resolved = entryIDForEntSeq(entSeq) ?? canonicalEntryID
+            guard resolved != canonicalEntryID else { return self }
+            return copyWith(canonicalEntryID: resolved, entSeq: entSeq)
+        } else {
+            guard let backfilled = entSeqForEntryID(canonicalEntryID) else { return self }
+            return copyWith(canonicalEntryID: canonicalEntryID, entSeq: backfilled)
+        }
+    }
+
+    // Returns a copy with only the two stable-key fields replaced, preserving everything else.
+    private func copyWith(canonicalEntryID: Int64, entSeq: Int64?) -> SavedWord {
+        SavedWord(
+            canonicalEntryID: canonicalEntryID,
+            surface: surface,
+            sourceNoteIDs: sourceNoteIDs,
+            wordListIDs: wordListIDs,
+            personalNote: personalNote,
+            savedAt: savedAt,
+            selectedSenseIDs: selectedSenseIDs,
+            selectedGlosses: selectedGlosses,
+            encounteredSurfaces: encounteredSurfaces,
+            entSeq: entSeq
+        )
     }
 
     // Keeps saved-word identity stable across surface variants that map to the same dictionary entry.

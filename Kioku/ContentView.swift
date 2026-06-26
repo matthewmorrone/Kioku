@@ -163,6 +163,11 @@ struct ContentView: View {
         // Validate WOTD scheduling after startup has settled rather than on the critical path.
         .onChange(of: readResources.ready) { _, ready in
             guard ready else { return }
+            // Reconcile saved words against the live dictionary's ent_seq maps before anything reads
+            // them — backfills the stable key on legacy cards and corrects any rebuild drift.
+            if let store = readResources.dictionaryStore {
+                wordsStore.enableStableKeyMigration(using: store)
+            }
             scheduleWotdRefresh(reason: "startup validation", delayNanoseconds: 2_000_000_000, forceRefresh: false)
         }
         // Refresh WOTD when the underlying saved-word set changes.
@@ -406,6 +411,12 @@ struct ContentView: View {
             do { try StartupTimer.measure("populateCanonicalEntryIDMap") {
                 try store.populateCanonicalEntryIDMap()
             }} catch { print("populateCanonicalEntryIDMap failed: \(error)") }
+
+            // ent_seq ⇄ row-id maps, so saved words keyed by the stable JMdict ent_seq can resolve
+            // to the current (rebuild-unstable) row id.
+            do { try StartupTimer.measure("populateEntSeqMaps") {
+                try store.populateEntSeqMaps()
+            }} catch { print("populateEntSeqMaps failed: \(error)") }
 
             // Surface → POS bits map. Used by Lexicon's deinflection pruning to gate
             // candidates without per-call SQL — the old hot path hit `posBits(for:)`
