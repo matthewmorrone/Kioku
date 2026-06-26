@@ -107,6 +107,11 @@ struct SettingsView: View {
     @State private var isShowingResetConfirmation = false
     @State private var isShowingImportConfirmation = false
     @State private var pendingImportDocument: AppBackupDocument?
+    // Snapshot of Library/Caches total size, refreshed when Settings appears and after a clear.
+    // Drives the byte readout on the Clear Caches button so the user sees what's about to free.
+    @State private var cachesBytes: Int = 0
+    @State private var isClearingCaches = false
+    @State private var isShowingClearCachesConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -519,6 +524,15 @@ struct SettingsView: View {
                     } label: {
                         Label("Import", systemImage: "square.and.arrow.down")
                     }
+                    Button {
+                        isShowingClearCachesConfirmation = true
+                    } label: {
+                        Label(
+                            cachesBytes > 0 ? "Clear Caches (\(formattedBytes(cachesBytes)))" : "Clear Caches",
+                            systemImage: "internaldrive"
+                        )
+                    }
+                    .disabled(isClearingCaches || cachesBytes == 0)
                     Button(role: .destructive) {
                         isShowingResetConfirmation = true
                     } label: {
@@ -559,6 +573,13 @@ struct SettingsView: View {
         } message: {
             Text("This will permanently erase all notes, saved words, word lists, history, review progress, audio attachments, song breakdowns, and crash logs. App settings are kept. This cannot be undone.")
         }
+        .alert("Clear Caches?", isPresented: $isShowingClearCachesConfirmation) {
+            Button("Clear", role: .destructive) { performCachesClear() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Frees \(formattedBytes(cachesBytes)) of on-disk caches (isolated vocal stems, transcript checkpoints). Saved words, audio, and downloaded alignment models are NOT affected. Aligning a song the first time after this will redo the source-separation step.")
+        }
+        .task { await refreshCachesBytes() }
         .alert("Replace All Data?", isPresented: $isShowingImportConfirmation) {
             Button("Import", role: .destructive) {
                 if let pendingImportDocument {
@@ -728,6 +749,34 @@ struct SettingsView: View {
         transferAlertTitle = title
         transferAlertMessage = message
         isShowingTransferAlert = true
+    }
+
+    // Refreshes the byte readout shown on the Clear Caches button. Scans off the main thread
+    // so a deep cache (thousands of files) doesn't stall the Settings sheet.
+    private func refreshCachesBytes() async {
+        let bytes = await Task.detached(priority: .utility) { CachesCleaner.measure() }.value
+        cachesBytes = bytes
+    }
+
+    // Wipes Library/Caches and reports the freed size via the shared transfer alert.
+    private func performCachesClear() {
+        guard isClearingCaches == false else { return }
+        isClearingCaches = true
+        Task {
+            let freed = await Task.detached(priority: .utility) { CachesCleaner.clearAll() }.value
+            cachesBytes = 0
+            isClearingCaches = false
+            showTransferAlert(title: "Caches Cleared", message: "Freed \(formattedBytes(freed)).")
+        }
+    }
+
+    // Renders a byte count as a human-readable string (e.g. "747 MB", "1.2 GB") — matches what
+    // iPhone Storage shows so the in-app number reads the same as the system view.
+    private func formattedBytes(_ bytes: Int) -> String {
+        let f = ByteCountFormatter()
+        f.allowedUnits = [.useKB, .useMB, .useGB]
+        f.countStyle = .file
+        return f.string(fromByteCount: Int64(bytes))
     }
 
     // Fetches the current notification authorization status and pending count.
