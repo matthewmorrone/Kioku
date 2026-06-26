@@ -15,12 +15,12 @@ import OSLog
 private let logger = Logger(subsystem: "matthewmorrone.SwiftWhisperAlign", category: "HTDemucsModelStore")
 
 public enum HTDemucsModelStore {
-    // HF Hub coordinates. The bytes are NOT pinned to an immutable commit yet — `main` is
-    // mutable on the hub side. Once the archive is published, replace `revision` with the
-    // commit SHA so a tag move can't silently swap the model out from under shipped installs
-    // (same discipline as WhisperDownloadableModel.pinnedRevision).
+    // HF Hub coordinates. `revision` is pinned to the commit SHA of the upload (NOT `main`)
+    // so a future hub-side edit or tag move can't silently swap the model bytes shipping with
+    // installs — same discipline as WhisperDownloadableModel.pinnedRevision. Bump this any
+    // time the model is republished.
     public static let modelId = "matthewmorrone/HTDemucs-CoreML"
-    public static let revision = "main"
+    public static let revision = "1814775e602778cc093cb23138d773645166d724"
     public static let archiveName = "HTDemucsSpec.mlmodelc.zip"
     public static let modelDirName = "HTDemucsSpec.mlmodelc"
 
