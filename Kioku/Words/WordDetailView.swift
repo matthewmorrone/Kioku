@@ -34,6 +34,11 @@ struct WordDetailView: View {
     @State private var sentencesExpanded: Bool = false
     @State private var relatedExpanded: Bool = false
     @State private var presentedKanjiInfo: KanjiInfo? = nil
+    // Tapping a row in Related Words / Synonyms opens a nested WordDetailView for that entry.
+    // We build an ephemeral SavedWord (not persisted) so the existing screen — which is
+    // SavedWord-shaped — can present a related DictionaryEntry without forking a parallel
+    // read-only viewer. iOS stacks sheets, so the user can drill in and back out.
+    @State private var presentedRelatedSavedWord: SavedWord? = nil
     @State var wordComponents: [(surface: String, gloss: String?)] = []
     // Derivation description shown in place of the plain POS line when the saved word is a
     // recognized derived form (弱さ → "Derived noun — from い-adjective 弱い + nominalizing
@@ -532,7 +537,12 @@ struct WordDetailView: View {
                     let shownRelated = relatedExpanded ? relatedItems : Array(relatedItems.prefix(5))
                     Section("Related Words") {
                         ForEach(shownRelated, id: \.entry.entryId) { item in
-                            relatedWordRow(item.entry, relationLabel: item.relationLabel)
+                            Button {
+                                presentedRelatedSavedWord = ephemeralSavedWord(for: item.entry)
+                            } label: {
+                                relatedWordRow(item.entry, relationLabel: item.relationLabel)
+                            }
+                            .buttonStyle(.plain)
                         }
                         if relatedItems.count > 5 {
                             Button(relatedExpanded ? "Show fewer" : "Show \(relatedItems.count - 5) more…") {
@@ -547,7 +557,12 @@ struct WordDetailView: View {
                 if synonymEntries.isEmpty == false {
                     Section("Synonyms") {
                         ForEach(synonymEntries, id: \.entryId) { entry in
-                            relatedWordRow(entry)
+                            Button {
+                                presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
+                            } label: {
+                                relatedWordRow(entry)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -702,6 +717,28 @@ struct WordDetailView: View {
                 KanjiDetailView(info: info, dictionaryStore: dictionaryStore)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+            }
+            // Nested WordDetail for a tapped Related Words / Synonyms row. The presented
+            // SavedWord is ephemeral (built via ephemeralSavedWord(for:)); save / learned
+            // toggles in the nested view still flow through WordsStore against the real
+            // canonicalEntryID, so persisting from inside the nested view works the same as
+            // saving from a fresh open. The same environment objects ride along so the
+            // nested view's review-stats / lists / notes UI lights up identically.
+            .sheet(item: $presentedRelatedSavedWord) { relatedWord in
+                WordDetailView(
+                    word: relatedWord,
+                    reading: nil,
+                    dictionaryStore: dictionaryStore,
+                    segmenter: segmenter,
+                    surfaceReadingData: surfaceReadingData,
+                    kanjiReadingFallback: kanjiReadingFallback
+                )
+                .environmentObject(wordsStore)
+                .environmentObject(wordListsStore)
+                .environmentObject(notesStore)
+                .environmentObject(reviewStore)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
             // After a homonym re-point, loadDisplayData reorders the now-saved entry to the front
             // of allDisplayData. Waiting for that first-entry flip (rather than scrolling on the tap
