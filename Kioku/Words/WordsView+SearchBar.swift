@@ -126,16 +126,17 @@ extension WordsView {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search Japanese or English", text: $searchText)
-                    .focused($isSearchFieldFocused)
-                    .autocorrectionDisabled(true)
-                    .textInputAutocapitalization(.never)
-                    .submitLabel(.search)
-                    .onSubmit {
+                JapaneseInputTextField(
+                    text: $searchText,
+                    isFocused: $isSearchFieldFocused,
+                    placeholder: "Search Japanese or English",
+                    dictionaryStore: dictionaryStore,
+                    onSubmit: {
                         // Explicit Return/Search records the phrase as a .query history
                         // entry. HistoryStore.record(query:) handles dedup + bump-to-top.
                         historyStore.record(query: searchText)
                     }
+                )
                 if searchText.isEmpty == false {
                     Button {
                         searchText = ""

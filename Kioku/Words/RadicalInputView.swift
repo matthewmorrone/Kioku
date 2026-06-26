@@ -1,12 +1,27 @@
 import SwiftUI
+import Combine
+
+extension Notification.Name {
+    // Posted by JapaneseInputTextField's accessory ✕ when the active mode is radical, so the
+    // hosted RadicalInputView can wipe its current radical selection without the Coordinator
+    // needing direct access to the view's @State.
+    static let kiokuRadicalClearRequested = Notification.Name("kiokuRadicalClearRequested")
+}
 
 // Multi-radical kanji lookup grid. The user selects one or more radical components; the result
 // list shows kanji that contain ALL of them. Radicals that can't co-occur with the current
 // selection (no kanji contains all selected + this one) dim out, matching Nihongo's affordance.
-// Owned by WordsView; presented as a sheet from the toolbar.
+// Owned by WordsView; surfaced either as a modal sheet (overflow menu) or as the inputView of
+// JapaneseInputTextField (the 部 toggle). Picking a kanji calls onEmit so the host appends it to
+// the destination text; the sheet stays open for further picks, matching the inline behavior.
+// The chrome parameter chooses whether to wrap in a NavigationStack — modal sheets want it,
+// inline inputView hosts don't.
 struct RadicalInputView: View {
+    enum Chrome { case navigation, none }
+
     let dictionaryStore: DictionaryStore?
-    let onSelectKanji: (String) -> Void
+    let onEmit: (String) -> Void
+    var chrome: Chrome = .navigation
 
     @State private var allRadicals: [Radical] = []
     @State private var usableRadicals: Set<String> = []
@@ -22,24 +37,38 @@ struct RadicalInputView: View {
     )
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Radicals")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Close") { dismiss() }
-                    }
-                    if selected.isEmpty == false {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Clear") {
-                                selected = []
-                                Task { await refresh() }
+        switch chrome {
+        case .navigation:
+            NavigationStack {
+                content
+                    .navigationTitle("Radicals")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close") { dismiss() }
+                        }
+                        if selected.isEmpty == false {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Clear") {
+                                    selected = []
+                                    Task { await refresh() }
+                                }
                             }
                         }
                     }
-                }
+                    .task { await initialLoad() }
+            }
+        case .none:
+            // Inline (inputView) mode lacks the NavigationStack chrome; clearing the radical
+            // selection is handled by the JapaneseInputTextField accessory ✕ button, which posts
+            // kiokuRadicalClearRequested for this view to observe.
+            content
                 .task { await initialLoad() }
+                .ignoresSafeArea(.all, edges: .top)
+                .onReceive(NotificationCenter.default.publisher(for: .kiokuRadicalClearRequested)) { _ in
+                    selected = []
+                    Task { await refresh() }
+                }
         }
     }
 
@@ -106,8 +135,7 @@ struct RadicalInputView: View {
                     HStack(spacing: 4) {
                         ForEach(kanjiResults, id: \.self) { kanji in
                             Button {
-                                onSelectKanji(kanji)
-                                dismiss()
+                                onEmit(kanji)
                             } label: {
                                 Text(kanji)
                                     .font(.title2)

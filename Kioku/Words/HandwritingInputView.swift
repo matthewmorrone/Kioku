@@ -1,16 +1,29 @@
 import SwiftUI
 import PencilKit
+import Combine
 import Zinnia_Swift
+
+extension Notification.Name {
+    // Posted by JapaneseInputTextField's accessory ✕ when the active mode is handwriting, so the
+    // hosted HandwritingInputView can wipe its drawing without the host needing direct access to
+    // the view's @State.
+    static let kiokuHandwritingClearRequested = Notification.Name("kiokuHandwritingClearRequested")
+}
 
 // Handwriting input sheet. User draws a character with a finger or Apple Pencil; strokes are
 // passed to the bundled Tegaki/Zinnia Japanese model and top candidates appear as tappable chips.
-// Owned by WordsView; presented as a 2/3-height sheet from the toolbar pencil icon, so the
-// search field stays visible above. Tapping a candidate appends it to the search field LIVE
-// (the sheet stays up for the next character); the toolbar backspace removes the last one.
+// Owned by WordsView; surfaced either as a modal sheet (overflow menu) or as the inputView of
+// JapaneseInputTextField (the ✋ toggle). Tapping a candidate calls onEmit so the host appends
+// it to the destination text; the sheet stays up for the next character. The chrome parameter
+// chooses whether to wrap in a NavigationStack with title + Close — modal sheets want it; inline
+// inputView hosts don't (there's nothing to dismiss, and the chrome wastes keyboard-area space).
 struct HandwritingInputView: View {
-    let onSelectCharacter: (String) -> Void
+    enum Chrome { case navigation, none }
+
+    let onEmit: (String) -> Void
     // Removes the last character from the destination text field — backspace for a wrong pick.
     var onDeleteBackward: (() -> Void)? = nil
+    var chrome: Chrome = .navigation
 
     @State private var drawing = PKDrawing()
     @State private var canvasSize: CGSize = CGSize(width: 256, height: 256)
@@ -20,44 +33,68 @@ struct HandwritingInputView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                candidateStrip
-                Divider()
-                canvas
-                    .background(Color(.secondarySystemBackground))
-                actionBar
-            }
-            .navigationTitle("Handwriting")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        onDeleteBackward?()
-                    } label: {
-                        Image(systemName: "delete.left")
+        switch chrome {
+        case .navigation:
+            NavigationStack {
+                coreBody
+                    .navigationTitle("Handwriting")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close") { dismiss() }
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                onDeleteBackward?()
+                            } label: {
+                                Image(systemName: "delete.left")
+                            }
+                            .accessibilityLabel("Delete last character")
+                        }
                     }
-                    .accessibilityLabel("Delete last character")
-                }
             }
-            .task { loadRecognizer() }
-            // Auto-recognize after every stroke: PencilKit's drawingDidChange fires once per
-            // completed stroke, and Zinnia classification is fast enough to run inline, so
-            // candidates refresh live as the character takes shape — no Recognize button.
-            .onChange(of: drawing) {
-                if drawing.strokes.isEmpty {
-                    results = []
-                } else {
-                    recognize()
-                }
-            }
+        case .none:
+            coreBody
+                .ignoresSafeArea(.all, edges: .top)
         }
     }
 
-    // Top strip: tappable kanji candidates, or status text when nothing has been drawn yet.
+    // The shared inner body — strip + canvas + action bar — used in both modal and inline modes.
+    // Lifecycle hooks (recognition task + onChange-driven recognize) live here so they run in
+    // either presentation context. The outer frame with .top alignment ensures the VStack
+    // anchors to the top of available space instead of centering vertically (SwiftUI's default
+    // behavior when content's natural size is smaller than the proposed height).
+    private var coreBody: some View {
+        VStack(spacing: 0) {
+            candidateStrip
+            Divider()
+            canvas
+                .background(Color(.secondarySystemBackground))
+            actionBar
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .task { loadRecognizer() }
+        // Auto-recognize after every stroke: PencilKit's drawingDidChange fires once per
+        // completed stroke, and Zinnia classification is fast enough to run inline, so
+        // candidates refresh live as the character takes shape — no Recognize button.
+        .onChange(of: drawing) {
+            if drawing.strokes.isEmpty {
+                results = []
+            } else {
+                recognize()
+            }
+        }
+        // Inline-mode ✕ accessory clears the canvas via this notification — keeps the host
+        // (JapaneseInputTextField's Coordinator) out of SwiftUI's state graph.
+        .onReceive(NotificationCenter.default.publisher(for: .kiokuHandwritingClearRequested)) { _ in
+            drawing = PKDrawing()
+            results = []
+        }
+    }
+
+    // Top strip: tappable kanji candidates. Renders an empty band before any strokes are drawn
+    // (no placeholder text — the canvas itself is the affordance), the "Recognizing…" status
+    // briefly while classification runs, or the candidate chips once results land.
     @ViewBuilder
     private var candidateStrip: some View {
         Group {
@@ -66,23 +103,26 @@ struct HandwritingInputView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .padding(.horizontal, 12)
+            } else if drawing.strokes.isEmpty {
+                // Fixed-height spacer that mirrors the strip's natural size when populated, so the
+                // canvas doesn't visibly shrink the moment recognition results land.
+                Color.clear.frame(height: 64)
             } else if results.isEmpty {
-                Text(drawing.strokes.isEmpty
-                     ? "Draw a character below."
-                     : "Recognizing…")
+                Text("Recognizing…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 64)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(Array(results.prefix(20).enumerated()), id: \.offset) { _, candidate in
                             Button {
-                                // Append straight into the search field (visible above the
-                                // 2/3-height sheet) and clear the canvas for the next character.
-                                onSelectCharacter(candidate.character)
+                                // Append straight into the destination text field and clear the
+                                // canvas for the next character. Host owns the append semantics.
+                                onEmit(candidate.character)
                                 drawing = PKDrawing()
                                 results = []
                             } label: {
@@ -101,6 +141,7 @@ struct HandwritingInputView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                 }
+                .frame(height: 64)
             }
         }
         .background(Color(.systemBackground))
@@ -125,35 +166,30 @@ struct HandwritingInputView: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .aspectRatio(1, contentMode: .fit)
-        .padding(16)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 
-    // Bottom action bar — Clear wipes the drawing. (Recognition runs automatically after every
-    // stroke now, so the Recognize button is retired.)
+    // Bottom action bar — Clear wipes the drawing. Only rendered in modal (.navigation) mode;
+    // inline mode delegates clearing to the JapaneseInputTextField accessory ✕ button, which
+    // posts kiokuHandwritingClearRequested.
     @ViewBuilder
     private var actionBar: some View {
-        HStack(spacing: 12) {
-            Button(role: .destructive) {
-                drawing = PKDrawing()
-                results = []
-            } label: {
-                Label("Clear", systemImage: "trash")
-                    .frame(maxWidth: .infinity)
+        if chrome == .navigation {
+            HStack(spacing: 12) {
+                Button(role: .destructive) {
+                    drawing = PKDrawing()
+                    results = []
+                } label: {
+                    Label("Clear", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(drawing.strokes.isEmpty)
             }
-            .buttonStyle(.bordered)
-            .disabled(drawing.strokes.isEmpty)
-
-            // Button {
-            //     recognize()
-            // } label: {
-            //     Label("Recognize", systemImage: "wand.and.stars")
-            //         .frame(maxWidth: .infinity)
-            // }
-            // .buttonStyle(.borderedProminent)
-            // .disabled(drawing.strokes.isEmpty || recognizer == nil)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     // Loads the bundled Tegaki Japanese model once. Surfaces a user-facing error if the file is
@@ -208,22 +244,29 @@ struct PencilKitCanvas: UIViewRepresentable {
     @Binding var canvasSize: CGSize
 
     // Builds the canvas view, enables finger input (PencilKit defaults to Pencil-only on iPad),
-    // and wires the coordinator as the delegate so we get drawingDidChange callbacks.
+    // and wires the coordinator as the delegate so we get drawingDidChange callbacks. Pen color
+    // is a hardcoded saturated blue — dynamic .label / colorScheme detection is unreliable inside
+    // the keyboard window (UIKit and SwiftUI trait propagation can disagree, leaving strokes
+    // invisible against the matching-tone background). systemBlue stays high-contrast on both
+    // light and dark canvases.
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
         canvas.drawing = drawing
         canvas.delegate = context.coordinator
         canvas.drawingPolicy = .anyInput
-        canvas.tool = PKInkingTool(.pen, color: .label, width: 10)
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
+        canvas.tool = PKInkingTool(.pen, color: .systemBlue, width: 10)
         return canvas
     }
 
-    // Sync external drawing changes (e.g. Clear button) into the canvas, and publish the
-    // current bounds for the recognizer's canvasSize.
+    // Sync external drawing changes (e.g. Clear button) into the canvas and publish current bounds
+    // for the recognizer's canvasSize. PKDrawing equality is reference-based here, which made a
+    // freshly-allocated empty PKDrawing() (from Clear) look "different" enough to assign but the
+    // assignment was being optimized away in some PencilKit builds — compare stroke counts
+    // explicitly so a clear-to-empty always triggers a re-render.
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
-        if uiView.drawing != drawing {
+        if uiView.drawing.strokes.count != drawing.strokes.count {
             uiView.drawing = drawing
         }
         DispatchQueue.main.async {

@@ -21,6 +21,7 @@ struct SubtitleSearchView: View {
     private let provider = JimakuProvider()
 
     @State private var title = ""
+    @State private var isTitleFocused = false
     @State private var episodeText = ""
     @State private var results: [SubtitleSearchResult] = []
     @State private var isSearching = false
@@ -99,10 +100,14 @@ struct SubtitleSearchView: View {
 
     private var searchControls: some View {
         VStack(spacing: 8) {
-            TextField("Show title", text: $title)
-                .textFieldStyle(.roundedBorder)
-                .submitLabel(.search)
-                .onSubmit { runSearch() }
+            JapaneseInputTextField(
+                text: $title,
+                isFocused: $isTitleFocused,
+                placeholder: "Show title",
+                dictionaryStore: dictionaryStore,
+                onSubmit: { runSearch() },
+                border: .roundedRect
+            )
             TextField("Episode (optional)", text: $episodeText)
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.numberPad)

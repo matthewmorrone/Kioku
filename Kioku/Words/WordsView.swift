@@ -128,8 +128,9 @@ struct WordsView: View {
     @State var isSearching = false
     // Controls keyboard focus on the custom search field. Toggled programmatically by
     // the background tap-to-dismiss handler so we don't depend on .searchable's auto-
-    // injected Cancel button.
-    @FocusState var isSearchFieldFocused: Bool
+    // injected Cancel button. Plain @State (not @FocusState) because JapaneseInputTextField
+    // is a UIViewRepresentable that drives first-responder via Binding<Bool>.
+    @State var isSearchFieldFocused: Bool = false
     // Materialized dictionary entries keyed by canonical entry id, populated on view
     // appear and whenever the history list grows. Lets historyContent reuse the
     // entryRow layout (kanji+reading+gloss+star) without per-row SQL.
@@ -278,7 +279,7 @@ struct WordsView: View {
                 // Opens at ~2/3 height so the search field / results above stay visible while
                 // drawing; still draggable to full height for more canvas room.
                 HandwritingInputView(
-                    onSelectCharacter: handleHandwritingSelect,
+                    onEmit: handleEmitToSearch,
                     onDeleteBackward: handleHandwritingDeleteBackward
                 )
                     .presentationDetents([.fraction(0.66), .large])
@@ -312,7 +313,7 @@ struct WordsView: View {
             .sheet(isPresented: $isRadicalInputPresented) {
                 RadicalInputView(
                     dictionaryStore: dictionaryStore,
-                    onSelectKanji: handleRadicalSelectKanji
+                    onEmit: handleEmitToSearch
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)

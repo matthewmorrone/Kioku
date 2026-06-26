@@ -232,19 +232,12 @@ extension WordsView {
         )
     }
 
-    // Routes a picked kanji from the radical input sheet into the search field on the Words tab.
-    func handleRadicalSelectKanji(_ kanji: String) {
-        isRadicalInputPresented = false
-        searchText = kanji
-    }
-
-    // Routes a recognized character from the handwriting sheet into the search field.
-    func handleHandwritingSelect(_ character: String) {
-        // Append (don't replace) and keep the sheet up: characters compose directly in the
-        // search field, visible above the 2/3-height handwriting sheet.
-        // isHandwritingPresented = false
-        // searchText = character
-        searchText += character
+    // Single emit handler shared by radical and handwriting input — both modal and inline
+    // (JapaneseInputTextField) routes call this so multi-character composition works the same
+    // way everywhere. The sheet stays open; users close it explicitly (modal: Close button;
+    // inline: tap ⌨ on the mode bar).
+    func handleEmitToSearch(_ emitted: String) {
+        searchText += emitted
     }
 
     // Backspace from the handwriting sheet — undoes the last appended character.
