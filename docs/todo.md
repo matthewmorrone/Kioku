@@ -250,6 +250,10 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 - [ ] Romaji display option (romaji→kana *search* shipped; *display* toggle not implemented)
 - [x] alternateSpellings(): include kanji variants — extracted from `WordDetailView` to `Kioku/Words/WordVariants.swift` so it's unit-testable; now surfaces both kanji-form and kana-form alternates (was kana-only), filters out `oK`/`sK`/`ok`/`sk` archaic + search-only forms, keeps irregular (`iK`/`ik`) variants. Pinned by `WordVariantsTests.swift` (6 tests). The previous `count > 1` noise-suppression gate is dropped — for kanji-bearing surfaces, even a single alternate is informative now that kanji variants are included. Pure-kana saved surfaces still return [] (false-uniqueness guard preserved).
 - [ ] CSV import: explicit option to fill kanji from the dictionary when the surface column is missing (today the importer silently substitutes kanji even when only kana was provided)
+- [ ] **Related words should be links to those words** — in the word detail's Related Words
+      list, each entry is currently static text. Make each tappable to navigate to that word's
+      own detail (push `WordDetailView` for the related entry), so related forms / kanji-family
+      / synonyms are browsable, not dead-ends.
 
 ## Study & Review
 
@@ -320,6 +324,13 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       (partial: `KanjiInfo` has radicals + stroke count; component tree not confirmed)
 - [x] Handwriting input and stroke order (Zinnia handwriting recognition + KanjiVG stroke-order animation shipped; radical input also shipped)
 - [ ] Kanji of the day feature
+- [ ] **Render on'yomi in hiragana, not katakana** — kanji detail follows the dictionary
+      convention of on'yomi in katakana / kun'yomi in hiragana; user prefers on'yomi shown in
+      hiragana too. Convert at display time (KANJIDIC2 stores on'yomi as katakana) so the source
+      data stays canonical; apply wherever kanji readings render (kanji detail, component views).
+- [ ] **Examine the `shouji` project for fun kanji-decoration ideas** — review the shouji
+      project for inspiration on playful/decorative kanji rendering (radical highlighting, stroke
+      embellishments, etc.) worth adapting into Kioku's kanji views.
 
 ## Audio & Alignment
 

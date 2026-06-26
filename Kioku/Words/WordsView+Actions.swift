@@ -33,6 +33,10 @@ extension WordsView {
             filtered = filtered.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
         case .neverReviewed:
             filtered = filtered.filter { reviewStore.stats[$0.canonicalEntryID] == nil }
+        case .learned:
+            filtered = filtered.filter { reviewStore.isLearned(id: $0.canonicalEntryID) }
+        case .notLearned:
+            filtered = filtered.filter { reviewStore.isNotLearned(id: $0.canonicalEntryID) }
         }
 
         if let jlptLevel {

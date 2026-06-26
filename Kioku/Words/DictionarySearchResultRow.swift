@@ -58,7 +58,7 @@ struct DictionarySearchResultRow: View {
                 onToggleSave()
             } label: {
                 Image(systemName: isSaved ? "star.fill" : "star")
-                    .foregroundStyle(japaneseTheme ? Color.white : (isSaved ? Color.yellow : Color.secondary))
+                    .foregroundStyle(japaneseTheme ? Color.white : (isSaved ? Color.primary : Color.secondary))
                     .font(.system(size: 16, weight: .semibold))
             }
             .buttonStyle(.plain)

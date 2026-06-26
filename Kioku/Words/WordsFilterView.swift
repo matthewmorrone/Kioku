@@ -101,6 +101,16 @@ struct WordsFilterView: View {
             Label(neverReviewedLabel, systemImage: active ? "checkmark" : "circle.dashed")
         }
 
+        Button { tapStatScope(.learned) } label: {
+            let active = statScope == .learned
+            Label(learnedLabel, systemImage: active ? "checkmark" : "checkmark.circle")
+        }
+
+        Button { tapStatScope(.notLearned) } label: {
+            let active = statScope == .notLearned
+            Label(notLearnedLabel, systemImage: active ? "checkmark" : "questionmark.circle")
+        }
+
         Button { tapRecentSearches() } label: {
             Label("Recent Searches", systemImage: showRecentSearches ? "checkmark" : "magnifyingglass")
         }
@@ -187,6 +197,8 @@ struct WordsFilterView: View {
         case .markedWrong:   return "Marked Wrong"
         case .dueForReview:  return "Due for Review"
         case .neverReviewed: return "Never Reviewed"
+        case .learned:       return "Learned"
+        case .notLearned:    return "Not Learned"
         case .none:          return "Favorites"
         }
     }
@@ -205,6 +217,16 @@ struct WordsFilterView: View {
     private var neverReviewedLabel: String {
         let count = wordsStore.words.filter { reviewStore.stats[$0.canonicalEntryID] == nil }.count
         return count > 0 ? "Never Reviewed (\(count))" : "Never Reviewed"
+    }
+
+    private var learnedLabel: String {
+        let count = wordsStore.words.filter { reviewStore.isLearned(id: $0.canonicalEntryID) }.count
+        return count > 0 ? "Learned (\(count))" : "Learned"
+    }
+
+    private var notLearnedLabel: String {
+        let count = wordsStore.words.filter { reviewStore.isNotLearned(id: $0.canonicalEntryID) }.count
+        return count > 0 ? "Not Learned (\(count))" : "Not Learned"
     }
 
     // MARK: - Scope selection (single-value; tapping the active scope returns to History)

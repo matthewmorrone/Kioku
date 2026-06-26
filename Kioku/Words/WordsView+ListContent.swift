@@ -21,6 +21,7 @@ extension WordsView {
         onTap: @escaping () -> Void
     ) -> some View {
         let saved = isSavedByID(entryID)
+        let learnedState = reviewStore.learnedState(for: entryID)
         // Respect the form the word was saved/looked up as: a pure-kana surface (あなた, たとえ)
         // means the user used the kana word — showing the entry's first kanji form (貴方, 例え)
         // attaches script they never saw. Kanji-bearing surfaces keep the kanji headword.
@@ -43,7 +44,7 @@ extension WordsView {
                     speakRow(reading: reading, headword: headword, surface: surface)
                 } label: {
                     Image(systemName: "speaker.wave.2.fill")
-                        .foregroundStyle(japaneseTheme ? Color.white : Color.accentColor)
+                        .foregroundStyle(japaneseTheme ? Color.white : Color.primary)
                         .font(.system(size: 15, weight: .semibold))
                 }
                 .buttonStyle(.plain)
@@ -84,12 +85,18 @@ extension WordsView {
                 Button {
                     toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
                 } label: {
-                    Image(systemName: saved ? "star.fill" : "star")
-                        .foregroundStyle(japaneseTheme ? Color.white : (saved ? Color.yellow : Color.secondary))
+                    // The mark rides on the star slot: checkmark when learned, question mark when
+                    // explicitly not-learned, plain star otherwise (the word stays saved either way).
+                    // Tapping toggles save; the mark is set via the long-press context menu.
+                    Image(systemName: learnedIcon(state: learnedState, saved: saved))
+                        .foregroundStyle(learnedIconColor(state: learnedState, saved: saved))
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave" : "Save")
+                .contextMenu {
+                    learnedMenuButtons(entryID: entryID)
+                }
             }
         }
         .padding(.vertical, 4)
@@ -98,6 +105,50 @@ extension WordsView {
         .contextMenu {
             wordRowMenu(entryID: entryID, surface: surface, entry: entry, onTap: onTap)
         }
+    }
+
+    // MARK: - Learned state (star ↔ checkbox ↔ question mark)
+
+    // SF Symbol for the trailing toggle, by mark: a plain checkmark for learned, a plain
+    // question mark for explicitly not-learned, else the save star (filled when saved).
+    func learnedIcon(state: LearnedState, saved: Bool) -> String {
+        switch state {
+        case .learned:    return "checkmark"
+        case .notLearned: return "questionmark"
+        case .unmarked:   return saved ? "star.fill" : "star"
+        }
+    }
+
+    // Neutral (monochrome) icon color — no more yellow/blue. White under the Japanese theme,
+    // primary for any filled state (learned/not-learned/saved), secondary for the empty star.
+    func learnedIconColor(state: LearnedState, saved: Bool) -> Color {
+        if japaneseTheme { return .white }
+        if state != .unmarked || saved { return .primary }
+        return .secondary
+    }
+
+    // The three status actions for the star's long-press context menu: each is a direct
+    // "set to this" (no toggle — the star slot already shows the current mark) with its own
+    // plain glyph. Favorite is the way back to a plain star without unsaving.
+    @ViewBuilder
+    func learnedMenuButtons(entryID: Int64) -> some View {
+        Button { setLearnedDeferred(.unmarked, entryID) } label: {
+            Label("Favorite", systemImage: "star")
+        }
+        Button { setLearnedDeferred(.learned, entryID) } label: {
+            Label("Learned", systemImage: "checkmark")
+        }
+        Button { setLearnedDeferred(.notLearned, entryID) } label: {
+            Label("Not Learned", systemImage: "questionmark")
+        }
+    }
+
+    // Applies the mark on the next runloop instead of synchronously inside the menu action.
+    // A synchronous write lands while UIKit is still tearing the context menu down, so the
+    // resulting re-render queues behind that work and the glyph only flips a beat after the
+    // menu is gone. Deferring lets the teardown finish, then the icon updates immediately.
+    func setLearnedDeferred(_ state: LearnedState, _ entryID: Int64) {
+        DispatchQueue.main.async { reviewStore.setLearnedState(state, for: entryID) }
     }
 
     // Speaks the row's Japanese pronunciation via ja-JP TTS. Prefers the kana reading (least
