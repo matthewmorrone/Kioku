@@ -24,6 +24,9 @@ public enum StemTranscriber {
         regions: [(start: Double, end: Double)]? = nil,
         pieceSec: Double = 24,
         language: String = "Japanese",
+        // Audio identity (VocalStemCache.identityKey) enabling the resumable per-piece checkpoint.
+        // nil disables checkpointing (diagnostic callers) and transcribes fresh.
+        cacheIdentity: String? = nil,
         progress: (@Sendable (String) -> Void)? = nil,
         onFraction: (@Sendable (Double) -> Void)? = nil
     ) async throws -> [(start: Double, end: Double, text: String)] {
@@ -34,44 +37,83 @@ public enum StemTranscriber {
         // No overlap: denser/overlapping pieces measured as a wash (the residual error sits in a
         // stretch that transcribes as garbage at any resolution) and add jetsam risk. ~9 pieces.
         let step = pieceSec
-        // Estimated chunk count for a 0–1 progress signal (onFraction). Approximate — the last chunk
-        // in each region is clamped to the region end — but good enough for a progress bar.
-        let totalChunks = max(1, regs.reduce(0) { acc, reg in
-            let d = min(reg.end, totalSec) - max(0, reg.start)
-            return acc + (d > 0.5 ? Int(ceil(d / step)) : 0)
-        })
-        var doneChunks = 0
 
-        progress?("loading ASR…")
-        // Pin to a non-purgeable Application Support path so a Caches eviction can't strand a
-        // mid-transfer download (see ModelStorage for the full rationale).
-        let model = try await Qwen3ASRModel.fromPretrained(
-            modelId: ModelStorage.asrModelId,
-            cacheDir: try ModelStorage.directory(for: ModelStorage.asrModelId)
-        )
-
-        var out: [(start: Double, end: Double, text: String)] = []
+        // Expected piece boundaries, computed up front so progress, resume-matching, and the
+        // "fully cached → skip the model load" shortcut all share ONE source of truth.
+        var pieces: [(t0: Double, t1: Double)] = []
         for reg in regs {
             var t = max(0, reg.start)
             let regEnd = min(reg.end, totalSec)
             while t < regEnd - 0.5 {
                 let t1 = min(t + pieceSec, regEnd)
-                let s = Int(t * sr), e = min(stem.count, Int(t1 * sr))
-                if e > s {
-                    let piece = Array(stem[s..<e])
-                    let text = model.transcribe(audio: piece, sampleRate: sampleRate, language: language)
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    MLX.GPU.clearCache()
-                    progress?("\(Int(t))–\(Int(t1))s → \(text.prefix(16))")
-                    if text.isEmpty == false && text.hasPrefix("[") == false {   // skip "[error …]" sentinels
-                        out.append((start: t, end: t1, text: text))
-                    }
-                }
-                doneChunks += 1
-                onFraction?(min(1.0, Double(doneChunks) / Double(totalChunks)))
+                pieces.append((t, t1))
                 if t1 >= regEnd { break }
                 t += step
             }
+        }
+        let totalChunks = max(1, pieces.count)
+
+        // Resume: pull any pieces a prior (killed) run already transcribed, keyed by rounded start ms.
+        // A cache hit replays its progress instantly; a full hit returns before the ~60 s model load.
+        var cached: [Int: TranscriptCache.Piece] = [:]
+        if let id = cacheIdentity {
+            for p in TranscriptCache.load(identity: id, regions: regs, pieceSec: pieceSec) {
+                cached[Int((p.start * 1000).rounded())] = p
+            }
+            if cached.isEmpty == false {
+                progress?("resuming: \(cached.count)/\(totalChunks) pieces cached")
+            }
+        }
+        let key: (Double) -> Int = { Int(($0 * 1000).rounded()) }
+        let allCached = cacheIdentity != nil && pieces.allSatisfy { cached[key($0.t0)] != nil }
+
+        // Accumulated transcript, seeded from cache and persisted after each newly-heard piece so a
+        // kill at piece N resumes at piece N. Keep ordering by build time (regions are time-ordered).
+        var collected: [TranscriptCache.Piece] = []
+        var out: [(start: Double, end: Double, text: String)] = []
+        func keep(_ p: TranscriptCache.Piece) {
+            collected.append(p)
+            if p.text.isEmpty == false && p.text.hasPrefix("[") == false { out.append((p.start, p.end, p.text)) }
+        }
+
+        // Lazily load the model only if at least one piece must actually be transcribed.
+        var model: Qwen3ASRModel?
+        func ensureModel() async throws -> Qwen3ASRModel {
+            if let m = model { return m }
+            progress?("loading ASR…")
+            // Pin to a non-purgeable Application Support path so a Caches eviction can't strand a
+            // mid-transfer download (see ModelStorage for the full rationale).
+            let m = try await Qwen3ASRModel.fromPretrained(
+                modelId: ModelStorage.asrModelId,
+                cacheDir: try ModelStorage.directory(for: ModelStorage.asrModelId)
+            )
+            model = m
+            return m
+        }
+        if allCached { progress?("transcript fully cached — skipping ASR load") }
+
+        var doneChunks = 0
+        for (t0, t1) in pieces {
+            if let hit = cached[key(t0)] {
+                keep(hit)   // resumed piece — no model work, no re-persist needed
+            } else {
+                let s = Int(t0 * sr), e = min(stem.count, Int(t1 * sr))
+                if e > s {
+                    let piece = Array(stem[s..<e])
+                    let text = (try await ensureModel())
+                        .transcribe(audio: piece, sampleRate: sampleRate, language: language)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    MLX.GPU.clearCache()
+                    progress?("\(Int(t0))–\(Int(t1))s → \(text.prefix(16))")
+                    keep(TranscriptCache.Piece(start: t0, end: t1, text: text))
+                    // Checkpoint the instant the piece lands, so this work survives a kill.
+                    if let id = cacheIdentity {
+                        TranscriptCache.store(collected, identity: id, regions: regs, pieceSec: pieceSec)
+                    }
+                }
+            }
+            doneChunks += 1
+            onFraction?(min(1.0, Double(doneChunks) / Double(totalChunks)))
         }
         return out
     }

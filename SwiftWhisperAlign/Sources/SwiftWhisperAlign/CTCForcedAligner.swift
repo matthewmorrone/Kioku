@@ -224,9 +224,12 @@ public struct CTCForcedAligner {
                                   userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
                 }
                 Self.breadcrumb("isolated voice \(mono.count) frames (HTDemucs)")
+                #if DEBUG
                 // [DEBUG] Save the isolated stem so it can be played from Files → On My iPhone →
-                // Kioku → isolated-vocal.wav to judge isolation quality + what's in the intro.
+                // Kioku → isolated-vocal.wav to judge isolation quality + what's in the intro. Gated
+                // out of release: it's a 19 MB write per align with no user-facing purpose.
                 Self.saveDebugWAV(mono, sampleRate: 44_100, name: "isolated-vocal.wav")
+                #endif
                 // Persist the stem so the next Re-align of this exact audio skips isolation.
                 VocalStemCache.store(mono, for: input.audioURL)
                 Self.breadcrumb("vocal stem cached")
@@ -272,7 +275,21 @@ public struct CTCForcedAligner {
             onStage?("Transcribing vocals for anchors…")
             let phrases = (try? await StemTranscriber.segments(
                 stem: trimmedVocal, sampleRate: 44_100, regions: vadSegs,
-                progress: { Self.breadcrumb("anchor-asr: \($0)") })) ?? []
+                // Resumable checkpoint: a kill mid-transcription (the jetsam-prone stage) resumes from
+                // the last completed piece instead of redoing the ~60 s load + every piece. Keyed by
+                // audio identity, so it survives across app launches and is reused by later re-aligns.
+                cacheIdentity: VocalStemCache.identityKey(for: input.audioURL),
+                progress: { msg in
+                    Self.breadcrumb("anchor-asr: \(msg)")
+                    // The ASR model load is a ~60 s opaque step BEFORE any piece, so onFraction can't
+                    // cover it — surface it explicitly so the label isn't frozen at a bare "…".
+                    if msg.hasPrefix("loading") { onStage?("Transcribing vocals for anchors… (loading model)") }
+                },
+                // Per-phase % in the stage label, matching the isolation/alignment stages. Fires once
+                // per ~24 s piece (so it starts at the first piece's fraction, never a stuck 0%).
+                onFraction: { frac in
+                    onStage?("Transcribing vocals for anchors… \(Int((frac * 100).rounded()))%")
+                })) ?? []
             Self.breadcrumb("transcribed \(phrases.count) pieces over \(vadSegs.count) regions")
             anchors = Self.extractAnchors(lines: input.lines, phrases: phrases, vadSegs: vadSegs)
             MLX.GPU.clearCache()   // free the ASR model's GPU buffers before the aligner allocates
@@ -281,12 +298,32 @@ public struct CTCForcedAligner {
             if cancellationCheck?() == true { throw CancellationError() }
         }
 
-        // Downloads the CTC model on first use; cached thereafter (in Application Support,
-        // not the purgeable Caches dir — see ModelStorage).
+        // Downloads the CTC model on first use; cached thereafter in Application Support (not the
+        // purgeable Caches dir — see ModelStorage). Surface the staged progress to the UI so this
+        // isn't a frozen "Preparing alignment model…" through a ~400 MB download + weight load,
+        // and breadcrumb the milestones (with availMem) so a run that dies here reveals WHETHER it
+        // died mid-download (network) or mid-weight-load (memory). Skip the high-frequency
+        // download-weights ticks.
         onStage?("Preparing alignment model…")
+        Self.breadcrumb("aligner: fromPretrained begin")
         let aligner = try await Qwen3ForcedAligner.fromPretrained(
             modelId: ModelStorage.forcedAlignerModelId,
-            cacheDir: try ModelStorage.directory(for: ModelStorage.forcedAlignerModelId)
+            cacheDir: try ModelStorage.directory(for: ModelStorage.forcedAlignerModelId),
+            progressHandler: { frac, stage in
+                if stage.hasPrefix("Downloading") {
+                    // The downloader reports 0…0.8 of the overall bar; rescale to a clean 0–100% of the
+                    // download so the label reads as its own stage, not a stuttering "Preparing… 80%".
+                    let pct = Int((min(frac, 0.8) / 0.8 * 100).rounded())
+                    onStage?("Downloading alignment model… \(pct)%")
+                } else {
+                    onStage?("Preparing alignment model…")   // tokenizer + weight load: fast, no useful %
+                }
+                // Breadcrumb milestones (with availMem) — skip the high-frequency download-weights ticks —
+                // so a run that dies here shows WHETHER it died mid-download (network) or mid-load (memory).
+                if stage.hasPrefix("Downloading weights") == false {
+                    Self.breadcrumb("aligner-load: \(stage) \(Int((frac * 100).rounded()))%")
+                }
+            }
         )
         Self.breadcrumb("aligner loaded (fromPretrained returned)")
         if cancellationCheck?() == true { throw CancellationError() }

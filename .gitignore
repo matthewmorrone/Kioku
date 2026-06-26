@@ -22,6 +22,7 @@ Resources/MeCab/unidic/
 # untracked tree. Remove this line once feat/handwriting lands.
 Packages/zinnia-swift/
 .build/
+build/
 .swiftpm
 .superpowers
 node_modules/
