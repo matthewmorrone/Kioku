@@ -19,7 +19,7 @@ public enum HTDemucsModelStore {
     // mutable on the hub side. Once the archive is published, replace `revision` with the
     // commit SHA so a tag move can't silently swap the model out from under shipped installs
     // (same discipline as WhisperDownloadableModel.pinnedRevision).
-    public static let modelId = "aufklarer/HTDemucs-CoreML"
+    public static let modelId = "matthewmorrone/HTDemucs-CoreML"
     public static let revision = "main"
     public static let archiveName = "HTDemucsSpec.mlmodelc.zip"
     public static let modelDirName = "HTDemucsSpec.mlmodelc"
