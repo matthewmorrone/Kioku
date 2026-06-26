@@ -31,6 +31,13 @@ public enum VocalStemCache {
     // overlap-add) so an old stem is never silently fed to a new aligner.
     private static let formatVersion = 1
 
+    // Upper bound on what the stem cache may occupy on disk. The cache was previously UNBOUNDED —
+    // every aligned song left a ~18 MB .f32 (plus a derived .wav) forever, reaching multiple GB on
+    // a well-used device. 500 MB keeps ~25 recent songs' stems for instant Re-align while capping
+    // the growth. `Caches/` is OS-purgeable, but iOS only reclaims it under severe pressure, far too
+    // late — this enforces the bound ourselves, on launch and after every store.
+    public static let maxBytes = 500 * 1024 * 1024
+
     // <Caches>/VocalStems, created on demand. nil only if the caches directory is unavailable.
     private static func cacheDir() -> URL? {
         guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
@@ -71,6 +78,11 @@ public enum VocalStemCache {
         return "v\(formatVersion)|\(size)|\(String(format: "%016llx", hash))"
     }
 
+    // Stable, path-independent identity for this audio — the same hex token the stem cache filename
+    // is built from. Lets a SIBLING cache (e.g. the resumable anchor-transcript cache) key off the
+    // exact same audio identity, so its entry is shared across attachment vs. temp-copy paths too.
+    public static func identityKey(for audioURL: URL) -> String { fnv1a(contentKey(for: audioURL)) }
+
     // [DEBUG] Reports the computed cache filename, the source byte size, and whether a cache file
     // is present — so the harness can read the exact key off the breadcrumb and seed it precisely
     // instead of reverse-engineering the hash off-device (where any mismatch is invisible).
@@ -101,6 +113,9 @@ public enum VocalStemCache {
               let data = try? Data(contentsOf: url),
               data.isEmpty == false,
               data.count % MemoryLayout<Float>.stride == 0 else { return nil }
+        // Refresh mtime on a hit so the LRU budget treats a re-aligned song as recently USED, not
+        // stale — a frequently re-aligned old song then survives eviction over genuinely cold ones.
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
         let count = data.count / MemoryLayout<Float>.stride
         var samples = [Float](repeating: 0, count: count)
         _ = samples.withUnsafeMutableBytes { data.copyBytes(to: $0) }
@@ -117,6 +132,34 @@ public enum VocalStemCache {
         // Drop any stale playable WAV derived from a previous stem at this key, so the next
         // "listen to stem" regenerates it from the fresh isolation.
         try? FileManager.default.removeItem(at: url.deletingPathExtension().appendingPathExtension("wav"))
+        // Keep the cache within budget — this store may have pushed it over.
+        enforceBudget()
+    }
+
+    // Evicts least-recently-USED entries until the VocalStems dir is at or under `maxBytes`. LRU is
+    // by file modificationDate, which `load()` refreshes on a hit, so a hot song outlives cold ones.
+    // Counts every file in the dir — both the .f32 stems and any derived .wav (a .wav, being purely
+    // regenerable, naturally evicts before its .f32 since it isn't mtime-touched on stem reuse).
+    // Best-effort and cheap (one directory scan); call on launch to reclaim pre-existing overflow
+    // (e.g. the multi-GB cache an older build accumulated) and after every store.
+    public static func enforceBudget(maxBytes: Int = VocalStemCache.maxBytes) {
+        guard let dir = cacheDir() else { return }
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey]
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { return }
+        var files: [(url: URL, size: Int, mtime: Date)] = []
+        var total = 0
+        for url in items {
+            guard let v = try? url.resourceValues(forKeys: keys), v.isRegularFile == true else { continue }
+            let size = v.fileSize ?? 0
+            files.append((url, size, v.contentModificationDate ?? .distantPast))
+            total += size
+        }
+        guard total > maxBytes else { return }
+        for f in files.sorted(by: { $0.mtime < $1.mtime }) {   // oldest first
+            if total <= maxBytes { break }
+            if (try? FileManager.default.removeItem(at: f.url)) != nil { total -= f.size }
+        }
     }
 
     // Whether a cached stem exists for `audioURL` (cheap existence check, no decode) — drives

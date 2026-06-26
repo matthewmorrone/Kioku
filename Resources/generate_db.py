@@ -1058,7 +1058,10 @@ def import_radicals(conn):
     else:
         print(f"  RADKFILE not found at {RADKFILE_PATH} — radicals table will be sparse")
 
-    edges = 0
+    # Buffer the kanji→radical edges and insert them AFTER the radicals rows so the FK
+    # (kanji_radicals.radical → radicals.radical) can resolve. SQLite enforces FKs per-statement
+    # when PRAGMA foreign_keys = ON, so we cannot interleave the edge inserts with the parse.
+    edge_rows = []
     if KRADFILE_PATH.exists():
         print(f"  Parsing kanji decompositions from {KRADFILE_PATH.name}...")
         with open(KRADFILE_PATH, encoding="utf-8") as f:
@@ -1077,12 +1080,8 @@ def import_radicals(conn):
                     # Backfill the stroke count if RADKFILE didn't ship a $-record for this radical.
                     if radical not in radical_strokes:
                         radical_strokes[radical] = 0
-                    conn.execute(
-                        "INSERT OR IGNORE INTO kanji_radicals (kanji, radical) VALUES (?, ?)",
-                        (kanji, radical),
-                    )
-                    edges += 1
-        print(f"  Done: {edges} kanji→radical edges imported")
+                    edge_rows.append((kanji, radical))
+        print(f"  Done: {len(edge_rows)} kanji→radical edges parsed")
     else:
         print(f"  KRADFILE not found at {KRADFILE_PATH} — kanji_radicals table will be empty")
 
@@ -1090,6 +1089,12 @@ def import_radicals(conn):
         conn.execute(
             "INSERT OR REPLACE INTO radicals (radical, stroke_count) VALUES (?, ?)",
             (radical, strokes),
+        )
+
+    if edge_rows:
+        conn.executemany(
+            "INSERT OR IGNORE INTO kanji_radicals (kanji, radical) VALUES (?, ?)",
+            edge_rows,
         )
 
 

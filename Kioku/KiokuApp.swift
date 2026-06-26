@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftWhisperAlign
 
 @main
 struct KiokuApp: App {
@@ -28,6 +29,11 @@ struct KiokuApp: App {
         // One-time cleanup: the .srt sidecar was demoted to an export-only projection of cues.json
         // (the single source of truth), so remove the now-inert sidecars left by older builds.
         NotesAudioStore.shared.purgeLegacySRTSidecars()
+        // Reclaim any over-budget vocal-stem cache that an older, UNBOUNDED build accumulated (it
+        // could reach several GB). Off the main thread so the directory scan + deletes never delay
+        // launch; self-healing — brings the cache back under VocalStemCache.maxBytes on every cold
+        // start, then store() keeps it there.
+        Task.detached(priority: .utility) { VocalStemCache.enforceBudget() }
         // (Startup dedup sweep temporarily disabled while diagnosing a launch crash — clone-on-import
         // in saveAudio still prevents NEW duplicates; the one-time reclaim sweep is re-enabled once
         // the launch path is confirmed clean.)
