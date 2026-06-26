@@ -275,7 +275,10 @@ extension DictionaryStore {
 
     // Fetches KANJIDIC2 metadata for one kanji literal — grade, strokes, JLPT level, on/kun readings, and English meanings.
     // Returns nil when the character is absent from the kanji_characters table.
-    func fetchKanjiInfo(for literal: String) throws -> KanjiInfo? {
+    // `nonisolated` so the Words tab's off-main `searchKanji(...)` can call it from
+    // a detached Task without an MainActor hop per literal — every SQL call still
+    // serializes through `withSerializedDatabaseAccess`.
+    nonisolated func fetchKanjiInfo(for literal: String) throws -> KanjiInfo? {
         try withSerializedDatabaseAccess {
             let charSQL = """
             SELECT grade, stroke_count, jlpt_level, radical, freq_mainichi
@@ -424,5 +427,164 @@ extension DictionaryStore {
         let hiragana = KanaNormalizer.katakanaToHiragana(stem)
         guard ScriptClassifier.isPureHiragana(hiragana) else { return nil }
         return hiragana
+    }
+
+    // Searches KANJIDIC2 for kanji that match the user's query, returning frequency-
+    // ranked KanjiInfo records. Three signals (in priority order):
+    //   1. Direct kanji literals present in the query — `火` matches 火.
+    //   2. Exact English meaning — `rain` matches 雨 (whose meanings contain "rain").
+    //   3. Exact on/kun reading — `ひ` (or romaji "hi") matches 日, 火, etc.
+    // Results from earlier passes outrank later ones; within a pass, lower
+    // freq_mainichi wins (1 = most common). Duplicates across passes are deduped.
+    // Used by the Words tab search to surface kanji rows at the top of results.
+    nonisolated func searchKanji(query: String, kanaQuery: String?, limit: Int = 6) throws -> [KanjiInfo] {
+        var ordered: [String] = []
+        var seen: Set<String> = []
+
+        // Pass 1 — direct kanji literals in the query. These are explicit user intent
+        // (they typed the kanji), so all are included regardless of frequency.
+        for char in query {
+            let scalars = char.unicodeScalars
+            guard scalars.contains(where: ScriptClassifier.isKanjiScalar) else { continue }
+            let literal = String(char)
+            if seen.insert(literal).inserted { ordered.append(literal) }
+        }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = trimmed.lowercased()
+        let queryHasKana = trimmed.unicodeScalars.contains(where: ScriptClassifier.isKanaScalar)
+
+        // Pass 2 — exact English meaning. Capped at the single most common match;
+        // a query like "rain" should surface 雨 and nothing else, not 雨 + 霖 + 雷.
+        if ordered.isEmpty, lowered.isEmpty == false,
+           ScriptClassifier.containsKanji(trimmed) == false,
+           queryHasKana == false {
+            for literal in try searchKanjiByMeaning(meaning: lowered, limit: 1) {
+                if seen.insert(literal).inserted { ordered.append(literal) }
+            }
+        }
+
+        // Pass 3 — exact kana reading (typed kana, or romaji→kana). Same single-top
+        // policy: "ひ" → 日 (most common kanji with that reading), not 日 + 火 + 比 + …
+        if ordered.isEmpty {
+            let readingCandidates: [String] = [
+                trimmed.isEmpty ? nil : trimmed,
+                kanaQuery.flatMap { $0.isEmpty ? nil : $0 }
+            ].compactMap { $0 }
+            for reading in readingCandidates {
+                guard reading.unicodeScalars.contains(where: ScriptClassifier.isKanaScalar) else { continue }
+                let katakana = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
+                let hiragana = reading.applyingTransform(.hiraganaToKatakana, reverse: true) ?? reading
+                for literal in try searchKanjiByReading(readings: [katakana, hiragana], limit: 1) {
+                    if seen.insert(literal).inserted { ordered.append(literal) }
+                }
+                if ordered.isEmpty == false { break }
+            }
+        }
+
+        // Hydrate each literal into a full KanjiInfo, then sort the final list by
+        // Mainichi-newspaper frequency (1 = most common; nils sink to the bottom).
+        // Sort happens after fetch so multi-kanji literal queries like 火曜日 surface
+        // common chars first instead of query order.
+        var results: [KanjiInfo] = []
+        for literal in ordered {
+            if let info = try fetchKanjiInfo(for: literal) {
+                results.append(info)
+            }
+        }
+        results.sort { lhs, rhs in
+            switch (lhs.freqMainichi, rhs.freqMainichi) {
+            case let (l?, r?): return l < r
+            case (_?, nil):    return true
+            case (nil, _?):    return false
+            case (nil, nil):   return false
+            }
+        }
+        return Array(results.prefix(limit))
+    }
+
+    // Returns kanji literals whose English meaning exactly matches `meaning`
+    // (case-insensitive), ordered by Mainichi-newspaper frequency. Exact match
+    // keeps results relevant; LIKE % …% would surface every kanji whose meaning
+    // contains the substring ("ear" → 100+ matches).
+    private nonisolated func searchKanjiByMeaning(meaning: String, limit: Int) throws -> [String] {
+        try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT DISTINCT kc.literal
+            FROM kanji_characters kc
+            JOIN kanji_meanings km ON km.kanji_id = kc.id
+            WHERE km.lang = 'en' AND LOWER(km.meaning) = ?1
+            ORDER BY (kc.freq_mainichi IS NULL), kc.freq_mainichi ASC
+            LIMIT ?2
+            """
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: sql, statement: &statement)
+            try bindText(meaning, index: 1, statement: statement)
+            sqlite3_bind_int(statement, 2, Int32(limit))
+            return try stepRows(statement: statement) { stmt -> String? in
+                sqlite3_column_text(stmt, 0).map { String(cString: $0) }
+            }
+        }
+    }
+
+    // Returns kanji literals whose on or kun reading exactly matches any of the
+    // supplied reading variants, ordered by frequency. Variant list lets the caller
+    // pass both katakana and hiragana forms — KANJIDIC2 stores on'yomi in katakana
+    // and kun'yomi in hiragana, and the user types either.
+    private nonisolated func searchKanjiByReading(readings: [String], limit: Int) throws -> [String] {
+        guard readings.isEmpty == false else { return [] }
+        let deduped = Array(Set(readings))
+        let placeholders = deduped.map { _ in "?" }.joined(separator: ", ")
+        return try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT DISTINCT kc.literal
+            FROM kanji_characters kc
+            JOIN kanji_readings kr ON kr.kanji_id = kc.id
+            WHERE kr.reading IN (\(placeholders))
+            ORDER BY (kc.freq_mainichi IS NULL), kc.freq_mainichi ASC
+            LIMIT ?
+            """
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: sql, statement: &statement)
+            for (idx, reading) in deduped.enumerated() {
+                try bindText(reading, index: Int32(idx + 1), statement: statement)
+            }
+            sqlite3_bind_int(statement, Int32(deduped.count + 1), Int32(limit))
+            return try stepRows(statement: statement) { stmt -> String? in
+                sqlite3_column_text(stmt, 0).map { String(cString: $0) }
+            }
+        }
+    }
+
+    // Returns the most-frequent kanji from KANJIDIC2 (by Mainichi-newspaper
+    // frequency rank, 1 = most common) as fully-hydrated KanjiInfo records up
+    // to `limit`. Used by Browse Kanji by Frequency. Returns at most the
+    // ~2500 kanji that ship with a Mainichi rank — kanji with no rank are
+    // excluded entirely since "most frequent" only makes sense for those.
+    nonisolated func fetchTopFrequencyKanji(limit: Int) throws -> [KanjiInfo] {
+        let literals = try withSerializedDatabaseAccess { () -> [String] in
+            let sql = """
+            SELECT literal
+            FROM kanji_characters
+            WHERE freq_mainichi IS NOT NULL
+            ORDER BY freq_mainichi ASC
+            LIMIT ?1
+            """
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: sql, statement: &statement)
+            sqlite3_bind_int(statement, 1, Int32(limit))
+            return try stepRows(statement: statement) { stmt -> String? in
+                sqlite3_column_text(stmt, 0).map { String(cString: $0) }
+            }
+        }
+        var results: [KanjiInfo] = []
+        results.reserveCapacity(literals.count)
+        for literal in literals {
+            if let info = try fetchKanjiInfo(for: literal) { results.append(info) }
+        }
+        return results
     }
 }

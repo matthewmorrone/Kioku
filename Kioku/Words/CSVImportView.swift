@@ -14,6 +14,7 @@ struct CSVImportView: View {
     let dictionaryStore: DictionaryStore?
 
     @EnvironmentObject private var wordsStore: WordsStore
+    @EnvironmentObject private var savedKanjiStore: SavedKanjiStore
     @EnvironmentObject private var wordListsStore: WordListsStore
 
     @Environment(\.dismiss) private var dismiss
@@ -268,19 +269,38 @@ struct CSVImportView: View {
         let store = dictionaryStore
         let items = importableItems
         let target = wordsStore
+        let kanjiTarget = savedKanjiStore
 
         Task.detached(priority: .userInitiated) {
-            let resolved: [SavedWord] = items.compactMap { item -> SavedWord? in
-                guard let surface = item.finalSurface, surface.isEmpty == false else { return nil }
+            // Split rows into kanji-only (a single character that is a kanji scalar)
+            // and everything else. Kanji-only surfaces are routed to SavedKanjiStore
+            // so tapping the resulting row opens KanjiDetailView, matching the user's
+            // "I'm saving kanji pages, not word entries" intent. Multi-character or
+            // non-kanji surfaces stay on the SavedWord path as before.
+            var savedWords: [SavedWord] = []
+            var kanjiLiterals: [String] = []
+            for item in items {
+                guard let surface = item.finalSurface, surface.isEmpty == false else { continue }
+                if surface.count == 1,
+                   let scalar = surface.unicodeScalars.first,
+                   ScriptClassifier.isKanjiScalar(scalar) {
+                    kanjiLiterals.append(surface)
+                    continue
+                }
                 var canonicalID = Int64(item.id.hashValue)
                 var senseIDs: [Int64] = []
                 if let store, let entry = Self.resolveEntry(surface: surface, kana: item.finalKana, store: store) {
                     canonicalID = entry.entryId
                     senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
                 }
-                return SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: listIDs, selectedSenseIDs: senseIDs)
+                savedWords.append(SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: listIDs, selectedSenseIDs: senseIDs))
             }
-            await target.add(resolved)
+            await target.add(savedWords)
+            await MainActor.run {
+                for literal in kanjiLiterals {
+                    kanjiTarget.save(literal: literal, wordListIDs: listIDs)
+                }
+            }
         }
     }
 

@@ -57,6 +57,7 @@ struct WordsView: View {
     var pendingRoute: Binding<WordsRoute?> = .constant(nil)
 
     @EnvironmentObject var wordsStore: WordsStore
+    @EnvironmentObject var savedKanjiStore: SavedKanjiStore
     @EnvironmentObject var wordListsStore: WordListsStore
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
@@ -87,6 +88,7 @@ struct WordsView: View {
     @State var isSubtitleImportPresented = false
     @State var isSubtitleSearchPresented = false
     @State var isBrowseFrequencyPresented = false
+    @State var isBrowseKanjiPresented = false
     @State var isBrowseProficiencyPresented = false
     @State var isSentenceSearchPresented = false
     @State var isRadicalInputPresented = false
@@ -111,6 +113,14 @@ struct WordsView: View {
     var savedSort: WordsSortOrder { WordsSortOrder(rawValue: savedSortOrder) ?? .newestFirst }
     var historySort: WordsSortOrder { WordsSortOrder(rawValue: historySortOrderRaw) ?? .newestFirst }
     @State var searchResults: [DictionaryEntry] = []
+    // Kanji matched by the query — rendered as a distinct section at the TOP of the
+    // results list (above word entries) so a search like 火 or "rain" leads with the
+    // kanji itself rather than burying it in compound words. Populated by
+    // DictionaryStore.searchKanji(...) alongside the entry search; cleared whenever
+    // searchResults clears.
+    @State var kanjiSearchResults: [KanjiInfo] = []
+    // KanjiDetailView presentation target — set when the user taps a kanji result row.
+    @State var presentedKanjiInfo: KanjiInfo? = nil
     // Populated when the query segments into multiple tokens — switches the search results
     // view from entry-list mode to one-row-per-segment mode (Pleco-style sentence parse).
     @State var parsedSegments: [ParsedSegment] = []
@@ -135,6 +145,11 @@ struct WordsView: View {
     // appear and whenever the history list grows. Lets historyContent reuse the
     // entryRow layout (kanji+reading+gloss+star) without per-row SQL.
     @State var materializedHistory: [Int64: DictionaryEntry] = [:]
+    // Saved kanji rows in the Saved tab need full KanjiInfo (meanings, grade, JLPT)
+    // to render the kanji-tile row. We hydrate them off-main into this cache keyed
+    // by literal — same lazy pattern as materializedHistory. Without the cache, the
+    // SwiftUI body would re-run synchronous SQL on every scroll tick.
+    @State var materializedSavedKanji: [String: KanjiInfo] = [:]
 
     // Builds the word model used by WordDetailView, reusing a saved word when available and
     // otherwise synthesizing a temporary detail target from the route payload or dictionary entry.
@@ -216,6 +231,11 @@ struct WordsView: View {
                 .environmentObject(wordListsStore)
                 .presentationDetents([.large])
             }
+            .sheet(item: $presentedKanjiInfo) { info in
+                KanjiDetailView(info: info, dictionaryStore: dictionaryStore)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $isBatchListSheetPresented) {
                 // Pass the active list filter as the Move source only when exactly one list
                 // is filtered — that's the single unambiguous "list you're viewing".
@@ -291,6 +311,15 @@ struct WordsView: View {
                     isSaved: { entryID in wordsStore.words.contains(where: { $0.canonicalEntryID == entryID }) },
                     onToggleSave: handleBrowseToggleSave,
                     onSelectEntry: handleBrowseSelectEntry
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $isBrowseKanjiPresented) {
+                BrowseKanjiFrequencyView(
+                    dictionaryStore: dictionaryStore,
+                    isSaved: { literal in savedKanjiStore.contains(literal: literal) },
+                    onToggleSave: { info in savedKanjiStore.toggle(literal: info.literal) }
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
@@ -374,12 +403,16 @@ struct WordsView: View {
                     runDictionarySearch(query: searchText)
                 }
                 refreshMaterializedHistory()
+                refreshMaterializedSavedKanji()
             }
             .onChange(of: historyStore.entries.map(\.id)) { _, _ in
                 refreshMaterializedHistory()
             }
             .onChange(of: wordsStore.words.map(\.canonicalEntryID)) { _, _ in
                 refreshMaterializedHistory()
+            }
+            .onChange(of: savedKanjiStore.kanji.map(\.literal)) { _, _ in
+                refreshMaterializedSavedKanji()
             }
             // Consume cross-tab routes from ContentView (e.g. the lookup sheet's magnifying-glass
             // "open in Words" action). onAppear catches a route set before this tab appeared;
@@ -413,7 +446,10 @@ struct WordsView: View {
                 // History so they don't interrupt the word-lookup flow.
                 recentSearchesContent
             } else if searchText.isEmpty && activeTab == .saved {
-                // Saved tab: all favorites (filtered by note/list when filters are on).
+                // Saved tab: kanji rows (their own Section at the top), then favorites.
+                // Both are filtered by the active note/list scope via visibleSavedKanji /
+                // visibleWords, so a list filter narrows BOTH lists in lockstep.
+                savedKanjiContent
                 // filteredSavedContent uses visibleWords which already applies the filter,
                 // so this same view works for both the unfiltered "show all" and narrowed cases.
                 filteredSavedContent
@@ -421,10 +457,19 @@ struct WordsView: View {
                 // History tab: lookup log, newest first.
                 historyContent
             } else if parsedSegments.isEmpty == false {
+                // Kanji that match the query land in their own section ABOVE the
+                // sentence-parse results, so the query 火曜日 leads with 火 + 曜 + 日 as
+                // tappable kanji rows before falling through to the per-token entries.
+                kanjiResultsSection
                 // Sentence-parse mode: query produced ≥2 tokens via MeCab, so render
                 // one row per token rather than chasing a literal dictionary lookup.
                 parsedSegmentsResultsSection
             } else {
+                // Kanji-first ordering: a query like 火 or "rain" should surface the
+                // KANJIDIC2 record at the top — kanji rows are visually distinct from
+                // word rows (large tinted tile + meanings + grade pills) so the user can
+                // see at a glance that tapping opens the kanji page, not a word detail.
+                kanjiResultsSection
                 // filteredSearchResults applies the live sort + common-only + POS controls
                 // (WordsView+Search.swift) on top of the raw `searchResults` the fan-out search
                 // populates. With no controls active it returns the set unchanged, so the default
@@ -537,6 +582,30 @@ struct WordsView: View {
         }
     }
 
+    // Saved-kanji counterpart to refreshMaterializedHistory — hydrates KanjiInfo for
+    // every saved literal that isn't already cached, off-main, so the Saved-tab kanji
+    // section can render without doing SQL on every body re-run. Re-invoked whenever
+    // savedKanjiStore.kanji changes (a save/unsave/list-toggle).
+    func refreshMaterializedSavedKanji() {
+        guard let store = dictionaryStore else { return }
+        let literals = savedKanjiStore.kanji.map(\.literal)
+        let missing = literals.filter { materializedSavedKanji[$0] == nil }
+        guard missing.isEmpty == false else { return }
+        Task.detached(priority: .userInitiated) {
+            var loaded: [String: KanjiInfo] = [:]
+            for literal in missing {
+                if let info = try? store.fetchKanjiInfo(for: literal) {
+                    loaded[literal] = info
+                }
+            }
+            await MainActor.run {
+                for (literal, info) in loaded {
+                    materializedSavedKanji[literal] = info
+                }
+            }
+        }
+    }
+
     // Picks the gloss to display for a result row. Walks senses in their canonical
     // order_index order and returns the first gloss whose text (case-folded) contains
     // the search term — so a query that matched sense 3 of どうも shows the "hello"
@@ -567,6 +636,7 @@ struct WordsView: View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else {
             searchResults = []
+            kanjiSearchResults = []
             parsedSegments = []
             sentenceResults = []
             searchError = nil
@@ -602,10 +672,14 @@ struct WordsView: View {
                     let sentences = await Task.detached(priority: .userInitiated) {
                         (try? store.searchSentences(query: trimmed, limit: 25)) ?? []
                     }.value
+                    let parseKanji = await Task.detached(priority: .userInitiated) {
+                        (try? store.searchKanji(query: trimmed, kanaQuery: nil, limit: 6)) ?? []
+                    }.value
                     if Task.isCancelled { return }
                     guard searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
                     parsedSegments = segments
                     searchResults = []
+                    kanjiSearchResults = parseKanji
                     sentenceResults = sentences
                     searchError = nil
                     isSearching = false
@@ -692,12 +766,20 @@ struct WordsView: View {
                 (try? store.searchSentences(query: trimmed, limit: 25)) ?? []
             }.value
 
+            // Kanji that match the query — direct literals, English meanings, or kana
+            // readings. Surfaced at the top of the results list so a "rain" or 火 query
+            // leads with the kanji itself rather than burying it in compound words.
+            let kanjiHits = await Task.detached(priority: .userInitiated) {
+                (try? store.searchKanji(query: trimmed, kanaQuery: romajiKana, limit: 6)) ?? []
+            }.value
+
             if Task.isCancelled { return }
             guard searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
 
             switch outcome {
             case .success(let merged):
                 searchResults = merged
+                kanjiSearchResults = kanjiHits
                 sentenceResults = sentences
                 searchError = nil
                 // Drop any POS selections that no longer appear in the fresh result set so a
@@ -705,6 +787,7 @@ struct WordsView: View {
                 pruneUnavailableSearchPartsOfSpeech()
             case .failure(let error):
                 searchResults = []
+                kanjiSearchResults = []
                 sentenceResults = []
                 searchError = String(describing: error)
             }

@@ -205,4 +205,92 @@ extension WordsView {
         historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
         selectedDetailWord = detailWord(entryID: entry.entryId, surfaceHint: entry.primarySearchSurface)
     }
+
+    // Renders the kanji-matches section that sits at the TOP of the search results
+    // list. Returns EmptyView when no kanji matched the query, so the list doesn't
+    // get a phantom section header. The "Kanji" header reinforces the distinct row
+    // shape — tapping a kanji row opens KanjiDetailView, not WordDetailView.
+    @ViewBuilder
+    var kanjiResultsSection: some View {
+        if kanjiSearchResults.isEmpty == false {
+            Section("Kanji") {
+                ForEach(kanjiSearchResults) { info in
+                    Button {
+                        isSearchFieldFocused = false
+                        presentedKanjiInfo = info
+                    } label: {
+                        kanjiResultRowContent(info)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.accentColor.opacity(0.06))
+                }
+            }
+        }
+    }
+
+    // The visual content of one kanji search-result row. Deliberately UNLIKE the
+    // word-row shape: a large kanji glyph in a tinted square tile leads (instant
+    // "this is a kanji, not a word"), followed by the kanji's English meanings and
+    // a horizontal pill row of grade / JLPT / stroke-count metadata. Tappable hint
+    // chevron on the trailing edge matches the related-word row pattern.
+    @ViewBuilder
+    func kanjiResultRowContent(_ info: KanjiInfo) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            Text(info.literal)
+                .font(.system(size: 38, weight: .medium))
+                .frame(width: 60, height: 60)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.accentColor.opacity(0.18))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 4) {
+                if info.meanings.isEmpty == false {
+                    Text(info.meanings.prefix(3).joined(separator: ", "))
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                }
+                HStack(spacing: 6) {
+                    if let grade = info.grade {
+                        kanjiResultMetaPill(grade == 8 ? "Secondary" : "Grade \(grade)")
+                    }
+                    if let jlpt = info.jlptLevel {
+                        kanjiResultMetaPill("JLPT N\(jlpt)")
+                    }
+                    if let strokes = info.strokeCount {
+                        kanjiResultMetaPill("\(strokes) strokes")
+                    }
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    // Small pill chip for kanji-row metadata. Local to this file so the visual
+    // weight stays consistent across kanji rows; the WordDetailView's metadataLabel
+    // is a near-twin but lives on a different host type, so we duplicate the look
+    // rather than thread a shared style through both call sites.
+    @ViewBuilder
+    func kanjiResultMetaPill(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(Color.secondary.opacity(0.15))
+            )
+    }
 }

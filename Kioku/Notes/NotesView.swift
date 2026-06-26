@@ -16,6 +16,7 @@ struct NotesView: View {
 
     @EnvironmentObject private var store: NotesStore
     @EnvironmentObject private var wordsStore: WordsStore
+    @EnvironmentObject private var savedKanjiStore: SavedKanjiStore
     @State private var editMode: EditMode = .inactive
     @State private var selectedNoteIDs = Set<UUID>()
     @State private var notePendingRename: Note?
@@ -442,6 +443,7 @@ struct NotesView: View {
         let noteIDs = deletion.noteIDs
 
         wordsStore.detachNoteReferences(noteIDs: noteIDs)
+        savedKanjiStore.detachNoteReferences(noteIDs: noteIDs)
         store.deleteNotes(ids: noteIDs)
         selectedNoteIDs.subtract(noteIDs)
         onUpdateSelectedNote?(nil)
