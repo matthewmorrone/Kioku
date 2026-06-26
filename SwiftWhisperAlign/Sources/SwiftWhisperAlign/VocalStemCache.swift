@@ -143,10 +143,16 @@ public enum VocalStemCache {
     // Best-effort and cheap (one directory scan); call on launch to reclaim pre-existing overflow
     // (e.g. the multi-GB cache an older build accumulated) and after every store.
     public static func enforceBudget(maxBytes: Int = VocalStemCache.maxBytes) {
-        guard let dir = cacheDir() else { return }
+        guard let dir = cacheDir() else {
+            print("[VocalStemCache] enforceBudget: no cache dir, skipping")
+            return
+        }
         let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey]
         guard let items = try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { return }
+            at: dir, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else {
+            print("[VocalStemCache] enforceBudget: contentsOfDirectory failed at \(dir.path)")
+            return
+        }
         var files: [(url: URL, size: Int, mtime: Date)] = []
         var total = 0
         for url in items {
@@ -155,11 +161,19 @@ public enum VocalStemCache {
             files.append((url, size, v.contentModificationDate ?? .distantPast))
             total += size
         }
+        let mb = { (b: Int) in String(format: "%.1f MB", Double(b) / 1_048_576) }
+        print("[VocalStemCache] enforceBudget scan: \(files.count) files, \(mb(total)) total, cap \(mb(maxBytes)) — at \(dir.path)")
         guard total > maxBytes else { return }
+        var evicted = 0
+        let startTotal = total
         for f in files.sorted(by: { $0.mtime < $1.mtime }) {   // oldest first
             if total <= maxBytes { break }
-            if (try? FileManager.default.removeItem(at: f.url)) != nil { total -= f.size }
+            if (try? FileManager.default.removeItem(at: f.url)) != nil {
+                total -= f.size
+                evicted += 1
+            }
         }
+        print("[VocalStemCache] enforceBudget evicted \(evicted) files, freed \(mb(startTotal - total)), now \(mb(total))")
     }
 
     // Whether a cached stem exists for `audioURL` (cheap existence check, no decode) — drives
