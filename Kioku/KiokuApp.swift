@@ -33,7 +33,10 @@ struct KiokuApp: App {
         // could reach several GB). Off the main thread so the directory scan + deletes never delay
         // launch; self-healing — brings the cache back under VocalStemCache.maxBytes on every cold
         // start, then store() keeps it there.
-        Task.detached(priority: .utility) { VocalStemCache.enforceBudget() }
+        Task.detached(priority: .utility) {
+            print("[KiokuApp] launch-time VocalStemCache.enforceBudget starting")
+            VocalStemCache.enforceBudget()
+        }
         // (Startup dedup sweep temporarily disabled while diagnosing a launch crash — clone-on-import
         // in saveAudio still prevents NEW duplicates; the one-time reclaim sweep is re-enabled once
         // the launch path is confirmed clean.)
