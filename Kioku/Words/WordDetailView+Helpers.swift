@@ -5,6 +5,24 @@ import SwiftUI
 // small reusable row/label view builders. Extracted from WordDetailView so the primary
 // file stays under the line-count invariant.
 extension WordDetailView {
+    // SF Symbol for the header's save/learned toggle: a plain checkmark when learned, a plain
+    // question mark when explicitly not-learned, else the save star (filled when saved). Mirrors
+    // the row's learnedIcon so the same mark reads identically in the list and the detail header.
+    func detailLearnedIcon(state: LearnedState, saved: Bool) -> String {
+        switch state {
+        case .learned:    return "checkmark"
+        case .notLearned: return "questionmark"
+        case .unmarked:   return saved ? "star.fill" : "star"
+        }
+    }
+
+    // Applies the learned mark on the next runloop instead of synchronously inside the context
+    // menu action, so the header glyph's re-render doesn't queue behind the menu's teardown and
+    // flips promptly. Mirrors the row's setLearnedDeferred.
+    func setLearnedDeferred(_ state: LearnedState) {
+        DispatchQueue.main.async { reviewStore.setLearnedState(state, for: activeEntryID) }
+    }
+
     // Reads the live saved word from the store so the picker reflects toggled state immediately.
     // Falls back to the SavedWord the view was opened with for the brief window before the store
     // publish reaches @EnvironmentObject.

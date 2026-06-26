@@ -20,7 +20,8 @@ struct WordDetailView: View {
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
 
     // Provides per-word review statistics keyed by canonicalEntryID.
-    @EnvironmentObject private var reviewStore: ReviewStore
+    // Non-private (like wordsStore) so the WordDetailView+Helpers extension can read it.
+    @EnvironmentObject var reviewStore: ReviewStore
     // Provides the list of all user-created word lists so membership can be displayed.
     @EnvironmentObject private var wordListsStore: WordListsStore
     // Provides note titles for resolving sourceNoteIDs to human-readable labels.
@@ -213,6 +214,7 @@ struct WordDetailView: View {
                 }
                 .overlay(alignment: .trailing) {
                     let isSaved = wordsStore.words.contains { $0.canonicalEntryID == activeEntryID }
+                    let learnedState = reviewStore.learnedState(for: activeEntryID)
                     Button {
                         wordsStore.toggle(
                             canonicalEntryID: activeEntryID,
@@ -220,13 +222,29 @@ struct WordDetailView: View {
                             defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
                         )
                     } label: {
-                        Image(systemName: isSaved ? "star.fill" : "star")
+                        // Checkmark when learned, question mark when explicitly not-learned, star
+                        // otherwise — the mark sits on top of saved status, so the word stays in
+                        // favorites either way.
+                        Image(systemName: detailLearnedIcon(state: learnedState, saved: isSaved))
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(Color.primary)
                     }
                     .buttonStyle(.plain)
                     .offset(x: 34)
                     .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
+                    .contextMenu {
+                        // Deferred so the mark applies after the context menu tears down, rather
+                        // than queuing the re-render behind that work (see setLearnedDeferred).
+                        Button { setLearnedDeferred(.unmarked) } label: {
+                            Label("Favorite", systemImage: "star")
+                        }
+                        Button { setLearnedDeferred(.learned) } label: {
+                            Label("Learned", systemImage: "checkmark")
+                        }
+                        Button { setLearnedDeferred(.notLearned) } label: {
+                            Label("Not Learned", systemImage: "questionmark")
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 // COMMON badge — outlined pill in the top-trailing corner, matching the

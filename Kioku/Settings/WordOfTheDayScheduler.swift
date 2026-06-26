@@ -1,15 +1,23 @@
 import Foundation
 import UserNotifications
+import WidgetKit
 
 // Notification content resolved from the live dictionary for a specific saved word.
 private struct WordOfTheDayLiveContent {
     let kana: String?
     let meaning: String
+    // Senses (POS + glosses), an example sentence, and JLPT level for the larger widget sizes.
+    let senses: [WordOfTheDaySense]
+    let example: WordOfTheDayExample?
+    let jlpt: Int?
 }
 
 private struct WordOfTheDayCachedContent: Codable {
     let kana: String?
     let meaning: String
+    let senses: [WordOfTheDaySense]?
+    let example: WordOfTheDayExample?
+    let jlpt: Int?
 }
 
 private struct WordOfTheDayScheduleState: Codable {
@@ -24,9 +32,13 @@ enum WordOfTheDayScheduler {
     static let enabledKey = "wordOfTheDay.enabled"
     static let hourKey = "wordOfTheDay.hour"
     static let minuteKey = "wordOfTheDay.minute"
-    private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v1"
+    // v3 stores structured senses + an example sentence + JLPT; bumped so words cached by an older
+    // build are re-resolved with the full detail rather than reusing a thinner cache.
+    private static let liveContentCacheKey = "wordOfTheDay.liveContentCache.v3"
     private static let scheduleStateKey = "wordOfTheDay.scheduleState.v1"
-    private static let scheduleSignatureVersion = 1
+    // Bumped so a queue baked by an older build is seen as stale and re-baked once, repopulating the
+    // mirror with the richer per-word detail.
+    private static let scheduleSignatureVersion = 3
 
     // Notification request identifiers use this prefix for batch filtering.
     nonisolated static let requestPrefix = "wotd_"
@@ -77,6 +89,7 @@ enum WordOfTheDayScheduler {
         guard enabled else {
             await clearPendingWordOfTheDayRequests()
             clearPersistedScheduleState()
+            clearWidgetMirror()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled cleared pending because disabled")
             return
         }
@@ -86,20 +99,21 @@ enum WordOfTheDayScheduler {
         guard status == .authorized || status == .provisional else {
             await clearPendingWordOfTheDayRequests()
             clearPersistedScheduleState()
+            clearWidgetMirror()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled cleared pending because unauthorized")
             return
         }
 
+        // Keep an existing queue only when it is genuinely fresh — same signature (which includes the
+        // schedule-format version) AND the pending count matches. When it is stale (e.g. a new build
+        // bumped the version to add per-word detail), fall through and re-bake so the mirror picks up
+        // the richer data, rather than short-circuiting just because notifications already exist.
         let pendingCount = await pendingWordOfTheDayRequestCount()
-        if forceRefresh == false, pendingCount > 0 {
-            StartupTimer.mark("WOTD.refreshScheduleIfEnabled skipping because pending requests already exist (\(pendingCount))")
-            return
-        }
-
         let expectedRequestCount = expectedScheduledRequestCount(words: words, daysToSchedule: daysToSchedule)
         let signature = scheduleSignature(words: words, hour: hour, minute: minute, daysToSchedule: daysToSchedule)
         if forceRefresh == false,
            isExistingScheduleFresh(signature: signature, expectedRequestCount: expectedRequestCount, pendingCount: pendingCount) {
+            await syncWidgetMirrorFromPending()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled keeping existing schedule pending=\(pendingCount)")
             return
         }
@@ -135,6 +149,133 @@ enum WordOfTheDayScheduler {
             trigger: trigger
         )
         _ = await addRequest(request)
+
+        // Surface the test word on the widget right away (fireDate = now → immediately "most
+        // recent") so issuing a test notification visibly populates the widget. Merged into the
+        // existing mirror so the upcoming scheduled batch is preserved; the next reschedule rewrites
+        // the whole mirror anyway.
+        var entries = WordOfTheDayMirror.load()
+        entries.append(WordOfTheDayMirrorEntry(
+            fireDate: Date(),
+            surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
+            kana: liveContent.kana,
+            meaning: liveContent.meaning,
+            entryID: word.canonicalEntryID,
+            senses: liveContent.senses,
+            example: liveContent.example,
+            jlpt: liveContent.jlpt
+        ))
+        writeWidgetMirror(entries)
+    }
+
+    // MARK: - Widget mirror
+
+    // Mirrors the scheduled batch into the App Group and refreshes the widget timeline so the
+    // "most recent word" widget reflects the current schedule without launching the app.
+    // Retains recently-fired words from the previous mirror: the incoming batch is future-only, so
+    // without this the past words would be dropped on every reschedule and the large widget's
+    // "recent days" list would always be empty. Already-fired entries win over a new batch entry on
+    // a shared fire date, so the widget keeps showing the word that was actually delivered.
+    private static func writeWidgetMirror(_ entries: [WordOfTheDayMirrorEntry]) {
+        let now = Date()
+        let history = WordOfTheDayMirror.load().filter { $0.fireDate <= now }.suffix(14)
+        var seen = Set<Date>()
+        var merged: [WordOfTheDayMirrorEntry] = []
+        for entry in history where seen.insert(entry.fireDate).inserted { merged.append(entry) }
+        for entry in entries where seen.insert(entry.fireDate).inserted { merged.append(entry) }
+        merged.sort { $0.fireDate < $1.fireDate }
+        WordOfTheDayMirror.write(merged)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // Like writeWidgetMirror, but also upgrades retained history entries that predate the rich
+    // detail schema. Already-fired entries win on a shared fire date so the widget keeps showing the
+    // word that was actually delivered — but an entry written before senses/example/JLPT existed
+    // would win while carrying no detail, shadowing the new rich entry for the same day. We re-resolve
+    // detail for any senseless history entry (in place, preserving its identity) so today's delivered
+    // word gains POS/senses/example without changing which word is shown.
+    private static func writeMirrorRetainingHistory(_ newEntries: [WordOfTheDayMirrorEntry], using dictionaryStore: DictionaryStore) {
+        let now = Date()
+        let history = Array(WordOfTheDayMirror.load().filter { $0.fireDate <= now }.suffix(14))
+        let stale = history.filter { $0.senses.isEmpty }
+        let resolved = stale.isEmpty
+            ? [:]
+            : resolveLiveContent(for: stale.map { SavedWord(canonicalEntryID: $0.entryID, surface: $0.surface) }, using: dictionaryStore)
+        let enrichedHistory = history.map { entry -> WordOfTheDayMirrorEntry in
+            guard entry.senses.isEmpty, let live = resolved[entry.entryID] else { return entry }
+            return WordOfTheDayMirrorEntry(
+                fireDate: entry.fireDate,
+                surface: entry.surface,
+                kana: entry.kana ?? live.kana,
+                meaning: entry.meaning.isEmpty ? live.meaning : entry.meaning,
+                entryID: entry.entryID,
+                senses: live.senses,
+                example: live.example,
+                jlpt: live.jlpt
+            )
+        }
+        var seen = Set<Date>()
+        var merged: [WordOfTheDayMirrorEntry] = []
+        for entry in enrichedHistory where seen.insert(entry.fireDate).inserted { merged.append(entry) }
+        for entry in newEntries where seen.insert(entry.fireDate).inserted { merged.append(entry) }
+        merged.sort { $0.fireDate < $1.fireDate }
+        WordOfTheDayMirror.write(merged)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // Clears the mirror (and refreshes the widget) when WOTD is disabled, unauthorized, or has no
+    // words to schedule, so the widget falls back to its empty state instead of a stale word.
+    private static func clearWidgetMirror() {
+        WordOfTheDayMirror.clear()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // Rebuilds the widget mirror from the live pending notification queue. Used when the schedule is
+    // already in place and scheduleUpcoming is skipped — the pending requests carry every field the
+    // mirror needs (surface/kana/meaning/wordID in userInfo, fire date from the calendar trigger),
+    // so the queue itself is an authoritative source for the widget.
+    private static func syncWidgetMirrorFromPending() async {
+        // Map to the Sendable mirror type inside the callback so no non-Sendable
+        // [UNNotificationRequest] crosses the continuation boundary (Swift 6 concurrency).
+        let entries: [WordOfTheDayMirrorEntry] = await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+                let mapped = requests
+                    .filter { $0.identifier.hasPrefix(requestPrefix) }
+                    .compactMap(mirrorEntry(from:))
+                    .sorted { $0.fireDate < $1.fireDate }
+                continuation.resume(returning: mapped)
+            }
+        }
+        guard entries.isEmpty == false else { return }
+        writeWidgetMirror(entries)
+    }
+
+    // Reconstructs a mirror entry from a pending notification request, or nil if it lacks the
+    // expected payload (e.g. a test notification using a time-interval trigger). nonisolated so it
+    // can run inside the getPendingNotificationRequests callback (off the main actor).
+    private nonisolated static func mirrorEntry(from request: UNNotificationRequest) -> WordOfTheDayMirrorEntry? {
+        let info = request.content.userInfo
+        guard
+            let surface = info["surface"] as? String,
+            let meaning = info["meaning"] as? String,
+            let idString = info["wordID"] as? String,
+            let entryID = Int64(idString),
+            let trigger = request.trigger as? UNCalendarNotificationTrigger,
+            let fireDate = trigger.nextTriggerDate()
+        else {
+            return nil
+        }
+        let detail = decodeDetail(info["detail"] as? String)
+        return WordOfTheDayMirrorEntry(
+            fireDate: fireDate,
+            surface: surface,
+            kana: info["kana"] as? String,
+            meaning: meaning,
+            entryID: entryID,
+            senses: detail?.senses ?? [],
+            example: detail?.example,
+            jlpt: detail?.jlpt
+        )
     }
 
     // MARK: - Internals
@@ -153,6 +294,7 @@ enum WordOfTheDayScheduler {
         await clearPendingWordOfTheDayRequests()
         guard words.isEmpty == false else {
             persistScheduleState(signature: scheduleSignature, requestCount: 0)
+            clearWidgetMirror()
             return
         }
 
@@ -168,6 +310,10 @@ enum WordOfTheDayScheduler {
             resolveLiveContent(for: wordsToResolve, using: dictionaryStore)
         }
 
+        // Accumulated alongside the notification requests so the widget can read the same
+        // date→word mapping the system will deliver.
+        var mirrorEntries: [WordOfTheDayMirrorEntry] = []
+
         for dayOffset in 0..<count {
             guard let day = calendar.date(byAdding: .day, value: dayOffset, to: now) else { continue }
             var comps = calendar.dateComponents([.year, .month, .day], from: day)
@@ -181,8 +327,21 @@ enum WordOfTheDayScheduler {
             let id = requestPrefix + identifierDateString(from: comps)
             let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
             _ = await addRequest(request)
+
+            let fireDate = calendar.date(from: comps) ?? day
+            mirrorEntries.append(WordOfTheDayMirrorEntry(
+                fireDate: fireDate,
+                surface: word.surface.trimmingCharacters(in: .whitespacesAndNewlines),
+                kana: liveContent.kana,
+                meaning: liveContent.meaning,
+                entryID: word.canonicalEntryID,
+                senses: liveContent.senses,
+                example: liveContent.example,
+                jlpt: liveContent.jlpt
+            ))
         }
         persistScheduleState(signature: scheduleSignature, requestCount: liveContentByEntryID.count)
+        writeMirrorRetainingHistory(mirrorEntries, using: dictionaryStore)
         StartupTimer.mark("WOTD.scheduleUpcoming enqueued \(count) requests")
     }
 
@@ -253,10 +412,53 @@ enum WordOfTheDayScheduler {
         content.userInfo["surface"] = surface
         if let kana { content.userInfo["kana"] = kana }
         content.userInfo["meaning"] = meaning
+        // Richer detail for the larger widgets, threaded through userInfo (as JSON) so the mirror can
+        // be reconstructed from the pending queue (syncWidgetMirrorFromPending) with the same data.
+        if let detail = encodeDetail(liveContent) { content.userInfo["detail"] = detail }
         // canonicalEntryID stored as string since SavedWord has no UUID.
         content.userInfo["wordID"] = String(word.canonicalEntryID)
 
         return content
+    }
+
+    // Expands a comma-joined JMdict POS code string to a friendly label (e.g. "Godan verb, …"), or
+    // nil when absent.
+    private static func friendlyPartOfSpeech(_ pos: String?) -> String? {
+        guard let pos, pos.isEmpty == false else { return nil }
+        let expanded = JMdictTagExpander.expandAll(pos).trimmingCharacters(in: .whitespacesAndNewlines)
+        return expanded.isEmpty ? nil : expanded
+    }
+
+    // Finds the shortest example sentence matching any of the given terms (surface first), or nil.
+    private static func resolveExample(terms: [String], using dictionaryStore: DictionaryStore) -> WordOfTheDayExample? {
+        guard terms.isEmpty == false, let pair = try? dictionaryStore.fetchSentencePairs(terms: terms).first else {
+            return nil
+        }
+        return WordOfTheDayExample(japanese: pair.japanese, english: pair.english)
+    }
+
+    // The rich per-word detail carried in the notification payload so syncWidgetMirrorFromPending can
+    // reconstruct it; JSON-encoded into a single userInfo string since userInfo holds only plist types.
+    private nonisolated struct WordOfTheDayDetail: Codable {
+        let senses: [WordOfTheDaySense]
+        let example: WordOfTheDayExample?
+        let jlpt: Int?
+    }
+
+    // Encodes the rich detail to a JSON string for the notification userInfo, or nil when there's none.
+    private static func encodeDetail(_ liveContent: WordOfTheDayLiveContent) -> String? {
+        guard liveContent.senses.isEmpty == false || liveContent.example != nil || liveContent.jlpt != nil else {
+            return nil
+        }
+        let detail = WordOfTheDayDetail(senses: liveContent.senses, example: liveContent.example, jlpt: liveContent.jlpt)
+        guard let data = try? JSONEncoder().encode(detail) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    // Decodes the rich detail JSON string from a notification's userInfo.
+    private nonisolated static func decodeDetail(_ json: String?) -> WordOfTheDayDetail? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(WordOfTheDayDetail.self, from: data)
     }
 
     // Fetches the kana reading and first gloss for each unique entry ID.
@@ -266,6 +468,11 @@ enum WordOfTheDayScheduler {
         using dictionaryStore: DictionaryStore
     ) -> [Int64: WordOfTheDayLiveContent] {
         let uniqueIDs = Array(Set(words.map(\.canonicalEntryID)))
+        // Saved surface per entry id, used as the priority term for example-sentence search.
+        var surfaceByEntryID: [Int64: String] = [:]
+        for word in words where surfaceByEntryID[word.canonicalEntryID] == nil {
+            surfaceByEntryID[word.canonicalEntryID] = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         var cached = loadCachedLiveContent()
         var out: [Int64: WordOfTheDayLiveContent] = [:]
         out.reserveCapacity(uniqueIDs.count)
@@ -275,7 +482,10 @@ enum WordOfTheDayScheduler {
             if let cachedContent = cached[entryID] {
                 out[entryID] = WordOfTheDayLiveContent(
                     kana: cachedContent.kana,
-                    meaning: cachedContent.meaning
+                    meaning: cachedContent.meaning,
+                    senses: cachedContent.senses ?? [],
+                    example: cachedContent.example,
+                    jlpt: cachedContent.jlpt
                 )
             } else {
                 missingIDs.append(entryID)
@@ -293,9 +503,21 @@ enum WordOfTheDayScheduler {
                 return trimmed.isEmpty ? nil : trimmed
             }
 
-            let meaning = entry.senses.first?.glosses.first ?? ""
-            out[entryID] = WordOfTheDayLiveContent(kana: kana, meaning: meaning)
-            cached[entryID] = WordOfTheDayCachedContent(kana: kana, meaning: meaning)
+            // Up to three senses, each with a friendly POS label and a few glosses.
+            let senses = entry.senses.prefix(3).map { sense in
+                WordOfTheDaySense(
+                    partOfSpeech: friendlyPartOfSpeech(sense.pos),
+                    glosses: Array(sense.glosses.prefix(4))
+                )
+            }
+            let meaning = senses.first?.glosses.first ?? ""
+            let example = resolveExample(
+                terms: [surfaceByEntryID[entryID], entry.kanjiForms.first?.text, entry.kanaForms.first?.text].compactMap { $0 },
+                using: dictionaryStore
+            )
+            let jlpt = dictionaryStore.jlptLevel(for: entryID)
+            out[entryID] = WordOfTheDayLiveContent(kana: kana, meaning: meaning, senses: Array(senses), example: example, jlpt: jlpt)
+            cached[entryID] = WordOfTheDayCachedContent(kana: kana, meaning: meaning, senses: Array(senses), example: example, jlpt: jlpt)
         }
 
         persistCachedLiveContent(cached)
