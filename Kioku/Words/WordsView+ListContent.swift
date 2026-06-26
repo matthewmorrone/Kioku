@@ -195,6 +195,30 @@ extension WordsView {
             }
         }
 
+        // Add-to-list submenu — every user list appears as a toggleable row, with
+        // a checkmark when the word is already in that list. Tapping a non-member
+        // list saves the word first if needed (toggleListMembership is a no-op on
+        // unsaved words), so users can add a search-result row to a list in one
+        // gesture without first having to favorite it.
+        if wordListsStore.lists.isEmpty == false {
+            let memberLists: Set<UUID> = Set(wordsStore.words.first { $0.canonicalEntryID == entryID }?.wordListIDs ?? [])
+            Menu {
+                ForEach(wordListsStore.lists) { list in
+                    Button {
+                        addOrToggleListMembership(entryID: entryID, surface: surface, materialized: entry, listID: list.id)
+                    } label: {
+                        if memberLists.contains(list.id) {
+                            Label(list.name, systemImage: "checkmark")
+                        } else {
+                            Text(list.name)
+                        }
+                    }
+                }
+            } label: {
+                Label("Add to List", systemImage: "folder.badge.plus")
+            }
+        }
+
         Divider()
 
         Button(role: saved ? .destructive : nil) {
@@ -229,15 +253,98 @@ extension WordsView {
 
     // MARK: - List content sections
 
+    // Saved kanji rendered as a distinct section at the top of the Saved tab. Uses
+    // the same kanji-tile row shape as the search-results section, so the user gets
+    // visual continuity: a tinted square kanji tile + meanings + grade/JLPT pills,
+    // tapping opens KanjiDetailView. Hidden when no kanji are saved (or when the
+    // current note/list filter excludes all of them) — no phantom "Kanji" header.
+    @ViewBuilder
+    var savedKanjiContent: some View {
+        if visibleSavedKanji.isEmpty == false {
+            Section("Kanji") {
+                ForEach(visibleSavedKanji) { saved in
+                    if let info = materializedSavedKanji[saved.literal] {
+                        Button {
+                            isSearchFieldFocused = false
+                            presentedKanjiInfo = info
+                        } label: {
+                            kanjiResultRowContent(info)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.accentColor.opacity(0.06))
+                        .contextMenu { savedKanjiRowMenu(info: info, saved: saved) }
+                    }
+                }
+            }
+        }
+    }
+
+    // Long-press context menu for a saved-kanji row. Mirrors the word-row menu's
+    // shape — Open / Add to List / Remove from current list / Unfavorite —
+    // routed through SavedKanjiStore. Without this, kanji were saveable but
+    // couldn't be reorganized or removed from the Saved view.
+    @ViewBuilder
+    func savedKanjiRowMenu(info: KanjiInfo, saved: SavedKanji) -> some View {
+        Button {
+            presentedKanjiInfo = info
+        } label: {
+            Label("Open Details", systemImage: "info.circle")
+        }
+
+        if wordListsStore.lists.isEmpty == false {
+            let memberLists: Set<UUID> = Set(saved.wordListIDs)
+            Menu {
+                ForEach(wordListsStore.lists) { list in
+                    Button {
+                        savedKanjiStore.setListMembership(
+                            literal: saved.literal,
+                            listID: list.id,
+                            isMember: memberLists.contains(list.id) == false
+                        )
+                    } label: {
+                        if memberLists.contains(list.id) {
+                            Label(list.name, systemImage: "checkmark")
+                        } else {
+                            Text(list.name)
+                        }
+                    }
+                }
+            } label: {
+                Label("Add to List", systemImage: "folder.badge.plus")
+            }
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            savedKanjiStore.remove(literal: saved.literal)
+        } label: {
+            Label("Unfavorite", systemImage: "star.slash")
+        }
+
+        if let listID = singleActiveListID {
+            Button(role: .destructive) {
+                savedKanjiStore.setListMembership(literal: saved.literal, listID: listID, isMember: false)
+            } label: {
+                Label("Remove from \(listName(listID))", systemImage: "folder.badge.minus")
+            }
+        }
+    }
+
     // Saved words (already filtered by note/list via visibleWords), rendered with the
     // unified wordRow. Materialized entries come from the shared materializedHistory cache.
+    // The empty-state message is suppressed when the sibling savedKanjiContent section
+    // has visible kanji — otherwise a list that only contains kanji would render the
+    // misleading "No saved words match" message even though the list isn't empty.
     @ViewBuilder
     var filteredSavedContent: some View {
         if visibleWords.isEmpty {
-            Text(isFilterActive
-                ? "No saved words match the current filter."
-                : "No saved words yet. Tap the star on any result to save it.")
-                .foregroundStyle(.secondary)
+            if visibleSavedKanji.isEmpty {
+                Text(isFilterActive
+                    ? "No saved words match the current filter."
+                    : "No saved words yet. Tap the star on any result to save it.")
+                    .foregroundStyle(.secondary)
+            }
         } else {
             ForEach(visibleWords) { word in
                 let entry = materializedHistory[word.canonicalEntryID]

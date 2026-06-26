@@ -12,6 +12,21 @@ extension WordsView {
         !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty || statScope != .none || jlptLevel != nil
     }
 
+    // Returns saved kanji filtered by the same note/list scope as visibleWords, sorted
+    // newest-first by savedAt. Kanji have no review stats yet, so the statScope and
+    // jlptLevel filters don't apply — they pass through unfiltered to the section.
+    var visibleSavedKanji: [SavedKanji] {
+        var filtered = savedKanjiStore.kanji
+        if !activeFilterNoteIDs.isEmpty || !activeFilterListIDs.isEmpty {
+            filtered = filtered.filter { kanji in
+                let matchesNote = activeFilterNoteIDs.isEmpty || activeFilterNoteIDs.contains { kanji.sourceNoteIDs.contains($0) }
+                let matchesList = activeFilterListIDs.isEmpty || activeFilterListIDs.contains { kanji.wordListIDs.contains($0) }
+                return matchesNote && matchesList
+            }
+        }
+        return filtered.sorted { $0.savedAt > $1.savedAt }
+    }
+
     // Returns saved words filtered by active note/list/stat selection and sorted by the current saved sort order.
     var visibleWords: [SavedWord] {
         var filtered = wordsStore.words
@@ -172,6 +187,38 @@ extension WordsView {
             storedSurface: materialized?.primarySearchSurface ?? surface,
             defaultSenseIDs: senseIDs
         )
+    }
+
+    // Creates (or reuses) a regular WordList named "Animated Kanji" and adds
+    // every literal from KanjiDecoration.animatedKanjiCategories to it as a
+    // SavedKanji member. Idempotent — running twice doesn't create a second
+    // list, and kanji already saved have their list membership unioned rather
+    // than duplicated. Surfaces the list in the Saved tab's Kanji section once
+    // the user filters by it.
+    func populateAnimatedKanjiList() {
+        let listName = "Animated Kanji"
+        let listID: UUID = wordListsStore.lists.first { $0.name == listName }?.id
+            ?? wordListsStore.create(name: listName)
+        for (_, literals) in KanjiDecoration.animatedKanjiCategories {
+            for literal in literals {
+                if savedKanjiStore.contains(literal: literal) {
+                    savedKanjiStore.setListMembership(literal: literal, listID: listID, isMember: true)
+                } else {
+                    savedKanjiStore.save(literal: literal, wordListIDs: [listID])
+                }
+            }
+        }
+    }
+
+    // Toggles a word's membership in `listID`, saving the word first if it isn't
+    // already saved. Without the save step, `WordsStore.toggleListMembership` is a
+    // no-op on unsaved words (it only mutates existing entries) — so adding an
+    // unsaved search result to a list silently does nothing without this guard.
+    func addOrToggleListMembership(entryID: Int64, surface: String, materialized: DictionaryEntry?, listID: UUID) {
+        if isSavedByID(entryID) == false {
+            toggleSaveWord(entryID: entryID, surface: surface, materialized: materialized)
+        }
+        wordsStore.toggleListMembership(wordID: entryID, listID: listID)
     }
 
     // Single active list/note filter, when exactly one is on — the unambiguous "container

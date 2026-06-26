@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var selectedTab: ContentTab
     @StateObject private var notesStore = NotesStore()
     @StateObject private var wordsStore = WordsStore()
+    @StateObject private var savedKanjiStore = SavedKanjiStore()
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
     @StateObject private var reviewStore = ReviewStore()
@@ -94,6 +95,7 @@ struct ContentView: View {
             // Renders the Words tab entry point; pendingWordsRoute carries notification and read-tab routes.
             WordsView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, surfaceReadingData: readResources.surfaceReadingData, kanjiReadingFallback: readResources.kanjiReadingFallback, pendingRoute: $pendingWordsRoute)
                 .environmentObject(wordsStore)
+                .environmentObject(savedKanjiStore)
                 .environmentObject(wordListsStore)
                 .environmentObject(historyStore)
             .tag(ContentTab.words)
@@ -124,6 +126,7 @@ struct ContentView: View {
         .onChange(of: japaneseTheme) { _, _ in Theme.refreshGlobalAppearance() }
         .environmentObject(notesStore)
         .environmentObject(wordsStore)
+        .environmentObject(savedKanjiStore)
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
         .environmentObject(reviewStore)

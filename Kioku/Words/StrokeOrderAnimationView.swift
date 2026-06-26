@@ -34,12 +34,16 @@ struct StrokeOrderAnimationView: View {
 
                 ForEach(Array(strokes.enumerated()), id: \.offset) { idx, stroke in
                     if let cg = SVGPathParser.cgPath(from: stroke.pathD) {
-                        // Trim trick: each stroke renders fully when its index is past, partially
-                        // when it's the active stroke, and not at all when it's still upcoming.
+                        // Each stroke renders fully when its index is past, partially when it's
+                        // the active stroke, not at all when it's still upcoming.
                         let trimTo: CGFloat = idx < activeIndex ? 1
                                             : (idx == activeIndex ? activeProgress : 0)
+                        // Shape.trim(from:to:) — the ANIMATABLE form. Previously used
+                        // Path.trimmedPath(from:to:) which returns a static Path snapshot
+                        // SwiftUI's animation system can't interpolate, so each stroke
+                        // appeared all-at-once instead of drawing on.
                         Path(cg)
-                            .trimmedPath(from: 0, to: trimTo)
+                            .trim(from: 0, to: trimTo)
                             .stroke(strokeColor(for: idx),
                                     style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                     }
@@ -88,10 +92,12 @@ struct StrokeOrderAnimationView: View {
                 guard myGeneration == generation else { return }
                 activeIndex = idx
                 activeProgress = 0
-                withAnimation(.easeInOut(duration: 0.45)) {
+                // 0.65s draw + 0.25s pause = ~0.9s per stroke, slow enough to
+                // actually watch the brush travel along each stroke.
+                withAnimation(.easeInOut(duration: 0.65)) {
                     activeProgress = 1
                 }
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: 900_000_000)
                 guard myGeneration == generation else { return }
             }
             // After the last stroke, leave everything fully drawn (clamp activeIndex past end).
