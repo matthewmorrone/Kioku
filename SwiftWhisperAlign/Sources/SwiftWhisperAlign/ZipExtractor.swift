@@ -6,20 +6,20 @@
 
 import Foundation
 
-enum ZipExtractor {
+public enum ZipExtractor {
 
     // Allocation ceilings for untrusted archives. The downloaded model archives are
     // ~100–400 MB uncompressed; anything past these limits is a corrupt or hostile
     // file, not a bigger model. Bounding both per-entry and total prevents a crafted
     // header from forcing multi-gigabyte allocations out of a tiny download.
-    static let maxEntryUncompressedSize = 1 << 30        // 1 GiB per entry
-    static let maxTotalUncompressedSize = 2 << 30        // 2 GiB per archive
+    public static let maxEntryUncompressedSize = 1 << 30        // 1 GiB per entry
+    public static let maxTotalUncompressedSize = 2 << 30        // 2 GiB per archive
 
     // Extracts all entries from a ZIP archive into destinationURL.
     // Creates the destination directory and all subdirectories as needed.
     // Entry names are untrusted: each resolved path must stay inside
     // destinationURL or the archive is rejected (zip-slip traversal).
-    static func extract(zipData: Data, to destinationURL: URL) throws {
+    public static func extract(zipData: Data, to destinationURL: URL) throws {
         try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
         let containerPath = destinationURL.standardizedFileURL.path + "/"
 
