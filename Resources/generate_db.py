@@ -553,7 +553,12 @@ def insert_entry(conn, entry, ent_seq):
             )
 
 
-def resolve_extra_ent_seq(entry, entry_index, used_ent_seqs, next_custom_ent_seq):
+def resolve_extra_ent_seq(entry, entry_index, used_ent_seqs):
+    # An extra entry's ent_seq is the STABLE key saved words anchor to, so it must not depend on
+    # the entry's position in extras.json. Prefer an explicit ent_seq; otherwise derive one
+    # deterministically from the entry's surface forms. The previous scheme assigned sequential
+    # negatives by file order, so reordering or inserting an entry silently re-keyed every entry
+    # after it.
     explicit_ent_seq = entry.get("ent_seq")
     if explicit_ent_seq is not None:
         ent_seq = int(explicit_ent_seq)
@@ -561,13 +566,19 @@ def resolve_extra_ent_seq(entry, entry_index, used_ent_seqs, next_custom_ent_seq
             raise ValueError(
                 f"extras.json entry {entry_index} specifies ent_seq {ent_seq}, but that ent_seq is already in use"
             )
-        return ent_seq, next_custom_ent_seq
+        return ent_seq
 
-    ent_seq = next_custom_ent_seq
+    # Content-derived negative ent_seq (JMdict sequences are positive), in a wide band to keep
+    # collisions rare. Identity is the set of surface forms; on the rare collision, probe downward.
+    kanji = entry.get("kanji") or []
+    kana = entry.get("kana") or []
+    key = "k:" + "|".join(kanji) + ";r:" + "|".join(kana)
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
+    ent_seq = -(int(digest[:12], 16) % 900_000_000) - 100_000_000
     while ent_seq in used_ent_seqs:
         ent_seq -= 1
 
-    return ent_seq, ent_seq - 1
+    return ent_seq
 
 
 def import_wordfreq(conn):
@@ -1257,11 +1268,8 @@ def build_database():
         insert_entry(conn, entry, ent_seq)
         used_ent_seqs.add(ent_seq)
 
-    next_custom_ent_seq = -1
     for entry_index, entry in enumerate(extra_entries):
-        ent_seq, next_custom_ent_seq = resolve_extra_ent_seq(
-            entry, entry_index, used_ent_seqs, next_custom_ent_seq
-        )
+        ent_seq = resolve_extra_ent_seq(entry, entry_index, used_ent_seqs)
         insert_entry(conn, entry, ent_seq)
         used_ent_seqs.add(ent_seq)
 

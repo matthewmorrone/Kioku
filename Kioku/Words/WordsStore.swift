@@ -35,6 +35,34 @@ final class WordsStore: ObservableObject {
         }
     }
 
+    // Closures over the dictionary's ent_seq maps, installed once the dictionary is ready. While
+    // nil (before the dictionary loads), saves persist with entSeq unresolved and get reconciled
+    // when migration is enabled. nonisolated(unsafe) for the same reason as userDefaults: the
+    // captured DictionaryStore is documented thread-safe (nonisolated, read-only after populate).
+    private var stableKeyResolver: (entSeqForEntryID: (Int64) -> Int64?, entryIDForEntSeq: (Int64) -> Int64?)?
+
+    // Installs the stable-key resolver and reconciles existing saved words against the live
+    // dictionary: legacy cards get their ent_seq backfilled from the current row id, and cards with
+    // a known ent_seq get canonicalEntryID re-resolved so a dictionary rebuild can't leave them
+    // pointing at a drifted row. Idempotent — safe to call again if the dictionary reloads. Call
+    // once the dictionary is ready (ContentView's readResources.ready hook).
+    func enableStableKeyMigration(using store: DictionaryStore) {
+        let resolver = (
+            entSeqForEntryID: { store.entSeq(forEntryID: $0) },
+            entryIDForEntSeq: { store.entryID(forEntSeq: $0) }
+        )
+        stableKeyResolver = resolver
+        let reconciled = words.map {
+            $0.reconcilingStableKey(entSeqForEntryID: resolver.entSeqForEntryID, entryIDForEntSeq: resolver.entryIDForEntSeq)
+        }
+        // SavedWord's == ignores entSeq (identity is the entry), so compare the stable-key fields
+        // explicitly to avoid a spurious write+publish when nothing actually changed.
+        let changed = reconciled.count != words.count || zip(words, reconciled).contains {
+            $0.canonicalEntryID != $1.canonicalEntryID || $0.entSeq != $1.entSeq
+        }
+        if changed { persist(reconciled) }
+    }
+
     // Adds a word or merges it with an existing entry if already saved.
     func add(_ word: SavedWord) {
         var updated = words
@@ -312,7 +340,15 @@ final class WordsStore: ObservableObject {
     // re-tap, and the alternative (sync write on main) was the bottleneck on the
     // star-tap path.
     private func persist(_ entries: [SavedWord]) {
-        let normalized = SavedWordStorage.normalizedEntries(entries)
+        // Reconcile against the live dictionary so newly-added cards get their stable ent_seq
+        // backfilled and any drifted row id is corrected before the write. No-op until the
+        // dictionary is ready (resolver installed by enableStableKeyMigration).
+        let reconciled = stableKeyResolver.map { resolver in
+            entries.map {
+                $0.reconcilingStableKey(entSeqForEntryID: resolver.entSeqForEntryID, entryIDForEntSeq: resolver.entryIDForEntSeq)
+            }
+        } ?? entries
+        let normalized = SavedWordStorage.normalizedEntries(reconciled)
         words = normalized
         let storageKey = self.storageKey
         // UserDefaults isn't formally Sendable in the SDK but Apple documents it as
