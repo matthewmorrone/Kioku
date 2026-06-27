@@ -53,7 +53,11 @@ struct KeyboardModeBar: View {
             )
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        // Vertical padding is asymmetric — full 6pt above the buttons so they don't collide
+        // with the screen content above, but zero below so the bar visually merges with the
+        // resultStrip below (both .secondarySystemBackground). A bottom pad here would draw
+        // as a dark stripe under the bar when the inputView hosts the radical picker.
+        .padding(.top, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemBackground))
     }

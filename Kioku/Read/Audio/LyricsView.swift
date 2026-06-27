@@ -60,37 +60,6 @@ struct LyricsView: View {
         return String(format: "%d:%02d.%d", s / 60, s % 60, totalTenths % 10)
     }
 
-    // Tap-to-seek: moves playback to the moment the tapped word is sung. Uses this cue's
-    // per-word `CueCharTiming` checkpoints — the cue-local UTF-16 offset from the renderer
-    // picks the checkpoint whose character span starts at or before the tap. When the line
-    // has no checkpoints yet, jumps to the line's start AND kicks off a Whisper word-sweep so
-    // a second tap can be precise (the realign handler self-gates against concurrent runs).
-    private func seekToTappedWord(cueLocalLocation: Int?, cueIndex: Int) {
-        guard cues.indices.contains(cueIndex) else { return }
-        let cue = cues[cueIndex]
-        let checkpoints = cue.checkpoints
-
-        guard checkpoints.isEmpty == false else {
-            controller.seek(toMs: cue.startMs)
-            onCueEdit(.realignWord(cueIndex: cueIndex))
-            return
-        }
-
-        guard let location = cueLocalLocation else {
-            controller.seek(toMs: cue.startMs)
-            return
-        }
-
-        // The word being sung at the tapped offset = the latest checkpoint that starts at or
-        // before it; fall back to the earliest checkpoint for a tap before the first word.
-        let match = checkpoints
-            .filter { $0.charOffsetInCue <= location }
-            .max(by: { $0.charOffsetInCue < $1.charOffsetInCue })
-            ?? checkpoints.min(by: { $0.timeMs < $1.timeMs })
-
-        controller.seek(toMs: max(0, match?.timeMs ?? cue.startMs))
-    }
-
     // Resolves the word (segment) under a cue-local tap/press location to its cue-local UTF-16
     // span and text, for the long-press timing menu. Returns nil when the location falls outside
     // every segment (e.g. trailing whitespace).
@@ -400,11 +369,13 @@ struct LyricsView: View {
                         unknownSegmentColor: .tertiaryLabel,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
-                        onSegmentTapped: { localLocation, _, _ in
-                            // In the karaoke card a plain tap SEEKS playback to the tapped word
-                            // (using the cue-local UTF-16 offset against this cue's per-word
-                            // checkpoints). Dictionary look-up moves to long-press below.
-                            seekToTappedWord(cueLocalLocation: localLocation, cueIndex: displayIndex)
+                        onSegmentTapped: { localLocation, rect, _ in
+                            // In the karaoke card a plain tap opens the dictionary lookup sheet —
+                            // mirrors the Read tab so the tap-to-define mental model holds across
+                            // both views. Word-level seek-to-tap moves to the long-press menu;
+                            // cue-level seek (tap an inactive cue) and the scrubber are unchanged.
+                            let globalLocation = localLocation.map { $0 + cueOriginInNote }
+                            onSegmentTapped(globalLocation, rect, nil)
                         },
                         onSegmentLongPressed: { localLocation, rect, _ in
                             // Long-press opens a menu for the pressed WORD: snap its start or end
