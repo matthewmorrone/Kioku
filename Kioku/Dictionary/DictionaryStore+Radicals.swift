@@ -29,6 +29,14 @@ extension DictionaryStore {
 
     // The set of kanji that contain ALL of the given radicals. Empty selection returns empty set —
     // the UI is responsible for refusing to show an unbounded result list.
+    //
+    // The CTE in front of the main query synthesises a self-edge for every glyph that exists in
+    // BOTH `radicals` and `kanji_characters` — i.e., radicals like 心 / 戸 / 月 that are also
+    // standalone kanji. KRADFILE2 never emits these self-edges (it only decomposes COMPOUND
+    // kanji into their components), so without the CTE tapping radical 心 would return everything
+    // 心 is found INSIDE of, but not 心 itself. The CTE keeps the existing query semantics
+    // unchanged for multi-radical selections: 心 is treated as containing its own self-edge, so
+    // it matches selection {心} but not {心,一} (it lacks 一).
     nonisolated func fetchKanjiContainingAllRadicals(_ radicalGlyphs: [String]) throws -> [String] {
         guard radicalGlyphs.isEmpty == false else { return [] }
         return try withSerializedDatabaseAccess {
@@ -37,8 +45,15 @@ extension DictionaryStore {
             // radical so the prepared statement can bind them positionally.
             let placeholders = Array(repeating: "?", count: radicalGlyphs.count).joined(separator: ",")
             let sql = """
+            WITH all_edges(kanji, radical) AS (
+                SELECT kanji, radical FROM kanji_radicals
+                UNION
+                SELECT kc.character, kc.character
+                FROM kanji_characters AS kc
+                INNER JOIN radicals AS r ON r.radical = kc.character
+            )
             SELECT kanji
-            FROM kanji_radicals
+            FROM all_edges
             WHERE radical IN (\(placeholders))
             GROUP BY kanji
             HAVING COUNT(DISTINCT radical) = ?\(radicalGlyphs.count + 1)
@@ -73,9 +88,20 @@ extension DictionaryStore {
 
         return try withSerializedDatabaseAccess {
             let placeholders = Array(repeating: "?", count: candidateKanji.count).joined(separator: ",")
+            // Same self-edge CTE as fetchKanjiContainingAllRadicals — when the candidate set
+            // includes a kanji whose only "edge" is its self-edge (e.g., 心 selected as the sole
+            // radical), the CTE keeps it reachable here so the dimming stays consistent across
+            // both queries.
             let sql = """
+            WITH all_edges(kanji, radical) AS (
+                SELECT kanji, radical FROM kanji_radicals
+                UNION
+                SELECT kc.character, kc.character
+                FROM kanji_characters AS kc
+                INNER JOIN radicals AS r ON r.radical = kc.character
+            )
             SELECT DISTINCT radical
-            FROM kanji_radicals
+            FROM all_edges
             WHERE kanji IN (\(placeholders))
             """
             var statement: OpaquePointer?
