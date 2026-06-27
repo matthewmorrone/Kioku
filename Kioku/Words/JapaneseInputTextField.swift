@@ -25,6 +25,17 @@ struct JapaneseInputTextField: UIViewRepresentable {
         field.placeholder = placeholder
         field.borderStyle = (border == .roundedRect) ? .roundedRect : .none
         field.autocorrectionType = .no
+        // Belt-and-suspenders QuickType / inline-prediction strip suppression. autocorrect=.no
+        // alone leaves the dark predictions strip visible above the system keyboard on iOS 17+
+        // (and the Japanese candidate strip with multilingual layouts), wedging a band of dead
+        // space between this app's KeyboardModeBar accessory and the actual keys.
+        field.spellCheckingType = .no
+        field.smartDashesType = .no
+        field.smartQuotesType = .no
+        field.smartInsertDeleteType = .no
+        if #available(iOS 17.0, *) {
+            field.inlinePredictionType = .no
+        }
         field.autocapitalizationType = .none
         field.returnKeyType = .search
         field.clearButtonMode = .never

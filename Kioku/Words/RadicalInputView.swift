@@ -96,6 +96,10 @@ struct RadicalInputView: View {
     // Top strip: selected-radical chips on the left, scrolling kanji results to their right.
     @ViewBuilder
     private var resultStrip: some View {
+        // Padding is asymmetric: the TOP edge butts directly against KeyboardModeBar (same
+        // .secondarySystemBackground) so the two rows visually merge into one strip rather than
+        // floating with a black gap between them. Bottom padding stays so the strip doesn't
+        // crowd the Divider/radical grid below.
         VStack(spacing: 8) {
             if selected.isEmpty == false {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -129,7 +133,7 @@ struct RadicalInputView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 12)
+                    .padding(.bottom, 6)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
@@ -153,7 +157,7 @@ struct RadicalInputView: View {
                 }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.bottom, 4)
         .background(Color(.secondarySystemBackground))
     }
 
