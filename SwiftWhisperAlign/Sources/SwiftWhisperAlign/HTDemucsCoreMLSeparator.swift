@@ -41,29 +41,29 @@ enum HTDemucsCoreMLSeparator {
         return DSP(icos: icos, isin: isin, win: win, wsum: wsum, outLen: outLen)
     }
 
-    // ---- model loading (dev: from <Documents>/HTDemucsSpec.mlmodelc; later: bundle/download).
-    // NOT cached: a 269 MB MLModel left resident OOM-kills the aligner that runs right after. ----
-    static func loadModel() throws -> MLModel {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let url = docs.appendingPathComponent("HTDemucsSpec.mlmodelc")
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw NSError(domain: "SwiftWhisperAlign.HTDemucs", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "HTDemucs model not found at \(url.lastPathComponent)."])
-        }
+    // ---- model loading via [[HTDemucsModelStore]]: first-run download + Application
+    // Support cache, same purge-resistant placement as the ASR + CTC aligner weights.
+    // NOT cached in memory: a 269 MB MLModel left resident OOM-kills the aligner that
+    // runs right after, so we build → predict → drop on every isolation. ----
+    static func loadModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> MLModel {
+        let url = try await HTDemucsModelStore.ensureModel(onStage: onStage)
         let cfg = MLModelConfiguration(); cfg.computeUnits = .all
         return try MLModel(contentsOf: url, configuration: cfg)
     }
 
     // Isolates vocals from decoded stereo, returning full-length mono vocals at 44.1 kHz.
+    // The await is at the top (model-store check + any first-run download); the iSTFT
+    // overlap-add loop below runs synchronously on the caller's task.
     static func isolateVocalsMono(
         stereo: [[Float]],
         cancellationCheck: (@Sendable () -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil
-    ) throws -> [Float] {
+        onProgress: ((Double) -> Void)? = nil,
+        onStage: (@Sendable (String) -> Void)? = nil
+    ) async throws -> [Float] {
         guard stereo.count == 2 else { return [] }
         let L = min(stereo[0].count, stereo[1].count)
         guard L > 0 else { return [] }
-        let model = try loadModel()
+        let model = try await loadModel(onStage: onStage)
         let dsp = buildDSP()
 
         // 7.8 s chunks, 25% overlap, triangular transition weight (demucs apply_model style).
@@ -78,25 +78,33 @@ enum HTDemucsCoreMLSeparator {
             if cancellationCheck?() == true { break }
             let end = min(L, start + SEG)
             let n = end - start
-            // Pad the chunk to SEG (the model is fixed-length).
-            var lch = [Float](repeating: 0, count: SEG)
-            var rch = [Float](repeating: 0, count: SEG)
-            for i in 0..<n { lch[i] = stereo[0][start + i]; rch[i] = stereo[1][start + i] }
+            // Per-chunk autoreleasepool drain: predict() returns MLMultiArray-backed values
+            // that sit in the calling thread's autorelease pool until the next run-loop tick.
+            // This loop has no tick — without an explicit drain, ~45 chunks × ~30 MB of
+            // transient CoreML buffers pile up (≈1.4 GB) and cross jetsam on longer songs.
+            // The accumulators (acc, wacc) live outside the pool, so per-chunk results
+            // survive; only the transient buffers (lch/rch, MLMultiArrays, freqL/R) drain.
+            try autoreleasepool {
+                // Pad the chunk to SEG (the model is fixed-length).
+                var lch = [Float](repeating: 0, count: SEG)
+                var rch = [Float](repeating: 0, count: SEG)
+                for i in 0..<n { lch[i] = stereo[0][start + i]; rch[i] = stereo[1][start + i] }
 
-            let (specL, specR, timeL, timeR) = try predict(model: model, left: lch, right: rch)
-            // Vocals = iSTFT(spec) + time-branch, per channel; downmix to mono.
-            let freqL = istftChannel(re: specL.re, im: specL.im, dsp: dsp)
-            let freqR = istftChannel(re: specR.re, im: specR.im, dsp: dsp)
-            // Overlap-add (triangular) into the accumulator.
-            for i in 0..<n {
-                let w = triangle[i]
-                let v = ((freqL[i] + timeL[i]) + (freqR[i] + timeR[i])) * 0.5
-                acc[start + i] += v * w
-                wacc[start + i] += w
+                let (specL, specR, timeL, timeR) = try predict(model: model, left: lch, right: rch)
+                // Vocals = iSTFT(spec) + time-branch, per channel; downmix to mono.
+                let freqL = istftChannel(re: specL.re, im: specL.im, dsp: dsp)
+                let freqR = istftChannel(re: specR.re, im: specR.im, dsp: dsp)
+                // Overlap-add (triangular) into the accumulator.
+                for i in 0..<n {
+                    let w = triangle[i]
+                    let v = ((freqL[i] + timeL[i]) + (freqR[i] + timeR[i])) * 0.5
+                    acc[start + i] += v * w
+                    wacc[start + i] += w
+                }
+                // Fraction of audio processed (not chunk index) so the phase reaches a true 100%
+                // on the final chunk — chunk-count estimates over-shoot and stall the bar at ~97%.
+                onProgress?(Double(end) / Double(L))
             }
-            // Fraction of audio processed (not chunk index) so the phase reaches a true 100%
-            // on the final chunk — chunk-count estimates over-shoot and stall the bar at ~97%.
-            onProgress?(Double(end) / Double(L))
             if end >= L { break }
             start += stride
         }
