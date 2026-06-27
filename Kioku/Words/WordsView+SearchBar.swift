@@ -45,7 +45,12 @@ extension WordsView {
                 Button {
                     isBrowseFrequencyPresented = true
                 } label: {
-                    Label("Browse by Frequency", systemImage: "chart.bar.fill")
+                    Label("Browse Words by Frequency", systemImage: "chart.bar.fill")
+                }
+                Button {
+                    isBrowseKanjiPresented = true
+                } label: {
+                    Label("Browse Kanji by Frequency", systemImage: "chart.bar.doc.horizontal.fill")
                 }
                 Button {
                     isBrowseProficiencyPresented = true
@@ -69,6 +74,12 @@ extension WordsView {
                     isHandwritingPresented = true
                 } label: {
                     Label("Handwriting Input", systemImage: "pencil.and.scribble")
+                }
+                Divider()
+                Button {
+                    populateAnimatedKanjiList()
+                } label: {
+                    Label("Create Animated Kanji List", systemImage: "sparkles")
                 }
 
                 // One selection menu for every tab. Because every word row selects into the
@@ -124,8 +135,17 @@ extension WordsView {
             .accessibilityLabel("More actions")
 
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                // Tapping the leading magnifying glass yields focus, dismissing the
+                // keyboard — the natural "I'm done typing, scroll the results" gesture
+                // sits exactly where the user's thumb already is from typing.
+                Button {
+                    isSearchFieldFocused = false
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss keyboard")
                 JapaneseInputTextField(
                     text: $searchText,
                     isFocused: $isSearchFieldFocused,

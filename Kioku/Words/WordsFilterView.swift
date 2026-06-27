@@ -9,6 +9,7 @@ import SwiftUI
 struct WordsFilterView: View {
     @EnvironmentObject private var wordListsStore: WordListsStore
     @EnvironmentObject private var wordsStore: WordsStore
+    @EnvironmentObject private var savedKanjiStore: SavedKanjiStore
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var reviewStore: ReviewStore
 
@@ -82,6 +83,14 @@ struct WordsFilterView: View {
     // then list submenus, then "New List…" last. Active scope carries a checkmark; tapping it again clears to History.
     @ViewBuilder
     private var scopeMenuContent: some View {
+        // Explicit History entry — was previously implicit (any scope re-tapped
+        // returned here, but there was no direct path TO History from another
+        // scope without knowing which one was active). Carries the same checkmark
+        // affordance as every other scope when it's the active one.
+        Button { selectHistory() } label: {
+            Label("History", systemImage: isHistoryScope ? "checkmark" : "clock.arrow.circlepath")
+        }
+
         Button { tapFavorites() } label: {
             Label("Favorites", systemImage: isFavoritesScope ? "checkmark" : "star.fill")
         }
@@ -175,6 +184,18 @@ struct WordsFilterView: View {
     // MARK: - Current scope
 
     // Favorites is active when showing saved words with no note/list/stat/JLPT narrowing.
+    // True when no scope/filter is active — the History default state. Used to
+    // mark the explicit History menu row with a checkmark, mirroring the indicator
+    // every other scope shows when active.
+    private var isHistoryScope: Bool {
+        showSavedWords == false
+            && activeFilterNoteIDs.isEmpty
+            && activeFilterListIDs.isEmpty
+            && statScope == .none
+            && showRecentSearches == false
+            && jlptLevel == nil
+    }
+
     private var isFavoritesScope: Bool {
         showSavedWords && activeFilterNoteIDs.isEmpty && activeFilterListIDs.isEmpty
             && statScope == .none && jlptLevel == nil
@@ -338,11 +359,15 @@ struct WordsFilterView: View {
         wordListsStore.move(from: IndexSet(integer: from), to: to)
     }
 
-    // Removes list membership from all words and deletes the list from the store.
+    // Removes list membership from all saved words AND saved kanji, then deletes
+    // the list from the store. Both record types share the same WordList ids,
+    // so both stores need to be cleaned up — otherwise a kanji's wordListIDs
+    // could carry a dead UUID forever.
     private func deleteList(_ listID: UUID) {
         activeFilterListIDs.remove(listID)
         wordListsStore.delete(id: listID)
         wordsStore.removeListMembership(listID: listID)
+        savedKanjiStore.removeListMembership(listID: listID)
     }
 
     // Seeds the rename field and opens the rename alert for the given list.
@@ -374,9 +399,14 @@ struct WordsFilterView: View {
 
     // MARK: - Data helpers
 
-    // Counts how many saved words belong to a given list — shown as a trailing badge.
+    // Counts saved members of a given list — words + kanji. Both record types
+    // share the same WordList ids (see SavedKanji.wordListIDs), so a kanji-only
+    // list registers a non-zero count instead of the misleading "Animated (0)"
+    // we'd get from counting only SavedWord entries.
     private func wordCount(for listID: UUID) -> Int {
-        wordsStore.words.reduce(0) { $0 + ($1.wordListIDs.contains(listID) ? 1 : 0) }
+        let words = wordsStore.words.reduce(0) { $0 + ($1.wordListIDs.contains(listID) ? 1 : 0) }
+        let kanji = savedKanjiStore.kanji.reduce(0) { $0 + ($1.wordListIDs.contains(listID) ? 1 : 0) }
+        return words + kanji
     }
 
     // Only notes that have at least one saved word in the store are shown.

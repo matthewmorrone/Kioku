@@ -11,6 +11,8 @@ struct KanjiDetailView: View {
     @State private var isLoadingWords = true
     @State private var strokes: [DictionaryStore.KanjiStrokeRecord] = []
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var savedKanjiStore: SavedKanjiStore
+    @EnvironmentObject private var wordListsStore: WordListsStore
 
     var body: some View {
         NavigationStack {
@@ -32,7 +34,14 @@ struct KanjiDetailView: View {
 
                 if info.onReadings.isEmpty == false {
                     Section("On'yomi") {
-                        Text(info.onReadings.joined(separator: "・"))
+                        // Display-time katakana→hiragana fold: KANJIDIC2 stores on'yomi as
+                        // katakana (per dictionary convention), but the user prefers both on
+                        // and kun readings shown in hiragana. The source data stays canonical;
+                        // only the rendered string is folded. KanaNormalizer is the same helper
+                        // used for furigana rendering of on'yomi.
+                        Text(info.onReadings
+                            .map(KanaNormalizer.katakanaToHiragana)
+                            .joined(separator: "・"))
                             .font(.body)
                             .textSelection(.enabled)
                     }
@@ -69,9 +78,35 @@ struct KanjiDetailView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background {
+                // Per-kanji ambient decoration fills the entire sheet behind the List.
+                // .scrollContentBackground(.hidden) above lets the decoration show through
+                // the list's default opaque background; rows keep their normal cards so
+                // text stays readable while the decoration breathes through the gaps,
+                // header card area (which has .listRowBackground(.clear)), and around
+                // the navigation bar.
+                KanjiDecoration.view(for: info.literal)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
             .navigationTitle(info.literal)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    // Save / unsave toggle. Filled star = currently in SavedKanjiStore.
+                    // Long-press surfaces a list-assignment menu so the user can drop the
+                    // kanji into any of their lists in one step rather than save-then-edit.
+                    let isSaved = savedKanjiStore.contains(literal: info.literal)
+                    Button {
+                        savedKanjiStore.toggle(literal: info.literal)
+                    } label: {
+                        Image(systemName: isSaved ? "star.fill" : "star")
+                            .foregroundStyle(isSaved ? Color.yellow : Color.secondary)
+                    }
+                    .accessibilityLabel(isSaved ? "Remove from saved kanji" : "Save kanji")
+                    .contextMenu { listAssignmentMenu }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
@@ -80,20 +115,56 @@ struct KanjiDetailView: View {
         }
     }
 
-    // Hero card: KanjiVG stroke-order animation when stroke data is available, falling back to
-    // an oversized glyph. Metadata badges sit below either way.
+    // Context-menu content for the toolbar star: each user list gets a toggleable
+    // row showing whether this kanji is currently a member. Saves the kanji first
+    // if it isn't already saved — adding to a list always implies "yes, save this."
+    @ViewBuilder
+    private var listAssignmentMenu: some View {
+        if wordListsStore.lists.isEmpty {
+            Text("No lists yet — create one in Words")
+        } else {
+            let saved = savedKanjiStore.savedKanji(for: info.literal)
+            let memberSet = Set(saved?.wordListIDs ?? [])
+            ForEach(wordListsStore.lists) { list in
+                Button {
+                    if saved == nil {
+                        savedKanjiStore.save(literal: info.literal, wordListIDs: [list.id])
+                    } else {
+                        savedKanjiStore.setListMembership(
+                            literal: info.literal,
+                            listID: list.id,
+                            isMember: memberSet.contains(list.id) == false
+                        )
+                    }
+                } label: {
+                    if memberSet.contains(list.id) {
+                        Label(list.name, systemImage: "checkmark")
+                    } else {
+                        Text(list.name)
+                    }
+                }
+            }
+        }
+    }
+
+    // Hero card: KanjiVG stroke-order animation when stroke data is available, falling back
+    // to an oversized glyph. Metadata badges sit below either way. The per-kanji ambient
+    // decoration (rain, fire, etc.) is rendered at sheet-background scope (.background on
+    // the List above), not in the hero card itself.
     @ViewBuilder
     private var headerCard: some View {
         VStack(spacing: 12) {
-            if strokes.isEmpty {
-                Text(info.literal)
-                    .font(.system(size: 96, weight: .regular))
-                    .padding(.top, 8)
-            } else {
-                StrokeOrderAnimationView(strokes: strokes)
-                    .frame(width: 180, height: 180)
-                    .padding(.top, 8)
+            ZStack {
+                if strokes.isEmpty {
+                    Text(info.literal)
+                        .font(.system(size: 96, weight: .regular))
+                } else {
+                    StrokeOrderAnimationView(strokes: strokes)
+                        .frame(width: 180, height: 180)
+                }
             }
+            .frame(width: 180, height: 180)
+            .padding(.top, 8)
 
             HStack(spacing: 8) {
                 if let grade = info.grade {
