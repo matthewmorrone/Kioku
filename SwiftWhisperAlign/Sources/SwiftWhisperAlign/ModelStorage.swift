@@ -19,6 +19,12 @@ public enum ModelStorage {
     // Returns a per-model subdirectory under Application Support, creating it on demand.
     // Slashes in the model id ("aufklarer/Qwen3-…") become nested path components, mirroring
     // the HF Hub on-disk layout — two different model ids cannot clobber each other.
+    //
+    // The `models/` segment is REQUIRED by speech-swift's HuggingFaceDownloader: makeHubApi()
+    // strips the literal `/models/<org>/<model>` suffix from the cacheDir to derive its
+    // `downloadBase`. Without `models/` here the suffix check fails, the downloader silently
+    // falls back to `<App Caches>/<parent-dir-name>/…` (purgeable!), and the post-download
+    // safetensors check looks at our cacheDir and finds nothing — "No safetensors files found".
     public static func directory(for modelId: String) throws -> URL {
         let fm = FileManager.default
         guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
@@ -29,6 +35,7 @@ public enum ModelStorage {
             )
         }
         var dir = base.appendingPathComponent("SpeechModels", isDirectory: true)
+                      .appendingPathComponent("models", isDirectory: true)
                       .appendingPathComponent(modelId, isDirectory: true)
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         // Models are large and re-downloadable — keep them off iCloud backup.

@@ -203,7 +203,7 @@ public struct CTCForcedAligner {
                 // Apple Music Sing. Native, on-device, iOS 16.2+; no model, no Metal crash, no
                 // license question. (OpenUnmix/HTDemucs paths removed; see git history + the CoreML
                 // spike notes if Apple's isolation quality proves insufficient.)
-                onStage?("Isolating vocals…")
+                onStage?("Isolating…")
                 Self.breadcrumb("isolating (HTDemucs CoreML)")
                 let mono: [Float]
                 if #available(iOS 16.0, macOS 13.0, *) {
@@ -212,7 +212,7 @@ public struct CTCForcedAligner {
                         cancellationCheck: cancellationCheck,
                         onProgress: { frac in
                             onProgress?(0.05 + 0.35 * frac)                       // global bar (legacy callers)
-                            onStage?("Isolating vocals… \(Int((frac * 100).rounded()))%")  // per-phase %
+                            onStage?("Isolating… \(Int((frac * 100).rounded()))%")  // per-phase %
                         },
                         onStage: onStage                                          // first-run model download phases
                     )
@@ -273,7 +273,7 @@ public struct CTCForcedAligner {
         // heard text. Falls back to an empty anchor set on any failure → routing uses VAD-gated.
         var anchors: [(line: Int, time: Double)] = []
         if Self.anchorFillEnabled {
-            onStage?("Transcribing vocals for anchors…")
+            onStage?("Transcribing…")
             let phrases = (try? await StemTranscriber.segments(
                 stem: trimmedVocal, sampleRate: 44_100, regions: vadSegs,
                 // Resumable checkpoint: a kill mid-transcription (the jetsam-prone stage) resumes from
@@ -284,12 +284,12 @@ public struct CTCForcedAligner {
                     Self.breadcrumb("anchor-asr: \(msg)")
                     // The ASR model load is a ~60 s opaque step BEFORE any piece, so onFraction can't
                     // cover it — surface it explicitly so the label isn't frozen at a bare "…".
-                    if msg.hasPrefix("loading") { onStage?("Transcribing vocals for anchors… (loading model)") }
+                    if msg.hasPrefix("loading") { onStage?("Loading transcriber…") }
                 },
                 // Per-phase % in the stage label, matching the isolation/alignment stages. Fires once
                 // per ~24 s piece (so it starts at the first piece's fraction, never a stuck 0%).
                 onFraction: { frac in
-                    onStage?("Transcribing vocals for anchors… \(Int((frac * 100).rounded()))%")
+                    onStage?("Transcribing… \(Int((frac * 100).rounded()))%")
                 })) ?? []
             Self.breadcrumb("transcribed \(phrases.count) pieces over \(vadSegs.count) regions")
             anchors = Self.extractAnchors(lines: input.lines, phrases: phrases, vadSegs: vadSegs)
@@ -305,7 +305,7 @@ public struct CTCForcedAligner {
         // and breadcrumb the milestones (with availMem) so a run that dies here reveals WHETHER it
         // died mid-download (network) or mid-weight-load (memory). Skip the high-frequency
         // download-weights ticks.
-        onStage?("Preparing alignment model…")
+        onStage?("Preparing aligner…")
         Self.breadcrumb("aligner: fromPretrained begin")
         let aligner = try await Qwen3ForcedAligner.fromPretrained(
             modelId: ModelStorage.forcedAlignerModelId,
@@ -315,9 +315,9 @@ public struct CTCForcedAligner {
                     // The downloader reports 0…0.8 of the overall bar; rescale to a clean 0–100% of the
                     // download so the label reads as its own stage, not a stuttering "Preparing… 80%".
                     let pct = Int((min(frac, 0.8) / 0.8 * 100).rounded())
-                    onStage?("Downloading alignment model… \(pct)%")
+                    onStage?("Downloading aligner… \(pct)%")
                 } else {
-                    onStage?("Preparing alignment model…")   // tokenizer + weight load: fast, no useful %
+                    onStage?("Preparing aligner…")   // tokenizer + weight load: fast, no useful %
                 }
                 // Breadcrumb milestones (with availMem) — skip the high-frequency download-weights ticks —
                 // so a run that dies here shows WHETHER it died mid-download (network) or mid-load (memory).
@@ -478,14 +478,26 @@ public struct CTCForcedAligner {
         var g = 0   // running non-WS char index across all lines, into charTime/charUnit
         for (i, line) in lines.enumerated() {
             var start = lineStarts[i]
-            // End = the line's real sung end, but capped two ways: never past the next line's start,
-            // and never longer than a plausible sung line (9 s). The cap matters across instrumental
-            // gaps — the aligner stretches a line's last-word END across the following silence, so
-            // without it a line before a 26 s interlude would absorb the whole gap and leave nothing
-            // for ♪ insertion. No real sung line is 9 s, so the cap only fires before a long gap,
-            // re-exposing it; normal lines keep their real (shorter) end.
+            // End = the line's real sung end, with two corrections for the sung-text-on-speech-CTC
+            // mismatch:
+            //   (1) perceptualOffset: CTC peaks lag the perceptual end of singing by ~150–250 ms
+            //       even on short phonemes — the model marks a phoneme transition, not the moment
+            //       a listener hears the syllable stop. Apply unconditionally.
+            //   (2) sustainedVowelGap: when the gap between this line's CTC end and the next
+            //       line's start is up to ~4 s, that's a held final vowel + breath, not a real
+            //       instrumental break. Absorb the gap so the highlight stays on the syllable
+            //       being held. Larger gaps stay exposed for ♪ insertion.
+            // The 9 s safety cap remains.
+            let sustainedVowelGap = 4.0    // s; gaps up to this absorbed into the prior line
+            let bridgeMargin = 0.05        // s; visual breathing room before the next line takes over
+            let perceptualOffset = 0.20    // s; flat shift to compensate for CTC peak vs. heard end
             let nextBound = (i + 1 < lines.count) ? lineStarts[i + 1] : lastEnd
-            var end = max(start + 0.3, min(lineEnds[i], nextBound, start + 9.0))
+            let ctcEnd = lineEnds[i] + perceptualOffset
+            let gapAfter = nextBound - ctcEnd
+            let extendedEnd = (gapAfter > 0 && gapAfter <= sustainedVowelGap)
+                ? nextBound - bridgeMargin
+                : ctcEnd
+            var end = max(start + 0.3, min(extendedEnd, nextBound, start + 9.0))
 
             // Sub-line checkpoints: walk the line's characters tracking the UTF-16 offset, group
             // consecutive non-WS chars that share an aligner unit, and emit one token per unit at
@@ -614,7 +626,7 @@ public struct CTCForcedAligner {
             planar.append(contentsOf: right[start..<end])
             let mix = MLXArray(planar).reshaped([1, 2, n])
 
-            onStage?("Isolating vocals… \(start / stride + 1)/\(totalChunks)")
+            onStage?("Isolating… \(start / stride + 1)/\(totalChunks)")
             breadcrumb("→ separate() chunk @\(start / sampleRate)s n=\(n) availMem=\(availMB)MB")
             let stems = separator.separate(mix)
             breadcrumb("← separate() returned chunk @\(start / sampleRate)s")
