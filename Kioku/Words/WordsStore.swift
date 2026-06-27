@@ -5,7 +5,9 @@ import SwiftUI
 // Box that lets the persist queue ship a UserDefaults across the Sendable boundary even
 // though Foundation hasn't yet annotated UserDefaults as Sendable. Apple documents
 // UserDefaults as thread-safe; this box is the one place we encode that promise.
-nonisolated private final class UncheckedSendableUserDefaults: @unchecked Sendable {
+// Module-internal rather than file-private because SavedKanjiStore reuses the same
+// capture pattern for its persistQueue and we want one canonical helper, not two.
+nonisolated final class UncheckedSendableUserDefaults: @unchecked Sendable {
     let value: UserDefaults
     init(value: UserDefaults) { self.value = value }
 }

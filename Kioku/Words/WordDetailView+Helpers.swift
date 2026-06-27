@@ -5,6 +5,23 @@ import SwiftUI
 // small reusable row/label view builders. Extracted from WordDetailView so the primary
 // file stays under the line-count invariant.
 extension WordDetailView {
+    // Builds a non-persisted SavedWord wrapping a related/synonym DictionaryEntry so a tap on
+    // a Related Words / Synonyms row can present a nested WordDetailView for it. Surface picks
+    // the same headword the row displays (first everyday kanji → first kanji form → first kana
+    // form). entSeq is left nil because DictionaryEntry doesn't carry it — if the user saves
+    // the related word from inside the nested view, WordsStore.toggle resolves the stable key
+    // from the store at write time, so the ephemeral record never persists as-is.
+    func ephemeralSavedWord(for entry: DictionaryEntry) -> SavedWord {
+        let surface = entry.firstEverydayKanji?.text
+            ?? entry.kanjiForms.first?.text
+            ?? entry.kanaForms.first?.text
+            ?? ""
+        return SavedWord(
+            canonicalEntryID: entry.entryId,
+            surface: surface
+        )
+    }
+
     // SF Symbol for the header's save/learned toggle: a plain checkmark when learned, a plain
     // question mark when explicitly not-learned, else the save star (filled when saved). Mirrors
     // the row's learnedIcon so the same mark reads identically in the list and the detail header.
@@ -312,6 +329,12 @@ extension WordDetailView {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
+                // Chevron signals the row is tappable (call sites wrap in a Button that opens
+                // a nested WordDetailView for the related entry). Tertiary tone matches the
+                // kanji-row chevron in kanjiRowContent above.
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
             if glossText.isEmpty == false {
                 Text(glossText)
@@ -321,6 +344,9 @@ extension WordDetailView {
             }
         }
         .padding(.vertical, 2)
+        // Make the full row hit-testable, not just the rendered text — without this, taps in
+        // the empty area between the surface and the chevron miss the Button.
+        .contentShape(Rectangle())
     }
 
     // Compact tappable row content for one kanji character — extracted so the Kanji section
@@ -363,7 +389,11 @@ extension WordDetailView {
                     Text("ON")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.tertiary)
-                    Text(info.onReadings.joined(separator: "・"))
+                    // Display-time fold to hiragana (KANJIDIC2 stores on'yomi as katakana).
+                    // Matches the KanjiDetailView "On'yomi" section; source data unchanged.
+                    Text(info.onReadings
+                        .map(KanaNormalizer.katakanaToHiragana)
+                        .joined(separator: "・"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
