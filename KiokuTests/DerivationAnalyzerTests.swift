@@ -91,6 +91,32 @@ final class DerivationAnalyzerTests: XCTestCase {
         XCTAssertEqual(result?.summary, "Polite address — 王 + honorific suffix 様")
     }
 
+    // MARK: ～がり屋 morpheme strip
+
+    func testGariYaMorphemeStrip() {
+        let result = DerivationAnalyzer.analyze(
+            surface: "寂しがり屋", components: [], baseResolver: resolver(["寂しい": ["adj-i"]]))
+        // Four morphemes in left-to-right order. Roles must match the rendered chip captions
+        // so any future copy change to the renderer is caught here.
+        XCTAssertEqual(result?.morphemes?.map(\.form), ["寂し(い)", "～がる", "～り", "屋"])
+        XCTAssertEqual(result?.morphemes?.map(\.role), ["い-adj stem", "verbalizer", "nominalizer", "personifier"])
+        // Stem gloss is intentionally nil (depends on the specific adjective; covered by the
+        // parent word's Definition section). The three suffix glosses are static.
+        XCTAssertNil(result?.morphemes?[0].gloss)
+        XCTAssertEqual(result?.morphemes?[1].gloss, "show signs of ~")
+        // Plain-text summary stays populated so VoiceOver and the legacy text-path renderer
+        // still get something readable when chip rendering isn't available.
+        XCTAssertEqual(result?.summary, "寂し(い) ＋ ～がる ＋ ～り ＋ 屋")
+    }
+
+    func testGariYaSkippedWhenNoIAdjectiveBase() {
+        // 居酒屋 ends in 屋 (not がり屋) so the suffix gate already fails — additionally,
+        // confirm that even a fabricated -がり屋 surface whose stem+い isn't an i-adjective
+        // does NOT fire. あ + い → noun-only "あい", so no derivation morphemes.
+        XCTAssertNil(DerivationAnalyzer.analyze(
+            surface: "あがり屋", components: [], baseResolver: resolver(["あい": ["n"]])))
+    }
+
     // MARK: Compound verbs
 
     func testCompoundVerb() {
