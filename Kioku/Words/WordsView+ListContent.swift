@@ -264,18 +264,47 @@ extension WordsView {
             Section("Kanji") {
                 ForEach(visibleSavedKanji) { saved in
                     if let info = materializedSavedKanji[saved.literal] {
-                        Button {
-                            isSearchFieldFocused = false
-                            presentedKanjiInfo = info
-                        } label: {
-                            kanjiResultRowContent(info)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowBackground(Color.accentColor.opacity(0.06))
-                        .contextMenu { savedKanjiRowMenu(info: info, saved: saved) }
+                        savedKanjiRow(info: info, saved: saved)
                     }
                 }
             }
+        }
+    }
+
+    // One saved-kanji row. Out of edit mode it's a button that opens the kanji detail and
+    // carries the reorganize/Unfavorite context menu. In edit mode it becomes a manually
+    // selectable row that toggles membership in selectedKanjiLiterals — the parallel selection
+    // set that lets the batch "Remove from Saved" delete kanji alongside words. Kanji can't use
+    // the List's native selection because that's keyed to Int64 word ids, not String literals.
+    @ViewBuilder
+    func savedKanjiRow(info: KanjiInfo, saved: SavedKanji) -> some View {
+        if editMode == .active {
+            let isSelected = selectedKanjiLiterals.contains(saved.literal)
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22))
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                kanjiResultRowContent(info)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if isSelected {
+                    selectedKanjiLiterals.remove(saved.literal)
+                } else {
+                    selectedKanjiLiterals.insert(saved.literal)
+                }
+            }
+            .listRowBackground(Color.accentColor.opacity(0.06))
+        } else {
+            Button {
+                isSearchFieldFocused = false
+                presentedKanjiInfo = info
+            } label: {
+                kanjiResultRowContent(info)
+            }
+            .buttonStyle(.plain)
+            .listRowBackground(Color.accentColor.opacity(0.06))
+            .contextMenu { savedKanjiRowMenu(info: info, saved: saved) }
         }
     }
 
