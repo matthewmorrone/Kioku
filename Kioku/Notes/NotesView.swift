@@ -40,7 +40,9 @@ struct NotesView: View {
 
     var body: some View {
         NavigationStack {
-            // Displays the selectable/reorderable list of notes.
+            // Displays the selectable/reorderable list of notes. Correction-queue
+            // progress is shown by CorrectionProgressOverlay (mounted globally in
+            // ContentView so it follows the user between tabs), not inline here.
             List(selection: $selectedNoteIDs) {
                 ForEach(store.notes) { note in
                     // Renders a single note row with title and content preview.
@@ -64,25 +66,6 @@ struct NotesView: View {
                     .contextMenu {
                         noteContextMenu(for: note)
                     }
-                    // Own the single-note delete confirmation on the row itself so the popover anchors
-                    // to the note being deleted. A single List-level dialog shared across every row took
-                    // a stale source frame — the arrow pointed at a previously-interacted row while the
-                    // text named the correct note. Per-row ownership makes the anchor unambiguous.
-                    .confirmationDialog(
-                        deleteDialogTitle,
-                        isPresented: singleDeletePresented(for: note.id),
-                        titleVisibility: .visible,
-                        presenting: pendingDeletion
-                    ) { deletion in
-                        Button("Delete Note", role: .destructive) {
-                            performDelete(deletion)
-                        }
-                        Button("Cancel", role: .cancel) {
-                            pendingDeletion = nil
-                        }
-                    } message: { deletion in
-                        Text(deleteDialogMessage(for: deletion))
-                    }
                     .onTapGesture {
                         if editMode == .active {
                             if selectedNoteIDs.contains(note.id) {
@@ -100,12 +83,14 @@ struct NotesView: View {
                 .onMove(perform: store.moveNotes)
                 .onDelete { offsets in
                     // Route swipe-to-delete through the same confirmation so the associated-word
-                    // offer applies here too (it previously deleted immediately).
+                    // offer applies here too (it previously deleted immediately). Deferred
+                    // assignment matches the context-menu path so swipe dismissal doesn't
+                    // collide with the dialog presentation either.
                     let notes = offsets.map { store.notes[$0] }
-                    pendingDeletion = PendingNoteDeletion(
+                    queuePendingDeletion(PendingNoteDeletion(
                         noteIDs: Set(notes.map(\.id)),
                         title: notes.count == 1 ? resolvedTitle(for: notes[0]) : nil
-                    )
+                    ))
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -123,23 +108,24 @@ struct NotesView: View {
                     commitRename()
                 }
             }
-            // Bulk delete (multi-select) is raised from the toolbar trash button, so anchor its
-            // confirmation at the List/toolbar level — that is the frame it actually originates from.
-            // Single-note deletes use a per-row dialog (attached inside the ForEach) so their popover
-            // anchors to the specific note instead of a stale shared source frame. `presenting:` keeps
-            // the title, buttons, and action bound to the pending deletion so the content can't go
-            // stale either.
-            .confirmationDialog(
+            // Single source-of-truth confirmation for both single-note and multi-note deletes.
+            // Uses .alert (not .confirmationDialog) because on iOS 27 the per-row
+            // confirmationDialog pattern dismissed itself one frame after presenting, and a
+            // List-level confirmationDialog took a stale popover anchor (the original bug
+            // commit 5ee33b4 was trying to dodge). Alerts are centered modal cards with no
+            // anchor at all, so neither failure mode applies — at the cost of the
+            // action-sheet look. `presenting:` keeps the title, buttons, and action bound to
+            // the pending deletion so the content can't go stale either.
+            .alert(
                 deleteDialogTitle,
-                isPresented: bulkDeletePresented,
-                titleVisibility: .visible,
+                isPresented: deletePresented,
                 presenting: pendingDeletion
             ) { deletion in
-                Button("Delete Note\(countSuffix(for: deletion))", role: .destructive) {
-                    performDelete(deletion)
-                }
                 Button("Cancel", role: .cancel) {
                     pendingDeletion = nil
+                }
+                Button("Delete Note\(countSuffix(for: deletion))", role: .destructive) {
+                    performDelete(deletion)
                 }
             } message: { deletion in
                 Text(deleteDialogMessage(for: deletion))
@@ -189,7 +175,7 @@ struct NotesView: View {
                     // Shows bulk-delete action while edit mode is active.
                     if editMode == .active {
                         Button {
-                            pendingDeletion = PendingNoteDeletion(noteIDs: selectedNoteIDs, title: nil)
+                            queuePendingDeletion(PendingNoteDeletion(noteIDs: selectedNoteIDs, title: nil))
                         } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 16))
@@ -319,12 +305,13 @@ struct NotesView: View {
         let title: String?
     }
 
-    // Presents the single-note delete confirmation on the row it belongs to, so the popover anchors
-    // to that note. True only when the pending deletion targets exactly this one note — guaranteeing
-    // at most one row's dialog is ever active.
-    private func singleDeletePresented(for id: UUID) -> Binding<Bool> {
+    // Drives the single List-level delete alert. True whenever any deletion is pending
+    // (single OR multi), so one alert instance handles both. Clearing the binding
+    // (Cancel button, system dismiss) nils the pending deletion so the alert re-presents
+    // cleanly next time.
+    private var deletePresented: Binding<Bool> {
         Binding(
-            get: { pendingDeletion?.noteIDs == Set([id]) },
+            get: { pendingDeletion != nil },
             set: { isPresented in
                 if isPresented == false {
                     pendingDeletion = nil
@@ -333,17 +320,15 @@ struct NotesView: View {
         )
     }
 
-    // Presents the multi-note (bulk) delete confirmation at the List/toolbar level, where the trash
-    // button that raises it lives.
-    private var bulkDeletePresented: Binding<Bool> {
-        Binding(
-            get: { (pendingDeletion?.noteIDs.count ?? 0) > 1 },
-            set: { isPresented in
-                if isPresented == false {
-                    pendingDeletion = nil
-                }
-            }
-        )
+    // Defers assigning pendingDeletion to the next runloop tick. Setting it synchronously
+    // from a context-menu or swipe action animates poorly: the menu/swipe is still
+    // dismissing, the alert wants to mount, and on iOS 27 the two phases interleave in a
+    // way that occasionally drops the alert one frame after present. One main-thread hop
+    // lets the source affordance finish dismissing before the alert binding flips.
+    private func queuePendingDeletion(_ deletion: PendingNoteDeletion) {
+        DispatchQueue.main.async {
+            self.pendingDeletion = deletion
+        }
     }
 
     // Title for the delete dialog: names a single note, or counts multiple.
@@ -410,7 +395,7 @@ struct NotesView: View {
         }
 
         Button(role: .destructive) {
-            pendingDeletion = PendingNoteDeletion(noteIDs: [note.id], title: resolvedTitle(for: note))
+            queuePendingDeletion(PendingNoteDeletion(noteIDs: [note.id], title: resolvedTitle(for: note)))
         } label: {
             Label("Delete", systemImage: "trash")
         }

@@ -8,7 +8,19 @@ import UniformTypeIdentifiers
 // sequentially via BulkImportRunner; row status updates in place as items complete.
 struct BulkImportSheet: View {
     @EnvironmentObject private var store: NotesStore
+    @EnvironmentObject private var llmCorrectionQueue: LLMCorrectionQueue
     @Environment(\.dismiss) private var dismiss
+
+    // Sticky preference for the "Auto-correct imported notes" toggle so the
+    // user's last choice carries across imports. Only consulted when an LLM
+    // provider is configured at import time; reading it when no provider is
+    // set is harmless because the toggle row is hidden in that case.
+    @AppStorage("kioku.bulkImport.autoCorrect") private var autoCorrectImports = false
+    // Mirror of LLMSettings.useLLMKey and keysRevision so the toggle row
+    // appears/disappears live when the user adjusts LLM setup elsewhere.
+    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false
+    @AppStorage(LLMSettings.keysRevisionKey) private var llmKeysRevision = 0
+    @AppStorage(LLMSettings.providerKey) private var llmProviderRaw: String = LLMSettings.defaultProvider
 
     @State private var pickedURLs: [URL] = []
     @State private var modelSource: WhisperModelSource?
@@ -83,6 +95,13 @@ struct BulkImportSheet: View {
                 // engine — Qwen3-ASR and Apple Speech transcribe without a downloaded model.
                 if needsTranscription && selectedEngine == .whisper {
                     modelSection
+                }
+                // AI correction toggle — hidden when no provider is set up.
+                // Reactive: reading llmUseLLM / llmKeysRevision / llmProviderRaw
+                // ties the row's visibility to the configuration state, so
+                // changing Settings in another tab updates the sheet live.
+                if isLLMConfigured {
+                    aiCorrectionSection
                 }
             }
             .navigationTitle("Bulk Import")
@@ -333,10 +352,54 @@ struct BulkImportSheet: View {
     }
 
     // Launches the runner with the current plan and resolved model URL.
+    // After the runner finishes, hands the newly-created note IDs to the LLM
+    // correction queue when the user has opted in. The queue runs in the
+    // background so the sheet doesn't block on it — the user can dismiss
+    // immediately and corrections trickle in afterward.
     private func startImport() async {
         let snapshot = plan
         let modelURL = modelSource.flatMap { modelManager.resolvedURL(for: $0) }
         await runner.run(plan: snapshot, whisperModelURL: modelURL)
+        if autoCorrectImports && isLLMConfigured {
+            let created = runner.createdNoteIDs
+            if created.isEmpty == false {
+                llmCorrectionQueue.enqueue(noteIDs: created)
+            }
+        }
+    }
+
+    // Mirrors ReadView.isLLMConfigured. Re-reads each render via the @AppStorage
+    // properties so the toggle row appears/disappears the moment LLM setup
+    // changes elsewhere. Apple Intelligence is configured purely by being
+    // available on the device, with no API key required.
+    private var isLLMConfigured: Bool {
+        _ = llmKeysRevision
+        if llmUseLLM {
+            let provider = LLMProvider(rawValue: llmProviderRaw) ?? .none
+            if provider == .appleIntelligence {
+                return AppleIntelligenceAvailability.isAvailable
+            }
+            return LLMSettings.apiKey(for: provider) != nil
+        }
+        // Stub mode counts as configured for parity with the sparkles button.
+        let stub = UserDefaults.standard.string(forKey: LLMSettings.stubResponseKey) ?? ""
+        return stub.isEmpty == false
+    }
+
+    // Section with the auto-correct toggle and a one-line explanation of what
+    // it does. Disabled mid-run to avoid the toggle flipping under the user's
+    // feet while a batch is in flight.
+    @ViewBuilder
+    private var aiCorrectionSection: some View {
+        Section {
+            Toggle("Auto-correct imported notes", isOn: $autoCorrectImports)
+                .disabled(runner.isRunning)
+        } header: {
+            Text("AI Correction")
+        } footer: {
+            Text("After import, each note's segmentation and furigana are corrected by the configured LLM provider. Runs in the background — you can dismiss this sheet.")
+                .foregroundStyle(.secondary)
+        }
     }
 
     // Dispatches a picker result to either the files or model slot based on the active target.

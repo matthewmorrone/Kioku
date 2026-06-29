@@ -32,15 +32,22 @@ struct SettingsView: View {
     @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
     @AppStorage(SegmentationDemotions.storageKey) private var demotionsRaw: String = SegmentationDemotions.defaultRawValue
 
-    @AppStorage(LLMSettings.providerKey) private var llmProviderRaw: String = LLMSettings.defaultProvider
+    // No `private` modifiers below: the AI Correction section's UI lives in
+    // SettingsView+AICorrectionSection.swift and needs to read these as
+    // bindings. Extensions in other source files can't reach `private`
+    // members, so these stay at module-internal access.
+    @AppStorage(LLMSettings.providerKey) var llmProviderRaw: String = LLMSettings.defaultProvider
     // API keys live in the Keychain, not UserDefaults; @State holds the editing copy
     // and onChange writes through. keysRevision is a non-secret change counter other
     // views observe to re-check key presence without touching the secret itself.
-    @State private var openAIKey: String = LLMSettings.apiKey(for: .openAI) ?? ""
-    @State private var claudeKey: String = LLMSettings.apiKey(for: .claude) ?? ""
-    @AppStorage(LLMSettings.keysRevisionKey) private var llmKeysRevision: Int = 0
-    @AppStorage(LLMSettings.useLLMKey) private var useLLM: Bool = false
-    @AppStorage(LLMSettings.temperatureKey) private var temperature: Double = LLMSettings.defaultTemperature
+    @State var openAIKey: String = LLMSettings.apiKey(for: .openAI) ?? ""
+    @State var claudeKey: String = LLMSettings.apiKey(for: .claude) ?? ""
+    @AppStorage(LLMSettings.keysRevisionKey) var llmKeysRevision: Int = 0
+    @AppStorage(LLMSettings.useLLMKey) var useLLM: Bool = false
+    @AppStorage(LLMSettings.temperatureKey) var temperature: Double = LLMSettings.defaultTemperature
+    // Default true so a fresh install gets canonical-lyrics grounding out of the
+    // box for songs; the user can disable to cut cost or for privacy.
+    @AppStorage(LLMSettings.useWebSearchKey) var useWebSearch: Bool = true
 
     @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
     @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
@@ -429,51 +436,8 @@ struct SettingsView: View {
                     Text("Segmentation Demotions")
                 }
 
-                // MARK: AI Correction
-                Section {
-                    Toggle("Use LLM API", isOn: $useLLM)
-
-                    if useLLM {
-                        Picker("Provider", selection: $llmProviderRaw) {
-                            ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
-                                Text(provider.displayName).tag(provider.rawValue)
-                            }
-                        }
-
-                        // Key entry rows are always visible so both keys can be saved independently.
-                        // Edits write through to the Keychain; nothing secret touches UserDefaults.
-                        SecureField("OpenAI API Key", text: $openAIKey)
-                            .textContentType(.password)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .onChange(of: openAIKey) {
-                                LLMSettings.setAPIKey(openAIKey, for: .openAI)
-                                llmKeysRevision += 1
-                            }
-                        SecureField("Claude API Key", text: $claudeKey)
-                            .textContentType(.password)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .onChange(of: claudeKey) {
-                                LLMSettings.setAPIKey(claudeKey, for: .claude)
-                                llmKeysRevision += 1
-                            }
-                    }
-
-                    // Lower temperature = more deterministic output; higher = more varied corrections.
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Temperature")
-                            Spacer()
-                            Text(String(format: "%.2f", temperature))
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                        Slider(value: $temperature, in: 0.0...1.0, step: 0.05)
-                    }
-                } header: {
-                    Text("AI Correction")
-                }
+                // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
+                aiCorrectionSection
 
                 #if DEBUG
                 // MARK: Debug overlays — hidden in release builds.

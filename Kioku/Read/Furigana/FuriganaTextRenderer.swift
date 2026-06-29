@@ -32,6 +32,9 @@ struct FuriganaTextRenderer: UIViewRepresentable {
     let changedSegmentLocations: Set<Int>
     // Subset of changedSegmentLocations where only the furigana reading changed (surface unchanged).
     let changedReadingLocations: Set<Int>
+    // UTF-16 segment start locations on the line the LLM is processing right now.
+    // Tinted indigo to distinguish "active line" from "pending change" (green).
+    var inFlightSegmentLocations: Set<Int> = []
     // Hex strings for user-configured segment alternation colors. Empty string = use system default.
     let customEvenSegmentColorHex: String
     let customOddSegmentColorHex: String
