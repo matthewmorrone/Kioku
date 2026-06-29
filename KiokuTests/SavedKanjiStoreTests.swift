@@ -31,13 +31,14 @@ final class SavedKanjiStoreTests: XCTestCase {
         SavedKanjiStore(userDefaults: defaults, storageKey: Self.storageKey)
     }
 
-    // Drains the off-main persist queue before constructing a second reader, so the
-    // reader sees writes performed by the previous store. Required because persist
-    // is async; production never needs this — the app launches long after drain.
+    // Drains the off-main persist queue BEFORE constructing the reader, so the
+    // reader's init-time UserDefaults load observes the previous writer's writes.
+    // Required because persist is async; flushing after the reader has been built
+    // is too late — the reader has already read. Production never needs this:
+    // the app launches long after the queue has drained.
     private func makeReaderStore() -> SavedKanjiStore {
-        let store = makeStore()
-        store.flushPendingWritesForTesting()
-        return store
+        SavedKanjiStore.flushPendingWritesForTesting()
+        return makeStore()
     }
 
     // MARK: - Initialization

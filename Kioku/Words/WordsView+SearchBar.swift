@@ -14,7 +14,10 @@ extension WordsView {
             Menu {
                 Button {
                     editMode = editMode == .active ? .inactive : .active
-                    if editMode == .inactive { selectedWordIDs.removeAll() }
+                    if editMode == .inactive {
+                        selectedWordIDs.removeAll()
+                        selectedKanjiLiterals.removeAll()
+                    }
                 } label: {
                     Label(editMode == .active ? "Done Editing" : "Edit",
                           systemImage: editMode == .active ? "checkmark.circle" : "pencil")
@@ -89,32 +92,42 @@ extension WordsView {
                 // contextual; everything else is genuinely shared.
                 if editMode == .active {
                     Divider()
-                    let selectable = selectableWordIDs
+                    let selectableWords = selectableWordIDs
+                    let selectableKanji = selectableKanjiLiterals
+                    let totalSelectable = selectableWords.count + selectableKanji.count
+                    let allSelected = batchSelectionCount == totalSelectable && totalSelectable > 0
                     Button {
-                        if selectedWordIDs.count == selectable.count {
+                        if allSelected {
                             selectedWordIDs.removeAll()
+                            selectedKanjiLiterals.removeAll()
                         } else {
-                            selectedWordIDs = Set(selectable)
+                            selectedWordIDs = Set(selectableWords)
+                            selectedKanjiLiterals = Set(selectableKanji)
                         }
                     } label: {
-                        if selectedWordIDs.count == selectable.count && selectable.isEmpty == false {
+                        if allSelected {
                             Label("Deselect All", systemImage: "minus.circle")
                         } else {
                             Label("Select All", systemImage: "circle.dashed.inset.filled")
                         }
                     }
-                    .disabled(selectable.isEmpty)
+                    .disabled(totalSelectable == 0)
 
-                    if selectedWordIDs.isEmpty == false {
-                        Button {
-                            isBatchListSheetPresented = true
-                        } label: {
-                            Label("Manage Lists…", systemImage: "text.badge.plus")
+                    if batchSelectionCount > 0 {
+                        // List management is word-only (the batch sheet operates on Int64 ids),
+                        // so only offer it when at least one word is selected.
+                        if selectedWordIDs.isEmpty == false {
+                            Button {
+                                isBatchListSheetPresented = true
+                            } label: {
+                                Label("Manage Lists…", systemImage: "text.badge.plus")
+                            }
                         }
                         Button(role: .destructive) {
                             if activeTab == .history {
                                 historyStore.remove(canonicalEntryIDs: selectedWordIDs)
                                 selectedWordIDs.removeAll()
+                                selectedKanjiLiterals.removeAll()
                                 editMode = .inactive
                             } else {
                                 isBatchRemoveConfirmPresented = true
@@ -122,7 +135,7 @@ extension WordsView {
                         } label: {
                             Label(activeTab == .history
                                   ? "Remove from History (\(selectedWordIDs.count))"
-                                  : "Remove from Saved (\(selectedWordIDs.count))",
+                                  : "Remove from Saved (\(batchSelectionCount))",
                                   systemImage: "trash")
                         }
                     }

@@ -81,6 +81,11 @@ struct WordsView: View {
     // ja-JP text-to-speech for the per-row pronunciation buttons (mirrors WordDetailView.speak).
     @State var rowSpeechSynthesizer = AVSpeechSynthesizer()
     @State var selectedWordIDs: Set<Int64> = []
+    // Parallel selection for saved kanji in edit mode. SwiftUI's List(selection:) is keyed to
+    // one Hashable type (Int64 word ids here), so kanji — identified by their String literal —
+    // can't ride the native selection and need this manual set. The batch "Remove from Saved"
+    // deletes from BOTH sets so kanji are removable via the same CRUD flow as words.
+    @State var selectedKanjiLiterals: Set<String> = []
     @State var isBatchRemoveConfirmPresented = false
     @State var isBatchRemoveHistoryConfirmPresented = false
     @State var isBatchListSheetPresented = false
@@ -204,6 +209,7 @@ struct WordsView: View {
             selectedDetailWord = nil
             editMode = .inactive
             selectedWordIDs.removeAll()
+            selectedKanjiLiterals.removeAll()
             searchText = query
         }
 
@@ -250,13 +256,15 @@ struct WordsView: View {
                     .presentationDragIndicator(.visible)
             }
             .confirmationDialog(
-                "Remove \(selectedWordIDs.count) word\(selectedWordIDs.count == 1 ? "" : "s")?",
+                batchRemoveTitle,
                 isPresented: $isBatchRemoveConfirmPresented,
                 titleVisibility: .visible
             ) {
                 Button("Remove", role: .destructive) {
                     wordsStore.remove(ids: selectedWordIDs)
+                    for literal in selectedKanjiLiterals { savedKanjiStore.remove(literal: literal) }
                     selectedWordIDs.removeAll()
+                    selectedKanjiLiterals.removeAll()
                     editMode = .inactive
                 }
                 Button("Cancel", role: .cancel) {}
