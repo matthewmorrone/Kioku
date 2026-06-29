@@ -13,9 +13,30 @@ import Foundation
 // directly unit-testable with a stub resolver.
 nonisolated enum DerivationAnalyzer {
 
-    // A resolved derivation, already rendered for the header POS line.
+    // One morpheme in a structured breakdown. Renderers show `form` prominently and `role`
+    // as a tiny caption beneath it; `gloss` is optional because the stem morpheme's gloss
+    // depends on the specific base word (寂しい → "lonely", 寒い → "cold"), which the
+    // analyzer's POS-only resolver can't supply — the parent word's Definition section
+    // already shows that meaning, so the stem chip elides it rather than guessing.
+    struct Morpheme: Equatable, Sendable {
+        let form: String
+        let role: String
+        let gloss: String?
+    }
+
+    // A resolved derivation. `summary` is the legacy single-sentence form (used by every
+    // existing rule). `morphemes`, when non-nil, opts the rule into chip-strip rendering at
+    // the WordDetail header — the renderer prefers chips and ignores `summary` in that case,
+    // but `summary` is still produced so accessibility readers and tests have a stable
+    // textual representation of the same derivation.
     struct Result: Equatable, Sendable {
         let summary: String
+        let morphemes: [Morpheme]?
+
+        init(summary: String, morphemes: [Morpheme]? = nil) {
+            self.summary = summary
+            self.morphemes = morphemes
+        }
     }
 
     // Looks a candidate lemma up; returns its JMdict POS tags (e.g. ["adj-i"]) or [] if absent.
@@ -88,6 +109,28 @@ nonisolated enum DerivationAnalyzer {
                 if let adjectiveClass = adjectiveClass(baseResolver(candidate)) {
                     return Result(summary: "Derived noun — from \(adjectiveClass) \(candidate) + nominalizing suffix \(affix)")
                 }
+            }
+        }
+
+        // -がり屋 → renders as a 4-morpheme chip strip rather than a single sentence: the
+        // word decomposes into adj-stem + verbalizer がる + nominalizer り + personifier 屋,
+        // and the chip strip shows each piece individually. Stem+い gate confirms it's the
+        // productive emotion-trait pattern; coincidental endings in 屋 (居酒屋, 本屋) fail the
+        // suffix match anyway, but the い-adj check protects against fabricated -がり屋 forms
+        // whose stem doesn't decompose this way.
+        if let (_, stem) = suffixMatch(surface, ["がり屋"]), stem.isEmpty == false {
+            let base = stem + "い"
+            if baseResolver(base).contains(where: { $0.hasPrefix("adj-i") }) {
+                let morphemes: [Morpheme] = [
+                    Morpheme(form: "\(stem)(い)", role: "い-adj stem", gloss: nil),
+                    Morpheme(form: "～がる", role: "verbalizer", gloss: "show signs of ~"),
+                    Morpheme(form: "～り", role: "nominalizer", gloss: "masu-stem → noun"),
+                    Morpheme(form: "屋", role: "personifier", gloss: "one who is/does habitually"),
+                ]
+                // Plain-text fallback for VoiceOver / accessibility readers — joined with ＋
+                // so the order matches the visible chip sequence.
+                let joined = morphemes.map(\.form).joined(separator: " ＋ ")
+                return Result(summary: joined, morphemes: morphemes)
             }
         }
 

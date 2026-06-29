@@ -27,6 +27,9 @@ struct WordDetailView: View {
     // Provides note titles for resolving sourceNoteIDs to human-readable labels.
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject var wordsStore: WordsStore
+    // Records lookups so the Related Words / Synonyms tap path matches every other lookup
+    // entry point (search results, browse, WOTD deep link) which already record on tap.
+    @EnvironmentObject var historyStore: HistoryStore
 
     // All entries matching the saved surface; saved entry is first.
     @State var allDisplayData: [WordDisplayData] = []
@@ -40,10 +43,11 @@ struct WordDetailView: View {
     // read-only viewer. iOS stacks sheets, so the user can drill in and back out.
     @State private var presentedRelatedSavedWord: SavedWord? = nil
     @State var wordComponents: [(surface: String, gloss: String?)] = []
-    // Derivation description shown in place of the plain POS line when the saved word is a
-    // recognized derived form (弱さ → "Derived noun — from い-adjective 弱い + nominalizing
-    // suffix さ"). Computed in loadDisplayData; nil for non-derived words. See DerivationAnalyzer.
-    @State var derivationSummary: String? = nil
+    // Derivation result shown in place of the plain POS line when the saved word is a
+    // recognized derived form. When the result carries `morphemes` (currently only ～がり屋)
+    // the header renders a chip strip; otherwise it falls back to the single-sentence
+    // `summary`. Computed in loadDisplayData; nil for non-derived words. See DerivationAnalyzer.
+    @State var derivation: DerivationAnalyzer.Result? = nil
     @State var kanjiInfos: [KanjiInfo] = []
     @State var relatedEntries: [DictionaryEntry] = []
     @State var loanwordSources: [LoanwordSource] = []
@@ -271,8 +275,12 @@ struct WordDetailView: View {
                 // (Speaker moved up beside the headword itself.)
                 HStack(spacing: 10) {
                     // Derived forms (弱さ, お酒, 食べ始める …) describe their derivation in place
-                    // of the bare POS tag; everything else keeps the plain expanded POS summary.
-                    if let posSummary = derivationSummary ?? entryPOSSummary {
+                    // of the bare POS tag. ～がり屋 returns a structured morpheme list and
+                    // renders as a chip strip; every other derivation (and plain entries) keeps
+                    // the single-sentence POS line.
+                    if let morphemes = derivation?.morphemes {
+                        derivationMorphemeChips(morphemes)
+                    } else if let posSummary = derivation?.summary ?? entryPOSSummary {
                         Text(posSummary)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -538,6 +546,10 @@ struct WordDetailView: View {
                     Section("Related Words") {
                         ForEach(shownRelated, id: \.entry.entryId) { item in
                             Button {
+                                // Treat the tap as a lookup — record before presenting so the
+                                // word lands in the History tab the same way a top-level search
+                                // result would (see WordsView+Search line 205).
+                                historyStore.record(canonicalEntryID: item.entry.entryId, surface: item.entry.primarySearchSurface)
                                 presentedRelatedSavedWord = ephemeralSavedWord(for: item.entry)
                             } label: {
                                 relatedWordRow(item.entry, relationLabel: item.relationLabel)
@@ -558,6 +570,7 @@ struct WordDetailView: View {
                     Section("Synonyms") {
                         ForEach(synonymEntries, id: \.entryId) { entry in
                             Button {
+                                historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
                                 presentedRelatedSavedWord = ephemeralSavedWord(for: entry)
                             } label: {
                                 relatedWordRow(entry)
@@ -737,6 +750,7 @@ struct WordDetailView: View {
                 .environmentObject(wordListsStore)
                 .environmentObject(notesStore)
                 .environmentObject(reviewStore)
+                .environmentObject(historyStore)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }

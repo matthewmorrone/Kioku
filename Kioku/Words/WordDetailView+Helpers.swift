@@ -5,21 +5,37 @@ import SwiftUI
 // small reusable row/label view builders. Extracted from WordDetailView so the primary
 // file stays under the line-count invariant.
 extension WordDetailView {
-    // Builds a non-persisted SavedWord wrapping a related/synonym DictionaryEntry so a tap on
-    // a Related Words / Synonyms row can present a nested WordDetailView for it. Surface picks
-    // the same headword the row displays (first everyday kanji → first kanji form → first kana
-    // form). entSeq is left nil because DictionaryEntry doesn't carry it — if the user saves
-    // the related word from inside the nested view, WordsStore.toggle resolves the stable key
-    // from the store at write time, so the ephemeral record never persists as-is.
+    // Thin shim kept so call sites inside this view extension stay short and readable;
+    // the actual factory lives on SavedWord so KanjiDetailView (and any future caller)
+    // can share it without duplicating the surface-picking logic.
     func ephemeralSavedWord(for entry: DictionaryEntry) -> SavedWord {
-        let surface = entry.firstEverydayKanji?.text
-            ?? entry.kanjiForms.first?.text
-            ?? entry.kanaForms.first?.text
-            ?? ""
-        return SavedWord(
-            canonicalEntryID: entry.entryId,
-            surface: surface
-        )
+        SavedWord.ephemeral(for: entry)
+    }
+
+    // Chip strip for the WordDetail header when the saved word matches a structured-morpheme
+    // derivation (currently only ～がり屋). Each chip stacks the form (body) over its role
+    // (caption2, secondary) inside a capsule; FlowLayout lets a 4-chip strip wrap to a
+    // second line on narrow phones rather than truncate. The whole strip carries a single
+    // VoiceOver label built from the morpheme summary so the screen reader doesn't read each
+    // chip's form and role as two separate items.
+    @ViewBuilder
+    func derivationMorphemeChips(_ morphemes: [DerivationAnalyzer.Morpheme]) -> some View {
+        FlowLayout(spacing: 6) {
+            ForEach(Array(morphemes.enumerated()), id: \.offset) { _, morpheme in
+                VStack(spacing: 1) {
+                    Text(morpheme.form)
+                        .font(.subheadline.weight(.medium))
+                    Text(morpheme.role)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.secondary.opacity(0.12)))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(morphemes.map { "\($0.form) \($0.role)" }.joined(separator: ", "))
     }
 
     // SF Symbol for the header's save/learned toggle: a plain checkmark when learned, a plain
@@ -121,14 +137,14 @@ extension WordDetailView {
             // Derivation description for the header — names the base word + affix for derived
             // forms (弱さ, お酒, 生まれる, 生きてゆく). The resolver hands the analyzer the JMdict POS
             // tags of any candidate lemma so it can confirm and label the base. nil → plain POS line.
-            let derivation = await Task { @MainActor in
+            let detected = await Task { @MainActor in
                 DerivationAnalyzer.analyze(surface: analysisForm, components: componentLemmas, baseResolver: { lemma in
                     let entries = (try? store.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
                     return entries.flatMap { $0.senses.compactMap(\.pos) }
                         .flatMap { $0.components(separatedBy: ",") }
                 })
             }.value
-            derivationSummary = derivation?.summary
+            derivation = detected
 
             // Compound word breakdown uses the selected (best) path. Each component looks up
             // by the segmenter-resolved lemma when one is available — `edge.surface` alone
