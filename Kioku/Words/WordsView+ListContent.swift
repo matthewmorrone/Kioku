@@ -327,7 +327,10 @@ extension WordsView {
                 .font(.system(size: 16, weight: .semibold))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(saved ? "Unsave" : "Save")
+        // Include the literal so VoiceOver distinguishes one kanji star from another in a
+        // mixed word/kanji list, and name the type ("kanji") since the word-row star is just
+        // "Save"/"Unsave".
+        .accessibilityLabel(saved ? "Unsave kanji \(literal)" : "Save kanji \(literal)")
     }
 
     // Long-press context menu for a saved-kanji row. Mirrors the word-row menu's
