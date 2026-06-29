@@ -11,6 +11,9 @@ struct ReadView: View {
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var wordsStore: WordsStore
+    // Observes the singleton so the renderer re-evaluates inFlightLineLocations
+    // whenever the AI client publishes a new currentLineIndex during streaming.
+    @ObservedObject var aiProgress = AICorrectionProgress.shared
     let segmenter: any TextSegmenting
     let dictionaryStore: DictionaryStore?
     let lexicon: Lexicon?
@@ -247,11 +250,18 @@ struct ReadView: View {
 
     // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM
     // setting changes. Reading llmKeysRevision ties body invalidation to key edits;
-    // the actual presence check goes to the Keychain.
-    private var isLLMConfigured: Bool {
+    // the actual presence check goes to the Keychain. Internal so the toolbar and
+    // title-row extensions can hide their LLM buttons until a provider is available.
+    // Apple Intelligence requires no key, so it counts as configured whenever the
+    // on-device model is present and ready, regardless of remote key state.
+    var isLLMConfigured: Bool {
         _ = llmKeysRevision
         if llmUseLLM {
-            return LLMSettings.apiKey(for: .openAI) != nil || LLMSettings.apiKey(for: .claude) != nil
+            let provider = LLMSettings.activeProvider()
+            if provider == .appleIntelligence {
+                return AppleIntelligenceAvailability.isAvailable
+            }
+            return LLMSettings.apiKey(for: provider) != nil
         } else {
             return llmStubResponse.isEmpty == false
         }

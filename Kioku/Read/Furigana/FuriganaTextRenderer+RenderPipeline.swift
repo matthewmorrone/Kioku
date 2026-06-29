@@ -72,6 +72,7 @@ extension FuriganaTextRenderer {
             unknownSegmentLocations: unknownSegmentLocations,
             changedSegmentLocations: changedSegmentLocations,
             changedReadingLocations: changedReadingLocations,
+            inFlightSegmentLocations: inFlightSegmentLocations,
             customEvenSegmentColor: customEvenSegmentColorHex.isEmpty ? nil : UIColor(hexString: customEvenSegmentColorHex),
             customOddSegmentColor: customOddSegmentColorHex.isEmpty ? nil : UIColor(hexString: customOddSegmentColorHex),
             furiganaBySegmentLocation: furiganaBySegmentLocation,

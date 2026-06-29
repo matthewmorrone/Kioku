@@ -31,6 +31,10 @@ enum KiokuCoreTextAttributedStringBuilder {
     // Mint/green is distinct from the alternation palette (orange/cyan/red/indigo) and the
     // yellow selection rect, so a changed segment stays legible against every other state.
     static let changedSegmentColor: UIColor = .systemGreen
+    // Distinct from changedSegmentColor (green) and the blue playback band so the
+    // user can tell at a glance "the model is working on this line" vs. "this
+    // segment has a pending change."
+    static let inFlightSegmentColor: UIColor = .systemIndigo
 
     // A single furigana run: location/length in UTF-16 against the source `text`, and the
     // reading string to draw centered above that run. Emitted by `build` and consumed by the
@@ -84,6 +88,11 @@ enum KiokuCoreTextAttributedStringBuilder {
         // the alternation/unknown palette. Mirrors ReadTextStyleResolver's changed-segment pass.
         var changedSegmentLocations: Set<Int> = []
         var changedReadingLocations: Set<Int> = []
+        // UTF-16 segment start locations for the line the LLM is processing right now.
+        // Tinted indigo (distinct from the green changed tint and the blue playback band)
+        // so the user can see which line is "active" without conflating it with finished
+        // changes. Mirrors ReadTextStyleResolver's in-flight pass.
+        var inFlightSegmentLocations: Set<Int> = []
         // Favorited (saved) segment glow. When enabled, segments whose location appears in
         // favoritedSegmentLocations get the .kiokuFavoritedGlow attribute, which the draw pass
         // renders as a blurred glow in favoritedGlowColor.
@@ -178,6 +187,16 @@ enum KiokuCoreTextAttributedStringBuilder {
         // base glyph color, so furigana-only tinting isn't expressible without per-run ruby
         // overrides — and a green segment still reads clearly as "this changed". The glow
         // shadow from the TextKit path is omitted because CTLineDraw ignores NSShadow.
+        // In-flight tint goes BEFORE the changed pass so green wins on overlap.
+        if inputs.inFlightSegmentLocations.isEmpty == false {
+            for segmentRange in inputs.segmentationRanges {
+                let nsRange = NSRange(segmentRange, in: inputs.text)
+                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+                guard inputs.inFlightSegmentLocations.contains(nsRange.location) else { continue }
+                result.addAttribute(.foregroundColor, value: Self.inFlightSegmentColor, range: nsRange)
+            }
+        }
+
         if inputs.changedSegmentLocations.isEmpty == false {
             for segmentRange in inputs.segmentationRanges {
                 let nsRange = NSRange(segmentRange, in: inputs.text)

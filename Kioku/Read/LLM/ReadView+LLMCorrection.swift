@@ -6,7 +6,10 @@ import SwiftUI
 extension ReadView {
 
     // Builds the current segment + reading snapshot and sends it to the LLM for correction.
-    // Shows the result inline — either applying changes or surfacing an error alert.
+    // Streams per-line corrections back to the UI when the active provider supports it
+    // (Apple Intelligence). Remote providers and stub mode return a single final response
+    // which is applied once at the end. In both cases the apply path is the same; the
+    // streaming variant just calls it multiple times with cumulative responses.
     func requestLLMCorrection() {
         guard llmCorrectionTask == nil else { return }
 
@@ -19,9 +22,23 @@ extension ReadView {
 
         let capturedText = text
         let compactSegments = LLMCorrectionDiagnostics.buildCompactFormat(from: currentSegments)
-        // Logging disabled.
-        // print("[LLM] Compact input:\n\(compactSegments)")
         let service = LLMCorrectionService()
+
+        // Clear stale pending state before starting a fresh run. The streaming
+        // path snapshots preLLMSegmentEntries on the first partial apply, so
+        // any leftover snapshot from a prior session would corrupt the
+        // reject-to-original path.
+        pendingLLMChangedLocations = []
+        pendingLLMChangedReadingLocations = []
+        pendingLLMChangesByLocation = [:]
+        preLLMSegmentEntries = []
+        hasPendingLLMChanges = false
+
+        // Only the on-device provider streams today. Remote and stub return a
+        // single response; we apply it once at the end. Reading this once up
+        // front avoids racing the @AppStorage value mid-request.
+        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
+        let willStream = useLLM && LLMSettings.activeProvider() == .appleIntelligence
 
         isRequestingLLMCorrection = true
         llmCorrectionTask = Task {
@@ -33,13 +50,45 @@ extension ReadView {
             }
 
             do {
+                let baselineSnapshot = currentSegments
                 let response = try await service.requestCorrections(
-                    compactSegments: compactSegments
+                    compactSegments: compactSegments,
+                    dictionary: dictionaryStore,
+                    onPartial: willStream ? { @MainActor partial in
+                        let merged = Self.mergeResponsePerLine(
+                            response: partial,
+                            originalText: capturedText,
+                            baseline: baselineSnapshot
+                        )
+                        self.applyLLMStreamingPartial(merged, originalText: capturedText)
+                    } : nil
                 )
 
                 await MainActor.run {
-                    let result = applyLLMCorrectionResponse(response, originalText: capturedText)
-                    handleLLMCorrectionResult(result)
+                    if willStream {
+                        // Streaming already applied every line as it arrived;
+                        // the final response equals the last partial. Just flag
+                        // the note as having had a correction applied so a
+                        // subsequent sparkles tap goes through the rerun-confirm
+                        // dialog.
+                        if hasPendingLLMChanges {
+                            hasAppliedLLMCorrectionForCurrentNote = true
+                        }
+                    } else {
+                        // Remote / stub one-shot — merge per-line with baseline
+                        // first so a single bad line (e.g., gpt-4o-search-preview
+                        // substituting kana → kanji on one row) doesn't tank
+                        // the whole correction. Lines whose surfaces concat to
+                        // the source line apply as-returned; the rest fall back
+                        // to the baseline (no change for that line).
+                        let merged = Self.mergeResponsePerLine(
+                            response: response,
+                            originalText: capturedText,
+                            baseline: baselineSnapshot
+                        )
+                        let result = applyLLMCorrectionResponse(merged, originalText: capturedText)
+                        handleLLMCorrectionResult(result)
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -50,11 +99,126 @@ extension ReadView {
         }
     }
 
+    // Applies one streaming partial: runs the same apply path as the single-shot
+    // case, then UNIONS the per-pass changed locations into the accumulated
+    // pending state instead of overwriting. The pre-LLM snapshot is captured by
+    // applyLLMCorrectionResponse on its first call of the run (when
+    // preLLMSegmentEntries is empty) and preserved on subsequent calls.
+    func applyLLMStreamingPartial(_ partial: LLMCorrectionResponse, originalText: String) {
+        let result = applyLLMCorrectionResponse(partial, originalText: originalText)
+        switch result {
+        case .applied(_, let changedLocations, let changedReadingLocations, let changesByLocation):
+            pendingLLMChangedLocations.formUnion(changedLocations)
+            pendingLLMChangedReadingLocations.formUnion(changedReadingLocations)
+            for (loc, desc) in changesByLocation {
+                pendingLLMChangesByLocation[loc] = desc
+            }
+            if pendingLLMChangedLocations.isEmpty == false {
+                hasPendingLLMChanges = true
+            }
+        case .surfaceMismatch(let msg), .networkError(let msg), .decodingError(let msg):
+            // A streaming partial failed validation — the per-line client
+            // sanitizes input so this is rare, but if it happens, log and
+            // skip rather than failing the whole run.
+            print("[LLM] streaming partial apply failed: \(msg)")
+        }
+    }
+
+    // Per-line salvage pass over an LLM response: groups the response and the
+    // baseline (pre-LLM segmentation) by note line, validates each response
+    // line's surfaces against the corresponding source line, and substitutes
+    // the baseline back in for lines that don't reconcile. This stops a
+    // single bad line — typically gpt-4o-search-preview "normalizing" な → 成
+    // somewhere — from rejecting the entire response. Returns a response that
+    // is guaranteed to concat-equal originalText, modulo the existing
+    // whitespace repair pass that applyLLMCorrectionResponse still runs.
+    static func mergeResponsePerLine(
+        response: LLMCorrectionResponse,
+        originalText: String,
+        baseline: [LLMSegmentEntry]
+    ) -> LLMCorrectionResponse {
+        let responseLines = groupSegmentsByNoteLine(response.segments)
+        let baselineLines = groupSegmentsByNoteLine(baseline)
+        let sourceLines = originalText.components(separatedBy: "\n")
+
+        var merged: [LLMSegmentEntry] = []
+        for (index, sourceLine) in sourceLines.enumerated() {
+            let responseLine = index < responseLines.count ? responseLines[index] : []
+            let baselineLine = index < baselineLines.count ? baselineLines[index] : []
+
+            let responseConcat = responseLine.map(\.surface).joined()
+            let useResponse = responseLine.isEmpty == false && responseConcat == sourceLine
+            let chosen = useResponse ? responseLine : baselineLine
+            merged.append(contentsOf: chosen)
+
+            // Mirror parseCompactResponse's behavior: each content line is
+            // followed by an implicit "\n" entry to separate it from the next.
+            // Skip after the last line so we don't introduce a trailing
+            // newline the source didn't have.
+            if index < sourceLines.count - 1 {
+                merged.append(LLMSegmentEntry(surface: "\n", reading: ""))
+            }
+        }
+        return LLMCorrectionResponse(segments: merged)
+    }
+
+    // Splits a flat entry list into per-note-line groups using "\n"-surfaced
+    // entries as the separator. The "\n" entries themselves are dropped; the
+    // caller re-inserts them when re-assembling. An empty trailing group is
+    // discarded so a response that ends with "\n" doesn't add a phantom line.
+    private static func groupSegmentsByNoteLine(_ entries: [LLMSegmentEntry]) -> [[LLMSegmentEntry]] {
+        var lines: [[LLMSegmentEntry]] = []
+        var current: [LLMSegmentEntry] = []
+        for entry in entries {
+            if entry.surface == "\n" {
+                lines.append(current)
+                current = []
+            } else if entry.surface.isEmpty == false {
+                current.append(entry)
+            }
+        }
+        if current.isEmpty == false {
+            lines.append(current)
+        }
+        return lines
+    }
+
     // Cancels any in-flight LLM correction request.
     func cancelLLMCorrection() {
         llmCorrectionTask?.cancel()
         llmCorrectionTask = nil
         isRequestingLLMCorrection = false
+    }
+
+    // Segment-start UTF-16 locations covering the note line the AI is processing
+    // RIGHT NOW (per AICorrectionProgress.currentLineIndex). Used to drive a
+    // per-line in-flight highlight so the user can see which line the model is
+    // working on without watching a spinner. Returns an empty set when no AI
+    // request is in flight, or when the published index doesn't map to a real
+    // line in the current text (e.g., text changed mid-request).
+    var inFlightLineSegmentLocations: Set<Int> {
+        guard let lineIndex = aiProgress.currentLineIndex else { return [] }
+        let lines = text.components(separatedBy: "\n")
+        guard lineIndex >= 0, lineIndex < lines.count else { return [] }
+
+        // Walk up to the target line, summing each prior line's UTF-16 count
+        // plus one for the "\n" separator. Last line has no trailing newline,
+        // which is fine because we never need its end offset.
+        var lineStart = 0
+        for i in 0..<lineIndex {
+            lineStart += lines[i].utf16.count + 1
+        }
+        let lineEnd = lineStart + lines[lineIndex].utf16.count
+
+        var locs: Set<Int> = []
+        for edge in segmentEdges {
+            let r = NSRange(edge.start..<edge.end, in: text)
+            guard r.location != NSNotFound else { continue }
+            if r.location >= lineStart, r.location < lineEnd {
+                locs.insert(r.location)
+            }
+        }
+        return locs
     }
 
     // Converts the current segment edges and reading overrides into LLMSegmentEntry values
@@ -147,7 +311,18 @@ extension ReadView {
 
         // Snapshot old state before mutating anything — used for diff and per-change undo.
         let oldFurigana = furiganaBySegmentLocation
-        preLLMSegmentEntries = buildLLMSegmentEntries()
+        // For streaming, capture preLLMSegmentEntries on the FIRST apply of the
+        // run only. Subsequent applies during a streaming run would otherwise
+        // overwrite the snapshot with post-previous-apply state, breaking the
+        // reject-to-original guarantee. The streaming entry point clears
+        // preLLMSegmentEntries before kicking off, so an empty value here
+        // means "first apply, snapshot now"; non-empty means "leave the
+        // original snapshot in place." The single-shot path also benefits:
+        // requestLLMCorrection always clears the snapshot first, so the
+        // first apply still records it.
+        if preLLMSegmentEntries.isEmpty {
+            preLLMSegmentEntries = buildLLMSegmentEntries()
+        }
 
         var diffLines: [String] = []
         var changedLocations: Set<Int> = []
@@ -223,8 +398,19 @@ extension ReadView {
             let location = nsRange.location
 
             if entry.reading.isEmpty {
-                furiganaBySegmentLocation.removeValue(forKey: location)
-                furiganaLengthBySegmentLocation.removeValue(forKey: location)
+                // Empty reading on a kanji-containing surface means the model
+                // didn't supply one — preserve any existing furigana at this
+                // location instead of clearing it. The small on-device model
+                // routinely drops the `[reading]` annotation even when the
+                // surface contains kanji; treating that as "clear the
+                // furigana" leaves the kanji bare. Pure-kana surfaces never
+                // had furigana to begin with, so the removal is a no-op
+                // there — but we still do it explicitly so a true "clear"
+                // signal works for kana segments whose state was stale.
+                if ScriptClassifier.containsKanji(edge.surface) == false {
+                    furiganaBySegmentLocation.removeValue(forKey: location)
+                    furiganaLengthBySegmentLocation.removeValue(forKey: location)
+                }
             } else {
                 // Write per-kanji-run furigana via the shared helper — clears stale entries
                 // overlapping the surface, then projects the reading over kanji runs so the

@@ -6,8 +6,15 @@ final class LLMCorrectionService {
 
     // Submits the note's current segmentation in compact format to the active LLM provider,
     // or parses the stub response directly when useLLM is off. Throws on misconfiguration.
+    // The optional onPartial callback receives a cumulative response after each unit of work
+    // completes — used by the Apple Intelligence path to stream per-line corrections so the
+    // UI can apply them incrementally. Remote providers and stub mode are single-shot and
+    // ignore the callback; the caller should apply the returned final response in those
+    // cases. The callback is @MainActor so callers can mutate view state directly.
     func requestCorrections(
-        compactSegments: String
+        compactSegments: String,
+        dictionary: DictionaryStore? = nil,
+        onPartial: (@Sendable @MainActor (LLMCorrectionResponse) -> Void)? = nil
     ) async throws -> LLMCorrectionResponse {
         let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
 
@@ -39,6 +46,25 @@ final class LLMCorrectionService {
         }
 
         let provider = LLMSettings.activeProvider()
+
+        // On-device Apple Intelligence path: no API key, per-line chunked. The
+        // onPartial callback is forwarded so the AI client can stream cumulative
+        // responses to the UI after each line completes. Gated on availability
+        // separately from the remote-key check so the user gets a clear failure
+        // when AI was picked but isn't actually present on the device.
+        if provider == .appleIntelligence {
+            #if canImport(FoundationModels)
+            if #available(iOS 26.0, *), AppleIntelligenceAvailability.isAvailable {
+                return try await AppleIntelligenceCorrectionClient.requestCorrections(
+                    compactSegments: compactSegments,
+                    dictionary: dictionary,
+                    onPartial: onPartial
+                )
+            }
+            #endif
+            throw LLMCorrectionError.appleIntelligenceUnavailable
+        }
+
         guard let apiKey = LLMSettings.activeAPIKey() else {
             throw LLMCorrectionError.noKeyConfigured
         }
@@ -52,6 +78,9 @@ final class LLMCorrectionService {
         switch provider {
         case .none:
             throw LLMCorrectionError.noKeyConfigured
+        case .appleIntelligence:
+            // Handled above; included so the switch stays exhaustive.
+            throw LLMCorrectionError.appleIntelligenceUnavailable
         case .openAI:
             return try await callOpenAI(apiKey: apiKey, messages: messages)
         case .claude:
@@ -96,6 +125,50 @@ final class LLMCorrectionService {
         - All segment surfaces within a line must concatenate in order to reproduce that source line exactly, character-for-character
         - Never add, remove, or alter any character from the original text — do not convert kana to kanji or kanji to kana, do not normalize, do not substitute
         - Do not insert spaces between segments or anywhere else — if the original has no space, the output must have no space
+
+        CHARACTER PRESERVATION (CRITICAL):
+        - If the input writes a word in hiragana that could also be written with kanji, KEEP THE HIRAGANA. Do not "normalize." Examples that MUST be preserved as-is:
+            なる (do NOT change to 成る); ある (do NOT change to 有る); いる (do NOT change to 居る); こと (do NOT change to 事); もの (do NOT change to 物); とき (do NOT change to 時); ところ (do NOT change to 所); わたし (do NOT change to 私); あなた (do NOT change to 貴方)
+        - Likewise if the input uses kanji, do not strip them down to kana.
+        - WRONG: input "なりたくて" → output "成りたくて" (substituted な → 成). This is forbidden — every character in your output surfaces must come from the source verbatim.
+
+        EXAMPLES:
+
+        Example 1 — verb mistakenly split, MERGE:
+        Input:  1|(食)[た]|べる|の|が|(好)[す]き|です|
+        Output: 1|(食)[た]べる|の|が|(好)[す]き|です|
+        Reason: 食 and べる together are the verb 食べる. Stem + inflection stay in one segment.
+
+        Example 2 — compound noun mistakenly split, MERGE:
+        Input:  1|(中)[ちゅう]|(学校)[がっこう]|で|
+        Output: 1|(中学校)[ちゅうがっこう]|で|
+        Reason: 中学校 is one lexical unit (middle school), not 中 + 学校.
+
+        Example 3 — already correct, OUTPUT UNCHANGED:
+        Input:  1|(涙)[なみだ]|(出)[で]る|ほど|(笑)[わら]って|
+        Output: 1|(涙)[なみだ]|(出)[で]る|ほど|(笑)[わら]って|
+        Reason: Each segment is a standalone word. 涙 and 出る are separate; "涙出" is NOT a word — do not invent it.
+
+        Example 4 — uncertain, OUTPUT UNCHANGED:
+        Input:  1|(花)[はな]びら|に|(黄昏)[たそがれ]|の|(翅)[はね]|が|
+        Output: 1|(花)[はな]びら|に|(黄昏)[たそがれ]|の|(翅)[はね]|が|
+        Reason: Even if a poetic compound is plausible, the segmentation as given is reasonable. When uncertain, leave it alone.
+
+        Example 5 — trailing kana belongs to the NEXT verb, SPLIT-AND-MERGE across boundaries:
+        Input:  1|(流)[なが]されてた|ゆた|う|の|このまま|
+        Output: 1|(流)[なが]されて|たゆたう|の|このまま|
+        Reason: たゆたう is one verb (to sway). The た at the end of 流されてた actually belongs with ゆた+う to form たゆたう; the segmenter mis-attached it. Split the trailing た off the preceding segment, then merge it with ゆた and う.
+
+        CALLING THE DICTIONARY:
+        - If a lookupJapaneseWord tool is available, you MUST use it before deciding NOT to merge consecutive kana-only segments. Try the combined surface; if the tool returns YES, merge them.
+        - When a segment ENDS with a kana that could plausibly start a verb in the next segment (the Example 5 pattern), also try lookupJapaneseWord on the split+merged combination before deciding to leave it alone.
+        - Conversely, never invent a compound: before merging consecutive kanji segments into a candidate compound, call lookupJapaneseWord; if it returns NO, do not merge.
+
+        USING WEB SEARCH (if available):
+        - If a web_search tool is available AND the input looks like song lyrics (short repetitive lines, emotional language, kanji used with non-standard readings), use it to find the canonical lyrics for the song. Lyric sites (Uta-Net, J-Lyric, Genius, Niconico Kashi) typically publish the intended furigana — gikun (義訓: kanji read for meaning, like 本気 → マジ or 運命 → さだめ) and ateji are common in songs and JMdict won't have them.
+        - If you find the canonical lyrics, prefer those readings over what you'd derive morphologically.
+        - Confirm the song match before trusting the result: the searched lyrics should excerpt-match the input. Do not apply readings from a different song that happens to share a title fragment.
+        - For non-lyric input (regular prose, news, dictionary entries), do NOT use web search — JMdict + your training are sufficient.
         """
 
     // Constructs system and user message content for the correction request.
@@ -113,15 +186,28 @@ final class LLMCorrectionService {
 
         let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
             ?? LLMSettings.defaultTemperature
-        let body: [String: Any] = [
-            "model": LLMSettings.openAIModel(),
+        // OpenAI's Chat Completions web search is model-level (gpt-4o-search-preview),
+        // not a separately-passable tool — so we swap the model when the user has
+        // opted in and restore the configured model when they haven't.
+        let usingSearchModel = LLMSettings.isWebSearchEnabled()
+        let modelID = usingSearchModel
+            ? LLMSettings.openAISearchModel
+            : LLMSettings.openAIModel()
+        // The gpt-4o-search-preview models reject the `temperature` argument
+        // (HTTP 400 "Model incompatible request argument supplied: temperature").
+        // Skip it on the search path; keep it for the regular path where
+        // sampling control is meaningful.
+        var body: [String: Any] = [
+            "model": modelID,
             "messages": [
                 ["role": "system", "content": messages.system],
                 ["role": "user", "content": messages.user]
             ],
-            "max_tokens": 4096,
-            "temperature": temperature
+            "max_tokens": 4096
         ]
+        if usingSearchModel == false {
+            body["temperature"] = temperature
+        }
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
@@ -161,7 +247,7 @@ final class LLMCorrectionService {
         // per-note user turn stays uncached. GA feature — no beta header required; the existing
         // anthropic-version header suffices. (Sonnet 4.6's ~2048-token min cacheable prefix means
         // this ~2000-token correction prompt is borderline and may silently not cache.)
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": LLMSettings.claudeModel(),
             "max_tokens": 4096,
             "temperature": temperature,
@@ -176,6 +262,19 @@ final class LLMCorrectionService {
                 ["role": "user", "content": messages.user]
             ]
         ]
+        // Server-side web_search tool: the model can search canonical lyric sources
+        // to ground gikun/ateji readings JMdict doesn't carry. Anthropic handles the
+        // search internally; we just see the final response with the text already
+        // grounded. Tool round-trips bill separately, so this is gated on the
+        // user's opt-in setting.
+        if LLMSettings.isWebSearchEnabled() {
+            body["tools"] = [
+                [
+                    "type": "web_search_20250305",
+                    "name": "web_search"
+                ]
+            ]
+        }
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
@@ -183,14 +282,23 @@ final class LLMCorrectionService {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateHTTPResponse(response, data: data, provider: "Claude")
 
-        // Anthropic wraps the model output in content[0].text as a string.
+        // Anthropic returns an array of content blocks. When web_search is enabled
+        // there are server_tool_use + web_search_tool_result blocks before the
+        // final text block(s); when it's disabled there's typically just one text
+        // block. Either way the model's final answer lives in the type=="text"
+        // blocks, concatenated in order — so we walk and join them.
         guard
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let content = json["content"] as? [[String: Any]],
-            let firstBlock = content.first,
-            let text = firstBlock["text"] as? String
+            let content = json["content"] as? [[String: Any]]
         else {
-            throw LLMCorrectionError.unexpectedResponseShape("Claude response missing content[0].text")
+            throw LLMCorrectionError.unexpectedResponseShape("Claude response missing content array")
+        }
+        let text = content.compactMap { block -> String? in
+            guard let type = block["type"] as? String, type == "text" else { return nil }
+            return block["text"] as? String
+        }.joined()
+        guard text.isEmpty == false else {
+            throw LLMCorrectionError.unexpectedResponseShape("Claude response had no text content blocks")
         }
 
         // Logging disabled.
@@ -331,6 +439,7 @@ final class LLMCorrectionService {
 // Enumerates error cases that can arise during an LLM correction request.
 enum LLMCorrectionError: LocalizedError {
     case noKeyConfigured
+    case appleIntelligenceUnavailable
     case networkError(String)
     case unexpectedResponseShape(String)
     case decodingError(String)
@@ -340,6 +449,8 @@ enum LLMCorrectionError: LocalizedError {
         switch self {
         case .noKeyConfigured:
             return "No API key configured. Add one in Settings."
+        case .appleIntelligenceUnavailable:
+            return "Apple Intelligence isn't available on this device. Pick another provider in Settings."
         case .networkError(let msg):
             return "Network error: \(msg)"
         case .unexpectedResponseShape(let msg):
