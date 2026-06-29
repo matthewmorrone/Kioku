@@ -211,9 +211,12 @@ final class SavedKanjiStore: ObservableObject {
         qos: .utility
     )
 
-    // Synchronously flushes pending writes. Tests call this after a toggle/save
-    // to make assertions on the persisted state without polling.
-    func flushPendingWritesForTesting() {
-        SavedKanjiStore.persistQueue.sync {}
+    // Blocks until every previously dispatched persist write has completed. Tests
+    // call this BEFORE constructing a fresh reader store so that the reader's
+    // init-time UserDefaults load observes the previous writer's writes. Mirrors
+    // WordsStore.flushPendingWritesForTesting; static so callers can drain the
+    // shared queue without already holding an instance.
+    static func flushPendingWritesForTesting() {
+        persistQueue.sync {}
     }
 }
