@@ -215,13 +215,16 @@ extension WordsView {
         if kanjiSearchResults.isEmpty == false {
             Section("Kanji") {
                 ForEach(kanjiSearchResults) { info in
-                    Button {
-                        isSearchFieldFocused = false
-                        presentedKanjiInfo = info
-                    } label: {
-                        kanjiResultRowContent(info)
+                    HStack(spacing: 12) {
+                        Button {
+                            isSearchFieldFocused = false
+                            presentedKanjiInfo = info
+                        } label: {
+                            kanjiResultRowContent(info)
+                        }
+                        .buttonStyle(.plain)
+                        kanjiSaveStar(literal: info.literal)
                     }
-                    .buttonStyle(.plain)
                     .listRowBackground(Color.accentColor.opacity(0.06))
                 }
             }
@@ -231,8 +234,9 @@ extension WordsView {
     // The visual content of one kanji search-result row. Deliberately UNLIKE the
     // word-row shape: a large kanji glyph in a tinted square tile leads (instant
     // "this is a kanji, not a word"), followed by the kanji's English meanings and
-    // a horizontal pill row of grade / JLPT / stroke-count metadata. Tappable hint
-    // chevron on the trailing edge matches the related-word row pattern.
+    // a horizontal pill row of grade / JLPT / stroke-count metadata. The trailing save
+    // star is a sibling of this content (added by the call site) so it can sit outside
+    // the row's open-detail tap target — mirroring the word row's speaker/star layout.
     @ViewBuilder
     func kanjiResultRowContent(_ info: KanjiInfo) -> some View {
         HStack(alignment: .center, spacing: 14) {
@@ -269,10 +273,6 @@ extension WordsView {
             }
 
             Spacer(minLength: 8)
-
-            Image(systemName: "chevron.right")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

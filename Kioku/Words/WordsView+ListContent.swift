@@ -296,16 +296,38 @@ extension WordsView {
             }
             .listRowBackground(Color.accentColor.opacity(0.06))
         } else {
-            Button {
-                isSearchFieldFocused = false
-                presentedKanjiInfo = info
-            } label: {
-                kanjiResultRowContent(info)
+            HStack(spacing: 12) {
+                Button {
+                    isSearchFieldFocused = false
+                    presentedKanjiInfo = info
+                } label: {
+                    kanjiResultRowContent(info)
+                }
+                .buttonStyle(.plain)
+                kanjiSaveStar(literal: saved.literal)
             }
-            .buttonStyle(.plain)
             .listRowBackground(Color.accentColor.opacity(0.06))
             .contextMenu { savedKanjiRowMenu(info: info, saved: saved) }
         }
+    }
+
+    // Trailing save star for a kanji row — the kanji analogue of the word row's star.
+    // Filled when the literal is saved, tapping toggles save/unsave through SavedKanjiStore.
+    // Sits outside the row's open-detail tap target so a star tap never opens the detail
+    // sheet. Color follows the word-row convention: white under the Japanese theme,
+    // primary when saved, secondary for the empty star.
+    @ViewBuilder
+    func kanjiSaveStar(literal: String) -> some View {
+        let saved = savedKanjiStore.contains(literal: literal)
+        Button {
+            savedKanjiStore.toggle(literal: literal)
+        } label: {
+            Image(systemName: saved ? "star.fill" : "star")
+                .foregroundStyle(japaneseTheme ? Color.white : (saved ? Color.primary : Color.secondary))
+                .font(.system(size: 16, weight: .semibold))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(saved ? "Unsave" : "Save")
     }
 
     // Long-press context menu for a saved-kanji row. Mirrors the word-row menu's
