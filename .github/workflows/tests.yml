@@ -45,6 +45,21 @@ jobs:
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep -E 'iPhone (15|16|17)' | head -10
 
+      # SwiftPM source checkouts dominate cold-build time (mlx-swift, swift-nio,
+      # SwiftWhisper, etc. — several hundred MB pulled and compiled from scratch).
+      # Caching build/SourcePackages keyed on Package.resolved skips the resolve
+      # + checkout phase entirely on cache hits; the xcodebuild step still
+      # compiles them fresh so this is the *safe* cache layer (no module-cache
+      # corruption risk). Xcode version is in the key because checkout layout
+      # can change across Xcode releases.
+      - name: Cache SwiftPM checkouts
+        uses: actions/cache@v4
+        with:
+          path: build/SourcePackages
+          key: spm-${{ runner.os }}-xcode-latest-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-xcode-latest-
+
       # The dictionary sqlite is committed as a zstd archive (~63 MB) and
       # decompressed on demand; the raw file (~215 MB) is gitignored.
       - name: Decompress dictionary.sqlite
