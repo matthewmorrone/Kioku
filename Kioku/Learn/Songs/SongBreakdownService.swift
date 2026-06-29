@@ -75,7 +75,11 @@ final class SongBreakdownService {
         let raw: String
         let producedBy: SongBreakdownProvider
         switch provider {
-        case .none:
+        case .none, .appleIntelligence:
+            // Song breakdown doesn't yet support on-device generation — the
+            // structured-output prompt is wide enough that Apple Intelligence's
+            // small model can't reliably produce it. Treat as misconfigured so
+            // the user sees the same "pick another provider" message.
             throw SongBreakdownError.noKeyConfigured
         case .openAI:
             raw = try await callOpenAI(apiKey: apiKey, prompt: prompt)

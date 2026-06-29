@@ -26,9 +26,10 @@ extension ReadView {
     var toolbarButtons: some View {
         HStack {
             Spacer()
-            llmCorrectionButton
+            if isLLMConfigured {
+                llmCorrectionButton
+            }
             resetButton
-            furiganaButton
             editModeButton
         }
     }
@@ -52,13 +53,9 @@ extension ReadView {
         } label: {
             Group {
                 if isRequestingLLMCorrection {
-                    ZStack {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .scaleEffect(0.7)
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 7, weight: .semibold))
-                    }
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(0.7)
                 } else if hasPendingLLMChanges {
                     // Sparkles with a checkmark badge signals "confirm these AI changes".
                     ZStack(alignment: .bottomTrailing) {
@@ -119,30 +116,6 @@ extension ReadView {
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1.0 : 0.5)
         .accessibilityLabel(hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
-    }
-
-    // Toggles whether furigana annotations render in the main paste area.
-    // Long press opens display options popover.
-    var furiganaButton: some View {
-        furiganaButtonLabel
-        .contentShape(Circle())
-        .onTapGesture {
-            guard isEditMode == false else { return }
-            isFuriganaVisible.toggle()
-        }
-        .onLongPressGesture(minimumDuration: 0.35) {
-            guard isEditMode == false else { return }
-            isShowingDisplayOptions = true
-        }
-        .disabled(isEditMode)
-        .opacity(isEditMode ? 0.5 : 0.8)
-        .accessibilityLabel(isFuriganaVisible ? "Hide Furigana" : "Show Furigana")
-        .accessibilityHint("Long press for display options")
-        .accessibilityAddTraits(.isButton)
-        .popover(isPresented: $isShowingDisplayOptions, arrowEdge: .bottom) {
-            displayOptionsPopover
-                .presentationCompactAdaptation(.popover)
-        }
     }
 
     // Title-row buttons. New-note + OCR migrated to the Notes tab; this row hosts the
@@ -211,19 +184,18 @@ extension ReadView {
             .contentShape(Rectangle())
     }
 
-    // Renders the tappable furigana icon that also exposes display options on long press.
-    var furiganaButtonLabel: some View {
-        Image(isFuriganaVisible ? "furigana.on" : "furigana.off")
-            .renderingMode(.template)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(ReadToggleAppearance.foreground(isOn: isFuriganaVisible))
-            .frame(width: 36, height: 36)
-            .background(Circle().fill(ReadToggleAppearance.background))
-    }
-
     // Presents display option toggles with persistent enabled-state styling.
     var displayOptionsPopover: some View {
         VStack(spacing: 10) {
+            displayOptionRow(
+                title: "Furigana",
+                image: Image(isFuriganaVisible ? "furigana.on" : "furigana.off")
+                    .renderingMode(.template),
+                isEnabled: isFuriganaVisible
+            ) {
+                isFuriganaVisible.toggle()
+            }
+
             displayOptionRow(
                 title: "Apply Changes Globally",
                 systemImage: "arrow.triangle.branch",
@@ -287,9 +259,27 @@ extension ReadView {
         isEnabled: Bool,
         action: @escaping () -> Void
     ) -> some View {
+        displayOptionRow(
+            title: title,
+            image: Image(systemName: systemImage),
+            isEnabled: isEnabled,
+            action: action
+        )
+    }
+
+    // Image-based overload of displayOptionRow for rows whose icon is a custom Image
+    // asset rather than an SF Symbol — e.g. the furigana glyph, which is a project
+    // asset, not a system symbol. Shares all other styling with the systemImage variant
+    // so the popover keeps a single visual language.
+    func displayOptionRow(
+        title: String,
+        image: Image,
+        isEnabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: systemImage)
+                image
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEnabled))
                     .frame(width: 20)
@@ -319,26 +309,45 @@ extension ReadView {
         .buttonStyle(.plain)
     }
 
-    // Uses one icon button whose visual treatment reflects active edit state. Locked while
-    // an LLM correction is in flight: entering edit mode mid-call would let the user mutate
-    // `text` out from under the apply pipeline, which validates the response against the
-    // text that was originally submitted. Cheaper than threading a background task across
-    // view transitions — the call only survives a couple of minutes, and the user can
-    // still navigate elsewhere; they just can't edit until the correction lands.
+    // One icon button whose visual treatment reflects active edit state. Tap toggles
+    // edit mode; long press opens the display-options popover (which now hosts furigana
+    // alongside the other view-mode toggles). Locked while an LLM correction is in flight:
+    // entering edit mode mid-call would let the user mutate `text` out from under the
+    // apply pipeline, which validates the response against the text that was originally
+    // submitted. Cheaper than threading a background task across view transitions — the
+    // call only survives a couple of minutes, and the user can still navigate elsewhere;
+    // they just can't edit until the correction lands. The popover stays available even
+    // while the button is disabled would feel wrong, so the long-press is gated on the
+    // same condition as the tap.
     var editModeButton: some View {
-        Button {
-            isEditMode.toggle()
-        } label: {
-            Image(systemName: "character.cursor.ibeam.ja")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEditMode))
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(ReadToggleAppearance.background))
-        }
-        .buttonStyle(PlainButtonStyle())
-        .disabled(isRequestingLLMCorrection)
-        .opacity(isRequestingLLMCorrection ? 0.4 : (isEditMode ? 1 : 0.7))
-        .accessibilityLabel(isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
-        .accessibilityHint(isRequestingLLMCorrection ? "Disabled while AI correction runs" : "")
+        editModeButtonLabel
+            .contentShape(Circle())
+            .onTapGesture {
+                guard isRequestingLLMCorrection == false else { return }
+                isEditMode.toggle()
+            }
+            .onLongPressGesture(minimumDuration: 0.35) {
+                guard isRequestingLLMCorrection == false else { return }
+                isShowingDisplayOptions = true
+            }
+            .disabled(isRequestingLLMCorrection)
+            .opacity(isRequestingLLMCorrection ? 0.4 : (isEditMode ? 1 : 0.7))
+            .accessibilityLabel(isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
+            .accessibilityHint(isRequestingLLMCorrection ? "Disabled while AI correction runs" : "Long press for display options")
+            .accessibilityAddTraits(.isButton)
+            .popover(isPresented: $isShowingDisplayOptions, arrowEdge: .bottom) {
+                displayOptionsPopover
+                    .presentationCompactAdaptation(.popover)
+            }
+    }
+
+    // Renders the edit-mode glyph so the gesture-driven editModeButton has a label view
+    // to attach taps and long-presses to without nesting them inside a Button.
+    private var editModeButtonLabel: some View {
+        Image(systemName: "character.cursor.ibeam.ja")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEditMode))
+            .frame(width: 36, height: 36)
+            .background(Circle().fill(ReadToggleAppearance.background))
     }
 }

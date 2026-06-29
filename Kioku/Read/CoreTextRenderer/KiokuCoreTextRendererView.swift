@@ -73,6 +73,11 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // lyrics/song call sites that don't surface LLM changes need not pass them.
     var changedSegmentLocations: Set<Int> = []
     var changedReadingLocations: Set<Int> = []
+    // UTF-16 segment start locations for the line the LLM is processing right now.
+    // Tinted indigo so the user can see which line is "active" while corrections
+    // stream in. Empty when no AI request is in flight or for non-LLM call sites
+    // (lyrics, song breakdown) that never surface this state.
+    var inFlightSegmentLocations: Set<Int> = []
     // Favorited (saved) word glow: locations whose surface is a saved word get a blurred glow in
     // favoritedGlowColor. Defaulted so the lyrics/song call sites that don't surface it need not pass it.
     var favoritedSegmentLocations: Set<Int> = []
@@ -294,6 +299,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         typographyHasher.combine(unknownSegmentColor.description)
         for location in changedSegmentLocations.sorted() { typographyHasher.combine(location) }
         for location in changedReadingLocations.sorted() { typographyHasher.combine(location) }
+        for location in inFlightSegmentLocations.sorted() { typographyHasher.combine(location) }
         for location in favoritedSegmentLocations.sorted() { typographyHasher.combine(location) }
         typographyHasher.combine(isFavoritedGlowEnabled)
         typographyHasher.combine(favoritedGlowColor.description)
@@ -325,6 +331,7 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     unknownSegmentColor: unknownSegmentColor,
                     changedSegmentLocations: changedSegmentLocations,
                     changedReadingLocations: changedReadingLocations,
+                    inFlightSegmentLocations: inFlightSegmentLocations,
                     favoritedSegmentLocations: favoritedSegmentLocations,
                     isFavoritedGlowEnabled: isFavoritedGlowEnabled,
                     favoritedGlowColor: favoritedGlowColor,

@@ -16,6 +16,11 @@ final class BulkImportRunner: ObservableObject {
     // True after a run completes (success or failure). Used by the sheet to swap Import → Done.
     @Published private(set) var hasFinished = false
 
+    // Note IDs created during the most recent run. Read by the bulk-import sheet
+    // after run() completes so the LLM correction queue can be handed exactly the
+    // notes that were just landed, not every note in the store. Reset on each run.
+    @Published private(set) var createdNoteIDs: [UUID] = []
+
     private let store: NotesStore
 
     // Stores a reference to the notes store so the runner can insert and update notes
@@ -29,6 +34,7 @@ final class BulkImportRunner: ObservableObject {
     func run(plan: [BulkImportPlanItem], whisperModelURL: URL?) async {
         guard isRunning == false, hasFinished == false else { return }
         isRunning = true
+        createdNoteIDs.removeAll()
         defer {
             isRunning = false
             hasFinished = true
@@ -188,6 +194,7 @@ final class BulkImportRunner: ObservableObject {
 
         let note = Note(title: title, content: content, audioAttachmentID: attachmentID)
         store.addNote(note)
+        createdNoteIDs.append(note.id)
     }
 
     // Attaches audio (and optional subtitle data) to an existing note. Reuses the note's

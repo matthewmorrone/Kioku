@@ -18,6 +18,12 @@ struct ReadTextStyleResolver {
     // Subset of changedSegmentLocations where only the furigana reading changed (surface unchanged).
     // These locations color only furigana; the segment text stays its normal color.
     let changedReadingLocations: Set<Int>
+    // UTF-16 segment start locations for the note line the LLM is CURRENTLY processing
+    // (per AICorrectionProgress.currentLineIndex). Painted in a distinct blue so the user
+    // can see which line the model is working on without conflating it with the green
+    // pending-change highlight. Changed wins on overlap because the styling order applies
+    // the changed pass last.
+    var inFlightSegmentLocations: Set<Int> = []
     // User-configured colors for even/odd segment alternation. When nil, falls back to system defaults.
     let customEvenSegmentColor: UIColor?
     let customOddSegmentColor: UIColor?
@@ -81,6 +87,22 @@ struct ReadTextStyleResolver {
                 }
 
                 colorAlternationIndex += 1
+            }
+        }
+
+        // In-flight (AI currently processing this line) styling. Applied BEFORE the
+        // changed pass so a segment that's both in-flight and pending-change still
+        // reads as a change (green wins over blue). No glow — that's reserved for
+        // the changed state to keep the two visually distinct.
+        if inFlightSegmentLocations.isEmpty == false {
+            for segmentRange in segmentationRanges {
+                let nsRange = NSRange(segmentRange, in: text)
+                if nsRange.location == NSNotFound || nsRange.length == 0 { continue }
+                guard inFlightSegmentLocations.contains(nsRange.location) else { continue }
+                attributedText.addAttribute(.foregroundColor, value: inFlightSegmentColor, range: nsRange)
+                for offset in 0..<nsRange.length {
+                    segmentForegroundByLocation[nsRange.location + offset] = inFlightSegmentColor
+                }
             }
         }
 
@@ -177,6 +199,14 @@ struct ReadTextStyleResolver {
     // Mint is distinct from the alternating orange/cyan/red/indigo palette and the yellow selection rect drawn by FuriganaOverlayView.
     private var changedSegmentColor: UIColor {
         UIColor.systemGreen
+    }
+
+    // Foreground color for segments on the line the LLM is currently processing.
+    // Indigo is distinct from the green pending-change tint, the blue playback band,
+    // and the yellow selection rect, so the user can tell at a glance which line is
+    // "active right now" vs. "already changed."
+    private var inFlightSegmentColor: UIColor {
+        UIColor.systemIndigo
     }
 
     // Skips whitespace and punctuation so segment styling only affects lexical segments.
