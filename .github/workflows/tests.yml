@@ -32,15 +32,26 @@ jobs:
       - name: Show installed Xcode versions
         run: ls /Applications | grep -i '^Xcode' || true
 
-      - name: Select latest Xcode
+      # Pin to 26.5 rather than latest-stable: on macos-26, latest-stable
+      # resolves to Xcode 26.6 RC, which ships the Metal compiler as a
+      # separately-downloadable component the image doesn't preinstall — so the
+      # mlx-swift dependency's .metal shaders fail to compile ("missing Metal
+      # Toolchain"). 26.5 has Metal preinstalled. The download step below is a
+      # belt-and-suspenders net if a future image drops the preinstalled tool.
+      - name: Select Xcode 26.5
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: '26.5'
 
       - name: Show toolchain
         run: |
           xcodebuild -version
           swift --version
+
+      # Ensure the Metal Toolchain is present so mlx-swift's .metal shaders
+      # compile. No-op on Xcode versions that bundle it; downloads it otherwise.
+      - name: Ensure Metal Toolchain
+        run: xcodebuild -downloadComponent MetalToolchain || true
 
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep -E 'iPhone (15|16|17)' | head -10

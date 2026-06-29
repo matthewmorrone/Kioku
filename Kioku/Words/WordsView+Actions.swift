@@ -93,6 +93,27 @@ extension WordsView {
         return []
     }
 
+    // The saved-kanji literals selectable on the current tab. Kanji only appear on the Saved
+    // tab (never History or live search), so this is empty everywhere else — mirroring how
+    // selectableWordIDs is gated by tab. Drives Select All and the batch-remove count for
+    // kanji, which ride a parallel String selection set since List(selection:) is Int64-keyed.
+    var selectableKanjiLiterals: [String] {
+        if showRecentSearches { return [] }
+        if searchText.isEmpty && activeTab == .saved {
+            return visibleSavedKanji.map(\.literal)
+        }
+        return []
+    }
+
+    // Combined count of selected words + kanji, for the batch-remove label and dialog title.
+    var batchSelectionCount: Int { selectedWordIDs.count + selectedKanjiLiterals.count }
+
+    // Title for the batch-remove confirmation. "item" rather than "word" because the selection
+    // can now mix saved words and saved kanji.
+    var batchRemoveTitle: String {
+        "Remove \(batchSelectionCount) item\(batchSelectionCount == 1 ? "" : "s")?"
+    }
+
     // Surface text for every selectable word id, so a batch list-add can materialize a
     // SavedWord for a History-only word that isn't saved yet. Saved words win over history
     // rows when both exist (their stored surface is canonical).
