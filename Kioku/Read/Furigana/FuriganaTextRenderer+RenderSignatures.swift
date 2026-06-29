@@ -46,6 +46,9 @@ extension FuriganaTextRenderer {
         for location in changedReadingLocations.sorted() {
             hasher.combine(location)
         }
+        for location in inFlightSegmentLocations.sorted() {
+            hasher.combine(location)
+        }
         // Only width affects text wrapping and glyph positions. Height and contentSize are derived
         // outputs — including them would trigger re-renders on every layout-driven contentSize
         // patch, and externalContentOffsetY changes on every scroll tick which would force O(N)
@@ -122,6 +125,9 @@ extension FuriganaTextRenderer {
             hasher.combine(location)
         }
         for location in changedReadingLocations.sorted() {
+            hasher.combine(location)
+        }
+        for location in inFlightSegmentLocations.sorted() {
             hasher.combine(location)
         }
         hasher.combine(customEvenSegmentColorHex)

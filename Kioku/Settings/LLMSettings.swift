@@ -4,6 +4,7 @@ import Foundation
 // None means no key is configured and the feature is unavailable.
 enum LLMProvider: String, CaseIterable {
     case none = ""
+    case appleIntelligence = "apple"
     case openAI = "openai"
     case claude = "claude"
 
@@ -11,9 +12,15 @@ enum LLMProvider: String, CaseIterable {
     var displayName: String {
         switch self {
         case .none: return "None"
+        case .appleIntelligence: return "Apple Intelligence"
         case .openAI: return "OpenAI"
         case .claude: return "Claude"
         }
+    }
+
+    // True when the provider runs on-device and needs no API key configured.
+    var isOnDevice: Bool {
+        self == .appleIntelligence
     }
 }
 
@@ -45,7 +52,29 @@ enum LLMSettings {
     static let openAIModelKey = "kioku.llm.openaiModel"
     static let defaultOpenAIModel = "gpt-4o"
 
-    static let defaultProvider = LLMProvider.none.rawValue
+    // When true, the LLM request includes a web-search tool the model can use to
+    // look up canonical lyrics (Uta-Net / J-Lyric / Genius / Niconico Kashi)
+    // and ground gikun/ateji readings that don't follow morphological rules.
+    // Apple Intelligence is offline-only and ignores this setting. Defaults to
+    // true because the cost is bounded by the model's own judgment about when
+    // to invoke the tool, and song lyrics — the common case for Kioku — depend
+    // heavily on contextual readings JMdict doesn't carry.
+    static let useWebSearchKey = "kioku.llm.useWebSearch"
+    // For OpenAI: when web search is enabled, this model is used in place of the
+    // user's configured model because web_search is a model-level feature in the
+    // Chat Completions API rather than a separately-passable tool. The user's
+    // configured model is restored when web search is off.
+    static let openAISearchModel = "gpt-4o-search-preview"
+
+    // Computed so a fresh install on an Apple-Intelligence-capable device picks
+    // the on-device model by default instead of starting at "None". Existing
+    // installs keep their stored value (@AppStorage only consults the default
+    // when no value exists yet).
+    static var defaultProvider: String {
+        AppleIntelligenceAvailability.isAvailable
+            ? LLMProvider.appleIntelligence.rawValue
+            : LLMProvider.none.rawValue
+    }
 
     // Returns the active provider from UserDefaults, defaulting to none if unrecognized.
     static func activeProvider() -> LLMProvider {
@@ -54,9 +83,10 @@ enum LLMSettings {
     }
 
     // Returns the API key for the given provider from the Keychain, or nil if not set.
+    // Apple Intelligence runs on-device and has no API key — always returns nil.
     static func apiKey(for provider: LLMProvider) -> String? {
         switch provider {
-        case .none:
+        case .none, .appleIntelligence:
             return nil
         case .openAI:
             return KeychainStore.string(forKey: openAIKeyStorageKey, migratingFromUserDefaultsKey: openAIKeyStorageKey)
@@ -65,10 +95,10 @@ enum LLMSettings {
         }
     }
 
-    // Stores or clears a provider's API key in the Keychain.
+    // Stores or clears a provider's API key in the Keychain. No-op for on-device providers.
     static func setAPIKey(_ key: String?, for provider: LLMProvider) {
         switch provider {
-        case .none:
+        case .none, .appleIntelligence:
             break
         case .openAI:
             KeychainStore.setString(key, forKey: openAIKeyStorageKey)
@@ -94,9 +124,26 @@ enum LLMSettings {
         return stored.isEmpty ? defaultOpenAIModel : stored
     }
 
-    // Returns true when useLLM is on and an API key is set, or when useLLM is off and a stub is set.
+    // True when the user has opted into the LLM using a web-search tool to
+    // verify readings against canonical lyric sources. Defaults to true on a
+    // fresh install — the toggle exists so users can opt out (cost or privacy
+    // concerns) but the common case for songs benefits from it.
+    static func isWebSearchEnabled() -> Bool {
+        if UserDefaults.standard.object(forKey: useWebSearchKey) == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: useWebSearchKey)
+    }
+
+    // Returns true when useLLM is on and the active provider is usable (Apple
+    // Intelligence available on-device, or a remote provider with a key), or
+    // when useLLM is off and a stub is set.
     static func isConfigured() -> Bool {
         if UserDefaults.standard.bool(forKey: useLLMKey) {
+            let provider = activeProvider()
+            if provider == .appleIntelligence {
+                return AppleIntelligenceAvailability.isAvailable
+            }
             return activeAPIKey() != nil
         } else {
             let stub = UserDefaults.standard.string(forKey: stubResponseKey) ?? ""

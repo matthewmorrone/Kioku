@@ -243,6 +243,7 @@ final class SongBreakdownStore: ObservableObject {
         if useLLM == false { return "stub mode" }
         switch LLMSettings.activeProvider() {
         case .none: return ""
+        case .appleIntelligence: return "Apple Intelligence"
         case .openAI: return "OpenAI"
         case .claude: return "Claude"
         }

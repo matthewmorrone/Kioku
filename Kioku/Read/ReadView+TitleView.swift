@@ -25,7 +25,9 @@ extension ReadView {
                 Spacer()
                 titleLyricsButton
                 titleExtractWordsButton
-                titleBreakdownButton
+                if isLLMConfigured {
+                    titleBreakdownButton
+                }
             }
         }
         .padding(.vertical, 8)
