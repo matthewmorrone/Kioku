@@ -222,36 +222,29 @@ final class SurfaceSheetViewController: UIViewController {
         syncFuriganaToCurrentIndex()
     }
 
-    // Presents the custom reading alert for the header row tap gesture.
+    // Presents the custom reading prompt for the header row tap gesture. Uses
+    // JapaneseReadingPromptController (not UIAlertController) so the field is a JapaneseTextField
+    // and the Japanese keyboard opens by default for kana entry.
     func presentCustomReadingAlert() {
         guard allowsCustomReading else { return }
-        let alert = UIAlertController(title: "Custom Reading", message: nil, preferredStyle: .alert)
-        alert.addTextField { field in
-            field.text = self.displayedReading()
-            field.placeholder = "e.g. よむ"
-            field.clearButtonMode = .whileEditing
-            field.keyboardType = .default
-            field.autocorrectionType = .no
-            field.spellCheckingType = .no
-        }
-        alert.addAction(UIAlertAction(title: "Set", style: .default) { [weak self] _ in
-            let entered = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard entered.isEmpty == false else { return }
-            self?.customReading = entered
-            self?.syncFuriganaToCurrentIndex()
-            self?.sheet?.onReadingSelected?(entered)
-        })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        if sheet?.activeReadingOverrideProvider?() != nil {
-            alert.addAction(UIAlertAction(title: "Reset", style: .destructive) { [weak self] _ in
+        let prompt = JapaneseReadingPromptController(
+            title: "Custom Reading",
+            initialText: displayedReading() ?? "",
+            placeholder: "e.g. よむ",
+            showsReset: sheet?.activeReadingOverrideProvider?() != nil,
+            onSet: { [weak self] entered in
+                self?.customReading = entered
+                self?.syncFuriganaToCurrentIndex()
+                self?.sheet?.onReadingSelected?(entered)
+            },
+            onReset: { [weak self] in
                 self?.customReading = nil
                 self?.currentReadingIndex = 0
                 self?.sheet?.onReadingReset?()
                 self?.syncFuriganaToCurrentIndex()
                 self?.updateMiddleContent()
             })
-        }
-        present(alert, animated: true)
+        present(prompt, animated: true)
     }
 
     // MARK: - Surface / navigation management

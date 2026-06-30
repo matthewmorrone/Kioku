@@ -231,7 +231,14 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 - [ ] Add manual/custom word creation and editing
 - [x] Deduplicate example sentences — `Kioku/Dictionary/SentencePairDedup.swift` normalizes (trim, strip wrapping quote pair, strip trailing sentence-final punctuation) then dedupes preserving order. Wired into both `fetchSentencePairs` (replaces the prior exact-string `seenJapanese` set, now catches Tatoeba near-duplicates across priority terms) and `searchSentences` (which had no dedup at all). Pinned by 7 tests in `SentencePairDedupTests.swift`.
 - [x] Custom reading popup is prefilled — `SurfaceSheetViewController.presentCustomReadingAlert()` sets `field.text = self.displayedReading()` at line 212, so the prompt opens with the current reading already in the field.
-- [ ] Custom reading popup should default to Japanese keyboard — blocked by `UIAlertController.addTextField(configurationHandler:)`: it hands you a UIKit-managed `UITextField` whose class you can't change, and UIKit has no public "prefer Japanese input mode" API short of overriding `textInputMode` on a `UITextField` subclass. Clean fix: replace the alert with a custom modal hosting a `JapaneseTextField` that overrides `textInputMode` to prefer `UITextInputMode.activeInputModes.first { $0.primaryLanguage?.hasPrefix("ja") == true }`.
+- [x] Custom reading popup should default to Japanese keyboard — Done 2026-06-30. Replaced the
+      `UIAlertController` in `SurfaceSheetViewController.presentCustomReadingAlert()` with a custom
+      `JapaneseReadingPromptController` (new `Kioku/Read/Lookup/JapaneseReadingPrompt.swift`) that
+      hosts a `JapaneseTextField` subclass overriding `textInputMode` to prefer
+      `UITextInputMode.activeInputModes.first { $0.primaryLanguage?.hasPrefix("ja") == true }`
+      (falls back to the system default when no Japanese keyboard is installed). The prompt
+      preserves the prior flow exactly — prefilled current reading, "e.g. よむ" placeholder,
+      Set / Cancel / conditional destructive Reset (gated on `activeReadingOverrideProvider`).
 - [x] Make saving to the words list more responsive — shipped via `WordsStore.persistQueue` (serial utility-QoS DispatchQueue) so star-toggles return immediately and persist off-main; lemma-cache + off-main hydration on `SegmentLookupSheet` load eliminates the redundant SQL pass that was making first-tap latency visible. `WordsStore.flushPendingWritesForTesting()` provides the sync surface for tests.
 - [~] Add advanced dictionary filters/sorting (JLPT, POS, frequency, commonness toggles) —
       Partially done 2026-06-04. The filter/sort *logic* was fully built but orphaned (same
@@ -247,13 +254,23 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       numeric frequency-threshold control (no JLPT data plumbed to search entries yet). Note the
       dead parallel renderer `searchResultsContent` (uses `DictionarySearchResultRow`) and the
       unused `startSearchTask` remain — candidates for removal in a cleanup pass.
+- [x] **Kanji-content filter for the saved-words list (All / Kanji Only / No Kanji)** — Done
+      2026-06-30. New `WordsKanjiFilter` enum (`WordsView.swift`) persisted via
+      `@AppStorage("savedWordsKanjiFilter")`, exposed as a segmented picker in its own "Kanji"
+      section of `WordsFilterView` (orthogonal to the single-value "Show" scope — composes with
+      it, e.g. Favorites + Kanji Only). Applied in `visibleWords` via
+      `ScriptClassifier.containsKanji($0.surface)`; saved-kanji rows are hidden under "No Kanji"
+      (they're kanji by definition). Note: hoisted the filter sheet + its sort/kanji bindings into
+      `filterSheet`/`sortOrderBinding`/`kanjiFilterBinding` computed props to keep the `WordsView`
+      body within the Swift type-checker's budget (a single extra inline binding tipped it over).
 - [ ] Romaji display option (romaji→kana *search* shipped; *display* toggle not implemented)
 - [x] alternateSpellings(): include kanji variants — extracted from `WordDetailView` to `Kioku/Words/WordVariants.swift` so it's unit-testable; now surfaces both kanji-form and kana-form alternates (was kana-only), filters out `oK`/`sK`/`ok`/`sk` archaic + search-only forms, keeps irregular (`iK`/`ik`) variants. Pinned by `WordVariantsTests.swift` (6 tests). The previous `count > 1` noise-suppression gate is dropped — for kanji-bearing surfaces, even a single alternate is informative now that kanji variants are included. Pure-kana saved surfaces still return [] (false-uniqueness guard preserved).
 - [ ] CSV import: explicit option to fill kanji from the dictionary when the surface column is missing (today the importer silently substitutes kanji even when only kana was provided)
-- [ ] **Related words should be links to those words** — in the word detail's Related Words
-      list, each entry is currently static text. Make each tappable to navigate to that word's
-      own detail (push `WordDetailView` for the related entry), so related forms / kanji-family
-      / synonyms are browsable, not dead-ends.
+- [x] **Related words should be links to those words** — Done 2026-06-29 (`2f87902`). Tapping a
+      Related Words / Synonyms row now opens a nested `WordDetailView` for that entry via
+      `presentedRelatedSavedWord` (an ephemeral `SavedWord` built from the `DictionaryEntry`), and
+      records the target to History like every other lookup entry point (`WordDetailView.swift:40-44,
+      547-574, 734`). Related forms / kanji-family / synonyms are now browsable, not dead-ends.
 
 ## Study & Review
 
@@ -324,10 +341,10 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       (partial: `KanjiInfo` has radicals + stroke count; component tree not confirmed)
 - [x] Handwriting input and stroke order (Zinnia handwriting recognition + KanjiVG stroke-order animation shipped; radical input also shipped)
 - [ ] Kanji of the day feature
-- [ ] **Render on'yomi in hiragana, not katakana** — kanji detail follows the dictionary
-      convention of on'yomi in katakana / kun'yomi in hiragana; user prefers on'yomi shown in
-      hiragana too. Convert at display time (KANJIDIC2 stores on'yomi as katakana) so the source
-      data stays canonical; apply wherever kanji readings render (kanji detail, component views).
+- [x] **Render on'yomi in hiragana, not katakana** — Done. `KanjiDetailView` folds on'yomi to
+      hiragana at display time via `info.onReadings.map(KanaNormalizer.katakanaToHiragana)`
+      (`KanjiDetailView.swift:50-57`); KANJIDIC2 source data stays canonical katakana (still used
+      for furigana rendering). Kun'yomi already render in hiragana.
 - [ ] **Examine the `shouji` project for fun kanji-decoration ideas** — review the shouji
       project for inspiration on playful/decorative kanji rendering (radical highlighting, stroke
       embellishments, etc.) worth adapting into Kioku's kanji views.

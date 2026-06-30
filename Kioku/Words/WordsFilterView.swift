@@ -25,6 +25,9 @@ struct WordsFilterView: View {
     // with Favorites/note/list/History.
     @Binding var showRecentSearches: Bool
     @Binding var sortOrder: WordsSortOrder
+    // Orthogonal kanji-content refinement (All / Kanji Only / No Kanji); composes with the
+    // active "Show" scope rather than replacing it, so it gets its own section.
+    @Binding var kanjiFilter: WordsKanjiFilter
 
     @State private var newListName = ""
     @State private var renameText = ""
@@ -60,6 +63,20 @@ struct WordsFilterView: View {
                         Text("Sort")
                     }
                     .pickerStyle(.menu)
+                }
+
+                // Kanji-content refinement. Segmented so the three states are visible at a
+                // glance and one tap away — it's a frequent toggle, unlike the long Sort list.
+                // The label rides the section header since a segmented Picker hides its inline
+                // label inside a List row.
+                Section("Kanji") {
+                    Picker("Kanji", selection: $kanjiFilter) {
+                        ForEach(WordsKanjiFilter.allCases) { filter in
+                            Text(filter.title).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
             }
             .navigationTitle("Show")

@@ -39,6 +39,26 @@ enum WordsStatScope: String {
     case notLearned
 }
 
+// Orthogonal kanji-content refinement applied on top of the active "Show" scope and sort.
+// Unlike the single-value scopes, this composes with whatever scope is active (e.g. Favorites
+// + Kanji Only), so it lives in its own picker rather than the "Show" dropdown. Filters the
+// saved view by whether an entry's surface contains kanji (via ScriptClassifier.containsKanji).
+enum WordsKanjiFilter: String, CaseIterable, Identifiable {
+    case all          // no kanji-content filtering (default)
+    case onlyKanji    // surfaces containing at least one kanji
+    case noKanji      // pure-kana surfaces (no kanji)
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .onlyKanji: "Kanji Only"
+        case .noKanji: "No Kanji"
+        }
+    }
+}
+
 // Cross-tab routing for the Words screen.
 enum WordsRoute: Equatable {
     case detail(entryID: Int64, surface: String?, reading: String? = nil, sublatticePaths: [[String]] = [])
@@ -105,6 +125,8 @@ struct WordsView: View {
     @State var showRecentSearches = false
     @AppStorage("savedWordsSortOrder") var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
     @AppStorage("historySortOrder") var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
+    // Persisted kanji-content refinement (All / Kanji Only / No Kanji); see WordsKanjiFilter.
+    @AppStorage("savedWordsKanjiFilter") var kanjiFilterRaw: String = WordsKanjiFilter.all.rawValue
     // Opt-in Japanese theme; when on, the row's audio + favorite icons render white (see wordRow).
     @AppStorage(Theme.storageKey) var japaneseTheme = false
     @State var searchText = ""
@@ -117,6 +139,53 @@ struct WordsView: View {
 
     var savedSort: WordsSortOrder { WordsSortOrder(rawValue: savedSortOrder) ?? .newestFirst }
     var historySort: WordsSortOrder { WordsSortOrder(rawValue: historySortOrderRaw) ?? .newestFirst }
+    var kanjiFilter: WordsKanjiFilter { WordsKanjiFilter(rawValue: kanjiFilterRaw) ?? .all }
+    // Bridges the enum-typed picker selection to the persisted raw string. Hoisted out of the
+    // WordsFilterView call site so the body ViewBuilder stays within the type-checker's budget.
+    var kanjiFilterBinding: Binding<WordsKanjiFilter> {
+        Binding(get: { kanjiFilter }, set: { kanjiFilterRaw = $0.rawValue })
+    }
+
+    // Sort writes to whichever list is currently visible — saved vs history have separate
+    // persisted AppStorage keys but the user only sees one sort menu at a time, so the binding
+    // delegates based on activeTab.
+    var sortOrderBinding: Binding<WordsSortOrder> {
+        Binding(
+            get: { activeTab == .saved ? savedSort : historySort },
+            set: { newValue in
+                if activeTab == .saved {
+                    savedSortOrder = newValue.rawValue
+                } else {
+                    historySortOrderRaw = newValue.rawValue
+                }
+            }
+        )
+    }
+
+    // The Filter/Sort sheet, extracted from the body ViewBuilder so the long .sheet chain stays
+    // within the Swift type-checker's budget (a single inline parameter tipped it over).
+    @ViewBuilder
+    var filterSheet: some View {
+        WordsFilterView(
+            activeFilterNoteIDs: $activeFilterNoteIDs,
+            activeFilterListIDs: $activeFilterListIDs,
+            statScope: $statScope,
+            jlptLevel: $jlptLevel,
+            showSavedWords: Binding(
+                get: { activeTab == .saved },
+                set: { activeTab = $0 ? .saved : .history }
+            ),
+            showRecentSearches: $showRecentSearches,
+            sortOrder: sortOrderBinding,
+            kanjiFilter: kanjiFilterBinding
+        )
+        .environmentObject(wordListsStore)
+        .environmentObject(wordsStore)
+        .environmentObject(notesStore)
+        .environmentObject(reviewStore)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
     @State var searchResults: [DictionaryEntry] = []
     // Kanji matched by the query — rendered as a distinct section at the TOP of the
     // results list (above word entries) so a search like 火 or "rain" leads with the
@@ -356,38 +425,7 @@ struct WordsView: View {
                 .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $isFilterSheetPresented) {
-                WordsFilterView(
-                    activeFilterNoteIDs: $activeFilterNoteIDs,
-                    activeFilterListIDs: $activeFilterListIDs,
-                    statScope: $statScope,
-                    jlptLevel: $jlptLevel,
-                    showSavedWords: Binding(
-                        get: { activeTab == .saved },
-                        set: { activeTab = $0 ? .saved : .history }
-                    ),
-                    showRecentSearches: $showRecentSearches,
-                    // Sort writes to whichever list is currently visible — saved vs history
-                    // have separate persisted AppStorage keys but the user only sees one
-                    // sort menu at a time, so we delegate based on activeTab.
-                    sortOrder: Binding(
-                        get: {
-                            activeTab == .saved ? savedSort : historySort
-                        },
-                        set: { newValue in
-                            if activeTab == .saved {
-                                savedSortOrder = newValue.rawValue
-                            } else {
-                                historySortOrderRaw = newValue.rawValue
-                            }
-                        }
-                    )
-                )
-                .environmentObject(wordListsStore)
-                .environmentObject(wordsStore)
-                .environmentObject(notesStore)
-                .environmentObject(reviewStore)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+                filterSheet
             }
             .sheet(item: $lemmaPickerContext) { context in
                 LemmaPickerSheet(
