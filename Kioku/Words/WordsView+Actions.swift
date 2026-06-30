@@ -24,6 +24,11 @@ extension WordsView {
                 return matchesNote && matchesList
             }
         }
+        // Saved kanji are by definition kanji literals, so the "No Kanji" refinement hides them
+        // entirely; "All" and "Kanji Only" leave them visible.
+        if kanjiFilter == .noKanji {
+            filtered = []
+        }
         return filtered.sorted { $0.savedAt > $1.savedAt }
     }
 
@@ -56,6 +61,15 @@ extension WordsView {
 
         if let jlptLevel {
             filtered = filtered.filter { dictionaryStore?.jlptLevel(for: $0.canonicalEntryID) == jlptLevel }
+        }
+
+        switch kanjiFilter {
+        case .all:
+            break
+        case .onlyKanji:
+            filtered = filtered.filter { ScriptClassifier.containsKanji($0.surface) }
+        case .noKanji:
+            filtered = filtered.filter { ScriptClassifier.containsKanji($0.surface) == false }
         }
 
         return sorted(filtered, by: savedSort)
