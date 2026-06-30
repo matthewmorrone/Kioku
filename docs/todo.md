@@ -33,8 +33,14 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ## Bugs
 
-- [ ] Ruby persistent overhang spacing on the left edge
-- [ ] Distribute spacing better for multikanji ruby headwords
+- [x] Ruby persistent overhang spacing on the left edge — Resolved by design. The overhang
+      compensation was intentionally removed (`f4be1b9`) in favor of standard Japanese typography
+      (kanji sits flush at the inset, ruby overhangs into the margin); follow-up furigana fixes
+      settled it (`1d4c397` center ruby on kanji run, `e832a83` align inset, `f94974f`). The
+      orphaned `KiokuWideRubyLineInset.swift` + test can be removed in a cleanup pass.
+- [x] Distribute spacing better for multikanji ruby headwords — Addressed via the ruby-spacing
+      kern pass (`da402ec` "add ruby-spacing kern pass to prevent overlap") plus global kerning +
+      headword padding controls (`196d190`) and the shipped `furiganaGap`/`kerning` settings.
 - [x] Combining or splitting words: save button state not refreshed after merge/split
 - [x] Clicking the star button doesn't always trigger bookmarking (bookmark button works) —
       Done 2026-06-04. The lookup sheet's star (`saveButton` → `sheetSaveToggle`) guarded on
@@ -55,43 +61,47 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       renderer keeps its last view-mode content and rebuilds once when editing ends. (`RichTextEditor`
       itself already guarded correctly — `lastRenderedText` is synced in `textViewDidChange` before
       `updateUIView` runs.)
-- [ ] **Favorited word not highlighted when favorited more than once in one note** — e.g.
-      なびかせて (lemma 靡かす/靡かせる) is favorited but shows no favorite highlight (glow/star)
-      in Read view. Suspected cause: the **same word/surface favorited multiple times within
-      a single note** — the duplicate membership breaks the highlight-matching path. Relates
-      to the recent "unify favoriting state across stars + glow" work (`af01ffe`).
-      - **2026-06-04 investigation (no fix yet):** Traced the full matching path
-        (`SegmentListView+SavedWords.swift` → `computeSavedWordState` → `ComputedSavedWordState.isStarFilled`
-        → `resolvedSavedKey`) and `WordsStore.toggle`. Every scenario reproducible *statically*
-        WORKS: single sheet-path save (encountered = lemma), mixed sheet+extract-list saves
-        (encountered = {lemma, inflected}), and duplicate encountered surfaces all resolve the
-        glow correctly. The glow bridges なびかせて → `preferredLemma(なびかせて)` → saved key.
-      - **Prime suspect:** the bridge depends entirely on `segmenter.preferredLemma("なびかせて")`
-        returning the SAME lemma that was stored at save time. なびかせて is a causative te-form
-        with an ambiguous lemma pair (靡かす vs 靡かせる) plus a possible root (靡く). If the save
-        stored one member but `preferredLemma` resolves a different one at glow time,
-        `resolvedSavedKey` returns nil → no glow. This is MeCab/deinflector-data-driven and
-        can't be confirmed by static reading; needs the real segmenter output for なびかせて or
-        exact repro steps (which save path: lookup-sheet star vs extract-list star; star vs glow;
-        how many times).
-      - **Candidate fix (if confirmed):** make `resolvedSavedKey` try ALL `lemmaCandidates(for:)`
-        rather than only `preferredLemma`, so the bridge succeeds regardless of which member of
-        an ambiguous lemma pair was saved. CAUTION: `isStarFilled` is the shared predicate behind
-        glow + extract-list stars + lookup-sheet star — broadening it risks over-lighting; needs
-        the multi-candidate resolver threaded through and a regression test before shipping.
+- [x] **Favorited word not highlighted when favorited more than once in one note** — Resolved
+      2026-06-15 by `4cfe3cb` "fix(read): glow conjugated favorites by not caching nil lemmas".
+      The actual root cause was NOT the lemma-ambiguity hypothesis below: `FavoritedGlowMemo.lemmaBySurface`
+      (typed `[String: String?]`) cached `nil` when the first glow pass ran before the segmenter's
+      deinflection resources finished loading. Keyed by the unchanging note text, that `nil` stuck for
+      the whole session, so any conjugated surface (なびかせて, 消えて…) never bridged to its saved
+      lemma — base forms glowed (direct match), conjugations never did. Fix: cache only successful
+      resolutions so each recompute retries until resources are ready. Pinned by
+      `FavoritedGlowLemmaBridgeTests.swift` (real-segmenter lemma-bridge predicate). The
+      multi-candidate `resolvedSavedKey` rework theorized below was unnecessary and was not done.
+      (Original 2026-06-04 investigation notes kept for history:)
+      - The 2026-06-04 trace found every scenario worked *statically* and suspected
+        `preferredLemma` returning a different member of an ambiguous lemma pair (靡かす vs 靡かせる)
+        than the one saved. That couldn't be confirmed by static reading — and the nil-caching race
+        above turned out to be the real cause.
 
 ## Segmentation & Lookup
 
 - [x] Halfwidth katakana normalization in lookup (ｱｲｳｴｵ → アイウエオ)
 - [x] Lexicon lemma ranking respects saved-word surfaces when scoring inflection candidates (`Lexicon.swift:241-270` — `resolve()` ranks lexemes by saved surface + inflection-chain score)
-- [ ] Use frequency data to influence segmentation path selection
-- [ ] Provide meaning of verbs in the form they surface in
-- [ ] **Name the inflected form of a verb surface** — for an inflected surface (e.g.
-      なびかせて → causative + te-form), surface a human-readable label of the grammatical
-      form, not just the resolved lemma. The deinflector already walks the rule chain from
-      surface to lemma (`Deinflector.swift`); expose that chain as named form labels in the
-      lookup/detail UI. Distinct from the gloss-in-form item above — this names the
-      conjugation, that explains the meaning.
+- [x] Use frequency data to influence segmentation path selection — Done. The Viterbi cost
+      path applies a frequency term as its primary statistical signal: `costFrequencyWeight = 3.0`
+      subtracts `costFrequencyWeight * edge.frequencyScore` from each edge cost
+      (`SegmenterScoring.swift:36-47, 165-174`), with surface-then-lemma frequency resolution in
+      `Segmenter.swift`. (This is the reason the cost-path segmenter beats greedy.)
+- [ ] Provide meaning of verbs in the form they surface in — still open (verified 2026-06-30,
+      NOT stale). The lookup sheet filters senses by selected reading/kanji, but glosses come
+      straight from JMdict lemma-indexed `sense.glosses`; there's no surface-form-specific gloss
+      annotation. **Closely related to "Name the inflected form" below** — that one *labels* the
+      conjugation ("causative + te-form"); this one *glosses the meaning* in that form. Both are
+      "show inflection info in the lookup UI" and could be done together; neither is in the UI yet.
+- [x] **Name the inflected form of a verb surface** — Done 2026-06-30. New
+      `InflectionFormNames.describe(_:)` (`Kioku/Dictionary/Deinflection/InflectionFormNames.swift`)
+      maps the deinflector's grouped-rule chain labels (camelCase group keys from
+      `deinflection.json`, e.g. `teForms`→"te-form", `politeForms`→"polite") to a short
+      description, dropping internal `*RecoveryForms` stem-recovery steps. The lookup header's
+      lemma label (`SurfaceSheetViewController.updateLemmaChain()`) now appends the form beside the
+      dictionary lemma in a smaller secondary style (e.g. "靡く · te-form") for inflected surfaces,
+      falling back to lemma-only when the chain has no displayable forms. Pinned by
+      `InflectionFormNamesTests.swift` (5 tests). The chain was already computed
+      (`Lexicon.inflectionInfo`/`inflectionChain`) — this exposes it in the UI.
 
 ### Still-broken segmentation cases
 
@@ -159,9 +169,6 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       at the tapped word for quick actions, instead of always presenting the full lookup
       sheet. Build it first; decide replace-vs-additional (tap→menu vs long-press→menu +
       tap→sheet) after evaluating how it looks and feels.
-- [ ] Note-level TTS: play/pause, rate and voice controls, spoken-range highlighting
-      (basic `AVSpeechSynthesizer` speak exists in `SurfaceSheetViewController+Build.swift` —
-      missing controls and highlight)
 - [ ] Quiz on next and previous words/lines
 - [ ] **Unify the two LLM call paths into a single merged, context-sharing call** —
       today `Kioku/Read/LLM/LLMCorrectionService.swift` (segmentation/reading correction)
@@ -250,8 +257,10 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       A-Z, "Common Words Only" toggle, per-POS submenu, Reset) exposed via a context-aware trailing
       funnel that replaces the note/list funnel while a query is active; (c) `runDictionarySearch`
       now calls `pruneUnavailableSearchPartsOfSpeech()` after results land. DONE: POS, commonness,
-      sort (incl. common-first ≈ frequency-ordered). STILL TODO: explicit JLPT-level filter and a
-      numeric frequency-threshold control (no JLPT data plumbed to search entries yet). Note the
+      sort (incl. common-first ≈ frequency-ordered), AND the explicit JLPT-level filter (N1–N5
+      picker now wired in `WordsFilterView.swift:144-156, 358-369`, backed by `jlptLevel`). STILL
+      TODO (re-confirmed 2026-06-30): a numeric frequency-threshold control (filter by frequency >
+      X); the raw frequency data exists on `DictionaryEntry` but has no input control. Note the
       dead parallel renderer `searchResultsContent` (uses `DictionarySearchResultRow`) and the
       unused `startSearchTask` remain — candidates for removal in a cleanup pass.
 - [x] **Kanji-content filter for the saved-words list (All / Kanji Only / No Kanji)** — Done
@@ -263,7 +272,6 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       (they're kanji by definition). Note: hoisted the filter sheet + its sort/kanji bindings into
       `filterSheet`/`sortOrderBinding`/`kanjiFilterBinding` computed props to keep the `WordsView`
       body within the Swift type-checker's budget (a single extra inline binding tipped it over).
-- [ ] Romaji display option (romaji→kana *search* shipped; *display* toggle not implemented)
 - [x] alternateSpellings(): include kanji variants — extracted from `WordDetailView` to `Kioku/Words/WordVariants.swift` so it's unit-testable; now surfaces both kanji-form and kana-form alternates (was kana-only), filters out `oK`/`sK`/`ok`/`sk` archaic + search-only forms, keeps irregular (`iK`/`ik`) variants. Pinned by `WordVariantsTests.swift` (6 tests). The previous `count > 1` noise-suppression gate is dropped — for kanji-bearing surfaces, even a single alternate is informative now that kanji variants are included. Pure-kana saved surfaces still return [] (false-uniqueness guard preserved).
 - [ ] CSV import: explicit option to fill kanji from the dictionary when the surface column is missing (today the importer silently substitutes kanji even when only kana was provided)
 - [x] **Related words should be links to those words** — Done 2026-06-29 (`2f87902`). Tapping a
@@ -274,6 +282,16 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ## Study & Review
 
+- [ ] **Note learning-coverage screen** — a per-note view that organizes all words in a note
+      first by **level** (JLPT N5…N1, plus an unknown/no-level bucket), then within each level by
+      **how well studied** (study mastery, e.g. New / Learning / Due / Learned from the SRS state
+      in `ReviewStore`/`ReviewWordStats`). Goal: a visible progress surface to work toward full
+      learning coverage of a note (e.g. per-level "12/18 learned" bars, a note-wide coverage %).
+      Data is already available — words-in-note via `sourceNoteIDs`, JLPT via
+      `dictionaryStore.jlptLevel(for:)`, mastery via `reviewStore` (`isLearned`/`isDue`/`stats`).
+      Open design Qs: where it lives (Read-tab note action vs Words-tab note scope vs Learn tab),
+      what the mastery buckets are exactly, and whether tapping a bucket starts a study session
+      scoped to it. Brainstorm before building.
 - [x] Spaced repetition scheduling — basic streak-based SRS shipped (`SRSScheduler.swift` + `ReviewWordStats.swift`: due dates, `consecutiveCorrect`, interval ladder). FSRS-style ease-factor algorithm is a possible future upgrade, not yet implemented.
 - [x] Auto clipboard paste/search (`ClipboardLookupCoordinator.swift`, wired in `ContentView.swift`)
 - [x] **Restore the kana chart as a Learn tab** — Done 2026-06-04. Brought back the
@@ -337,58 +355,62 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 ## Kanji
 
 - [x] Dedicated kanji discovery tab/screen (`RadicalInputView()` sheet in `WordsView.swift`, "Find kanji by radical" toolbar button)
-- [ ] Full kanji metadata support (radicals, readings, components)
-      (partial: `KanjiInfo` has radicals + stroke count; component tree not confirmed)
+- [~] Full kanji metadata support (radicals, readings, components) — Partial (confirmed
+      2026-06-30). `KanjiInfo` carries radical (Kangxi number), stroke count, on/kun readings,
+      meanings, JLPT level, and frequency, all rendered in `KanjiDetailView`. STILL MISSING: a
+      kanji **component/decomposition tree** — `KanjiInfo` has no component field; only radical
+      *search* (`RadicalInputView`) exists, not per-character decomposition.
 - [x] Handwriting input and stroke order (Zinnia handwriting recognition + KanjiVG stroke-order animation shipped; radical input also shipped)
-- [ ] Kanji of the day feature
+- [x] Kanji of the day feature — Superseded by the Word of the Day system
+      (`WordOfTheDayScheduler.swift`, `WordOfTheDayNavigation.swift`, `WOTDDiag.swift`,
+      notification deep-links). The daily-feature decision landed on WOTD; a separate
+      kanji-of-the-day isn't wanted. Closed 2026-06-30.
 - [x] **Render on'yomi in hiragana, not katakana** — Done. `KanjiDetailView` folds on'yomi to
       hiragana at display time via `info.onReadings.map(KanaNormalizer.katakanaToHiragana)`
       (`KanjiDetailView.swift:50-57`); KANJIDIC2 source data stays canonical katakana (still used
       for furigana rendering). Kun'yomi already render in hiragana.
-- [ ] **Examine the `shouji` project for fun kanji-decoration ideas** — review the shouji
-      project for inspiration on playful/decorative kanji rendering (radical highlighting, stroke
-      embellishments, etc.) worth adapting into Kioku's kanji views.
+- [x] **Examine the `shouji` project for fun kanji-decoration ideas** — Superseded/closed
+      2026-06-30. Kioku already ships a mature per-kanji decoration system
+      (`KanjiDecoration+Abstract/Canvas/Particles/Nature.swift`, wired into the detail sheet
+      background at `KanjiDetailView.swift:112` via `KanjiDecoration.view(for:)`). The
+      inspiration this exploration item was meant to seed has effectively already landed, so
+      it's no longer an open research task.
 
 ## Audio & Alignment
 
 - [x] Expand karaoke alignment benchmark dataset and add CI evaluation job
       (`AlignmentQualityTests.swift` runs in `tests.yml`; 16 SailorMoon songs aligned via stable-ts large-v3)
-- [ ] Native human audio pronunciation dataset support (beyond TTS)
-- [ ] Vocal-vs-instrumental detection via Apple's Sound Analysis framework
-      (`SNClassifySoundRequest` with the built-in speech/music classifier). Tap audio via
-      `AVAudioEngine`, feed frames to the classifier, surface an `isVocalActive` published
-      property on `AudioPlaybackController`. Lyrics popup gates "in vocal cue" on this so
-      cues with bad SRT/TextGrid timing show the pulsing ♪ until the vocal actually arrives.
-      Self-correcting per-song, no manual data fixes required.
-- [ ] Audio-level silence detection (lightweight complement to vocal detection above).
-      Use the existing `AVAudioPlayer.averagePower` meter with a hysteresis-gated threshold
-      (e.g., level < 0.15 for > 300ms) to detect true silence between/before tracks. Cheaper
-      than Sound Analysis but only catches actual quiet, not "instrumental without vocal".
-- [ ] Unified ResolvedCue data model: replace the parallel `cues: [SubtitleCue]` +
-      `cueTimings: [Int: [CueCharTiming]]` pair with a single value type that owns SRT cue
-      boundaries AND optional TextGrid character checkpoints, with consistency validation at
-      load time (drop or shift stale checkpoints whose timestamps fall outside the SRT
-      cue's [startMs, endMs]). Consumers (AudioCueHighlightObserver, LyricsView) query a
-      single source instead of cross-referencing two. Solves the class of bugs where
-      hand-editing the SRT leaves stale TextGrid timings driving the per-word band.
-- [ ] Fix karaoke trace ~150-200ms lead (AVAudioSession I/O latency uncompensated)
-- [ ] **Real-time SRT editing in the lyric view** — let the user fix subtitle timing/text
-      in-place while the song plays, instead of only through the long-press
-      `SubtitleEditorSheet`. The lyric view (`Kioku/Read/Audio/LyricsView.swift`,
-      active cue rendered by `KiokuCoreTextRendererView`) already knows the active cue
-      index (`AudioPlaybackController.activeCueIndex`) and current time
-      (`currentTimeMs`). Proposed in-place actions on the active cue: (a) "set cue
-      start = now" / "set cue end = now" snapped to the playhead; (b) nudge start/end
-      by ±50ms; (c) split the cue at the playhead; (d) merge with the previous/next
-      cue; (e) shift all following cues by a delta (global re-time). Persist back
-      through the existing `audioAttachmentCues` → `NotesAudioStore.saveCues` /
-      `saveSRT` path (mirror `syncSubtitlesToNote` in `ReadView+LyricAlignment.swift`).
-      **Dependency:** do AFTER the SRT/TextGrid unification (the "Unified ResolvedCue
-      data model" item above) — editing the SRT today leaves stale TextGrid
-      checkpoints driving the per-word band, which the unified model fixes by
-      validating/shifting checkpoints against the edited cue bounds at load time.
-      Groundwork already landed (2026-06-01): `SubtitleSourceLoader.swift` is the
-      shared load/parse/bind seam the lyric-button media picker now uses.
+- [~] Native human audio pronunciation dataset support (beyond TTS) — Deprioritized (don't-care
+      2026-06-30). Groundwork now exists: the Human Japanese dataset carries per-word
+      `SoundFilePath` audio keys (in the `human-japanese` project's `hj.db`/`hj.tsv`), a candidate
+      seed if revisited. Not actively pursued.
+- [x] Vocal-vs-instrumental detection — Addressed at alignment time rather than via real-time
+      Sound Analysis. `SwiftWhisperAlign`'s `NonSpeechDetector` + `AlignmentNonSpeechCueBuilder`
+      detect audible-non-vocal gaps and build the ♪ cues, and onsets are clamped to vocal at
+      alignment time (see the lyric-alignment vocal-clamp work). The `SNClassifySoundRequest`
+      real-time route in the original note is unnecessary; no in-app real-time audio analysis
+      needed. Closed 2026-06-30.
+- [x] Audio-level silence detection — Closed 2026-06-30. Same goal as the vocal-detection item
+      above ("don't highlight when nothing is sung"), already met by the alignment-time
+      `NonSpeechDetector`/vocal-clamp. The real-time `averagePower` hysteresis route is a distinct
+      mechanism for the same now-solved problem; not pursued.
+- [x] Unified ResolvedCue data model — Done. `SubtitleCue` now owns its character checkpoints
+      inline (`SubtitleCue.swift:10-22`: `checkpoints: [CueCharTiming]`), collapsing the former
+      parallel `cues` + `cueTimings: [Int: [CueCharTiming]]` pair. The index-keyed binder output
+      is folded into each cue at load via `CueCharTiming.applyingCheckpoints(_:)`
+      (`CueCharTiming.swift:22-28`); the legacy `[Int: [CueCharTiming]]` typedef remains only as
+      the binder's intermediate. Consumers query the single source.
+- [x] Fix karaoke trace ~150-200ms lead — Done. `AudioPlaybackController` reads
+      `AVAudioSession.sharedInstance().outputLatency` and subtracts it from `player.currentTime`
+      for cue alignment (`AudioPlaybackController.swift:354-359`), compensating the ≈10-50ms
+      wired / ≈100-200ms Bluetooth output-buffer lead.
+- [x] **Real-time SRT editing in the lyric view** — Done. `ReadView+LyricCueEditing.swift`
+      implements the full in-place editing surface: `LyricCueEdit` enum (setStart/setEnd,
+      setStart-with-ripple, set-to-ms, word-level realign, realign-all,
+      set-word-start/end-to-playhead) applied by `applyLyricCueEdit(_:)`, persisted via
+      `NotesAudioStore.shared.saveCues()` with live `AudioPlaybackController.updateCues(_:)`
+      (no playback stop). The persistent top row in `LyricsView` (`LyricsView.swift:27-30`)
+      emits the intents. The "Unified ResolvedCue" dependency above is also satisfied.
 - [ ] **Reconsider: import subtitles as a note, then extract words the usual way?**
       Open design question, not yet decided. Today subtitle import is its own pipeline —
       parse (`ASSParser`/SRT) + optional `JimakuProvider` fetch, precompute segmentation at
@@ -407,7 +429,13 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 ## Settings
 
 - [x] Adjust ruby typography settings (spacing, padding) — `SettingsView.swift:17` `furiganaGapKey` + sliders for `furiganaGap`, `kerning`, `lineSpacing`
-- [ ] Default to Japanese IME where appropriate (no `TextField` keyboard-type hints found)
+- [~] Default to Japanese IME where appropriate — Partial 2026-06-30. The custom-reading prompt
+      now defaults to the Japanese keyboard via `JapaneseTextField`
+      (`Kioku/Read/Lookup/JapaneseReadingPrompt.swift`). Still lacking Japanese-IME defaults:
+      list-name fields (`WordsFilterView`/`WordsBatchListView`/`CSVImportView`/`SubtitleImportView`),
+      the particle-tag editor (`SettingsView.swift:885`), and the personal-note field
+      (`WordDetailView`). URL/number fields are correctly exempted (`.keyboardType(.URL/.numberPad)`).
+      A reusable `JapaneseTextField` SwiftUI wrapper applied to these text fields would close it.
 - [x] Clipboard behavior settings — `ClipboardSettings.swift` defines `autoDetectKey` + `defaultAutoDetect = true`; new "Clipboard" section in `SettingsView` toggles it. `ClipboardLookupCoordinator.checkClipboard()` short-circuits before any pasteboard read when off, so iOS's "Pasted from" notification doesn't fire for users who turn it off. Coordinator's `init(defaults:)` takes an injected `UserDefaults` so the gate is testable; pinned by 4 tests in `ClipboardLookupCoordinatorTests.swift`.
 
 ## Ship Readiness
@@ -417,8 +445,15 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 - [x] Progressive disclosure in dictionary detail UI (`DisclosureGroup` in `WordsView+Search.swift`, `SongLineCard.swift`)
 - [ ] Add UI smoke tests for core user loop (notes, lookup/save, study, backup)
 - [ ] Split Settings into Basic vs Advanced (move advanced controls behind secondary screen)
-- [ ] Accessibility pass (62× `.accessibilityLabel` present; missing Dynamic Type / `scaledMetric` sizing and contrast audit)
-- [ ] App Store packaging artifacts and release QA checklist
+- [~] Accessibility pass — Partial (re-confirmed 2026-06-30). VoiceOver labels are well covered
+      (79× `.accessibilityLabel`), and `@ScaledMetric` is used in one place (`ClozeStudyView.swift:11-13`,
+      blank sizing relative to `.title3`). But Dynamic Type adoption is essentially absent app-wide —
+      text sizing elsewhere is driven only by the manual typography sliders, not the system Dynamic
+      Type trait — and a contrast audit still remains.
+- [~] App Store packaging artifacts and release QA checklist — Partial. `docs/APPSTORE.md` holds
+      the full submission kit (name, description, keywords, age rating, privacy questionnaire,
+      export compliance, review notes). Still missing: a dedicated release/QA checklist file and
+      any release automation (only `ci_post_clone.sh` + `tests.yml` exist; no `release.yml`).
 - [x] Credits/About screen with dataset attributions — `Kioku/Settings/AboutView.swift` pushed from a new "About" row in `SettingsView`. Renders version + 8 dataset entries (JMdict, KANJIDIC2, Tatoeba, JPDB Frequency, wordfreq, UniDic pitch accent, RADKFILE2/KRADFILE2, Tegaki-Zinnia) and 9 library entries (SwiftWhisper, USearch, SwiftLCS, swift-subtitle-kit, SwiftSubtitles, CodableCSV, swift-audio-marker, TextFormation, zinnia-swift), each with license + source URL. Data lives in `Attributions.swift` (separate from view for testability); 5 tests in `AttributionsTests.swift` regression-guard against accidentally dropping an entry.
 
 ---
