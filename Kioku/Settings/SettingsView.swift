@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UserNotifications
 
-// Single-screen settings, organized top-to-bottom: appearance (preview, typography, colors),
+// Single-screen settings, organized top-to-bottom: appearance (typography, theme),
 // reading behavior (audio, word of the day, clipboard), segmentation tuning, AI correction,
 // developer tools, and data transfer. Footer prose is intentionally omitted — rows stand alone.
 struct SettingsView: View {
@@ -17,8 +17,9 @@ struct SettingsView: View {
     @EnvironmentObject private var reviewStore: ReviewStore
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
 
-    // Opt-in Japanese visual theme (washi paper, vermilion accent, Mincho type, styled flashcards).
-    @AppStorage(Theme.storageKey) private var japaneseTheme = false
+    // Selected theme id — drives chrome (background/accent/typography) and the default token
+    // colors when "Custom Token Colors" is off. See Theme.ID for available themes.
+    @AppStorage(Theme.themeIDKey) var themeIDRaw: String = Theme.ID.system.rawValue
 
     @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
     @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
@@ -49,10 +50,19 @@ struct SettingsView: View {
     // box for songs; the user can disable to cut cost or for privacy.
     @AppStorage(LLMSettings.useWebSearchKey) var useWebSearch: Bool = true
 
-    @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
-    @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
-    @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
-    @AppStorage(TokenColorSettings.highlightColorKey) private var highlightHex: String = TokenColorSettings.defaultHighlightHex
+    @AppStorage(TokenColorSettings.enabledKey) var customTokenColorsEnabled: Bool = false
+    @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
+    @AppStorage(TokenColorSettings.colorBKey) var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
+    @AppStorage(TokenColorSettings.highlightColorKey) var highlightHex: String = TokenColorSettings.defaultHighlightHex
+    // Custom Theme: when on, the four hexes below override the active theme's chrome colors
+    // (background / surface / ink / accent). Other palette slots keep the theme's values so a
+    // half-customized palette stays coherent. The Read view's toolbar still owns the on/off
+    // for segment coloring (`kioku.settings.colorAlternation`) — it's no longer surfaced here.
+    @AppStorage(Theme.customThemeEnabledKey) var customThemeEnabled: Bool = false
+    @AppStorage(Theme.customBackgroundHexKey) var customBackgroundHex: String = ""
+    @AppStorage(Theme.customSurfaceHexKey) var customSurfaceHex: String = ""
+    @AppStorage(Theme.customInkHexKey) var customInkHex: String = ""
+    @AppStorage(Theme.customAccentHexKey) var customAccentHex: String = ""
 
     @AppStorage(WordOfTheDayScheduler.enabledKey) private var wotdEnabled: Bool = false
     @AppStorage(WordOfTheDayScheduler.hourKey) private var wotdHour: Int = 9
@@ -123,25 +133,6 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: Theme — opt-in Japanese visual style.
-                Section {
-                    Toggle(isOn: $japaneseTheme) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Japanese Theme")
-                            Text("Washi paper, vermilion accent, Mincho type, and styled flashcards.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    // SwiftUI surfaces react to the @AppStorage flag on their own, but the UIKit
-                    // nav/tab bar chrome is installed via appearance proxies only at launch. Re-run
-                    // the global appearance pass when the toggle flips so newly-pushed screens match
-                    // immediately (bars already on screen refresh on the next push or relaunch).
-                    .onChange(of: japaneseTheme) { _, _ in Theme.refreshGlobalAppearance() }
-                } header: {
-                    Text("Theme")
-                }
-
                 // MARK: Appearance — live preview + typography sliders.
                 Section {
                     SettingsPreviewRenderer(
@@ -230,24 +221,17 @@ struct SettingsView: View {
                     Text("Typography")
                 }
 
-                // MARK: Colors
+                // MARK: Theme — selects the visual identity (chrome + default token colors) and
+                // exposes optional customization on top. Theme picker, then optional overrides,
+                // all in one section because the user reads them as one concept. Section body
+                // is built out of three @ViewBuilder helpers below to keep the Swift type-checker
+                // out of trouble (the inline version blew past its expression budget).
                 Section {
-                    Toggle("Custom Token Colors", isOn: $customTokenColorsEnabled)
-                    if customTokenColorsEnabled {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 14) {
-                                ForEach(TokenColorSettings.presets) { preset in
-                                    tokenPresetSwatch(preset)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        ColorPicker("Primary Color", selection: tokenColorABinding, supportsOpacity: false)
-                        ColorPicker("Secondary Color", selection: tokenColorBBinding, supportsOpacity: false)
-                    }
-                    ColorPicker("Highlight Color", selection: tokenHighlightBinding, supportsOpacity: false)
+                    themePickerMenu
+                    customThemeRows
+                    customTokenColorRows
                 } header: {
-                    Text("Colors")
+                    Text("Theme")
                 }
 
                 // MARK: Audio
@@ -306,6 +290,15 @@ struct SettingsView: View {
                         }
                         .disabled(wordsStore.words.isEmpty)
                         .sensoryFeedback(.success, trigger: wotdTestTapCount)
+
+                        // Hint surfaces *why* Send Test is disabled when the saved-words store
+                        // is empty — without it the grayed-out button looks like a permission
+                        // problem even after permission has been granted.
+                        if wordsStore.words.isEmpty {
+                            Text("Save some words in the Words tab first — Word of the Day picks from your saved list.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
 
                         if let wotdTestStatus {
                             Text(wotdTestStatus)
@@ -510,6 +503,13 @@ struct SettingsView: View {
             .washiBackground()
             .navigationTitle("Settings")
         }
+        // Tint applied INSIDE the SettingsView's own NavigationStack — on iOS 26 the parent
+        // TabView's .themedTint() reliably reaches Toggle on-tracks but not Picker selection
+        // labels through a nested NavigationStack, so the picker would render its label in
+        // the stale parent tint (Washi vermilion) even after the theme switched. Re-applying
+        // the modifier here forces the picker label, toggle, and any other tinted control to
+        // share the active theme's accent.
+        .themedTint()
         .toolbar(.visible, for: .tabBar)
         .fileExporter(
             isPresented: $isShowingExporter,
@@ -770,42 +770,21 @@ struct SettingsView: View {
         }
     }
 
-    // A tappable three-tone swatch for a token-color preset: token A, token B, and the
-    // coordinating highlight/glow color. Applies all three and turns custom colors on;
-    // outlined in the accent color when it's the currently-active pair.
-    private func tokenPresetSwatch(_ preset: TokenColorSettings.Preset) -> some View {
-        let isSelected = customTokenColorsEnabled
-            && tokenColorAHex.caseInsensitiveCompare(preset.aHex) == .orderedSame
-            && tokenColorBHex.caseInsensitiveCompare(preset.bHex) == .orderedSame
-        return Button {
-            tokenColorAHex = preset.aHex
-            tokenColorBHex = preset.bHex
-            highlightHex = preset.highlightHex
-            customTokenColorsEnabled = true
-        } label: {
-            VStack(spacing: 4) {
-                HStack(spacing: 0) {
-                    Color(UIColor(hexString: preset.aHex) ?? .gray)
-                    Color(UIColor(hexString: preset.bHex) ?? .gray)
-                    Color(UIColor(hexString: preset.highlightHex) ?? .gray)
-                }
-                .frame(width: 60, height: 24)
-                .clipShape(RoundedRectangle(cornerRadius: 7))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7)
-                        .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.3),
-                                lineWidth: isSelected ? 2 : 1)
-                )
-                Text(preset.name)
-                    .font(.caption2)
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-            }
-        }
-        .buttonStyle(.plain)
+    // Bridges the raw AppStorage string to a Picker-friendly Theme.ID binding. Falls back to
+    // System if the stored string ever desyncs from the enum (shouldn't happen, but the
+    // picker can't render a nil tag).
+    private var themeIDBinding: Binding<Theme.ID> {
+        Binding(
+            get: { Theme.ID(rawValue: themeIDRaw) ?? .system },
+            set: { themeIDRaw = $0.rawValue }
+        )
     }
 
+    // Custom-theme color bindings live in SettingsView+ThemeSection.swift to keep this file
+    // under the 1000-line build invariant.
+
     // Converts the hex string AppStorage value to/from a SwiftUI Color for use with ColorPicker.
-    private var tokenColorABinding: Binding<Color> {
+    var tokenColorABinding: Binding<Color> {
         Binding(
             get: { Color(UIColor(hexString: tokenColorAHex) ?? UIColor(hexString: TokenColorSettings.defaultColorAHex)!) },
             set: { color in
@@ -815,7 +794,7 @@ struct SettingsView: View {
     }
 
     // Converts the hex string AppStorage value to/from a SwiftUI Color for use with ColorPicker.
-    private var tokenColorBBinding: Binding<Color> {
+    var tokenColorBBinding: Binding<Color> {
         Binding(
             get: { Color(UIColor(hexString: tokenColorBHex) ?? UIColor(hexString: TokenColorSettings.defaultColorBHex)!) },
             set: { color in
@@ -825,7 +804,7 @@ struct SettingsView: View {
     }
 
     // Highlight color — shared by the favorited glow and the selection box (hex AppStorage) <-> Color.
-    private var tokenHighlightBinding: Binding<Color> {
+    var tokenHighlightBinding: Binding<Color> {
         Binding(
             get: { Color(UIColor(hexString: highlightHex) ?? UIColor(hexString: TokenColorSettings.defaultHighlightHex)!) },
             set: { color in

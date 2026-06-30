@@ -167,17 +167,26 @@ extension ReadView {
                         kerning: kerning,
                         furiganaGap: CGFloat(furiganaGap),
                         furiganaSizeOverride: customFuriganaSizeEnabled ? CGFloat(furiganaSize) : nil,
+                        // Fall through to the active theme's defaults when the user hasn't
+                        // enabled Custom Token Colors — keeps the Read view's segment palette
+                        // coordinated with the theme picker instead of locked to red/cyan.
                         evenSegmentColor: customTokenColorsEnabled
                             ? (UIColor(hexString: tokenColorAHex) ?? .label)
-                            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed },
+                            : (UIColor(hexString: Theme.activePalette.defaultTokenColorAHex) ?? .label),
                         oddSegmentColor: customTokenColorsEnabled
                             ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
-                            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo },
+                            : (UIColor(hexString: Theme.activePalette.defaultTokenColorBHex) ?? .secondaryLabel),
                         isLineWrappingEnabled: isLineWrappingEnabled,
                         isRubySpacingEnabled: isRubySpacingEnabled,
                         selectedHighlightRange: resolveSelectedHighlightRange(),
                         playbackHighlightRange: playbackHighlightRangeOverride,
-                        selectionHighlightColor: (UIColor(hexString: highlightHex) ?? .systemYellow).withAlphaComponent(0.35),
+                        // Same gating as the segment colors above — user hex when Custom Token
+                        // Colors is on, theme default when off — so the three picker controls
+                        // stay coherent and a theme switch flows through.
+                        selectionHighlightColor: (customTokenColorsEnabled
+                            ? (UIColor(hexString: highlightHex) ?? .systemYellow)
+                            : (UIColor(hexString: Theme.activePalette.defaultHighlightHex) ?? .systemYellow)
+                        ).withAlphaComponent(0.35),
                         playbackHighlightColor: UIColor.systemBlue.withAlphaComponent(0.20),
                         unknownSegmentLocations: unknownSegmentLocations,
                         isHighlightUnknownEnabled: isHighlightUnknownEnabled,
@@ -187,7 +196,9 @@ extension ReadView {
                         inFlightSegmentLocations: inFlightLineSegmentLocations,
                         favoritedSegmentLocations: favoritedSegmentLocations,
                         isFavoritedGlowEnabled: isFavoritedGlowEnabled,
-                        favoritedGlowColor: UIColor(hexString: highlightHex) ?? .systemYellow,
+                        favoritedGlowColor: customTokenColorsEnabled
+                            ? (UIColor(hexString: highlightHex) ?? .systemYellow)
+                            : (UIColor(hexString: Theme.activePalette.defaultHighlightHex) ?? .systemYellow),
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,

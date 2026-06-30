@@ -76,19 +76,19 @@ struct LyricsView: View {
     }
 
     // Even/odd segment-alternation colors for the active-cue card. Honors the user's custom
-    // palette when enabled (falling back to the system defaults on an unparseable hex), and
-    // otherwise uses the same system orange/red + cyan/indigo defaults Read uses. Kept in lockstep
-    // with ReadView+Editor so the karaoke card and the page render identically.
+    // palette when enabled, and otherwise resolves to the active theme's default token colors
+    // (see Theme.Palette). Kept in lockstep with ReadView+Editor's branching so the karaoke
+    // card and the page render identically.
     private var resolvedEvenSegmentColor: UIColor {
         customTokenColorsEnabled
             ? (UIColor(hexString: tokenColorAHex) ?? .label)
-            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemOrange : .systemRed }
+            : (UIColor(hexString: Theme.activePalette.defaultTokenColorAHex) ?? .label)
     }
 
     private var resolvedOddSegmentColor: UIColor {
         customTokenColorsEnabled
             ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
-            : UIColor { tc in tc.userInterfaceStyle == .dark ? .systemCyan : .systemIndigo }
+            : (UIColor(hexString: Theme.activePalette.defaultTokenColorBHex) ?? .secondaryLabel)
     }
 
     // Number of cues where the subtitle text differs from the corresponding note text.
