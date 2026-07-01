@@ -27,6 +27,9 @@ struct CSVImportView: View {
     @State private var addToListMode: CSVImportListMode = .none
     @State private var selectedExistingListID: UUID? = nil
     @State private var newListName: String = ""
+    // When on, a row missing its surface adopts the dictionary's kanji form; off (default) keeps
+    // the kana the user supplied, so a kana-only list isn't silently rewritten into kanji.
+    @State private var fillKanjiFromDictionary: Bool = false
 
     private var importableItems: [CSVImportItem] {
         items.filter(\.isImportable)
@@ -70,26 +73,36 @@ struct CSVImportView: View {
     // MARK: - Sections
 
     private var inputControls: some View {
-        HStack(spacing: 12) {
-            Button {
-                isFileImporterPresented = true
-            } label: {
-                Label("Choose File", systemImage: "doc")
-            }
-
-            Spacer()
-
-            Button {
-                Task { await parse() }
-            } label: {
-                if isParsing {
-                    ProgressView()
-                } else {
-                    Text("Parse")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    isFileImporterPresented = true
+                } label: {
+                    Label("Choose File", systemImage: "doc")
                 }
+
+                Spacer()
+
+                Button {
+                    Task { await parse() }
+                } label: {
+                    if isParsing {
+                        ProgressView()
+                    } else {
+                        Text("Parse")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isParsing || rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .buttonStyle(.bordered)
-            .disabled(isParsing || rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            // Off by default: a row with only kana keeps that kana as its surface. On: pull the
+            // dictionary's kanji form for surface-less rows. Re-parses so the preview reflects it.
+            Toggle("Fill kanji from dictionary", isOn: $fillKanjiFromDictionary)
+                .font(.subheadline)
+                .onChange(of: fillKanjiFromDictionary) {
+                    if items.isEmpty == false { Task { await parse() } }
+                }
         }
     }
 
@@ -255,7 +268,7 @@ struct CSVImportView: View {
         errorText = nil
         let text = rawText
         var parsed = CSVImport.parseItems(from: text)
-        await CSVImport.fillMissing(items: &parsed, dictionaryStore: dictionaryStore)
+        await CSVImport.fillMissing(items: &parsed, dictionaryStore: dictionaryStore, fillKanjiFromDictionary: fillKanjiFromDictionary)
         items = parsed
     }
 
