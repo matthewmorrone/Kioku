@@ -26,6 +26,12 @@ extension WordsView {
                 Label("Common Words Only", systemImage: "star")
             }
 
+            Picker("Frequency", selection: $searchFrequencyTier) {
+                ForEach(DictionaryFrequencyTier.allCases) { tier in
+                    Text(tier.title).tag(tier)
+                }
+            }
+
             let partsOfSpeech = availableSearchPartsOfSpeech
             if partsOfSpeech.isEmpty == false {
                 Menu {
@@ -109,6 +115,10 @@ extension WordsView {
                 return false
             }
 
+            if let maxRank = searchFrequencyTier.maxRank {
+                guard let rank = entry.jpdbRank, rank <= maxRank else { return false }
+            }
+
             if searchSelectedPartsOfSpeech.isEmpty == false {
                 let entryParts = Set(entry.searchPartOfSpeechLabels)
                 if entryParts.isDisjoint(with: searchSelectedPartsOfSpeech) {
@@ -147,7 +157,7 @@ extension WordsView {
 
     // True when any live dictionary-search control is narrowing or reordering the result set.
     var hasActiveSearchControls: Bool {
-        searchCommonWordsOnly || searchSortMode != .relevance || searchSelectedPartsOfSpeech.isEmpty == false
+        searchCommonWordsOnly || searchFrequencyTier != .any || searchSortMode != .relevance || searchSelectedPartsOfSpeech.isEmpty == false
     }
 
     // Whether the inline Tatoeba example-sentence section belongs below the entry list for the
@@ -196,6 +206,7 @@ extension WordsView {
     // Resets live dictionary-search controls back to the default broad result set.
     func resetSearchControls() {
         searchCommonWordsOnly = false
+        searchFrequencyTier = .any
         searchSortMode = .relevance
         searchSelectedPartsOfSpeech = []
     }

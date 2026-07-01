@@ -247,8 +247,9 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       preserves the prior flow exactly — prefilled current reading, "e.g. よむ" placeholder,
       Set / Cancel / conditional destructive Reset (gated on `activeReadingOverrideProvider`).
 - [x] Make saving to the words list more responsive — shipped via `WordsStore.persistQueue` (serial utility-QoS DispatchQueue) so star-toggles return immediately and persist off-main; lemma-cache + off-main hydration on `SegmentLookupSheet` load eliminates the redundant SQL pass that was making first-tap latency visible. `WordsStore.flushPendingWritesForTesting()` provides the sync surface for tests.
-- [~] Add advanced dictionary filters/sorting (JLPT, POS, frequency, commonness toggles) —
-      Partially done 2026-06-04. The filter/sort *logic* was fully built but orphaned (same
+- [x] Add advanced dictionary filters/sorting (JLPT, POS, frequency, commonness toggles) —
+      Completed 2026-07-01 (the frequency-threshold control was the last gap). Partially done
+      2026-06-04: the filter/sort *logic* was fully built but orphaned (same
       pattern as the kanji-discovery regression — `WordsView+Search.swift` even carried a "filter
       UI removed; helpers kept so a replacement can rewire later" comment, and none of
       `filteredSearchResults`/`startSearchTask`/`resetSearchControls`/etc. had any caller). Wired
@@ -257,12 +258,13 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       A-Z, "Common Words Only" toggle, per-POS submenu, Reset) exposed via a context-aware trailing
       funnel that replaces the note/list funnel while a query is active; (c) `runDictionarySearch`
       now calls `pruneUnavailableSearchPartsOfSpeech()` after results land. DONE: POS, commonness,
-      sort (incl. common-first ≈ frequency-ordered), AND the explicit JLPT-level filter (N1–N5
-      picker now wired in `WordsFilterView.swift:144-156, 358-369`, backed by `jlptLevel`). STILL
-      TODO (re-confirmed 2026-06-30): a numeric frequency-threshold control (filter by frequency >
-      X); the raw frequency data exists on `DictionaryEntry` but has no input control. Note the
-      dead parallel renderer `searchResultsContent` (uses `DictionarySearchResultRow`) and the
-      unused `startSearchTask` remain — candidates for removal in a cleanup pass.
+      sort (incl. common-first ≈ frequency-ordered), the explicit JLPT-level filter (N1–N5
+      picker in `WordsFilterView.swift`, backed by `jlptLevel`), AND now the frequency-threshold
+      control: `DictionaryFrequencyTier` (Any / Top 5k / 10k / 20k by JPDB rank) as a picker in
+      `dictionarySearchFilterMenu`, applied in `filteredSearchResults` via `entry.jpdbRank`
+      (a finer usage-frequency axis than the JMdict `isCommonSearchEntry` flag). Note the dead
+      parallel renderer `searchResultsContent` (uses `DictionarySearchResultRow`) and the unused
+      `startSearchTask` remain — candidates for removal in a cleanup pass.
 - [x] **Kanji-content filter for the saved-words list (All / Kanji Only / No Kanji)** — Done
       2026-06-30. New `WordsKanjiFilter` enum (`WordsView.swift`) persisted via
       `@AppStorage("savedWordsKanjiFilter")`, exposed as a segmented picker in its own "Kanji"
