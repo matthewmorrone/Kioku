@@ -30,6 +30,7 @@ struct SettingsView: View {
     @AppStorage(LyricsHighlightGranularity.storageKey) private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
+    @AppStorage(DictionarySettings.includeArchaicReadingsKey) private var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
     @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
     @AppStorage(SegmentationDemotions.storageKey) private var demotionsRaw: String = SegmentationDemotions.defaultRawValue
 
@@ -319,6 +320,15 @@ struct SettingsView: View {
                     Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
                 } header: {
                     Text("Clipboard")
+                }
+
+                // MARK: Dictionary — what the word detail screen surfaces.
+                Section {
+                    Toggle("Include Archaic & Obscure Readings", isOn: $includeArchaicReadings)
+                } header: {
+                    Text("Dictionary")
+                } footer: {
+                    Text("When a kanji word has several readings (e.g. 抱く → いだく / だく), show the archaic or obscure ones too. Off by default so the reading switcher sticks to everyday readings.")
                 }
 
                 // MARK: Transcription — engine for importing audio → note.

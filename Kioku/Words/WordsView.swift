@@ -70,6 +70,9 @@ enum WordsRoute: Equatable {
 struct WordsView: View {
     let dictionaryStore: DictionaryStore?
     let segmenter: (any TextSegmenting)?
+    // Deinflection lexicon, forwarded to WordDetailView so its header reading switcher can reuse
+    // the Read-tab sheet's reading gathering. Optional so previews / tests can omit it.
+    var lexicon: Lexicon? = nil
     // Read-tab reading maps, forwarded to WordDetailView so example sentences get furigana.
     var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
@@ -298,6 +301,7 @@ struct WordsView: View {
                     reading: selectedDetailReading,
                     dictionaryStore: dictionaryStore,
                     segmenter: segmenter,
+                    lexicon: lexicon,
                     initialSublatticePaths: selectedDetailSublatticePaths,
                     surfaceReadingData: surfaceReadingData,
                     kanjiReadingFallback: kanjiReadingFallback

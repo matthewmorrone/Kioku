@@ -84,7 +84,7 @@ extension WordDetailView {
         let surface = word.surface
         let savedEntryID = activeEntryID
 
-        let results = await Task { @MainActor in
+        let (results, variants) = await Task { @MainActor in
             // Look up all entries matching the surface in both kanji and kana columns. The
             // earlier script-conditional mode was a no-op micro-optimization — a pure-kana
             // surface can never match a kanji column, so .kanjiAndKana and .kanaOnly are
@@ -109,10 +109,62 @@ extension WordDetailView {
                     ordered.append(data)
                 }
             }
-            return ordered + rest
+            var combined = ordered + rest
+
+            // Heteronym readings: gather every reading that shares this word's everyday-kanji spelling
+            // (抱く → いだく / だく / うだく), each tied to its own JMdict entry, reusing the Read-tab
+            // lookup sheet's gathering (ReadingVariants). The inflected-surface lookup above only
+            // resolves one of the homographs, so the siblings would otherwise never be listed or
+            // navigable. Siblings not already present are appended; archaic/obscure-only ones are
+            // dropped unless the user opted in. Skipped entirely for pure-kana words (no shared
+            // spelling — kana homophones are different words, not alternate readings).
+            // Gather on the everyday kanji spelling that matches the surface. When the saved surface
+            // is itself a kanji form (e.g. 様 for a word saved on the 様 spelling) use it directly —
+            // otherwise a word whose surface kanji is a *secondary* spelling of its entry (様 is a
+            // rare form of ためし, whose primary kanji is 例) would gather readings of the unrelated
+            // primary kanji. For inflected surfaces (抱かれ, not a kanji form) fall back to the
+            // entry's first everyday kanji (抱く).
+            let savedEntry = combined.first?.entry
+            let lemmaSurface: String = {
+                guard let savedEntry else { return surface }
+                if savedEntry.kanjiForms.contains(where: { $0.text == surface }) { return surface }
+                return savedEntry.firstEverydayKanji?.text ?? surface
+            }()
+            var heteronyms: [ReadingVariants.Variant] = []
+            if ScriptClassifier.containsKanji(lemmaSurface) {
+                // Keep only readings whose entry writes lemmaSurface as an everyday kanji form; this
+                // drops entries where the shared spelling is a rare/secondary form (様 as a rare
+                // spelling of ためし) that would pollute the switcher with unrelated words. The saved
+                // entry is always kept so the current reading never vanishes from its own switcher.
+                heteronyms = ReadingVariants.variants(
+                    surface: lemmaSurface,
+                    lexicon: lexicon,
+                    store: dictionaryStore,
+                    segmenter: segmenter,
+                    surfaceReadingData: surfaceReadingData
+                ).filter { variant in
+                    guard let entry = variant.entry else { return false }
+                    if entry.entryId == savedEntryID { return true }
+                    return entry.kanjiForms.contains {
+                        $0.text == lemmaSurface && DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) == false
+                    }
+                }
+                let includeArchaic = DictionarySettings.includeArchaicReadings
+                var presentIDs = Set(combined.map { $0.entry.entryId })
+                for variant in heteronyms {
+                    guard let sibling = variant.entry, presentIDs.contains(sibling.entryId) == false else { continue }
+                    if includeArchaic == false && DefaultSenseSelection.isEntirelyLowPriority(sibling) { continue }
+                    if let data = try? dictionaryStore.fetchWordDisplayData(entryID: sibling.entryId, surface: surface) {
+                        combined.append(data)
+                        presentIDs.insert(sibling.entryId)
+                    }
+                }
+            }
+            return (combined, heteronyms)
         }.value
 
         allDisplayData = results
+        readingVariants = variants
 
         guard results.isEmpty == false else { return }
         let store = dictionaryStore
@@ -262,17 +314,21 @@ extension WordDetailView {
     // kanji form and the surface, then replaces the base suffix in the reading with the surface's suffix.
     // Returns the base reading unchanged when prefix matching fails or the entry is nil.
     func inflectedReading(surface: String, entry: DictionaryEntry?) -> String? {
-        guard let entry else { return nil }
-        let baseReading = entry.kanaForms.first?.text
-        guard let baseReading else { return nil }
+        guard let entry, let baseReading = entry.kanaForms.first?.text else { return nil }
+        return projectedReading(surface: surface, baseReading: baseReading, kanjiForms: entry.kanjiForms, kanaForms: entry.kanaForms)
+    }
 
+    // Projects an explicit base reading onto a (possibly inflected) surface using the given forms —
+    // the shared core of inflectedReading. The reading switcher calls this directly with a chosen
+    // homograph's base reading so the furigana follows the active reading (いだく→いだかれ, だく→だかれ).
+    // Returns the base reading unchanged when the surface is itself a base form or no prefix aligns.
+    func projectedReading(surface: String, baseReading: String, kanjiForms: [KanjiForm], kanaForms: [KanaForm]) -> String? {
         // If the surface matches a kanji or kana form exactly, no inflection adjustment needed.
-        let isBaseForm = entry.kanjiForms.contains { $0.text == surface }
-            || entry.kanaForms.contains { $0.text == surface }
+        let isBaseForm = kanjiForms.contains { $0.text == surface } || kanaForms.contains { $0.text == surface }
         if isBaseForm { return baseReading }
 
         // Try each kanji form to find one that shares a prefix with the surface.
-        for kanjiForm in entry.kanjiForms {
+        for kanjiForm in kanjiForms {
             let base = Array(kanjiForm.text)
             let surf = Array(surface)
             let prefixLen = zip(base, surf).prefix(while: { $0 == $1 }).count
@@ -283,8 +339,7 @@ extension WordDetailView {
 
             // The reading should end with the base form's kana suffix.
             if baseReading.hasSuffix(baseSuffix) {
-                let readingPrefix = baseReading.dropLast(baseSuffix.count)
-                return readingPrefix + surfaceSuffix
+                return String(baseReading.dropLast(baseSuffix.count)) + surfaceSuffix
             }
         }
 

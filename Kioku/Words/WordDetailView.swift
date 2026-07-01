@@ -11,6 +11,10 @@ struct WordDetailView: View {
     let dictionaryStore: DictionaryStore?
     // Segmenter used for compound word breakdown and fallback sublattice path computation.
     let segmenter: (any TextSegmenting)?
+    // Deinflection lexicon, threaded only from the Words tab so the header reading switcher can
+    // reuse the Read-tab sheet's reading gathering (ReadingVariants). Nil at call sites that don't
+    // have it (Flashcards, Kanji detail) — the switcher simply doesn't appear there.
+    var lexicon: Lexicon? = nil
     // Pre-computed sublattice paths from the lookup sheet. When empty, computed from the segmenter.
     var initialSublatticePaths: [[String]] = []
     // Reading data for furigana over example sentences. Defaults to empty maps so call sites
@@ -33,6 +37,9 @@ struct WordDetailView: View {
 
     // All entries matching the saved surface; saved entry is first.
     @State var allDisplayData: [WordDisplayData] = []
+    // Heteronym readings sharing this word's kanji spelling (抱く → いだく/だく/うだく), each tied to
+    // its entry. Populated by loadDisplayData; drives the header reading switcher. See WordDetailView+ReadingSwitcher.
+    @State var readingVariants: [ReadingVariants.Variant] = []
     @State private var personalNoteText: String = ""
     @State private var sentencesExpanded: Bool = false
     @State private var relatedExpanded: Bool = false
@@ -178,10 +185,9 @@ struct WordDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             let entry = savedDisplayData?.entry
-            // Use the reading passed from the lookup sheet when available; fall back to the
-            // entry's primary kana form so the header still shows furigana for words opened
-            // directly from the words list.
-            let surfaceReading = reading ?? inflectedReading(surface: word.surface, entry: entry)
+            // Reading shown above the headword. Prefers the lookup-sheet reading on first open,
+            // then follows the active homograph once the reading switcher flips it. See headerReading.
+            let surfaceReading = headerReading(entry: entry)
             // Show lemma only when the surface is an inflected form — i.e. not present in the
             // entry's own kanji or kana forms. Mirrors the lookup sheet's lemma visibility rule.
             let surfaceIsBaseForm = entry?.kanjiForms.contains(where: { $0.text == word.surface }) == true
@@ -256,6 +262,10 @@ struct WordDetailView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
+                // Reading switcher — chevrons at the row edges flank the headword (and its speaker/
+                // star overlays), shown only for words with more than one reading sharing the spelling.
+                .overlay(alignment: .leading) { readingSwitcherChevron(.previous) }
+                .overlay(alignment: .trailing) { readingSwitcherChevron(.next) }
                 // COMMON badge — outlined pill in the top-trailing corner, matching the
                 // reference. Driven by the same ichi1/news1/spec1 priority heuristic.
                 .overlay(alignment: .topTrailing) {
@@ -323,7 +333,13 @@ struct WordDetailView: View {
                 // without helping the learner. The user's saved entry is always kept so they
                 // can manage selection on it.
                 let savedEntryID = activeEntryID
+                // When the reading switcher is active (a heteronym like 抱く / 様), the arrows own
+                // navigation between readings, so the Definition shows only the active reading's
+                // entry — otherwise every reading's senses stack and switching merely scrolls
+                // between them instead of swapping the meaning in place.
+                let readingSwitcherActive = switchableReadings.count > 1
                 let filteredData = allDisplayData.filter { data in
+                    if readingSwitcherActive { return data.entry.entryId == savedEntryID }
                     if data.entry.entryId == savedEntryID { return true }
                     let kanjiHopeless = data.entry.hasNoEverydayKanji
                     let allUK = data.entry.allSensesUsuallyKana
@@ -743,6 +759,7 @@ struct WordDetailView: View {
                     reading: nil,
                     dictionaryStore: dictionaryStore,
                     segmenter: segmenter,
+                    lexicon: lexicon,
                     surfaceReadingData: surfaceReadingData,
                     kanjiReadingFallback: kanjiReadingFallback
                 )
