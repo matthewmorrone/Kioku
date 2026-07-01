@@ -118,16 +118,37 @@ extension WordDetailView {
             // navigable. Siblings not already present are appended; archaic/obscure-only ones are
             // dropped unless the user opted in. Skipped entirely for pure-kana words (no shared
             // spelling — kana homophones are different words, not alternate readings).
-            let lemmaSurface = combined.first?.entry.firstEverydayKanji?.text ?? surface
+            // Gather on the everyday kanji spelling that matches the surface. When the saved surface
+            // is itself a kanji form (e.g. 様 for a word saved on the 様 spelling) use it directly —
+            // otherwise a word whose surface kanji is a *secondary* spelling of its entry (様 is a
+            // rare form of ためし, whose primary kanji is 例) would gather readings of the unrelated
+            // primary kanji. For inflected surfaces (抱かれ, not a kanji form) fall back to the
+            // entry's first everyday kanji (抱く).
+            let savedEntry = combined.first?.entry
+            let lemmaSurface: String = {
+                guard let savedEntry else { return surface }
+                if savedEntry.kanjiForms.contains(where: { $0.text == surface }) { return surface }
+                return savedEntry.firstEverydayKanji?.text ?? surface
+            }()
             var heteronyms: [ReadingVariants.Variant] = []
             if ScriptClassifier.containsKanji(lemmaSurface) {
+                // Keep only readings whose entry writes lemmaSurface as an everyday kanji form; this
+                // drops entries where the shared spelling is a rare/secondary form (様 as a rare
+                // spelling of ためし) that would pollute the switcher with unrelated words. The saved
+                // entry is always kept so the current reading never vanishes from its own switcher.
                 heteronyms = ReadingVariants.variants(
                     surface: lemmaSurface,
                     lexicon: lexicon,
                     store: dictionaryStore,
                     segmenter: segmenter,
                     surfaceReadingData: surfaceReadingData
-                )
+                ).filter { variant in
+                    guard let entry = variant.entry else { return false }
+                    if entry.entryId == savedEntryID { return true }
+                    return entry.kanjiForms.contains {
+                        $0.text == lemmaSurface && DictionaryEntry.kanjiFormIsNonEveryday(info: $0.info) == false
+                    }
+                }
                 let includeArchaic = DictionarySettings.includeArchaicReadings
                 var presentIDs = Set(combined.map { $0.entry.entryId })
                 for variant in heteronyms {
