@@ -459,10 +459,13 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       blank sizing relative to `.title3`). But Dynamic Type adoption is essentially absent app-wide —
       text sizing elsewhere is driven only by the manual typography sliders, not the system Dynamic
       Type trait — and a contrast audit still remains.
-- [~] App Store packaging artifacts and release QA checklist — Partial. `docs/APPSTORE.md` holds
-      the full submission kit (name, description, keywords, age rating, privacy questionnaire,
-      export compliance, review notes). Still missing: a dedicated release/QA checklist file and
-      any release automation (only `ci_post_clone.sh` + `tests.yml` exist; no `release.yml`).
+- [~] App Store packaging artifacts and release QA checklist — Checklist done 2026-07-01:
+      `docs/RELEASE.md` is the pre-submission gate (repo state, CI gates, version bump, a
+      manual core-loop QA smoke, archive/upload, TestFlight on the iOS-18 floor, submit,
+      post-release), pairing with `docs/APPSTORE.md` (the metadata/submission kit). STILL OPEN:
+      release *automation* (a `release.yml` / fastlane lane) — only `ci_post_clone.sh` +
+      `tests.yml` + `invariants.yml` exist. The manual QA smoke is superseded once the "UI
+      smoke tests for core user loop" item lands.
 - [x] Credits/About screen with dataset attributions — `Kioku/Settings/AboutView.swift` pushed from a new "About" row in `SettingsView`. Renders version + 8 dataset entries (JMdict, KANJIDIC2, Tatoeba, JPDB Frequency, wordfreq, UniDic pitch accent, RADKFILE2/KRADFILE2, Tegaki-Zinnia) and 9 library entries (SwiftWhisper, USearch, SwiftLCS, swift-subtitle-kit, SwiftSubtitles, CodableCSV, swift-audio-marker, TextFormation, zinnia-swift), each with license + source URL. Data lives in `Attributions.swift` (separate from view for testability); 5 tests in `AttributionsTests.swift` regression-guard against accidentally dropping an entry.
 
 ---
