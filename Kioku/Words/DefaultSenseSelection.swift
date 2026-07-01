@@ -19,6 +19,17 @@ nonisolated enum DefaultSenseSelection {
         return [(preferred ?? firstSense).senseID]
     }
 
+    // True when every sense of the entry is tagged archaic/obsolete/rare — i.e. the entry has no
+    // everyday meaning. The word detail reading switcher uses this to drop fringe homograph
+    // readings (e.g. the archaic うだく reading of 抱く) unless the user opts into archaic readings.
+    // An entry with no senses is treated as non-archaic so it is never silently hidden.
+    static func isEntirelyLowPriority(_ entry: DictionaryEntry) -> Bool {
+        guard entry.senses.isEmpty == false else { return false }
+        return entry.senses.allSatisfy { sense in
+            miscTags(sense.misc).isDisjoint(with: lowPriorityMiscTags) == false
+        }
+    }
+
     // Splits a JMdict misc string ("arch,uk,col") into a normalized lowercase set.
     private static func miscTags(_ misc: String?) -> Set<String> {
         guard let misc, misc.isEmpty == false else { return [] }
