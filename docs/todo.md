@@ -102,6 +102,16 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       falling back to lemma-only when the chain has no displayable forms. Pinned by
       `InflectionFormNamesTests.swift` (5 tests). The chain was already computed
       (`Lexicon.inflectionInfo`/`inflectionChain`) — this exposes it in the UI.
+      - **Extended 2026-07-01** (app-usage backlog): also surfaced in `WordDetailView`'s title
+        area (caption beneath the headword), so the derivation is visible in the Words tab, not
+        just the Read-tab lookup sheet. AND fixed a label-correctness bug the surfacing exposed —
+        `deinflection.json`'s `progressiveForms` was a catch-all containing negative/negative-past/
+        negative-te/archaic-negative/desiderative rules, so 食べない showed "progressive" and
+        隠せない showed "progressive · potential". Re-partitioned 78 rules into
+        `negativeForms`/`negativePastForms`/`negativeTeForms`/`literaryNegativeForms`/`desireForms`
+        (pure relabel — the Deinflector flattens all groups, so which rules fire is unchanged).
+        隠せない now labels "negative · potential" (deinflection BFS already chained
+        隠せない→隠せる→隠す through the non-empty-stem path; only the label was wrong).
 
 ### Still-broken segmentation cases
 
@@ -289,6 +299,16 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ## Study & Review
 
+- [ ] **Real-time kanji-choice game mode** — pick the correct kanji as fast as possible; score
+      on speed + accuracy in near-real-time (from app-usage backlog 2026-07-01). Needs a design
+      pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
+      selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
+      correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
+- [ ] **Karaoke accuracy mode** — record the user singing along, score how closely they matched
+      the lyrics; ties into the existing lyric-alignment pipeline (from app-usage backlog
+      2026-07-01). Needs grilling: what "accuracy" means (timing vs pitch vs pronunciation),
+      on-device ASR vs alignment-only, privacy of the recording, scoring/feedback UX. Larger than
+      the kanji game; leans on SwiftWhisperAlign + AudioPlaybackController.
 - [ ] **Note learning-coverage screen** — a per-note view that organizes all words in a note
       first by **level** (JLPT N5…N1, plus an unknown/no-level bucket), then within each level by
       **how well studied** (study mastery, e.g. New / Learning / Due / Learned from the SRS state
