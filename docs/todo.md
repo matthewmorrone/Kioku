@@ -262,9 +262,9 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       picker in `WordsFilterView.swift`, backed by `jlptLevel`), AND now the frequency-threshold
       control: `DictionaryFrequencyTier` (Any / Top 5k / 10k / 20k by JPDB rank) as a picker in
       `dictionarySearchFilterMenu`, applied in `filteredSearchResults` via `entry.jpdbRank`
-      (a finer usage-frequency axis than the JMdict `isCommonSearchEntry` flag). Note the dead
-      parallel renderer `searchResultsContent` (uses `DictionarySearchResultRow`) and the unused
-      `startSearchTask` remain — candidates for removal in a cleanup pass.
+      (a finer usage-frequency axis than the JMdict `isCommonSearchEntry` flag). (The old cleanup
+      note here is discharged: `searchResultsContent` and `startSearchTask` are already gone, and
+      `DictionarySearchResultRow` is live — used by the Browse Frequency/Proficiency views.)
 - [x] **Kanji-content filter for the saved-words list (All / Kanji Only / No Kanji)** — Done
       2026-06-30. New `WordsKanjiFilter` enum (`WordsView.swift`) persisted via
       `@AppStorage("savedWordsKanjiFilter")`, exposed as a segmented picker in its own "Kanji"
@@ -275,7 +275,12 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       `filterSheet`/`sortOrderBinding`/`kanjiFilterBinding` computed props to keep the `WordsView`
       body within the Swift type-checker's budget (a single extra inline binding tipped it over).
 - [x] alternateSpellings(): include kanji variants — extracted from `WordDetailView` to `Kioku/Words/WordVariants.swift` so it's unit-testable; now surfaces both kanji-form and kana-form alternates (was kana-only), filters out `oK`/`sK`/`ok`/`sk` archaic + search-only forms, keeps irregular (`iK`/`ik`) variants. Pinned by `WordVariantsTests.swift` (6 tests). The previous `count > 1` noise-suppression gate is dropped — for kanji-bearing surfaces, even a single alternate is informative now that kanji variants are included. Pure-kana saved surfaces still return [] (false-uniqueness guard preserved).
-- [ ] CSV import: explicit option to fill kanji from the dictionary when the surface column is missing (today the importer silently substitutes kanji even when only kana was provided)
+- [x] CSV import: explicit option to fill kanji from the dictionary when the surface column is
+      missing — Done 2026-07-01. `CSVImport.enrich` no longer silently substitutes kanji: a new
+      `fillKanjiFromDictionary` flag (threaded through `fillMissing`) defaults OFF, so a
+      surface-less row keeps its supplied kana (or the dictionary reading) as the surface instead
+      of the kanji headword. A "Fill kanji from dictionary" toggle in `CSVImportView` opts in and
+      re-parses the preview on change.
 - [x] **Related words should be links to those words** — Done 2026-06-29 (`2f87902`). Tapping a
       Related Words / Synonyms row now opens a nested `WordDetailView` for that entry via
       `presentedRelatedSavedWord` (an ephemeral `SavedWord` built from the `DictionaryEntry`), and

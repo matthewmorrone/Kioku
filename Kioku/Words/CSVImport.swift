@@ -16,7 +16,10 @@ nonisolated enum CSVImport {
 
     // Fills missing surface, kana, and meaning by looking up each row in the dictionary.
     // Runs on a background thread via a continuation so the main thread stays responsive.
-    static func fillMissing(items: inout [CSVImportItem], dictionaryStore: DictionaryStore?) async {
+    // fillKanjiFromDictionary: when true, a row missing its surface takes the dictionary's kanji
+    // form; when false (default), it keeps the kana it was given (or the dictionary reading),
+    // so a kana-only import isn't silently rewritten into kanji.
+    static func fillMissing(items: inout [CSVImportItem], dictionaryStore: DictionaryStore?, fillKanjiFromDictionary: Bool) async {
         guard let dictionaryStore, items.isEmpty == false else { return }
 
         let snapshot = items
@@ -25,7 +28,7 @@ nonisolated enum CSVImport {
             DispatchQueue.global(qos: .userInitiated).async {
                 var working = snapshot
                 for idx in working.indices {
-                    enrich(&working[idx], using: dictionaryStore)
+                    enrich(&working[idx], using: dictionaryStore, fillKanjiFromDictionary: fillKanjiFromDictionary)
                 }
                 continuation.resume(returning: working)
             }
@@ -34,7 +37,7 @@ nonisolated enum CSVImport {
     }
 
     // Enriches one item in-place by looking up the best dictionary match for its known fields.
-    nonisolated private static func enrich(_ item: inout CSVImportItem, using dictionaryStore: DictionaryStore) {
+    nonisolated private static func enrich(_ item: inout CSVImportItem, using dictionaryStore: DictionaryStore, fillKanjiFromDictionary: Bool) {
         let surface = trim(item.providedSurface ?? item.computedSurface)
         let kana = trim(item.providedKana ?? item.computedKana)
         let meaning = trim(item.providedMeaning ?? item.computedMeaning)
@@ -62,7 +65,12 @@ nonisolated enum CSVImport {
         guard let entry = hit else { return }
 
         if surface == nil {
-            let proposed = entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? ""
+            // Default (fillKanjiFromDictionary == false): keep the row's kana as the surface so a
+            // kana-only import stays kana; only reach for a kanji form when no kana exists at all.
+            // Opt-in: take the dictionary's kanji form (its everyday/first kanji headword).
+            let proposed = fillKanjiFromDictionary
+                ? (entry.kanjiForms.first?.text ?? entry.kanaForms.first?.text ?? "")
+                : (kana ?? entry.kanaForms.first?.text ?? entry.kanjiForms.first?.text ?? "")
             if proposed.isEmpty == false { item.computedSurface = proposed }
         }
         if kana == nil, let k = entry.kanaForms.first, k.text.isEmpty == false {
