@@ -10,6 +10,8 @@ struct KanjiDetailView: View {
     @State private var words: [DictionaryEntry] = []
     @State private var isLoadingWords = true
     @State private var strokes: [DictionaryStore.KanjiStrokeRecord] = []
+    // Component radicals of this kanji (KRADFILE2 decomposition); empty for simple/undecomposed kanji.
+    @State private var components: [String] = []
     // Set when the user taps a common-word row; drives the nested WordDetailView sheet.
     // SavedWord is Identifiable by canonicalEntryID, so .sheet(item:) works directly on it.
     @State private var selectedCommonWord: SavedWord? = nil
@@ -64,6 +66,13 @@ struct KanjiDetailView: View {
                         // okurigana (e.g. た.べる) — kept verbatim in each chip because the
                         // dot is the actual learner-facing convention, not a decorator.
                         readingChipFlow(info.kunReadings)
+                    }
+                }
+
+                if components.isEmpty == false {
+                    Section("Components") {
+                        // KRADFILE2 decomposition — the radical components this kanji is built from.
+                        readingChipFlow(components)
                     }
                 }
 
@@ -310,9 +319,13 @@ struct KanjiDetailView: View {
         async let strokesTask = Task.detached(priority: .userInitiated) {
             (try? store?.fetchKanjiStrokes(for: literal)) ?? []
         }.value
-        let (loadedWords, loadedStrokes) = await (wordsTask, strokesTask)
+        async let componentsTask = Task.detached(priority: .userInitiated) {
+            (try? store?.fetchComponents(for: literal)) ?? []
+        }.value
+        let (loadedWords, loadedStrokes, loadedComponents) = await (wordsTask, strokesTask, componentsTask)
         words = loadedWords
         strokes = loadedStrokes
+        components = loadedComponents
         isLoadingWords = false
     }
 }

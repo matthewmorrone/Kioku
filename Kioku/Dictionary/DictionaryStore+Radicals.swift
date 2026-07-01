@@ -27,6 +27,28 @@ extension DictionaryStore {
         }
     }
 
+    // The component radicals that make up one kanji (KRADFILE2 decomposition), ordered by stroke
+    // count then glyph. Empty when the kanji isn't decomposed (a simple/radical kanji) or the
+    // radical tables weren't populated at build time. Powers the "Components" section in kanji detail.
+    nonisolated func fetchComponents(for kanji: String) throws -> [String] {
+        try withSerializedDatabaseAccess {
+            let sql = """
+            SELECT kr.radical
+            FROM kanji_radicals AS kr
+            LEFT JOIN radicals AS r ON r.radical = kr.radical
+            WHERE kr.kanji = ?
+            ORDER BY r.stroke_count ASC, kr.radical ASC
+            """
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: sql, statement: &statement)
+            try bindText(kanji, index: 1, statement: statement)
+            return try stepRows(statement: statement) { stmt -> String? in
+                sqlite3_column_text(stmt, 0).map { String(cString: $0) }
+            }
+        }
+    }
+
     // The set of kanji that contain ALL of the given radicals. Empty selection returns empty set —
     // the UI is responsible for refusing to show an unbounded result list.
     //
