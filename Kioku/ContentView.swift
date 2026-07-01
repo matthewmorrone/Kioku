@@ -97,7 +97,7 @@ struct ContentView: View {
             }
 
             // Renders the Words tab entry point; pendingWordsRoute carries notification and read-tab routes.
-            WordsView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, surfaceReadingData: readResources.surfaceReadingData, kanjiReadingFallback: readResources.kanjiReadingFallback, pendingRoute: $pendingWordsRoute)
+            WordsView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, kanjiReadingFallback: readResources.kanjiReadingFallback, pendingRoute: $pendingWordsRoute)
                 .environmentObject(wordsStore)
                 .environmentObject(savedKanjiStore)
                 .environmentObject(wordListsStore)
