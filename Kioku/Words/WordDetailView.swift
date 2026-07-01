@@ -203,6 +203,16 @@ struct WordDetailView: View {
                 }
                 return entry?.firstEverydayKanji?.text
             }()
+            // Human-readable grammatical form of the inflected surface (e.g. "potential · negative"),
+            // reusing the same deinflection seam (Lexicon.inflectionInfo + InflectionFormNames) that
+            // drives the Read-tab lookup header. Nil for base forms or chains with no displayable step.
+            let formDescription: String? = {
+                guard let lexicon,
+                      let info = lexicon.inflectionInfo(surface: word.surface),
+                      info.lemma != word.surface else { return nil }
+                let described = InflectionFormNames.describe(info.chain)
+                return described.isEmpty ? nil : described
+            }()
             VStack(spacing: 10) {
                 // Headword row: the title hugs its content (.fixedSize) and centers as if it
                 // were alone — the speaker rides as a trailing OVERLAY offset past the word's
@@ -280,6 +290,15 @@ struct WordDetailView: View {
                             )
                             .padding(.trailing, 16)
                     }
+                }
+
+                // Grammatical form of the inflected surface, beneath the headword/lemma — surfaces
+                // the derivation (e.g. "potential · negative") that was previously only in the
+                // Paths debug tool. Hidden for base forms.
+                if let formDescription {
+                    Text(formDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 // POS summary + "View Conjugations" — a single row beneath the headword.
                 // (Speaker moved up beside the headword itself.)
