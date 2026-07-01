@@ -14,6 +14,14 @@ final class InflectionFormNamesTests: XCTestCase {
         XCTAssertEqual(InflectionFormNames.describe(["politeForms", "pastForms"]), "polite · past")
     }
 
+    // Negative forms map correctly (regression guard: the plain-negative rule used to live in
+    // the progressiveForms catch-all and mislabeled as "progressive").
+    func testNegativeForms() {
+        XCTAssertEqual(InflectionFormNames.describe(["negativeForms"]), "negative")
+        XCTAssertEqual(InflectionFormNames.describe(["negativeForms", "potentialForms"]), "negative · potential")
+        XCTAssertEqual(InflectionFormNames.describe(["negativePastForms"]), "negative past")
+    }
+
     // Internal stem-recovery labels are dropped, leaving only user-facing forms.
     func testRecoveryLabelsDropped() {
         XCTAssertEqual(InflectionFormNames.describe(["stemRecoveryForms", "teForms"]), "te-form")
