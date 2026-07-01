@@ -362,11 +362,13 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 ## Kanji
 
 - [x] Dedicated kanji discovery tab/screen (`RadicalInputView()` sheet in `WordsView.swift`, "Find kanji by radical" toolbar button)
-- [~] Full kanji metadata support (radicals, readings, components) — Partial (confirmed
-      2026-06-30). `KanjiInfo` carries radical (Kangxi number), stroke count, on/kun readings,
-      meanings, JLPT level, and frequency, all rendered in `KanjiDetailView`. STILL MISSING: a
-      kanji **component/decomposition tree** — `KanjiInfo` has no component field; only radical
-      *search* (`RadicalInputView`) exists, not per-character decomposition.
+- [x] Full kanji metadata support (radicals, readings, components) — Done 2026-07-01.
+      `KanjiInfo` carries radical (Kangxi number), stroke count, on/kun readings, meanings, JLPT
+      level, and frequency; `KanjiDetailView` now also shows a **Components** section listing the
+      kanji's KRADFILE2 decomposition (`DictionaryStore.fetchComponents(for:)` querying the
+      existing `kanji_radicals` table, loaded off-main in `loadWords()`, rendered as chips). A
+      recursive component *tree* is deliberately out of scope — the flat component list is the
+      learner-facing decomposition and matches the data KRADFILE2 provides.
 - [x] Handwriting input and stroke order (Zinnia handwriting recognition + KanjiVG stroke-order animation shipped; radical input also shipped)
 - [x] Kanji of the day feature — Superseded by the Word of the Day system
       (`WordOfTheDayScheduler.swift`, `WordOfTheDayNavigation.swift`, `WOTDDiag.swift`,
