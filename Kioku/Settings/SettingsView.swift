@@ -861,7 +861,8 @@ struct SettingsView: View {
 struct ParticleTagEditor: View {
     @Binding var tags: [String]
     @State private var draft: String = ""
-    @FocusState private var draftFocused: Bool
+    // Plain @State (not @FocusState): JapaneseKeyboardField drives focus through a Bool binding.
+    @State private var draftFocused: Bool = false
 
     var body: some View {
         // FlowLayout (not LazyVGrid) so each chip takes its natural width and wraps — no fixed
@@ -892,12 +893,9 @@ struct ParticleTagEditor: View {
         .background(Capsule().fill(Color(.secondarySystemBackground)))
         .overlay(Capsule().stroke(draftFocused ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.3), lineWidth: 1))
         .overlay {
-            TextField("＋", text: $draft)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-                .focused($draftFocused)
-                .onSubmit { commitDraft() }
-                .font(.subheadline)
+            // Particles are Japanese kana, so default to the Japanese keyboard.
+            JapaneseKeyboardField(text: $draft, isEditing: $draftFocused,
+                                  placeholder: "＋", onSubmit: { commitDraft() })
                 .padding(.horizontal, 8)
         }
         .contentShape(Capsule())

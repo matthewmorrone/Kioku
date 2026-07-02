@@ -468,13 +468,13 @@ own sections.)
 ## Settings
 
 - [x] Adjust ruby typography settings (spacing, padding) — `SettingsView.swift:17` `furiganaGapKey` + sliders for `furiganaGap`, `kerning`, `lineSpacing`
-- [~] Default to Japanese IME where appropriate — Partial 2026-06-30. The custom-reading prompt
-      now defaults to the Japanese keyboard via `JapaneseTextField`
-      (`Kioku/Read/Lookup/JapaneseReadingPrompt.swift`). Still lacking Japanese-IME defaults:
-      list-name fields (`WordsFilterView`/`WordsBatchListView`/`CSVImportView`/`SubtitleImportView`),
-      the particle-tag editor (`SettingsView.swift:885`), and the personal-note field
-      (`WordDetailView`). URL/number fields are correctly exempted (`.keyboardType(.URL/.numberPad)`).
-      A reusable `JapaneseTextField` SwiftUI wrapper applied to these text fields would close it.
+- [x] Default to Japanese IME where appropriate — Done 2026-07-02 (per-field judgment). Added a
+      reusable `JapaneseKeyboardField` (SwiftUI wrapper over the `JapaneseTextField` UIKit subclass;
+      bridges text, an `isEditing`/focus binding, and onSubmit) and applied it to the particle-tag
+      editor in `SettingsView` — the one unambiguously-kana field. **Deliberately NOT applied** to
+      list-name fields or the personal-note field: those are commonly typed in English, so forcing a
+      Japanese keyboard would be worse UX (users switch with the globe key as needed). The
+      custom-reading prompt already defaults to Japanese. URL/number fields stay exempted.
 - [x] Clipboard behavior settings — `ClipboardSettings.swift` defines `autoDetectKey` + `defaultAutoDetect = true`; new "Clipboard" section in `SettingsView` toggles it. `ClipboardLookupCoordinator.checkClipboard()` short-circuits before any pasteboard read when off, so iOS's "Pasted from" notification doesn't fire for users who turn it off. Coordinator's `init(defaults:)` takes an injected `UserDefaults` so the gate is testable; pinned by 4 tests in `ClipboardLookupCoordinatorTests.swift`.
 
 ## Ship Readiness
