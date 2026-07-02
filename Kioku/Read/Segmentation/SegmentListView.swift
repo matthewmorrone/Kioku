@@ -103,9 +103,15 @@ struct SegmentListView: View {
     // separate chips instead of collapsing them to 食べる, unlike the subtitle importer.
     private func recomputeExtractedVocab() {
         let hydratedEdges: [LatticeEdge] = edges.map { edge in
-            guard edge.lemma.isEmpty else { return edge }
             var copy = edge
-            copy.lemma = lemmaForSurface(edge.surface) ?? ""
+            if copy.lemma.isEmpty {
+                copy.lemma = lemmaForSurface(edge.surface) ?? ""
+            }
+            // Restored/persisted-segment notes rebuild their edges from SegmentRange, which carries
+            // neither lemma nor isDictionaryMatch — so the flag defaults false and the extractor's
+            // first guard would skip every edge. Force it on and let the extractor's dictionary
+            // resolution be the real filter (unresolvable surfaces/lemmas are dropped there anyway).
+            copy.isDictionaryMatch = true
             return copy
         }
         let vocab = SubtitleVocabExtractor.extract(fromEdges: hydratedEdges, dictionaryStore: dictionaryStore)
