@@ -142,6 +142,19 @@ struct SegmentListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Switches the row body between the in-order Lines list and the deduped Vocab
+                // checklist (the subtitle-style pick-words picker). Placed above the List so it is
+                // always visible, rather than in the nav bar where principal placement is unreliable.
+                Picker("View mode", selection: $extractMode) {
+                    ForEach(ExtractMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
                 // Displays every active segment in source order.
                 List {
                     ForEach(displayRows, id: \.sourceIndex) { row in
@@ -377,17 +390,6 @@ struct SegmentListView: View {
                     Image(systemName: "chevron.left")
                 }
                 .accessibilityLabel("Back")
-            }
-            ToolbarItem(placement: .principal) {
-                // Switches the row body between the in-order Lines list and the deduped Vocab
-                // checklist. Kept in the nav bar so both bottom-bar filter toggles stay visible.
-                Picker("View mode", selection: $extractMode) {
-                    ForEach(ExtractMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
             }
         }
         // Standard iOS grabber bar at the top of the sheet. Gives the user a
