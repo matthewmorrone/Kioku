@@ -4,7 +4,7 @@ import Foundation
 // deinflection.json, e.g. "teForms", "politeForms") to a short human-readable description of the
 // grammatical form, for display beside the dictionary lemma in the lookup header. Internal
 // stem-recovery steps are omitted — they are mechanical backtracking, not user-facing forms.
-enum InflectionFormNames {
+nonisolated enum InflectionFormNames {
     // Display name per deinflection group label. Labels absent here (the *RecoveryForms internals)
     // are intentionally dropped from the user-facing description.
     private static let displayNames: [String: String] = [
