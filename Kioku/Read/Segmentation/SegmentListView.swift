@@ -82,60 +82,165 @@ struct SegmentListView: View {
     // single-tap save path was already lemma-only (so the toggle's "surface
     // mode" caused divergent semantics between Add All and tap-to-save). The
     // raw conjugation the user clicked is preserved in `encounteredSurfaces`.
-    // Extract-words view mode: the in-order segment list ("Lines"), or a multi-select deduped
-    // vocab checklist ("Vocab") — the subtitle-style "pick words to save" picker, for any note.
+    // Extract-words view mode: the in-order, per-occurrence segment list ("Lines"), or the deduped
+    // vocabulary picker ("Vocab") — the SAME chip-cloud picker the subtitle importer uses, brought to
+    // any note. Vocab mode runs SubtitleVocabExtractor over the current (possibly hand-edited)
+    // segmentation, so it shows each dictionary form once, drops particles, and starts all-selected.
     enum ExtractMode: String, CaseIterable, Identifiable {
         case lines = "Lines", vocab = "Vocab"
         var id: String { rawValue }
     }
     @State private var extractMode: ExtractMode = .lines
-    // Row identities (lemma-first — the same key Add All uses) checked in Vocab mode, for batch save.
-    @State private var selectedVocabIdentities: Set<String> = []
+    // The deduped unique vocab for the current segmentation, plus the canonical entry ids left
+    // selected. Recomputed whenever Vocab mode is entered or the segmentation changes; selection
+    // resets to ALL on each recompute so deselections are always deliberate opt-outs.
+    @State private var extractedVocab: [SubtitleVocabExtractor.ExtractedVocab] = []
+    @State private var selectedVocabIDs: Set<Int64> = []
 
-    // One Vocab-mode row: a tappable multi-select checklist entry for a deduped word, with a small
-    // star hint when it is already saved. Shares row identity with the Lines-mode rows.
+    // Rebuilds the unique-vocab set from the current edges and selects all of it. The segment list's
+    // edges don't carry a resolved lemma (Lines mode looks it up lazily), so hydrate each edge's
+    // lemma first — otherwise the extractor would dedupe by raw surface and split 食べた / 食べる into
+    // separate chips instead of collapsing them to 食べる, unlike the subtitle importer.
+    private func recomputeExtractedVocab() {
+        let hydratedEdges: [LatticeEdge] = edges.map { edge in
+            guard edge.lemma.isEmpty else { return edge }
+            var copy = edge
+            copy.lemma = lemmaForSurface(edge.surface) ?? ""
+            return copy
+        }
+        let vocab = SubtitleVocabExtractor.extract(fromEdges: hydratedEdges, dictionaryStore: dictionaryStore)
+        extractedVocab = vocab
+        selectedVocabIDs = Set(vocab.map { $0.canonicalEntryID })
+    }
+
+    // The deduped vocabulary picker: a scrollable chip cloud mirroring SubtitleImportView's, with a
+    // count + All/None bulk controls above it. Each chip toggles one unique word.
     @ViewBuilder
-    private func vocabRow(_ row: (sourceIndex: Int, edge: LatticeEdge)) -> some View {
-        let identity = normalizedSurfaceForFiltering(resolvedRowSurface(for: row.edge))
-        let isSelected = selectedVocabIdentities.contains(identity)
-        HStack(spacing: 10) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                .font(.system(size: 18))
-            Text(resolvedRowSurface(for: row.edge))
-                .font(.headline)
-            Spacer()
-            if isSavedSurface(normalizedSurface: identity) {
-                Image(systemName: "star.fill")
-                    .font(.caption)
+    private var vocabChipPicker: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Text("\(selectedVocabIDs.count) of \(extractedVocab.count) words selected")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 0)
+                Button("All") {
+                    selectedVocabIDs = Set(extractedVocab.map { $0.canonicalEntryID })
+                }
+                .font(.subheadline)
+                .disabled(selectedVocabIDs.count == extractedVocab.count)
+                Button("None") {
+                    selectedVocabIDs.removeAll()
+                }
+                .font(.subheadline)
+                .disabled(selectedVocabIDs.isEmpty)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+
+            if extractedVocab.isEmpty {
+                Spacer()
+                Text("No dictionary-backed vocabulary in this text.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if isSelected {
-                selectedVocabIdentities.remove(identity)
+                Spacer()
             } else {
-                selectedVocabIdentities.insert(identity)
+                ScrollView {
+                    FlowLayout(spacing: 8) {
+                        ForEach(extractedVocab, id: \.canonicalEntryID) { item in
+                            vocabChip(item)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    // Saves the checked Vocab-mode rows through the shared Add All path, then clears the selection.
-    private func saveSelectedVocab() {
-        let selected = displayRows.filter {
-            selectedVocabIdentities.contains(normalizedSurfaceForFiltering(resolvedRowSurface(for: $0.edge)))
+    // One vocab chip: a capsule of the dictionary form, accent-filled when selected. A leading star
+    // marks words already saved (in any note) so the user can quickly deselect what they know.
+    @ViewBuilder
+    private func vocabChip(_ item: SubtitleVocabExtractor.ExtractedVocab) -> some View {
+        let isOn = selectedVocabIDs.contains(item.canonicalEntryID)
+        let alreadySaved = isSavedSurface(normalizedSurface: normalizedSurfaceForFiltering(item.lemma))
+        Button {
+            if isOn {
+                selectedVocabIDs.remove(item.canonicalEntryID)
+            } else {
+                selectedVocabIDs.insert(item.canonicalEntryID)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if alreadySaved {
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                }
+                Text(item.lemma)
+                    .font(.subheadline)
+            }
+            .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill(isOn ? Color.accentColor.opacity(0.15) : Color(.tertiarySystemFill))
+            )
+            .overlay(
+                Capsule().strokeBorder(
+                    isOn ? Color.accentColor.opacity(0.45) : Color.clear,
+                    lineWidth: 1
+                )
+            )
         }
-        addAllVisibleWords(rows: selected)
-        selectedVocabIdentities.removeAll()
+        .buttonStyle(.plain)
     }
 
-    // Selects every currently-visible Vocab-mode row (the "Select All" affordance).
-    private func selectAllVocab() {
-        selectedVocabIdentities = Set(displayRows.map {
-            normalizedSurfaceForFiltering(resolvedRowSurface(for: $0.edge))
-        })
+    // Saves the selected unique vocab through the SAME merge path as Add All
+    // (commitAddAllVisibleWords), building its inputs straight from the extractor's already-resolved
+    // entry ids — so a Vocab-mode save and an Add All produce identical SavedWord state.
+    private func saveSelectedVocab() {
+        let selected = extractedVocab.filter { selectedVocabIDs.contains($0.canonicalEntryID) }
+        guard selected.isEmpty == false else { return }
+
+        var orderedSurfaces: [String] = []
+        var lookup: [String: Int64] = [:]
+        var encounteredByIdentity: [String: Set<String>] = [:]
+        for item in selected {
+            let identity = normalizedSurfaceForFiltering(item.lemma)
+            guard identity.isEmpty == false else { continue }
+            if lookup[identity] == nil {
+                orderedSurfaces.append(identity)
+            }
+            lookup[identity] = item.canonicalEntryID
+            var encountered = Set(item.encounteredSurfaces.map { normalizedSurfaceForFiltering($0) })
+            encountered.insert(identity)
+            encounteredByIdentity[identity, default: []].formUnion(encountered)
+        }
+
+        // Optimistic star flip for immediate feedback, then the shared merge + persist.
+        withAnimation(.easeOut(duration: 0.2)) {
+            for surface in orderedSurfaces {
+                savedWordSurfaces.insert(surface)
+            }
+        }
+        let addedCount = commitAddAllVisibleWords(
+            orderedSurfaces: orderedSurfaces,
+            lookup: lookup,
+            encounteredByIdentity: encounteredByIdentity
+        )
+
+        addAllFeedbackTask?.cancel()
+        addAllFeedbackTask = Task { @MainActor in
+            addAllFeedbackMessage = addedCount == 0
+                ? "No new words added"
+                : (addedCount == 1 ? "Added 1 word" : "Added \(addedCount) words")
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if Task.isCancelled { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                addAllFeedbackMessage = nil
+            }
+        }
     }
 
     var body: some View {
@@ -154,12 +259,12 @@ struct SegmentListView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 4)
 
+                if extractMode == .vocab {
+                    vocabChipPicker
+                } else {
                 // Displays every active segment in source order.
                 List {
                     ForEach(displayRows, id: \.sourceIndex) { row in
-                        if extractMode == .vocab {
-                            vocabRow(row)
-                        } else {
                         let index = row.sourceIndex
                         let edge = row.edge
                         // Shows segment text with a right-side star toggle and split/merge context actions.
@@ -301,55 +406,42 @@ struct SegmentListView: View {
                 }
 
                 // Keeps basic screen actions available at the bottom.
-                VStack(spacing: 4) {
-                    HStack(spacing: 10) {
-                        optionToggleButton(
-                            title: "duplicates",
-                            isOn: includesDuplicates,
-                            accessibilityLabel: "Include Duplicates"
-                        ) {
-                            includesDuplicates.toggle()
+                VStack(spacing: 8) {
+                    if extractMode == .vocab {
+                        // Vocab mode mirrors the subtitle importer's bottom action: the per-occurrence
+                        // duplicate/particle filters don't apply (the extractor already dedupes and
+                        // drops particles), so it's a single full-width save of the selected words.
+                        Button {
+                            saveSelectedVocab()
+                        } label: {
+                            Text("Save \(selectedVocabIDs.count) Words")
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 34)
                         }
-
-                        optionToggleButton(
-                            title: "particles",
-                            isOn: includesCommonParticles,
-                            accessibilityLabel: "Include Common Particles"
-                        ) {
-                            includesCommonParticles.toggle()
-                        }
-
-                        Spacer(minLength: 0)
-
-                        if extractMode == .vocab {
-                            Button {
-                                selectAllVocab()
-                            } label: {
-                                Text("Select All")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .padding(.horizontal, 12)
-                                    .frame(height: 30)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(selectedVocabIDs.isEmpty)
+                        .accessibilityLabel("Save Selected Words")
+                    } else {
+                        HStack(spacing: 10) {
+                            optionToggleButton(
+                                title: "duplicates",
+                                isOn: includesDuplicates,
+                                accessibilityLabel: "Include Duplicates"
+                            ) {
+                                includesDuplicates.toggle()
                             }
-                            .buttonStyle(.bordered)
-                            .accessibilityLabel("Select All Words")
 
-                            Button {
-                                saveSelectedVocab()
-                            } label: {
-                                Text("Save \(selectedVocabIdentities.count)")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .padding(.horizontal, 12)
-                                    .frame(height: 30)
+                            optionToggleButton(
+                                title: "particles",
+                                isOn: includesCommonParticles,
+                                accessibilityLabel: "Include Common Particles"
+                            ) {
+                                includesCommonParticles.toggle()
                             }
-                            .buttonStyle(.borderedProminent)
-                            .layoutPriority(1)
-                            .disabled(selectedVocabIdentities.isEmpty)
-                            .accessibilityLabel("Save Selected Words")
-                        } else {
+
+                            Spacer(minLength: 0)
+
                             Button {
                                 addAllVisibleWords()
                             } label: {
@@ -396,6 +488,13 @@ struct SegmentListView: View {
             hydrateLemmasForEdgeSurfaces()
             scheduleCanonicalEntryIDHydrationForVisibleRows()
             rebuildSplitMenuCaches()
+            // Keep the vocab chips in sync when the user edits the segmentation while in Vocab mode.
+            if extractMode == .vocab { recomputeExtractedVocab() }
+        }
+        .onChange(of: extractMode) { _, newMode in
+            // Build the deduped vocab lazily on first switch into Vocab mode (and rebuild on re-entry
+            // so it reflects any segmentation edits made in Lines mode).
+            if newMode == .vocab { recomputeExtractedVocab() }
         }
         .onChange(of: latticeEdges.map(\.start)) { _, _ in
             rebuildSplitMenuCaches()
