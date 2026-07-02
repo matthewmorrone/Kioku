@@ -124,12 +124,14 @@ own sections.)
       subtracts `costFrequencyWeight * edge.frequencyScore` from each edge cost
       (`SegmenterScoring.swift:36-47, 165-174`), with surface-then-lemma frequency resolution in
       `Segmenter.swift`. (This is the reason the cost-path segmenter beats greedy.)
-- [ ] Provide meaning of verbs in the form they surface in — still open (verified 2026-06-30,
-      NOT stale). The lookup sheet filters senses by selected reading/kanji, but glosses come
-      straight from JMdict lemma-indexed `sense.glosses`; there's no surface-form-specific gloss
-      annotation. **Closely related to "Name the inflected form" below** — that one *labels* the
-      conjugation ("causative + te-form"); this one *glosses the meaning* in that form. Both are
-      "show inflection info in the lookup UI" and could be done together; neither is in the UI yet.
+- [x] Provide meaning of verbs in the form they surface in — Done 2026-07-02. Rather than
+      fabricate a fully-conjugated English gloss (fragile), added `InflectionFormNames.meaning(_:)`:
+      a short grammatical-effect gloss per deinflection form ("~" = the base verb), e.g.
+      `potentialForms`→"can ~", `negativeForms`→"not ~", with idiomatic merges for common
+      combinations (potential+negative → "can't ~", desire+negative → "don't want to ~",
+      potential+past → "could ~"). `WordDetailView`'s form caption now reads e.g. "potential ·
+      negative  —  can't ~", glossing the surfaced form's meaning beside its name (which the
+      sibling "Name the inflected form" item already surfaces). Pinned by `InflectionFormNamesTests`.
 - [x] **Name the inflected form of a verb surface** — Done 2026-06-30. New
       `InflectionFormNames.describe(_:)` (`Kioku/Dictionary/Deinflection/InflectionFormNames.swift`)
       maps the deinflector's grouped-rule chain labels (camelCase group keys from

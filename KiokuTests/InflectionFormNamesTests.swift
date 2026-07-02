@@ -32,4 +32,17 @@ final class InflectionFormNamesTests: XCTestCase {
         XCTAssertEqual(InflectionFormNames.describe(["stemRecoveryForms"]), "")
         XCTAssertEqual(InflectionFormNames.describe([]), "")
     }
+
+    // The meaning hint merges common combinations idiomatically and joins the rest.
+    func testMeaningMergesAndJoins() {
+        XCTAssertEqual(InflectionFormNames.meaning(["negativeForms", "potentialForms"]), "can't ~")
+        XCTAssertEqual(InflectionFormNames.meaning(["potentialForms"]), "can ~")
+        XCTAssertEqual(InflectionFormNames.meaning(["desireForms", "pastForms"]), "want to ~ · did ~ (past)")
+    }
+
+    // Structural-only chains have no meaning hint.
+    func testMeaningEmptyForStructuralOnly() {
+        XCTAssertEqual(InflectionFormNames.meaning(["irregularForms"]), "")
+        XCTAssertEqual(InflectionFormNames.meaning([]), "")
+    }
 }
