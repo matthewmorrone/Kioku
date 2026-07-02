@@ -158,8 +158,6 @@ struct SettingsView: View {
                     set: { segmentationStrategy = $0 ? .globalLongestMatch : .localLongestMatch }
                 ))
             }
-        } header: {
-            Text("Segmentation")
         }
 
         Section {
@@ -173,8 +171,6 @@ struct SettingsView: View {
                 .buttonStyle(.bordered)
                 .font(.footnote)
             }
-        } header: {
-            Text("Allowed Particles")
         }
 
         Section {
@@ -188,8 +184,6 @@ struct SettingsView: View {
                 .buttonStyle(.bordered)
                 .font(.footnote)
             }
-        } header: {
-            Text("Segmentation Demotions")
         }
 
         // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
@@ -210,8 +204,6 @@ struct SettingsView: View {
             Toggle("Furigana Bisectors", isOn: $debugBisectorFurigana)
             Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)
             Toggle("Karaoke HUD", isOn: $debugKaraokeHUD)
-        } header: {
-            Text("Debug Overlays")
         }
         #endif
 
@@ -305,8 +297,6 @@ struct SettingsView: View {
                     }
 
                     Toggle("Custom Furigana Size", isOn: $customFuriganaSizeEnabled)
-                } header: {
-                    Text("Typography")
                 }
 
                 // MARK: Theme — selects the visual identity (chrome + default token colors) and
@@ -318,8 +308,6 @@ struct SettingsView: View {
                     themePickerMenu
                     customThemeRows
                     customTokenColorRows
-                } header: {
-                    Text("Theme")
                 }
 
                 // MARK: Audio
@@ -331,8 +319,6 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     Toggle("Background Audio", isOn: $backgroundPlayback)
-                } header: {
-                    Text("Audio")
                 }
 
                 // MARK: Word of the Day
@@ -395,8 +381,6 @@ struct SettingsView: View {
                                 .transition(.opacity)
                         }
                     }
-                } header: {
-                    Text("Notifications")
                 }
                 .task {
                     await refreshWotdStatus()
@@ -405,15 +389,11 @@ struct SettingsView: View {
                 // MARK: Clipboard
                 Section {
                     Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
-                } header: {
-                    Text("Clipboard")
                 }
 
                 // MARK: Dictionary — what the word detail screen surfaces.
                 Section {
                     Toggle("Include Archaic & Obscure Readings", isOn: $includeArchaicReadings)
-                } header: {
-                    Text("Dictionary")
                 } footer: {
                     Text("When a kanji word has several readings (e.g. 抱く → いだく / だく), show the archaic or obscure ones too. Off by default so the reading switcher sticks to everyday readings.")
                 }
@@ -425,8 +405,6 @@ struct SettingsView: View {
                             Text(engine.displayName).tag(engine.rawValue)
                         }
                     }
-                } header: {
-                    Text("Transcription")
                 } footer: {
                     if transcriptionEngine == TranscriptionEngine.whisper.rawValue {
                         Text("On-device Whisper (Small) downloads ~466 MB on first use and is slower than Apple Speech, but holds up better on noisy or sung audio. Forced alignment is unaffected and stays on the Base model.")
@@ -464,8 +442,6 @@ struct SettingsView: View {
                             Stepper("Correct in a row: \(autoLearnStreak)", value: $autoLearnStreak, in: 1...20)
                         }
                     }
-                } header: {
-                    Text("Learning")
                 } footer: {
                     Text("When on, a word is automatically marked learned (checkbox) once it clears this bar in flashcard reviews. You can always mark words by hand by long-pressing any star.")
                 }
@@ -522,8 +498,6 @@ struct SettingsView: View {
                     } label: {
                         Label("Reset", systemImage: "trash")
                     }
-                } header: {
-                    Text("Data")
                 }
             }
             .scrollDismissesKeyboard(.interactively)
