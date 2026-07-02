@@ -154,6 +154,7 @@ struct SegmentListView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 4)
                 }
+                .frame(maxWidth: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -256,8 +257,7 @@ struct SegmentListView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+                .padding(.top, 20)
 
                 if extractMode == .vocab {
                     vocabChipPicker
