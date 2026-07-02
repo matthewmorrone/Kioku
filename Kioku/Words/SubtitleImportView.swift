@@ -132,8 +132,22 @@ struct SubtitleImportView: View {
                 }
             } else {
                 Text("\(cueCount) subtitle lines")
-                Text("\(selectedVocabIDs.count) of \(extracted.count) vocabulary words to save")
-                    .fontWeight(.semibold)
+                HStack(spacing: 12) {
+                    Text("\(selectedVocabIDs.count) of \(extracted.count) vocabulary words to save")
+                        .fontWeight(.semibold)
+                    Spacer(minLength: 0)
+                    // The picker defaults to everything on, so "None" lets the user clear it and
+                    // hand-pick a few; "All" restores the default afterward.
+                    Button("All") {
+                        selectedVocabIDs = Set(extracted.map { $0.canonicalEntryID })
+                    }
+                    .disabled(selectedVocabIDs.count == extracted.count)
+                    Button("None") {
+                        selectedVocabIDs.removeAll()
+                    }
+                    .disabled(selectedVocabIDs.isEmpty)
+                }
+                .font(.subheadline)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
