@@ -304,11 +304,16 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
       selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
       correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
-- [ ] **Karaoke accuracy mode** — record the user singing along, score how closely they matched
-      the lyrics; ties into the existing lyric-alignment pipeline (from app-usage backlog
-      2026-07-01). Needs grilling: what "accuracy" means (timing vs pitch vs pronunciation),
-      on-device ASR vs alignment-only, privacy of the recording, scoring/feedback UX. Larger than
-      the kanji game; leans on SwiftWhisperAlign + AudioPlaybackController.
+- [ ] **Karaoke vocab-probe mode** — planned 2026-07-02, spec'd via grilling. Reframed from a
+      karaoke "score" into a **vocabulary probe**: sing over the instrumental, transcribe per
+      section, and surface which *content words* you produced (known) vs missed (study
+      candidates). Decisions: words-only (no pitch/timing); play HTDemucs instrumental
+      (mix−vocals subtraction, cache both stems); per-section (♪/gap boundaries); post-hoc
+      scoring; kana/mora word matching; content-words-only; a "Sing" mode inside `LyricsView`;
+      transient recording; generate stem on demand; missed words → save/study, no SRS
+      auto-mutation. **Full implementation plan (4 phases, TDD):**
+      `docs/superpowers/plans/2026-07-02-karaoke-vocab-probe.md`. Large multi-part build —
+      pick up in a dedicated session.
 - [ ] **Note learning-coverage screen** — a per-note view that organizes all words in a note
       first by **level** (JLPT N5…N1, plus an unknown/no-level bucket), then within each level by
       **how well studied** (study mastery, e.g. New / Learning / Due / Learned from the SRS state
