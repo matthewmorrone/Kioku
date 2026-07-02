@@ -8,6 +8,44 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ---
 
+## Major Feature Additions
+
+Substantial net-new capabilities, pulled out of the per-area sections below so the big
+builds are visible at a glance. (Bug-fixes, polish, correctness, and infra stay in their
+own sections.)
+
+- [ ] **In-place context menu on the Read tab** — offer a lightweight context menu anchored
+      at the tapped word for quick actions, instead of always presenting the full lookup
+      sheet. Build it first; decide replace-vs-additional (tap→menu vs long-press→menu +
+      tap→sheet) after evaluating how it looks and feels.
+- [ ] Quiz on next and previous words/lines
+- [ ] Add manual/custom word creation and editing
+- [ ] **Real-time kanji-choice game mode** — pick the correct kanji as fast as possible; score
+      on speed + accuracy in near-real-time (from app-usage backlog 2026-07-01). Needs a design
+      pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
+      selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
+      correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
+- [ ] **Karaoke vocab-probe mode** — planned 2026-07-02, spec'd via grilling. Reframed from a
+      karaoke "score" into a **vocabulary probe**: sing over the instrumental, transcribe per
+      section, and surface which *content words* you produced (known) vs missed (study
+      candidates). Decisions: words-only (no pitch/timing); play HTDemucs instrumental
+      (mix−vocals subtraction, cache both stems); per-section (♪/gap boundaries); post-hoc
+      scoring; kana/mora word matching; content-words-only; a "Sing" mode inside `LyricsView`;
+      transient recording; generate stem on demand; missed words → save/study, no SRS
+      auto-mutation. **Full implementation plan (4 phases, TDD):**
+      `docs/superpowers/plans/2026-07-02-karaoke-vocab-probe.md`. Large multi-part build —
+      pick up in a dedicated session.
+- [ ] **Note learning-coverage screen** — a per-note view that organizes all words in a note
+      first by **level** (JLPT N5…N1, plus an unknown/no-level bucket), then within each level by
+      **how well studied** (study mastery, e.g. New / Learning / Due / Learned from the SRS state
+      in `ReviewStore`/`ReviewWordStats`). Goal: a visible progress surface to work toward full
+      learning coverage of a note (e.g. per-level "12/18 learned" bars, a note-wide coverage %).
+      Data is already available — words-in-note via `sourceNoteIDs`, JLPT via
+      `dictionaryStore.jlptLevel(for:)`, mastery via `reviewStore` (`isLearned`/`isDue`/`stats`).
+      Open design Qs: where it lives (Read-tab note action vs Words-tab note scope vs Learn tab),
+      what the mastery buckets are exactly, and whether tapping a bucket starts a study session
+      scoped to it. Brainstorm before building.
+
 ## Regression watch
 
 - [x] **Re-wire the four kanji-discovery entry points on the Words tab** — Done 2026-06-04.
@@ -175,11 +213,6 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
       (nav/tab-bar-excluded) read viewport, so words tapped in the 50–64% band landed behind the
       sheet. Raised the cap to 0.72 so the 0.64 estimate governs while still guarding against
       degenerate over-reservation (`ReadView+SheetSelection.swift`).
-- [ ] **In-place context menu on the Read tab** — offer a lightweight context menu anchored
-      at the tapped word for quick actions, instead of always presenting the full lookup
-      sheet. Build it first; decide replace-vs-additional (tap→menu vs long-press→menu +
-      tap→sheet) after evaluating how it looks and feels.
-- [ ] Quiz on next and previous words/lines
 - [ ] **Unify the two LLM call paths into a single merged, context-sharing call** —
       today `Kioku/Read/LLM/LLMCorrectionService.swift` (segmentation/reading correction)
       and `Kioku/Learn/Songs/SongBreakdownService.swift` (per-line breakdown) are two
@@ -245,7 +278,6 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 - [x] CSV import: flexible parsing (`CSVImport.swift` `parseItems()` handles varied column layouts)
 - [x] List conjugations in dictionary view (`WordDetailView.swift:33-34` + `ConjugationSheetView.swift`)
 - [x] Variants section in WordDetail: list all kanji and kana forms of the entry, labeled, separate from the saved surface (`WordDetailView.swift:4`)
-- [ ] Add manual/custom word creation and editing
 - [x] Deduplicate example sentences — `Kioku/Dictionary/SentencePairDedup.swift` normalizes (trim, strip wrapping quote pair, strip trailing sentence-final punctuation) then dedupes preserving order. Wired into both `fetchSentencePairs` (replaces the prior exact-string `seenJapanese` set, now catches Tatoeba near-duplicates across priority terms) and `searchSentences` (which had no dedup at all). Pinned by 7 tests in `SentencePairDedupTests.swift`.
 - [x] Custom reading popup is prefilled — `SurfaceSheetViewController.presentCustomReadingAlert()` sets `field.text = self.displayedReading()` at line 212, so the prompt opens with the current reading already in the field.
 - [x] Custom reading popup should default to Japanese keyboard — Done 2026-06-30. Replaced the
@@ -299,31 +331,6 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 ## Study & Review
 
-- [ ] **Real-time kanji-choice game mode** — pick the correct kanji as fast as possible; score
-      on speed + accuracy in near-real-time (from app-usage backlog 2026-07-01). Needs a design
-      pass (grilling) before building: question source (saved words? by JLPT/frequency?), distractor
-      selection, timer/scoring model, round length, how it ties into `ReviewStore` (does a fast
-      correct answer count as a review?). Sits alongside the existing MultipleChoiceView.
-- [ ] **Karaoke vocab-probe mode** — planned 2026-07-02, spec'd via grilling. Reframed from a
-      karaoke "score" into a **vocabulary probe**: sing over the instrumental, transcribe per
-      section, and surface which *content words* you produced (known) vs missed (study
-      candidates). Decisions: words-only (no pitch/timing); play HTDemucs instrumental
-      (mix−vocals subtraction, cache both stems); per-section (♪/gap boundaries); post-hoc
-      scoring; kana/mora word matching; content-words-only; a "Sing" mode inside `LyricsView`;
-      transient recording; generate stem on demand; missed words → save/study, no SRS
-      auto-mutation. **Full implementation plan (4 phases, TDD):**
-      `docs/superpowers/plans/2026-07-02-karaoke-vocab-probe.md`. Large multi-part build —
-      pick up in a dedicated session.
-- [ ] **Note learning-coverage screen** — a per-note view that organizes all words in a note
-      first by **level** (JLPT N5…N1, plus an unknown/no-level bucket), then within each level by
-      **how well studied** (study mastery, e.g. New / Learning / Due / Learned from the SRS state
-      in `ReviewStore`/`ReviewWordStats`). Goal: a visible progress surface to work toward full
-      learning coverage of a note (e.g. per-level "12/18 learned" bars, a note-wide coverage %).
-      Data is already available — words-in-note via `sourceNoteIDs`, JLPT via
-      `dictionaryStore.jlptLevel(for:)`, mastery via `reviewStore` (`isLearned`/`isDue`/`stats`).
-      Open design Qs: where it lives (Read-tab note action vs Words-tab note scope vs Learn tab),
-      what the mastery buckets are exactly, and whether tapping a bucket starts a study session
-      scoped to it. Brainstorm before building.
 - [x] Spaced repetition scheduling — basic streak-based SRS shipped (`SRSScheduler.swift` + `ReviewWordStats.swift`: due dates, `consecutiveCorrect`, interval ladder). FSRS-style ease-factor algorithm is a possible future upgrade, not yet implemented.
 - [x] Auto clipboard paste/search (`ClipboardLookupCoordinator.swift`, wired in `ContentView.swift`)
 - [x] **Restore the kana chart as a Learn tab** — Done 2026-06-04. Brought back the
@@ -414,10 +421,6 @@ Last consolidated: 2026-05-25 (merged `infra-backlog.md` and `test-failures.md` 
 
 - [x] Expand karaoke alignment benchmark dataset and add CI evaluation job
       (`AlignmentQualityTests.swift` runs in `tests.yml`; 16 SailorMoon songs aligned via stable-ts large-v3)
-- [~] Native human audio pronunciation dataset support (beyond TTS) — Deprioritized (don't-care
-      2026-06-30). Groundwork now exists: the Human Japanese dataset carries per-word
-      `SoundFilePath` audio keys (in the `human-japanese` project's `hj.db`/`hj.tsv`), a candidate
-      seed if revisited. Not actively pursued.
 - [x] Vocal-vs-instrumental detection — Addressed at alignment time rather than via real-time
       Sound Analysis. `SwiftWhisperAlign`'s `NonSpeechDetector` + `AlignmentNonSpeechCueBuilder`
       detect audible-non-vocal gaps and build the ♪ cues, and onsets are clamped to vocal at
