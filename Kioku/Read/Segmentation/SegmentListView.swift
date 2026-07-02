@@ -2,7 +2,6 @@ import SwiftUI
 
 // Renders the segment-management screen for all current paste-area segments.
 struct SegmentListView: View {
-    @Environment(\.dismiss) private var dismiss
     // Injected so that save/unsave operations trigger a refresh in WordsView without duplicating storage logic.
     @EnvironmentObject var wordsStore: WordsStore
     // Re-injected on the WordDetailView sheet below so list-membership UI inside the detail screen
@@ -379,17 +378,6 @@ struct SegmentListView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(Color(.secondarySystemBackground))
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                // Dismisses the segment list sheet without depending on scroll-position gesture handoff.
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .accessibilityLabel("Back")
             }
         }
         // Standard iOS grabber bar at the top of the sheet. Gives the user a
