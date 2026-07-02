@@ -502,11 +502,17 @@ own sections.)
       `@State`/`@AppStorage`, content unchanged). The main screen keeps everything user-facing —
       Typography, Theme, Audio, Notifications/WOTD, Clipboard, Dictionary, Transcription, Learning,
       About, Data.
-- [~] Accessibility pass — Partial (re-confirmed 2026-06-30). VoiceOver labels are well covered
-      (79× `.accessibilityLabel`), and `@ScaledMetric` is used in one place (`ClozeStudyView.swift:11-13`,
-      blank sizing relative to `.title3`). But Dynamic Type adoption is essentially absent app-wide —
-      text sizing elsewhere is driven only by the manual typography sliders, not the system Dynamic
-      Type trait — and a contrast audit still remains.
+- [~] Accessibility pass — Partial; **audited 2026-07-02** (findings recorded so it's now scoped,
+      not vague). VoiceOver labels are well covered (79× `.accessibilityLabel`); `@ScaledMetric` is
+      used in `ClozeStudyView`. **Good news:** there are **no Dynamic Type *caps*** anywhere
+      (`grep dynamicTypeSize(` / sizeCategory overrides = 0) — the app never actively blocks the
+      user's text-size setting. **Remaining work:** **96 fixed-size fonts** (`.font(.system(size:))`)
+      that don't scale, concentrated in `LyricsView.swift` (23), `ReadView+Toolbar.swift` (11),
+      `SubtitleEditorSheet.swift` (7), `WordsView+ListContent`/`ReadView+SubtitleSubmission`/`NotesView`
+      (5 each) — mostly toolbar icons + some labels; plus a contrast audit. Deliberately **not**
+      swept blind: converting 96 sites risks breaking tuned layouts at large accessibility sizes with
+      no way to visually verify headless. Needs an on-device pass (run at the largest Dynamic Type
+      size, fix per view) — the reading *content* stays on the manual typography sliders by design.
 - [~] App Store packaging artifacts and release QA checklist — Checklist done 2026-07-01:
       `docs/RELEASE.md` is the pre-submission gate (repo state, CI gates, version bump, a
       manual core-loop QA smoke, archive/upload, TestFlight on the iOS-18 floor, submit,
