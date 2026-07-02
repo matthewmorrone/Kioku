@@ -31,6 +31,9 @@ enum AudioTranscriptionService {
         onProgress: (@Sendable (Double) -> Void)? = nil,
         onStatus: (@Sendable (String) -> Void)? = nil
     ) async throws -> [SubtitleCue] {
+        // Keep on-device stemming + transcription running if the user backgrounds the app mid-run.
+        let bg = await BackgroundTaskHolder.begin("kioku.transcribe")
+        defer { bg.endDetached() }
         switch engine {
         case .qwen3:
             return try await qwen3(url: url, isolateVocals: isolateVocals, onProgress: onProgress, onStatus: onStatus)

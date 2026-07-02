@@ -216,8 +216,8 @@ enum OnDeviceLyricAligner {
         // SIGKILLs it (RUNNINGBOARD 0xDEAD10CC) for holding a resource lock while
         // suspending. This buys the seconds the on-device compute needs.
         #if canImport(UIKit)
-        let bgTask = await beginAlignmentActivity()
-        defer { Task { @MainActor in endAlignmentActivity(bgTask) } }
+        let bg = await BackgroundTaskHolder.begin("kioku.lyric-alignment")
+        defer { bg.endDetached() }
         #endif
 
         // DTW (Whisper cross-attention) collapsed on full songs (~101s median error
@@ -276,8 +276,8 @@ enum OnDeviceLyricAligner {
         let input = AlignmentInput(audioURL: audioURL, lines: lines)
 
         #if canImport(UIKit)
-        let bgTask = await beginAlignmentActivity()
-        defer { Task { @MainActor in endAlignmentActivity(bgTask) } }
+        let bg = await BackgroundTaskHolder.begin("kioku.lyric-alignment")
+        defer { bg.endDetached() }
         #endif
 
         let result = try await CTCForcedAligner().align(
@@ -290,21 +290,6 @@ enum OnDeviceLyricAligner {
         logger.info("alignment complete (detailed): \(result.lines.count) lines")
         return result
     }
-
-    #if canImport(UIKit)
-    // Requests background execution time so a backgrounded alignment isn't suspended
-    // (and SIGKILLed) mid-run. Returns .invalid if unavailable.
-    @MainActor
-    private static func beginAlignmentActivity() -> UIBackgroundTaskIdentifier {
-        UIApplication.shared.beginBackgroundTask(withName: "kioku.lyric-alignment")
-    }
-
-    // Ends the background-task assertion. Safe no-op for .invalid.
-    @MainActor
-    private static func endAlignmentActivity(_ id: UIBackgroundTaskIdentifier) {
-        if id != .invalid { UIApplication.shared.endBackgroundTask(id) }
-    }
-    #endif
 
     // Re-aligns a SINGLE lyric line against a bounded window of the audio, returning the
     // line-level timing plus per-token checkpoints. Backs the lyric view's in-place "fix

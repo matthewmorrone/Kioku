@@ -16,6 +16,9 @@ final class LLMCorrectionService {
         dictionary: DictionaryStore? = nil,
         onPartial: (@Sendable @MainActor (LLMCorrectionResponse) -> Void)? = nil
     ) async throws -> LLMCorrectionResponse {
+        // Keep the LLM round-trip alive if the user backgrounds the app while it's in flight.
+        let bg = await BackgroundTaskHolder.begin("kioku.llm.correction")
+        defer { bg.endDetached() }
         let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
 
         // Stub mode: parse the hand-corrected compact response without any API call.

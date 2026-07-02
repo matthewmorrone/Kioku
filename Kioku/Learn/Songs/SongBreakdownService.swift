@@ -38,6 +38,9 @@ final class SongBreakdownService {
     // Emits NSLog messages at every milestone so the user can watch progress in Console.app /
     // device logs when the call is slow (the LLM round-trip is opaque otherwise).
     func generate(noteID: UUID, lyrics: String) async throws -> SongBreakdown {
+        // Keep the (often multi-minute) song-breakdown LLM call alive across app backgrounding.
+        let bg = await BackgroundTaskHolder.begin("kioku.llm.songBreakdown")
+        defer { bg.endDetached() }
         let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
         let hash = SongBreakdownService.sha256(lyrics)
         let startedAt = Date()
