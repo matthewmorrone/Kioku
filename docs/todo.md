@@ -483,7 +483,13 @@ own sections.)
 - [x] Add explicit pre-import confirmation for backup restore
 - [x] Progressive disclosure in dictionary detail UI (`DisclosureGroup` in `WordsView+Search.swift`, `SongLineCard.swift`)
 - [ ] Add UI smoke tests for core user loop (notes, lookup/save, study, backup)
-- [ ] Split Settings into Basic vs Advanced (move advanced controls behind secondary screen)
+- [x] Split Settings into Basic vs Advanced — Done 2026-07-02. The clearly-technical block
+      (Segmentation engine/tuning, Allowed Particles, Segmentation Demotions, AI Correction, Debug
+      Overlays, Bridge) now lives behind an **"Advanced"** `NavigationLink` in `SettingsView`,
+      extracted verbatim into a `advancedSettings` `@ViewBuilder` on the same struct (shares all
+      `@State`/`@AppStorage`, content unchanged). The main screen keeps everything user-facing —
+      Typography, Theme, Audio, Notifications/WOTD, Clipboard, Dictionary, Transcription, Learning,
+      About, Data.
 - [~] Accessibility pass — Partial (re-confirmed 2026-06-30). VoiceOver labels are well covered
       (79× `.accessibilityLabel`), and `@ScaledMetric` is used in one place (`ClozeStudyView.swift:11-13`,
       blank sizing relative to `.title3`). But Dynamic Type adoption is essentially absent app-wide —
