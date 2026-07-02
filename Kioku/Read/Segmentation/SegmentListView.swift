@@ -83,12 +83,71 @@ struct SegmentListView: View {
     // single-tap save path was already lemma-only (so the toggle's "surface
     // mode" caused divergent semantics between Add All and tap-to-save). The
     // raw conjugation the user clicked is preserved in `encounteredSurfaces`.
+    // Extract-words view mode: the in-order segment list ("Lines"), or a multi-select deduped
+    // vocab checklist ("Vocab") — the subtitle-style "pick words to save" picker, for any note.
+    enum ExtractMode: String, CaseIterable, Identifiable {
+        case lines = "Lines", vocab = "Vocab"
+        var id: String { rawValue }
+    }
+    @State private var extractMode: ExtractMode = .lines
+    // Row identities (lemma-first — the same key Add All uses) checked in Vocab mode, for batch save.
+    @State private var selectedVocabIdentities: Set<String> = []
+
+    // One Vocab-mode row: a tappable multi-select checklist entry for a deduped word, with a small
+    // star hint when it is already saved. Shares row identity with the Lines-mode rows.
+    @ViewBuilder
+    private func vocabRow(_ row: (sourceIndex: Int, edge: LatticeEdge)) -> some View {
+        let identity = normalizedSurfaceForFiltering(resolvedRowSurface(for: row.edge))
+        let isSelected = selectedVocabIdentities.contains(identity)
+        HStack(spacing: 10) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                .font(.system(size: 18))
+            Text(resolvedRowSurface(for: row.edge))
+                .font(.headline)
+            Spacer()
+            if isSavedSurface(normalizedSurface: identity) {
+                Image(systemName: "star.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isSelected {
+                selectedVocabIdentities.remove(identity)
+            } else {
+                selectedVocabIdentities.insert(identity)
+            }
+        }
+    }
+
+    // Saves the checked Vocab-mode rows through the shared Add All path, then clears the selection.
+    private func saveSelectedVocab() {
+        let selected = displayRows.filter {
+            selectedVocabIdentities.contains(normalizedSurfaceForFiltering(resolvedRowSurface(for: $0.edge)))
+        }
+        addAllVisibleWords(rows: selected)
+        selectedVocabIdentities.removeAll()
+    }
+
+    // Selects every currently-visible Vocab-mode row (the "Select All" affordance).
+    private func selectAllVocab() {
+        selectedVocabIdentities = Set(displayRows.map {
+            normalizedSurfaceForFiltering(resolvedRowSurface(for: $0.edge))
+        })
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Displays every active segment in source order.
                 List {
                     ForEach(displayRows, id: \.sourceIndex) { row in
+                        if extractMode == .vocab {
+                            vocabRow(row)
+                        } else {
                         let index = row.sourceIndex
                         let edge = row.edge
                         // Shows segment text with a right-side star toggle and split/merge context actions.
@@ -225,6 +284,7 @@ struct SegmentListView: View {
                                 }
                             }
                         }
+                        }
                     }
                 }
 
@@ -249,19 +309,49 @@ struct SegmentListView: View {
 
                         Spacer(minLength: 0)
 
-                        Button {
-                            addAllVisibleWords()
-                        } label: {
-                            Text("Add All")
-                                .font(.system(size: 13, weight: .semibold))
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .padding(.horizontal, 12)
-                                .frame(height: 30)
+                        if extractMode == .vocab {
+                            Button {
+                                selectAllVocab()
+                            } label: {
+                                Text("Select All")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 30)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel("Select All Words")
+
+                            Button {
+                                saveSelectedVocab()
+                            } label: {
+                                Text("Save \(selectedVocabIdentities.count)")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 30)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .layoutPriority(1)
+                            .disabled(selectedVocabIdentities.isEmpty)
+                            .accessibilityLabel("Save Selected Words")
+                        } else {
+                            Button {
+                                addAllVisibleWords()
+                            } label: {
+                                Text("Add All")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 30)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .layoutPriority(1)
+                            .accessibilityLabel("Add All Visible Words")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .layoutPriority(1)
-                        .accessibilityLabel("Add All Visible Words")
                     }
 
                     if let addAllFeedbackMessage {
@@ -287,6 +377,17 @@ struct SegmentListView: View {
                     Image(systemName: "chevron.left")
                 }
                 .accessibilityLabel("Back")
+            }
+            ToolbarItem(placement: .principal) {
+                // Switches the row body between the in-order Lines list and the deduped Vocab
+                // checklist. Kept in the nav bar so both bottom-bar filter toggles stay visible.
+                Picker("View mode", selection: $extractMode) {
+                    ForEach(ExtractMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
             }
         }
         // Standard iOS grabber bar at the top of the sheet. Gives the user a
