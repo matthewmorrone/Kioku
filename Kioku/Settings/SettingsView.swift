@@ -131,6 +131,93 @@ struct SettingsView: View {
     @State private var isClearingCaches = false
     @State private var isShowingClearCachesConfirmation = false
 
+    // Advanced settings — segmentation engine/tuning, AI correction, debug overlays, and the dev
+    // bridge — pushed off the main Settings screen via the "Advanced" link. Same struct, so it
+    // shares every @State/@AppStorage; the sections are unchanged from their former inline position.
+    @ViewBuilder
+    private var advancedSettings: some View {
+        // MARK: Segmentation — engine, then the two tuning chip-editors.
+        Section {
+            Picker("Engine", selection: $segmenterBackend) {
+                ForEach(SegmenterBackend.allCases, id: \.rawValue) { backend in
+                    Text(backend.displayName).tag(backend.rawValue)
+                }
+            }
+
+            if segmenterBackend == SegmenterBackend.mecab.rawValue {
+                Picker("Dictionary", selection: $mecabDictionary) {
+                    ForEach(MeCabDictionary.allCases, id: \.rawValue) { dict in
+                        Text(dict.displayName).tag(dict.rawValue)
+                    }
+                }
+            }
+
+            if segmenterBackend == SegmenterBackend.trie.rawValue {
+                Toggle("Global longest-match (experimental)", isOn: Binding(
+                    get: { segmentationStrategy == .globalLongestMatch },
+                    set: { segmentationStrategy = $0 ? .globalLongestMatch : .localLongestMatch }
+                ))
+            }
+        } header: {
+            Text("Segmentation")
+        }
+
+        Section {
+            ParticleTagEditor(tags: particlesBinding)
+            HStack {
+                Spacer()
+                Button("Reset to Defaults") {
+                    ParticleSettings.reset()
+                    particlesRaw = ParticleSettings.defaultRawValue
+                }
+                .buttonStyle(.bordered)
+                .font(.footnote)
+            }
+        } header: {
+            Text("Allowed Particles")
+        }
+
+        Section {
+            ParticleTagEditor(tags: demotionsBinding)
+            HStack {
+                Spacer()
+                Button("Reset to Defaults") {
+                    SegmentationDemotions.reset()
+                    demotionsRaw = SegmentationDemotions.defaultRawValue
+                }
+                .buttonStyle(.bordered)
+                .font(.footnote)
+            }
+        } header: {
+            Text("Segmentation Demotions")
+        }
+
+        // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
+        aiCorrectionSection
+
+        #if DEBUG
+        // MARK: Debug overlays — hidden in release builds.
+        Section {
+            Toggle("Pixel Ruler", isOn: $debugPixelRuler)
+            Toggle("Furigana Rects", isOn: $debugFuriganaRects)
+            Toggle("Headword Rects", isOn: $debugHeadwordRects)
+            Toggle("Envelope Rects", isOn: $debugEnvelopeRects)
+            Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
+            Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
+            Toggle("Headword Line Numbers (L#)", isOn: $debugHeadwordLineNumbers)
+            Toggle("Ruby Line Numbers (R#)", isOn: $debugRubyLineNumbers)
+            Toggle("Headword Bisectors", isOn: $debugBisectorHeadword)
+            Toggle("Furigana Bisectors", isOn: $debugBisectorFurigana)
+            Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)
+            Toggle("Karaoke HUD", isOn: $debugKaraokeHUD)
+        } header: {
+            Text("Debug Overlays")
+        }
+        #endif
+
+        BridgeSettingsSection(bridgeServer: bridgeServer)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -383,88 +470,18 @@ struct SettingsView: View {
                     Text("When on, a word is automatically marked learned (checkbox) once it clears this bar in flashcard reviews. You can always mark words by hand by long-pressing any star.")
                 }
 
-                // MARK: Segmentation — engine, then the two tuning chip-editors.
+                // MARK: Advanced — segmentation engine/tuning, AI correction, debug overlays, and
+                // the dev bridge, moved off the main screen to keep it focused. See advancedSettings.
                 Section {
-                    Picker("Engine", selection: $segmenterBackend) {
-                        ForEach(SegmenterBackend.allCases, id: \.rawValue) { backend in
-                            Text(backend.displayName).tag(backend.rawValue)
-                        }
+                    NavigationLink {
+                        Form { advancedSettings }
+                            .scrollDismissesKeyboard(.interactively)
+                            .washiBackground()
+                            .navigationTitle("Advanced")
+                    } label: {
+                        Label("Advanced", systemImage: "gearshape.2")
                     }
-
-                    if segmenterBackend == SegmenterBackend.mecab.rawValue {
-                        Picker("Dictionary", selection: $mecabDictionary) {
-                            ForEach(MeCabDictionary.allCases, id: \.rawValue) { dict in
-                                Text(dict.displayName).tag(dict.rawValue)
-                            }
-                        }
-                    }
-
-                    if segmenterBackend == SegmenterBackend.trie.rawValue {
-                        Toggle("Global longest-match (experimental)", isOn: Binding(
-                            get: { segmentationStrategy == .globalLongestMatch },
-                            set: { segmentationStrategy = $0 ? .globalLongestMatch : .localLongestMatch }
-                        ))
-                    }
-                } header: {
-                    Text("Segmentation")
                 }
-
-                Section {
-                    ParticleTagEditor(tags: particlesBinding)
-                    HStack {
-                        Spacer()
-                        Button("Reset to Defaults") {
-                            ParticleSettings.reset()
-                            particlesRaw = ParticleSettings.defaultRawValue
-                        }
-                        .buttonStyle(.bordered)
-                        .font(.footnote)
-                    }
-                } header: {
-                    Text("Allowed Particles")
-                }
-
-                Section {
-                    ParticleTagEditor(tags: demotionsBinding)
-                    HStack {
-                        Spacer()
-                        Button("Reset to Defaults") {
-                            SegmentationDemotions.reset()
-                            demotionsRaw = SegmentationDemotions.defaultRawValue
-                        }
-                        .buttonStyle(.bordered)
-                        .font(.footnote)
-                    }
-                } header: {
-                    Text("Segmentation Demotions")
-                }
-
-                // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
-                aiCorrectionSection
-
-                #if DEBUG
-                // MARK: Debug overlays — hidden in release builds.
-                Section {
-                    Toggle("Pixel Ruler", isOn: $debugPixelRuler)
-                    Toggle("Furigana Rects", isOn: $debugFuriganaRects)
-                    Toggle("Headword Rects", isOn: $debugHeadwordRects)
-                    Toggle("Envelope Rects", isOn: $debugEnvelopeRects)
-                    Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
-                    Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
-                    Toggle("Headword Line Numbers (L#)", isOn: $debugHeadwordLineNumbers)
-                    Toggle("Ruby Line Numbers (R#)", isOn: $debugRubyLineNumbers)
-                    Toggle("Headword Bisectors", isOn: $debugBisectorHeadword)
-                    Toggle("Furigana Bisectors", isOn: $debugBisectorFurigana)
-                    Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)
-                    Toggle("Karaoke HUD", isOn: $debugKaraokeHUD)
-                    // Toggle hidden — CoreText is now the only renderer.
-                    // Toggle("Use CoreText Renderer (experimental)", isOn: $useCoreTextRenderer)
-                } header: {
-                    Text("Debug Overlays")
-                }
-                #endif
-
-                BridgeSettingsSection(bridgeServer: bridgeServer)
 
                 Section {
                     NavigationLink {
