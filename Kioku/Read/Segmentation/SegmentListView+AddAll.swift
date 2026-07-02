@@ -6,8 +6,10 @@ extension SegmentListView {
     // Stages the visible row surfaces for save with a paced UI: small batches stagger
     // star fade-ins, large batches flip stars at once and rely on a "Saving…" indicator
     // while persistence runs.
-    func addAllVisibleWords() {
-        let rows = displayRows
+    func addAllVisibleWords(rows overrideRows: [(sourceIndex: Int, edge: LatticeEdge)]? = nil) {
+        // Defaults to every visible row ("Add All"); Vocab mode passes only the checked rows so
+        // the exact same dedup/hydrate/commit path saves both — no divergent save semantics.
+        let rows = overrideRows ?? displayRows
         guard rows.isEmpty == false else {
             return
         }
