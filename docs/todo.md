@@ -482,7 +482,19 @@ own sections.)
 - [x] Hide/gate debug section and diagnostic toggles from release builds
 - [x] Add explicit pre-import confirmation for backup restore
 - [x] Progressive disclosure in dictionary detail UI (`DisclosureGroup` in `WordsView+Search.swift`, `SongLineCard.swift`)
-- [ ] Add UI smoke tests for core user loop (notes, lookup/save, study, backup)
+- [~] Add UI smoke tests for core user loop (notes, lookup/save, study, backup) — Core-loop
+      *integration* smoke test added 2026-07-02: `CoreLoopSmokeTests` threads the real stores end
+      to end — create a note (`NotesStore`), save a word attributed to it
+      (`WordsStore`, `SavedWord.sourceNoteIDs`), record a review (`ReviewStore`), then assert
+      cross-store consistency AND survival across fresh store instances (the persistence guarantee
+      backup/restore relies on; backup encode/validate also has `AppBackupValidatorTests`). This
+      catches the integration regressions a per-store unit test can't. STILL OPEN: true **XCUITest
+      UI automation** (driving the actual UI) needs a separate UITest *target* added in Xcode —
+      out of reach from a headless `xcodebuild` edit here.
+      - Also fixed a latent break this surfaced: `InflectionFormNames` is now `nonisolated` (it was
+        implicitly `@MainActor` under the module's default isolation, so `InflectionFormNamesTests`
+        — added with the inflection-label work — never compiled in the *test* target; the earlier
+        `xcodebuild build` only built the app target and missed it).
 - [x] Split Settings into Basic vs Advanced — Done 2026-07-02. The clearly-technical block
       (Segmentation engine/tuning, Allowed Particles, Segmentation Demotions, AI Correction, Debug
       Overlays, Bridge) now lives behind an **"Advanced"** `NavigationLink` in `SettingsView`,
