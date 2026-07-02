@@ -529,9 +529,18 @@ Estimated effort: 30–60 min per store using the established pattern.
 
 Things that aren't broken but could become so. Not actionable today — just worth a periodic look.
 
-- [ ] **`macos-26` is a GitHub Actions preview runner.** If GH deprecates the preview image before iOS 26.5 reaches `macos-15`, CI breaks until we react. Fallback path: `xcrun simctl runtime install` to add iOS 26.5 to `macos-15`, or accept skip-testing the affected suites.
-- [ ] **Coverage step-summary parsing.** The Python jq pipeline in `tests.yml` reads `coveredLines` and `executableLines` from `xccov view --report --json`. If Xcode changes the xcresult JSON shape, the summary silently emits nothing (the `if [[ ! -d ... ]]` guard would not catch it). Worth verifying after each Xcode major.
-- [ ] **Submodule SSH-to-HTTPS rewrite assumes the SwiftWhisper fork stays public.** If it's ever flipped to private, CI breaks; either provision a deploy key or pin to a fork URL that stays accessible.
+- [ ] **`macos-26` is a GitHub Actions preview runner.** If GH deprecates the preview image before iOS 26.5 reaches `macos-15`, CI breaks until we react. Fallback path: `xcrun simctl runtime install` to add iOS 26.5 to `macos-15`, or accept skip-testing the affected suites. (Left as a watch — no clean proactive code fix short of pre-installing a runtime, which is slow and unwarranted while macos-26 works.)
+- [x] **Coverage step-summary parsing.** Hardened 2026-07-02: the `tests.yml` coverage python now
+      guards the `xccov --report --json` shape — if `targets` is empty, or no target reports any
+      `executableLines`, it emits a loud ⚠️ warning into the step summary instead of silently
+      rendering every row as 0/0 (which read as real 0% coverage). A changed Xcode JSON shape is
+      now visible rather than silent.
+- [x] **Submodule SSH-to-HTTPS rewrite assumes the SwiftWhisper fork stays public.** Fixed
+      2026-07-02: `.gitmodules` now points `Packages/SwiftWhisper` at the public **HTTPS** URL
+      directly (`https://github.com/matthewmorrone/SwiftWhisper.git`), so no SSH rewrite / deploy
+      key is needed ("pin to a fork URL that stays accessible"). The CI rewrite step remains as a
+      harmless safety net; its comment now notes that a private fork would require a PAT (not
+      `GITHUB_TOKEN`).
 
 ## Watch list — degrading since last triage (2026-05-25)
 
