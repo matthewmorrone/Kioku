@@ -423,7 +423,8 @@ extension ReadView {
                         note: note,
                         segmenter: segmenter,
                         surfaceReadingData: surfaceReadingData,
-                        kanjiReadingFallback: kanjiReadingFallback
+                        kanjiReadingFallback: kanjiReadingFallback,
+                        dictionaryStore: dictionaryStore
                     )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
