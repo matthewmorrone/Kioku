@@ -34,6 +34,9 @@ struct SongLineCard: View {
     let playbackRange: (startMs: Int, endMs: Int)?
     let onToggleExpansion: () -> Void
     let onPlayLine: () -> Void
+    // Opens the shared lookup sheet for a tapped vocabulary row. The parent owns the dictionary
+    // resolution + presentation so this card stays a pure renderer.
+    let onWordTapped: (SongWord) -> Void
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
 
@@ -383,27 +386,36 @@ struct SongLineCard: View {
     }
 
     // Renders one word entry: surface and sungRomaji on the same baseline, LLM definition
-    // wrapped beneath. Non-interactive in v1 — tap-to-lookup is a follow-up.
+    // wrapped beneath. Tapping the row opens the shared lookup sheet (via onWordTapped) so the
+    // breakdown's vocabulary is a jumping-off point into the dictionary, like tapping a segment
+    // in the read view.
     private func wordEntryRow(_ word: SongWord) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(word.surface)
-                    .font(.title3.weight(.semibold))
-                if word.sungRomaji.isEmpty == false {
-                    Text(word.sungRomaji)
-                        .font(.footnote.italic())
-                        .foregroundStyle(.secondary)
+        Button {
+            onWordTapped(word)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(word.surface)
+                        .font(.title3.weight(.semibold))
+                    if word.sungRomaji.isEmpty == false {
+                        Text(word.sungRomaji)
+                            .font(.footnote.italic())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if word.definition.isEmpty == false {
+                    // Strip inline-emphasis markers so `*foo*` / `**bar**` don't leak literal
+                    // asterisks into the rendered definition.
+                    Text(SongLineCard.stripInlineMarkdown(word.definition))
+                        .font(.footnote)
+                        .foregroundStyle(.primary.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if word.definition.isEmpty == false {
-                // Strip inline-emphasis markers so `*foo*` / `**bar**` don't leak literal
-                // asterisks into the rendered definition.
-                Text(SongLineCard.stripInlineMarkdown(word.definition))
-                    .font(.footnote)
-                    .foregroundStyle(.primary.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(.plain)
+        .accessibilityHint("Look up \(word.surface)")
     }
 }

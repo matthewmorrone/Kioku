@@ -20,7 +20,12 @@ struct SongStepperView: View {
     let segmenter: (any TextSegmenting)?
     let surfaceReadingData: SurfaceReadingDataMap
     let kanjiReadingFallback: KanjiReadingFallbackMap
+    // Resolves tapped breakdown words to a dictionary entry for the lookup sheet. Optional so the
+    // legacy SongsHomeView caller (no dictionary in scope) still compiles; tap-to-lookup no-ops there.
+    let dictionaryStore: DictionaryStore?
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
+    // Drives the lookup sheet's save star for tapped words (globally injected at the app root).
+    @EnvironmentObject private var wordsStore: WordsStore
     // Per-line expansion state. A line is "expanded" when its word/grammar explanations are
     // visible AND furigana is rendered above its Japanese — the two move together. Keyed by
     // `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
@@ -38,11 +43,71 @@ struct SongStepperView: View {
     init(note: Note,
          segmenter: (any TextSegmenting)? = nil,
          surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
-         kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()) {
+         kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap(),
+         dictionaryStore: DictionaryStore? = nil) {
         self.note = note
         self.segmenter = segmenter
         self.surfaceReadingData = surfaceReadingData
         self.kanjiReadingFallback = kanjiReadingFallback
+        self.dictionaryStore = dictionaryStore
+    }
+
+    // Resolves a tapped breakdown word to a dictionary entry and opens the shared lookup sheet.
+    // Tries the sung surface first, then the segmenter's lemma for conjugated forms (歌った → 歌う)
+    // that don't resolve directly; silently no-ops when there's no dictionary or no entry.
+    private func presentWordLookup(_ word: SongWord) {
+        let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard surface.isEmpty == false, let dictionaryStore else { return }
+
+        let entryID: Int64?
+        if let direct = dictionaryStore.lookupFirstEntryID(surface: surface) {
+            entryID = direct
+        } else if let lemma = segmenter?.preferredLemma(for: surface), lemma.isEmpty == false {
+            entryID = dictionaryStore.lookupFirstEntryID(surface: lemma)
+        } else {
+            entryID = nil
+        }
+        guard let entryID else { return }
+
+        SegmentLookupSheet.shared.presentSheet(
+            surface: surface,
+            leftNeighborSurface: nil,
+            rightNeighborSurface: nil,
+            sheetReadingsProvider: {
+                guard let entry = try? dictionaryStore.lookupEntry(entryID: entryID) else { return [] }
+                return entry.kanaForms.map(\.text)
+            },
+            sheetDictionaryEntryProvider: {
+                try? dictionaryStore.lookupEntry(entryID: entryID)
+            },
+            sheetIsSavedProvider: {
+                wordsStore.words.contains { $0.canonicalEntryID == entryID }
+            },
+            sheetSaveToggle: {
+                toggleSavedWord(canonicalEntryID: entryID, surface: surface)
+            }
+        )
+    }
+
+    // Flips saved state for a looked-up breakdown word, attributing it to this note. Mirrors the
+    // segment-list toggle: only pay the SQL sense-materialization on a word's first-ever save.
+    private func toggleSavedWord(canonicalEntryID: Int64, surface: String) {
+        let cardExists = wordsStore.words.contains { $0.canonicalEntryID == canonicalEntryID }
+        let senseIDs: [Int64]
+        if cardExists {
+            senseIDs = []
+        } else if let dictionaryStore, let resolved = try? dictionaryStore.lookupEntry(entryID: canonicalEntryID) {
+            senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: resolved)
+        } else {
+            senseIDs = []
+        }
+        wordsStore.toggle(
+            canonicalEntryID: canonicalEntryID,
+            storedSurface: surface,
+            encounteredSurface: surface,
+            sourceNoteID: note.id,
+            defaultSenseIDs: senseIDs
+        )
     }
 
     var body: some View {
@@ -310,7 +375,8 @@ struct SongStepperView: View {
                             if let range = lineRangesByIndex[line.index] {
                                 audioController.playRange(startMs: range.startMs, endMs: range.endMs)
                             }
-                        }
+                        },
+                        onWordTapped: { presentWordLookup($0) }
                     )
                 }
             }
