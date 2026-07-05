@@ -64,6 +64,10 @@ struct SubtitleEditorSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Pinned directly under the nav bar (Realign + alignment menu) so it stays visible
+                // while the keyboard is up — at the bottom it sat behind the keyboard.
+                timingBar
+                Divider()
                 StableTextEditor(
                     text: $srtText,
                     selectedRange: $editorSelection,
@@ -76,7 +80,6 @@ struct SubtitleEditorSheet: View {
 
                 Divider()
                 subtitleToolsBar
-                timingBar
             }
             .navigationTitle("Edit Subtitles")
             .navigationBarTitleDisplayMode(.inline)
