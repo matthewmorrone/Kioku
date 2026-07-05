@@ -211,6 +211,55 @@ extension FuriganaTextRenderer {
         textStorage.endEditing()
     }
 
+    // Overrides the active-word (karaoke) glyph foreground with a fixed high-contrast color,
+    // restoring the previously-highlighted run to its payload colors first. Runs on every render
+    // (including per-word playback ticks, where the signature-gated style reapply is skipped), so
+    // it is the sole carrier of the recolor from one word to the next. Foreground-only — never
+    // touches glyph metrics, so there is no layout invalidation or scroll perturbation. `payload`
+    // is the color source of truth for the restore; ranges are bounds-checked against both the live
+    // storage and the payload so a stale range after a text edit can't crash.
+    func applyPlaybackHighlightForeground(
+        to textView: UITextView,
+        payload: ReadTextStylePayload,
+        highlightRange: NSRange?,
+        color: UIColor,
+        coordinator: FuriganaTextRendererCoordinator
+    ) {
+        let textStorage = textView.textStorage
+        let storageLength = textStorage.length
+        guard storageLength > 0 else {
+            coordinator.lastPlaybackHighlightForegroundRange = nil
+            return
+        }
+
+        // Restore the previously-highlighted run's colors from the payload before moving on.
+        if let previous = coordinator.lastPlaybackHighlightForegroundRange,
+           previous.location != NSNotFound,
+           previous.length > 0,
+           NSMaxRange(previous) <= storageLength,
+           NSMaxRange(previous) <= payload.attributedText.length {
+            textStorage.beginEditing()
+            textStorage.removeAttribute(.foregroundColor, range: previous)
+            textStorage.addAttribute(.foregroundColor, value: UIColor.label, range: previous)
+            payload.attributedText.enumerateAttribute(.foregroundColor, in: previous, options: []) { value, range, _ in
+                if let restored = value as? UIColor {
+                    textStorage.addAttribute(.foregroundColor, value: restored, range: range)
+                }
+            }
+            textStorage.endEditing()
+        }
+
+        guard let highlightRange,
+              highlightRange.location != NSNotFound,
+              highlightRange.length > 0,
+              NSMaxRange(highlightRange) <= storageLength else {
+            coordinator.lastPlaybackHighlightForegroundRange = nil
+            return
+        }
+        textStorage.addAttribute(.foregroundColor, value: color, range: highlightRange)
+        coordinator.lastPlaybackHighlightForegroundRange = highlightRange
+    }
+
     // Measures text width for furigana label sizing so readings don't collapse into truncation glyphs.
     func measureTextWidth(_ value: String, font: UIFont, kerning: Double) -> CGFloat {
         guard !value.isEmpty else { return 0 }

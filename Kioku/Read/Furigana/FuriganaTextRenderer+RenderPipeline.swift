@@ -234,14 +234,24 @@ extension FuriganaTextRenderer {
             selectedSegmentRect = envelope
         }
 
+        // Active-word (karaoke) highlight. The pill is drawn over the glyph by the overlay, so it
+        // must stay translucent (an opaque pill would hide the word); on its own that leaves the
+        // glyph in its semantic color (red vocab, blue, …) reading at ~2:1 over the pill. Pair the
+        // pill with a fixed high-contrast foreground on the highlighted body glyph AND its furigana
+        // (below) so the current word — the one you most want to read — stays legible. A slightly
+        // stronger pill alpha widens the gap further. Foreground-only, so layout is untouched.
+        let playbackHighlightRange = playbackHighlightNSRange(in: text)
+        let playbackHighlightForeground = UIColor { trait in
+            trait.userInterfaceStyle == .dark ? UIColor.white : UIColor(white: 0.10, alpha: 1)
+        }
         var playbackHighlightRect: CGRect?
         var playbackHighlightColor: UIColor?
-        if let playbackHighlightRange = playbackHighlightNSRange(in: text),
+        if let playbackHighlightRange,
            let playbackRect = segmentRectInTextView(textView: textView, nsRange: playbackHighlightRange) {
             playbackHighlightColor = UIColor { traitCollection in
                 traitCollection.userInterfaceStyle == .dark
-                    ? UIColor.systemOrange.withAlphaComponent(0.30)
-                    : UIColor.systemOrange.withAlphaComponent(0.22)
+                    ? UIColor.systemOrange.withAlphaComponent(0.45)
+                    : UIColor.systemOrange.withAlphaComponent(0.30)
             }
             playbackHighlightRect = playbackRect.insetBy(dx: -10, dy: -4)
             coordinator.applyPlaybackAutoscrollIfNeeded(
@@ -252,6 +262,15 @@ extension FuriganaTextRenderer {
         } else {
             coordinator.clearPlaybackAutoscrollState()
         }
+        // Recolor the highlighted body glyph, restoring the previously-highlighted run's payload
+        // colors first (the per-word update skips the gated in-place style reapply).
+        applyPlaybackHighlightForeground(
+            to: textView,
+            payload: textStylePayload,
+            highlightRange: playbackHighlightRange,
+            color: playbackHighlightForeground,
+            coordinator: coordinator
+        )
 
         var illegalBoundaryRect: CGRect?
         var illegalBoundaryColor: UIColor?
@@ -445,7 +464,13 @@ extension FuriganaTextRenderer {
                 )
                 furiganaStrings.append(displayReading)
                 furiganaFrames.append(furiganaFrame)
-                furiganaColors.append(textStylePayload.segmentForegroundByLocation[location] ?? .secondaryLabel)
+                // Match the body glyph: the active-word furigana also gets the high-contrast
+                // foreground so the reading over the highlight pill stays legible.
+                if let playbackHighlightRange, NSLocationInRange(location, playbackHighlightRange) {
+                    furiganaColors.append(playbackHighlightForeground)
+                } else {
+                    furiganaColors.append(textStylePayload.segmentForegroundByLocation[location] ?? .secondaryLabel)
+                }
                 furiganaFrameByLocation[location] = furiganaFrame
             }
         }
