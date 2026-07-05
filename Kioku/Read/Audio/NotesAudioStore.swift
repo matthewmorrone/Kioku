@@ -157,7 +157,11 @@ final class NotesAudioStore: NotesAttachmentDeleting {
         else {
             return []
         }
-        return cues
+        // The karaoke view renders and seeks cues by array index, assuming start-time order. Enforce
+        // it on read (stable) so cues persisted before that invariant was fixed — a line stranded on
+        // the wrong side of a ♪ — display correctly without needing a re-align. New writes already
+        // arrive sorted; this only repairs stale files.
+        return cues.sorted { $0.startMs < $1.startMs }
     }
 
     // One-time sweep removing every legacy .srt sidecar from the audio container. The .srt was
