@@ -51,6 +51,11 @@ enum SubtitleEditorTimingTools {
     static func normalizeTiming(cues: [SubtitleCue], gapThresholdMs: Int = 10_000) -> [SubtitleCue] {
         guard cues.isEmpty == false else { return [] }
 
+        // Gap detection walks consecutive array elements, so it only means anything on time-sorted
+        // input. Sort first (stable — equal starts keep their order) so a non-monotonic cue can't
+        // fake/hide a gap and strand a line on the wrong side of the ♪ it inserts.
+        let cues = cues.sorted { $0.startMs < $1.startMs }
+
         var normalized: [SubtitleCue] = []
 
         // Insert ♪ before first cue if the leading gap is large.
@@ -119,7 +124,13 @@ enum SubtitleEditorTimingTools {
     // Unlike `normalizeTiming`, it never pulls/extends cue boundaries, so accurate aligned timings
     // (and their checkpoints) are preserved exactly. Re-indexes sequentially from 1.
     static func insertMusicMarkers(cues: [SubtitleCue], durationMs: Int, gapThresholdMs: Int = 5000) -> [SubtitleCue] {
-        let speech = cues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
+        // Sort by start time: the gap scan below pairs consecutive array elements, so an aligner line
+        // emitted out of monotonic order (or clamped past its neighbor) would otherwise place the ♪
+        // on the wrong side of it. The reconcile path already sorts; this keeps the fresh-align path
+        // consistent so the karaoke view (which renders/seeks by array index) sees time order.
+        let speech = cues
+            .filter { SubtitleParser.isNonSpeechCue($0.text) == false }
+            .sorted { $0.startMs < $1.startMs }
         guard speech.isEmpty == false else { return cues }
 
         var out: [SubtitleCue] = []
@@ -159,7 +170,12 @@ enum SubtitleEditorTimingTools {
         cues: [SubtitleCue], durationMs: Int,
         vocalSegments: [(start: Double, end: Double)], minGapMs: Int = 4000
     ) -> [SubtitleCue] {
-        let speech = cues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
+        // Sorted by start time so the gap-interleave below (which walks speech in array order,
+        // emitting each ♪ before the first cue that starts at/after the gap ends) matches time order
+        // even when the aligner emitted a line out of monotonic order.
+        let speech = cues
+            .filter { SubtitleParser.isNonSpeechCue($0.text) == false }
+            .sorted { $0.startMs < $1.startMs }
         guard speech.isEmpty == false else { return cues }
         guard vocalSegments.isEmpty == false else {
             return insertMusicMarkers(cues: cues, durationMs: durationMs)   // no VAD info → heuristic
