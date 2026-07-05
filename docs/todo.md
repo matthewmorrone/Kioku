@@ -273,6 +273,45 @@ own sections.)
         `SongBreakdownService.swift`, `SongBreakdownPrompt.swift`, `SongBreakdownParser.swift`
         (replaced by JSON decoder), `SongLine`/`SongWord` models (gain `segmentIDs` field),
         breakdown UI (`SongLineCard.swift` — render romaji from referenced segments).
+- [ ] **Active-word (karaoke) highlight has poor text contrast** — from app-usage triage
+      2026-07-03 (`docs/app-usage-issues.md` #2). The current-word highlight is a light
+      translucent gray pill, but the glyph keeps its semantic color (red for vocab, blue,
+      etc.), so red-on-light-gray lands at ~2:1 contrast — the highlighted word and its
+      furigana are nearly illegible, worst on the red words you most want to read. Root
+      cause: the highlight recolors only the *background*; the foreground stays whatever
+      semantic color it already had, so contrast is left to chance. Fix direction: when a
+      word is the active highlight, override its text color to a fixed high-contrast
+      foreground instead of keeping red/blue. Options (all ≥ WCAG AA 4.5:1): (A, recommended)
+      amber pill `#FFCC66` + near-black glyph `#1A1A1A` (~13:1), ties into the existing
+      orange playback/scrubber accent → reinforces "now playing"; (B) near-opaque light pill
+      `rgba(255,255,255,0.92)` + dark glyph `#1C1C1E` (~15:1); (C) saturated dark pill
+      (`rgba(90,140,210,0.85)` or solid `rgba(40,40,45,0.95)`) + white glyph (~8–10:1).
+      Highlight range comes from `AudioCueHighlightObserver` / `LyricsView`
+      (`Kioku/Read/AudioCueHighlightObserver.swift`, `Kioku/Read/Audio/LyricsView.swift`).
+- [ ] **Extract-words "Vocab" tab wrongly empty** — from app-usage triage 2026-07-03
+      (`docs/app-usage-issues.md` #1), confirmed defect (not a UX nit). The Vocab tab shows
+      "No dictionary-backed vocabulary in this text." / "Save 0 Words" for a song note
+      (月色チャイのん) that clearly contains many ordinary dictionary words. Path:
+      `recomputeExtractedVocab()` (`Kioku/Read/Segmentation/SegmentListView.swift:104`)
+      feeds the read view's `segmentEdges` into
+      `SubtitleVocabExtractor.extract(fromEdges:dictionaryStore:)`
+      (`Kioku/Read/Audio/SubtitleVocabExtractor.swift:40`); after the recent
+      force-`isDictionaryMatch` fix (commit 4d7790c) the sole remaining gate is
+      `dictionaryStore.lookupFirstEntryIDs(...)` (`SubtitleVocabExtractor.swift:78`) — any
+      lemma missing from the in-memory `canonicalEntryIDMap` is dropped. Two candidate root
+      causes, split by whether the **Lines** tab also showed words:
+      (1) *Lines also empty* → `segmentEdges == []` at sheet-open time (segmentation not yet
+      loaded: async restore in `ReadView+Persistence.swift:151-207` not run, or
+      `readResourcesReady == false` in `ReadView+Segmentation.swift:169`);
+      (2) *Lines populated, Vocab empty* (more likely) → dictionary resolution failing, prime
+      suspect `canonicalEntryIDMap` never populated — `populateCanonicalEntryIDMap()` swallows
+      failures in a `try/catch` that only `print`s (`ContentView.swift:431`), so an empty map
+      makes EVERY lemma fail silently and globally while Lines still works. Secondary
+      contributor: conjugated lyric surfaces whose `preferredLemma` yields a non-canonical
+      form get dropped (`SubtitleVocabExtractor.swift:80`) — partial, not total, emptiness.
+      **Next diagnostic:** confirm whether the Lines tab showed words for the failing note;
+      that discriminates (1) from (2). Fix should also stop the silent `?? [:]` /
+      empty-`edges` failures from looking like "no vocab."
 
 ## Words & Dictionary
 
@@ -464,6 +503,32 @@ own sections.)
       timing) that a flat note `content` blob would lose, which the karaoke/alignment views
       depend on; any unification must keep cue structure for audio even if vocab extraction
       goes through the common path. Decide before investing further in the subtitle vocab UI.
+- [ ] **Lyric line placed on the wrong side of an interlude** — from app-usage triage
+      2026-07-03 (`docs/app-usage-issues.md` #3). Observed a sung line (「悲しみの嘘を忘れない」)
+      rendered *above* the ♪ interlude markers when it belongs *below* them — it resumes the
+      section after the instrumental gap. ♪ interludes are real `SubtitleCue` rows with genuine
+      `startMs`/`endMs` (`Kioku/Read/Audio/SubtitleCue.swift`), not separate widgets, so a line
+      on the wrong side of the ♪ is a timing/order mismatch relative to the interlude cue —
+      likely the Re-align pass assigns a line to the wrong side of a long inter-vocal gap.
+      Would be auto-caught by the never-highlighted diagnostic below.
+- [ ] **Alignment-quality diagnostic: detect never-highlighted / un-reachable cues** — from
+      app-usage triage 2026-07-03 (`docs/app-usage-issues.md` #4). Today nothing detects a cue
+      that never becomes the active/highlighted line during playback, though the data supports
+      it. Active line = `AudioPlaybackController.resolveActiveCue(atMs:)`
+      (`Kioku/Read/Audio/AudioPlaybackController.swift:369`): scans the playhead against each
+      cue's half-open `[startMs, endMs)` range, taking the **first** match, with a fallback
+      chain (next upcoming → last-ended → previously active). A cue is un-highlightable two
+      ways, both expressible today with no guard: (1) **zero/negative duration**
+      (`startMs >= endMs`) — empty interval, playhead can never be inside; `normalizeTiming`
+      (`Kioku/Read/Audio/SubtitleEditorTimingTools.swift:51`) does not enforce a minimum
+      positive duration, so such a cue survives import; (2) **shadowed** — `firstIndex` means a
+      cue fully covered by an earlier cue is never returned as current. Caveat: the
+      `nextCue`/`previousCue` fallback can make even a degenerate cue *flash* transiently, so
+      "never the contains-playhead winner" ≠ "never visibly lights up" — a diagnostic must be
+      precise about which it reports. Proposed: simulate `resolveActiveCue` across the full
+      timeline (or just check `startMs >= endMs` + coverage/overlap) and surface cues never
+      chosen as active; this auto-catches the interlude-ordering bug above and any mis-timed /
+      orphan line. Ship as an editor/QA check (not necessarily user-facing).
 
 ## Settings
 
