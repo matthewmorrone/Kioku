@@ -19,6 +19,11 @@ final class FuriganaTextRendererCoordinator: NSObject, UITextViewDelegate, NSTex
     // segmentation/color-only changes (e.g. split/merge) and apply them via an in-place
     // textStorage mutation instead of reassigning attributedText (which forces a full reflow).
     private var lastStyleAttributesSignature: Int?
+    // The character range whose glyph foreground we last overrode for the active-word (karaoke)
+    // highlight. The per-word playback update skips the signature-gated full style reapply, so the
+    // render pipeline restores this run's payload colors before recoloring the new one — this is the
+    // only state that carries the recolor from word to word.
+    var lastPlaybackHighlightForegroundRange: NSRange?
     private var lastKnownBoundsWidth: CGFloat = 0
     private var pinchStartTextSize: Double?
     private var isApplyingExternalScroll = false
