@@ -42,6 +42,14 @@ struct SubtitleEditorSheet: View {
         SubtitleParser.resolveHighlightRanges(for: liveCues, in: noteText)
     }
 
+    // Cues that can never become the active/highlighted line — empty/inverted timing or fully
+    // shadowed by an earlier cue. The structural counterpart to the pace heatmap: it flags mis-timed
+    // lines (including a line stranded on the wrong side of an interlude) that would otherwise never
+    // light up during playback.
+    private var unreachableCues: [CueReachabilityDiagnostic.Finding] {
+        CueReachabilityDiagnostic.unreachableCues(liveCues)
+    }
+
     // Number of text cues whose content doesn't match the corresponding note line.
     private var mismatchCount: Int {
         liveCues.enumerated().filter { index, cue in
@@ -238,6 +246,16 @@ struct SubtitleEditorSheet: View {
                 .buttonStyle(.bordered)
                 .tint(.orange)
                 .accessibilityLabel("Sync \(mismatchCount) cue text mismatches to note")
+            }
+
+            // Structural reachability warning: cues that can never light up during playback (empty
+            // timing or fully shadowed by an earlier cue). Informational — there's no single safe
+            // auto-fix (retime or "Tidy gaps" depending on the cause), so it flags rather than acts.
+            if unreachableCues.isEmpty == false {
+                Label("\(unreachableCues.count)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("\(unreachableCues.count) cue\(unreachableCues.count == 1 ? "" : "s") never highlight during playback — check timing or use Tidy gaps")
             }
 
             // All alignment actions live behind one labeled menu instead of a row of opaque
