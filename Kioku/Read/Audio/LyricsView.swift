@@ -570,31 +570,18 @@ struct LyricsView: View {
         return String(format: "%d:%02d.%03d", clamped / 60_000, (clamped / 1000) % 60, clamped % 1000)
     }
 
-    // Timing readout under the Re-align/Adjust/Mix row: the currently-shown card's cue start → end
-    // and duration, with the live playhead on the right. Makes each line's actual timing visible
-    // during playback — e.g. to see whether a line sits before or after an interlude's ♪.
+    // Timing readout under the Re-align/Adjust/Mix row: just the shown card's cue start → end,
+    // centered and subdued. The transport already shows the live playhead, so it isn't repeated here.
+    @ViewBuilder
     private func cueTimingBar(index: Int) -> some View {
-        let cue = (index >= 0 && index < cues.count) ? cues[index] : nil
-        return HStack(spacing: 8) {
-            Image(systemName: "clock")
-                .font(.system(size: 11))
+        if index >= 0, index < cues.count {
+            let cue = cues[index]
+            Text("\(compactMs(cue.startMs))  →  \(compactMs(cue.endMs))")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.secondary)
-            if let cue {
-                Text(SubtitleParser.isNonSpeechCue(cue.text) ? "♪" : "Line \(cue.index)")
-                    .font(.system(size: 11, weight: .semibold))
-                Text("\(compactMs(cue.startMs)) → \(compactMs(cue.endMs))")
-                    .font(.system(size: 11, design: .monospaced))
-                Text(String(format: "%.2fs", Double(max(0, cue.endMs - cue.startMs)) / 1000))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            Text(compactMs(controller.currentTimeMs))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 4)
         }
-        .padding(.horizontal, 4)
-        .padding(.top, 6)
     }
 
     // Top action bar for the karaoke view: a single full Re-align action that re-runs the whole
