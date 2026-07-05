@@ -152,10 +152,13 @@ struct LyricsView: View {
     // The line being retimed while adjusting (persists across scrubs); nil → fall back to the
     // playing line. Set by entering Adjust (→ the active line) or by dragging/tapping to pick.
     @State private var adjustTargetIndex: Int? = nil
-    // Peak envelope for the Adjust waveform editor (decoded from the cached vocal stem when present,
-    // else the mix). `waveformNoteID` records which note it belongs to so switching notes reloads it.
+    // Peak envelope for the Adjust waveform editor. Source follows the Vocals/Mix toggle: the
+    // isolated vocal stem when "Vocals" is on (and a stem is cached), otherwise the full mix.
+    // `waveformNoteID` and `waveformIsStem` record which note + source it belongs to so switching
+    // notes OR flipping the toggle reloads it.
     @State private var waveform: WaveformEnvelope? = nil
     @State private var waveformNoteID: UUID? = nil
+    @State private var waveformIsStem: Bool = false
     // Long-press word context: when set, a confirmation dialog snaps the pressed word's START or
     // END timing to the playhead snapshot, plus dictionary look-up. nil = hidden.
     @State private var wordTimingMenu: WordTimingMenu? = nil
@@ -833,16 +836,20 @@ struct LyricsView: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .background(Color.black.opacity(0.22))
-        .task(id: "\(isAdjustingAlignment)|\(attachmentID?.uuidString ?? "")") {
-            // Decode the waveform when Adjust opens — vocal stem if cached, else mix; once per note.
+        .task(id: "\(isAdjustingAlignment)|\(attachmentID?.uuidString ?? "")|\(isListeningToStem.wrappedValue)") {
+            // Decode the waveform when Adjust opens or the Vocals/Mix toggle flips — isolated vocal
+            // stem when "Vocals" is on and a stem is cached, otherwise the mix. Cached per (note,
+            // source) so re-entering Adjust or toggling back doesn't redundantly re-decode.
             guard isAdjustingAlignment, let attachmentID,
                   let mixURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
-            if waveform != nil, waveformNoteID == attachmentID { return }
-            let src = (stemAvailable ? VocalStemCache.stemWAVURL(for: mixURL) : nil) ?? mixURL
+            let useStem = isListeningToStem.wrappedValue && stemAvailable
+            if waveform != nil, waveformNoteID == attachmentID, waveformIsStem == useStem { return }
+            let src = useStem ? (VocalStemCache.stemWAVURL(for: mixURL) ?? mixURL) : mixURL
             let env = await WaveformEnvelope.load(url: src)
             if isAdjustingAlignment {
                 waveform = env
                 waveformNoteID = attachmentID
+                waveformIsStem = useStem
             }
         }
     }
