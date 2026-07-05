@@ -76,6 +76,7 @@ struct SubtitleEditorSheet: View {
 
                 Divider()
                 subtitleToolsBar
+                timingBar
             }
             .navigationTitle("Edit Subtitles")
             .navigationBarTitleDisplayMode(.inline)
@@ -165,6 +166,68 @@ struct SubtitleEditorSheet: View {
                 parseError = error.localizedDescription
             }
         }
+    }
+
+    // The cue whose block the text cursor sits in — the last timestamp line at/before the caret.
+    // Counted by timestamp lines so it indexes 1:1 into liveCues (which includes ♪ rows). Lets the
+    // timing bar decode a specific line's start/end without the user parsing the raw SRT numbers.
+    private var cursorCue: SubtitleCue? {
+        let cues = liveCues
+        guard cues.isEmpty == false else { return nil }
+        let cursor = editorSelection.location
+        var offset = 0
+        var blockIndex = -1
+        var found: Int?
+        for line in srtText.components(separatedBy: "\n") {
+            if line.contains("-->") {
+                blockIndex += 1
+                if offset <= cursor {
+                    found = blockIndex
+                } else {
+                    break
+                }
+            }
+            offset += (line as NSString).length + 1
+        }
+        guard let idx = found, idx >= 0, idx < cues.count else { return nil }
+        return cues[idx]
+    }
+
+    // Compact m:ss.mmm for the timing bar — the SRT HH:MM:SS,mmm form is too wide for one row.
+    private func compactTime(_ ms: Int) -> String {
+        let clamped = max(0, ms)
+        return String(format: "%d:%02d.%03d", clamped / 60_000, (clamped / 1000) % 60, clamped % 1000)
+    }
+
+    // Timing readout under the tools bar: the cursor line's start → end and duration (or the whole
+    // song's cue count + span when the caret isn't in a cue). Reads live from the editor text, so
+    // moving the caret or editing timestamps updates it immediately.
+    private var timingBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            if let cue = cursorCue {
+                Text(SubtitleParser.isNonSpeechCue(cue.text) ? "♪" : "Line \(cue.index)")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("\(compactTime(cue.startMs)) → \(compactTime(cue.endMs))")
+                    .font(.system(size: 12, design: .monospaced))
+                Text(String(format: "%.2fs", Double(max(0, cue.endMs - cue.startMs)) / 1000))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else if let span = liveCues.map(\.endMs).max() {
+                Text("\(liveCues.count) cues")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("0:00.000 → \(compactTime(span))")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground))
     }
 
     // Bottom toolbar with timing shift and normalization controls.
