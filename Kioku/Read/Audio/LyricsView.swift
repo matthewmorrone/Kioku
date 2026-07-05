@@ -240,6 +240,7 @@ struct LyricsView: View {
             // CTC pipeline on the attached audio. The old row is preserved (commented) below and
             // `cueEditingRow(index:)` is kept defined for a one-line revert.
             reAlignBar()
+            cueTimingBar(index: displayIndex)
             // The per-line alignment-fix row only appears in Adjust mode (toggled in reAlignBar),
             // so normal listening stays clean. It targets `displayIndex` — which in Adjust mode is
             // the pinned target line, not the playing line.
@@ -558,6 +559,39 @@ struct LyricsView: View {
     // furigana via `activeCueRenderInput`.
     func displayText(for cueIndex: Int) -> String {
         cueIndex < cues.count ? cues[cueIndex].text : ""
+    }
+
+    // Compact m:ss.mmm for the timing bar.
+    private func compactMs(_ ms: Int) -> String {
+        let clamped = max(0, ms)
+        return String(format: "%d:%02d.%03d", clamped / 60_000, (clamped / 1000) % 60, clamped % 1000)
+    }
+
+    // Timing readout under the Re-align/Adjust/Mix row: the currently-shown card's cue start → end
+    // and duration, with the live playhead on the right. Makes each line's actual timing visible
+    // during playback — e.g. to see whether a line sits before or after an interlude's ♪.
+    private func cueTimingBar(index: Int) -> some View {
+        let cue = (index >= 0 && index < cues.count) ? cues[index] : nil
+        return HStack(spacing: 8) {
+            Image(systemName: "clock")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            if let cue {
+                Text(SubtitleParser.isNonSpeechCue(cue.text) ? "♪" : "Line \(cue.index)")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("\(compactMs(cue.startMs)) → \(compactMs(cue.endMs))")
+                    .font(.system(size: 11, design: .monospaced))
+                Text(String(format: "%.2fs", Double(max(0, cue.endMs - cue.startMs)) / 1000))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Text(compactMs(controller.currentTimeMs))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 6)
     }
 
     // Top action bar for the karaoke view: a single full Re-align action that re-runs the whole
