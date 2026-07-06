@@ -839,31 +839,44 @@ public struct CTCForcedAligner {
         // the temporally-sensible one. A 2-char run is enough now; the tie-break + chorus gate +
         // run-weighted LIS keep junk out, and 2-char matches are needed to anchor short garbled lines
         // (e.g. 脆い爪先→目先) onto the correct side of an internal gap.
-        var cands: [(line: Int, time: Double, run: Int)] = []
+        var cands: [(line: Int, time: Double, run: Int, unique: Bool)] = []
         for (li, line) in lines.enumerated() {
             let lc = Array(line.filter(keep))
             guard lc.count >= 2 else { continue }
             let exp: Double? = li < expected.count ? expected[li] : nil
-            var best: (run: Int, time: Double, dist: Double)?
+            // All phrase matches (run ≥ 2) with their interpolated time, so we can judge both the best
+            // anchor AND whether the line is ambiguous (a real chorus) vs. unique.
+            var matches: [(run: Int, time: Double)] = []
             for ph in phraseChars {
                 let (run, endInB) = Self.longestCommonRun(lc, ph.chars)
                 guard run >= 2 else { continue }
                 let startB = max(0, endInB - run)                       // 0-based run start within phrase
                 let frac = Double(startB) / Double(max(1, ph.chars.count))
-                let t = ph.t0 + frac * max(0, ph.t1 - ph.t0)            // interpolate within the phrase
-                let dist = exp.map { abs(t - $0) } ?? 0
-                if best == nil || run > best!.run || (run == best!.run && dist < best!.dist) {
-                    best = (run, t, dist)
-                }
+                matches.append((run, ph.t0 + frac * max(0, ph.t1 - ph.t0)))  // interpolate within the phrase
             }
-            if let b = best { cands.append((line: li, time: b.time, run: b.run)) }
+            guard matches.isEmpty == false else { continue }
+            // Best: longest run; on a tie, nearest the line's expected char-position.
+            var best = matches[0]
+            var bestDist = exp.map { abs(best.time - $0) } ?? 0
+            for m in matches.dropFirst() {
+                let d = exp.map { abs(m.time - $0) } ?? 0
+                if m.run > best.run || (m.run == best.run && d < bestDist) { best = m; bestDist = d }
+            }
+            // Unique = no OTHER match far in time is as strong. A once-only lyric has a single
+            // dominant run, so its (possibly far) anchor is trustworthy; a real chorus has ≥2 equally
+            // strong matches at different times. Only the latter is a teleport risk.
+            let unique = matches.contains { abs($0.time - best.time) > 28.0 && $0.run >= best.run } == false
+            cands.append((line: li, time: best.time, run: best.run, unique: unique))
         }
         guard cands.isEmpty == false else { return [] }
 
-        // Chorus-repetition gate: a repeated lyric ("…忘れない") can match the WRONG repetition and
-        // teleport 50s. Drop any candidate grossly far (>28s) from its expected lyric-position.
+        // Chorus-repetition gate: a REPEATED lyric ("…忘れない") can match the WRONG repetition and
+        // teleport 50s, so drop candidates grossly far (>28s) from the expected char-position — but
+        // ONLY for ambiguous (multi-match) lines. A unique line's far match is the real, post-
+        // interlude onset (its char-rate estimate is just off by the interlude), and gating it here
+        // is exactly what stranded 悲しみの嘘を忘れない ~29s early. Unique lines bypass the gate.
         if expected.isEmpty == false {
-            cands = cands.filter { abs($0.time - expected[$0.line]) <= 28.0 }
+            cands = cands.filter { $0.unique || abs($0.time - expected[$0.line]) <= 28.0 }
             guard cands.isEmpty == false else { return [] }
         }
 
