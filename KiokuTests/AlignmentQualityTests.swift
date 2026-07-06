@@ -58,6 +58,12 @@ final class AlignmentQualityTests: XCTestCase {
         try await runQualityCheck(fixtureName: "tsukiiro-chainon")
     }
 
+    // From-scratch alignment (no starting SRT) — the path the karaoke "Re-align" button runs, and
+    // the one that was never graded. Reproduces the gross post-interlude misplacement.
+    func testQuality_TsukiiroChainon_fromScratch() async throws {
+        try await runQualityCheck(fixtureName: "tsukiiro-chainon", fromScratch: true)
+    }
+
     // MARK: - Harness
 
     private struct Tolerance: Decodable {
@@ -80,7 +86,7 @@ final class AlignmentQualityTests: XCTestCase {
     // within tolerance of the oracle. Throws (via XCTFail) on any threshold
     // violation; prints metrics on success so passing runs still tell you how
     // close you actually were.
-    private func runQualityCheck(fixtureName: String) async throws {
+    private func runQualityCheck(fixtureName: String, fromScratch: Bool = false) async throws {
         let bundle = Bundle(for: type(of: self))
         // Synchronized file groups flatten subdirectories when copying resources
         // into the test bundle, so all fixture files live at the bundle root with
@@ -102,7 +108,10 @@ final class AlignmentQualityTests: XCTestCase {
         // Optional: starting SRT — when present we measure the in-app anchored
         // Reconcile pipeline (starts from this SRT, fills gaps via aligner). When
         // absent we degrade to raw alignment (empty starting cues → one giant gap).
-        let startingSrtURL = bundle.url(forResource: "\(fixtureName).starting-srt", withExtension: "srt")
+        // fromScratch ignores the (good) starting SRT so reconcile aligns from an empty cue set —
+        // the raw from-scratch alignment the karaoke Re-align button actually runs, which the
+        // starting-SRT path never exercises.
+        let startingSrtURL = fromScratch ? nil : bundle.url(forResource: "\(fixtureName).starting-srt", withExtension: "srt")
 
         let noteText = try String(contentsOf: noteURL, encoding: .utf8)
         let oracleText = try String(contentsOf: oracleURL, encoding: .utf8)
