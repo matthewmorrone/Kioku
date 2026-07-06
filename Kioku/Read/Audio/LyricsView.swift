@@ -159,6 +159,13 @@ struct LyricsView: View {
     @State private var waveform: WaveformEnvelope? = nil
     @State private var waveformNoteID: UUID? = nil
     @State private var waveformIsStem: Bool = false
+    // Debug: raw ASR transcript of the vocal stem, for diagnosing mis-timed lines (does the aligner
+    // actually "hear" a line where it belongs?). Triggered by a long-press on the timing readout;
+    // shown in a copyable sheet. Not a shipping affordance.
+    @State var stemTranscript: [SubtitleCue]?
+    @State var isDumpingTranscript = false
+    @State var transcriptStatus = ""
+    @State var showTranscriptSheet = false
     // Long-press word context: when set, a confirmation dialog snaps the pressed word's START or
     // END timing to the playhead snapshot, plus dictionary look-up. nil = hidden.
     @State private var wordTimingMenu: WordTimingMenu? = nil
@@ -565,23 +572,32 @@ struct LyricsView: View {
     }
 
     // Compact m:ss.mmm for the timing bar.
-    private func compactMs(_ ms: Int) -> String {
+    func compactMs(_ ms: Int) -> String {
         let clamped = max(0, ms)
         return String(format: "%d:%02d.%03d", clamped / 60_000, (clamped / 1000) % 60, clamped % 1000)
     }
 
     // Timing readout under the Re-align/Adjust/Mix row: just the shown card's cue start → end,
     // centered and subdued. The transport already shows the live playhead, so it isn't repeated here.
+    // Long-press dumps the vocal-stem ASR transcript (debug) to compare against the aligned timing.
     @ViewBuilder
     private func cueTimingBar(index: Int) -> some View {
-        if index >= 0, index < cues.count {
-            let cue = cues[index]
-            Text("\(compactMs(cue.startMs))  →  \(compactMs(cue.endMs))")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 4)
+        Group {
+            if isDumpingTranscript {
+                Text(transcriptStatus.isEmpty ? "Transcribing vocals…" : transcriptStatus)
+                    .font(.system(size: 12, weight: .medium))
+            } else if index >= 0, index < cues.count {
+                let cue = cues[index]
+                Text("\(compactMs(cue.startMs))  →  \(compactMs(cue.endMs))")
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+            }
         }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 4)
+        .contentShape(Rectangle())
+        .onLongPressGesture { dumpStemTranscript() }
+        .sheet(isPresented: $showTranscriptSheet) { transcriptSheet }
     }
 
     // Top action bar for the karaoke view: a single full Re-align action that re-runs the whole
