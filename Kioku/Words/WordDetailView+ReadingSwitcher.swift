@@ -1,10 +1,13 @@
 import SwiftUI
 
-// Header reading switcher: when a kanji word has several readings that share its spelling
-// (抱く → いだく / だく / うだく — distinct JMdict entries, not one entry with sense restrictions),
-// left/right chevrons flank the headword and cycle between them, mirroring the Read-tab lookup
-// sheet's arrows. Switching re-points the saved word to that reading's entry (reusing the existing
-// homonym re-point path) so the furigana and the Definition section both follow the active reading.
+// Header reading switcher: when a kanji word has several readings that share its spelling, left/right
+// chevrons flank the headword and cycle between them, mirroring the Read-tab lookup sheet's arrows.
+// Two cases, both offered (the sheet dedupes readings by STRING, so this does too, rather than the
+// old dedup-by-entry that hid the second case):
+//   • Cross-entry heteronyms (抱く → いだく / だく / うだく — distinct JMdict entries). Switching
+//     re-points the saved word to that reading's entry so the Definition follows the reading.
+//   • Within-entry kana variants (涙 → なみだ / なだ — one entry, same meaning). Switching only swaps
+//     the displayed furigana; the entry and Definition stay put.
 extension WordDetailView {
     // Which direction an arrow advances the active reading.
     enum ReadingSwitchDirection {
@@ -12,24 +15,27 @@ extension WordDetailView {
         case next
     }
 
-    // The readings the switcher actually offers: one per distinct entry, archaic/obscure-only
-    // readings dropped unless the user opted in (the active reading is always kept so a word saved
-    // on its archaic reading still shows). Empty or single → the switcher stays hidden.
+    // The readings the switcher offers: one per distinct reading STRING (so a single entry's several
+    // kana readings each appear, matching the sheet), archaic/obscure-only readings dropped unless the
+    // user opted in (the active reading is always kept so a word saved on its archaic reading still
+    // shows). Empty or single → the switcher stays hidden.
     var switchableReadings: [ReadingVariants.Variant] {
         let includeArchaic = DictionarySettings.includeArchaicReadings
-        var seen = Set<Int64>()
+        var seen = Set<String>()
         return readingVariants.compactMap { variant in
-            guard let entry = variant.entry, seen.insert(entry.entryId).inserted else { return nil }
-            let isActive = entry.entryId == activeEntryID
-            guard includeArchaic || isActive || DefaultSenseSelection.isEntirelyLowPriority(entry) == false else { return nil }
+            guard seen.insert(variant.reading).inserted else { return nil }
+            let isActive = variant.reading == activeReading
+            let entryArchaic = variant.entry.map { DefaultSenseSelection.isEntirelyLowPriority($0) } ?? false
+            guard includeArchaic || isActive || entryArchaic == false else { return nil }
             return variant
         }
     }
 
-    // The reading to render above the headword. Prefers the exact reading handed in by the lookup
-    // sheet while the word is still on the entry it was opened with; once the user switches readings
-    // it derives from the active homograph so the furigana flips (いだかれ → だかれ).
+    // The reading to render above the headword. Once the switcher flips (either case), displayedReading
+    // is authoritative. Otherwise: the exact reading handed in by the lookup sheet while still on the
+    // opened entry, else the active homograph's projected reading (いだかれ → だかれ).
     func headerReading(entry: DictionaryEntry?) -> String? {
+        if let displayedReading { return displayedReading }
         if activeEntryID == word.canonicalEntryID, let reading { return reading }
         if let active = switchableReadings.first(where: { $0.entry?.entryId == activeEntryID }),
            let activeEntry = active.entry {
@@ -63,18 +69,30 @@ extension WordDetailView {
         }
     }
 
-    // Advances to the previous/next reading with wrap-around (matching the lookup sheet) and
-    // re-points the saved word to that reading's entry via the shared homonym switch path, which
-    // persists the change and reloads the screen around the newly active reading.
+    // Advances to the previous/next reading with wrap-around (matching the lookup sheet). Always sets
+    // displayedReading so the header furigana flips; when the target reading belongs to a DIFFERENT
+    // entry (a heteronym) it also re-points the saved word via the shared homonym switch path so the
+    // Definition follows. Within-entry readings share one entry, so only the furigana changes.
     func switchReading(_ direction: ReadingSwitchDirection, among readings: [ReadingVariants.Variant]) {
         guard readings.count > 1 else { return }
         let total = readings.count
-        let currentIndex = readings.firstIndex { $0.entry?.entryId == activeEntryID } ?? 0
+        // Locate the active item by reading string first (works for within-entry flips), falling back
+        // to the active entry (the opened state, before any flip, when displayedReading is nil).
+        let currentIndex = readings.firstIndex { $0.reading == activeReading }
+            ?? readings.firstIndex { $0.entry?.entryId == activeEntryID }
+            ?? 0
         let nextIndex = direction == .next
             ? (currentIndex + 1) % total
             : (currentIndex - 1 + total) % total
-        guard let target = readings[nextIndex].entry?.entryId, target != activeEntryID else { return }
-        switchSavedEntry(to: target)
+        let target = readings[nextIndex]
+        // Project the target onto the (possibly inflected) surface for display, mirroring headerReading.
+        displayedReading = target.entry.map {
+            projectedReading(surface: word.surface, baseReading: target.reading,
+                             kanjiForms: $0.kanjiForms, kanaForms: $0.kanaForms) ?? target.reading
+        } ?? target.reading
+        if let targetEntryID = target.entry?.entryId, targetEntryID != activeEntryID {
+            switchSavedEntry(to: targetEntryID)
+        }
         // switchSavedEntry arms a scroll-into-view meant for tapping a homonym card far down the
         // list. The switcher already shows only the active reading in place, so cancel that scroll
         // to keep the header steady while cycling readings.

@@ -37,8 +37,10 @@ struct WordDetailView: View {
 
     // All entries matching the saved surface; saved entry is first.
     @State var allDisplayData: [WordDisplayData] = []
-    // Heteronym readings sharing this word's kanji spelling (抱く → いだく/だく/うだく), each tied to
-    // its entry. Populated by loadDisplayData; drives the header reading switcher. See WordDetailView+ReadingSwitcher.
+    // Readings sharing this word's kanji spelling — both cross-entry heteronyms (抱く → いだく/だく/
+    // うだく, distinct entries) and within-entry kana variants (涙 → なみだ/なだ, one entry), each tied
+    // to its entry. Populated by loadDisplayData; drives the header reading switcher, which dedupes by
+    // reading STRING (like the Read-tab lookup sheet). See WordDetailView+ReadingSwitcher.
     @State var readingVariants: [ReadingVariants.Variant] = []
     @State private var personalNoteText: String = ""
     @State private var sentencesExpanded: Bool = false
@@ -78,6 +80,13 @@ struct WordDetailView: View {
     // session, otherwise the entry the view was opened with. Single source of truth for all
     // "which entry is mine" decisions across the main view and its extension files.
     var activeEntryID: Int64 { repointedEntryID ?? word.canonicalEntryID }
+    // The reading the header shows after the switcher flips to a WITHIN-entry reading (涙 なみだ ↔ なだ
+    // are one entry, so repointedEntryID can't express the flip). Nil until switched; then it is the
+    // authoritative displayed reading. Cross-entry (heteronym) flips also set it. See WordDetailView+ReadingSwitcher.
+    @State var displayedReading: String? = nil
+    // The reading currently active — the switcher override once flipped, else the opened reading.
+    // Deliberately does NOT consult switchableReadings (which reads this) so there is no recursion.
+    var activeReading: String? { displayedReading ?? reading }
     // Set by a homonym re-point tap so the List scrolls the now-saved card into view once the
     // async reload settles (the card the user tapped may sit far down the list). Cleared after
     // the scroll fires. See the .onChange(of: allDisplayData.first…) below.
