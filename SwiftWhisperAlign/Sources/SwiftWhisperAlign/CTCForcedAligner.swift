@@ -861,9 +861,18 @@ public struct CTCForcedAligner {
         guard cands.isEmpty == false else { return [] }
 
         // Chorus-repetition gate: a repeated lyric ("…忘れない") can match the WRONG repetition and
-        // teleport 50s. Drop any candidate grossly far (>28s) from its expected lyric-position.
+        // teleport to a far chorus. Drop any candidate grossly far from its expected char-position.
+        // The threshold must clear the largest LEGITIMATE char-rate error — which spikes next to a
+        // long held note (涙色のシェノーン held ~32s pulls the char-proportional estimate ~29s early
+        // for the following line) — while still rejecting a wrong-repetition teleport, which is a full
+        // chorus-spacing away (~150s here). 40s sits in that gap: it admits the real post-interlude
+        // onset (a flat 28s dropped it, stranding 悲しみの嘘を忘れない ~30s early → it showed BEFORE the
+        // ♪ at 2:59 instead of after at 3:29) and still walls out teleports (~110s of margin to the
+        // repetition floor). Graded: max Δ 29.8s→9.0s, this line 29.8s→2.4s, on the correct side now.
+        // Kept as a flat gate for ALL lines — a uniqueness exemption disabled it too broadly and
+        // scrambled ordering.
         if expected.isEmpty == false {
-            cands = cands.filter { abs($0.time - expected[$0.line]) <= 28.0 }
+            cands = cands.filter { abs($0.time - expected[$0.line]) <= 40.0 }
             guard cands.isEmpty == false else { return [] }
         }
 
