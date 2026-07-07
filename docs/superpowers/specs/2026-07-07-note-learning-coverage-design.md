@@ -75,12 +75,19 @@ This deliberately differs from the existing `isDue(id:at:)`, which returns `true
 never-reviewed words too. For coverage we want New and Due to be **disjoint**: New words carry
 their own call-to-action; Due means "you started this and it's waiting for a review."
 
-### Cloze into the SRS
+### Cloze into the SRS (deferred to a follow-up — NOT in this build)
 
-Cloze currently records nothing (`Kioku/Learn/Cloze/` never calls `reviewStore.record*`). Wire a
-correct cloze answer to `recordCorrect` and a wrong one to `recordAgain`, mirroring
-`MultipleChoiceView`. All three wired modes (Flashcards, Multiple Choice, Cloze) contribute
-equally to mastery.
+Originally we wanted a correct cloze answer to count toward mastery like Flashcards and Multiple
+Choice. Planning revealed this is a self-contained sub-project, not part of the coverage screen:
+`ClozeBlank` stores only a `correct: String` surface (no `canonicalEntryID`), and cloze blanks
+arbitrary sentence tokens — most of which are not saved words. Making a cloze answer move a saved
+word's mastery requires resolving each blanked surface → a dictionary entry id **with
+deinflection** (the hard problem `SubtitleVocabExtractor` handles) and then gating to only record
+when that id belongs to a saved word.
+
+Decision (2026-07-07): **defer**. Mastery in this build is driven by Flashcards + Multiple Choice,
+exactly as the app works today. The coverage screen does not depend on cloze wiring. Cloze-into-SRS
+becomes its own small spec later.
 
 ## The Coverage screen
 
@@ -121,8 +128,9 @@ vocabulary.
 ## Tap to study
 
 Tapping a non-empty cell (e.g. "N4 · Learning — 7") pops a small mode chooser —
-**Flashcards / Multiple Choice / Cloze** — then pushes that mode's session over *just those words*
-(this note, that level, that stage). Specifics:
+**Flashcards / Multiple Choice** — then pushes that mode's session over *just those words*.
+Cloze is **not** a chooser target: it is sentence-based and has no saved-word-set selection model
+(see the deferred cloze note above). Specifics:
 
 - **New / Learning / Due** taps → a session over the matching words.
 - **Learned** tap → a **refresher** re-drill of the mastered words (legitimately useful).
@@ -130,12 +138,13 @@ Tapping a non-empty cell (e.g. "N4 · Learning — 7") pops a small mode chooser
 
 ### Scope plumbing
 
-The existing scope enum `FlashcardScope { all, dueNow, markedWrong }` already covers **Due**
-(`dueNow`). Add `case new` and `case learning` so a stage maps to a real filter, computed via the
-new `masteryStage(for:)`. A scoped launch carries `(noteID, level: Int?, stage)`; because the cell
-already knows its exact word set, the launch can hand the resolved words to the chosen mode rather
-than re-deriving them. Reuse the existing session flows — no new session UI, only a scoped entry
-point into each mode.
+Because the coverage cell already knows its exact `[SavedWord]` set, the launch hands that resolved
+word set directly to the chosen mode rather than re-deriving it from note+level+stage filters. This
+also sidesteps the fact that "No level" (`nil` JLPT) can't be expressed via the existing
+`selectedJLPTLevels: Set<Int>`. Both `FlashcardsView` and `MultipleChoiceView` gain an optional
+preset-session entry point that, when supplied, skips their home pickers and starts a session over
+the given words. No new `FlashcardScope` cases are needed; the existing session UI is reused, only a
+scoped entry point is added.
 
 ## Testing
 
@@ -159,8 +168,9 @@ surface is introduced.
 - New `Kioku/Learn/Coverage/CoverageView.swift` (+ supporting views) — note picker → breakdown.
 - `Kioku/Learn/Flashcards/ReviewStore.swift` — `MasteryStage`, `masteryStage(for:)`,
   `isDueForReview(id:)`.
-- `Kioku/Learn/Cloze/…` — record correct/again into `ReviewStore`.
-- Study scope: `FlashcardScope` (+ `new`, `learning`) and the scoped launch path shared by the
-  three modes.
+- `Kioku/Learn/Flashcards/FlashcardsView.swift` and
+  `Kioku/Learn/MultipleChoice/MultipleChoiceView.swift` — optional preset-session entry point that
+  starts a session over an explicit `[SavedWord]`, skipping the home pickers.
 - Reuse: `FlashcardNotePicker`, `WordsFilterView.notesWithSavedWords`,
   `DictionaryStore.jlptLevel(for:)`, `LearnHomeScaffold`.
+- Cloze-into-SRS is deferred (see above) — no cloze files change in this build.
