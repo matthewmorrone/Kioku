@@ -33,3 +33,6 @@ asc-*.png
 
 # Python venv for dictionary generation (wordfreq)
 .venv/
+
+# Per-user Xcode state (breakpoints, scheme ordering) — never shared
+**/xcuserdata/
