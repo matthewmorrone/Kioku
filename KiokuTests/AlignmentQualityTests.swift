@@ -183,6 +183,27 @@ final class AlignmentQualityTests: XCTestCase {
             startingCueCount: startingCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }.count
         )
 
+        // Diagnostic: per-cue start deltas (worst offenders first) so a grading run
+        // pinpoints WHICH line is mis-placed, not just the aggregate. Monotonic walk
+        // mirrors computeMetrics. This is how the interlude misplacement was located.
+        do {
+            var nextOut = 0
+            var rows: [(oracleMs: Int, outMs: Int, delta: Int, text: String)] = []
+            for oracleCue in oracleCues {
+                for j in nextOut..<afterSpeechCues.count
+                where SubtitleReconciliation.cueMatchesNoteLine(afterSpeechCues[j].text, oracleCue.text) {
+                    rows.append((oracleCue.startMs, afterSpeechCues[j].startMs,
+                                 abs(afterSpeechCues[j].startMs - oracleCue.startMs), oracleCue.text))
+                    nextOut = j + 1
+                    break
+                }
+            }
+            print("\n[DEBUG] Worst per-cue start deltas:")
+            for r in rows.sorted(by: { $0.delta > $1.delta }).prefix(8) {
+                print(String(format: "  Δ%6dms  oracle=%6dms  out=%6dms  %@", r.delta, r.oracleMs, r.outMs, r.text))
+            }
+        }
+
         // Temporary debug: dump reconciled cue list to diagnose missing-line drops.
         if afterMetrics.missingFromOutput.isEmpty == false {
             print("\n[DEBUG] Reconciled output cues (\(afterSpeechCues.count)):")
