@@ -38,12 +38,16 @@ struct MultipleChoiceQuestion: Identifiable {
 struct MultipleChoiceView: View {
     let dictionaryStore: DictionaryStore?
     let segmenter: (any TextSegmenting)?
+    // When non-nil, opens directly into a scoped session over these words (Coverage drill-down).
+    var presetWords: [SavedWord]? = nil
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var reviewStore: ReviewStore
 
     @State private var questions: [MultipleChoiceQuestion] = []
+    // Guards the preset auto-start so it fires exactly once.
+    @State private var didAutoStartPreset: Bool = false
     @State private var index: Int = 0
     @State private var selected: String?
     @State private var sessionActive: Bool = false
@@ -101,6 +105,12 @@ struct MultipleChoiceView: View {
         // Suppress the Learn tab page dots and swipe-between-modes while a quiz is in progress.
         .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: sessionActive)
         .preference(key: CardsStudySessionActivePreferenceKey.self, value: sessionActive)
+        .onAppear {
+            if let presetWords, didAutoStartPreset == false {
+                didAutoStartPreset = true
+                startSession(with: presetWords)
+            }
+        }
     }
 
     // Shows question position and running correct/wrong tallies.
@@ -318,7 +328,12 @@ struct MultipleChoiceView: View {
 
     // Resolves the question pool asynchronously, then activates the session.
     private func startSessionFromHome() {
-        let words = wordsMatchingSelection()
+        startSession(with: wordsMatchingSelection())
+    }
+
+    // Builds and activates a session over an explicit word set — shared by the home picker and by
+    // the Coverage screen's scoped launch.
+    private func startSession(with words: [SavedWord]) {
         sessionActive = true
         isResolving = true
         sessionCorrect = 0

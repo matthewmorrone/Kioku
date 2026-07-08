@@ -115,6 +115,16 @@ final class ReviewStore: ObservableObject {
         notLearned.contains(id)
     }
 
+    // The canonical mastery stage for a word — the one definition of New/Learning/Learned used
+    // app-wide. Learned wins (manual mark or auto-promotion via AutoLearnPolicy); otherwise any
+    // engagement (review stats present, or an explicit not-learned mark) is Learning; a
+    // never-touched word is New.
+    func masteryStage(for id: Int64) -> MasteryStage {
+        if learnedState(for: id) == .learned { return .learned }
+        if stats[id] != nil || learnedState(for: id) == .notLearned { return .learning }
+        return .new
+    }
+
     // Records an "again" answer: increments counters, adds the word to the wrong set, resets
     // the SRS streak, and reschedules the card to reappear after the short relearn step.
     func recordAgain(for id: Int64) {
@@ -138,6 +148,14 @@ final class ReviewStore: ObservableObject {
     func isDue(id: Int64, at date: Date = Date()) -> Bool {
         guard let st = stats[id] else { return true }
         guard let due = st.dueDate else { return true }
+        return due <= date
+    }
+
+    // True only when the word has been reviewed before AND its scheduled interval has lapsed.
+    // Unlike `isDue`, a never-reviewed word is NOT due here — the coverage screen keeps New and
+    // Due as disjoint categories (New carries its own call-to-action).
+    func isDueForReview(id: Int64, at date: Date = Date()) -> Bool {
+        guard let st = stats[id], let due = st.dueDate else { return false }
         return due <= date
     }
 

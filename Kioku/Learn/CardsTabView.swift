@@ -9,6 +9,7 @@ enum LearnPage: Int, CaseIterable, Identifiable {
     case multipleChoice
     case cloze
     case kanaChart
+    case coverage
     var id: Int { rawValue }
 }
 
@@ -82,6 +83,8 @@ struct LearnPagerView: View {
                 ClozeStudyHomeView()
                     .frame(width: width)
                 KanaChartView()
+                    .frame(width: width)
+                CoverageView(dictionaryStore: dictionaryStore)
                     .frame(width: width)
             }
             .frame(width: width, alignment: .leading)
