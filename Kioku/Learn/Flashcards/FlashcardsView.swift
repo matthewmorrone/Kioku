@@ -27,6 +27,9 @@ struct FlashcardsView: View {
     // Read-tab reading maps, forwarded to WordDetailView for example-sentence furigana.
     var surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap()
     var kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap()
+    // When non-nil, this view opens directly into a session over exactly these words (skipping the
+    // home pickers) — used by the Coverage screen to drill a specific level × stage word set.
+    var presetWords: [SavedWord]? = nil
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
@@ -34,6 +37,8 @@ struct FlashcardsView: View {
 
     @State private var session: [SavedWord] = []
     @State private var sessionSource: [SavedWord] = []
+    // Ensures the preset session auto-starts only once, so ending it doesn't immediately restart.
+    @State private var didAutoStartPreset: Bool = false
     @State private var index: Int = 0
     @State private var showBack: Bool = false
     @State private var shuffled: Bool = true
@@ -124,6 +129,14 @@ struct FlashcardsView: View {
         // Suppress the Cards tab page dots and swipe-between-modes while reviewing.
         .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: session.isEmpty == false)
         .preference(key: CardsStudySessionActivePreferenceKey.self, value: session.isEmpty == false)
+        .onAppear {
+            // Preset launch (from Coverage): seed the pool with the handed-in words and start once.
+            if let presetWords, didAutoStartPreset == false {
+                didAutoStartPreset = true
+                sessionSource = presetWords
+                startSession()
+            }
+        }
     }
 
     // Shows card number and running correct/again tallies.
