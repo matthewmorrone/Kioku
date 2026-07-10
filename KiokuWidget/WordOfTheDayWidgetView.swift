@@ -440,12 +440,10 @@ struct WordOfTheDayWidgetView: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             brandLabel
-            Text("Enable Word of the Day in Settings to see your latest word here.")
-                .font(WidgetTheme.serif(14))
-                .foregroundStyle(WidgetTheme.inkSecondary)
-                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Enable Word of the Day in Settings to see your latest word here")
     }
 
     // MARK: - Helpers

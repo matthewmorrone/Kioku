@@ -39,8 +39,9 @@ struct ClozeStudyHomeView: View {
 
                 Section {
                     if notesStore.notes.isEmpty {
-                        Text("Add a note to study.")
-                            .foregroundStyle(.secondary)
+                        // No visible "add a note" prose; the guidance rides as an accessibility
+                        // hint on the section header instead.
+                        EmptyView()
                     } else {
                         Picker("Note", selection: $selectedNoteID) {
                             Text("Select a note").tag(UUID?.none)
@@ -52,6 +53,7 @@ struct ClozeStudyHomeView: View {
                     }
                 } header: {
                     Text("Source")
+                        .accessibilityHint(notesStore.notes.isEmpty ? "Add a note on the Notes tab to study" : "")
                 }
             }
             .navigationBarTitleDisplayMode(.inline)

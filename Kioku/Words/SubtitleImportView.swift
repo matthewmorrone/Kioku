@@ -169,7 +169,7 @@ struct SubtitleImportView: View {
                     .textFieldStyle(.roundedBorder)
             case .existing:
                 if wordListsStore.lists.isEmpty {
-                    Text("No lists yet — switch to “New list”.")
+                    Text("No lists yet.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
