@@ -85,11 +85,15 @@ extension WordDetailView {
         let savedEntryID = activeEntryID
 
         let (results, variants) = await Task { @MainActor in
-            // Look up all entries matching the surface in both kanji and kana columns. The
-            // earlier script-conditional mode was a no-op micro-optimization — a pure-kana
-            // surface can never match a kanji column, so .kanjiAndKana and .kanaOnly are
-            // functionally identical for kana surfaces. The conditional was misleading.
-            let entries = (try? dictionaryStore.lookup(surface: surface, mode: .kanjiAndKana)) ?? []
+            // Look up all entries matching the surface, choosing mode by script. This is NOT a
+            // no-op: the two modes return the same *result set* for a pure-kana surface (kana
+            // can't match a kanji column), but they ORDER differently. The demonstrative/particle
+            // POS boost in fetchMatchedEntries is gated to `matchKana && !matchKanji`, so only
+            // .kanaOnly promotes その (adj-pn "that") above its rare homograph 園 ("garden"). A
+            // prior "these are identical, simplify to .kanjiAndKana" edit silently disabled that
+            // boost and buried その's primary sense in 3rd place under the archaic garden entry.
+            let mode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
+            let entries = (try? dictionaryStore.lookup(surface: surface, mode: mode)) ?? []
 
             // Build display data for each entry, saved entry first.
             var ordered: [WordDisplayData] = []

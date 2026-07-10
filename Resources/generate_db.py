@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import hashlib
+from contextlib import contextmanager
 from pathlib import Path
 import sys
 import time
@@ -583,12 +584,21 @@ def resolve_extra_ent_seq(entry, entry_index, used_ent_seqs):
 
 def import_wordfreq(conn):
     # Populates wordfreq_zipf on kanji and kana_forms rows using the wordfreq Python package.
-    # Requires: pip install wordfreq mecab-python3 ipadic
+    #
+    # This is a REQUIRED build phase, not an optional one. wordfreq is the ONLY frequency signal
+    # for words usually written in kana (この, その, する, こと …): JPDB ranks only their rare kanji
+    # spelling, never the everyday kana surface. A build without wordfreq silently produces an
+    # all-NULL wordfreq_zipf column, which mislabels those extremely common words as "Rare" and
+    # misorders their homographs — the exact bug this guard exists to prevent. So a missing package
+    # is a hard error, never a silent skip. Install deps: pip install -r requirements.txt.
     try:
         from wordfreq import zipf_frequency
-    except ImportError:
-        print("  wordfreq not installed — skipping wordfreq import")
-        return
+    except ImportError as exc:
+        raise RuntimeError(
+            "wordfreq is required to build dictionary.sqlite but is not installed. Install the "
+            "build dependencies (ideally into ./.venv): pip install -r requirements.txt "
+            "— or: pip install wordfreq mecab-python3 ipadic."
+        ) from exc
 
     print("  Importing wordfreq Zipf scores...")
 
@@ -1254,73 +1264,116 @@ def classify_reading_types(conn):
     print(f"  Done: {len(links)} links classified")
 
 
+# (label, seconds) for every build phase, so a run self-reports where its time goes instead
+# of relying on memory or stale comments. Populated by phase(); cleared at the start of each
+# build_database() call so repeated in-process builds don't accumulate.
+_PHASE_TIMINGS = []
+
+
+# Time one build phase: print its label, run the wrapped body, then record and echo the elapsed
+# seconds. Wrapping every phase in build_database() lets print_phase_summary() show a per-phase
+# breakdown — the concrete measurement that settles how long a full rebuild actually takes.
+@contextmanager
+def phase(label):
+    print(label)
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = time.perf_counter() - start
+        _PHASE_TIMINGS.append((label, elapsed))
+        print(f"  → {elapsed:.2f}s")
+
+
+# Print the recorded phases as a duration table sorted longest-first (with each phase's share of
+# the total), so the slowest step is obvious at a glance. Called by main() after the build.
+def print_phase_summary(total_elapsed):
+    if not _PHASE_TIMINGS:
+        return
+    labels = [label.rstrip(". ") for label, _ in _PHASE_TIMINGS]
+    label_width = max(len(label) for label in labels)
+    print("\nBuild phase durations (longest first):")
+    ordered = sorted(zip(labels, (t for _, t in _PHASE_TIMINGS)), key=lambda item: item[1], reverse=True)
+    for label, elapsed in ordered:
+        share = (elapsed / total_elapsed * 100) if total_elapsed else 0
+        print(f"  {label.ljust(label_width)}  {elapsed:8.2f}s  {share:5.1f}%")
+    print(f"  {'TOTAL'.ljust(label_width)}  {total_elapsed:8.2f}s")
+
+
 def build_database():
+    _PHASE_TIMINGS.clear()
+
     if OUTPUT_DB.exists():
         OUTPUT_DB.unlink()
 
     conn = sqlite3.connect(OUTPUT_DB)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("BEGIN")
-    create_schema(conn)
 
-    entries = load_jmdict_entries()
-    extra_entries = load_extra_entries()
+    with phase("Creating schema..."):
+        create_schema(conn)
 
-    used_ent_seqs = set()
+    with phase("Loading and inserting JMdict + extra entries..."):
+        entries = load_jmdict_entries()
+        extra_entries = load_extra_entries()
 
-    for entry in entries:
-        ent_seq = int(entry.get("id"))
-        insert_entry(conn, entry, ent_seq)
-        used_ent_seqs.add(ent_seq)
+        used_ent_seqs = set()
 
-    for entry_index, entry in enumerate(extra_entries):
-        ent_seq = resolve_extra_ent_seq(entry, entry_index, used_ent_seqs)
-        insert_entry(conn, entry, ent_seq)
-        used_ent_seqs.add(ent_seq)
+        for entry in entries:
+            ent_seq = int(entry.get("id"))
+            insert_entry(conn, entry, ent_seq)
+            used_ent_seqs.add(ent_seq)
 
-    print("Importing frequency data...")
-    import_wordfreq(conn)
-    import_jpdb(conn)
+        for entry_index, entry in enumerate(extra_entries):
+            ent_seq = resolve_extra_ent_seq(entry, entry_index, used_ent_seqs)
+            insert_entry(conn, entry, ent_seq)
+            used_ent_seqs.add(ent_seq)
 
-    print("Tagging surfaces with IPADic context IDs...")
-    import_mecab_context_ids(conn)
+    with phase("Importing frequency data..."):
+        import_wordfreq(conn)
+        import_jpdb(conn)
 
-    print("Importing KANJIDIC2 data...")
-    import_kanjidic2(conn)
-    classify_reading_types(conn)
+    with phase("Tagging surfaces with IPADic context IDs..."):
+        import_mecab_context_ids(conn)
 
-    print("Importing pitch accent data...")
-    import_pitch_accent(conn)
+    with phase("Importing KANJIDIC2 data..."):
+        import_kanjidic2(conn)
+        classify_reading_types(conn)
 
-    print("Importing sentence pairs...")
-    import_sentence_pairs(conn)
+    with phase("Importing pitch accent data..."):
+        import_pitch_accent(conn)
 
-    print("Importing JLPT vocabulary levels...")
-    import_jlpt_levels(conn)
+    with phase("Importing sentence pairs..."):
+        import_sentence_pairs(conn)
 
-    print("Building sentence FTS index...")
-    conn.execute("INSERT INTO sentence_pairs_fts(sentence_pairs_fts) VALUES('rebuild')")
+    with phase("Importing JLPT vocabulary levels..."):
+        import_jlpt_levels(conn)
 
-    print("Building trigram FTS indexes for Words-tab substring search...")
-    # `rebuild` repopulates an external-content FTS5 table by scanning its content table —
-    # cleaner than a manual INSERT...SELECT and tolerant of partial rebuilds.
-    conn.execute("INSERT INTO glosses_fts(glosses_fts) VALUES('rebuild')")
-    conn.execute("INSERT INTO kanji_fts(kanji_fts) VALUES('rebuild')")
-    conn.execute("INSERT INTO kana_forms_fts(kana_forms_fts) VALUES('rebuild')")
+    with phase("Building sentence FTS index..."):
+        conn.execute("INSERT INTO sentence_pairs_fts(sentence_pairs_fts) VALUES('rebuild')")
 
-    print("Importing radical decomposition data...")
-    import_radicals(conn)
+    with phase("Building trigram FTS indexes for Words-tab substring search..."):
+        # `rebuild` repopulates an external-content FTS5 table by scanning its content table —
+        # cleaner than a manual INSERT...SELECT and tolerant of partial rebuilds.
+        conn.execute("INSERT INTO glosses_fts(glosses_fts) VALUES('rebuild')")
+        conn.execute("INSERT INTO kanji_fts(kanji_fts) VALUES('rebuild')")
+        conn.execute("INSERT INTO kana_forms_fts(kana_forms_fts) VALUES('rebuild')")
 
-    print("Importing KanjiVG stroke data...")
-    import_kanjivg(conn)
+    with phase("Importing radical decomposition data..."):
+        import_radicals(conn)
 
-    materialize_surface_readings(conn)
-    materialize_word_frequency(conn)
+    with phase("Importing KanjiVG stroke data..."):
+        import_kanjivg(conn)
 
-    conn.commit()
-    conn.execute("ANALYZE")
-    conn.execute("PRAGMA optimize")
-    conn.close()
+    with phase("Materializing frequency lookup tables..."):
+        materialize_surface_readings(conn)
+        materialize_word_frequency(conn)
+
+    with phase("Finalizing (commit, ANALYZE, optimize)..."):
+        conn.commit()
+        conn.execute("ANALYZE")
+        conn.execute("PRAGMA optimize")
+        conn.close()
 
 
 # The two materialization passes below are split into standalone functions so both the full
@@ -1442,7 +1495,9 @@ def main():
 
     build_database()
 
-    print(f"Done in {time.time() - start:.2f}s")
+    total = time.time() - start
+    print_phase_summary(total)
+    print(f"Done in {total:.2f}s")
     print(f"Output: {OUTPUT_DB}")
 
 
