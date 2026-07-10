@@ -29,11 +29,14 @@ struct KanaChartView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .padding(.horizontal)
-                .padding(.vertical, 8)
+                .padding(.top, 2)
                 // Swiping anywhere on the chart cycles modes, so the whole area must be hit-testable.
                 .contentShape(Rectangle())
                 .gesture(modeSwipe)
             }
+            // Leave room at the bottom so the full-screen chart (it no longer scrolls, so it now
+            // reaches the screen edge) sits clear above the Learn pager's page-dot overlay.
+            .padding(.bottom, 52)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 LearnHomeTitle(title: representation.label, systemImage: "tablecells")
