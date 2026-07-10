@@ -89,6 +89,7 @@ struct RadicalInputView: View {
                 resultStrip
                 Divider()
                 radicalGrid
+                    .accessibilityHint("Tap radicals to find kanji that contain them")
             }
         }
     }
@@ -129,11 +130,15 @@ struct RadicalInputView: View {
             }
 
             if kanjiResults.isEmpty {
-                Text(selected.isEmpty ? "Tap radicals below to start." : "No kanji contain all selected radicals.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 6)
+                // Onboarding guidance ("tap radicals to start") lives as an accessibilityHint on
+                // the radical grid, not as visible text. Only the genuine no-match *result* shows.
+                if selected.isEmpty == false {
+                    Text("No kanji contain all selected radicals.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 6)
+                }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
