@@ -34,14 +34,33 @@ final class JapaneseInputAccessory: NSObject {
     // first). Used to size inline radical/handwriting wrappers so the swap is height-matched.
     private var measuredKeyboardHeight: CGFloat?
 
+    // Fixed accessory-bar height (6pt top pad + 32pt buttons + 6pt bottom pad). Pinned onto the bar
+    // AND subtracted from the measured keyboard height, so the radical/handwriting input views fill
+    // exactly the space the keys occupied — making the total inline input area equal the native
+    // keyboard. Measuring the live bar frame was unreliable (0 before layout → oversized views).
+    private static let accessoryBarHeight: CGFloat = 44
+
     init(responder: JapaneseAccessoryResponder, dictionaryStore: DictionaryStore?) {
         self.responder = responder
-        self.dictionaryStore = dictionaryStore
+        // The accessory is built inside the text field's makeUIView, which can run before the app's
+        // shared store finishes loading — capturing nil, which never updates, so radical/handwriting
+        // lookups silently return nothing ("Radical data unavailable"). Fall back to a store opened
+        // directly from the bundled DB (read-only, always carries the radical tables).
+        self.dictionaryStore = dictionaryStore ?? (try? DictionaryStore())
         super.init()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(keyboardDidShow(_:)),
             name: UIResponder.keyboardDidShowNotification,
+            object: nil
+        )
+        // Also track frame CHANGES, so switching keyboard language (e.g. English → the taller
+        // Japanese kana/romaji keyboard, which adds a candidate bar) re-measures — otherwise the
+        // radical/handwriting views stay sized to whichever keyboard happened to appear first.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardDidShow(_:)),
+            name: UIResponder.keyboardDidChangeFrameNotification,
             object: nil
         )
     }
@@ -61,12 +80,16 @@ final class JapaneseInputAccessory: NSObject {
     // match it exactly. The reported frame includes the inputAccessoryView (the 部/✋/⌨ row),
     // which is drawn ABOVE the inputView, so subtract its height to avoid double-counting.
     @objc private func keyboardDidShow(_ note: Notification) {
+        // Only the SYSTEM keyboard's height should be captured. In radical/handwriting mode our own
+        // inputView is on screen and would otherwise be re-measured as if it were the keyboard.
+        guard currentMode == .keyboard else { return }
         guard
             let frameValue = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue
         else { return }
         let totalHeight = frameValue.cgRectValue.height
-        let accessoryHeight = accessoryHost?.view.frame.height ?? 0
-        let height = max(0, totalHeight - accessoryHeight)
+        // The keyboard frame includes the accessory bar, drawn above the keys — subtract the bar's
+        // fixed height to get the keys' own height, which is what an inline input view must fill.
+        let height = max(0, totalHeight - Self.accessoryBarHeight)
         guard height > 0 else { return }
         measuredKeyboardHeight = height
         for wrapper in inputViewContainers.values {
@@ -82,10 +105,41 @@ final class JapaneseInputAccessory: NSObject {
         let host = UIHostingController(rootView: makeBar())
         host.view.backgroundColor = .clear
         host.view.translatesAutoresizingMaskIntoConstraints = false
-        host.view.frame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 44)
         host.sizingOptions = [.intrinsicContentSize]
+        // The accessory host inherits safe-area insets from the keyboard window (bottom home-
+        // indicator inset especially), which UIKit pads into the hosting controller — inflating the
+        // bar's height with dead space above/below the buttons. The radical/handwriting hosts strip
+        // this; the accessory bar needs it too so the bar hugs its buttons and sits flush on the keys.
+        disableInheritedSafeArea(on: host)
         accessoryHost = host
-        responder.inputAccessoryView = host.view
+
+        // Back the transparent bar with a UIInputView in the .keyboard style: its fill is the EXACT
+        // system keyboard material (matched, not guessed). Round + clip it so the bar reads as a
+        // self-contained panel above the keys. allowsSelfSizing + edge-pinning the host makes the
+        // input view take the bar's intrinsic height (no fixed frame that would re-open a gap).
+        let background = UIInputView(
+            frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: Self.accessoryBarHeight),
+            inputViewStyle: .keyboard
+        )
+        background.allowsSelfSizing = true
+        // UIInputView only paints its .keyboard material when it IS the input view, not when reused
+        // as an accessory backdrop — so it renders transparent here. Give it an explicit fill tuned
+        // to the system keyboard's background gray (systemGray5 ≈ the keys' backdrop in both modes).
+        background.backgroundColor = .systemGray5
+        background.layer.cornerRadius = 22
+        background.layer.cornerCurve = .continuous
+        background.layer.masksToBounds = true
+        background.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: background.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: background.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: background.bottomAnchor),
+            // Pin the bar to the exact height we subtract in keyboardDidShow, so the accessory and
+            // the inline input view together equal the native keyboard's footprint.
+            host.view.heightAnchor.constraint(equalToConstant: Self.accessoryBarHeight),
+        ])
+        responder.inputAccessoryView = background
     }
 
     // Constructs a fresh KeyboardModeBar rooted at the current mode. Used at install time and
@@ -172,6 +226,12 @@ final class JapaneseInputAccessory: NSObject {
         let wrapper = NoSafeAreaContainer(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: height))
         wrapper.autoresizingMask = .flexibleWidth
         wrapper.backgroundColor = UIColor.systemBackground
+        // Round the TOP corners of the radical/handwriting input panel to match the accessory bar's
+        // radius, so the inline input reads as a rounded keyboard rather than a square slab.
+        wrapper.layer.cornerRadius = 22
+        wrapper.layer.cornerCurve = .continuous
+        wrapper.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        wrapper.layer.masksToBounds = true
         wrapper.insetsLayoutMarginsFromSafeArea = false
         wrapper.layoutMargins = .zero
         wrapper.directionalLayoutMargins = .zero
