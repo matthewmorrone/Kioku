@@ -153,13 +153,15 @@ struct WordDetailView: View {
             .sorted { $0.count > $1.count }
     }
 
-    // Returns true when the saved entry is flagged as a common word in JMdict priority data.
-    // Checks all kanji and kana forms for ichi1/news1/spec1 priority tags.
-    private var isCommonWord: Bool {
-        guard let entry = savedDisplayData?.entry else { return false }
-        let priorities = (entry.kanjiForms.map(\.priority) + entry.kanaForms.map(\.priority))
-            .compactMap { $0 }
-        return priorities.contains { $0.contains("ichi1") || $0.contains("news1") || $0.contains("spec1") }
+    // Frequency tier ("Very Common" … "Very Rare") of the saved/active entry, shown ONCE as a
+    // header badge. Frequency is a property of a written surface, not of an individual sense or
+    // meaning — every source we have (wordfreq scores a string, JPDB ranks a written form) is
+    // surface-keyed, and homographs that share a surface (その "that" vs 園 "garden") therefore
+    // share one frequency. Rendering a tier per sense-card falsely implied each entry had its
+    // own; surfacing it once here keeps the claim honest. Nil when no frequency signal exists.
+    private var headerFrequencyLabel: String? {
+        guard let entry = savedDisplayData?.entry else { return nil }
+        return FrequencyData(jpdbRank: entry.jpdbRank, wordfreqZipf: entry.wordfreqZipf).frequencyLabel
     }
 
     // Returns the verb class detected from the saved entry's POS tags, or nil for non-verbs.
@@ -289,21 +291,6 @@ struct WordDetailView: View {
                 // star overlays), shown only for words with more than one reading sharing the spelling.
                 .overlay(alignment: .leading) { readingSwitcherChevron(.previous) }
                 .overlay(alignment: .trailing) { readingSwitcherChevron(.next) }
-                // COMMON badge — outlined pill in the top-trailing corner, matching the
-                // reference. Driven by the same ichi1/news1/spec1 priority heuristic.
-                .overlay(alignment: .topTrailing) {
-                    if isCommonWord {
-                        Text("COMMON")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .overlay(
-                                Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1)
-                            )
-                            .padding(.trailing, 16)
-                    }
-                }
 
                 // Grammatical form of the inflected surface, beneath the headword/lemma — surfaces
                 // the derivation (e.g. "potential · negative") that was previously only in the
@@ -327,6 +314,19 @@ struct WordDetailView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
+                    }
+
+                    // Frequency tier for the word as a whole, in the left-aligned metadata row
+                    // beside the POS summary. Shown once here (not per sense card) because
+                    // frequency is a surface-level statistic — see headerFrequencyLabel.
+                    if let freqLabel = headerFrequencyLabel {
+                        Text(freqLabel)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
+                            .fixedSize()
                     }
 
                     Spacer(minLength: 8)
@@ -426,7 +426,9 @@ struct WordDetailView: View {
                             // the toggle handlers (see toggleSenseSelection / toggleGlossSelection).
                             ForEach(sortedData, id: \.entry.entryId) { data in
                                 if data.entry.senses.isEmpty == false {
-                                    let freqLabel = FrequencyData(jpdbRank: data.entry.jpdbRank, wordfreqZipf: data.entry.wordfreqZipf).frequencyLabel
+                                    // Frequency tier is intentionally NOT shown per card — it's a
+                                    // surface-level statistic surfaced once in the header
+                                    // (headerFrequencyLabel). See senseHeaderStrip.
                                     let isSavedEntry = data.entry.entryId == activeEntryID
                                     ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
                                         let senseRefs = isSavedEntry
@@ -437,7 +439,6 @@ struct WordDetailView: View {
                                             sense: sense,
                                             entryID: data.entry.entryId,
                                             isSavedEntry: isSavedEntry,
-                                            freqLabel: freqLabel,
                                             refs: senseRefs,
                                             sentences: senseSentences
                                         )
