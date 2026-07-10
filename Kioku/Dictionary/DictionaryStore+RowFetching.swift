@@ -73,31 +73,17 @@ extension DictionaryStore {
         // clause matches both the pronoun 我 (われ) AND the particle が entry. Without the
         // gate, the particle entry's `prt` POS tag would promote it ahead of the actual
         // kanji-word match for surfaces the user clearly intended in their kanji form.
+        // Tier 1: particle / functional-word / demonstrative entries first, for kana-surface
+        // lookups only. The qualifying POS set (prt / cop / aux / aux-* / adj-pn) lives in
+        // FrequencySQL.functionalPosMatch — one definition shared with the startup canonical-id
+        // map so the two rankings can't drift. adj-pn earns its place because 園 ("garden") has
+        // kana form その, so without the boost the demonstrative その loses the tie to it; JMdict
+        // has many such collisions (この vs 此, その vs 園, あの vs 彼の) and the user always wants
+        // the functional word. Gated to matchKana && !matchKanji so an explicit kanji-surface
+        // lookup (tapping 我) doesn't promote a particle homograph over the intended kanji word.
         let posBoostTier: String
         if matchKana && !matchKanji {
-            posBoostTier = """
-                -- Tier 1: particle / functional-word / demonstrative entries first for kana
-                -- surface lookups. POS tags that qualify:
-                --   prt  (particle: は, が, を, …)
-                --   cop  (copula: だ)
-                --   aux  (auxiliary: ない, られる, …; also aux-v, aux-adj prefixes)
-                --   adj-pn (pre-noun adjectival: この, その, あの, どの, etc.)
-                -- adj-pn was added after a tap on その resolved to 園 ("garden; orchard; park")
-                -- because 園 has kana form その and adj-pn wasn't yet in the boost list. The
-                -- demonstrative その entry is kana-only (has_kanji=0) and would normally win
-                -- via the has_kanji tier — but only when the kanji entry doesn't share the
-                -- same reading. JMdict has many such collisions (この vs 此, その vs 園, あの
-                -- vs 彼の, etc.), and the user always wants the demonstrative.
-                -- ',?' regex-ish matching via LIKE since pos is a comma-joined tag list.
-                CASE WHEN EXISTS (
-                    SELECT 1 FROM senses s2 WHERE s2.entry_id = e.id
-                    AND (s2.pos = 'prt' OR s2.pos LIKE 'prt,%' OR s2.pos LIKE '%,prt,%' OR s2.pos LIKE '%,prt'
-                      OR s2.pos = 'cop' OR s2.pos LIKE 'cop,%' OR s2.pos LIKE '%,cop,%' OR s2.pos LIKE '%,cop'
-                      OR s2.pos = 'aux' OR s2.pos LIKE 'aux,%' OR s2.pos LIKE '%,aux,%' OR s2.pos LIKE '%,aux'
-                      OR s2.pos LIKE 'aux-%' OR s2.pos LIKE '%,aux-%'
-                      OR s2.pos = 'adj-pn' OR s2.pos LIKE 'adj-pn,%' OR s2.pos LIKE '%,adj-pn,%' OR s2.pos LIKE '%,adj-pn')
-                ) THEN 0 ELSE 1 END ASC,
-            """
+            posBoostTier = "CASE WHEN \(FrequencySQL.functionalPosMatch(entryIDExpr: "e.id")) THEN 0 ELSE 1 END ASC,\n"
         } else {
             posBoostTier = ""
         }

@@ -29,18 +29,12 @@ extension DictionaryStore {
                        MIN(wf.jpdb_rank) AS rank,
                        MAX(wf.wordfreq_zipf) AS best_zipf,
                        EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = s.entry_id) AS has_kanji,
-                       -- Particle / copula / auxiliary detection — any sense tagged as
-                       -- functional grammar makes the entry a strong match for bare-kana
-                       -- lookups. Matches archaic-kanji-bearing particles (の:乃,之 etc.)
+                       -- Functional / deictic POS match (prt / cop / aux / aux-* / adj-pn): the
+                       -- entry is a strong match for a bare-kana lookup. Shared definition with
+                       -- the live lookup via FrequencySQL.functionalPosMatch so the two rankings
+                       -- can't drift. Also catches archaic-kanji-bearing particles (の: 乃, 之)
                        -- that the has_kanji=0 tier alone would miss.
-                       EXISTS (
-                           SELECT 1 FROM senses sp WHERE sp.entry_id = s.entry_id
-                           AND (sp.pos = 'prt' OR sp.pos LIKE 'prt,%' OR sp.pos LIKE '%,prt,%' OR sp.pos LIKE '%,prt'
-                             OR sp.pos = 'cop' OR sp.pos LIKE 'cop,%' OR sp.pos LIKE '%,cop,%' OR sp.pos LIKE '%,cop'
-                             OR sp.pos = 'aux' OR sp.pos LIKE 'aux,%' OR sp.pos LIKE '%,aux,%' OR sp.pos LIKE '%,aux'
-                             OR sp.pos LIKE 'aux-%' OR sp.pos LIKE '%,aux-%'
-                             OR sp.pos = 'adj-pn' OR sp.pos LIKE 'adj-pn,%' OR sp.pos LIKE '%,adj-pn,%' OR sp.pos LIKE '%,adj-pn')
-                       ) AS is_particle,
+                       \(FrequencySQL.functionalPosMatch(entryIDExpr: "s.entry_id")) AS is_functional,
                        COALESCE(MIN(sn.order_index), \(FrequencySQL.noSenseSort)) AS min_sense
                 FROM surfaces_with_entries s
                 LEFT JOIN word_frequency wf ON wf.entry_id = s.entry_id
@@ -59,9 +53,9 @@ extension DictionaryStore {
                        ROW_NUMBER() OVER (
                            PARTITION BY surface
                            ORDER BY
-                               -- Particle/functional first, then kana-only, then by rank.
+                               -- Functional/deictic first, then kana-only, then by rank.
                                -- See DictionaryStore.fetchMatchedEntries for the rationale.
-                               CASE WHEN is_particle = 1 THEN 0 ELSE 1 END ASC,
+                               CASE WHEN is_functional = 1 THEN 0 ELSE 1 END ASC,
                                has_kanji ASC,
                                -- Effective rank applied uniformly to kanji and kana-only
                                -- entries: JPDB rank if present, else a pseudo-rank from the

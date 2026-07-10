@@ -49,5 +49,29 @@ extension DictionaryStore {
             )
             """
         }
+
+        // Boolean EXISTS test: true when the entry has any sense tagged as a functional /
+        // deictic part of speech — particle (prt), copula (cop), auxiliary (aux / aux-*), or
+        // pre-noun adjectival (adj-pn). These are the words a bare-kana lookup almost always
+        // intends (は → topic particle, not 派 "faction"; その → demonstrative, not 園 "garden"),
+        // which NO frequency signal can express: the functional word and its rare-kanji
+        // homograph share the same kana surface, so they score identically. This is the one
+        // definition shared by the live lookup (fetchMatchedEntries) and the startup canonical-id
+        // map (fetchCanonicalEntryIDMap) so the two rankings cannot drift out of lockstep — the
+        // whole reason this enum exists. It replaced two copy-pasted inline copies; to add a POS
+        // to the boost, edit ONLY here. `entryIDExpr` names the candidate entry's id in the
+        // calling query (e.g. "e.id" or "s.entry_id"); `fpb` is a private correlation alias.
+        static func functionalPosMatch(entryIDExpr: String) -> String {
+            """
+            EXISTS (
+                SELECT 1 FROM senses fpb WHERE fpb.entry_id = \(entryIDExpr)
+                AND (fpb.pos = 'prt' OR fpb.pos LIKE 'prt,%' OR fpb.pos LIKE '%,prt,%' OR fpb.pos LIKE '%,prt'
+                  OR fpb.pos = 'cop' OR fpb.pos LIKE 'cop,%' OR fpb.pos LIKE '%,cop,%' OR fpb.pos LIKE '%,cop'
+                  OR fpb.pos = 'aux' OR fpb.pos LIKE 'aux,%' OR fpb.pos LIKE '%,aux,%' OR fpb.pos LIKE '%,aux'
+                  OR fpb.pos LIKE 'aux-%' OR fpb.pos LIKE '%,aux-%'
+                  OR fpb.pos = 'adj-pn' OR fpb.pos LIKE 'adj-pn,%' OR fpb.pos LIKE '%,adj-pn,%' OR fpb.pos LIKE '%,adj-pn')
+            )
+            """
+        }
     }
 }
