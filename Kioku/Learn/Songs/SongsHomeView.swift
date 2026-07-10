@@ -54,14 +54,11 @@ struct SongsHomeView: View {
         }
     }
 
-    // Shown when the user has no notes with content yet. Points back at Notes for the obvious
-    // next step — adding lyrics — rather than offering shortcuts that conflict with the
-    // existing import flows.
+    // Shown when the user has no notes with content yet.
     private var emptyState: some View {
         ContentUnavailableView(
             "No notes to study",
-            systemImage: "music.note.list",
-            description: Text("Add a note containing song lyrics on the Notes tab, then come back here to step through it line by line.")
+            systemImage: "music.note.list"
         )
     }
 

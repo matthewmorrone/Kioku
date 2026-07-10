@@ -98,6 +98,7 @@ struct RadicalInputView: View {
                     .frame(height: Self.resultStripHeight, alignment: .bottom)
                     .background(Color(.secondarySystemBackground))
                 radicalGrid
+                    .accessibilityHint("Tap radicals to find kanji that contain them")
             }
         }
     }
