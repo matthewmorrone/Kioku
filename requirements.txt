@@ -1,0 +1,14 @@
+# Build-time Python dependencies for Resources/generate_db.py (the dictionary.sqlite builder).
+#
+# wordfreq is REQUIRED, not optional: it is the only frequency source for words usually written
+# in kana (この, その, する, こと …). Building without it produces an all-NULL wordfreq_zipf column
+# that mislabels those everyday words as "Rare" and misorders homographs. import_wordfreq() now
+# hard-fails when wordfreq is absent, so a build cannot silently ship the degraded data again.
+#
+# Install into the project venv the Xcode build phase prefers:
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#
+# mecab-python3 + ipadic back wordfreq's Japanese tokenizer (zipf_frequency(..., "ja")).
+wordfreq==3.1.1
+mecab-python3==1.0.12
+ipadic==1.0.0
