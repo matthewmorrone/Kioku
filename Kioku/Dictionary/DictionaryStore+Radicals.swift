@@ -70,9 +70,9 @@ extension DictionaryStore {
             WITH all_edges(kanji, radical) AS (
                 SELECT kanji, radical FROM kanji_radicals
                 UNION
-                SELECT kc.character, kc.character
+                SELECT kc.literal, kc.literal
                 FROM kanji_characters AS kc
-                INNER JOIN radicals AS r ON r.radical = kc.character
+                INNER JOIN radicals AS r ON r.radical = kc.literal
             )
             SELECT kanji
             FROM all_edges
@@ -118,9 +118,9 @@ extension DictionaryStore {
             WITH all_edges(kanji, radical) AS (
                 SELECT kanji, radical FROM kanji_radicals
                 UNION
-                SELECT kc.character, kc.character
+                SELECT kc.literal, kc.literal
                 FROM kanji_characters AS kc
-                INNER JOIN radicals AS r ON r.radical = kc.character
+                INNER JOIN radicals AS r ON r.radical = kc.literal
             )
             SELECT DISTINCT radical
             FROM all_edges
