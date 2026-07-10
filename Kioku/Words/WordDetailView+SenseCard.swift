@@ -61,7 +61,7 @@ extension WordDetailView {
     // that one gloss (with mutual-exclusion handling above). `sentences` are Tatoeba examples
     // routed to this specific sense by SentenceSenseRouter.
     @ViewBuilder
-    func senseCard(sense: DictionaryEntrySense, entryID: Int64, isSavedEntry: Bool, freqLabel: String?, refs: [SenseReference], sentences: [SentencePair] = []) -> some View {
+    func senseCard(sense: DictionaryEntrySense, entryID: Int64, isSavedEntry: Bool, refs: [SenseReference], sentences: [SentencePair] = []) -> some View {
         let senseSelected = isSavedEntry && currentSelectedSenseIDs.contains(sense.senseID)
         let selectedGlossIndices: Set<Int> = {
             guard isSavedEntry else { return [] }
@@ -69,7 +69,7 @@ extension WordDetailView {
         }()
 
         VStack(alignment: .leading, spacing: 10) {
-            senseHeaderStrip(sense: sense, isSavedEntry: isSavedEntry, freqLabel: freqLabel)
+            senseHeaderStrip(sense: sense, isSavedEntry: isSavedEntry)
                 .contentShape(Rectangle())
                 // .onTapGesture { if isSavedEntry { toggleSenseSelection(sense.senseID) } }
                 .onTapGesture {
@@ -202,26 +202,22 @@ extension WordDetailView {
     // misc/field/dialect tags (uk, arch, etc.). Renders all sense-level metadata together so
     // misc tags don't sit alone below the gloss list as before.
     @ViewBuilder
-    func senseHeaderStrip(sense: DictionaryEntrySense, isSavedEntry: Bool, freqLabel: String?) -> some View {
+    func senseHeaderStrip(sense: DictionaryEntrySense, isSavedEntry: Bool) -> some View {
         let posLabel: String? = (sense.pos?.isEmpty == false) ? JMdictTagExpander.expandAll(sense.pos ?? "") : nil
         let metaTags: [String] = [sense.misc, sense.field, sense.dialect]
             .compactMap { $0 }
             .filter { $0.isEmpty == false }
             .map { JMdictTagExpander.expandAll($0) }
 
+        // No frequency tier here: frequency is a property of the written surface, not of an
+        // individual sense/entry, so it's shown once as a header badge (WordDetailView's
+        // headerFrequencyLabel). Rendering it per card falsely implied that shared-surface
+        // homographs (その "that" vs 園 "garden") each had their own distinct frequency.
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             if let posLabel {
                 Text(posLabel)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
-            }
-            if let freqLabel {
-                Text(freqLabel)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
             }
             ForEach(metaTags, id: \.self) { tag in
                 Text(tag)
