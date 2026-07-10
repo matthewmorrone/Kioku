@@ -26,6 +26,10 @@ extension WordsView {
                 Label("Common Words Only", systemImage: "star")
             }
 
+            Toggle(isOn: $searchShowKanji) {
+                Label("Show Kanji", systemImage: "character.textbox")
+            }
+
             Picker("Frequency", selection: $searchFrequencyTier) {
                 ForEach(DictionaryFrequencyTier.allCases) { tier in
                     Text(tier.title).tag(tier)
@@ -156,8 +160,9 @@ extension WordsView {
     }
 
     // True when any live dictionary-search control is narrowing or reordering the result set.
+    // searchShowKanji defaults on, so hiding kanji (false) counts as an active filter.
     var hasActiveSearchControls: Bool {
-        searchCommonWordsOnly || searchFrequencyTier != .any || searchSortMode != .relevance || searchSelectedPartsOfSpeech.isEmpty == false
+        searchCommonWordsOnly || searchFrequencyTier != .any || searchSortMode != .relevance || searchSelectedPartsOfSpeech.isEmpty == false || searchShowKanji == false
     }
 
     // Whether the inline Tatoeba example-sentence section belongs below the entry list for the
@@ -209,6 +214,7 @@ extension WordsView {
         searchFrequencyTier = .any
         searchSortMode = .relevance
         searchSelectedPartsOfSpeech = []
+        searchShowKanji = true
     }
 
     // Opens one live search result in the detail sheet and records it in lookup history.
@@ -219,12 +225,13 @@ extension WordsView {
 
     // Renders the kanji-matches section that sits at the TOP of the search results
     // list. Returns EmptyView when no kanji matched the query, so the list doesn't
-    // get a phantom section header. The "Kanji" header reinforces the distinct row
-    // shape — tapping a kanji row opens KanjiDetailView, not WordDetailView.
+    // get a phantom section. The rows are untitled (no "Kanji" header) — their tinted
+    // background and distinct shape already set them apart; tapping one opens
+    // KanjiDetailView, not WordDetailView.
     @ViewBuilder
     var kanjiResultsSection: some View {
-        if kanjiSearchResults.isEmpty == false {
-            Section("Kanji") {
+        if searchShowKanji, kanjiSearchResults.isEmpty == false {
+            Section {
                 ForEach(kanjiSearchResults) { info in
                     HStack(spacing: 12) {
                         Button {
