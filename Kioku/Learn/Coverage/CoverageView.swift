@@ -21,8 +21,7 @@ struct CoverageView: View {
                 if notesWithSavedWords.isEmpty {
                     ContentUnavailableView(
                         "No notes with saved words",
-                        systemImage: "chart.bar.doc.horizontal",
-                        description: Text("Save some words from a note to see its learning coverage.")
+                        systemImage: "chart.bar.doc.horizontal"
                     )
                 } else {
                     List(notesWithSavedWords) { note in
