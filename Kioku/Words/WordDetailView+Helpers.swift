@@ -202,11 +202,16 @@ extension WordDetailView {
             }.value
             derivation = detected
 
-            // Compound word breakdown uses the selected (best) path. Each component looks up
-            // by the segmenter-resolved lemma when one is available — `edge.surface` alone
-            // produces wrong defaults for short surfaces (e.g. 生 returns 生る/なる first
-            // even when the path resolved this position to 生きる).
-            if result.selectedEdges.count > 1 {
+            // Components breakdown. Primary path is data-driven affix decomposition (科学 + 的,
+            // 子供 + たち), gated on JMdict bound-morpheme tags plus a real base word — see
+            // affixBreakdown. Only when that finds nothing do we fall back to a segmenter-derived
+            // compound, and even then only when DerivationAnalyzer recognized a real derivation
+            // (compound verb 食べ始める). An atomic word (その) matches neither, so its Components
+            // section stays empty instead of showing the segmenter's spurious kana split.
+            let affixBreakdown = await Task { @MainActor in store.affixBreakdown(for: analysisForm) }.value
+            if let affixBreakdown {
+                wordComponents = affixBreakdown.map { (surface: $0.surface, gloss: $0.gloss) }
+            } else if detected != nil, result.selectedEdges.count > 1 {
                 let components = await Task { @MainActor in
                     result.selectedEdges.compactMap { edge -> (String, String?)? in
                         let lookupSurface = edge.lemma.isEmpty ? edge.surface : edge.lemma
