@@ -53,13 +53,14 @@ struct KeyboardModeBar: View {
             )
         }
         .padding(.horizontal, 8)
-        // Vertical padding is asymmetric — full 6pt above the buttons so they don't collide
-        // with the screen content above, but zero below so the bar visually merges with the
-        // resultStrip below (both .secondarySystemBackground). A bottom pad here would draw
-        // as a dark stripe under the bar when the inputView hosts the radical picker.
-        .padding(.top, 6)
+        // Symmetric 6pt above and below the buttons so the row isn't bottom-heavy against the
+        // keyboard. (The radical/handwriting result strip supplies its own top inset, so the
+        // bottom pad no longer needs to be zeroed to merge with it.)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
+        // Background + rounded corners are supplied by the host's UIInputView(.keyboard) backing
+        // (see JapaneseInputAccessory.installAccessoryBar) so the fill is the EXACT system keyboard
+        // material rather than an approximated gray. The bar itself stays transparent.
     }
 
     // Renders an edit action (backspace / clear) on the right of the bar. Same visual size as
