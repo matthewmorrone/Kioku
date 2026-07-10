@@ -28,6 +28,9 @@ struct RadicalInputView: View {
     @State private var selected: [String] = []
     @State private var kanjiResults: [String] = []
     @State private var isLoading = true
+    // True from the moment a selection changes until its query returns, so the "no matches" status
+    // doesn't flash during the async gap where `selected` is set but `kanjiResults` hasn't caught up.
+    @State private var isQuerying = false
     @Environment(\.dismiss) private var dismiss
 
     // Tap target sizing for the radical grid — keeps cells big enough for fingers on dense rows.
@@ -86,12 +89,23 @@ struct RadicalInputView: View {
             )
         } else {
             VStack(spacing: 0) {
+                // Reserve a fixed slot for the result strip so populating the kanji-results and
+                // selected-radical rows never pushes the grid down (no jump). The grid fills the rest.
                 resultStrip
-                Divider()
+                    // Bottom-anchored: the chips hold a fixed position near the bottom, and kanji
+                    // results fill in above them — so the chips don't float in the middle before
+                    // any results exist.
+                    .frame(height: Self.resultStripHeight, alignment: .bottom)
+                    .background(Color(.secondarySystemBackground))
                 radicalGrid
             }
         }
     }
+
+    // Height reserved for the result strip. The results+chips group (~90pt) is centered within it,
+    // so the extra sits as equal breathing room above the results and below the chips. Fixed so the
+    // grid below never shifts when the rows populate.
+    private static let resultStripHeight: CGFloat = 108
 
     // Top strip: selected-radical chips on the left, scrolling kanji results to their right.
     @ViewBuilder
@@ -100,7 +114,38 @@ struct RadicalInputView: View {
         // .secondarySystemBackground) so the two rows visually merge into one strip rather than
         // floating with a black gap between them. Bottom padding stays so the strip doesn't
         // crowd the Divider/radical grid below.
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
+            if kanjiResults.isEmpty, selected.isEmpty == false, isQuerying == false {
+                // Only the "no matches" status — no instructional "tap radicals to start" prompt,
+                // and only once the query has actually returned (isQuerying) so it doesn't flash.
+                Text("No kanji contain all selected radicals.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 6)
+            } else if kanjiResults.isEmpty == false {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(kanjiResults, id: \.self) { kanji in
+                            Button {
+                                onEmit(kanji)
+                            } label: {
+                                Text(kanji)
+                                    .font(.title2)
+                                    .frame(width: 40, height: 40)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Color(.tertiarySystemBackground))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                }
+            }
+
             if selected.isEmpty == false {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -127,38 +172,9 @@ struct RadicalInputView: View {
                     .padding(.horizontal, 12)
                 }
             }
-
-            if kanjiResults.isEmpty {
-                Text(selected.isEmpty ? "Tap radicals below to start." : "No kanji contain all selected radicals.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 6)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(kanjiResults, id: \.self) { kanji in
-                            Button {
-                                onEmit(kanji)
-                            } label: {
-                                Text(kanji)
-                                    .font(.title2)
-                                    .frame(width: 40, height: 40)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(Color(.tertiarySystemBackground))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                }
-            }
         }
-        .padding(.bottom, 4)
-        .background(Color(.secondarySystemBackground))
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity)
     }
 
     // Scrollable grid of radicals, grouped by stroke count with sticky section headers.
@@ -231,6 +247,9 @@ struct RadicalInputView: View {
         } else {
             selected.append(glyph)
         }
+        // Set synchronously (before the async query) so the empty-state message is suppressed for
+        // the whole gap between this tap and the result landing — no one-frame "no matches" flash.
+        isQuerying = true
         Task { await refresh() }
     }
 
@@ -258,9 +277,11 @@ struct RadicalInputView: View {
         }.value
         let (kanji, usable) = await (kanjiTask, usableTask)
 
-        // Drop the result if the selection changed underneath us mid-flight.
+        // Drop the result if the selection changed underneath us mid-flight — a newer refresh owns
+        // isQuerying and will clear it, so leave the flag set here.
         guard snapshot == selected else { return }
         kanjiResults = kanji
         usableRadicals = usable
+        isQuerying = false
     }
 }
