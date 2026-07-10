@@ -141,6 +141,9 @@ struct WordsView: View {
     // Usage-frequency cutoff (JPDB rank); `.any` = no cutoff. See DictionaryFrequencyTier.
     @State var searchFrequencyTier: DictionaryFrequencyTier = .any
     @State var searchSelectedPartsOfSpeech: Set<String> = []
+    // Whether the "Kanji" section appears in search results. Persisted (survives launches);
+    // toggled from the search filter menu. Default on to preserve existing behavior.
+    @AppStorage("searchShowKanji") var searchShowKanji = true
 
     var savedSort: WordsSortOrder { WordsSortOrder(rawValue: savedSortOrder) ?? .newestFirst }
     var historySort: WordsSortOrder { WordsSortOrder(rawValue: historySortOrderRaw) ?? .newestFirst }
@@ -792,17 +795,26 @@ struct WordsView: View {
                         }
                     }
                     // Within primary: EXACT surface/kana matches first (まさか must beat たまさか
-                    // for query "masaka" — both are primary because たまさか contains まさか, and
-                    // the entry-id tiebreak alone happened to rank たまさか higher). Then entry_id
-                    // ASC: JMdict IDs are roughly insertion order, and older entries are the
-                    // canonical/common words — for greetings like ハロー (8516) vs 你好 (112034),
-                    // this picks the right one even when JPDB frequency data is missing.
+                    // for query "masaka" — both are primary because たまさか contains まさか). Then
+                    // by FREQUENCY, most-common first — an English query like "science" must put
+                    // 科学 (jpdb 5318) above the loanword サイエンス (unranked) and the abbreviation
+                    // ＳＦ (17413). entry_id is only the FINAL fallback, for the no-frequency-data
+                    // case the older comment described (ハロー vs 你好); it is a weak frequency
+                    // proxy (older ≠ commoner: サイエンス is older than 科学 yet far rarer), so it
+                    // must not override the real signal. Uses the same jpdb+zipf blend as the
+                    // frequency badge, with jpdb rank as the sharper tiebreak when the blend ties
+                    // (科学 and サイエンス share a wordfreq Zipf but jpdb separates them).
                     let exactNeedles = [needle, kanaNeedle].compactMap { $0 }
-                    // primary.sort { $0.entryId < $1.entryId }
                     primary.sort { lhs, rhs in
                         let lhsExact = Self.isExactSurfaceMatch(lhs, needles: exactNeedles)
                         let rhsExact = Self.isExactSurfaceMatch(rhs, needles: exactNeedles)
                         if lhsExact != rhsExact { return lhsExact }
+                        let lhsScore = FrequencyData(jpdbRank: lhs.jpdbRank, wordfreqZipf: lhs.wordfreqZipf).normalizedScore ?? -1
+                        let rhsScore = FrequencyData(jpdbRank: rhs.jpdbRank, wordfreqZipf: rhs.wordfreqZipf).normalizedScore ?? -1
+                        if lhsScore != rhsScore { return lhsScore > rhsScore }
+                        let lhsRank = lhs.jpdbRank ?? Int.max
+                        let rhsRank = rhs.jpdbRank ?? Int.max
+                        if lhsRank != rhsRank { return lhsRank < rhsRank }
                         return lhs.entryId < rhs.entryId
                     }
                     return .success(primary + secondary)
