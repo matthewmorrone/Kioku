@@ -5,6 +5,8 @@ import SwiftUI
 struct KanaCellView: View {
     let entry: KanaEntry?
     let representation: KanaRepresentation
+    // Cell height is derived from available screen space so the whole chart fits without scrolling.
+    var height: CGFloat = 36
 
     // Selects the string to display for the current representation.
     private func text(for entry: KanaEntry) -> String {
@@ -28,12 +30,15 @@ struct KanaCellView: View {
 
             if let entry {
                 Text(text(for: entry))
-                    .font(isLatin ? .system(size: 11, weight: .regular) : .system(size: 20))
+                    // Font scales with the cell so glyphs stay proportional at any derived height.
+                    .font(.system(size: height * (isLatin ? 0.32 : 0.55), weight: .regular))
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                     .foregroundStyle(.primary)
+                    // Crossfade the glyph when the representation changes via swipe.
+                    .contentTransition(.opacity)
             }
         }
-        .frame(height: 36)
+        .frame(height: height)
     }
 }

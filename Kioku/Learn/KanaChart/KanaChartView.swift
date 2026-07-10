@@ -1,7 +1,9 @@
 import SwiftUI
 
-// Renders the full interactive kana chart.
-// Major sections: representation picker, gojūon grid, dakuten section, handakuten section.
+// Renders the full interactive kana chart on a single non-scrolling screen.
+// The representation (hiragana / katakana / rōmaji / IPA) is changed by swiping vertically;
+// the current mode is shown in the navigation title.
+// Major sections: gojūon grid, dakuten section, handakuten section.
 struct KanaChartView: View {
     @State private var representation: KanaRepresentation = .hiragana
 
@@ -11,53 +13,59 @@ struct KanaChartView: View {
         count: 6
     )
 
+    // The chart holds 16 data rows (gojūon 11 + dakuten 4 + handakuten 1); headers, spacing, and
+    // padding consume a roughly fixed amount of the remaining height.
+    private let dataRowCount = 16
+    private let verticalOverhead: CGFloat = 120
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                representationPicker
-                    .padding(.horizontal)
-                    .padding(.top, 4)
-                    .padding(.bottom, 2)
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        chartSection(title: nil, rows: KanaChartData.gojuuon)
-                        chartSection(title: nil, rows: KanaChartData.dakuten)
-                        chartSection(title: nil, rows: KanaChartData.handakuten)
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
+            GeometryReader { geo in
+                let cellHeight = cellHeight(forAvailableHeight: geo.size.height)
+                VStack(alignment: .leading, spacing: 8) {
+                    chartSection(rows: KanaChartData.gojuuon, cellHeight: cellHeight)
+                    chartSection(rows: KanaChartData.dakuten, cellHeight: cellHeight)
+                    chartSection(rows: KanaChartData.handakuten, cellHeight: cellHeight)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                // Swiping anywhere on the chart cycles modes, so the whole area must be hit-testable.
+                .contentShape(Rectangle())
+                .gesture(modeSwipe)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                LearnHomeTitle(title: "Kana", systemImage: "tablecells")
+                LearnHomeTitle(title: representation.label, systemImage: "tablecells")
             }
         }
     }
 
-    // Segmented control showing current mode and letting the user tap directly.
-    @ViewBuilder
-    private var representationPicker: some View {
-        Picker("Representation", selection: $representation) {
-            ForEach(KanaRepresentation.allCases, id: \.self) { mode in
-                Text(mode.label).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
+    // Divides the leftover vertical space evenly across the data rows so the chart fills the screen
+    // without scrolling; clamped to stay legible on small phones and reasonable on large screens.
+    private func cellHeight(forAvailableHeight totalHeight: CGFloat) -> CGFloat {
+        let usable = totalHeight - verticalOverhead
+        return min(48, max(22, usable / CGFloat(dataRowCount)))
     }
 
-    // Builds a labelled section containing all kana rows; the ∅ row acts as the column header.
+    // Vertical swipe cycles the representation: up advances, down goes back.
+    private var modeSwipe: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onEnded { value in
+                // Ignore mostly-horizontal drags.
+                guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    representation = value.translation.height < 0
+                        ? representation.next
+                        : representation.previous
+                }
+            }
+    }
+
+    // Builds one section containing its vowel header row followed by one grid row per kana row.
     @ViewBuilder
-    private func chartSection(title: String?, rows: [KanaRow]) -> some View {
+    private func chartSection(rows: [KanaRow], cellHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let title {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-            }
-
             // Vowel header row matching the six-column grid layout.
             LazyVGrid(columns: columns, spacing: 2) {
                 Text("")
@@ -83,7 +91,8 @@ struct KanaChartView: View {
                     ForEach(0..<5, id: \.self) { i in
                         KanaCellView(
                             entry: row.entries[i],
-                            representation: representation
+                            representation: representation,
+                            height: cellHeight
                         )
                     }
                 }
