@@ -11,9 +11,16 @@ final class LLMCorrectionService {
     // UI can apply them incrementally. Remote providers and stub mode are single-shot and
     // ignore the callback; the caller should apply the returned final response in those
     // cases. The callback is @MainActor so callers can mutate view state directly.
+    // correctiveFeedback: when set, this is a RETRY after a previous response from the same
+    // provider failed to parse (see LLMCorrectionError.unparseableAfterSalvage). Prepended to
+    // the user message ahead of the compact segments so the model sees exactly what it sent
+    // last time, why it was rejected, and the required format again — a targeted self-correction
+    // request instead of a blind identical resend. Remote providers only (stub mode and Apple
+    // Intelligence's per-line chunking don't produce whole-response parse failures the same way).
     func requestCorrections(
         compactSegments: String,
         dictionary: DictionaryStore? = nil,
+        correctiveFeedback: String? = nil,
         onPartial: (@Sendable @MainActor (LLMCorrectionResponse) -> Void)? = nil
     ) async throws -> LLMCorrectionResponse {
         // Keep the LLM round-trip alive if the user backgrounds the app while it's in flight.
@@ -72,12 +79,13 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.noKeyConfigured
         }
 
-        let messages = buildMessages(compactSegments: compactSegments)
+        let messages = buildMessages(compactSegments: compactSegments, correctiveFeedback: correctiveFeedback)
 
         // Logging disabled.
         // print("[LLM] System:\n\(messages.system)")
         // print("[LLM] User:\n\(messages.user)")
 
+        let raw: String
         switch provider {
         case .none:
             throw LLMCorrectionError.noKeyConfigured
@@ -85,9 +93,29 @@ final class LLMCorrectionService {
             // Handled above; included so the switch stays exhaustive.
             throw LLMCorrectionError.appleIntelligenceUnavailable
         case .openAI:
-            return try await callOpenAI(apiKey: apiKey, messages: messages)
+            raw = try await callOpenAIRaw(apiKey: apiKey, messages: messages)
         case .claude:
-            return try await callClaude(apiKey: apiKey, messages: messages)
+            raw = try await callClaudeRaw(apiKey: apiKey, messages: messages)
+        }
+        return try await parseWithSalvage(raw)
+    }
+
+    // Parses a remote provider's raw response, escalating through the same recovery ladder
+    // for every parse failure: lenient structural parse (parseCompactResponse) first; if THAT
+    // finds nothing recognizable at all, an automatic, local, free on-device reformatting pass
+    // (LLMResponseSalvage) before ever bothering the user. Only surfaces to the caller —
+    // .unparseableAfterSalvage, carrying the raw text for a possible corrective retry — when
+    // both have failed.
+    private func parseWithSalvage(_ raw: String) async throws -> LLMCorrectionResponse {
+        do {
+            return try parseCompactResponse(raw)
+        } catch {
+            if #available(iOS 26.0, *),
+               let reformatted = await LLMResponseSalvage.reformat(rawResponse: raw, parseError: error.localizedDescription),
+               let salvaged = try? parseCompactResponse(reformatted) {
+                return salvaged
+            }
+            throw LLMCorrectionError.unparseableAfterSalvage(rawResponse: raw, reason: error.localizedDescription)
         }
     }
 
@@ -174,13 +202,42 @@ final class LLMCorrectionService {
         - For non-lyric input (regular prose, news, dictionary entries), do NOT use web search — JMdict + your training are sufficient.
         """
 
-    // Constructs system and user message content for the correction request.
-    private func buildMessages(compactSegments: String) -> (system: String, user: String) {
-        return (system: Self.systemPrompt, user: compactSegments)
+    // Constructs system and user message content for the correction request. When
+    // correctiveFeedback is supplied (a retry after a parse failure), it's prepended to the
+    // user turn ahead of the compact segments so the model corrects itself against concrete
+    // evidence of what went wrong, rather than blindly repeating the same mistake.
+    private func buildMessages(compactSegments: String, correctiveFeedback: String? = nil) -> (system: String, user: String) {
+        guard let correctiveFeedback else {
+            return (system: Self.systemPrompt, user: compactSegments)
+        }
+        let user = correctiveFeedback + "\n\n" + compactSegments
+        return (system: Self.systemPrompt, user: user)
+    }
+
+    // Builds the corrective-feedback preamble prepended to a retry's user message: what was
+    // sent last time, why it was rejected, and a reminder of the required format. Truncates the
+    // raw response to keep the retry prompt bounded — enough for the model to recognize its own
+    // mistake without re-litigating an arbitrarily long malformed reply.
+    static func correctiveFeedback(previousRawResponse: String, reason: String) -> String {
+        let truncated = previousRawResponse.count > 1500
+            ? String(previousRawResponse.prefix(1500)) + "…(truncated)"
+            : previousRawResponse
+        return """
+            Your previous response to the same input below could not be used: \(reason)
+
+            Your previous response was:
+            \(truncated)
+
+            Resend your correction for the SAME input below. Follow the format exactly: every \
+            line must start with its line number N followed by | and end with | — output ONLY \
+            the corrected compact format, no explanation, no commentary before or after.
+            """
     }
 
     // Calls OpenAI chat completions. No json_object response_format — compact text output.
-    private func callOpenAI(apiKey: String, messages: (system: String, user: String)) async throws -> LLMCorrectionResponse {
+    // Returns the raw response text (unparsed) so the caller can route it through the shared
+    // parse+salvage ladder in parseWithSalvage.
+    private func callOpenAIRaw(apiKey: String, messages: (system: String, user: String)) async throws -> String {
         let url = URL(string: "https://api.openai.com/v1/chat/completions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -231,11 +288,13 @@ final class LLMCorrectionService {
 
         // Logging disabled.
         // print("[LLM:OpenAI] Response:\n\(content)")
-        return try parseCompactResponse(content)
+        return content
     }
 
     // Calls the Anthropic Messages API using the configured Claude model (Sonnet 4.6 by default).
-    private func callClaude(apiKey: String, messages: (system: String, user: String)) async throws -> LLMCorrectionResponse {
+    // Returns the raw response text (unparsed) so the caller can route it through the shared
+    // parse+salvage ladder in parseWithSalvage.
+    private func callClaudeRaw(apiKey: String, messages: (system: String, user: String)) async throws -> String {
         let url = URL(string: "https://api.anthropic.com/v1/messages")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -306,7 +365,7 @@ final class LLMCorrectionService {
 
         // Logging disabled.
         // print("[LLM:Claude] Response:\n\(text)")
-        return try parseCompactResponse(text)
+        return text
     }
 
     // Validates the HTTP status code and surfaces the API error body when the request fails.
@@ -323,60 +382,104 @@ final class LLMCorrectionService {
     // Parses the compact format string returned by the LLM into [LLMSegmentEntry].
     // Each content line `N|seg1|seg2|` encodes segments followed by an implicit `\n`.
     // A bare `N|` line encodes an extra blank line (an additional `\n` beyond the implicit one).
-    // The leading `N|` line-number prefix is optional — lines without it are accepted for
-    // backward compat with stub responses that omit line numbers.
+    //
+    // Lenient by line, not all-or-nothing: models occasionally prepend a conversational
+    // sentence ("The song is confirmed as...") despite the system prompt's "output ONLY the
+    // corrected format" instruction, or mangle a single line's trailing `|`. The old parser
+    // threw on the FIRST such line, discarding every line after it too — one bad sentence
+    // anywhere killed the whole correction. This version treats the response as a list of
+    // independent numbered records instead of one monolithic blob:
+    //   - a line with a leading `N|` is a data record for note-line N, well-formed or not
+    //   - a line that's merely `|...|` with no number is a legacy positional record (old
+    //     stub-file format, kept for backward compat)
+    //   - anything else (prose, headers, blank commentary) has no recognizable record shape
+    //     and is discarded as noise rather than aborting the parse
+    // A numbered line that IS malformed (no trailing `|`) still reserves its slot as empty
+    // content rather than being dropped — dropping it would shift every later line's position
+    // out of alignment. mergeResponsePerLine (ReadView+LLMCorrection.swift) already falls back
+    // to the pre-correction baseline for any line whose parsed surfaces don't reconstruct the
+    // source text, so an empty/missing slot degrades to "no change for this line" for free —
+    // this parser just has to stop letting one bad record poison every record after it.
+    // Only throws when NOTHING recognizable was found at all (e.g. the whole response is
+    // conversational prose) — that's the signal the caller uses to escalate to on-device
+    // salvage or a corrective retry.
     // Example: `1|A|\n2|B|\n3|\n4|C|` → [A, \n, B, \n, \n, C, \n]
     func parseCompactResponse(_ compact: String) throws -> LLMCorrectionResponse {
-        let lines = compact.components(separatedBy: .newlines)
+        let rawLines = compact.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { $0.isEmpty == false }
 
-        var entries: [LLMSegmentEntry] = []
-        for (lineIndex, line) in lines.enumerated() {
-            // Strip optional leading line-number prefix: `N|rest` → `|rest` (or `N|` → `|`).
-            // A line-number prefix is a run of ASCII digits followed by `|` at the start.
-            let normalized: String
+        var numberedContent: [Int: String] = [:]
+        var positionalContent: [String] = []
+        var sawNumberedLine = false
+
+        for line in rawLines {
             let digitPrefixCount = line.prefix(while: { $0.isNumber }).count
             if digitPrefixCount > 0 {
                 let afterDigits = line.index(line.startIndex, offsetBy: digitPrefixCount)
-                if afterDigits < line.endIndex, line[afterDigits] == "|" {
-                    normalized = "|" + String(line[line.index(after: afterDigits)...])
-                } else {
-                    normalized = line
+                guard afterDigits < line.endIndex, line[afterDigits] == "|",
+                      let lineNumber = Int(line.prefix(digitPrefixCount)), lineNumber > 0
+                else {
+                    continue   // digits not followed by "|" (e.g. a stray number in prose) — noise, discard
                 }
-            } else {
-                normalized = line
-            }
-
-            guard normalized.hasPrefix("|") && normalized.hasSuffix("|") else {
-                throw LLMCorrectionError.decodingError(
-                    "Line \(lineIndex + 1) must begin and end with |: \"\(line.prefix(60))\""
-                )
-            }
-            let inner = String(normalized.dropFirst().dropLast())
-            if inner.isEmpty {
-                // Bare `|` encodes an extra blank line in addition to the implicit \n
-                // that follows the preceding content line.
-                entries.append(LLMSegmentEntry(surface: "\n", reading: ""))
+                sawNumberedLine = true
+                let rest = "|" + String(line[line.index(after: afterDigits)...])
+                if rest.hasPrefix("|") && rest.hasSuffix("|") && rest.count >= 2 {
+                    numberedContent[lineNumber] = String(rest.dropFirst().dropLast())
+                } else {
+                    // Claims line N but the content after the number is malformed — reserve
+                    // the slot as empty rather than dropping it (see comment above).
+                    numberedContent[lineNumber] = ""
+                }
                 continue
             }
-            let rawSegments = inner.components(separatedBy: "|")
-            for raw in rawSegments {
+            // No line-number prefix: legacy positional format only if the WHOLE line is
+            // pipe-bounded (old stub-file convention); anything else is unstructured noise.
+            if line.hasPrefix("|") && line.hasSuffix("|") && line.count >= 2 {
+                positionalContent.append(String(line.dropFirst().dropLast()))
+            }
+        }
+
+        var entries: [LLMSegmentEntry] = []
+        if sawNumberedLine {
+            // maxLine is always >= 1 here (sawNumberedLine only sets when lineNumber > 0), so
+            // `1...maxLine` is a valid range — but max(maxLine, 1) is kept anyway as cheap
+            // insurance: a bare `1...maxLine` traps at runtime if that invariant ever breaks,
+            // where this silently produces an empty (still-safe) range instead.
+            let maxLine = numberedContent.keys.max() ?? 0
+            for lineNumber in 1...max(maxLine, 1) where lineNumber <= maxLine {
+                appendLineEntries(numberedContent[lineNumber] ?? "", to: &entries)
+            }
+        } else {
+            for inner in positionalContent {
+                appendLineEntries(inner, to: &entries)
+            }
+        }
+
+        guard entries.isEmpty == false else {
+            throw LLMCorrectionError.decodingError(
+                "No recognizable \"N|...|\" lines found in the response. Raw: \(compact.prefix(300))"
+            )
+        }
+
+        return LLMCorrectionResponse(segments: entries)
+    }
+
+    // Parses one line's inner content (the text between its outer `|` bounds, already
+    // stripped) into segment entries, appending the implicit trailing "\n" every content
+    // line encodes. Empty inner content (a bare `N|`, or a malformed line's reserved slot)
+    // appends only the "\n" — matching how a genuinely blank source line is represented.
+    private func appendLineEntries(_ inner: String, to entries: inout [LLMSegmentEntry]) {
+        if inner.isEmpty == false {
+            for raw in inner.components(separatedBy: "|") {
                 // Trim spaces the model may pad around segment delimiters.
                 let raw = raw.trimmingCharacters(in: .init(charactersIn: " "))
                 guard raw.isEmpty == false else { continue }
                 let (surface, reading) = parseSegmentToken(raw)
                 entries.append(LLMSegmentEntry(surface: surface, reading: reading))
             }
-            // Each content line encodes an implicit trailing newline.
-            entries.append(LLMSegmentEntry(surface: "\n", reading: ""))
         }
-
-        guard entries.isEmpty == false else {
-            throw LLMCorrectionError.decodingError("Compact response produced no segments. Raw: \(compact.prefix(300))")
-        }
-
-        return LLMCorrectionResponse(segments: entries)
+        entries.append(LLMSegmentEntry(surface: "\n", reading: ""))
     }
 
     // Parses one segment token like `(巡)[めぐ]り(会)[あ]う` into (surface, reading).
@@ -446,6 +549,15 @@ enum LLMCorrectionError: LocalizedError {
     case networkError(String)
     case unexpectedResponseShape(String)
     case decodingError(String)
+    // A remote provider's response had nothing parseable at all — parseCompactResponse found
+    // no "N|...|" lines — AND the automatic on-device salvage pass (LLMResponseSalvage) either
+    // wasn't available or also failed to produce something usable. Carries the verbatim raw
+    // response and the underlying parse failure so the UI can offer a corrective retry: resend
+    // the SAME request to the original provider with this exact raw text + reason folded in as
+    // feedback, instead of a blind identical retry. rawResponse/reason are not shown directly
+    // (errorDescription below matches the previous decodingError wording) — they're read
+    // programmatically by ReadView+LLMCorrection's "Retry with Feedback" action.
+    case unparseableAfterSalvage(rawResponse: String, reason: String)
 
     // Human-readable message surfaced in the UI alert.
     var errorDescription: String? {
@@ -460,6 +572,8 @@ enum LLMCorrectionError: LocalizedError {
             return "Unexpected API response: \(msg)"
         case .decodingError(let msg):
             return "Could not parse response: \(msg)"
+        case .unparseableAfterSalvage(_, let reason):
+            return "Could not parse response: \(reason)"
         }
     }
 }
