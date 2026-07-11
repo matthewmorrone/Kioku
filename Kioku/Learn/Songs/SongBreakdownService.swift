@@ -67,6 +67,17 @@ final class SongBreakdownService {
         }
 
         let provider = LLMSettings.activeProvider()
+        // Song breakdown doesn't yet support on-device generation — the structured-output
+        // prompt is wide enough that Apple Intelligence's small model can't reliably produce
+        // it. Checked BEFORE the API-key guard below: Apple Intelligence needs no key by
+        // design (LLMSettings.apiKey(for:) always returns nil for it), so without this check
+        // that guard would fire first and claim "No LLM is configured" — false, since one IS
+        // configured, it's just unsupported for this one feature. Throw the distinct,
+        // accurate error instead.
+        if provider == .appleIntelligence {
+            NSLog("[SongBreakdown] Apple Intelligence selected but unsupported for breakdown — throwing appleIntelligenceUnsupported")
+            throw SongBreakdownError.appleIntelligenceUnsupported
+        }
         guard let apiKey = LLMSettings.activeAPIKey() else {
             NSLog("[SongBreakdown] no API key for active provider — throwing noKeyConfigured")
             throw SongBreakdownError.noKeyConfigured
@@ -79,10 +90,9 @@ final class SongBreakdownService {
         let producedBy: SongBreakdownProvider
         switch provider {
         case .none, .appleIntelligence:
-            // Song breakdown doesn't yet support on-device generation — the
-            // structured-output prompt is wide enough that Apple Intelligence's
-            // small model can't reliably produce it. Treat as misconfigured so
-            // the user sees the same "pick another provider" message.
+            // Unreachable: .none has no API key (caught above), and .appleIntelligence is
+            // caught before the guard. Kept exhaustive rather than `default:` so a future
+            // LLMProvider case fails to compile here instead of silently mis-dispatching.
             throw SongBreakdownError.noKeyConfigured
         case .openAI:
             raw = try await callOpenAI(apiKey: apiKey, prompt: prompt)
@@ -240,6 +250,7 @@ final class SongBreakdownService {
 // network → Retry button; parse failure → "show raw response" debug toggle.
 enum SongBreakdownError: LocalizedError {
     case noKeyConfigured
+    case appleIntelligenceUnsupported
     case networkError(String)
     case unexpectedResponseShape(String)
     case parseFailed(String)
@@ -249,6 +260,8 @@ enum SongBreakdownError: LocalizedError {
         switch self {
         case .noKeyConfigured:
             return "No LLM is configured. Set one up in Settings, or paste a stub response for offline use."
+        case .appleIntelligenceUnsupported:
+            return "Song breakdown isn't supported with Apple Intelligence yet — pick OpenAI or Claude in Settings."
         case .networkError(let msg):
             return "Network error: \(msg)"
         case .unexpectedResponseShape(let msg):

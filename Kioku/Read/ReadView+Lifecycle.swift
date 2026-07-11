@@ -67,8 +67,19 @@ extension ReadView {
                     llmCorrectionErrorMessage = ""
                     requestLLMCorrection()
                 }
+                // Only shown when the failure was a whole-response parse failure (see
+                // llmCorrectionRetryContext) — resends the SAME provider with the previous raw
+                // response and the parse error folded in as corrective feedback, instead of a
+                // blind identical retry.
+                if llmCorrectionRetryContext != nil {
+                    Button("Retry with Feedback") {
+                        llmCorrectionErrorMessage = ""
+                        requestLLMCorrectionWithFeedback()
+                    }
+                }
                 Button("OK", role: .cancel) {
                     llmCorrectionErrorMessage = ""
+                    llmCorrectionRetryContext = nil
                 }
             } message: {
                 Text(llmCorrectionErrorMessage)
@@ -336,6 +347,7 @@ extension ReadView {
                     segmentationRanges: segmentRanges,
                     noteText: text,
                     attachmentID: activeAudioAttachmentID,
+                    noteID: activeNoteID,
                     playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : playbackHighlightRangeOverride,
                     granularity: lyricsHighlightGranularity,
                     onSegmentTapped: { location, rect, sourceView in
@@ -344,6 +356,7 @@ extension ReadView {
                     onDismiss: {
                         isShowingLyricsView = false
                     },
+                    onFocusSetting: onFocusSetting,
                     onCueEdit: { edit in
                         applyLyricCueEdit(edit)
                     },
