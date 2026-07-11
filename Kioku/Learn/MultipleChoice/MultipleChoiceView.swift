@@ -20,6 +20,17 @@ struct MultipleChoiceItem: Identifiable {
         case .kana: return kana ?? original
         }
     }
+
+    // The display string for one of the three quizzable fields, used by `.mixedFields`. Kanji/kana
+    // fall back to the original surface (same rule as `japanese(for:)`) when the dictionary has no
+    // distinct form, so every item can still stand in for any field.
+    func value(for field: StudyField) -> String {
+        switch field {
+        case .kanji: return kanji ?? original
+        case .kana: return kana ?? original
+        case .meaning: return english
+        }
+    }
 }
 
 // One assembled question: a prompt, the shuffled options (including the correct one), and which
@@ -56,7 +67,9 @@ struct MultipleChoiceView: View {
     @State private var sessionCorrect: Int = 0
     @State private var sessionWrong: Int = 0
 
-    @State private var direction: StudyDirection = .japaneseToEnglish
+    // Default drills all three fields against each other (kanji/kana/meaning) rather than just
+    // JP-vs-English, so kanji↔kana gets exercised directly too.
+    @State private var direction: StudyDirection = .mixedFields
     @State private var japaneseForm: StudyJapaneseForm = .kanji
     @State private var scope: FlashcardScope = .all
     @State private var selectedNoteIDs: Set<UUID> = []
@@ -286,10 +299,14 @@ struct MultipleChoiceView: View {
                 }
                 .pickerStyle(.menu)
 
-                Picker("Japanese", selection: $japaneseForm) {
-                    ForEach(StudyJapaneseForm.allCases) { f in Text(f.rawValue).tag(f) }
+                // `.mixedFields` picks the JP script (kanji vs kana) per question itself, so this
+                // fixed, whole-session form picker doesn't apply and would be misleading to show.
+                if direction != .mixedFields {
+                    Picker("Japanese", selection: $japaneseForm) {
+                        ForEach(StudyJapaneseForm.allCases) { f in Text(f.rawValue).tag(f) }
+                    }
+                    .pickerStyle(.segmented)
                 }
-                .pickerStyle(.segmented)
             }
 
             Section {
@@ -457,6 +474,12 @@ struct MultipleChoiceView: View {
         // Precomputed answer pools per direction so distractor selection stays O(1) per question.
         let englishStrings = Set(items.map(\.english))
         let japaneseStrings = Set(items.map { $0.japanese(for: japaneseForm) })
+        // Per-field pools for `.mixedFields`, keyed the same way `item.value(for:)` resolves.
+        let fieldPools: [StudyField: Set<String>] = [
+            .kanji: Set(items.map { $0.value(for: .kanji) }),
+            .kana: Set(items.map { $0.value(for: .kana) }),
+            .meaning: Set(items.map { $0.value(for: .meaning) }),
+        ]
 
         var result: [MultipleChoiceQuestion] = []
         for item in items {
@@ -475,12 +498,22 @@ struct MultipleChoiceView: View {
                 prompt = item.english
                 correct = item.japanese(for: japaneseForm)
                 pool = japaneseStrings
+            case .mixedFields:
+                let fields = StudyField.randomPair(seed: item.word.canonicalEntryID)
+                prompt = item.value(for: fields.prompt)
+                correct = item.value(for: fields.answer)
+                pool = fieldPools[fields.answer] ?? []
             case .mixed:
                 // `resolved(seed:)` never returns `.mixed`; treat as Japanese→English defensively.
                 prompt = item.japanese(for: japaneseForm)
                 correct = item.english
                 pool = englishStrings
             }
+
+            // `.mixedFields` can land prompt == correct for a word whose kanji/kana both fall
+            // back to the same original surface (no distinct dictionary forms) — skip rather than
+            // ask a question with no real distinction between prompt and answer.
+            guard prompt != correct else { continue }
 
             var distractorPool = pool
             distractorPool.remove(correct)

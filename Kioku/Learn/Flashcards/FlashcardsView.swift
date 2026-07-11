@@ -290,7 +290,7 @@ struct FlashcardsView: View {
 
             Section {
                 Picker("Direction", selection: $direction) {
-                    ForEach(StudyDirection.allCases) { d in Text(d.rawValue).tag(d) }
+                    ForEach(StudyDirection.flashcardCases) { d in Text(d.rawValue).tag(d) }
                 }
                 .pickerStyle(.menu)
 

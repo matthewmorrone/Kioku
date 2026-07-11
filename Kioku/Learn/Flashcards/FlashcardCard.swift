@@ -274,7 +274,10 @@ struct FlashcardCard: View {
     // resolved per card from the entry id so a card doesn't swap its sides between re-renders.
     private var faces: (front: FlashcardFaceContent, back: FlashcardFaceContent) {
         switch direction.resolved(seed: word.canonicalEntryID) {
-        case .japaneseToEnglish, .mixed:
+        // `.mixedFields` is Multiple-Choice-only (see `StudyDirection.flashcardCases`) and never
+        // reaches Flashcards via its picker; fall back to the same face as `.japaneseToEnglish`
+        // defensively rather than leaving the switch non-exhaustive.
+        case .japaneseToEnglish, .mixed, .mixedFields:
             return (.japanesePrompt(japaneseForm), .english)
         case .englishToJapanese:
             return (.english, .japaneseAnswer(japaneseForm))
