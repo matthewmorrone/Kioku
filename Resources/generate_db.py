@@ -1414,11 +1414,20 @@ def materialize_surface_readings(conn):
         FROM (
             -- Kanji form as surface, kana form as reading. Prefers the exact (kanji,kana) pair rank,
             -- then falls back to the entry's best rank so the headword still sorts/scores when the
-            -- specific pair is unranked.
+            -- specific pair is unranked. That fallback is deliberately entry-wide (same value for
+            -- EVERY reading of a multi-reading entry, e.g. 二人's ににん and ふたり both inherit
+            -- 474) — it exists so the surface still sorts/scores when NEITHER reading has its own
+            -- pair-level rank, not to imply the readings are equally common. wordfreq_zipf is
+            -- sourced per-READING (kf.wordfreq_zipf), not per-surface (kj.wordfreq_zipf) — this is
+            -- the tiebreaker that actually distinguishes ににん (no real usage, NULL) from ふたり
+            -- (real usage, ~4.27) when best_rank ties; see the ORDER BY below. Getting this from
+            -- kj instead of kf was the root cause of 二人 defaulting to ににん and 一人 to
+            -- いちにん — both readings shared one borrowed rank, so the tie broke alphabetically
+            -- by reading (に before ふ, い before ひ) instead of by actual frequency.
             SELECT kj.text AS surface, kf.text AS reading,
                    COALESCE(kkl.jpdb_rank, er.rank, {UNRANKED_RANK_SENTINEL}) AS best_rank,
                    COALESCE(kkl.jpdb_rank, er.rank) AS jpdb_rank,
-                   kj.wordfreq_zipf AS wordfreq_zipf
+                   kf.wordfreq_zipf AS wordfreq_zipf
             FROM kanji kj
             JOIN kana_forms kf ON kf.entry_id = kj.entry_id
             LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
@@ -1442,7 +1451,11 @@ def materialize_surface_readings(conn):
             LEFT JOIN entry_rank er ON er.entry_id = kf.entry_id
         )
         GROUP BY surface, reading
-        ORDER BY surface ASC, MIN(best_rank) ASC, reading ASC;
+        -- wordfreq_zipf DESC breaks best_rank ties by actual per-reading usage before falling
+        -- back to alphabetical — SQLite sorts NULL first in ASC / last in DESC, so a reading
+        -- with no real frequency signal (e.g. ににん) correctly loses to one that has it (ふたり)
+        -- instead of winning-by-coincidence on kana ordering. See the branch-1 comment above.
+        ORDER BY surface ASC, MIN(best_rank) ASC, MAX(wordfreq_zipf) DESC, reading ASC;
 
         CREATE INDEX idx_surface_readings_surface ON surface_readings(surface);
         """
