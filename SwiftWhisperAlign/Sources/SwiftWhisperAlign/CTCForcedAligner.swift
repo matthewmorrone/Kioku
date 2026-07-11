@@ -271,89 +271,102 @@ public struct CTCForcedAligner {
         // Anchor pass: transcribe the stem FIRST (before the aligner is loaded, so the ASR weights
         // are released before the aligner allocates), then mine confident line→time anchors from the
         // heard text. Falls back to an empty anchor set on any failure → routing uses VAD-gated.
-        var anchors: [(line: Int, time: Double)] = []
-        if Self.anchorFillEnabled {
-            onStage?("Transcribing…")
-            let phrases = (try? await StemTranscriber.segments(
-                stem: trimmedVocal, sampleRate: 44_100, regions: vadSegs,
-                // Resumable checkpoint: a kill mid-transcription (the jetsam-prone stage) resumes from
-                // the last completed piece instead of redoing the ~60 s load + every piece. Keyed by
-                // audio identity, so it survives across app launches and is reused by later re-aligns.
-                cacheIdentity: VocalStemCache.identityKey(for: input.audioURL),
-                progress: { msg in
-                    Self.breadcrumb("anchor-asr: \(msg)")
-                    // The ASR model load is a ~60 s opaque step BEFORE any piece, so onFraction can't
-                    // cover it — surface it explicitly so the label isn't frozen at a bare "…".
-                    if msg.hasPrefix("loading") { onStage?("Loading transcriber…") }
-                },
-                // Per-phase % in the stage label, matching the isolation/alignment stages. Fires once
-                // per ~24 s piece (so it starts at the first piece's fraction, never a stuck 0%).
-                onFraction: { frac in
-                    onStage?("Transcribing… \(Int((frac * 100).rounded()))%")
-                })) ?? []
-            Self.breadcrumb("transcribed \(phrases.count) pieces over \(vadSegs.count) regions")
-            anchors = Self.extractAnchors(lines: input.lines, phrases: phrases, vadSegs: vadSegs)
-            MLX.GPU.clearCache()   // free the ASR model's GPU buffers before the aligner allocates
-            Self.breadcrumb("anchors \(anchors.count)/\(input.lines.count): " +
-                anchors.prefix(12).map { "L\($0.line)@\(String(format: "%.0f", $0.time))" }.joined(separator: " "))
-            if cancellationCheck?() == true { throw CancellationError() }
-        }
-
-        // Downloads the CTC model on first use; cached thereafter in Application Support (not the
-        // purgeable Caches dir — see ModelStorage). Surface the staged progress to the UI so this
-        // isn't a frozen "Preparing alignment model…" through a ~400 MB download + weight load,
-        // and breadcrumb the milestones (with availMem) so a run that dies here reveals WHETHER it
-        // died mid-download (network) or mid-weight-load (memory). Skip the high-frequency
-        // download-weights ticks.
-        onStage?("Preparing aligner…")
-        Self.breadcrumb("aligner: fromPretrained begin")
-        let aligner = try await Qwen3ForcedAligner.fromPretrained(
-            modelId: ModelStorage.forcedAlignerModelId,
-            cacheDir: try ModelStorage.directory(for: ModelStorage.forcedAlignerModelId),
-            progressHandler: { frac, stage in
-                if stage.hasPrefix("Downloading") {
-                    // The downloader reports 0…0.8 of the overall bar; rescale to a clean 0–100% of the
-                    // download so the label reads as its own stage, not a stuttering "Preparing… 80%".
-                    let pct = Int((min(frac, 0.8) / 0.8 * 100).rounded())
-                    onStage?("Downloading aligner… \(pct)%")
-                } else {
-                    onStage?("Preparing aligner…")   // tokenizer + weight load: fast, no useful %
-                }
-                // Breadcrumb milestones (with availMem) — skip the high-frequency download-weights ticks —
-                // so a run that dies here shows WHETHER it died mid-download (network) or mid-load (memory).
-                if stage.hasPrefix("Downloading weights") == false {
-                    Self.breadcrumb("aligner-load: \(stage) \(Int((frac * 100).rounded()))%")
-                }
+        //
+        // The whole anchor-ASR + CTC-alignment block below runs pinned to MLX's CPU device.
+        // Confirmed on-device (repeatable SIGSEGV crash logs, iOS 27 beta 24A5380h): compiling
+        // this Transformer's attention layers on the GPU path crashes inside Apple's own
+        // MetalPerformanceShadersGraph MLIR optimizer (FoldMultiplyIntoSDPAScale) — a fault in
+        // Apple's compiled framework, not this code, and not one Swift can catch or recover from
+        // (a real SIGSEGV in a system framework is a hard, unrecoverable process kill). CPU is
+        // slower but deterministic. Scoped to just this block so vocal isolation (CoreML, a
+        // separate framework, unaffected) and audio decode/VAD keep full speed. Revisit once a
+        // future OS build fixes the compiler bug.
+        let rawUnits: [(start: Double, end: Double, text: String)] = try await MLX.Device.withDefaultDevice(.cpu) {
+            var anchors: [(line: Int, time: Double)] = []
+            if Self.anchorFillEnabled {
+                onStage?("Transcribing…")
+                let phrases = (try? await StemTranscriber.segments(
+                    stem: trimmedVocal, sampleRate: 44_100, regions: vadSegs,
+                    // Resumable checkpoint: a kill mid-transcription (the jetsam-prone stage) resumes from
+                    // the last completed piece instead of redoing the ~60 s load + every piece. Keyed by
+                    // audio identity, so it survives across app launches and is reused by later re-aligns.
+                    cacheIdentity: VocalStemCache.identityKey(for: input.audioURL),
+                    progress: { msg in
+                        Self.breadcrumb("anchor-asr: \(msg)")
+                        // The ASR model load is a ~60 s opaque step BEFORE any piece, so onFraction can't
+                        // cover it — surface it explicitly so the label isn't frozen at a bare "…".
+                        if msg.hasPrefix("loading") { onStage?("Loading transcriber…") }
+                    },
+                    // Per-phase % in the stage label, matching the isolation/alignment stages. Fires once
+                    // per ~24 s piece (so it starts at the first piece's fraction, never a stuck 0%).
+                    onFraction: { frac in
+                        onStage?("Transcribing… \(Int((frac * 100).rounded()))%")
+                    })) ?? []
+                Self.breadcrumb("transcribed \(phrases.count) pieces over \(vadSegs.count) regions")
+                anchors = Self.extractAnchors(lines: input.lines, phrases: phrases, vadSegs: vadSegs)
+                MLX.GPU.clearCache()   // free the ASR model's GPU buffers before the aligner allocates
+                Self.breadcrumb("anchors \(anchors.count)/\(input.lines.count): " +
+                    anchors.prefix(12).map { "L\($0.line)@\(String(format: "%.0f", $0.time))" }.joined(separator: " "))
+                if cancellationCheck?() == true { throw CancellationError() }
             }
-        )
-        Self.breadcrumb("aligner loaded (fromPretrained returned)")
-        if cancellationCheck?() == true { throw CancellationError() }
 
-        onStage?("Aligning lyrics…")
-        let text = input.lines.joined(separator: "\n")
+            // Downloads the CTC model on first use; cached thereafter in Application Support (not the
+            // purgeable Caches dir — see ModelStorage). Surface the staged progress to the UI so this
+            // isn't a frozen "Preparing alignment model…" through a ~400 MB download + weight load,
+            // and breadcrumb the milestones (with availMem) so a run that dies here reveals WHETHER it
+            // died mid-download (network) or mid-weight-load (memory). Skip the high-frequency
+            // download-weights ticks.
+            onStage?("Preparing aligner…")
+            Self.breadcrumb("aligner: fromPretrained begin")
+            let aligner = try await Qwen3ForcedAligner.fromPretrained(
+                modelId: ModelStorage.forcedAlignerModelId,
+                cacheDir: try ModelStorage.directory(for: ModelStorage.forcedAlignerModelId),
+                progressHandler: { frac, stage in
+                    if stage.hasPrefix("Downloading") {
+                        // The downloader reports 0…0.8 of the overall bar; rescale to a clean 0–100% of the
+                        // download so the label reads as its own stage, not a stuttering "Preparing… 80%".
+                        let pct = Int((min(frac, 0.8) / 0.8 * 100).rounded())
+                        onStage?("Downloading aligner… \(pct)%")
+                    } else {
+                        onStage?("Preparing aligner…")   // tokenizer + weight load: fast, no useful %
+                    }
+                    // Breadcrumb milestones (with availMem) — skip the high-frequency download-weights ticks —
+                    // so a run that dies here shows WHETHER it died mid-download (network) or mid-load (memory).
+                    if stage.hasPrefix("Downloading weights") == false {
+                        Self.breadcrumb("aligner-load: \(stage) \(Int((frac * 100).rounded()))%")
+                    }
+                }
+            )
+            Self.breadcrumb("aligner loaded (fromPretrained returned)")
+            if cancellationCheck?() == true { throw CancellationError() }
 
-        let alignProgress: (Double) -> Void = { frac in
-            onProgress?(0.40 + 0.50 * frac)                        // global bar (legacy callers)
-            onStage?("Aligning lyrics… \(Int((frac * 100).rounded()))%")   // per-phase %
+            onStage?("Aligning lyrics…")
+            let text = input.lines.joined(separator: "\n")
+
+            let alignProgress: (Double) -> Void = { frac in
+                onProgress?(0.40 + 0.50 * frac)                        // global bar (legacy callers)
+                onStage?("Aligning lyrics… \(Int((frac * 100).rounded()))%")   // per-phase %
+            }
+            let rawUnits: [(start: Double, end: Double, text: String)]
+            if Self.anchorFillEnabled && anchors.count >= 2 {
+                Self.breadcrumb("aligning (anchor-fill) \(input.lines.count) lines, \(anchors.count) anchors")
+                rawUnits = Self.alignAnchored(
+                    samples: trimmedVocal, audioRate: 44_100, lines: input.lines, anchors: anchors,
+                    vadSegs: vadSegs, aligner: aligner, cancellationCheck: cancellationCheck, onProgress: alignProgress)
+            } else if vadSegs.isEmpty || Self.vadGatingEnabled == false {
+                Self.breadcrumb("aligning (windowed) \(text.count) chars over ~\(trimmedVocal.count / 44_100)s")
+                rawUnits = Self.alignWindowed(
+                    samples: trimmedVocal, audioRate: 44_100, text: text, aligner: aligner,
+                    cancellationCheck: cancellationCheck, onProgress: alignProgress)
+            } else {
+                Self.breadcrumb("aligning (VAD-gated) \(text.count) chars over \(vadSegs.count) segments")
+                rawUnits = Self.alignVADGated(
+                    samples: trimmedVocal, audioRate: 44_100, text: text, aligner: aligner,
+                    segments: vadSegs, cancellationCheck: cancellationCheck, onProgress: alignProgress)
+            }
+            alignProgress(1.0)   // windows report progress at their start; close the phase at a true 100%
+            return rawUnits
         }
-        let rawUnits: [(start: Double, end: Double, text: String)]
-        if Self.anchorFillEnabled && anchors.count >= 2 {
-            Self.breadcrumb("aligning (anchor-fill) \(input.lines.count) lines, \(anchors.count) anchors")
-            rawUnits = Self.alignAnchored(
-                samples: trimmedVocal, audioRate: 44_100, lines: input.lines, anchors: anchors,
-                vadSegs: vadSegs, aligner: aligner, cancellationCheck: cancellationCheck, onProgress: alignProgress)
-        } else if vadSegs.isEmpty || Self.vadGatingEnabled == false {
-            Self.breadcrumb("aligning (windowed) \(text.count) chars over ~\(trimmedVocal.count / 44_100)s")
-            rawUnits = Self.alignWindowed(
-                samples: trimmedVocal, audioRate: 44_100, text: text, aligner: aligner,
-                cancellationCheck: cancellationCheck, onProgress: alignProgress)
-        } else {
-            Self.breadcrumb("aligning (VAD-gated) \(text.count) chars over \(vadSegs.count) segments")
-            rawUnits = Self.alignVADGated(
-                samples: trimmedVocal, audioRate: 44_100, text: text, aligner: aligner,
-                segments: vadSegs, cancellationCheck: cancellationCheck, onProgress: alignProgress)
-        }
-        alignProgress(1.0)   // windows report progress at their start; close the phase at a true 100%
         // Map back to the original timeline (undo the leading-silence trim).
         let units = rawUnits.map { (start: $0.start + leadOffsetSec, end: $0.end + leadOffsetSec, text: $0.text) }
         Self.breadcrumb("aligned \(units.count) units (\(vadSegs.isEmpty ? "windowed" : "VAD-gated"))")
