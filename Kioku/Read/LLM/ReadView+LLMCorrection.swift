@@ -10,12 +10,17 @@ extension ReadView {
     // (Apple Intelligence). Remote providers and stub mode return a single final response
     // which is applied once at the end. In both cases the apply path is the same; the
     // streaming variant just calls it multiple times with cumulative responses.
-    func requestLLMCorrection() {
+    //
+    // correctiveFeedback: non-nil only for a "Retry with Feedback" resend after a previous
+    // response from the same provider failed to parse — see requestLLMCorrectionWithFeedback().
+    // Threaded straight through to LLMCorrectionService.requestCorrections.
+    func requestLLMCorrection(correctiveFeedback: String? = nil) {
         guard llmCorrectionTask == nil else { return }
 
         let currentSegments = buildLLMSegmentEntries()
         guard currentSegments.isEmpty == false else {
             llmCorrectionErrorMessage = "No segments to correct. Make sure the note has content and segmentation has loaded."
+            llmCorrectionRetryContext = nil
             isShowingLLMCorrectionError = true
             return
         }
@@ -33,6 +38,10 @@ extension ReadView {
         pendingLLMChangesByLocation = [:]
         preLLMSegmentEntries = []
         hasPendingLLMChanges = false
+        // Clear any retry context from a prior failed attempt — a fresh request (whether
+        // plain or corrective) shouldn't carry forward a stale "resend with feedback" option
+        // from an unrelated earlier failure.
+        llmCorrectionRetryContext = nil
 
         // Only the on-device provider streams today. Remote and stub return a
         // single response; we apply it once at the end. Reading this once up
@@ -54,6 +63,7 @@ extension ReadView {
                 let response = try await service.requestCorrections(
                     compactSegments: compactSegments,
                     dictionary: dictionaryStore,
+                    correctiveFeedback: correctiveFeedback,
                     onPartial: willStream ? { @MainActor partial in
                         let merged = Self.mergeResponsePerLine(
                             response: partial,
@@ -93,10 +103,32 @@ extension ReadView {
             } catch {
                 await MainActor.run {
                     llmCorrectionErrorMessage = error.localizedDescription
+                    // Only a whole-response parse failure (nothing recognizable found, even
+                    // after the automatic on-device salvage pass) carries a retry context —
+                    // that's the one failure kind where resending with concrete feedback about
+                    // what went wrong can actually help. Network errors, missing keys, etc. have
+                    // nothing productive to "correct."
+                    if case let LLMCorrectionError.unparseableAfterSalvage(rawResponse, reason) = error {
+                        llmCorrectionRetryContext = (rawResponse, reason)
+                    }
                     isShowingLLMCorrectionError = true
                 }
             }
         }
+    }
+
+    // Retries after a parse failure by resending the SAME provider a corrected request that
+    // includes the previous raw response and why it was rejected (see
+    // LLMCorrectionService.correctiveFeedback), instead of a blind identical resend. Distinct
+    // from the alert's plain "Retry" button, which just calls requestLLMCorrection() again.
+    // No-ops if there's no retry context (e.g. the user dismissed the alert first).
+    func requestLLMCorrectionWithFeedback() {
+        guard let context = llmCorrectionRetryContext else { return }
+        let feedback = LLMCorrectionService.correctiveFeedback(
+            previousRawResponse: context.rawResponse,
+            reason: context.reason
+        )
+        requestLLMCorrection(correctiveFeedback: feedback)
     }
 
     // Applies one streaming partial: runs the same apply path as the single-shot
