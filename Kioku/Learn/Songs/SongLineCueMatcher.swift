@@ -42,7 +42,9 @@ enum SongLineCueMatcher {
 
     // Whitespace strip for line/cue comparison. Drops spaces, tabs, and newlines, joining
     // the remainder. Keeps every other Unicode scalar so kana and kanji compare verbatim.
-    private static func normalize(_ text: String) -> String {
+    // Internal (not private) — also used by LyricsView+BreakdownGist to key breakdown gists
+    // by the same normalized cue text, so the two text-matching call sites can't drift apart.
+    static func normalize(_ text: String) -> String {
         text
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { $0.isEmpty == false }

@@ -11,6 +11,9 @@ struct ReadView: View {
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var wordsStore: WordsStore
+    // Read here (not just inside the breakdown sheet) so the title-row breakdown button can
+    // show an activity indicator while a generation is running for the currently-open note.
+    @EnvironmentObject var songBreakdownStore: SongBreakdownStore
     // Observes the singleton so the renderer re-evaluates inFlightLineLocations
     // whenever the AI client publishes a new currentLineIndex during streaming.
     @ObservedObject var aiProgress = AICorrectionProgress.shared
@@ -30,6 +33,10 @@ struct ReadView: View {
     // (entryID, surface, reading, sublatticePaths) — carries pre-computed data from the lookup sheet.
     var onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil
     var onActiveNoteChanged: ((UUID) -> Void)? = nil
+    // Switches to the Settings tab and scrolls to/highlights the row with the given id (see
+    // SettingsView's ScrollViewReader). Forwarded to LyricsView's "bring this setting into
+    // focus" button (e.g. Background Audio).
+    var onFocusSetting: ((String) -> Void)? = nil
 
     // Opt-in Japanese theme; gates the warm-paper reading pane fill (see ReadView+Editor).
     @AppStorage(Theme.storageKey) var japaneseTheme = false
@@ -180,6 +187,12 @@ struct ReadView: View {
     @State var isRequestingLLMCorrection = false
     @State var isShowingLLMCorrectionError = false
     @State var llmCorrectionErrorMessage = ""
+    // Populated only when the failure was LLMCorrectionError.unparseableAfterSalvage — the raw
+    // response that couldn't be parsed (even after on-device salvage) plus the reason, so the
+    // alert's "Retry with Feedback" action can resend the original provider a corrected request
+    // instead of a blind identical retry. Nil for every other failure kind (network, no key,
+    // etc.), which the alert uses to decide whether to show that extra button at all.
+    @State var llmCorrectionRetryContext: (rawResponse: String, reason: String)?
     @State var llmCorrectionTask: Task<Void, Never>?
     @State var pendingLLMChangedLocations: Set<Int> = []
     // Subset of pendingLLMChangedLocations where only the furigana reading changed (surface unchanged).
@@ -229,7 +242,8 @@ struct ReadView: View {
         segmenterRevision: Int,
         readResourcesReady: Bool,
         onOpenWordDetail: ((Int64, String, String?, [[String]]) -> Void)? = nil,
-        onActiveNoteChanged: ((UUID) -> Void)? = nil
+        onActiveNoteChanged: ((UUID) -> Void)? = nil,
+        onFocusSetting: ((String) -> Void)? = nil
     ) {
         _selectedNote = selectedNote
         _shouldActivateEditModeOnLoad = shouldActivateEditModeOnLoad
@@ -244,6 +258,7 @@ struct ReadView: View {
         self.readResourcesReady = readResourcesReady
         self.onOpenWordDetail = onOpenWordDetail
         self.onActiveNoteChanged = onActiveNoteChanged
+        self.onFocusSetting = onFocusSetting
     }
 
     let prefersSheetDirectSegmentActions = true

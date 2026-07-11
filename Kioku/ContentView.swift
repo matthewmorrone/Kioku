@@ -51,6 +51,9 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     // Set by notification and read-tab actions; consumed by WordsView.
     @State private var pendingWordsRoute: WordsRoute? = nil
+    // Set by "bring this setting into focus" actions (e.g. the lyrics view's Background Audio
+    // button); consumed by SettingsView to scroll to and briefly highlight the named row.
+    @State private var pendingSettingsScrollTarget: String? = nil
     @State private var wotdRefreshTask: Task<Void, Never>?
 
     // Initializes the selected tab so previews and deep links can choose an initial section.
@@ -74,7 +77,8 @@ struct ContentView: View {
                 segmenterRevision: readResources.segmenterRevision,
                 readResourcesReady: readResources.ready,
                 onOpenWordDetail: handleOpenWordDetail,
-                onActiveNoteChanged: handleActiveNoteChanged
+                onActiveNoteChanged: handleActiveNoteChanged,
+                onFocusSetting: handleFocusSetting
             )
             .tag(ContentTab.read)
             .tabItem {
@@ -115,7 +119,7 @@ struct ContentView: View {
             }
 
             // Renders the Settings tab entry point.
-            SettingsView(dictionaryStore: readResources.dictionaryStore, bridgeServer: bridgeServer)
+            SettingsView(dictionaryStore: readResources.dictionaryStore, bridgeServer: bridgeServer, scrollTarget: $pendingSettingsScrollTarget)
             .tag(ContentTab.settings)
             .tabItem {
                 Label("Settings", systemImage: "gear")
@@ -220,6 +224,16 @@ struct ContentView: View {
         selectedTab = .words
         DispatchQueue.main.async {
             pendingWordsRoute = .search(content)
+        }
+    }
+
+    // Switches to Settings and scrolls to/highlights the row matching `id` (see
+    // SettingsView's ScrollViewReader). Invoked from LyricsView's "bring this setting into
+    // focus" button.
+    private func handleFocusSetting(_ id: String) {
+        selectedTab = .settings
+        DispatchQueue.main.async {
+            pendingSettingsScrollTarget = id
         }
     }
 

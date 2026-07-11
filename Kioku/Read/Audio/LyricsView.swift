@@ -16,6 +16,10 @@ struct LyricsView: View {
     let segmentationRanges: [Range<String.Index>]
     let noteText: String
     let attachmentID: UUID?
+    // The note's own id — used to look up a matching SongBreakdown (LyricsView+BreakdownGist)
+    // so its per-line gist can be preferred over Apple's on-device translation. Nil-safe: no
+    // breakdown lookup happens without it, falling back to translationCache as before.
+    let noteID: UUID?
     // Narrowed playback highlight in noteText UTF-16 coords, computed upstream from the granularity
     // setting + cue timings. nil means no sub-cue highlight (Sentence behavior).
     let playbackHighlightRangeOverride: NSRange?
@@ -24,6 +28,11 @@ struct LyricsView: View {
     let granularity: LyricsHighlightGranularity
     let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
     let onDismiss: () -> Void
+    // Switches to Settings and scrolls to/highlights the named row (see SettingsView's
+    // ScrollViewReader). Wired to the controls bar's gear button so a user wondering why
+    // playback stopped in the background can jump straight to the Background Audio toggle.
+    // Defaulted so previews/other call sites stay valid.
+    var onFocusSetting: ((String) -> Void)? = nil
     // In-place cue editing: the persistent top row emits an intent (set/nudge the start or end
     // boundary, or re-align the word sweep) for the cue currently on the active card. ReadView
     // owns persistence + controller refresh. Defaulted so previews/other call sites stay valid.
@@ -45,7 +54,8 @@ struct LyricsView: View {
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.
     private let fineScrubMsPerPoint = 5.0
 
-    private var activeIndex: Int { controller.activeCueIndex ?? 0 }
+    // Not private: accessed from the LyricsView+Controls extension in a separate file.
+    var activeIndex: Int { controller.activeCueIndex ?? 0 }
 
     // Clamped upper bound for seeks, in ms. Falls back generously when duration isn't known yet.
     private var durationMs: Int {
@@ -135,7 +145,8 @@ struct LyricsView: View {
     @State private var dragDisplayIndex: Int? = nil
     @State private var isDragging: Bool = false
     @State private var dragOverscrolledToStart: Bool = false
-    @State private var isScrubbing = false
+    // Not private: $isScrubbing is passed to LyricsScrubber in the LyricsView+Controls extension.
+    @State var isScrubbing = false
     // Drag-axis lock for the panel gesture: vertical jumps cue-by-cue (coarse line nav),
     // horizontal fine-scrubs the playhead (granular). Decided once when the drag first
     // exceeds the minimum distance, then held for the rest of that drag so a wobbly finger
@@ -181,6 +192,10 @@ struct LyricsView: View {
         let rect: CGRect?
     }
     @State private var translationTrigger: TranslationSession.Configuration? = nil
+    // Supplies the note's SongBreakdown (if any) for LyricsView+BreakdownGist's gist lookup.
+    // Auto-injected from the ancestor tree (ContentView) — no manual threading needed. Not
+    // `private`: accessed from the LyricsView+BreakdownGist extension in a separate file.
+    @EnvironmentObject var songBreakdownStore: SongBreakdownStore
     // Reads the same Read-view setting so toggling ruby spacing in Read also affects the
     // karaoke popup. AppStorage subscribes to the persisted key directly — no observation
     // plumbing needed for cross-view reactivity.
@@ -410,7 +425,7 @@ struct LyricsView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: rendererHeight)
                     .clipped()
-                    if let translation = translationCache.translations[displayText(for: displayIndex)] {
+                    if let translation = displayedTranslation(for: displayIndex) {
                         Text(translation)
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
@@ -857,127 +872,8 @@ struct LyricsView: View {
         }
     }
 
-    private var controls: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 10) {
-                Button {
-                    if controller.isPlaying {
-                        controller.pause()
-                    } else if controller.currentTimeMs == 0 {
-                        controller.playFromStart()
-                    } else {
-                        controller.play()
-                    }
-                } label: {
-                    Circle()
-                        .fill(Color(.systemOrange).opacity(0.2))
-                        .frame(width: 36, height: 36)
-                        .overlay(
-                            Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Color(.systemOrange))
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(controller.isPlaying ? "Pause" : "Play")
+    // controls (bottom transport bar) and LyricsScrubber moved to LyricsView+Controls.swift
+    // to keep this file under the repo's line-count cap.
 
-                LyricsScrubber(
-                    controller: controller,
-                    isScrubbing: $isScrubbing
-                )
-
-                Circle()
-                    .fill(Color(.systemFill))
-                    .frame(width: 36, height: 36)
-                    .overlay(
-                        Image(systemName: "backward.end.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.secondary)
-                    )
-                    .onTapGesture {
-                        guard activeIndex < cues.count else { return }
-                        controller.seek(toMs: cues[activeIndex].startMs)
-                    }
-                    .onLongPressGesture {
-                        controller.seek(toMs: 0)
-                    }
-                    .accessibilityLabel("Return to start of line")
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 12)
-            .padding(.top, 6)
-            .frame(height: 56)
-        }
-    }
-
-}
-
-private struct LyricsScrubber: View {
-    @ObservedObject var controller: AudioPlaybackController
-    @Binding var isScrubbing: Bool
-
-    @State private var scrubPositionSeconds: Double = 0
-
-    // The knob mirrors the controller's live time except while the user is actively dragging the
-    // slider itself (isScrubbing, toggled reliably by Slider.onEditingChanged). No external override:
-    // a stale one — e.g. a card-drag whose gesture-end was dropped — was what froze the knob out of
-    // sync with playback after jumping around.
-    private var displayPositionSeconds: Double {
-        isScrubbing ? scrubPositionSeconds : Double(controller.currentTimeMs) / 1000
-    }
-
-    private var displayTimeMs: Int {
-        isScrubbing ? Int(scrubPositionSeconds * 1000) : controller.currentTimeMs
-    }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(formatted(ms: displayTimeMs))
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 30, alignment: .trailing)
-                .animation(.none, value: displayTimeMs)
-
-            Slider(
-                value: Binding(
-                    get: { displayPositionSeconds },
-                    set: {
-                        scrubPositionSeconds = $0
-                        controller.seek(toMs: Int($0 * 1000))
-                    }
-                ),
-                in: 0...max(controller.duration, 0.1),
-                onEditingChanged: { editing in
-                    isScrubbing = editing
-                    if editing {
-                        scrubPositionSeconds = Double(controller.currentTimeMs) / 1000
-                    } else {
-                        controller.seek(toMs: Int(scrubPositionSeconds * 1000))
-                    }
-                }
-            )
-            .tint(Color(.systemOrange))
-
-            Text(formattedDuration)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 30, alignment: .leading)
-        }
-        .onChange(of: controller.currentTimeMs) { _, newTimeMs in
-            guard isScrubbing == false else { return }
-            scrubPositionSeconds = Double(newTimeMs) / 1000
-        }
-    }
-
-    // Formats a millisecond timestamp as M:SS for the scrubber time label.
-    private func formatted(ms: Int) -> String {
-        let s = ms / 1000
-        return String(format: "%d:%02d", s / 60, s % 60)
-    }
-
-    private var formattedDuration: String {
-        let s = Int(controller.duration)
-        return String(format: "%d:%02d", s / 60, s % 60)
-    }
 }
 
