@@ -47,7 +47,15 @@ enum HTDemucsCoreMLSeparator {
     // runs right after, so we build → predict → drop on every isolation. ----
     static func loadModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> MLModel {
         let url = try await HTDemucsModelStore.ensureModel(onStage: onStage)
-        let cfg = MLModelConfiguration(); cfg.computeUnits = .all
+        let cfg = MLModelConfiguration()
+        // .cpuOnly, not .all: confirmed on-device (repeatable SIGSEGV crash logs, iOS 27 beta
+        // 24A5380h) that letting CoreML route this model's Transformer attention layers through
+        // GPU/ANE crashes inside Apple's own MetalPerformanceShadersGraph MLIR optimizer
+        // (FoldMultiplyIntoSDPAScale) while compiling the MPSGraphExecutable — a fault in Apple's
+        // compiled framework, not this code, and not one Swift can catch (a SIGSEGV inside a
+        // system framework is a hard, unrecoverable process kill). CPU-only is slower but
+        // deterministic. Revisit once a future OS build fixes the compiler bug.
+        cfg.computeUnits = .cpuOnly
         return try MLModel(contentsOf: url, configuration: cfg)
     }
 

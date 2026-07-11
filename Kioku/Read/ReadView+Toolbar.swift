@@ -129,7 +129,10 @@ extension ReadView {
             .onTapGesture {
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the
                 // media picker (mp3 / srt / textgrid) instead of toggling a blank overlay. Once an
-                // attachment exists, the tap reverts to its normal show/hide-lyrics behavior.
+                // attachment exists, the tap reverts to its normal show/hide-lyrics behavior — even
+                // with no cues yet, showing an empty lyrics overlay is fine and playback still works;
+                // alignment is a separate, explicit action (the Re-align control), not auto-triggered
+                // by this tap.
                 if activeAudioAttachmentID == nil {
                     isShowingLyricMediaPicker = true
                 } else {
@@ -159,14 +162,30 @@ extension ReadView {
         .accessibilityLabel("Extract Words")
     }
 
+    // True while a breakdown generation is in flight for the currently-open note — surfaced
+    // as a spinner on the toolbar icon so a multi-minute LLM call (often 60-180s) doesn't read
+    // as an inert button while it's actually working in the background.
+    private var isBreakdownGeneratingForActiveNote: Bool {
+        guard let activeNoteID else { return false }
+        return songBreakdownStore.isGenerating(forNoteID: activeNoteID)
+    }
+
     var titleBreakdownButton: some View {
         Button {
             isShowingBreakdownSheet = true
         } label: {
-            titleActionLabel(systemImage: "sparkles.rectangle.stack", foreground: .accentColor)
+            if isBreakdownGeneratingForActiveNote {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 36, height: 36)
+                    .background(Capsule().fill(ReadToggleAppearance.background))
+                    .contentShape(Rectangle())
+            } else {
+                titleActionLabel(systemImage: "sparkles.rectangle.stack", foreground: .accentColor)
+            }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Open Breakdown")
+        .accessibilityLabel(isBreakdownGeneratingForActiveNote ? "Breakdown generating" : "Open Breakdown")
     }
 
     // Shared visual treatment for the three title-row action buttons. Sized to match the
