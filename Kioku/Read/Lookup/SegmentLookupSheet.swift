@@ -1,4 +1,5 @@
 import UIKit
+import AVFoundation
 
 // Presents a native UIKit popover anchored to tapped segment rects in the read-mode text view.
 final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegate, UIAdaptivePresentationControllerDelegate, UISheetPresentationControllerDelegate {
@@ -9,6 +10,27 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     static var speechSynthesizerKey: UInt8 = 0
 
     private weak var presentedController: UIViewController?
+    // Reusable popover content views + live provider closures, populated by reallyPresentPopover
+    // and mutated in place by updatePresentedPopoverContent when switching between words while a
+    // popover is already showing. Button actions read through these (not captured closure
+    // parameters) so they always call the CURRENT word's providers even after reuse — see
+    // presentPopover's comment for why dismiss+present must be avoided for that case.
+    private weak var popoverStarButton: UIButton?
+    private weak var popoverWordButton: UIButton?
+    private weak var popoverDefinitionLabel: UILabel?
+    private var popoverIsSavedProvider: (() -> Bool)?
+    private var popoverIsSavedElsewhereProvider: (() -> Bool)?
+    private var popoverOnSaveToggle: (() -> Void)?
+    private var popoverOnEscalate: (() -> Void)?
+    private var popoverSurface: String = ""
+    private static let popoverHorizontalInset: CGFloat = 10
+    private static let popoverTopInset: CGFloat = 4
+    private static let popoverBottomInset: CGFloat = 8
+    private static let popoverInterItemSpacing: CGFloat = 8
+    // Apple HIG minimum tappable target — the star/arrow icons themselves stay small (rendered
+    // at the default SF Symbol point size), this just pads their tap area.
+    private static let popoverActionButtonSize: CGFloat = 44
+    private static let popoverMinWordTapWidth: CGFloat = 44
     weak var presentedSheetController: UIViewController?
     // True once the app's frequency maps have finished loading. The split readout shows a loading
     // state (not misleading zeros) until this flips; ReadView sets it at present time and on resource-ready.
@@ -105,43 +127,240 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             && (presentedSheetController.presentingViewController != nil || presentedSheetController.viewIfLoaded?.window != nil)
     }
 
+    private var hasActivePresentedPopoverController: Bool {
+        guard let presentedController else {
+            return false
+        }
+
+        return presentedController.isBeingDismissed == false
+            && (presentedController.presentingViewController != nil || presentedController.viewIfLoaded?.window != nil)
+    }
+
     // Presents the current definition in a UIKit popover anchored to the tapped segment rectangle.
+    // Row layout: star (favorite toggle) — word (tap to speak) — definition — chevron (escalate
+    // to the full sheet). isSavedProvider/isSavedElsewhereProvider/onSaveToggle mirror the same
+    // three-state star contract presentSheet's action-bar save button uses, so the popover and the
+    // full sheet can never disagree about a word's saved state.
+    //
+    // onEscalate, not a self-built presentSurfaceSheet call: the popover has no access to the
+    // rich provider set (readings, sublattice, frequency, lemma info, ...) that only ReadView can
+    // build — an earlier version of this method tried to read those off `self.sheetReadingsProvider`
+    // etc., which are only ever populated by presentSheet's own full call, so the escalated sheet
+    // rendered empty. The caller supplies onEscalate to open the SAME full sheet the direct-tap
+    // path already knows how to build correctly.
     func presentPopover(
         definition: String,
         surface: String,
-        leftNeighborSurface: String?,
-        rightNeighborSurface: String?,
-        onMergeLeft: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
-        onMergeRight: (() -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
-        onSplitApply: ((Int) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String? )?)? = nil,
+        isSavedProvider: (() -> Bool)? = nil,
+        isSavedElsewhereProvider: (() -> Bool)? = nil,
+        onSaveToggle: (() -> Void)? = nil,
+        onEscalate: (() -> Void)? = nil,
         onDismiss: (() -> Void)? = nil,
         sourceView: UIView,
         sourceRect: CGRect
     ) {
-        dismissPopover(notifyDismissal: false)
         self.onDismiss = onDismiss
 
-        guard let presentingController = topPresentingController() else {
+        // Reusing an already-presented popover in place skips UIKit's dismiss+present transitions
+        // entirely for the common case of tapping a different word while one is already showing.
+        // Measured via TapDiagnostics: dismiss(animated: false) does NOT skip its transition
+        // duration for .popover-style presentations (~280ms even unanimated), and the replacement
+        // present(animated: true) adds another ~500ms on top — the better part of a second per
+        // switch. Updating content + sourceRect on the same view controller avoids both costs.
+        if hasActivePresentedPopoverController, let presentedController {
+            TapDiagnostics.mark("presentPopover: reusing already-presented popover in place")
+            updatePresentedPopoverContent(
+                viewController: presentedController,
+                definition: definition,
+                surface: surface,
+                isSavedProvider: isSavedProvider,
+                isSavedElsewhereProvider: isSavedElsewhereProvider,
+                onSaveToggle: onSaveToggle,
+                onEscalate: onEscalate,
+                sourceView: sourceView,
+                sourceRect: sourceRect
+            )
             return
         }
 
-        let currentSurface = surface
+        // dismissPopover's own dismiss(animated:) is asynchronous — presenting a new popover
+        // before that animation completes gets silently dropped by UIKit (it ignores a present()
+        // call issued while the presenting controller is still mid-transition), which is why
+        // tapping a second word while a popover is up needed 2-3 taps before anything appeared.
+        // Deferring the rest of this method to the dismissal's completion closes that gap. (No
+        // active popover to reuse here, so this only runs dismissSheet's own — usually instant —
+        // cleanup before the fresh build.)
+        TapDiagnostics.mark("presentPopover entered, dismissing any prior popover")
+        dismissPopover(notifyDismissal: false, animated: false) { [weak self] in
+            TapDiagnostics.mark("presentPopover: prior dismiss completed, calling reallyPresentPopover")
+            self?.reallyPresentPopover(
+                definition: definition,
+                surface: surface,
+                isSavedProvider: isSavedProvider,
+                isSavedElsewhereProvider: isSavedElsewhereProvider,
+                onSaveToggle: onSaveToggle,
+                onEscalate: onEscalate,
+                sourceView: sourceView,
+                sourceRect: sourceRect
+            )
+        }
+    }
+
+    // Updates an already-presented popover's content and anchor in place — see presentPopover.
+    private func updatePresentedPopoverContent(
+        viewController: UIViewController,
+        definition: String,
+        surface: String,
+        isSavedProvider: (() -> Bool)?,
+        isSavedElsewhereProvider: (() -> Bool)?,
+        onSaveToggle: (() -> Void)?,
+        onEscalate: (() -> Void)?,
+        sourceView: UIView,
+        sourceRect: CGRect
+    ) {
+        popoverSurface = surface
+        popoverIsSavedProvider = isSavedProvider
+        popoverIsSavedElsewhereProvider = isSavedElsewhereProvider
+        popoverOnSaveToggle = onSaveToggle
+        popoverOnEscalate = onEscalate
+
+        applyPopoverWordButtonAppearance(surface: surface)
+        popoverDefinitionLabel?.text = definition
+        refreshPopoverStarAppearance()
+
+        viewController.preferredContentSize = preferredPopoverSize(
+            for: definition,
+            word: DictionarySettings.showJapaneseInPopover ? surface : "",
+            horizontalInset: Self.popoverHorizontalInset,
+            topInset: Self.popoverTopInset,
+            bottomInset: Self.popoverBottomInset,
+            interItemSpacing: Self.popoverInterItemSpacing,
+            actionButtonWidth: Self.popoverActionButtonSize,
+            actionButtonHeight: Self.popoverActionButtonSize,
+            minWordTapWidth: Self.popoverMinWordTapWidth
+        )
+
+        // Documented behavior: changing sourceRect/sourceView on an already-presented
+        // UIPopoverPresentationController repositions the arrow to match.
+        if let popoverPresentationController = viewController.popoverPresentationController {
+            popoverPresentationController.sourceView = sourceView
+            popoverPresentationController.sourceRect = sourceRect
+        }
+        TapDiagnostics.mark("updatePresentedPopoverContent: content + anchor updated in place")
+    }
+
+    // Refreshes the star's icon/tint/accessibility label from the live saved state — shared by
+    // the initial render and every post-toggle/post-switch refresh so they can't drift apart,
+    // mirroring SurfaceSheetViewController.updateSaveButtonAppearance().
+    private func refreshPopoverStarAppearance() {
+        let isSaved = popoverIsSavedProvider?() ?? false
+        let isSavedElsewhere = isSaved == false && (popoverIsSavedElsewhereProvider?() ?? false)
+        popoverStarButton?.setImage(UIImage(systemName: isSaved ? "star.fill" : "star"), for: .normal)
+        popoverStarButton?.tintColor = (isSaved || isSavedElsewhere) ? .systemYellow : .secondaryLabel
+        popoverStarButton?.accessibilityLabel = isSaved ? "Unsave" : (isSavedElsewhere ? "Save to This Note" : "Save")
+    }
+
+    // Renders the word button per the "Show Japanese in Popover" setting — either the surface
+    // text (current default) or a plain speaker icon, so users who don't want the word spoiled
+    // can still tap to hear it. Shared by the fresh-build and update-in-place paths so they can't
+    // drift apart.
+    private func applyPopoverWordButtonAppearance(surface: String) {
+        guard let popoverWordButton else { return }
+        popoverWordButton.accessibilityLabel = "Speak \(surface)"
+        if DictionarySettings.showJapaneseInPopover {
+            popoverWordButton.setImage(nil, for: .normal)
+            popoverWordButton.setAttributedTitle(
+                NSAttributedString(
+                    string: surface,
+                    attributes: [
+                        .font: UIFont.systemFont(ofSize: 17, weight: .semibold),
+                        .underlineStyle: NSUnderlineStyle.single.rawValue,
+                        .underlineColor: UIColor.label,
+                    ]
+                ),
+                for: .normal
+            )
+        } else {
+            popoverWordButton.setAttributedTitle(NSAttributedString(string: ""), for: .normal)
+            popoverWordButton.setImage(UIImage(systemName: "speaker.wave.2"), for: .normal)
+            popoverWordButton.tintColor = .secondaryLabel
+        }
+    }
+
+    // The actual popover construction + presentation, deferred until any prior popover has
+    // fully finished dismissing (see presentPopover's comment).
+    private func reallyPresentPopover(
+        definition: String,
+        surface: String,
+        isSavedProvider: (() -> Bool)?,
+        isSavedElsewhereProvider: (() -> Bool)?,
+        onSaveToggle: (() -> Void)?,
+        onEscalate: (() -> Void)?,
+        sourceView: UIView,
+        sourceRect: CGRect
+    ) {
+        guard let presentingController = topPresentingController() else {
+            TapDiagnostics.mark("reallyPresentPopover: topPresentingController() returned nil — BAILING")
+            return
+        }
+        TapDiagnostics.mark("reallyPresentPopover: presentingController resolved, building popover view")
+
+        popoverSurface = surface
+        popoverIsSavedProvider = isSavedProvider
+        popoverIsSavedElsewhereProvider = isSavedElsewhereProvider
+        popoverOnSaveToggle = onSaveToggle
+        popoverOnEscalate = onEscalate
 
         let viewController = UIViewController()
         viewController.view.backgroundColor = .systemBackground
-        let horizontalInset: CGFloat = 10
-        let topInset: CGFloat = 4
-        let bottomInset: CGFloat = 8
-        let interItemSpacing: CGFloat = 8
-        let actionButtonWidth: CGFloat = 18
-        let actionButtonHeight: CGFloat = 18
+
+        let starButton = UIButton(type: .system)
+        starButton.translatesAutoresizingMaskIntoConstraints = false
+        starButton.contentVerticalAlignment = .center
+        starButton.contentHorizontalAlignment = .center
+        popoverStarButton = starButton
+        refreshPopoverStarAppearance()
+        starButton.addAction(
+            UIAction { [weak self] _ in
+                self?.popoverOnSaveToggle?()
+                self?.refreshPopoverStarAppearance()
+            },
+            for: .touchUpInside
+        )
+
+        let wordButton = UIButton(type: .system)
+        wordButton.translatesAutoresizingMaskIntoConstraints = false
+        wordButton.setTitleColor(.label, for: .normal)
+        wordButton.contentHorizontalAlignment = .leading
+        popoverWordButton = wordButton
+        // Dotted underline signals "tap to hear this" without adding a separate icon. Font must
+        // be an attribute here, not set via titleLabel?.font — that's ignored once an attributed
+        // title is in play, which previously let the button fall back to a different font than
+        // preferredPopoverSize measured, under-sizing the popover and forcing definitionLabel to
+        // wrap character-by-character.
+        applyPopoverWordButtonAppearance(surface: surface)
+        // Reads popoverSurface (not a captured `surface` snapshot) so a reused, in-place-updated
+        // popover always speaks the currently-shown word, not whichever word first built this button.
+        wordButton.addAction(
+            UIAction { [weak self, weak wordButton] _ in
+                guard let self else { return }
+                let synthesizer = AVSpeechSynthesizer()
+                objc_setAssociatedObject(wordButton as Any, &SegmentLookupSheet.speechSynthesizerKey, synthesizer, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+                let utterance = AVSpeechUtterance(string: self.popoverSurface)
+                utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+                synthesizer.speak(utterance)
+            },
+            for: .touchUpInside
+        )
 
         let definitionLabel = UILabel()
         definitionLabel.translatesAutoresizingMaskIntoConstraints = false
-        definitionLabel.numberOfLines = 0
+        definitionLabel.numberOfLines = 2
+        definitionLabel.lineBreakMode = .byTruncatingTail
         definitionLabel.textColor = .label
         definitionLabel.font = .systemFont(ofSize: 16)
         definitionLabel.text = definition
+        popoverDefinitionLabel = definitionLabel
 
         let detailsButton = UIButton(type: .system)
         detailsButton.translatesAutoresizingMaskIntoConstraints = false
@@ -149,57 +368,63 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         detailsButton.tintColor = .secondaryLabel
         detailsButton.contentVerticalAlignment = .center
         detailsButton.contentHorizontalAlignment = .center
+        detailsButton.accessibilityLabel = "Open Full Lookup"
         detailsButton.addAction(
             UIAction { [weak self] _ in
                 guard let self else {
                     return
                 }
-
-                self.presentSurfaceSheet(
-                    surface: currentSurface,
-                    leftNeighborSurface: leftNeighborSurface,
-                    rightNeighborSurface: rightNeighborSurface,
-                    onSelectPrevious: nil,
-                    onSelectNext: nil,
-                    onMergeLeft: onMergeLeft,
-                    onMergeRight: onMergeRight,
-                    onSplitApply: onSplitApply,
-                    sheetReadingsProvider: sheetReadingsProvider,
-                    sheetSublatticeProvider: sheetSublatticeProvider,
-                    segmentRangeProvider: segmentRangeProvider,
-                    sheetLexiconDebugProvider: sheetLexiconDebugProvider,
-                    onDismiss: onDismiss
-                )
+                // Dismiss first (matching presentSheet's own dismiss-before-fresh-present
+                // pattern), then hand off to the caller, which builds and presents the full
+                // sheet with its complete provider set.
+                self.dismissPopover(notifyDismissal: false) { [weak self] in
+                    self?.popoverOnEscalate?()
+                }
             },
             for: .touchUpInside
         )
 
+        viewController.view.addSubview(starButton)
+        viewController.view.addSubview(wordButton)
         viewController.view.addSubview(definitionLabel)
         viewController.view.addSubview(detailsButton)
         NSLayoutConstraint.activate([
-            definitionLabel.topAnchor.constraint(equalTo: viewController.view.topAnchor, constant: topInset),
-            definitionLabel.leadingAnchor.constraint(equalTo: viewController.view.leadingAnchor, constant: horizontalInset),
-            definitionLabel.bottomAnchor.constraint(equalTo: viewController.view.bottomAnchor, constant: -bottomInset),
+            starButton.leadingAnchor.constraint(equalTo: viewController.view.leadingAnchor, constant: Self.popoverHorizontalInset),
+            starButton.centerYAnchor.constraint(equalTo: definitionLabel.centerYAnchor),
+            starButton.widthAnchor.constraint(equalToConstant: Self.popoverActionButtonSize),
+            starButton.heightAnchor.constraint(equalToConstant: Self.popoverActionButtonSize),
 
-            detailsButton.leadingAnchor.constraint(equalTo: definitionLabel.trailingAnchor, constant: interItemSpacing),
-            detailsButton.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor, constant: -horizontalInset),
+            wordButton.leadingAnchor.constraint(equalTo: starButton.trailingAnchor, constant: Self.popoverInterItemSpacing),
+            wordButton.centerYAnchor.constraint(equalTo: definitionLabel.centerYAnchor),
+            wordButton.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.popoverMinWordTapWidth),
+            wordButton.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.popoverActionButtonSize),
+
+            definitionLabel.topAnchor.constraint(equalTo: viewController.view.topAnchor, constant: Self.popoverTopInset),
+            definitionLabel.leadingAnchor.constraint(equalTo: wordButton.trailingAnchor, constant: Self.popoverInterItemSpacing),
+            definitionLabel.bottomAnchor.constraint(equalTo: viewController.view.bottomAnchor, constant: -Self.popoverBottomInset),
+
+            detailsButton.leadingAnchor.constraint(equalTo: definitionLabel.trailingAnchor, constant: Self.popoverInterItemSpacing),
+            detailsButton.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor, constant: -Self.popoverHorizontalInset),
             detailsButton.centerYAnchor.constraint(equalTo: definitionLabel.centerYAnchor),
-            detailsButton.widthAnchor.constraint(equalToConstant: actionButtonWidth),
-            detailsButton.heightAnchor.constraint(equalToConstant: actionButtonHeight),
+            detailsButton.widthAnchor.constraint(equalToConstant: Self.popoverActionButtonSize),
+            detailsButton.heightAnchor.constraint(equalToConstant: Self.popoverActionButtonSize),
         ])
 
         viewController.modalPresentationStyle = .popover
         viewController.preferredContentSize = preferredPopoverSize(
             for: definition,
-            horizontalInset: horizontalInset,
-            topInset: topInset,
-            bottomInset: bottomInset,
-            interItemSpacing: interItemSpacing,
-            actionButtonWidth: actionButtonWidth,
-            actionButtonHeight: actionButtonHeight
+            word: DictionarySettings.showJapaneseInPopover ? surface : "",
+            horizontalInset: Self.popoverHorizontalInset,
+            topInset: Self.popoverTopInset,
+            bottomInset: Self.popoverBottomInset,
+            interItemSpacing: Self.popoverInterItemSpacing,
+            actionButtonWidth: Self.popoverActionButtonSize,
+            actionButtonHeight: Self.popoverActionButtonSize,
+            minWordTapWidth: Self.popoverMinWordTapWidth
         )
 
         guard let popoverPresentationController = viewController.popoverPresentationController else {
+            TapDiagnostics.mark("reallyPresentPopover: viewController.popoverPresentationController is nil — BAILING")
             return
         }
 
@@ -207,8 +432,18 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         popoverPresentationController.sourceView = sourceView
         popoverPresentationController.sourceRect = sourceRect
         popoverPresentationController.permittedArrowDirections = [.up, .down]
+        // Without this, UIKit's own outside-tap-to-dismiss overlay swallows the first tap on a
+        // different word — the CoreText view's tap gesture recognizer never sees it, so the
+        // popover just dismisses and the second tap is what actually opens the new word's
+        // popover. Exempting the source view from that overlay lets taps reach the gesture
+        // recognizer directly, so handleReadModeSegmentTap runs immediately and this same
+        // presentPopover call switches straight to the new word.
+        popoverPresentationController.passthroughViews = [sourceView]
 
-        presentingController.present(viewController, animated: true)
+        TapDiagnostics.mark("reallyPresentPopover: calling presentingController.present(...)")
+        presentingController.present(viewController, animated: true) {
+            TapDiagnostics.mark("reallyPresentPopover: present(...) completion fired — popover is now on screen")
+        }
         presentedController = viewController
     }
 
@@ -310,14 +545,17 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     }
 
     // Dismisses any active segment presentation (sheet/popover), used when selection clears.
-    func dismissPopover(notifyDismissal: Bool = true, completion: (() -> Void)? = nil) {
+    func dismissPopover(notifyDismissal: Bool = true, animated: Bool = true, completion: (() -> Void)? = nil) {
+        TapDiagnostics.mark("dismissPopover entered, calling dismissSheet")
         dismissSheet { [weak self] in
+            TapDiagnostics.mark("dismissPopover: dismissSheet completed")
             guard let self else {
                 completion?()
                 return
             }
 
             guard let presentedController else {
+                TapDiagnostics.mark("dismissPopover: presentedController is nil, nothing to dismiss")
                 if notifyDismissal {
                     self.fireOnDismissIfNeeded()
                 }
@@ -325,7 +563,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
                 return
             }
 
-            presentedController.dismiss(animated: true) {
+            TapDiagnostics.mark("dismissPopover: calling presentedController.dismiss(animated: \(animated))")
+            presentedController.dismiss(animated: animated) {
+                TapDiagnostics.mark("dismissPopover: presentedController.dismiss(...) completion fired")
                 if notifyDismissal {
                     self.fireOnDismissIfNeeded()
                 }
@@ -378,6 +618,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     // Dismisses the currently presented action sheet if one is active.
     private func dismissSheet(completion: (() -> Void)? = nil) {
         guard let presentedSheetController, hasActivePresentedSheetController else {
+            TapDiagnostics.mark("dismissSheet: fast bail (no active presentedSheetController)")
             self.presentedSheetController = nil
             resetSheetPresentationState()
             completion?()
@@ -385,6 +626,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         }
 
         if isPreparingSheetDismissal == false, let onWillDismiss {
+            TapDiagnostics.mark("dismissSheet: SLOW PATH — deferring to onWillDismiss")
             isPreparingSheetDismissal = true
             onWillDismiss { [weak self] in
                 self?.dismissSheet(completion: completion)
@@ -392,6 +634,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
             return
         }
 
+        TapDiagnostics.mark("dismissSheet: SLOW PATH — calling presentedSheetController.dismiss(animated: true)")
         presentedSheetController.dismiss(animated: true) { [weak self] in
             guard let self else {
                 completion?()
@@ -447,38 +690,61 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         return .none
     }
 
-    // Computes a bounded content size for readable multiline definition text and action button affordance.
+    // Computes a bounded content size for the star/word/definition/arrow row. Content-hugging:
+    // a short word + short definition doesn't leave dead space, while a long definition wraps
+    // to multiple lines once the row hits maxContentWidth rather than growing unbounded.
     private func preferredPopoverSize(
         for definition: String,
+        word: String,
         horizontalInset: CGFloat,
         topInset: CGFloat,
         bottomInset: CGFloat,
         interItemSpacing: CGFloat,
         actionButtonWidth: CGFloat,
-        actionButtonHeight: CGFloat
+        actionButtonHeight: CGFloat,
+        minWordTapWidth: CGFloat
     ) -> CGSize {
-        let minContentWidth: CGFloat = 84
+        let minContentWidth: CGFloat = 120
         let maxContentWidth: CGFloat = 320
-        let font = UIFont.systemFont(ofSize: 16)
+        let definitionFont = UIFont.systemFont(ofSize: 16)
+        let wordFont = UIFont.systemFont(ofSize: 17, weight: .semibold)
 
-        let measurementLabel = UILabel()
-        measurementLabel.numberOfLines = 0
-        measurementLabel.font = font
-        measurementLabel.text = definition
+        let wordMeasurementLabel = UILabel()
+        wordMeasurementLabel.font = wordFont
+        wordMeasurementLabel.text = word
+        // Must match wordButton's own greaterThanOrEqualToConstant(minWordTapWidth) constraint —
+        // otherwise a short word (single kanji) is measured narrower than the button actually
+        // renders, under-sizing the popover the same way the missing font attribute once did.
+        let wordWidth = max(ceil(wordMeasurementLabel.sizeThatFits(
+            CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        ).width), minWordTapWidth)
 
-        let unconstrainedLabelSize = measurementLabel.sizeThatFits(
+        // Fixed-width elements: left/right insets, star, word, arrow, and the two inter-item
+        // gaps between (star, word) and (word, definition) — definition's own leading gap to
+        // the arrow is accounted for separately below.
+        let fixedWidth = (horizontalInset * 2) + actionButtonWidth + interItemSpacing
+            + wordWidth + interItemSpacing + interItemSpacing + actionButtonWidth
+
+        let definitionMeasurementLabel = UILabel()
+        definitionMeasurementLabel.numberOfLines = 0
+        definitionMeasurementLabel.font = definitionFont
+        definitionMeasurementLabel.text = definition
+
+        let unconstrainedDefinitionSize = definitionMeasurementLabel.sizeThatFits(
             CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         )
 
-        let desiredContentWidth = ceil(unconstrainedLabelSize.width) + (horizontalInset * 2) + interItemSpacing + actionButtonWidth
+        let desiredContentWidth = ceil(unconstrainedDefinitionSize.width) + fixedWidth
         let constrainedContentWidth = min(max(desiredContentWidth, minContentWidth), maxContentWidth)
-        let constrainedTextWidth = constrainedContentWidth - (horizontalInset * 2) - interItemSpacing - actionButtonWidth
-        let constrainedLabelSize = measurementLabel.sizeThatFits(
-            CGSize(width: constrainedTextWidth, height: CGFloat.greatestFiniteMagnitude)
+        let constrainedDefinitionWidth = constrainedContentWidth - fixedWidth
+        let constrainedDefinitionSize = definitionMeasurementLabel.sizeThatFits(
+            CGSize(width: max(constrainedDefinitionWidth, 1), height: CGFloat.greatestFiniteMagnitude)
         )
 
-        let textHeight = ceil(constrainedLabelSize.height)
-        let contentHeight = max(textHeight, actionButtonHeight) + topInset + bottomInset
+        let contentTextHeight = max(ceil(constrainedDefinitionSize.height), ceil(wordMeasurementLabel.sizeThatFits(
+            CGSize(width: wordWidth, height: CGFloat.greatestFiniteMagnitude)
+        ).height))
+        let contentHeight = max(contentTextHeight, actionButtonHeight) + topInset + bottomInset
         return CGSize(width: constrainedContentWidth, height: max(56, min(contentHeight, 260)))
     }
 

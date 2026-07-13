@@ -24,36 +24,57 @@ nonisolated enum DerivationAnalyzer {
         let gloss: String?
     }
 
+    // The base and auxiliary lemmas of a detected compound verb (さがす, つづける), for callers
+    // that want the raw pieces rather than parsing `morphemes` or `summary` — e.g. a header
+    // subtitle showing "さがす + つづける" in place of a bare lemma, or a plain gloss line like
+    // "to search for + continue ~ing (auxiliary)". Glosses are nil when no resolver was supplied
+    // or no dictionary entry was found.
+    struct CompoundVerbParts: Equatable, Sendable {
+        let base: String
+        let auxiliary: String
+        let baseGloss: String?
+        let auxiliaryGloss: String?
+    }
+
     // A resolved derivation. `summary` is the legacy single-sentence form (used by every
     // existing rule). `morphemes`, when non-nil, opts the rule into chip-strip rendering at
     // the WordDetail header — the renderer prefers chips and ignores `summary` in that case,
     // but `summary` is still produced so accessibility readers and tests have a stable
-    // textual representation of the same derivation.
+    // textual representation of the same derivation. `compoundVerbParts` is populated only by
+    // the compound-verb rule.
     struct Result: Equatable, Sendable {
         let summary: String
         let morphemes: [Morpheme]?
+        let compoundVerbParts: CompoundVerbParts?
 
-        init(summary: String, morphemes: [Morpheme]? = nil) {
+        init(summary: String, morphemes: [Morpheme]? = nil, compoundVerbParts: CompoundVerbParts? = nil) {
             self.summary = summary
             self.morphemes = morphemes
+            self.compoundVerbParts = compoundVerbParts
         }
     }
 
     // Looks a candidate lemma up; returns its JMdict POS tags (e.g. ["adj-i"]) or [] if absent.
     typealias BaseResolver = (String) -> [String]
+    // Looks a candidate lemma up; returns its first English gloss, or nil if absent. Optional —
+    // when omitted, the compound-verb base chip's caption falls back to a generic "verb" label
+    // rather than a specific gloss (mirrors the ～がり屋 stem chip's documented gloss elision).
+    typealias GlossResolver = (String) -> String?
 
     /// Returns a derivation description for `surface`, or nil when it isn't a recognized derivation.
     /// - Parameters:
     ///   - surface: the saved word as written, e.g. "弱さ".
     ///   - components: segmentation lemmas in order — only used to detect compound verbs.
     ///   - baseResolver: looks a lemma up, returns its POS tags.
+    ///   - glossResolver: looks a lemma up, returns its first English gloss (compound verbs only).
     static func analyze(
         surface: String,
         components: [String],
-        baseResolver: BaseResolver
+        baseResolver: BaseResolver,
+        glossResolver: GlossResolver? = nil
     ) -> Result? {
         if let result = affixDerivation(surface: surface, baseResolver: baseResolver) { return result }
-        if let result = compoundVerb(components: components, baseResolver: baseResolver) { return result }
+        if let result = compoundVerb(components: components, baseResolver: baseResolver, glossResolver: glossResolver) { return result }
         return nil
     }
 
@@ -193,22 +214,26 @@ nonisolated enum DerivationAnalyzer {
 
     // Grammaticalized auxiliary verbs: ichidan/godan verbs that act as aspect/voice/benefactive
     // markers when suffixed to another verb's masu-stem. Shared with WordDetailView's component
-    // badge so the two stay in sync.
+    // badge so the two stay in sync. Both kanji and hiragana spellings are listed for the verbs
+    // commonly written in kana (続ける/つづける, 始める/はじめる, …) — text (especially song lyrics)
+    // frequently writes these auxiliaries in hiragana even when the base verb carries kanji, and
+    // lattice edges surfaced from real segmentation carry whatever script the source text used.
     static let auxiliaryVerbs: Set<String> = [
-        "続ける", "始める", "終わる", "出す", "込む", "合う", "切る",
+        "続ける", "つづける", "始める", "はじめる", "終わる", "おわる",
+        "出す", "だす", "込む", "こむ", "合う", "あう", "切る", "きる",
         "もらう", "あげる", "くれる", "いく", "くる", "おく", "みる",
         "しまう", "ある", "いる", "させる", "もらえる",
     ]
 
     // English glosses for the auxiliary role, used to annotate the compound-verb description.
     private static let auxiliaryGloss: [String: String] = [
-        "続ける": "continue ~ing",
-        "始める": "begin to ~",
-        "終わる": "finish ~ing",
-        "出す": "burst into ~ / start suddenly",
-        "込む": "~ into / thoroughly",
-        "合う": "~ each other",
-        "切る": "~ completely",
+        "続ける": "continue ~ing", "つづける": "continue ~ing",
+        "始める": "begin to ~", "はじめる": "begin to ~",
+        "終わる": "finish ~ing", "おわる": "finish ~ing",
+        "出す": "burst into ~ / start suddenly", "だす": "burst into ~ / start suddenly",
+        "込む": "~ into / thoroughly", "こむ": "~ into / thoroughly",
+        "合う": "~ each other", "あう": "~ each other",
+        "切る": "~ completely", "きる": "~ completely",
         "もらう": "have someone ~",
         "あげる": "do ~ for someone",
         "くれる": "do ~ for me",
@@ -224,17 +249,27 @@ nonisolated enum DerivationAnalyzer {
     ]
 
     // Renders a compound-verb description when the last segmented lemma is a known auxiliary
-    // verb and the leading part is itself verbal; nil otherwise.
-    private static func compoundVerb(components: [String], baseResolver: BaseResolver) -> Result? {
+    // verb and the leading part is itself verbal; nil otherwise. Also builds a 3-chip strip
+    // (base + auxiliary lemmas and glosses) so the WordDetail header can render a plain gloss
+    // line ("to search for + continue ~ing (auxiliary)") instead of the summary sentence.
+    private static func compoundVerb(components: [String], baseResolver: BaseResolver, glossResolver: GlossResolver?) -> Result? {
         guard components.count >= 2, let auxiliary = components.last,
               auxiliaryVerbs.contains(auxiliary) else { return nil }
         let base = components.dropLast().joined()
         // Only a compound verb when the leading part is itself verbal.
         guard baseResolver(base).contains(where: isVerb) else { return nil }
-        if let gloss = auxiliaryGloss[auxiliary] {
-            return Result(summary: "Compound verb — \(base) + auxiliary \(auxiliary) (\(gloss))")
-        }
-        return Result(summary: "Compound verb — \(base) + auxiliary \(auxiliary)")
+        let auxGloss = auxiliaryGloss[auxiliary]
+        let summary = auxGloss.map { "Compound verb — \(base) + auxiliary \(auxiliary) (\($0))" }
+            ?? "Compound verb — \(base) + auxiliary \(auxiliary)"
+        return Result(
+            summary: summary,
+            compoundVerbParts: CompoundVerbParts(
+                base: base,
+                auxiliary: auxiliary,
+                baseGloss: glossResolver?(base),
+                auxiliaryGloss: auxGloss
+            )
+        )
     }
 
     // MARK: - POS tag helpers

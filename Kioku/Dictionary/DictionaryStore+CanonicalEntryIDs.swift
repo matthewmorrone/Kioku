@@ -6,70 +6,17 @@ import SQLite3
 // once at app start by makeReadResources before the store is published to the UI.
 extension DictionaryStore {
 
-    // Computes the full surface → canonical entry id map in one query. Selection priority
-    // matches lookupFirstEntryID (jpdb rank → sense order → entry id) so any saved-word
-    // identity resolved through the map matches what an interactive tap would produce.
-    // Runs once at startup; intermediate result-set is one row per (surface, entry) pair
-    // before the window function trims to one row per surface.
+    // Reads the surface → canonical entry id map from surface_canonical_entry, precomputed at
+    // DB-build time by generate_db.py's materialize_canonical_entry_ids (same selection
+    // priority as fetchMatchedEntries: functional/deictic POS → kana-only → jpdb/wordfreq rank
+    // → sense order → entry id — kept in exact lockstep, see that Python function's comment).
+    // This used to run the whole ranking query (a window function over a multi-way join across
+    // all ~450k surfaces) at every app startup — ~2.5-4s of a ~7s cold start on-device, measured
+    // via StartupTimer — for a result that's a pure function of static dictionary data and never
+    // changes at runtime. Now it's a plain indexed table scan.
     nonisolated func fetchCanonicalEntryIDMap() throws -> [String: Int64] {
         try withSerializedDatabaseAccess {
-            // Mirrors the ordering in DictionaryStore.fetchMatchedEntries so the canonical
-            // id resolved at app start matches what an interactive lookup would produce.
-            // Kana-only entries (no kanji form) fall back from a missing jpdb_rank to a
-            // wordfreq Zipf bucket; otherwise the particle の would resolve to 野 because
-            // 野 has a JPDB rank and the particle entry has none.
-            let sql = """
-            WITH surfaces_with_entries AS (
-                SELECT text AS surface, entry_id FROM kanji
-                UNION ALL
-                SELECT text AS surface, entry_id FROM kana_forms
-            ),
-            m AS (
-                SELECT s.surface, s.entry_id,
-                       MIN(wf.jpdb_rank) AS rank,
-                       MAX(wf.wordfreq_zipf) AS best_zipf,
-                       EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = s.entry_id) AS has_kanji,
-                       -- Functional / deictic POS match (prt / cop / aux / aux-* / adj-pn): the
-                       -- entry is a strong match for a bare-kana lookup. Shared definition with
-                       -- the live lookup via FrequencySQL.functionalPosMatch so the two rankings
-                       -- can't drift. Also catches archaic-kanji-bearing particles (の: 乃, 之)
-                       -- that the has_kanji=0 tier alone would miss.
-                       \(FrequencySQL.functionalPosMatch(entryIDExpr: "s.entry_id")) AS is_functional,
-                       COALESCE(MIN(sn.order_index), \(FrequencySQL.noSenseSort)) AS min_sense
-                FROM surfaces_with_entries s
-                LEFT JOIN word_frequency wf ON wf.entry_id = s.entry_id
-                    AND (EXISTS (SELECT 1 FROM kana_forms kf2 WHERE kf2.id = wf.kana_id AND kf2.text = s.surface)
-                      OR EXISTS (SELECT 1 FROM kanji kj2 WHERE kj2.id = wf.kanji_id AND kj2.text = s.surface))
-                LEFT JOIN senses sn ON sn.entry_id = s.entry_id
-                GROUP BY s.surface, s.entry_id
-            ),
-            ranked AS (
-                -- Primary tier: kana-only entries (has_kanji=0) win over kanji entries
-                -- whose kana reading happens to match. For kanji surfaces this is a no-op
-                -- (kana_forms.text never holds a kanji character, so all candidates have
-                -- has_kanji=1). For kana surfaces this fixes the homophone collision —
-                -- tapping は returns the topic particle, not 派 "group; faction".
-                SELECT surface, entry_id,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY surface
-                           ORDER BY
-                               -- Functional/deictic first, then kana-only, then by rank.
-                               -- See DictionaryStore.fetchMatchedEntries for the rationale.
-                               CASE WHEN is_functional = 1 THEN 0 ELSE 1 END ASC,
-                               has_kanji ASC,
-                               -- Effective rank applied uniformly to kanji and kana-only
-                               -- entries: JPDB rank if present, else a pseudo-rank from the
-                               -- wordfreq Zipf score, else the catch-all. Mirrors the live
-                               -- lookup query in DictionaryStore.fetchMatchedEntries so the
-                               -- canonical id at app start matches an interactive lookup.
-                               \(FrequencySQL.effectiveRank(jpdbExpr: "rank", zipfExpr: "best_zipf")) ASC,
-                               min_sense ASC,
-                               entry_id ASC
-                       ) AS rn
-                FROM m
-            )
-            SELECT surface, entry_id FROM ranked WHERE rn = 1
-            """
+            let sql = "SELECT surface, entry_id FROM surface_canonical_entry"
 
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }

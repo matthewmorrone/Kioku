@@ -117,6 +117,42 @@ own sections.)
 
 ## Segmentation & Lookup
 
+- [ ] **`DictionaryTrie.Node.children` is `[Character: Node]` — consider a scalar-keyed
+      dictionary instead.** Investigated 2026-07-13 while chasing cold-start latency
+      (`StartupTimer` measured `trie population (456249 records)` at ~1005ms). `Character` is a
+      variable-width grapheme-cluster type; hashing/equality has to account for Unicode
+      grapheme-boundary edge cases that essentially never apply to dictionary/user text (kanji/
+      kana are almost always single Unicode scalars). Switching `children` to a scalar key
+      (e.g. `[UInt32: Node]` keyed by `Unicode.Scalar.value`) would speed up not just the
+      one-time trie build but every lookup during live segmentation too (`contains`,
+      `partOfSpeech`, `ipadicContextIDs`, `hitMeta`, `prefixScan`, `prefixHitScan` — 8 call
+      sites total, all contained to `Kioku/Dictionary/DictionaryTrie.swift` +
+      `Kioku/Dictionary/Node.swift`, nothing else touches `.children`). Estimated payoff is
+      modest and uncertain without benchmarking — maybe 200-400ms off the trie-build step,
+      nothing for `fetchSurfaceData` (a separate function; its query plan already uses
+      `idx_kanji_text`/`idx_kana_text` reasonably well, see `EXPLAIN QUERY PLAN` note below).
+      Correctness risk: multi-scalar Characters (rare combining-mark sequences) would need
+      either an NFC-normalization safety net before scalar iteration, or accepting the
+      near-zero real-world risk that Japanese dictionary/user text is already NFC-precomposed.
+      Not started — deferred in favor of the `surface_canonical_entry` precomputation fix below,
+      which was the actual bug (a real algorithmic mistake, not a micro-optimization).
+- [x] **`populateCanonicalEntryIDMap` cost ~4s of a ~7-8s app cold start.** Done 2026-07-13.
+      Root cause: `DictionaryStore.FrequencySQL.functionalPosMatch` ran a correlated `EXISTS`
+      subquery with leading-wildcard `LIKE '%,prt,%'`-style patterns (can't use an index) once
+      per row of the ~450k-surface startup query. Fixed in two steps, each verified via
+      `StartupTimer` (re-enabled its previously-disabled file+console logging, see
+      `Kioku/Diagnostics/StartupTimer.swift`): (1) precomputed the functional-POS check into a
+      plain `entry_functional_pos(entry_id)` table at DB-build time
+      (`generate_db.py:populate_functional_pos`) — cut `populateCanonicalEntryIDMap` from
+      3960ms → 2494ms; (2) since the *entire* canonical-entry ranking is a pure function of
+      static dictionary data (never depends on runtime state), materialized the whole thing
+      into `surface_canonical_entry(surface, entry_id)` at build time too
+      (`generate_db.py:materialize_canonical_entry_ids`), so
+      `DictionaryStore.fetchCanonicalEntryIDMap()` is now a plain table scan — cut it to 155ms
+      (96% reduction from baseline). Total cold-start `makeReadResources` time: 8590ms → 5386ms
+      (~37%). Both `generate_db.py` functions must stay in exact lockstep with
+      `DictionaryStore.FrequencySQL` (shared-definition comments in both files explain why) if
+      the ranking logic (functional/deictic POS boost, jpdb/wordfreq tie-breaking) ever changes.
 - [x] Halfwidth katakana normalization in lookup (ｱｲｳｴｵ → アイウエオ)
 - [x] Lexicon lemma ranking respects saved-word surfaces when scoring inflection candidates (`Lexicon.swift:241-270` — `resolve()` ranks lexemes by saved surface + inflection-chain score)
 - [x] Use frequency data to influence segmentation path selection — Done. The Viterbi cost

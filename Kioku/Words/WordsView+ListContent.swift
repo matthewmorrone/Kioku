@@ -1,6 +1,23 @@
 import SwiftUI
 import AVFoundation
 
+// Applies .swipeActions only when not editing — merely attaching the modifier (even with an
+// empty action set) fights List(selection:)'s native multi-select circle for the same row
+// gesture machinery, so this omits the modifier entirely rather than just hiding its content.
+private struct SwipeActionsWhenNotEditing<Actions: View>: ViewModifier {
+    let isEditing: Bool
+    @ViewBuilder let actions: () -> Actions
+
+    // Omits .swipeActions entirely while editing instead of just emptying its content.
+    func body(content: Content) -> some View {
+        if isEditing {
+            content
+        } else {
+            content.swipeActions(edge: .trailing, allowsFullSwipe: true, content: actions)
+        }
+    }
+}
+
 // List content for the Words screen. ONE word-row builder (`wordRow`) renders every
 // dictionary word the app shows — live search results, saved favorites, and history
 // `.entry` rows — with identical body, gestures, swipe action, and context menu. The only
@@ -104,6 +121,54 @@ extension WordsView {
         .contentShape(Rectangle())
         .contextMenu {
             wordRowMenu(entryID: entryID, surface: surface, entry: entry, onTap: onTap)
+        }
+        // Attaching .swipeActions at all — even with an empty button set — fights
+        // List(selection:)'s native multi-select circle for the same row gesture machinery,
+        // leaving the circle visually stuck on whichever row last rendered it. So this isn't
+        // just "hide the buttons," it's "don't attach the modifier" while editing. Edit mode
+        // already has its own batch remove via the toolbar, so swipe isn't needed there anyway.
+        .modifier(SwipeActionsWhenNotEditing(isEditing: editMode == .active) {
+            wordRowSwipeAction(entryID: entryID, surface: surface, entry: entry)
+        })
+    }
+
+    // The single trailing-swipe "remove" action, contextual to whichever scope the row is
+    // being viewed in — same priority order as wordRowMenu's "remove from …" section (list →
+    // note → history), falling back to Unfavorite everywhere else (the Saved Words list, plain
+    // search results). One action per row keeps the swipe gesture a predictable single-purpose
+    // "take this out of what I'm looking at" rather than a menu of choices.
+    @ViewBuilder
+    private func wordRowSwipeAction(entryID: Int64, surface: String, entry: DictionaryEntry?) -> some View {
+        // role: .destructive alone should color these red, but something in this app's theming
+        // overrides it — force it explicitly rather than rely on the default.
+        if let listID = singleActiveListID {
+            Button(role: .destructive) {
+                wordsStore.removeFromList(wordIDs: [entryID], listID: listID)
+            } label: {
+                Label("Remove", systemImage: "folder.badge.minus")
+            }
+            .tint(.red)
+        } else if let noteID = singleActiveNoteID {
+            Button(role: .destructive) {
+                wordsStore.removeNoteMembership(wordID: entryID, noteID: noteID)
+            } label: {
+                Label("Remove", systemImage: "minus.circle")
+            }
+            .tint(.red)
+        } else if activeTab == .history && searchText.isEmpty {
+            Button(role: .destructive) {
+                historyStore.remove(canonicalEntryIDs: [entryID])
+            } label: {
+                Label("Remove", systemImage: "clock.arrow.circlepath")
+            }
+            .tint(.red)
+        } else if isSavedByID(entryID) {
+            Button(role: .destructive) {
+                toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
+            } label: {
+                Label("Unfavorite", systemImage: "star.slash")
+            }
+            .tint(.red)
         }
     }
 

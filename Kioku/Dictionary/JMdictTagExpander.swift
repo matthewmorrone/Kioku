@@ -74,7 +74,7 @@ enum JMdictTagExpander {
         "vr":       "irregular ru verb",
         "vs":       "suru verb",
         "vs-c":     "suru verb (su precursor)",
-        "vs-i":     "suru verb (irregular)",
+        "vs-i":     "suru verb",
         "vs-s":     "suru verb (special class)",
         "vt":       "transitive verb",
         "vz":       "ichidan verb (ずる class)",

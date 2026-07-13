@@ -1,9 +1,10 @@
+import AVFoundation
 import SwiftUI
 
 // Bottom sheet showing all conjugation groups for a word.
 // Renders each ConjugationGroup as a rounded card with Japanese on the left
 // and the English row label (secondary, small) on the right.
-// Each row is tappable — tapping opens the lookup sheet for that surface form.
+// Each row is tappable — tapping speaks the conjugated form aloud.
 // Screen: ConjugationSheetView, presented from WordDetailView.
 // Layout sections: drag handle, title bar, scrollable card list.
 struct ConjugationSheetView: View {
@@ -11,8 +12,15 @@ struct ConjugationSheetView: View {
     let dictionaryForm: String
     // All conjugation groups to display.
     let groups: [ConjugationGroup]
-    // Called when a conjugated surface is tapped — opens lookup for that form.
-    let onLookup: (String) -> Void
+
+    @State private var speechSynthesizer = AVSpeechSynthesizer()
+
+    // Speaks a conjugated surface aloud, mirroring WordDetailView's own speak(_:).
+    private func speak(_ text: String) {
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+        speechSynthesizer.speak(utterance)
+    }
 
     var body: some View {
         NavigationStack {
@@ -21,7 +29,7 @@ struct ConjugationSheetView: View {
                     Section {
                         ForEach(Array(group.rows.enumerated()), id: \.offset) { _, row in
                             Button {
-                                onLookup(row.surface)
+                                speak(row.surface)
                             } label: {
                                 HStack {
                                     Text(row.surface)

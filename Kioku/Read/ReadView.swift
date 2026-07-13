@@ -56,7 +56,9 @@ struct ReadView: View {
     @AppStorage("kioku.settings.applyGlobally") var shouldApplyChangesGlobally = true
     @AppStorage("kioku.settings.lineWrapping") var isLineWrappingEnabled = true
     @AppStorage("kioku.settings.rubySpacing") var isRubySpacingEnabled = true
-    @AppStorage("kioku.settings.favoritedGlow") var isFavoritedGlowEnabled = false
+    // Key kept as "favoritedGlow" so existing users don't lose their saved preference —
+    // only the visual effect changed (blurred glow → plain foreground color), not the setting.
+    @AppStorage("kioku.settings.favoritedGlow") var isFavoritedHighlightEnabled = false
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) var debugFuriganaRects: Bool = false
     @AppStorage(DebugSettings.headwordRectsKey) var debugHeadwordRects: Bool = false
@@ -80,13 +82,19 @@ struct ReadView: View {
     @State var segmentLatticeEdges: [LatticeEdge] = []
     @State var segmentEdges: [LatticeEdge] = []
     @State var segmentRanges: [Range<String.Index>] = []
-    // Cache for the favorited-glow set so it isn't recomputed (deinflection sweep) on every body eval.
-    @State var favoritedGlowMemo = FavoritedGlowMemo()
+    // Cache for the favorited-highlight set so it isn't recomputed (deinflection sweep) on every body eval.
+    @State var favoritedHighlightMemo = FavoritedHighlightMemo()
     @State var unknownSegmentLocations: Set<Int> = []
     @State var selectedSegmentLocation: Int?
     @State var selectedHighlightRangeOverride: NSRange?
     @State var selectedBounds: ClosedRange<Int>?
     @State var transientBlankReadingSegmentLocation: Int?
+    // Holds a tap that arrived before dictionary resources finished loading (readResourcesReady
+    // was still false), so it can be replayed automatically once loading completes instead of
+    // silently failing — conjugated words need the segmenter's deinflector to resolve a lemma,
+    // which isn't ready in the first moment or two after app launch, while plain dictionary-form
+    // words happen to work immediately (the raw surface itself is a valid lookup candidate).
+    @State var pendingSegmentTapAfterResourcesReady: (location: Int?, rect: CGRect?, sourceView: UIScrollView?)?
     @State var segments: [SegmentRange]?
     // True once the user has manually changed this note's segmentation (merge/split) or its
     // readings (pin/unpin furigana), or applied an LLM correction. Drives the reset button's
@@ -261,7 +269,11 @@ struct ReadView: View {
         self.onFocusSetting = onFocusSetting
     }
 
-    let prefersSheetDirectSegmentActions = true
+    // false: tap opens the lightweight popover (star / speak / meaning / arrow) first; the arrow
+    // escalates to the full sheet. true would skip straight to the full sheet like before this
+    // was added — kept as a named flag rather than deleted so a future A/B or debug toggle has
+    // a single place to flip it.
+    let prefersSheetDirectSegmentActions = false
 
     // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM
     // setting changes. Reading llmKeysRevision ties body invalidation to key edits;

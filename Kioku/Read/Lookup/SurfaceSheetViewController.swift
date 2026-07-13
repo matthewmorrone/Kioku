@@ -213,34 +213,13 @@ final class SurfaceSheetViewController: UIViewController {
         }
     }
 
-    // Updates the lemma label when the surface changes or supplemental data refreshes. When the
-    // surface is an inflected form, appends a short grammatical-form description derived from the
-    // deinflection chain (e.g. "靡く · te-form"), so the header names the conjugation, not just
-    // the dictionary form. Falls back to the lemma alone when the chain has no displayable forms.
+    // Updates the lemma label when the surface changes or supplemental data refreshes.
     func updateLemmaChain() {
         let info = sheet?.currentSheetLemmaInfo
         let show = info != nil && info?.lemma != currentSurface
-        if show, let info {
-            let form = InflectionFormNames.describe(info.chain)
-            lemmaLabel.attributedText = form.isEmpty ? NSAttributedString(string: info.lemma)
-                                                     : lemmaWithForm(lemma: info.lemma, form: form)
-        } else {
-            lemmaLabel.attributedText = nil
-        }
+        lemmaLabel.attributedText = show ? info.map { NSAttributedString(string: $0.lemma) } : nil
         lemmaLabel.isHidden = !show
         syncFuriganaToCurrentIndex()
-    }
-
-    // Builds the lemma label's text with the grammatical-form description appended in a smaller,
-    // secondary style. The lemma run carries no attributes so it inherits the label's font/color.
-    private func lemmaWithForm(lemma: String, form: String) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: lemma)
-        let formAttributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: lemmaLabel.font.pointSize * 0.82),
-            .foregroundColor: UIColor.secondaryLabel,
-        ]
-        result.append(NSAttributedString(string: "  \(form)", attributes: formAttributes))
-        return result
     }
 
     // Presents the custom reading prompt for the header row tap gesture. Uses

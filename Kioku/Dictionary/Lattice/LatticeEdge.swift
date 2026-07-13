@@ -73,4 +73,28 @@ struct LatticeEdge {
         dfs(current: startIndex, path: [])
         return allPaths
     }
+
+    // Finds a two-part [base-surface, auxiliary-surface] split across `edges` that fully covers
+    // the span, where the trailing edge's surface is a known compound-verb auxiliary (続ける,
+    // つづける, 始める, …).
+    //
+    // Used to recover compound-verb structure for display when the top-level segmentation instead
+    // collapsed the whole word into one lattice edge via Deinflector's compoundVerbRecoveryForms
+    // (e.g. さがしつづける → さがす in one step). That collapse is correct for lookup/validity — the
+    // edge still resolves to the real dictionary entry — but it discards the auxiliary. buildLattice
+    // keeps every dictionary-matching substring as its own edge regardless of which one wins the
+    // longest-match selection, so the natural shorter split (さがし, つづける) is still present among
+    // `edges`; this just needs to find it. Returns raw SURFACES, not lemmas — `edge.lemma` is only
+    // ever populated by SegmentListView's own display hydration, never by buildLattice itself, so
+    // it's empty here; callers should resolve each piece through Segmenter.preferredLemma(for:) to
+    // get a real dictionary form (さがし → さがす) before feeding these into DerivationAnalyzer.
+    static func auxiliaryVerbSplit(from edges: [LatticeEdge], auxiliaries: Set<String>) -> [String]? {
+        guard let start = edges.map(\.start).min(), let end = edges.map(\.end).max() else { return nil }
+        for tailEdge in edges where tailEdge.end == end {
+            guard auxiliaries.contains(tailEdge.surface) else { continue }
+            guard let headEdge = edges.first(where: { $0.start == start && $0.end == tailEdge.start }) else { continue }
+            return [headEdge.surface, tailEdge.surface]
+        }
+        return nil
+    }
 }

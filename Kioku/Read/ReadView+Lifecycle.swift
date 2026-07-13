@@ -291,6 +291,17 @@ extension ReadView {
                 SegmentLookupSheet.shared.refreshOpenSheetFrequencyProvider { surface in
                     frequencyData(forSurface: surface)
                 }
+
+                // Replays a tap that arrived before resources were ready (see
+                // handleReadModeSegmentTap's readResourcesReady guard) — a conjugated word tapped
+                // in the first moment after launch otherwise looked like it silently did nothing.
+                // Goes straight to the lookup half (selectedSegmentLocation is already set from
+                // the original tap) rather than re-entering handleReadModeSegmentTap, which would
+                // see it as already-selected and toggle it off instead of looking it up.
+                if let pending = pendingSegmentTapAfterResourcesReady, let location = pending.location {
+                    pendingSegmentTapAfterResourcesReady = nil
+                    presentLookupForSegmentTap(tappedSegmentLocation: location, tappedSegmentRect: pending.rect, sourceView: pending.sourceView)
+                }
             }
             // The surface-reading/frequency map publishes in Stage 1, ahead of the full engine. When it
             // lands, fill in a split readout that opened during loading — without waiting for the trie.
@@ -380,6 +391,8 @@ extension ReadView {
                 edges: segmentEdges,
                 latticeEdges: segmentLatticeEdges,
                 dictionaryStore: dictionaryStore,
+                segmenter: segmenter,
+                lexicon: lexicon,
                 sourceNoteID: activeNoteID,
                 lemmaForSurface: { segmenter.preferredLemma(for: $0) },
                 lemmaCandidatesForSurface: { segmenter.lemmaCandidates(for: $0) },

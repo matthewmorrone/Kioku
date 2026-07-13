@@ -16,4 +16,17 @@ enum DictionarySettings {
         }
         return defaults.bool(forKey: includeArchaicReadingsKey)
     }
+
+    static let showJapaneseInPopoverKey = "kioku.settings.dictionary.showJapaneseInPopover"
+    static let defaultShowJapaneseInPopover = true
+
+    // When false, the segment-tap popover shows a speaker icon instead of the tapped word's
+    // surface text — still speaks the same word on tap, just without spoiling it visually.
+    static var showJapaneseInPopover: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: showJapaneseInPopoverKey) != nil else {
+            return defaultShowJapaneseInPopover
+        }
+        return defaults.bool(forKey: showJapaneseInPopoverKey)
+    }
 }

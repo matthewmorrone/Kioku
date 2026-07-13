@@ -259,11 +259,11 @@ extension ReadView {
             }
 
             displayOptionRow(
-                title: "Favorited Glow",
-                systemImage: isFavoritedGlowEnabled ? "star.fill" : "star",
-                isEnabled: isFavoritedGlowEnabled
+                title: "Favorited Highlight",
+                systemImage: isFavoritedHighlightEnabled ? "star.fill" : "star",
+                isEnabled: isFavoritedHighlightEnabled
             ) {
-                isFavoritedGlowEnabled.toggle()
+                isFavoritedHighlightEnabled.toggle()
             }
         }
         .padding(12)

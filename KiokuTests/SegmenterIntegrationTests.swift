@@ -91,6 +91,66 @@ final class SegmenterIntegrationTests: XCTestCase {
         })
     }
 
+    // Reproduces ReadView.definitionPayloadForSelectedSegment's exact resolution path for the
+    // reported "popover sometimes doesn't appear" bug (さがしつづける), run repeatedly to catch
+    // intermittent/order-dependent failures a single call wouldn't surface. Live device console
+    // capture kept losing the reproduction window to app-relaunch navigation resets, so this
+    // exercises the identical dictionary-backed pipeline entirely on the host, no device needed.
+    func testCompoundVerbDefinitionLookupIsReliableAcrossRepeatedCalls() throws {
+        let resources = try sharedResources()
+        let surface = "さがしつづける"
+
+        for iteration in 0..<50 {
+            let lemma = resources.segmenter.preferredLemma(for: surface)
+            XCTAssertEqual(lemma, "さがす", "preferredLemma flaked on iteration \(iteration)")
+
+            guard let lemma else { continue }
+            let entries = try resources.dictionaryStore.lookup(surface: lemma, mode: .kanaOnly)
+            XCTAssertFalse(entries.isEmpty, "dictionary lookup for \(lemma) returned no entries on iteration \(iteration)")
+
+            let hasUsableGloss = entries.contains { entry in
+                entry.senses.contains { sense in
+                    sense.glosses.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+                }
+            }
+            XCTAssertTrue(hasUsableGloss, "no usable gloss found for \(lemma) on iteration \(iteration)")
+        }
+    }
+
+    // しちゃう (contraction of して + しまう, i.e. する + auxiliary しまう) must lemmatize to
+    // する. A user report showed it resolving to しる ("to know") instead — a real dictionary
+    // word, just linguistically impossible here: 知る is godan despite ending in る, so its
+    // real contraction is 知っちゃう/しっちゃう (small っ), never しちゃう. The generic v1
+    // "ちゃう→る" rule doesn't verify the candidate is actually ichidan, so it admitted しる as
+    // a false positive that out-ranked the correct explicit "しちゃう→する" rule. Fixed via
+    // Deinflector.knownNonIchidanRuVerbs rejecting known godan-る-verb false positives.
+    func testShichauLemmatizesToSuru() throws {
+        let resources = try sharedResources()
+        XCTAssertEqual(resources.segmenter.preferredLemma(for: "しちゃう"), "する")
+
+        let candidates = resources.segmenter.lemmaCandidates(for: "しちゃう")
+        XCTAssertFalse(candidates.contains("しる"), "しる should never be an admitted candidate for しちゃう")
+    }
+
+    // Reproduces the auxiliaryVerbSplit fallback path added to definitionPayloadForSelectedSegment,
+    // confirming it independently recovers さがす even without relying on preferredLemma's single
+    // compoundVerbRecoveryForms rule matching the whole 7-character surface.
+    func testAuxiliaryVerbSplitFallbackRecoversCompoundVerbBase() throws {
+        let resources = try sharedResources()
+        let latticeEdges = try resources.segmenter.buildLattice(for: "さがしつづける")
+
+        guard let split = LatticeEdge.auxiliaryVerbSplit(from: latticeEdges, auxiliaries: DerivationAnalyzer.auxiliaryVerbs) else {
+            XCTFail("auxiliaryVerbSplit found no split for さがしつづける")
+            return
+        }
+
+        let resolvedBase = resources.segmenter.preferredLemma(for: split[0]) ?? split[0]
+        XCTAssertEqual(resolvedBase, "さがす")
+
+        let entries = try resources.dictionaryStore.lookup(surface: resolvedBase, mode: .kanaOnly)
+        XCTAssertFalse(entries.isEmpty)
+    }
+
     // Verifies mixed-script passive stems recover the underlying godan dictionary lemma.
     func testDeinflectorRecoversGodanPassiveLemmaForMixedScriptStem() throws {
         let candidates = try deinflectionCandidates(for: "導かれ")
@@ -499,5 +559,26 @@ final class SegmenterIntegrationTests: XCTestCase {
                 )
             }
         }
+    }
+
+    // InflectionFormNames used to be keyed by the raw deinflection.json group names ("teForms",
+    // "progressiveForms"), but Deinflector.normalizedRuleLabel already strips "Forms" and splits
+    // camelCase before a chain ever leaves the deinflector — so every describe(_:)/meaning(_:)
+    // lookup missed silently and no word ever showed a grammatical-form caption. 見てる (見る's
+    // casual progressive contraction) is a real example: its chain is ["progressive"], not
+    // ["progressiveForms"].
+    func testInflectionFormNamesMatchesRealDeinflectorChain() throws {
+        let resources = try sharedResources()
+        let lexicon = Lexicon(
+            dictionaryStore: resources.dictionaryStore,
+            segmenter: resources.segmenter,
+            deinflector: resources.deinflector,
+            surfaceReadingData: [:]
+        )
+        let info = try XCTUnwrap(lexicon.inflectionInfo(surface: "見てる"))
+        XCTAssertEqual(info.lemma, "見る")
+        XCTAssertEqual(info.chain, ["progressive"])
+        XCTAssertEqual(InflectionFormNames.describe(info.chain), "progressive")
+        XCTAssertEqual(InflectionFormNames.meaning(info.chain), "is ~-ing")
     }
 }

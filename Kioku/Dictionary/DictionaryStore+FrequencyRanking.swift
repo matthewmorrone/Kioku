@@ -59,19 +59,14 @@ extension DictionaryStore {
         // definition shared by the live lookup (fetchMatchedEntries) and the startup canonical-id
         // map (fetchCanonicalEntryIDMap) so the two rankings cannot drift out of lockstep — the
         // whole reason this enum exists. It replaced two copy-pasted inline copies; to add a POS
-        // to the boost, edit ONLY here. `entryIDExpr` names the candidate entry's id in the
-        // calling query (e.g. "e.id" or "s.entry_id"); `fpb` is a private correlation alias.
+        // to the boost, edit generate_db.py's _FUNCTIONAL_POS_TAGS (this reads a table
+        // precomputed at DB-build time, not senses.pos directly — see entry_functional_pos's
+        // comment in generate_db.py for why: the original correlated EXISTS + LIKE '%,tag,%'
+        // subquery, fine for one entry at a time, cost ~4s of a ~7s cold start when
+        // fetchCanonicalEntryIDMap evaluated it across all ~450k dictionary surfaces).
+        // `entryIDExpr` names the candidate entry's id in the calling query.
         static func functionalPosMatch(entryIDExpr: String) -> String {
-            """
-            EXISTS (
-                SELECT 1 FROM senses fpb WHERE fpb.entry_id = \(entryIDExpr)
-                AND (fpb.pos = 'prt' OR fpb.pos LIKE 'prt,%' OR fpb.pos LIKE '%,prt,%' OR fpb.pos LIKE '%,prt'
-                  OR fpb.pos = 'cop' OR fpb.pos LIKE 'cop,%' OR fpb.pos LIKE '%,cop,%' OR fpb.pos LIKE '%,cop'
-                  OR fpb.pos = 'aux' OR fpb.pos LIKE 'aux,%' OR fpb.pos LIKE '%,aux,%' OR fpb.pos LIKE '%,aux'
-                  OR fpb.pos LIKE 'aux-%' OR fpb.pos LIKE '%,aux-%'
-                  OR fpb.pos = 'adj-pn' OR fpb.pos LIKE 'adj-pn,%' OR fpb.pos LIKE '%,adj-pn,%' OR fpb.pos LIKE '%,adj-pn')
-            )
-            """
+            "EXISTS (SELECT 1 FROM entry_functional_pos efp WHERE efp.entry_id = \(entryIDExpr))"
         }
     }
 }

@@ -398,8 +398,23 @@ struct ContentView: View {
             // the reading map already built above so it isn't scanned a second time.
             let result = Self.makeReadResources(backend: backend, mecabDictionary: mecabDict, prebuiltSurfaceReadingData: earlyReadingData)
             await MainActor.run {
+                // Preserve the placeholder Segmenter's identity when the backend didn't change
+                // (the common case): any closure that captured a reference to it before this
+                // point — e.g. a SwiftUI view's implicit `self` capture inside a UIKit-bridged
+                // tap callback built before startup finished — keeps seeing the SAME object,
+                // now populated with real data, instead of being stuck with an empty trie
+                // forever because readResources.segmenter got replaced out from under it.
+                let publishedSegmenter: any TextSegmenting
+                if let existingSegmenter = readResources.segmenter as? Segmenter,
+                   let newSegmenter = result.segmenter as? Segmenter {
+                    existingSegmenter.reconfigure(from: newSegmenter)
+                    publishedSegmenter = existingSegmenter
+                } else {
+                    publishedSegmenter = result.segmenter
+                }
+
                 readResources = ReadResources(
-                    segmenter: result.segmenter,
+                    segmenter: publishedSegmenter,
                     dictionaryStore: result.dictionaryStore,
                     lexicon: result.lexicon,
                     surfaceReadingData: result.surfaceReadingData,

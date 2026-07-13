@@ -91,12 +91,6 @@ final class KiokuCoreTextView: UIView {
         didSet { setNeedsDisplay() }
     }
 
-    // When true, runs carrying the .kiokuFavoritedGlow attribute are drawn with a blurred glow
-    // (favorited/saved words). Gates the per-run draw path; off keeps the fast whole-line CTLineDraw.
-    var isFavoritedGlowEnabled: Bool = false {
-        didSet { if oldValue != isFavoritedGlowEnabled { setNeedsDisplay() } }
-    }
-
     override init(frame: CGRect) {
         super.init(frame: frame)
         commonInit()
@@ -188,36 +182,9 @@ final class KiokuCoreTextView: UIView {
 
     // Paints highlight bands first (in UIKit coords), then flips the context and draws each
     // CTLine. Clipping to dirty rect skips off-screen lines on partial redraws.
-    // Draws a CTLine run-by-run, applying a blurred glow (zero-offset CGContext shadow) to runs
-    // tagged .kiokuFavoritedGlow — a real glyph glow, not a fill. Used instead of CTLineDraw when
-    // the favorited-glow feature is on. The caller must have set context.textPosition to the line
-    // origin; run glyph positions are line-relative, so one textPosition serves every run, exactly
-    // as CTLineDraw does internally.
-    private func drawRunsWithGlow(_ line: CTLine, in context: CGContext) {
-        let runs = CTLineGetGlyphRuns(line) as! [CTRun]
-        let glowRadius = max(5, baseTextSize * 0.6)
-        for run in runs {
-            let attrs = CTRunGetAttributes(run) as? [NSAttributedString.Key: Any]
-            if let glowColor = attrs?[.kiokuFavoritedGlow] as? UIColor {
-                // Glow passes: a wide blurred halo behind the glyph (zero-offset shadow). CTRunDraw
-                // doesn't advance the text position, so the passes stack in place and build a strong,
-                // distinctive halo.
-                context.saveGState()
-                context.setShadow(offset: .zero, blur: glowRadius, color: glowColor.cgColor)
-                CTRunDraw(run, context, CFRangeMake(0, 0))
-                CTRunDraw(run, context, CFRangeMake(0, 0))
-                CTRunDraw(run, context, CFRangeMake(0, 0))
-                context.restoreGState()
-                // Crisp pass: redraw the glyph with NO shadow on top, so the word stays sharp and
-                // legible — the glow only ever shows as a halo around the strokes, never filling them.
-                CTRunDraw(run, context, CFRangeMake(0, 0))
-            } else {
-                CTRunDraw(run, context, CFRangeMake(0, 0))
-            }
-        }
-    }
 
-    // Renders highlight bands, base glyphs (with favorited glow when enabled), and ruby in one pass.
+    // Renders highlight bands, base glyphs (favorited words already tinted via .foregroundColor
+    // by the attributed-string builder), and ruby in one pass.
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
 
@@ -256,11 +223,7 @@ final class KiokuCoreTextView: UIView {
 
                 let baselineYBottomUp = bounds.height - line.baselineY
                 context.textPosition = CGPoint(x: line.origin.x, y: baselineYBottomUp)
-                if isFavoritedGlowEnabled {
-                    drawRunsWithGlow(line.line, in: context)
-                } else {
-                    CTLineDraw(line.line, context)
-                }
+                CTLineDraw(line.line, context)
             }
 
             // Ruby pass: walk entries and draw each reading centered over its kanji rect, with
@@ -319,11 +282,7 @@ final class KiokuCoreTextView: UIView {
                 let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
                 let headwordOriginX = placement.originX + placement.leftOverhang + lineShift
                 context.textPosition = CGPoint(x: headwordOriginX, y: baselineYBottomUp)
-                if isFavoritedGlowEnabled {
-                    drawRunsWithGlow(segLine, in: context)
-                } else {
-                    CTLineDraw(segLine, context)
-                }
+                CTLineDraw(segLine, context)
             }
         }
 
@@ -377,7 +336,7 @@ final class KiokuCoreTextView: UIView {
                     let rubyBaselineTopDown = line.originY - furiganaGap - rd
                     let rubyBaselineBottomUp = bounds.height - rubyBaselineTopDown
                     context.textPosition = CGPoint(x: rubyOriginX, y: rubyBaselineBottomUp)
-                    drawRubyLine(rubyLine, kanjiLocation: entry.location, in: context)
+                    CTLineDraw(rubyLine, context)
                 }
             }
         }
@@ -388,33 +347,6 @@ final class KiokuCoreTextView: UIView {
     private func rubyForegroundColor(at location: Int) -> UIColor {
         let attrs = layoutEngine.attributedString.attributes(at: location, effectiveRange: nil)
         return (attrs[.foregroundColor] as? UIColor) ?? .label
-    }
-
-    // Draws a ruby CTLine at the current textPosition, glowing it when its kanji's segment is
-    // favorited. The glow color is read from the base attributed string's .kiokuFavoritedGlow at
-    // `location` (same lookup as rubyForegroundColor), so furigana glows in lockstep with its kanji.
-    // Glow behind, crisp on top — keeps the reading legible.
-    private func drawRubyLine(_ rubyLine: CTLine, kanjiLocation location: Int, in context: CGContext) {
-        if isFavoritedGlowEnabled,
-           location >= 0, location < layoutEngine.attributedString.length,
-           let glowColor = layoutEngine.attributedString.attribute(.kiokuFavoritedGlow, at: location, effectiveRange: nil) as? UIColor {
-            let rubyGlowRadius = max(4, (furiganaFontSizeOverride ?? (baseTextSize * 0.5)) * 0.8)
-            // CTLineDraw advances context.textPosition by the line width, so reset to the origin
-            // before every pass — otherwise the copies march sideways (duplicating the reading and
-            // breaking alignment). Several glow passes intensify the halo; the final crisp pass keeps
-            // the reading sharp.
-            let origin = context.textPosition
-            context.saveGState()
-            context.setShadow(offset: .zero, blur: rubyGlowRadius, color: glowColor.cgColor)
-            context.textPosition = origin; CTLineDraw(rubyLine, context)
-            context.textPosition = origin; CTLineDraw(rubyLine, context)
-            context.textPosition = origin; CTLineDraw(rubyLine, context)
-            context.restoreGState()
-            context.textPosition = origin
-            CTLineDraw(rubyLine, context)
-        } else {
-            CTLineDraw(rubyLine, context)
-        }
     }
 
     // Builds a CTLine for each ruby entry and draws it above the corresponding kanji rect.
@@ -495,7 +427,7 @@ final class KiokuCoreTextView: UIView {
             guard rubyBox.intersects(dirtyInFlipped) else { continue }
 
             context.textPosition = CGPoint(x: x, y: baselineBottomUp)
-            drawRubyLine(rubyLine, kanjiLocation: entry.location, in: context)
+            CTLineDraw(rubyLine, context)
         }
     }
 
@@ -551,7 +483,6 @@ final class KiokuCoreTextView: UIView {
     // UTF-16 character index to the host. Forwards `nil` for empty-space taps so the
     // host can clear selection instead of pinning to the nearest character.
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
-        TapDiagnostics.beginTap()
         let point = recognizer.location(in: self)
         let index = layoutEngine.characterIndex(at: point)
         TapDiagnostics.mark("layoutEngine.characterIndex returned (index=\(index.map(String.init) ?? "nil"))")

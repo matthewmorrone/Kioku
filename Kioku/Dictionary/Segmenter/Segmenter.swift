@@ -3,19 +3,28 @@ import Foundation
 // Builds segmentation lattice edges by querying dictionary prefix matches at each text position.
 nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
 
-    private let trie: DictionaryTrie
-    private let deinflector: Deinflector?
+    // var, not let: ContentView's startup sequence publishes a cheap PLACEHOLDER Segmenter
+    // (empty trie) immediately so the UI has something non-optional to bind to, then swaps in
+    // the real trie/deinflector once the slow dictionary load finishes — see reconfigure(...).
+    // Any closure that captured a reference to this Segmenter instance before that swap (e.g.
+    // a SwiftUI struct's implicit `self` capture inside a nested UIKit-bridged callback chain)
+    // would otherwise be permanently stuck seeing an empty trie for the rest of the app's life,
+    // since ContentView previously replaced the whole Segmenter object rather than updating it —
+    // reconfigure() keeps this instance's IDENTITY stable so every existing reference (stale or
+    // fresh) observes the same populated data once loading completes.
+    private var trie: DictionaryTrie
+    private var deinflector: Deinflector?
     private let config: SegmenterConfig
     private let scoring: SegmenterScoring
     // Per-entry POS bitfields loaded from the dictionary; empty when built without metadata.
-    private let partOfSpeechByEntryID: [Int: UInt64]
+    private var partOfSpeechByEntryID: [Int: UInt64]
     // Surface → unified frequency score (~0–7 Zipf-equivalent; higher = more common), derived from
     // jpdb_rank (and wordfreq Zipf when present). Two consumers:
     //   • edgeCost — the core statistical node cost of the global path (rare words cost more).
     //   • preferredLemmaScore — frequency tiebreak between equally-script-matched lemma candidates.
     // Empty when the segmenter is built without the surface-reading map (e.g., test fixtures); in
     // that case the scoring falls back to the script-only tiebreakers and a zero frequency term.
-    private let frequencyScoreBySurface: [String: Double]
+    private var frequencyScoreBySurface: [String: Double]
     // Set to true locally to print POS transition decisions during Viterbi runs.
     private let shouldLogPOSTransitions = false
     // Shared set of characters that are always their own segment — single source of truth for
@@ -58,6 +67,32 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         self.config = config
         self.scoring = scoring
         self.frequencyScoreBySurface = frequencyScoreBySurface
+    }
+
+    // Swaps in fully-loaded dictionary data while preserving this instance's identity — see the
+    // property-group comment above for why identity stability matters more than a fresh init here.
+    func reconfigure(
+        trie: DictionaryTrie,
+        deinflector: Deinflector?,
+        partOfSpeechByEntryID: [Int: UInt64],
+        frequencyScoreBySurface: [String: Double]
+    ) {
+        self.trie = trie
+        self.deinflector = deinflector
+        self.partOfSpeechByEntryID = partOfSpeechByEntryID
+        self.frequencyScoreBySurface = frequencyScoreBySurface
+    }
+
+    // Convenience for ContentView's startup sequence, which builds a brand-new Segmenter on a
+    // background thread and needs to fold its data into the already-published placeholder
+    // instance rather than replacing it — see the property-group comment above.
+    func reconfigure(from other: Segmenter) {
+        reconfigure(
+            trie: other.trie,
+            deinflector: other.deinflector,
+            partOfSpeechByEntryID: other.partOfSpeechByEntryID,
+            frequencyScoreBySurface: other.frequencyScoreBySurface
+        )
     }
 
     // Generates all dictionary-backed lattice edges for every start position in the input text.
