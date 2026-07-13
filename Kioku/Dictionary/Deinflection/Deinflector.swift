@@ -10,6 +10,26 @@ nonisolated final class Deinflector {
     private let labeledRules: [(label: String, rule: DeinflectionRule)]
     private let trie: DictionaryTrie
 
+    // Godan verbs that end in -iru/-eru and are commonly mistaken for ichidan (the textbook
+    // "exception" list: their て-form takes the small-っ godan pattern — 知って, not 知て —
+    // so they never legitimately match a rule whose rulesOut claims ["v1"]). Consulted by
+    // deinflectionPaths to reject false-ichidan candidates a generic v1 rule would otherwise
+    // admit. Data, not scattered special cases — same rationale as SegmentationDemotions.
+    //
+    // Deliberately excludes exception-class readings that ALSO have a real ichidan homophone
+    // (verified against dictionary.sqlite, not assumed) — denylisting those would break the
+    // legitimate ichidan verb instead of just rejecting the godan false-positive:
+    //   いる (要る godan vs 居る/射る ichidan), かえる (帰る godan vs 変える ichidan),
+    //   きる (切る godan vs 着る ichidan), へる (減る godan vs 経る ichidan).
+    private static let knownNonIchidanRuVerbs: Set<String> = [
+        "知る", "しる",       // to know — the reported bug (しちゃう must lemmatize to する, not しる)
+        "識る",              // alternate kanji for 知る, same reading/class
+        "走る", "はしる",     // to run
+        "限る", "かぎる",     // to limit
+        "参る", "まいる",     // to go/come (humble)
+        "蹴る", "ける",       // to kick
+    ]
+
     // Stores deinflection rules used by candidate generation.
     init(rules: [DeinflectionRule], trie: DictionaryTrie) {
         self.rules = rules.sorted { lhs, rhs in
@@ -174,6 +194,19 @@ nonisolated final class Deinflector {
                 // rules (し⇒する, き⇒くる) that genuinely need a preceding stem.
                 if stem.isEmpty {
                     guard rule.kanaIn.count >= 2, trie.contains(candidateSurface) else { continue }
+                }
+                // A rule claiming rulesOut ["v1"] doesn't verify the candidate is actually
+                // ichidan — PartOfSpeech only tracks a coarse "verb" bit (v1/v5/vs/vk all
+                // collapse to the same flag), so there's no cheap way to check this generally.
+                // But a small, well-known class of godan verbs LOOK ichidan (end in -iru/-eru)
+                // and collide with genuine ichidan contraction rules: 知る's real contraction
+                // is 知っちゃう/しっちゃう (small っ, godan て-form), never しちゃう — yet the
+                // generic v1 "ちゃう→る" rule strips just "ちゃう" and produces "しる" as a
+                // false ichidan candidate, which then out-competes the correct "する" candidate
+                // (from an explicit irregular rule) in lemma ranking. Denylist known offenders
+                // rather than let this rule admit them under a grammar class they don't have.
+                if rule.rulesOut.contains("v1"), Self.knownNonIchidanRuVerbs.contains(candidateSurface) {
+                    continue
                 }
                 let chainItem = normalizedRuleLabel(labeledRule.label)
 

@@ -499,6 +499,30 @@ extension ReadView {
         let surface = String(text[start..<end])
         let info = lexicon.inflectionInfo(surface: surface)
         guard let info, info.lemma != surface else { return nil }
+
+        // Compound verbs (さがしつづける = さがし-stem + auxiliary つづける) collapse to a single
+        // lattice edge via Deinflector's compoundVerbRecoveryForms — correct for lookup validity
+        // (the collapsed edge still resolves to the real dictionary entry さがす), but it discards
+        // the auxiliary for display. The sublattice still holds the natural two-token split
+        // alongside the collapsed edge; when DerivationAnalyzer confirms it as a compound verb,
+        // show both parts instead of just the bare base verb. auxiliaryVerbSplit returns raw
+        // surfaces (さがし, not さがす) — resolve each through preferredLemma so the base
+        // resolves to something baseResolver can actually find in the dictionary.
+        if let dictionaryStore,
+           let rawSplit = LatticeEdge.auxiliaryVerbSplit(
+               from: sublatticeEdgesForCurrentSelectedSegment(),
+               auxiliaries: DerivationAnalyzer.auxiliaryVerbs
+           ) {
+            let split = rawSplit.map { segmenter.preferredLemma(for: $0) ?? $0 }
+            let derived = DerivationAnalyzer.analyze(surface: surface, components: split, baseResolver: { candidate in
+                let entries = (try? dictionaryStore.lookup(surface: candidate, mode: .kanjiAndKana)) ?? []
+                return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
+            })
+            if let parts = derived?.compoundVerbParts {
+                return (lemma: "\(parts.base) + \(parts.auxiliary)", chain: info.chain)
+            }
+        }
+
         return (lemma: info.lemma, chain: info.chain)
     }
 

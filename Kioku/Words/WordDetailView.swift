@@ -65,7 +65,6 @@ struct WordDetailView: View {
     // section beneath the structural/kanji-family related words. See loadDisplayData.
     @State var synonymEntries: [DictionaryEntry] = []
     @State private var showingConjugations: Bool = false
-    @State var conjugationGroups: [ConjugationGroup] = []
     @State var sublatticePaths: [[String]] = []
     // Retained for the lifetime of the view so on-demand word/sentence pronunciation
     // finishes even after the tap handler returns. Reference type → @State keeps it alive.
@@ -108,11 +107,18 @@ struct WordDetailView: View {
     // Shown as a summary line under the headword, mirroring the reference layout.
     private var entryPOSSummary: String? {
         guard let entry = savedDisplayData?.entry else { return nil }
+        // Transitivity (vt/vi) is a per-sense property, not a word-level one — unioning it
+        // across every sense reads as a contradictory blanket claim for a word like する, which
+        // has some transitive senses ("to place A in B") and some intransitive ones ("to cost").
+        // Each sense card already shows its own transitivity correctly; this header line is only
+        // meant to summarize what kind of word this is (verb class, suffix, auxiliary), so
+        // transitivity is excluded here rather than flattened into something misleading.
+        let excludedTags: Set<String> = ["vt", "vi"]
         var seen = Set<String>()
         var labels: [String] = []
         for sense in entry.senses {
             guard let pos = sense.pos, pos.isEmpty == false else { continue }
-            for tag in pos.components(separatedBy: ",") where tag.isEmpty == false {
+            for tag in pos.components(separatedBy: ",") where tag.isEmpty == false && excludedTags.contains(tag) == false {
                 let label = JMdictTagExpander.expand(tag)
                 if seen.insert(label).inserted { labels.append(label) }
             }
@@ -185,6 +191,28 @@ struct WordDetailView: View {
     // Whether this entry has a conjugation paradigm to show (verb or i-adjective).
     private var canConjugate: Bool { verbClass != nil || isIAdjective }
 
+    // The word actually being conjugated — word.surface unless that surface is itself an
+    // inflected form, in which case this is its resolved dictionary lemma. Conjugating from an
+    // inflected surface directly double-inflects: 見てる (casual contraction of 見ている) fed
+    // straight into the ichidan paradigm produced 見てている, a nonsense form. A plain synchronous
+    // computed property (not @State set inside the async loadDisplayData) so it can never race
+    // with the sheet opening before it's populated, and so the "Forms" preview and the "All
+    // conjugations" sheet can never disagree about which word they're conjugating.
+    private var conjugationBase: String {
+        lexicon?.inflectionInfo(surface: word.surface)?.lemma ?? word.surface
+    }
+
+    // All conjugation groups for the "All conjugations" sheet — verb or i-adjective paradigm,
+    // whichever canConjugate detected. Empty when neither applies.
+    private var conjugationGroups: [ConjugationGroup] {
+        if let vc = verbClass {
+            return VerbConjugator.conjugationGroups(for: conjugationBase, verbClass: vc)
+        } else if isIAdjective {
+            return VerbConjugator.adjectiveConjugationGroups(for: conjugationBase)
+        }
+        return []
+    }
+
     // Returns true when a component surface is a grammaticalized auxiliary verb in this compound context.
     // These are ichidan verbs that function as aspect/voice markers when suffixed to a masu-stem.
     // The canonical set lives on DerivationAnalyzer so the component badge and the header
@@ -208,6 +236,12 @@ struct WordDetailView: View {
             // script the user never wrote. When the surface contains kanji, prefer the first
             // everyday kanji form (skip rK/oK/iK/sK so we don't show 此処 etc).
             let lemma: String? = {
+                // Compound verbs (さがしつづける = さがし-stem + auxiliary つづける) resolve to just
+                // the base verb's entry (さがす), so the plain checks below would show only "さがす"
+                // and silently drop the auxiliary. Show both parts when derivation() found one.
+                if let parts = derivation?.compoundVerbParts {
+                    return "\(parts.base) + \(parts.auxiliary)"
+                }
                 if surfaceIsBaseForm { return nil }
                 if ScriptClassifier.containsKanji(word.surface) == false {
                     return entry?.kanaForms.first?.text
@@ -300,20 +334,43 @@ struct WordDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                // Plain-text gloss line for compound verbs, above the badge row — e.g.
+                // "to search for + continue ~ing (auxiliary)". Falls back to the bare lemma
+                // form when a gloss wasn't resolvable so the line stays readable either way.
+                if let parts = derivation?.compoundVerbParts {
+                    Text("\(parts.baseGloss ?? parts.base) + \(parts.auxiliaryGloss ?? parts.auxiliary) (auxiliary)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                }
+
                 // POS summary + "View Conjugations" — a single row beneath the headword.
                 // (Speaker moved up beside the headword itself.)
                 HStack(spacing: 10) {
                     // Derived forms (弱さ, お酒, 食べ始める …) describe their derivation in place
                     // of the bare POS tag. ～がり屋 returns a structured morpheme list and
-                    // renders as a chip strip; every other derivation (and plain entries) keeps
-                    // the single-sentence POS line.
+                    // renders as a chip strip; compound verbs get their own gloss line below
+                    // instead (see compoundVerbGlossLine) rather than the summary sentence here.
                     if let morphemes = derivation?.morphemes {
                         derivationMorphemeChips(morphemes)
-                    } else if let posSummary = derivation?.summary ?? entryPOSSummary {
+                    } else if derivation?.compoundVerbParts == nil, let posSummary = derivation?.summary ?? entryPOSSummary {
                         Text(posSummary)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
+                    }
+
+                    // "Compound verb" category badge — styled to match the frequency-tier badge
+                    // below (outlined capsule) rather than the filled morpheme chips, since it's
+                    // a type label for the whole word, not a piece of the word itself.
+                    if derivation?.compoundVerbParts != nil {
+                        Text("Compound verb")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
+                            .fixedSize()
                     }
 
                     // Frequency tier for the word as a whole, in the left-aligned metadata row
@@ -467,8 +524,8 @@ struct WordDetailView: View {
                 // Forms section — shown for verbs and i-adjectives. Displays te-form / negative /
                 // past inline, with an "All conjugations" row that opens ConjugationSheetView.
                 if canConjugate {
-                    let keyForms = verbClass.map { VerbConjugator.keyForms(for: word.surface, verbClass: $0) }
-                        ?? VerbConjugator.adjectiveKeyForms(for: word.surface)
+                    let keyForms = verbClass.map { VerbConjugator.keyForms(for: conjugationBase, verbClass: $0) }
+                        ?? VerbConjugator.adjectiveKeyForms(for: conjugationBase)
                     if keyForms.isEmpty == false {
                         Section("Forms") {
                             ForEach(keyForms, id: \.label) { form in
@@ -479,6 +536,10 @@ struct WordDetailView: View {
                                     Text(form.label)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    speak(form.surface)
                                 }
                             }
                             Button {
@@ -765,12 +826,8 @@ struct WordDetailView: View {
             .sheet(isPresented: $showingConjugations) {
                 if canConjugate {
                     ConjugationSheetView(
-                        dictionaryForm: word.surface,
-                        groups: conjugationGroups,
-                        onLookup: { _ in
-                            // Tapping a conjugated form — lookup integration is a future task.
-                            showingConjugations = false
-                        }
+                        dictionaryForm: conjugationBase,
+                        groups: conjugationGroups
                     )
                     .presentationDetents([.large])
                 }

@@ -1034,6 +1034,51 @@ def import_jlpt_levels(conn):
     )
 
 
+# Functional/deictic POS tags (particle, copula, auxiliary, pre-noun adjectival) — an entry
+# with any sense tagged this way is what a bare-kana lookup almost always intends (は → topic
+# particle, not 派 "faction"). Must match DictionaryStore.FrequencySQL.functionalPosMatch's
+# tag set exactly — see that Swift file for why this needs to be one shared definition.
+_FUNCTIONAL_POS_TAGS = {"prt", "cop", "aux", "adj-pn"}
+
+
+def _is_functional_pos(pos_field):
+    # pos is a comma-joined tag string (e.g. "prt,exp"); aux-* (aux-v, aux-adj, …) counts too.
+    if not pos_field:
+        return False
+    tags = pos_field.split(",")
+    return any(tag in _FUNCTIONAL_POS_TAGS or tag.startswith("aux-") for tag in tags)
+
+
+def populate_functional_pos(conn):
+    # Precomputes DictionaryStore.FrequencySQL.functionalPosMatch's "does this entry have a
+    # functional-POS sense" check into a plain indexed table instead of a correlated EXISTS +
+    # LIKE '%,tag,%' subquery re-evaluated at every app startup. That subquery is fine for the
+    # live interactive lookup (one entry checked at a time) but was the dominant cost — ~4s of
+    # a ~7s cold start — when populateCanonicalEntryIDMap ran it across all ~450k dictionary
+    # surfaces. A primary-key EXISTS lookup against this table replaces it at query time.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS entry_functional_pos (
+            entry_id INTEGER PRIMARY KEY,
+            FOREIGN KEY(entry_id) REFERENCES entries(id)
+        )
+        """
+    )
+    conn.execute("DELETE FROM entry_functional_pos")
+
+    matched_entry_ids = {
+        entry_id
+        for entry_id, pos in conn.execute("SELECT entry_id, pos FROM senses")
+        if _is_functional_pos(pos)
+    }
+
+    conn.executemany(
+        "INSERT INTO entry_functional_pos (entry_id) VALUES (?)",
+        [(entry_id,) for entry_id in matched_entry_ids],
+    )
+    print(f"  Done: {len(matched_entry_ids)} entries tagged as functional/deictic POS")
+
+
 def import_radicals(conn):
     # Populates `radicals` and `kanji_radicals` from RADKFILE2 + KRADFILE2 (EDRDG).
     # RADKFILE format: header lines start with '#' and are skipped. A '$' line introduces one
@@ -1349,6 +1394,9 @@ def build_database():
     with phase("Importing JLPT vocabulary levels..."):
         import_jlpt_levels(conn)
 
+    with phase("Precomputing functional/deictic POS entries..."):
+        populate_functional_pos(conn)
+
     with phase("Building sentence FTS index..."):
         conn.execute("INSERT INTO sentence_pairs_fts(sentence_pairs_fts) VALUES('rebuild')")
 
@@ -1368,6 +1416,9 @@ def build_database():
     with phase("Materializing frequency lookup tables..."):
         materialize_surface_readings(conn)
         materialize_word_frequency(conn)
+
+    with phase("Materializing canonical entry id lookup table..."):
+        materialize_canonical_entry_ids(conn)
 
     with phase("Finalizing (commit, ANALYZE, optimize)..."):
         conn.commit()
@@ -1493,6 +1544,81 @@ def materialize_word_frequency(conn):
     )
     wf_count = conn.execute("SELECT COUNT(*) FROM word_frequency").fetchone()[0]
     print(f"  Done: {wf_count} word_frequency rows materialized")
+
+
+def materialize_canonical_entry_ids(conn):
+    # Materializes DictionaryStore.fetchCanonicalEntryIDMap's surface → canonical entry id
+    # ranking (same selection priority as fetchMatchedEntries: functional/deictic POS first,
+    # then kana-only, then jpdb/wordfreq rank, then sense order, then entry id) as a plain
+    # indexed table instead of recomputing it at every app startup. The ranking is a pure
+    # function of the dictionary data — it never depends on anything at runtime — so there's
+    # no reason to pay its cost (a window function over a multi-way join across all ~450k
+    # surfaces) on the user's device instead of once here. Must be run after word_frequency
+    # and entry_functional_pos are materialized, and kept in exact lockstep with
+    # DictionaryStore.FrequencySQL — see that Swift file for the shared-definition rationale.
+    print("Materializing surface_canonical_entry lookup table...")
+    conn.executescript(
+        """
+        DROP TABLE IF EXISTS surface_canonical_entry;
+
+        CREATE TABLE surface_canonical_entry (
+            surface TEXT PRIMARY KEY,
+            entry_id INTEGER NOT NULL
+        );
+
+        WITH surfaces_with_entries AS (
+            SELECT text AS surface, entry_id FROM kanji
+            UNION ALL
+            SELECT text AS surface, entry_id FROM kana_forms
+        ),
+        m AS (
+            SELECT s.surface, s.entry_id,
+                   MIN(wf.jpdb_rank) AS rank,
+                   MAX(wf.wordfreq_zipf) AS best_zipf,
+                   EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = s.entry_id) AS has_kanji,
+                   EXISTS (SELECT 1 FROM entry_functional_pos efp WHERE efp.entry_id = s.entry_id) AS is_functional,
+                   COALESCE(MIN(sn.order_index), 2147483647) AS min_sense
+            FROM surfaces_with_entries s
+            LEFT JOIN word_frequency wf ON wf.entry_id = s.entry_id
+                AND (EXISTS (SELECT 1 FROM kana_forms kf2 WHERE kf2.id = wf.kana_id AND kf2.text = s.surface)
+                  OR EXISTS (SELECT 1 FROM kanji kj2 WHERE kj2.id = wf.kanji_id AND kj2.text = s.surface))
+            LEFT JOIN senses sn ON sn.entry_id = s.entry_id
+            GROUP BY s.surface, s.entry_id
+        ),
+        ranked AS (
+            SELECT surface, entry_id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY surface
+                       ORDER BY
+                           CASE WHEN is_functional = 1 THEN 0 ELSE 1 END ASC,
+                           has_kanji ASC,
+                           COALESCE(
+                               rank,
+                               CASE
+                                   WHEN best_zipf >= 7.0 THEN 5
+                                   WHEN best_zipf >= 6.5 THEN 25
+                                   WHEN best_zipf >= 6.0 THEN 100
+                                   WHEN best_zipf >= 5.5 THEN 300
+                                   WHEN best_zipf >= 5.0 THEN 1000
+                                   WHEN best_zipf >= 4.5 THEN 3000
+                                   WHEN best_zipf >= 4.0 THEN 10000
+                                   WHEN best_zipf >= 3.5 THEN 30000
+                                   WHEN best_zipf >= 3.0 THEN 100000
+                                   ELSE 500000
+                               END,
+                               9999999
+                           ) ASC,
+                           min_sense ASC,
+                           entry_id ASC
+                   ) AS rn
+            FROM m
+        )
+        INSERT INTO surface_canonical_entry (surface, entry_id)
+        SELECT surface, entry_id FROM ranked WHERE rn = 1;
+        """
+    )
+    sce_count = conn.execute("SELECT COUNT(*) FROM surface_canonical_entry").fetchone()[0]
+    print(f"  Done: {sce_count} surfaces mapped to a canonical entry id")
 
 
 def main():

@@ -12,6 +12,14 @@ struct SegmentListView: View {
     let edges: [LatticeEdge]
     let latticeEdges: [LatticeEdge]
     let dictionaryStore: DictionaryStore?
+    // Threaded so the WordDetailView sheet below can show the grammatical-form caption
+    // ("past — did ~ (past)") for a conjugated surface — that requires both the segmenter
+    // (for lattice/lemma-candidate context) and the lexicon (for InflectionFormNames via
+    // Lexicon.inflectionInfo). Neither was threaded before, so opening a word's detail from
+    // this Extract Words list silently dropped the form caption that the same word shows when
+    // opened via the Words tab directly.
+    let segmenter: (any TextSegmenting)?
+    let lexicon: Lexicon?
     let sourceNoteID: UUID?
     let lemmaForSurface: (String) -> String?
     // Returns all dictionary-backed lemma candidates for a surface, ordered
@@ -523,7 +531,8 @@ struct SegmentListView: View {
                 word: word,
                 reading: nil,
                 dictionaryStore: dictionaryStore,
-                segmenter: nil
+                segmenter: segmenter,
+                lexicon: lexicon
             )
             .environmentObject(wordsStore)
             .environmentObject(wordListsStore)

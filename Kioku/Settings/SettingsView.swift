@@ -36,6 +36,7 @@ struct SettingsView: View {
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
     @AppStorage(DictionarySettings.includeArchaicReadingsKey) private var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
+    @AppStorage(DictionarySettings.showJapaneseInPopoverKey) private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
     @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
     @AppStorage(SegmentationDemotions.storageKey) private var demotionsRaw: String = SegmentationDemotions.defaultRawValue
 
@@ -429,6 +430,7 @@ struct SettingsView: View {
                 // MARK: Dictionary — what the word detail screen surfaces.
                 Section {
                     Toggle("Include Archaic & Obscure Readings", isOn: $includeArchaicReadings)
+                    Toggle("Show Japanese in Popover", isOn: $showJapaneseInPopover)
                 } header: {
                     Text("Dictionary")
                 }

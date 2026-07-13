@@ -3,6 +3,7 @@ import XCTest
 
 // Verifies the pure coverage aggregation: grouping saved words into a JLPT-level × mastery-stage
 // grid, ordering levels easiest→hardest then No-level, and computing totals / coverage % / due count.
+@MainActor
 final class NoteCoverageCalculatorTests: XCTestCase {
 
     // Five words across two JLPT levels + a no-level word, with mixed stages and one due word.

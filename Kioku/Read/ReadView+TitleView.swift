@@ -22,6 +22,16 @@ extension ReadView {
             // actions: open the lyrics view, open the segment-list (extract words), and
             // open the LLM breakdown sheet for this note.
             HStack {
+                // A word tapped before dictionary resources finish loading (see
+                // handleReadModeSegmentTap's readResourcesReady guard) highlights immediately
+                // but its lookup is queued — this spinner is the only feedback that anything
+                // is happening during that wait, which can run several seconds on first launch.
+                if pendingSegmentTapAfterResourcesReady != nil {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(0.7)
+                        .accessibilityLabel("Loading dictionary")
+                }
                 Spacer()
                 titleLyricsButton
                 titleExtractWordsButton

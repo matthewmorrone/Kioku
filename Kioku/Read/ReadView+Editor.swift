@@ -1,18 +1,19 @@
 import SwiftUI
 import UIKit
 
-// Reference-type cache for the favorited-glow computation. Held by @State so it persists across
-// `body` re-evaluations; because it's a class, ReadView mutates its fields without writing the
-// @State wrapper (which would be illegal during a view update). `signature` is the hash of the
-// glow's inputs at the time `locations` was computed; `lemmaBySurface` memoizes per-segment lemma
-// resolution for one text (keyed by `lemmaTextKey`).
+// Reference-type cache for the favorited-highlight computation. Held by @State so it persists
+// across `body` re-evaluations; because it's a class, ReadView mutates its fields without writing
+// the @State wrapper (which would be illegal during a view update). `signature` is the hash of
+// the highlight's inputs at the time `locations` was computed; `lemmaBySurface` memoizes
+// per-segment lemma resolution for one text (keyed by `lemmaTextKey`).
 //
 // `lemmaBySurface` stores only SUCCESSFUL (non-nil) resolutions. Caching a nil here was a bug: the
-// first glow pass can run before the segmenter's deinflection resources are loaded, so a conjugated
-// surface (消えて) resolves to nil; with the cache keyed by the unchanging note text, that nil stuck
-// for the session and the form never bridged to its saved lemma (消える) — base forms glowed,
-// conjugations never did. Not caching misses means each recompute retries until resources are ready.
-final class FavoritedGlowMemo {
+// first highlight pass can run before the segmenter's deinflection resources are loaded, so a
+// conjugated surface (消えて) resolves to nil; with the cache keyed by the unchanging note text,
+// that nil stuck for the session and the form never bridged to its saved lemma (消える) — base
+// forms highlighted, conjugations never did. Not caching misses means each recompute retries
+// until resources are ready.
+final class FavoritedHighlightMemo {
     var signature: Int?
     var locations: Set<Int> = []
     var lemmaTextKey: Int = 0
@@ -24,7 +25,7 @@ final class FavoritedGlowMemo {
 // re-eval per frame (each eval re-hashes the whole note for the typography fingerprint). The
 // value is snapshotted into `sharedScrollOffsetY` exactly when edit mode is entered — the only
 // moment the editor needs it. Held by @State so it survives body re-evaluations (same pattern
-// as FavoritedGlowMemo above).
+// as FavoritedHighlightMemo above).
 final class ReadScrollOffsetMemo {
     var value: CGFloat = 0
 }
@@ -79,8 +80,8 @@ extension ReadView {
     // wrapper). The per-segment lemma cache persists across recomputes (keyed by text), so even a
     // favorite toggle stays cheap — it re-runs set lookups, not a fresh deinflection pass.
     var favoritedSegmentLocations: Set<Int> {
-        guard isFavoritedGlowEnabled else {
-            favoritedGlowMemo.signature = nil
+        guard isFavoritedHighlightEnabled else {
+            favoritedHighlightMemo.signature = nil
             return []
         }
 
@@ -95,13 +96,13 @@ extension ReadView {
             for noteID in word.sourceNoteIDs { hasher.combine(noteID) }
         }
         let signature = hasher.finalize()
-        if favoritedGlowMemo.signature == signature {
-            return favoritedGlowMemo.locations
+        if favoritedHighlightMemo.signature == signature {
+            return favoritedHighlightMemo.locations
         }
 
         let locations = computeFavoritedSegmentLocations()
-        favoritedGlowMemo.signature = signature
-        favoritedGlowMemo.locations = locations
+        favoritedHighlightMemo.signature = signature
+        favoritedHighlightMemo.locations = locations
         return locations
     }
 
@@ -110,16 +111,16 @@ extension ReadView {
         // Per-segment lemma resolution is the dominant cost; reuse it across recomputes for the same
         // text so toggling a favorite doesn't re-deinflect the whole note.
         let textKey = text.hashValue
-        if favoritedGlowMemo.lemmaTextKey != textKey {
-            favoritedGlowMemo.lemmaTextKey = textKey
-            favoritedGlowMemo.lemmaBySurface = [:]
+        if favoritedHighlightMemo.lemmaTextKey != textKey {
+            favoritedHighlightMemo.lemmaTextKey = textKey
+            favoritedHighlightMemo.lemmaBySurface = [:]
         }
-        let resolver: (String) -> String? = { [segmenter, favoritedGlowMemo] surface in
-            if let cached = favoritedGlowMemo.lemmaBySurface[surface] { return cached }
+        let resolver: (String) -> String? = { [segmenter, favoritedHighlightMemo] surface in
+            if let cached = favoritedHighlightMemo.lemmaBySurface[surface] { return cached }
             let value = segmenter.preferredLemma(for: surface)
             // Cache only successful resolutions — a nil here usually means resources weren't ready
             // yet, and caching it would freeze a conjugated surface as "no lemma" for the session.
-            if let value { favoritedGlowMemo.lemmaBySurface[surface] = value }
+            if let value { favoritedHighlightMemo.lemmaBySurface[surface] = value }
             return value
         }
 
@@ -195,8 +196,8 @@ extension ReadView {
                         changedReadingLocations: pendingLLMChangedReadingLocations,
                         inFlightSegmentLocations: inFlightLineSegmentLocations,
                         favoritedSegmentLocations: favoritedSegmentLocations,
-                        isFavoritedGlowEnabled: isFavoritedGlowEnabled,
-                        favoritedGlowColor: customTokenColorsEnabled
+                        isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
+                        favoritedHighlightColor: customTokenColorsEnabled
                             ? (UIColor(hexString: highlightHex) ?? .systemYellow)
                             : (UIColor(hexString: Theme.activePalette.defaultHighlightHex) ?? .systemYellow),
                         debugFlags: KiokuDebugOverlayView.Flags(

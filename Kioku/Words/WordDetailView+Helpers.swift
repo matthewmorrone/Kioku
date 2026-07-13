@@ -25,9 +25,11 @@ extension WordDetailView {
                 VStack(spacing: 1) {
                     Text(morpheme.form)
                         .font(.subheadline.weight(.medium))
-                    Text(morpheme.role)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    if morpheme.role.isEmpty == false {
+                        Text(morpheme.role)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -35,7 +37,7 @@ extension WordDetailView {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(morphemes.map { "\($0.form) \($0.role)" }.joined(separator: ", "))
+        .accessibilityLabel(morphemes.map { $0.role.isEmpty ? $0.form : "\($0.form) \($0.role)" }.joined(separator: ", "))
     }
 
     // SF Symbol for the header's save/learned toggle: a plain checkmark when learned, a plain
@@ -187,37 +189,56 @@ extension WordDetailView {
         // Fetch components and sublattice paths via segmenter when available.
         if let segmenter {
             let result = segmenter.longestMatchResult(for: surface)
-            // Per-position lemmas of the chosen path, reused for compound-verb derivation detection.
-            let componentLemmas = result.selectedEdges.map { $0.lemma.isEmpty ? $0.surface : $0.lemma }
+            // Per-position lemmas of the chosen path, reused for compound-verb derivation
+            // detection. edge.lemma is only ever populated by SegmentListView's own display
+            // hydration, never by buildLattice itself — it's empty here, so resolve each edge's
+            // surface through preferredLemma to get a real dictionary form (食べ → 食べる).
+            var componentLemmas = result.selectedEdges.map { segmenter.preferredLemma(for: $0.surface) ?? $0.surface }
+
+            // Compound verbs (食べ始める = 食べ-stem + auxiliary 始める) sometimes collapse to a
+            // single selected edge via Deinflector's compoundVerbRecoveryForms — correct for the
+            // chosen lookup path, but it discards the auxiliary for derivation detection below.
+            // The full lattice (not just the winning path) still holds the natural two-token
+            // split as its own edges; recover it so DerivationAnalyzer can still name the compound.
+            if componentLemmas.count < 2,
+               let rawSplit = LatticeEdge.auxiliaryVerbSplit(from: result.latticeEdges, auxiliaries: DerivationAnalyzer.auxiliaryVerbs) {
+                componentLemmas = rawSplit.map { segmenter.preferredLemma(for: $0) ?? $0 }
+            }
 
             // Derivation description for the header — names the base word + affix for derived
             // forms (弱さ, お酒, 生まれる, 生きてゆく). The resolver hands the analyzer the JMdict POS
             // tags of any candidate lemma so it can confirm and label the base. nil → plain POS line.
             let detected = await Task { @MainActor in
-                DerivationAnalyzer.analyze(surface: analysisForm, components: componentLemmas, baseResolver: { lemma in
-                    let entries = (try? store.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
-                    return entries.flatMap { $0.senses.compactMap(\.pos) }
-                        .flatMap { $0.components(separatedBy: ",") }
-                })
+                DerivationAnalyzer.analyze(
+                    surface: analysisForm, components: componentLemmas,
+                    baseResolver: { lemma in
+                        let entries = (try? store.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
+                        return entries.flatMap { $0.senses.compactMap(\.pos) }
+                            .flatMap { $0.components(separatedBy: ",") }
+                    },
+                    glossResolver: { lemma in
+                        let entries = (try? store.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
+                        return entries.first?.senses.first?.glosses.first
+                    }
+                )
             }.value
             derivation = detected
 
             // Components breakdown. Primary path is data-driven affix decomposition (科学 + 的,
             // 子供 + たち), gated on JMdict bound-morpheme tags plus a real base word — see
-            // affixBreakdown. Only when that finds nothing do we fall back to a segmenter-derived
-            // compound, and even then only when DerivationAnalyzer recognized a real derivation
-            // (compound verb 食べ始める). An atomic word (その) matches neither, so its Components
-            // section stays empty instead of showing the segmenter's spurious kana split.
+            // affixBreakdown. Only when that finds nothing do we fall back to the (possibly
+            // sublattice-recovered) compound components, and even then only when DerivationAnalyzer
+            // recognized a real derivation (compound verb 食べ始める). An atomic word (その) matches
+            // neither, so its Components section stays empty instead of showing a spurious kana split.
             let affixBreakdown = await Task { @MainActor in store.affixBreakdown(for: analysisForm) }.value
             if let affixBreakdown {
                 wordComponents = affixBreakdown.map { (surface: $0.surface, gloss: $0.gloss) }
-            } else if detected != nil, result.selectedEdges.count > 1 {
+            } else if detected != nil, componentLemmas.count > 1 {
                 let components = await Task { @MainActor in
-                    result.selectedEdges.compactMap { edge -> (String, String?)? in
-                        let lookupSurface = edge.lemma.isEmpty ? edge.surface : edge.lemma
-                        let entries = try? store.lookup(surface: lookupSurface, mode: .kanjiAndKana)
+                    componentLemmas.compactMap { lemma -> (String, String?)? in
+                        let entries = try? store.lookup(surface: lemma, mode: .kanjiAndKana)
                         let gloss = entries?.first?.senses.first?.glosses.first
-                        return (lookupSurface, gloss)
+                        return (lemma, gloss)
                     }
                 }.value
                 wordComponents = components
@@ -296,13 +317,6 @@ extension WordDetailView {
             }.value
         }
 
-        // Compute conjugation groups for verbs or i-adjectives — conjugates against the surface the
-        // user saved so kana-only saves (e.g., じゃない) don't get promoted to a canonical kanji form.
-        if let vc = verbClass {
-            conjugationGroups = VerbConjugator.conjugationGroups(for: word.surface, verbClass: vc)
-        } else if isIAdjective {
-            conjugationGroups = VerbConjugator.adjectiveConjugationGroups(for: word.surface)
-        }
     }
 
     // Maps ISO 639-2/B language codes to display names for common loanword source languages.

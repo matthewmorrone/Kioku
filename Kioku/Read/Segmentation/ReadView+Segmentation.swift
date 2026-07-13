@@ -294,11 +294,17 @@ extension ReadView {
 
     // Updates selection state and shows a UIKit popover with the highest-priority dictionary definition for the tapped segment.
     func handleReadModeSegmentTap(_ tappedSegmentLocation: Int?, tappedSegmentRect: CGRect?, sourceView: UIScrollView?) {
+        // Single canonical entry point for tap timing regardless of origin (main CoreText view
+        // or LyricsView) — previously only KiokuCoreTextView.handleTap called beginTap(), so taps
+        // routed through LyricsView never started the clock and every TapDiagnostics.mark(...)
+        // downstream silently no-opped, leaving no diagnostic trail for lyrics-view popover bugs.
+        TapDiagnostics.beginTap()
         TapDiagnostics.mark("handleReadModeSegmentTap entered")
         defer { TapDiagnostics.mark("handleReadModeSegmentTap returning") }
         // If the tapped segment has a pending LLM change, show what changed instead of the lookup sheet.
         if let tappedSegmentLocation,
            let changeDescription = pendingLLMChangesByLocation[tappedSegmentLocation] {
+            TapDiagnostics.mark("BAIL: pendingLLMChangesByLocation match, showing LLM change popover instead")
             llmChangePopoverText = changeDescription
             llmChangePopoverLocation = tappedSegmentLocation
             isShowingLLMChangePopover = true
@@ -306,6 +312,7 @@ extension ReadView {
         }
 
         guard let tappedSegmentLocation else {
+            TapDiagnostics.mark("BAIL: tappedSegmentLocation is nil (tapped empty space)")
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
             selectedBounds = nil
@@ -314,6 +321,7 @@ extension ReadView {
         }
 
         if selectedSegmentLocation == tappedSegmentLocation {
+            TapDiagnostics.mark("BAIL: tapped the already-selected segment (toggle-off)")
             selectedSegmentLocation = nil
             selectedHighlightRangeOverride = nil
             selectedBounds = nil
@@ -321,14 +329,93 @@ extension ReadView {
             return
         }
 
+        // Highlight state is set unconditionally and immediately, matching pre-existing behavior —
+        // only the dictionary-backed lookup below needs to wait for resources.
         selectedSegmentLocation = tappedSegmentLocation
         selectedHighlightRangeOverride = nil
         selectedBounds = initialMergedEdgeBounds(for: tappedSegmentLocation)
         // debugPrintLatticeSectionForCurrentSelection(at: tappedSegmentLocation)
 
+        // Dictionary resources (segmenter trie/deinflector) may still be loading in the first
+        // moment or two after app launch. A conjugated word's lookup needs preferredLemma, which
+        // needs the loaded trie, and silently fails with no feedback if it isn't ready yet — plain
+        // dictionary-form words work anyway since the raw surface itself is a valid candidate, so
+        // this only bites conjugated words tapped right at startup. Queue and replay the lookup
+        // once ready instead of leaving it looking like nothing happened. Goes through the
+        // extracted presentLookupForSegmentTap (not another handleReadModeSegmentTap call) since
+        // selectedSegmentLocation is already set to this location by the time the replay fires —
+        // re-entering here would hit the toggle-off branch above and deselect instead of look up.
+        guard readResourcesReady else {
+            TapDiagnostics.mark("QUEUED: readResourcesReady == false, will replay lookup once resources finish loading")
+            pendingSegmentTapAfterResourcesReady = (location: tappedSegmentLocation, rect: tappedSegmentRect, sourceView: sourceView)
+            return
+        }
+
+        presentLookupForSegmentTap(tappedSegmentLocation: tappedSegmentLocation, tappedSegmentRect: tappedSegmentRect, sourceView: sourceView)
+    }
+
+    // The dictionary-lookup/presentation half of a segment tap, split out from
+    // handleReadModeSegmentTap so the startup-race replay (see the readResourcesReady guard
+    // above) can re-run just this part without re-triggering the toggle-off check.
+    func presentLookupForSegmentTap(tappedSegmentLocation: Int, tappedSegmentRect: CGRect?, sourceView: UIScrollView?) {
         let adjacentSurfaces = adjacentSegmentSurfaces(for: tappedSegmentLocation)
 
         if prefersSheetDirectSegmentActions {
+            TapDiagnostics.mark("taking presentFullLookupSheet path (prefersSheetDirectSegmentActions)")
+            presentFullLookupSheet(
+                tappedSegmentLocation: tappedSegmentLocation,
+                adjacentSurfaces: adjacentSurfaces,
+                sourceView: sourceView,
+                tappedSegmentRect: tappedSegmentRect
+            )
+            return
+        }
+
+        guard let definitionPayload = definitionPayloadForSelectedSegment(at: tappedSegmentLocation) else {
+            TapDiagnostics.mark("BAIL: definitionPayloadForSelectedSegment(at:) returned nil")
+            SegmentLookupSheet.shared.dismissPopover()
+            return
+        }
+
+        guard let sourceView, let tappedSegmentRect else {
+            TapDiagnostics.mark("BAIL: sourceView or tappedSegmentRect is nil (sourceView=\(sourceView != nil), rect=\(tappedSegmentRect != nil))")
+            SegmentLookupSheet.shared.dismissPopover()
+            return
+        }
+        TapDiagnostics.mark("about to call presentPopover")
+
+        SegmentLookupSheet.shared.presentPopover(
+            definition: definitionPayload.definition,
+            surface: definitionPayload.surface,
+            isSavedProvider: { isSegmentSaved() },
+            isSavedElsewhereProvider: { isSegmentSavedElsewhere() },
+            onSaveToggle: { toggleSegmentSaved() },
+            onEscalate: {
+                presentFullLookupSheet(
+                    tappedSegmentLocation: tappedSegmentLocation,
+                    adjacentSurfaces: adjacentSurfaces,
+                    sourceView: sourceView,
+                    tappedSegmentRect: tappedSegmentRect
+                )
+            },
+            onDismiss: {
+                clearSelectedSegmentStateAfterPopoverDismissal()
+            },
+            sourceView: sourceView,
+            sourceRect: tappedSegmentRect
+        )
+    }
+
+    // Presents the full lookup sheet for the tapped segment — readings, definitions, frequency
+    // split, sublattice, merge/split controls. Shared by the direct-tap path
+    // (prefersSheetDirectSegmentActions) and the popover's escalate arrow (onEscalate), so both
+    // routes into the full sheet always carry the identical rich provider set.
+    private func presentFullLookupSheet(
+        tappedSegmentLocation: Int,
+        adjacentSurfaces: (left: String?, right: String?),
+        sourceView: UIScrollView?,
+        tappedSegmentRect: CGRect?
+    ) {
             guard let segmentSurface = surfaceForSegment(at: tappedSegmentLocation) else {
                 SegmentLookupSheet.shared.dismissPopover()
                 return
@@ -531,66 +618,9 @@ extension ReadView {
                 sheetDictionaryEntryProvider: {
                     resolvedDictionaryEntryForCurrentSelectedSegment()
                 },
-                sheetIsSavedProvider: {
-                    // Same shared "filled star" predicate the extract-words list and the glow use, so
-                    // all three agree 1:1. Keyed on the lemma (the form the extract list stars) so an
-                    // inflected segment reflects the favorite state of its dictionary word.
-                    guard let surface = currentSelectedSurface() else { return false }
-                    let resolver: (String) -> String? = { segmenter.preferredLemma(for: $0) }
-                    let (state, _) = SegmentListView.computeSavedWordState(
-                        entries: wordsStore.words,
-                        lemmaResolver: resolver,
-                        lemmaCache: [:]
-                    )
-                    return state.isStarFilled(
-                        surface.trimmingCharacters(in: .whitespacesAndNewlines),
-                        noteID: activeNoteID,
-                        lemmaResolver: resolver
-                    )
-                },
-                sheetIsSavedElsewhereProvider: {
-                    // Hollow-yellow star: saved, but attributed only to other notes. Same shared
-                    // predicate the extract-words list uses for its yellow outline star, so the
-                    // sheet and the list always agree.
-                    guard let surface = currentSelectedSurface() else { return false }
-                    let resolver: (String) -> String? = { segmenter.preferredLemma(for: $0) }
-                    let (state, _) = SegmentListView.computeSavedWordState(
-                        entries: wordsStore.words,
-                        lemmaResolver: resolver,
-                        lemmaCache: [:]
-                    )
-                    return state.isSavedForOtherNotes(
-                        surface.trimmingCharacters(in: .whitespacesAndNewlines),
-                        noteID: activeNoteID,
-                        lemmaResolver: resolver
-                    )
-                },
-                sheetSaveToggle: {
-                    // Prefer the reading-disambiguated async entry (currentSheetDictionaryEntry),
-                    // but fall back to the synchronous segment resolver when it hasn't landed yet.
-                    // That async entry is resolved AFTER the sheet presents (so the open animation
-                    // isn't blocked by SQL), leaving a brief window in which a tap on the star would
-                    // otherwise silently no-op — the "star doesn't always bookmark" bug. The sibling
-                    // sheetOpenWordDetail already uses the synchronous resolver for the same reason.
-                    guard let surface = currentSelectedSurface(),
-                          let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry
-                            ?? resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
-                    // Key the save on the lemma (storedSurface == encounteredSurface == lemma) — the
-                    // same thing the extract-words list does in lemma mode. This keeps toggling
-                    // symmetric with what the star reflects: the star is filled because the *word*
-                    // (lemma) is favorited, so tapping it must toggle the lemma, not add yet another
-                    // inflected encountered surface (which would leave the star stuck filled).
-                    let lemma = segmenter.preferredLemma(for: surface)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    let key = (lemma?.isEmpty == false ? lemma! : surface)
-                    wordsStore.toggle(
-                        canonicalEntryID: entry.entryId,
-                        storedSurface: key,
-                        encounteredSurface: key,
-                        sourceNoteID: activeNoteID,
-                        defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
-                    )
-                },
+                sheetIsSavedProvider: { isSegmentSaved() },
+                sheetIsSavedElsewhereProvider: { isSegmentSavedElsewhere() },
+                sheetSaveToggle: { toggleSegmentSaved() },
                 sheetOpenWordDetail: {
                     guard let surface = currentSelectedSurface(),
                           let entry = resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
@@ -609,39 +639,6 @@ extension ReadView {
                     clearSelectedSegmentStateAfterPopoverDismissal()
                 }
             )
-            return
-        }
-
-        guard let definitionPayload = definitionPayloadForSelectedSegment(at: tappedSegmentLocation) else {
-            SegmentLookupSheet.shared.dismissPopover()
-            return
-        }
-
-        guard let sourceView, let tappedSegmentRect else {
-            SegmentLookupSheet.shared.dismissPopover()
-            return
-        }
-
-        SegmentLookupSheet.shared.presentPopover(
-            definition: definitionPayload.definition,
-            surface: definitionPayload.surface,
-            leftNeighborSurface: adjacentSurfaces.left,
-            rightNeighborSurface: adjacentSurfaces.right,
-            onMergeLeft: {
-                mergeAdjacentSegment(isMergingLeft: true)
-            },
-            onMergeRight: {
-                mergeAdjacentSegment(isMergingLeft: false)
-            },
-            onSplitApply: { splitOffset in
-                applySplitSelection(offsetUTF16: splitOffset)
-            },
-            onDismiss: {
-                clearSelectedSegmentStateAfterPopoverDismissal()
-            },
-            sourceView: sourceView,
-            sourceRect: tappedSegmentRect
-        )
     }
 
     // Resolves the tapped segment surface and the best-ordered gloss from dictionary results.
@@ -652,28 +649,63 @@ extension ReadView {
                 return nsRange.location == selectedLocation && nsRange.length > 0
             })
         else {
+            TapDiagnostics.mark("definitionPayload: no segmentRange matches location=\(selectedLocation) (segmentRanges.count=\(segmentRanges.count))")
             return nil
         }
 
         let tappedSurface = String(text[tappedSegmentRange])
         if shouldIgnoreSegmentForDefinitionLookup(tappedSurface) {
+            TapDiagnostics.mark("definitionPayload: shouldIgnoreSegmentForDefinitionLookup(\(tappedSurface)) == true")
             return nil
         }
 
-        let lookupCandidates = orderedLookupCandidates(surface: tappedSurface, lemma: segmenter.preferredLemma(for: tappedSurface))
+        // Diagnostic: isolate whether preferredLemma itself is flaking at call time (vs. this
+        // segmenter instance being genuinely different/incomplete from the one integration
+        // tests exercise). Calls it twice and separately checks a plain dictionary-form word
+        // (no deinflection needed at all) to rule out a totally-empty/placeholder segmenter.
+        let lemmaAttempt1 = segmenter.preferredLemma(for: tappedSurface)
+        let lemmaAttempt2 = segmenter.preferredLemma(for: tappedSurface)
+        let plainWordLemma = segmenter.preferredLemma(for: "さがす")
+        TapDiagnostics.mark("definitionPayload: preferredLemma(\(tappedSurface))=\(lemmaAttempt1 ?? "nil")/\(lemmaAttempt2 ?? "nil"), preferredLemma(さがす)=\(plainWordLemma ?? "nil"), segmenterType=\(type(of: segmenter))")
+
+        let lookupCandidates = orderedLookupCandidates(surface: tappedSurface, lemma: lemmaAttempt1)
+        TapDiagnostics.mark("definitionPayload: surface=\(tappedSurface), candidates=\(lookupCandidates)")
         for lookupCandidate in lookupCandidates {
             let lookupMode: LookupMode = ScriptClassifier.containsKanji(lookupCandidate) ? .kanjiAndKana : .kanaOnly
             do {
                 guard let entries = try dictionaryStore?.lookup(surface: lookupCandidate, mode: lookupMode) else {
+                    TapDiagnostics.mark("definitionPayload: dictionaryStore?.lookup(\(lookupCandidate)) returned nil (dictionaryStore nil? \(dictionaryStore == nil))")
                     continue
                 }
+                TapDiagnostics.mark("definitionPayload: \(lookupCandidate) → \(entries.count) entries")
 
                 if let mostLikelyDefinition = mostLikelyDefinition(from: entries) {
                     return (surface: tappedSurface, definition: mostLikelyDefinition)
                 }
+                TapDiagnostics.mark("definitionPayload: mostLikelyDefinition(from:) nil for \(lookupCandidate)'s \(entries.count) entries")
             } catch {
-                // Keeps tap interaction resilient if dictionary access fails for a specific lookup candidate.
+                TapDiagnostics.mark("definitionPayload: lookup(\(lookupCandidate)) threw \(error)")
                 continue
+            }
+        }
+
+        // Fallback: compound verbs (さがしつづける = さがし-stem + auxiliary つづける) collapse to
+        // one segment via Deinflector's compoundVerbRecoveryForms, and preferredLemma(for:) on the
+        // FULL compound relies on that single special-cased rule matching exactly — any mismatch
+        // (POS-gating edge case, trie lookup miss) leaves lookupCandidates with only the raw
+        // surface, which isn't itself a dictionary headword, so the loop above finds nothing. The
+        // sublattice still holds the natural two-token split as its own edges (さがし → さがす,
+        // つづける → 続ける) independent of that special rule; try it before giving up entirely.
+        if let split = LatticeEdge.auxiliaryVerbSplit(
+            from: sublatticeEdgesForCurrentSelectedSegment(),
+            auxiliaries: DerivationAnalyzer.auxiliaryVerbs
+        ) {
+            let resolvedBase = segmenter.preferredLemma(for: split[0]) ?? split[0]
+            TapDiagnostics.mark("definitionPayload: retrying via auxiliaryVerbSplit base=\(resolvedBase)")
+            let lookupMode: LookupMode = ScriptClassifier.containsKanji(resolvedBase) ? .kanjiAndKana : .kanaOnly
+            if let entries = try? dictionaryStore?.lookup(surface: resolvedBase, mode: lookupMode),
+               let mostLikelyDefinition = mostLikelyDefinition(from: entries) {
+                return (surface: tappedSurface, definition: mostLikelyDefinition)
             }
         }
 
@@ -729,6 +761,62 @@ extension ReadView {
         return (try? store.lookup(surface: lemma, mode: lemmaMode))?.first
     }
 
+    // Same shared "filled star" predicate the extract-words list and the glow use, so all three
+    // agree 1:1. Keyed on the lemma (the form the extract list stars) so an inflected segment
+    // reflects the favorite state of its dictionary word. Shared by both the full sheet and the
+    // lightweight popover so their star state can't drift apart.
+    func isSegmentSaved() -> Bool {
+        guard let surface = currentSelectedSurface() else { return false }
+        let resolver: (String) -> String? = { segmenter.preferredLemma(for: $0) }
+        let (state, _) = SegmentListView.computeSavedWordState(
+            entries: wordsStore.words,
+            lemmaResolver: resolver,
+            lemmaCache: [:]
+        )
+        return state.isStarFilled(
+            surface.trimmingCharacters(in: .whitespacesAndNewlines),
+            noteID: activeNoteID,
+            lemmaResolver: resolver
+        )
+    }
+
+    // Hollow-yellow star: saved, but attributed only to other notes. Same shared predicate the
+    // extract-words list uses for its yellow outline star.
+    func isSegmentSavedElsewhere() -> Bool {
+        guard let surface = currentSelectedSurface() else { return false }
+        let resolver: (String) -> String? = { segmenter.preferredLemma(for: $0) }
+        let (state, _) = SegmentListView.computeSavedWordState(
+            entries: wordsStore.words,
+            lemmaResolver: resolver,
+            lemmaCache: [:]
+        )
+        return state.isSavedForOtherNotes(
+            surface.trimmingCharacters(in: .whitespacesAndNewlines),
+            noteID: activeNoteID,
+            lemmaResolver: resolver
+        )
+    }
+
+    // Toggles the saved state for the current segment's resolved lemma. Prefers the
+    // reading-disambiguated async entry (currentSheetDictionaryEntry), falling back to the
+    // synchronous segment resolver when it hasn't landed yet — see the "star doesn't always
+    // bookmark" fix this mirrors.
+    func toggleSegmentSaved() {
+        guard let surface = currentSelectedSurface(),
+              let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry
+                ?? resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
+        let lemma = segmenter.preferredLemma(for: surface)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = (lemma?.isEmpty == false ? lemma! : surface)
+        wordsStore.toggle(
+            canonicalEntryID: entry.entryId,
+            storedSurface: key,
+            encounteredSurface: key,
+            sourceNoteID: activeNoteID,
+            defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+        )
+    }
+
     // Builds de-duplicated lookup candidates in priority order: tapped surface first, then lemma fallback.
     func orderedLookupCandidates(surface: String, lemma: String?) -> [String] {
         var candidates: [String] = []
@@ -768,48 +856,25 @@ extension ReadView {
     }
 
     // Extracts the most likely dictionary gloss from already-prioritized entry ordering.
+    // JMdict orders both entries and senses most-common-usage-first, so the first non-empty
+    // gloss in that order IS the most likely definition — no need to re-rank by anything else.
+    // A prior version sorted by gloss character count instead, which backfired for words whose
+    // primary sense happens to have a longer gloss than a rarer one: を's primary sense "indicates
+    // direct object of action" (sense 0) lost to the area-traversal sense "indicates an area
+    // traversed" (sense 2) purely because the latter string is shorter, surfacing the wrong
+    // meaning for the most common particle in the language.
     func mostLikelyDefinition(from entries: [DictionaryEntry]) -> String? {
-        var candidateGlosses: [(gloss: String, entryIndex: Int, senseIndex: Int, glossIndex: Int)] = []
-
-        for (entryIndex, entry) in entries.enumerated() {
-            for (senseIndex, sense) in entry.senses.enumerated() {
-                for (glossIndex, gloss) in sense.glosses.enumerated() {
+        for entry in entries {
+            for sense in entry.senses {
+                for gloss in sense.glosses {
                     let trimmedGloss = gloss.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmedGloss.isEmpty {
-                        continue
+                    if trimmedGloss.isEmpty == false {
+                        return trimmedGloss
                     }
-
-                    candidateGlosses.append((
-                        gloss: trimmedGloss,
-                        entryIndex: entryIndex,
-                        senseIndex: senseIndex,
-                        glossIndex: glossIndex
-                    ))
                 }
             }
         }
-
-        guard candidateGlosses.isEmpty == false else {
-            return nil
-        }
-
-        let preferredDefinition = candidateGlosses.min { lhs, rhs in
-            if lhs.gloss.count != rhs.gloss.count {
-                return lhs.gloss.count < rhs.gloss.count
-            }
-
-            if lhs.entryIndex != rhs.entryIndex {
-                return lhs.entryIndex < rhs.entryIndex
-            }
-
-            if lhs.senseIndex != rhs.senseIndex {
-                return lhs.senseIndex < rhs.senseIndex
-            }
-
-            return lhs.glossIndex < rhs.glossIndex
-        }
-
-        return preferredDefinition?.gloss
+        return nil
     }
 
 }
