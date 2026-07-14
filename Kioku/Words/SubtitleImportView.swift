@@ -180,7 +180,9 @@ struct SubtitleImportView: View {
                         }
                     }
                 }
-            case .none:
+            case .none, .byChapter:
+                // .byChapter isn't offered in this picker (no chapter/volume data in subtitle
+                // imports) — present only so the switch stays exhaustive if the enum grows.
                 EmptyView()
             }
         }
@@ -391,7 +393,7 @@ struct SubtitleImportView: View {
             return [wordListsStore.create(name: name)]
         case .existing:
             return selectedExistingListID.map { [$0] } ?? []
-        case .none:
+        case .none, .byChapter:
             return []
         }
     }

@@ -74,6 +74,11 @@ nonisolated final class MeCabSegmenter: TextSegmenting, @unchecked Sendable {
         return nodes.allSatisfy { isKnownNode($0) }
     }
 
+    // MeCab has no JMdict vs-tag/trie data to validate the compound-verb shape against.
+    func suruCompoundPrefix(for surface: String) -> String? {
+        nil
+    }
+
     // Returns a debug summary for MeCab's analysis of a surface/lemma pair.
     func debugResolutionSummary(for surface: String, lemma: String) -> String {
         let nodes = tokenizer.tokenize(surface)

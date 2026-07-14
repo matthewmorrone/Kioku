@@ -138,7 +138,9 @@ nonisolated enum CSVImport {
                     providedSurface: col(map.surfaceIndex),
                     providedKana: col(map.kanaIndex),
                     providedMeaning: col(map.meaningIndex),
-                    providedNote: col(map.noteIndex)
+                    providedNote: col(map.noteIndex),
+                    providedChapter: col(map.chapterIndex),
+                    providedVolume: col(map.volumeIndex)
                 )
             } else {
                 // No header: classify each cell by its script content.
@@ -178,9 +180,13 @@ nonisolated enum CSVImport {
         var kanaIndex: Int?
         var meaningIndex: Int?
         var noteIndex: Int?
+        // Curriculum grouping columns (e.g. Resources/human-japanese.csv's chapter/volume) — read
+        // by CSVImportItem.chapterGroupKey when the "By chapter" list mode is active.
+        var chapterIndex: Int?
+        var volumeIndex: Int?
     }
 
-    // Recognizes common column name variants for surface, kana, meaning, and note.
+    // Recognizes common column name variants for surface, kana, meaning, note, chapter, and volume.
     // Requires at least two matching columns to avoid treating data rows as headers.
     private static func buildHeaderMap(from cols: [String]) -> HeaderMap? {
         var map = HeaderMap()
@@ -196,6 +202,10 @@ nonisolated enum CSVImport {
                 map.meaningIndex = map.meaningIndex ?? idx; hits += 1
             } else if ["note", "notes", "memo"].contains(key) {
                 map.noteIndex = map.noteIndex ?? idx; hits += 1
+            } else if ["chapter", "lesson", "unit"].contains(key) {
+                map.chapterIndex = map.chapterIndex ?? idx; hits += 1
+            } else if ["volume", "book", "part"].contains(key) {
+                map.volumeIndex = map.volumeIndex ?? idx; hits += 1
             }
         }
         return hits >= 2 ? map : nil

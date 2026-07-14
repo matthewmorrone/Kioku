@@ -49,6 +49,12 @@ struct LyricsView: View {
     // shows the control and flips the binding. Defaulted off/unavailable for other call sites.
     var stemAvailable: Bool = false
     var isListeningToStem: Binding<Bool> = .constant(false)
+    // ReadView's already-memoized favorited-word locations, in FULL-NOTE UTF-16 coordinates — reused
+    // here (not recomputed) by filtering + offsetting into each cue's local coordinate space, since
+    // ReadView already pays the (expensive) per-segment lemma-resolution cost for this same note.
+    // Defaulted so previews/other call sites stay valid.
+    var favoritedSegmentLocations: Set<Int> = []
+    var isFavoritedHighlightEnabled: Bool = false
 
     // Horizontal fine-scrub sensitivity. 5 ms per point means a full ~300 pt swipe across the
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.
@@ -348,6 +354,16 @@ struct LyricsView: View {
                 let activeCueScale = activeCueFontScale(text: cueInput.text, availableWidth: activeCueAvailableWidth)
                 let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
                 let untimedLocations: Set<Int> = []
+                // Rebase ReadView's full-note favorited locations into this cue's local coordinate
+                // space — cheap set filtering, not a recompute (see the property's doc comment).
+                let cueFavoritedLocations: Set<Int> = {
+                    guard isFavoritedHighlightEnabled else { return [] }
+                    let cueLength = cueInput.text.utf16.count
+                    return Set(favoritedSegmentLocations.compactMap { location -> Int? in
+                        guard location >= cueOriginInNote, location < cueOriginInNote + cueLength else { return nil }
+                        return location - cueOriginInNote
+                    })
+                }()
                 VStack(spacing: 0) {
                     // Pulsing ♪ during instrumental gaps was removed at user request.
                     // The active card now always shows the cue at `displayIndex` — during
@@ -393,6 +409,8 @@ struct LyricsView: View {
                         unknownSegmentLocations: untimedLocations,
                         isHighlightUnknownEnabled: false,
                         unknownSegmentColor: .tertiaryLabel,
+                        favoritedSegmentLocations: cueFavoritedLocations,
+                        isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
                         onSegmentTapped: { localLocation, rect, _ in

@@ -375,7 +375,9 @@ extension ReadView {
                     isReAligning: isReAligningWholeNote,
                     reAlignMessage: reAlignProgressMessage,
                     stemAvailable: stemAvailableForActiveAudio,
-                    isListeningToStem: $isListeningToStem
+                    isListeningToStem: $isListeningToStem,
+                    favoritedSegmentLocations: favoritedSegmentLocations,
+                    isFavoritedHighlightEnabled: isFavoritedHighlightEnabled
                 )
                 .opacity(isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(isShowingLyricsView)

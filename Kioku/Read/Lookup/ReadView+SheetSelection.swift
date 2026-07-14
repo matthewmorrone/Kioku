@@ -500,6 +500,15 @@ extension ReadView {
         let info = lexicon.inflectionInfo(surface: surface)
         guard let info, info.lemma != surface else { return nil }
 
+        // vs-noun+する compound verbs (キスして, ハグした, …): inflectionInfo already resolved
+        // `info.lemma` to the real noun entry (キス) since JMdict never writes out "Xする" as its
+        // own headword. Show both parts directly rather than routing through auxiliaryVerbSplit
+        // below, which only matches a dictionary-form tail against a fixed auxiliary-verb set —
+        // conjugated する tails (して/した/しない/…) would never literally match an entry there.
+        if let compoundPrefix = segmenter.suruCompoundPrefix(for: surface) {
+            return (lemma: "\(compoundPrefix) + する", chain: info.chain)
+        }
+
         // Compound verbs (さがしつづける = さがし-stem + auxiliary つづける) collapse to a single
         // lattice edge via Deinflector's compoundVerbRecoveryForms — correct for lookup validity
         // (the collapsed edge still resolves to the real dictionary entry さがす), but it discards

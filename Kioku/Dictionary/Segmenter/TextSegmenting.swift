@@ -21,6 +21,10 @@ nonisolated protocol TextSegmenting: Sendable {
     // Checks whether a surface resolves through the segmenter's resolution pipeline.
     func resolvesSurface(_ surface: String) -> Bool
 
+    // Validates the vs-noun+する compound-verb shape (キスして, ハグした, …) and returns the
+    // katakana noun prefix (e.g. "キス") when it holds, else nil. See Segmenter.suruCompoundPrefix.
+    func suruCompoundPrefix(for surface: String) -> String?
+
     // Builds a debug summary showing how the resolver pipeline admits one emitted lemma for a surface.
     func debugResolutionSummary(for surface: String, lemma: String) -> String
 }

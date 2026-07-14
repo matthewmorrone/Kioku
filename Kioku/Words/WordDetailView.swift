@@ -510,8 +510,11 @@ struct WordDetailView: View {
                     }
                 }
 
-                // Sublattice paths — all valid segmentation paths through the surface.
-                if sublatticePaths.count > 1 {
+                // Sublattice paths — all valid segmentation paths through the surface. Skipped
+                // when the compound-verb header (base + auxiliary, with glosses) already answers
+                // the same "how does this decompose" question more clearly — showing both duplicated
+                // the same insight in two places, one clean (header) and one raw (this list).
+                if sublatticePaths.count > 1, derivation?.compoundVerbParts == nil {
                     Section("Paths") {
                         ForEach(Array(sublatticePaths.enumerated()), id: \.offset) { _, path in
                             Text(path.joined(separator: " · "))

@@ -192,6 +192,16 @@ nonisolated public final class Lexicon {
 
     // Returns best lemma plus grouped-rule chain that explains how the surface deinflects.
     public func inflectionInfo(surface: String) -> (lemma: String, chain: [String])? {
+        // vs-noun+する compound verbs (キスして, ハグした, …) never resolve through the generic
+        // deinflection path below: JMdict deliberately never writes out "Xする" as its own
+        // headword (see Segmenter.suruCompoundPrefix), so no candidate the BFS reaches ever has
+        // a real dictionary entry and the general admission gate further down rejects all of
+        // them. Route straight to the real noun entry (キス) instead — its own gloss ("kiss") is
+        // the meaningful part; する is a light verb.
+        if let compoundPrefix = segmenter.suruCompoundPrefix(for: surface) {
+            return (lemma: compoundPrefix, chain: [])
+        }
+
         // Compute paths once; extract the chain from them rather than re-traversing via deinflector.inflectionChain.
         let (entries, pathsByLemma) = admittedLemmasAndPaths(for: surface)
 

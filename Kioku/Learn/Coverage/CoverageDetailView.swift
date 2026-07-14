@@ -25,10 +25,16 @@ struct CoverageDetailView: View {
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var reviewStore: ReviewStore
+    @EnvironmentObject private var wordListsStore: WordListsStore
 
     @State private var pendingWords: [SavedWord] = []
     @State private var showModeChooser = false
     @State private var launch: CoverageLaunch?
+    // Which level rows are expanded to show their word list — keyed by the same optional JLPT
+    // N-number as NoteCoverage.Level.level, so "No level" (nil) can be tracked too.
+    @State private var expandedLevels: Set<Int?> = []
+    // The word chip tapped in an expanded level's word list — presents its WordDetailView.
+    @State private var selectedWord: SavedWord?
 
     // The live coverage grid for this note, recomputed from the stores on each render.
     private var coverage: NoteCoverage {
@@ -58,6 +64,12 @@ struct CoverageDetailView: View {
         .sheet(item: $launch) { launch in
             studySheet(for: launch)
         }
+        .sheet(item: $selectedWord) { word in
+            WordDetailView(word: word, reading: nil, dictionaryStore: dictionaryStore, segmenter: nil)
+                .environmentObject(wordsStore)
+                .environmentObject(wordListsStore)
+                .presentationDetents([.large])
+        }
     }
 
     // Note-wide summary: "N of M learned (P%)" with a progress bar, and a due-count callout.
@@ -77,20 +89,73 @@ struct CoverageDetailView: View {
         }
     }
 
-    // One level row: the level label + a "x/y learned" caption + three tappable stage chips.
+    // One level row: the level label + a "x/y learned" caption + three tappable stage chips, plus
+    // a chevron that expands the section to list every word at this level (grouped by stage) —
+    // the stage chips themselves only ever showed a count and launched a study session, with no
+    // way to just see which words were in a cell. The chevron sits directly above the word list
+    // it reveals (not up by the "x/y learned" line) so the tap target and what it changes are
+    // adjacent instead of separated by the unrelated stage-chip row.
     private func levelSection(_ level: NoteCoverage.Level) -> some View {
-        Section(header: Text(levelTitle(level.level))) {
-            HStack {
-                Text("\(level.learnedCount)/\(level.total) learned")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
+        let isExpanded = expandedLevels.contains(level.level)
+        return Section(header: Text(levelTitle(level.level))) {
+            Text("\(level.learnedCount)/\(level.total) learned")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 stageChip(level, .new, "New")
                 stageChip(level, .learning, "Learning")
                 stageChip(level, .learned, "Learned")
             }
+            Button {
+                if isExpanded {
+                    expandedLevels.remove(level.level)
+                } else {
+                    expandedLevels.insert(level.level)
+                }
+            } label: {
+                HStack {
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            if isExpanded {
+                wordList(level)
+            }
+        }
+    }
+
+    // The expanded word list for a level: every word rendered as a small wrapping chip, tinted by
+    // its own mastery stage (see stageColor) instead of grouped under New/Learning/Learned text
+    // headers — the color carries the distinction, so the chips read as distinct at a glance
+    // without needing a label to sort them into. Tapping a chip opens that word's WordDetailView.
+    private func wordList(_ level: NoteCoverage.Level) -> some View {
+        FlowLayout(spacing: 6) {
+            ForEach(MasteryStage.allCases, id: \.self) { stage in
+                ForEach(level.words(in: stage)) { word in
+                    Button {
+                        selectedWord = word
+                    } label: {
+                        Text(word.surface)
+                            .font(.subheadline)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(stageColor(stage).opacity(0.25), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    // Traffic-light progression from unstarted to mastered, used to tint word chips in wordList.
+    private func stageColor(_ stage: MasteryStage) -> Color {
+        switch stage {
+        case .new: return .gray
+        case .learning: return .orange
+        case .learned: return .green
         }
     }
 
