@@ -55,6 +55,22 @@ nonisolated enum ScriptClassifier {
         return true
     }
 
+    // Returns the leading run of katakana (plus the script-neutral prolonged sound mark ー) at the
+    // start of `text`, or nil when `text` doesn't start with katakana. Used to isolate a loanword
+    // stem (キス, コピー) from a following hiragana suffix for the suru-compound-verb exception to
+    // the hiragana/katakana mix guard below.
+    static func leadingKatakanaPrefix(of text: String) -> String? {
+        var prefix = ""
+        for character in text {
+            let isKatakanaOrProlongedMark = character.unicodeScalars.allSatisfy { scalar in
+                (0x30A0...0x30FF).contains(scalar.value)
+            }
+            guard isKatakanaOrProlongedMark else { break }
+            prefix.append(character)
+        }
+        return prefix.isEmpty ? nil : prefix
+    }
+
     // True when `text` contains BOTH a hiragana and a katakana scalar. A single Japanese morpheme
     // essentially never spans this boundary: loanword compounds like 歯ブラシ ("toothbrush") mix
     // *kanji* with katakana, not hiragana with katakana. The segmenter uses this as a hard rejection

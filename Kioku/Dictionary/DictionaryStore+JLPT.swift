@@ -23,8 +23,10 @@ extension DictionaryStore {
         jlptLevelMap[entryID]
     }
 
-    // Loads the entire entry_jlpt_level table into a Swift dictionary. Small (~8k rows); one scan.
-    // Tolerates the table being absent (older DB without the migration) by returning empty.
+    // Loads the entire entry_jlpt_level table into a Swift dictionary — ~8k Tanos-sourced rows
+    // plus ~194k frequency-estimated rows (see generate_db.py's estimate_jlpt_levels_from_frequency);
+    // one scan either way. Tolerates the table being absent (older DB without the migration) by
+    // returning empty.
     nonisolated func fetchJLPTLevelMap() throws -> [Int64: Int] {
         try withSerializedDatabaseAccess {
             guard tableExists("entry_jlpt_level") else { return [:] }

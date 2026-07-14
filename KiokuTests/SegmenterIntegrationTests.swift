@@ -581,4 +581,37 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertEqual(InflectionFormNames.describe(info.chain), "progressive")
         XCTAssertEqual(InflectionFormNames.meaning(info.chain), "is ~-ing")
     }
+
+    // キス is tagged "n,vs" in JMdict — a suru-noun with no written "キスする" headword (the vs tag
+    // alone is meant to signal "attach する"). Regression for the buildLattice exception that
+    // admits katakana-noun+conjugated-する spans across the hiragana/katakana boundary, and for
+    // Lexicon.inflectionInfo routing the compound straight to キス's real dictionary entry instead
+    // of failing to resolve a synthetic "キスする" surface that was never added to the dictionary.
+    func testSuruCompoundVerbMergesKatakanaNounWithConjugatedSuru() throws {
+        let resources = try sharedResources()
+
+        let edges = resources.segmenter.longestMatchEdges(for: "キスして")
+        XCTAssertEqual(edges.map(\.surface), ["キスして"])
+
+        let lexicon = Lexicon(
+            dictionaryStore: resources.dictionaryStore,
+            segmenter: resources.segmenter,
+            deinflector: resources.deinflector,
+            surfaceReadingData: [:]
+        )
+        let info = try XCTUnwrap(lexicon.inflectionInfo(surface: "キスして"))
+        XCTAssertEqual(info.lemma, "キス")
+
+        let entries = try resources.dictionaryStore.lookup(surface: "キス", mode: .kanaOnly)
+        XCTAssertFalse(entries.isEmpty)
+    }
+
+    // A plain (non-vs) katakana noun followed by unrelated hiragana must NOT merge — this is
+    // exactly the bug class the hiragana/katakana guard exists to prevent (ビロード+の→「ドの」→
+    // どの). ビロード carries no verb bit, so suruCompoundPrefix must reject it and buildLattice
+    // must still split at the script boundary as before.
+    func testSuruCompoundExceptionDoesNotAdmitPlainKatakanaNounPlusUnrelatedHiragana() throws {
+        let resources = try sharedResources()
+        XCTAssertNil(resources.segmenter.suruCompoundPrefix(for: "ビロードの"))
+    }
 }

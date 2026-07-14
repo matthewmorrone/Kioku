@@ -141,7 +141,35 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 // start) is spurious, so stop extending. Without this, the kana-normalizing
                 // deinflector resolves cross-boundary spans to real words (ビロード+の→「ドの」→どの,
                 // ケンカ+もした→「カもした」→醸す) and the frequency-blind cost model selects them.
-                if ScriptClassifier.mixesHiraganaAndKatakana(surface) { break }
+                //
+                // Narrow exception: a katakana loanword noun tagged vs (JMdict's "takes suru"
+                // signal, e.g. キス "n,vs") directly followed by a conjugated form of する (して,
+                // した, しない, …) is a genuine compound verb that JMdict deliberately never spells
+                // out as its own headword — the vs tag alone is meant to signal "attach する" to a
+                // fluent reader (see suruCompoundEdge for the admission checks). This can't reopen
+                // the bugs above: ビロード carries no verb bit, and the stray "カ" fragment cut out
+                // of ケンカ+もした isn't a trie noun at all, so both still fail admission below.
+                if ScriptClassifier.mixesHiraganaAndKatakana(surface) {
+                    // Gate on the PREFIX alone, not the full suffix-deinflection check: this loop
+                    // grows `surface` one character at a time, so a valid conjugation (して, 2
+                    // chars) can sit past an invalid intermediate one (し, 1 char, not yet a
+                    // complete する form). Breaking on the first failed length — as the general
+                    // guard does — would abandon the scan before it ever reaches the real match.
+                    // Once the prefix itself is confirmed a real vs-tagged noun, keep extending
+                    // through every mixed length up to the normal maxMatchLength bound below,
+                    // same as the un-mixed path; only emit an edge on lengths that actually
+                    // complete a する conjugation.
+                    guard let katakanaPrefix = ScriptClassifier.leadingKatakanaPrefix(of: surface),
+                          katakanaPrefix.count < surface.count,
+                          isValidatedSuruNounPrefix(katakanaPrefix) else {
+                        break
+                    }
+                    if let edge = suruCompoundEdge(surface: surface, range: surfaceRange) {
+                        edges.append(edge)
+                        keptMatches += 1
+                    }
+                    continue
+                }
 
                 let lemmas = resolvedTrieLemmas(for: surface)
 
@@ -667,6 +695,52 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         }
 
         return (exactLemmas, alternateResolutions)
+    }
+
+    // Checks whether `prefix` alone (the leading katakana run, e.g. "キス") is an exact trie hit
+    // tagged both noun AND verb — JMdict's collapsed "vs" signature (see PartOfSpeech.bits). This
+    // is the half of the suru-compound shape that doesn't depend on how long the eventual する
+    // conjugation suffix turns out to be, so buildLattice can gate scan-continuation on it alone.
+    private func isValidatedSuruNounPrefix(_ prefix: String) -> Bool {
+        guard trie.contains(prefix) else { return false }
+        let prefixPOS = trie.partOfSpeech(for: prefix)
+        return PartOfSpeech.isNoun(prefixPOS) && PartOfSpeech.isVerb(prefixPOS)
+    }
+
+    // Validates the vs-noun+する compound-verb shape for `surface` (see buildLattice's mixed-script
+    // guard) and returns the katakana noun prefix (e.g. "キス" for "キスして") when it holds, else nil.
+    // Two conditions, both required: isValidatedSuruNounPrefix on the leading katakana run, and the
+    // remainder independently deinflecting to bare する. Exposed (not private) so Lexicon can reuse
+    // the same admission check for lookup/lemma display without duplicating it.
+    func suruCompoundPrefix(for surface: String) -> String? {
+        guard let prefix = ScriptClassifier.leadingKatakanaPrefix(of: surface), prefix.count < surface.count else {
+            return nil
+        }
+        guard isValidatedSuruNounPrefix(prefix) else { return nil }
+
+        let suffix = String(surface.dropFirst(prefix.count))
+        guard suffix.isEmpty == false, trie.contains("する") else { return nil }
+        guard let deinflector, deinflector.generateCandidates(for: suffix).contains("する") else { return nil }
+
+        return prefix
+    }
+
+    // Builds a lattice edge for a validated suru-compound span, scored entirely from the noun
+    // prefix's and する's own real trie data — never a synthetic "Xする" surface (JMdict deliberately
+    // omits that headword; see the generate_db.py history for why literally synthesizing it doesn't
+    // help segmentation and was reverted).
+    private func suruCompoundEdge(surface: String, range: Range<String.Index>) -> LatticeEdge? {
+        guard let prefix = suruCompoundPrefix(for: surface) else { return nil }
+
+        var edge = LatticeEdge(start: range.lowerBound, end: range.upperBound, surface: surface)
+        edge.partOfSpeech = trie.partOfSpeech(for: prefix) | trie.partOfSpeech(for: "する")
+        edge.isDictionaryMatch = true
+        edge.frequencyScore = max(frequencyScoreBySurface[prefix] ?? 0, frequencyScoreBySurface["する"] ?? 0)
+        if let ids = trie.ipadicContextIDs(for: "する") {
+            edge.ipadicLeftID = ids.left
+            edge.ipadicRightID = ids.right
+        }
+        return edge
     }
 
     // Resolves direct trie-backed membership lemmas for a surface without alternate-surface recovery.

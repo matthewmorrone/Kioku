@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import hashlib
+import bisect
 from contextlib import contextmanager
 from pathlib import Path
 import sys
@@ -969,6 +970,7 @@ def import_jlpt_levels(conn):
         CREATE TABLE IF NOT EXISTS entry_jlpt_level (
             entry_id INTEGER PRIMARY KEY,
             level INTEGER NOT NULL,
+            is_estimated INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY(entry_id) REFERENCES entries(id)
         )
         """
@@ -1032,6 +1034,93 @@ def import_jlpt_levels(conn):
     print(
         f"  Done: {len(best)} entries tagged ({matched_rows}/{total_rows} source rows matched)"
     )
+
+
+def estimate_jlpt_levels_from_frequency(conn):
+    # Extends entry_jlpt_level with best-effort estimates for entries the Tanos list didn't cover,
+    # via a k-nearest-neighbors vote over wordfreq_zipf trained on the entries Tanos DID label.
+    # Must run after materialize_word_frequency (needs word_frequency populated) and after
+    # import_jlpt_levels (needs the labeled training set).
+    #
+    # Quantile analysis of the labeled set showed frequency only weakly separates JLPT levels: N1
+    # and N2 are statistically indistinguishable (medians 4.03 vs 3.96, IQRs almost fully
+    # overlapping), and N3/N4/N5 overlap heavily too despite a real median gradient (4.56/4.67/
+    # 4.88 — more common as the level gets easier, as expected). A plain nearest-mean classifier
+    # would misclassify constantly around the N1/N2 boundary; k-NN at least reflects the true
+    # local density at each frequency rather than collapsing every level to one number. These are
+    # estimates, not verified labels — is_estimated=1 lets callers tell the difference.
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='word_frequency'"
+    ).fetchone()
+    if not has_table:
+        print("  word_frequency table missing — skipping frequency-based JLPT estimation")
+        return
+
+    entry_zipf = dict(conn.execute(
+        "SELECT entry_id, MAX(wordfreq_zipf) FROM word_frequency "
+        "WHERE wordfreq_zipf IS NOT NULL GROUP BY entry_id"
+    ))
+
+    labeled = conn.execute("SELECT entry_id, level FROM entry_jlpt_level").fetchall()
+    labeled_ids = {entry_id for entry_id, _ in labeled}
+    training = sorted(
+        (
+            (entry_zipf[entry_id], level)
+            for entry_id, level in labeled
+            if entry_id in entry_zipf
+        ),
+        key=lambda pair: pair[0],
+    )
+    if len(training) < 50:
+        print("  Not enough labeled+frequency-scored entries to train a JLPT estimator — skipping")
+        return
+    training_zipf = [z for z, _ in training]
+
+    # Raw neighbor-count voting is biased by training-set density, not true class likelihood: N1
+    # has both the most labeled examples (3162) AND the widest frequency spread (it reaches deep
+    # into the same low-frequency territory most of the ~190k uncovered dictionary occupies), so
+    # N1 examples are locally present near almost any word's frequency and structurally dominate
+    # a raw vote — a first attempt classified 86% of new entries as N1 for exactly this reason.
+    # Weighting each neighbor's vote by 1/class_size approximates a proper posterior (P(level|zipf)
+    # instead of raw local count) so a level's sheer training-set size stops mattering — only how
+    # concentrated it is AT THIS zipf value relative to its own overall spread does.
+    class_counts = {}
+    for _, level in training:
+        class_counts[level] = class_counts.get(level, 0) + 1
+
+    k = 25
+
+    # Finds the k training points nearest `zipf` by absolute distance (a simple two-pointer
+    # expansion from the sorted-array insertion point — no need for a proper spatial index at
+    # this scale), then returns the class-size-weighted majority vote among them.
+    def estimate_level(zipf):
+        insertion = bisect.bisect_left(training_zipf, zipf)
+        lo, hi = insertion, insertion
+        neighbors = []
+        while len(neighbors) < k and (lo > 0 or hi < len(training)):
+            left_dist = zipf - training_zipf[lo - 1] if lo > 0 else float("inf")
+            right_dist = training_zipf[hi] - zipf if hi < len(training) else float("inf")
+            if left_dist <= right_dist:
+                lo -= 1
+                neighbors.append(training[lo])
+            else:
+                neighbors.append(training[hi])
+                hi += 1
+        votes = {}
+        for _, level in neighbors:
+            votes[level] = votes.get(level, 0) + 1 / class_counts[level]
+        return max(votes.items(), key=lambda kv: kv[1])[0]
+
+    to_insert = [
+        (entry_id, estimate_level(zipf))
+        for entry_id, zipf in entry_zipf.items()
+        if entry_id not in labeled_ids
+    ]
+    conn.executemany(
+        "INSERT OR IGNORE INTO entry_jlpt_level (entry_id, level, is_estimated) VALUES (?, ?, 1)",
+        to_insert,
+    )
+    print(f"  Done: {len(to_insert)} additional entries estimated via frequency k-NN (k={k})")
 
 
 # Functional/deictic POS tags (particle, copula, auxiliary, pre-noun adjectival) — an entry
@@ -1416,6 +1505,9 @@ def build_database():
     with phase("Materializing frequency lookup tables..."):
         materialize_surface_readings(conn)
         materialize_word_frequency(conn)
+
+    with phase("Estimating JLPT levels for unlabeled entries from frequency..."):
+        estimate_jlpt_levels_from_frequency(conn)
 
     with phase("Materializing canonical entry id lookup table..."):
         materialize_canonical_entry_ids(conn)

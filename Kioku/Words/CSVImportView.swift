@@ -6,6 +6,10 @@ enum CSVImportListMode: Hashable {
     case none
     case existing
     case new
+    // Routes each row to its own auto-created/reused list named after CSVImportItem.chapterGroupKey
+    // (e.g. "Vol 1 Ch 7") instead of one uniform list for every row — for CSVs with chapter/volume
+    // columns, like Resources/human-japanese.csv. Rows with no chapter info get no list, same as .none.
+    case byChapter
 }
 
 // Renders the CSV import sheet: file picker, paste editor, list assignment, preview, and import action.
@@ -116,6 +120,7 @@ struct CSVImportView: View {
                 Text("No list").tag(CSVImportListMode.none)
                 Text("Existing list").tag(CSVImportListMode.existing)
                 Text("New list").tag(CSVImportListMode.new)
+                Text("By chapter").tag(CSVImportListMode.byChapter)
             }
             .pickerStyle(.segmented)
 
@@ -150,6 +155,14 @@ struct CSVImportView: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .stroke(Color(uiColor: .separator).opacity(0.35), lineWidth: 1)
                     )
+            case .byChapter:
+                let groupCount = Set(items.compactMap(\.chapterGroupKey)).count
+                let hasChapterless = items.contains(where: { $0.chapterGroupKey == nil })
+                Text(groupCount == 0 && hasChapterless == false
+                     ? "No chapter/volume column detected in the parsed rows."
+                     : "Will create/reuse \(groupCount) list\(groupCount == 1 ? "" : "s"), one per chapter\(hasChapterless ? ", plus a \"\(Self.noChapterListName)\" list for rows with none" : "").")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -278,9 +291,25 @@ struct CSVImportView: View {
     // would block the UI for the duration of the import. After resolution, awaits a single batched
     // add on WordsStore (which is @MainActor), so the persist work is paid once instead of N times.
     private func performImport() {
-        let listIDs = resolveListIDsCreatingIfNeeded()
-        let store = dictionaryStore
         let items = importableItems
+        // .byChapter resolves one list per row (via each row's own chapterGroupKey); every other
+        // mode uses the same uniform list for all rows. `listIDs(for:)` unifies the two shapes so
+        // the loop below doesn't need to branch per-row.
+        let isByChapter = addToListMode == .byChapter
+        let uniformListIDs = resolveListIDsCreatingIfNeeded()
+        let chapterListIDs = isByChapter ? resolveChapterListIDs(for: items) : [:]
+        // Resolved on the main actor, then captured as a plain (Sendable) dictionary — a local
+        // func here would stay main-actor-isolated and couldn't be called from Task.detached below.
+        let listIDsByItemID: [UUID: [UUID]] = Dictionary(uniqueKeysWithValues: items.map { item in
+            if isByChapter {
+                let key = item.chapterGroupKey ?? Self.noChapterListName
+                let ids = chapterListIDs[key].map { [$0] } ?? []
+                return (item.id, ids)
+            }
+            return (item.id, uniformListIDs)
+        })
+
+        let store = dictionaryStore
         let target = wordsStore
         let kanjiTarget = savedKanjiStore
 
@@ -291,13 +320,14 @@ struct CSVImportView: View {
             // "I'm saving kanji pages, not word entries" intent. Multi-character or
             // non-kanji surfaces stay on the SavedWord path as before.
             var savedWords: [SavedWord] = []
-            var kanjiLiterals: [String] = []
+            var kanjiLiterals: [(literal: String, listIDs: [UUID])] = []
             for item in items {
                 guard let surface = item.finalSurface, surface.isEmpty == false else { continue }
+                let itemListIDs = listIDsByItemID[item.id] ?? []
                 if surface.count == 1,
                    let scalar = surface.unicodeScalars.first,
                    ScriptClassifier.isKanjiScalar(scalar) {
-                    kanjiLiterals.append(surface)
+                    kanjiLiterals.append((surface, itemListIDs))
                     continue
                 }
                 var canonicalID = Int64(item.id.hashValue)
@@ -306,12 +336,12 @@ struct CSVImportView: View {
                     canonicalID = entry.entryId
                     senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
                 }
-                savedWords.append(SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: listIDs, selectedSenseIDs: senseIDs))
+                savedWords.append(SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: itemListIDs, selectedSenseIDs: senseIDs))
             }
             await target.add(savedWords)
             await MainActor.run {
-                for literal in kanjiLiterals {
-                    kanjiTarget.save(literal: literal, wordListIDs: listIDs)
+                for (literal, itemListIDs) in kanjiLiterals {
+                    kanjiTarget.save(literal: literal, wordListIDs: itemListIDs)
                 }
             }
         }
@@ -336,7 +366,7 @@ struct CSVImportView: View {
 
     private var importSelectionIsValid: Bool {
         switch addToListMode {
-        case .none: return true
+        case .none, .byChapter: return true
         case .existing:
             guard let id = selectedExistingListID else { return false }
             return wordListsStore.lists.contains { $0.id == id }
@@ -345,10 +375,11 @@ struct CSVImportView: View {
         }
     }
 
-    // Returns list IDs to assign, creating a new list if needed.
+    // Returns list IDs to assign, creating a new list if needed. Not used for .byChapter — that
+    // mode resolves one list PER item via resolveChapterListIDs instead of a single uniform list.
     private func resolveListIDsCreatingIfNeeded() -> [UUID] {
         switch addToListMode {
-        case .none:
+        case .none, .byChapter:
             return []
         case .existing:
             guard let id = selectedExistingListID,
@@ -367,5 +398,29 @@ struct CSVImportView: View {
             }
             return []
         }
+    }
+
+    // Rows with no chapterGroupKey (no chapter/volume column value) get grouped into this shared
+    // list instead of being dropped from list assignment entirely — so a chapterless row is still
+    // easy to find and revisit, rather than silently landing nowhere.
+    static let noChapterListName = "No Chapter"
+
+    // Creates or reuses one WordList per distinct chapterGroupKey among the given items, plus
+    // noChapterListName when any item has none, keyed by that same string so performImport can
+    // look up each row's list by its own chapter (or the chapterless fallback).
+    private func resolveChapterListIDs(for items: [CSVImportItem]) -> [String: UUID] {
+        var keys = Set(items.compactMap(\.chapterGroupKey))
+        if items.contains(where: { $0.chapterGroupKey == nil }) {
+            keys.insert(Self.noChapterListName)
+        }
+        var result: [String: UUID] = [:]
+        for key in keys {
+            if let existing = wordListsStore.lists.first(where: { $0.name.caseInsensitiveCompare(key) == .orderedSame }) {
+                result[key] = existing.id
+            } else {
+                result[key] = wordListsStore.create(name: key)
+            }
+        }
+        return result
     }
 }
