@@ -432,6 +432,55 @@ Expected: no output (file absent from the built `.app`).
 
 At this point in the plan (before Task 4), `DictionaryStore()` will simply fail silently (per Task 2's existing `catch { print(...) }` in `ContentView.makeReadResources`) and every tab will behave as it already does today when `dictionaryStore` is nil — no crash, just an empty dictionary-dependent UI. Launch the app on the simulator and confirm: app launches without crashing, Words tab search returns nothing, no crash log. This is expected and will be fixed by Task 4's gate.
 
+- [ ] **Step 3.5: Fix on-device test resolution (discovered during execution, not anticipated by this plan)**
+
+This project has no iOS Simulators installed (`xcrun simctl list devices available` returns
+none) — all builds and tests run on the physical device (Monoceros). `TestReadResources`'s
+`resolveResourceURL` (`KiokuTests/TestReadResources.swift:103`) tries the Mac's own
+`Resources/dictionary.sqlite` path first (via `#filePath`), but that path is **unreachable from
+a physical device's sandboxed test container** — device XCTest runs inside
+`/private/var/containers/Bundle/Application/<uuid>/Kioku Reader.app/`, which has no visibility
+into the host Mac's filesystem. Before this task, that candidate silently failed and the code
+fell through to `Bundle.main.resourceURL` — which worked purely because `dictionary.sqlite` was
+still bundled into the main `Kioku` app target. Once Step 1 removes it from that bundle, every
+dictionary-dependent test suite (`LexiconTests`, `SegmenterIntegrationTests`,
+`SegmentationKnownGoodTests`, `ReadViewFuriganaTests`, and others — 135 test failures observed)
+breaks on-device with `missingReadableResource(fileName: "dictionary.sqlite", ...)`.
+
+Fix: give the `KiokuTests` target its own separate copy of `dictionary.sqlite` in its own
+`PBXResourcesBuildPhase`, independent of the main `Kioku` app target's bundling. The main
+`Kioku.app` stays unbundled (Step 1's goal); the `KiokuTests.xctest` bundle carries its own
+365MB copy purely for on-device test resolution — `Bundle(for: TestReadResources.self)` resolves
+to the test bundle itself, which `resolveResourceURL`'s candidate list already checked for
+(`.../KiokuTests.xctest/dictionary.sqlite`) without anyone having wired it up.
+
+In `Kioku.xcodeproj/project.pbxproj`, add a new `PBXBuildFile` entry reusing the existing
+`dictionary.sqlite` file reference (`E32B0CDF2F57BC070020F5C2`):
+
+```
+		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
+```
+
+placed alongside the other `PBXBuildFile` entries near the top of the file. Then add it to the
+`KiokuTests` target's own (currently empty) `PBXResourcesBuildPhase` (`E3070AF32F4DFDB8005FD323`):
+
+```
+		E3070AF32F4DFDB8005FD323 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+```
+
+Run: `xcodebuild test -project Kioku.xcodeproj -scheme Kioku -destination 'platform=iOS,id=<device-udid>' -only-testing:KiokuTests/LexiconTests` (reusing existing derived data).
+Expected: PASS (25/25) — was 25 failures before this fix.
+
+Then run the full suite (`xcodebuild test` with no `-only-testing` filter) to confirm every
+previously-failing dictionary-dependent suite is fixed and nothing else regressed.
+
 - [ ] **Step 4: Commit**
 
 ```bash
