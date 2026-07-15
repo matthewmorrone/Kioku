@@ -113,21 +113,24 @@ final class DictionaryDownloadManager {
     // the release silently changes the bytes every install receives. Bump both of these
     // deliberately (new tag + freshly computed hash) whenever dictionary.sqlite is rebuilt by
     // Resources/generate_db.py and re-published — see Task 6 of this plan.
-    static let releaseTag = "dictionary-v1"
-    static let expectedSHA256 = "5652eacfc35ffb10495b025cbc921fcb67d67801974e7d56ab76576055c54879"
+    nonisolated static let releaseTag = "dictionary-v1"
+    nonisolated static let expectedSHA256 = "5652eacfc35ffb10495b025cbc921fcb67d67801974e7d56ab76576055c54879"
 
     // Public GitHub Release asset URL — matthewmorrone/Kioku is a public repo, so this needs no
     // authentication to fetch, same as the pinned huggingface.co URL WhisperModelManager uses.
-    static var remoteURL: URL {
+    // nonisolated: DictionaryStore's init reads this from a nonisolated context reached via
+    // Task.detached in ContentView, which can't see a MainActor-isolated member under this
+    // project's default MainActor isolation (`-default-isolation=MainActor`).
+    nonisolated static var remoteURL: URL {
         URL(string: "https://github.com/matthewmorrone/Kioku/releases/download/\(releaseTag)/dictionary.sqlite")!
     }
 
-    static var directory: URL {
+    nonisolated static var directory: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return support.appendingPathComponent("Dictionary", isDirectory: true)
     }
 
-    static var installedDatabaseURL: URL {
+    nonisolated static var installedDatabaseURL: URL {
         directory.appendingPathComponent("dictionary.sqlite")
     }
 
@@ -192,14 +195,14 @@ final class DictionaryDownloadManager {
     }
 
     // Streaming SHA-256 so a 350MB file isn't loaded into memory at once.
-    static func sha256(ofFileAt url: URL) throws -> String {
+    nonisolated static func sha256(ofFileAt url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var hasher = SHA256()
-        while true {
-            let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
-            if chunk.isEmpty { break }
+        var chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
+        while !chunk.isEmpty {
             hasher.update(data: chunk)
+            chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
@@ -279,10 +282,12 @@ In `Kioku/Dictionary/DictionaryDownloadManager.swift`, add alongside the instanc
     // isInstalled's logic exactly; kept separate rather than having the instance property
     // delegate to this, because the instance property is meant to be the reactive source of
     // truth for SwiftUI and a static forwarding call would add an indirection with no benefit.
-    static var isInstalled: Bool {
+    nonisolated static var isInstalled: Bool {
         FileManager.default.fileExists(atPath: installedDatabaseURL.path)
     }
 ```
+
+(This static context also needs `nonisolated` — the compiler flags `static var` on an `@Observable` class as MainActor-isolated by default under this project's default MainActor isolation, and `DictionaryStore`'s init reads it from a nonisolated context. Verified by the actual build in Task 2.)
 
 (Also update the instance `init()` to read `Self.isInstalled` instead of duplicating the `FileManager.default.fileExists` call, to avoid the two checks drifting apart.)
 
@@ -467,6 +472,8 @@ EOF
 
 import SwiftUI
 
+// Owned by ContentView, which instantiates and shows this as a full-screen overlay while
+// dictionaryDownloadManager.isInstalled is false.
 struct DictionaryDownloadGateView: View {
     var downloadManager: DictionaryDownloadManager
     let onRetry: () -> Void
