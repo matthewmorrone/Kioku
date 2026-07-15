@@ -38,6 +38,7 @@ struct ContentView: View {
     @State private var shouldActivateReadEditMode = false
     @State private var readResources = ReadResources()
     @State private var hasLoadedReadResources = false
+    @State private var dictionaryDownloadManager = DictionaryDownloadManager()
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
     // Drives the live re-apply of nav/tab bar chrome when the user toggles the theme in Settings.
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
@@ -160,6 +161,15 @@ struct ContentView: View {
             // Same wiring for the LLM correction queue — it needs the store reference
             // to resolve note IDs and persist corrections after each run.
             llmCorrectionQueue.attach(store: notesStore)
+            // dictionary.sqlite isn't bundled — download it if this is a fresh install, then
+            // rebuild the read resources so DictionaryStore() (which failed silently above,
+            // since nothing was downloaded yet) succeeds on this second attempt.
+            Task {
+                await dictionaryDownloadManager.downloadIfNeeded()
+                if dictionaryDownloadManager.isInstalled {
+                    rebuildReadResources()
+                }
+            }
         }
         // Navigate to Words tab and open the word detail when a notification deep link arrives.
         // The notification's surface is threaded into the route so WordsView.detailWord can resolve
@@ -216,6 +226,15 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: clipboardCoordinator.hasPendingClipboard)
+        // Blocks every tab until dictionary.sqlite has been downloaded (see
+        // DictionaryDownloadManager) — nearly all of them depend on dictionaryStore being non-nil.
+        .overlay {
+            if !dictionaryDownloadManager.isInstalled {
+                DictionaryDownloadGateView(downloadManager: dictionaryDownloadManager) {
+                    Task { await dictionaryDownloadManager.downloadIfNeeded() }
+                }
+            }
+        }
     }
 
     // Reads the pasteboard, switches to Words, and populates the search field with the clipboard content.
