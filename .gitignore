@@ -14,8 +14,17 @@ Resources/kradfile2.utf8
 Resources/kanjivg.xml
 .swiftpm/checkouts
 .remember
-Resources/MeCab/ipadic/
-Resources/MeCab/unidic/
+Resources/MeCab/ipadic/*
+# matrix.bin IS committed (see the exception below) — it's the only piece of MeCab's data the
+# default trie segmenter's Viterbi scorer needs (IPADicMatrix.swift), and small enough (3.5MB)
+# to check in directly so a fresh clone's default configuration isn't silently degraded. The
+# rest of ipadic (sys.dic/unk.dic/char.bin, ~49.5MB) is only needed for the opt-in .mecab
+# backend — see Resources/data_manifest.json for download instructions.
+!Resources/MeCab/ipadic/matrix.bin
+# UniDic (196MB) moved to Resources/MeCab-unidic-optional/ so it's never bundled into the app —
+# see Resources/data_manifest.json. Not shipped by default: the .mecab backend's default
+# dictionary is ipadic, and UniDic requires two separate manual Settings changes to reach.
+Resources/MeCab-unidic-optional/
 # Local working copy of the Zinnia Swift package used by the feat/handwriting
 # branch. Wired as a proper git submodule on that branch (.gitmodules entry +
 # gitlink); ignored on main so the unmerged dir doesn't show up as a stray
