@@ -21,6 +21,10 @@ struct SegmentListView: View {
     let segmenter: (any TextSegmenting)?
     let lexicon: Lexicon?
     let sourceNoteID: UUID?
+    // Resolved the same way ReadView's Breakdown sheet does (via `currentDisplayedNote`) so the
+    // Coverage page works for a note that hasn't been saved to NotesStore yet, not just
+    // `sourceNoteID` lookups. Nil hides the Coverage page's content behind an empty state.
+    let note: Note?
     let lemmaForSurface: (String) -> String?
     // Returns all dictionary-backed lemma candidates for a surface, ordered
     // best-first by the segmenter's scoring. Powers the "Choose lemma…"
@@ -95,7 +99,7 @@ struct SegmentListView: View {
     // any note. Vocab mode runs SubtitleVocabExtractor over the current (possibly hand-edited)
     // segmentation, so it shows each dictionary form once, drops particles, and starts all-selected.
     enum ExtractMode: String, CaseIterable, Identifiable {
-        case lines = "Lines", vocab = "Vocab"
+        case lines = "Lines", vocab = "Vocab", coverage = "Coverage"
         var id: String { rawValue }
     }
     @State private var extractMode: ExtractMode = .lines
@@ -211,6 +215,20 @@ struct SegmentListView: View {
         .buttonStyle(.plain)
     }
 
+    // The current note's learning-coverage breakdown, embedded directly (skipping the note-picker
+    // list the Learn tab's CoverageView shows) since this sheet is already scoped to one note.
+    @ViewBuilder
+    private var coveragePage: some View {
+        if let note {
+            CoverageDetailView(note: note, dictionaryStore: dictionaryStore)
+        } else {
+            ContentUnavailableView(
+                "No note to show coverage for",
+                systemImage: "chart.bar.doc.horizontal"
+            )
+        }
+    }
+
     // Saves the selected unique vocab through the SAME merge path as Add All
     // (commitAddAllVisibleWords), building its inputs straight from the extractor's already-resolved
     // entry ids — so a Vocab-mode save and an Add All produce identical SavedWord state.
@@ -275,6 +293,8 @@ struct SegmentListView: View {
 
                 if extractMode == .vocab {
                     vocabChipPicker
+                } else if extractMode == .coverage {
+                    coveragePage
                 } else {
                 // Displays every active segment in source order.
                 List {
@@ -419,7 +439,10 @@ struct SegmentListView: View {
                     }
                 }
 
-                // Keeps basic screen actions available at the bottom.
+                // Keeps basic screen actions available at the bottom. Coverage mode has no
+                // extraction actions of its own (CoverageDetailView's cells launch study
+                // sessions directly), so the bar is hidden rather than shown empty.
+                if extractMode != .coverage {
                 VStack(spacing: 8) {
                     if extractMode == .vocab {
                         // Vocab mode mirrors the subtitle importer's bottom action: the per-occurrence
@@ -484,6 +507,7 @@ struct SegmentListView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(Color(.secondarySystemBackground))
+                }
             }
         }
         // Standard iOS grabber bar at the top of the sheet. Gives the user a
