@@ -29,4 +29,17 @@ enum DictionarySettings {
         }
         return defaults.bool(forKey: showJapaneseInPopoverKey)
     }
+
+    static let prefersSheetDirectSegmentActionsKey = "kioku.settings.dictionary.prefersSheetDirectSegmentActions"
+    static let defaultPrefersSheetDirectSegmentActions = false
+
+    // When true, tapping a word skips the lightweight popover and opens the full lookup sheet
+    // directly — same destination the popover's chevron escalates to, just reached in one tap.
+    static var prefersSheetDirectSegmentActions: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: prefersSheetDirectSegmentActionsKey) != nil else {
+            return defaultPrefersSheetDirectSegmentActions
+        }
+        return defaults.bool(forKey: prefersSheetDirectSegmentActionsKey)
+    }
 }

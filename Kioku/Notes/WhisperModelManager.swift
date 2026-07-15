@@ -163,6 +163,14 @@ final class WhisperModelManager {
         try FileManager.default.removeItem(at: url)
         refreshDownloadedModels()
     }
+
+    // On-disk size of a downloaded model, for Settings' storage-management display. 0 if the
+    // file is missing or its size can't be read.
+    func fileSizeBytes(filename: String) -> Int {
+        let url = Self.modelsDirectory.appendingPathComponent(filename)
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return 0 }
+        return (attributes[.size] as? Int) ?? 0
+    }
 }
 
 // Relays URLSession download progress to a closure, following redirects transparently.

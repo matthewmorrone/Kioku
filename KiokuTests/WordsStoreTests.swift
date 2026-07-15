@@ -288,8 +288,11 @@ final class WordsStoreTests: XCTestCase {
     }
 
     // Toggling on an existing card from a NEW note context adds that note's attribution and
-    // adds the encountered surface — even if the surface was already in the set. "wasSavedHere"
-    // depends on BOTH the surface AND the note being present, not just the surface.
+    // adds the encountered surface — even if the surface was already in the set. When the card
+    // already carries a DIFFERENT note's attribution, "wasSavedHere" depends on BOTH the surface
+    // AND this specific note being present, not just the surface — see
+    // testToggleRemovesGloballySavedCardOnFirstToggleFromNoteContext for the sibling case where
+    // the card carries NO note attribution at all, which must remove on one tap instead.
     func testToggleAddsNoteAttributionWhenSurfaceAlreadyKnownButNoteNew() {
         let noteA = UUID(), noteB = UUID()
         let store = makeStore()
@@ -309,6 +312,24 @@ final class WordsStoreTests: XCTestCase {
 
         XCTAssertEqual(Set(store.words[0].sourceNoteIDs), Set([noteA, noteB]))
         XCTAssertEqual(store.words[0].encounteredSurfaces, Set(["食べる"]))
+    }
+
+    // Regression: a word saved globally (Words tab, history, browse — no note attribution at
+    // all) renders its star FILLED in every note, per ComputedSavedWordState.isStarFilled's
+    // "no note attribution counts as filled" rule. Tapping that filled star from within a note
+    // must remove the card on the FIRST tap, matching what the star visually shows — not attach
+    // the current note (which would leave the star still filled, so tap 1 appears to do nothing
+    // and the user has to tap again).
+    func testToggleRemovesGloballySavedCardOnFirstToggleFromNoteContext() {
+        let noteID = UUID()
+        let store = makeStore()
+        store.toggle(canonicalEntryID: 1, storedSurface: "食べる")
+        XCTAssertEqual(store.words.count, 1)
+        XCTAssertTrue(store.words[0].sourceNoteIDs.isEmpty)
+
+        store.toggle(canonicalEntryID: 1, storedSurface: "食べる", encounteredSurface: "食べる", sourceNoteID: noteID)
+
+        XCTAssertTrue(store.words.isEmpty)
     }
 
     // Unsaving the only encountered surface from the only attached note removes the whole card.

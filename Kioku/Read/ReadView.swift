@@ -270,10 +270,9 @@ struct ReadView: View {
     }
 
     // false: tap opens the lightweight popover (star / speak / meaning / arrow) first; the arrow
-    // escalates to the full sheet. true would skip straight to the full sheet like before this
-    // was added — kept as a named flag rather than deleted so a future A/B or debug toggle has
-    // a single place to flip it.
-    let prefersSheetDirectSegmentActions = false
+    // escalates to the full sheet. true skips straight to the full sheet. User-facing toggle in
+    // Settings → Dictionary ("Open Full Lookup on Tap").
+    @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey) var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
 
     // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM
     // setting changes. Reading llmKeysRevision ties body invalidation to key edits;

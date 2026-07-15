@@ -55,6 +55,9 @@ struct LyricsView: View {
     // Defaulted so previews/other call sites stay valid.
     var favoritedSegmentLocations: Set<Int> = []
     var isFavoritedHighlightEnabled: Bool = false
+    // Saved-but-only-under-a-different-note locations, same full-note coordinates/reuse
+    // rationale as favoritedSegmentLocations above.
+    var favoritedElsewhereSegmentLocations: Set<Int> = []
 
     // Horizontal fine-scrub sensitivity. 5 ms per point means a full ~300 pt swipe across the
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.
@@ -105,6 +108,15 @@ struct LyricsView: View {
         customTokenColorsEnabled
             ? (UIColor(hexString: tokenColorBHex) ?? .secondaryLabel)
             : (UIColor(hexString: Theme.activePalette.defaultTokenColorBHex) ?? .secondaryLabel)
+    }
+
+    // Mirrors ReadView+Editor's favorited-word glow resolution so a saved word reads the same
+    // color in the karaoke card as it does on the Read page, instead of the renderer's hardcoded
+    // .systemYellow default (used when this parameter isn't supplied).
+    private var resolvedFavoritedHighlightColor: UIColor {
+        customTokenColorsEnabled
+            ? (UIColor(hexString: highlightHex) ?? .systemYellow)
+            : (UIColor(hexString: Theme.activePalette.defaultHighlightHex) ?? .systemYellow)
     }
 
     // Number of cues where the subtitle text differs from the corresponding note text.
@@ -212,6 +224,7 @@ struct LyricsView: View {
     @AppStorage(TokenColorSettings.enabledKey) private var customTokenColorsEnabled: Bool = false
     @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
+    @AppStorage(TokenColorSettings.highlightColorKey) private var highlightHex: String = TokenColorSettings.defaultHighlightHex
     // Settings → Debug → "Karaoke HUD" controls whether the diagnostic strip
     // overlays the active-cue card. Default off so the lyrics card reads clean;
     // the binding is read-only here since the toggle lives in SettingsView.
@@ -356,14 +369,19 @@ struct LyricsView: View {
                 let untimedLocations: Set<Int> = []
                 // Rebase ReadView's full-note favorited locations into this cue's local coordinate
                 // space — cheap set filtering, not a recompute (see the property's doc comment).
-                let cueFavoritedLocations: Set<Int> = {
+                // Local closures, not a nested func: a func declaration's `return` statements
+                // inside a ViewBuilder closure body confuse the result-builder type-checker
+                // ("generic parameter 'Content' could not be inferred").
+                let rebaseIntoCue: (Set<Int>) -> Set<Int> = { locations in
                     guard isFavoritedHighlightEnabled else { return [] }
                     let cueLength = cueInput.text.utf16.count
-                    return Set(favoritedSegmentLocations.compactMap { location -> Int? in
+                    return Set(locations.compactMap { location -> Int? in
                         guard location >= cueOriginInNote, location < cueOriginInNote + cueLength else { return nil }
                         return location - cueOriginInNote
                     })
-                }()
+                }
+                let cueFavoritedLocations = rebaseIntoCue(favoritedSegmentLocations)
+                let cueFavoritedElsewhereLocations = rebaseIntoCue(favoritedElsewhereSegmentLocations)
                 VStack(spacing: 0) {
                     // Pulsing ♪ during instrumental gaps was removed at user request.
                     // The active card now always shows the cue at `displayIndex` — during
@@ -411,6 +429,9 @@ struct LyricsView: View {
                         unknownSegmentColor: .tertiaryLabel,
                         favoritedSegmentLocations: cueFavoritedLocations,
                         isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
+                        favoritedHighlightColor: resolvedFavoritedHighlightColor,
+                        favoritedElsewhereSegmentLocations: cueFavoritedElsewhereLocations,
+                        favoritedElsewhereHighlightColor: .systemOrange,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
                         onSegmentTapped: { localLocation, rect, _ in

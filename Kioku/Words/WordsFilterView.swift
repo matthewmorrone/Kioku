@@ -248,7 +248,7 @@ struct WordsFilterView: View {
     }
 
     private var dueForReviewLabel: String {
-        let count = wordsStore.words.filter { reviewStore.isDue(id: $0.canonicalEntryID) }.count
+        let count = wordsStore.words.filter { reviewStore.isDueForReview(id: $0.canonicalEntryID) }.count
         return "Due for Review (\(count))"
     }
 

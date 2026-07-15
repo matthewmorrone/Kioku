@@ -16,6 +16,10 @@ import UIKit
 final class FavoritedHighlightMemo {
     var signature: Int?
     var locations: Set<Int> = []
+    // Saved, but only under a note OTHER than the active one — mirrors the extract-list star's
+    // hollow-yellow "saved elsewhere" state. Disjoint from `locations` by construction (see
+    // computeFavoritedSegmentLocations).
+    var elsewhereLocations: Set<Int> = []
     var lemmaTextKey: Int = 0
     var lemmaBySurface: [String: String] = [:]
 }
@@ -64,11 +68,11 @@ extension ReadView {
     }
 
     // Keeps both read and edit renderers mounted so mode toggles are instant.
-    // UTF-16 locations of segments the extract-words list shows a YELLOW star for (filled OR
-    // hollow) — drives the glow. The list's color channel carries "saved anywhere"; the glow
-    // mirrors that, so a word favorited in a different note still lights up here. 1:1 with the
-    // extract-list star color by construction: both go through the same shared predicate
-    // (ComputedSavedWordState.isSavedSurface) over the same WordsStore snapshot, grounded in
+    // UTF-16 locations of segments the extract-words list shows a FILLED star for — saved for
+    // the active note, or saved with no note attribution at all (a global save). Mirrors the
+    // extract-list star's filled/hollow split (see favoritedElsewhereSegmentLocations for the
+    // hollow-yellow "saved elsewhere" counterpart) via the same shared predicate
+    // (ComputedSavedWordState.isStarFilled) over the same WordsStore snapshot, grounded in
     // encountered surfaces (+ lemma bridging). So inflected forms light up (消える saved →
     // 消えて / 消えてゆく glow) and unfavoriting clears the glow immediately.
     //
@@ -80,9 +84,29 @@ extension ReadView {
     // wrapper). The per-segment lemma cache persists across recomputes (keyed by text), so even a
     // favorite toggle stays cheap — it re-runs set lookups, not a fresh deinflection pass.
     var favoritedSegmentLocations: Set<Int> {
+        ensureFavoritedHighlightComputed()
+        return favoritedHighlightMemo.locations
+    }
+
+    // UTF-16 locations of segments saved under a note OTHER than the active one — the hollow-
+    // yellow "saved elsewhere" star, rendered in-text with its own distinct color
+    // (favoritedElsewhereHighlightColor) so a word favorited only in a different note reads as
+    // "known, but not part of this note" rather than blending into this note's favorites.
+    // Disjoint from favoritedSegmentLocations by construction (isStarFilled and
+    // isSavedForOtherNotes can't both be true for the same surface).
+    var favoritedElsewhereSegmentLocations: Set<Int> {
+        ensureFavoritedHighlightComputed()
+        return favoritedHighlightMemo.elsewhereLocations
+    }
+
+    // Shared memo-check for both favorited-location computed vars above — recomputes at most
+    // once per signature change regardless of which (or both) properties are read this pass.
+    private func ensureFavoritedHighlightComputed() {
         guard isFavoritedHighlightEnabled else {
             favoritedHighlightMemo.signature = nil
-            return []
+            favoritedHighlightMemo.locations = []
+            favoritedHighlightMemo.elsewhereLocations = []
+            return
         }
 
         var hasher = Hasher()
@@ -97,17 +121,17 @@ extension ReadView {
         }
         let signature = hasher.finalize()
         if favoritedHighlightMemo.signature == signature {
-            return favoritedHighlightMemo.locations
+            return
         }
 
-        let locations = computeFavoritedSegmentLocations()
+        let (locations, elsewhereLocations) = computeFavoritedSegmentLocations()
         favoritedHighlightMemo.signature = signature
         favoritedHighlightMemo.locations = locations
-        return locations
+        favoritedHighlightMemo.elsewhereLocations = elsewhereLocations
     }
 
-    // The heavy computation behind `favoritedSegmentLocations`, run only on a memo miss.
-    private func computeFavoritedSegmentLocations() -> Set<Int> {
+    // The heavy computation behind the favorited-location properties, run only on a memo miss.
+    private func computeFavoritedSegmentLocations() -> (locations: Set<Int>, elsewhereLocations: Set<Int>) {
         // Per-segment lemma resolution is the dominant cost; reuse it across recomputes for the same
         // text so toggling a favorite doesn't re-deinflect the whole note.
         let textKey = text.hashValue
@@ -129,26 +153,27 @@ extension ReadView {
             lemmaResolver: resolver,
             lemmaCache: [:]
         )
-        guard state.savedWordSurfaces.isEmpty == false else { return [] }
+        guard state.savedWordSurfaces.isEmpty == false else { return ([], []) }
 
         let ns = text as NSString
         var locations = Set<Int>()
-        var verdictBySurface: [String: Bool] = [:]
+        var elsewhereLocations = Set<Int>()
+        var verdictBySurface: [String: (filled: Bool, elsewhere: Bool)] = [:]
         for range in segmentRanges {
             let nsRange = NSRange(range, in: text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
             let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
-            let isFilled = verdictBySurface[surface] ?? {
-                // Glow = "saved anywhere" so favorites from other notes still highlight; matches
-                // the extract-list star's yellow color channel rather than its filled shape.
-                // let v = state.isStarFilled(surface, noteID: activeNoteID, lemmaResolver: resolver)
-                let v = state.isSavedSurface(surface, lemmaResolver: resolver)
+            let verdict = verdictBySurface[surface] ?? {
+                let filled = state.isStarFilled(surface, noteID: activeNoteID, lemmaResolver: resolver)
+                let elsewhere = filled ? false : state.isSavedForOtherNotes(surface, noteID: activeNoteID, lemmaResolver: resolver)
+                let v = (filled: filled, elsewhere: elsewhere)
                 verdictBySurface[surface] = v
                 return v
             }()
-            if isFilled { locations.insert(nsRange.location) }
+            if verdict.filled { locations.insert(nsRange.location) }
+            else if verdict.elsewhere { elsewhereLocations.insert(nsRange.location) }
         }
-        return locations
+        return (locations, elsewhereLocations)
     }
 
     var editorView: some View {
@@ -200,6 +225,8 @@ extension ReadView {
                         favoritedHighlightColor: customTokenColorsEnabled
                             ? (UIColor(hexString: highlightHex) ?? .systemYellow)
                             : (UIColor(hexString: Theme.activePalette.defaultHighlightHex) ?? .systemYellow),
+                        favoritedElsewhereSegmentLocations: favoritedElsewhereSegmentLocations,
+                        favoritedElsewhereHighlightColor: .systemOrange,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,

@@ -83,6 +83,11 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     var favoritedSegmentLocations: Set<Int> = []
     var isFavoritedHighlightEnabled: Bool = false
     var favoritedHighlightColor: UIColor = .systemYellow
+    // Saved, but only under a note OTHER than the active one — the hollow-yellow "saved
+    // elsewhere" star's in-text counterpart, tinted a distinct color so it doesn't read as a
+    // favorite of THIS note. Disjoint from favoritedSegmentLocations by construction upstream.
+    var favoritedElsewhereSegmentLocations: Set<Int> = []
+    var favoritedElsewhereHighlightColor: UIColor = .systemOrange
     // Dev-only debug overlay toggles. The overlay view stays mounted always but only
     // draws when a flag is on, so this is zero-cost for normal users.
     let debugFlags: KiokuDebugOverlayView.Flags
@@ -301,8 +306,10 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         for location in changedReadingLocations.sorted() { typographyHasher.combine(location) }
         for location in inFlightSegmentLocations.sorted() { typographyHasher.combine(location) }
         for location in favoritedSegmentLocations.sorted() { typographyHasher.combine(location) }
+        for location in favoritedElsewhereSegmentLocations.sorted() { typographyHasher.combine(location) }
         typographyHasher.combine(isFavoritedHighlightEnabled)
         typographyHasher.combine(favoritedHighlightColor.description)
+        typographyHasher.combine(favoritedElsewhereHighlightColor.description)
         typographyHasher.combine(unplayedDimmingLocation ?? -1)
         typographyHasher.combine(unplayedAlpha)
         typographyHasher.combine(furiganaGap)
@@ -335,6 +342,8 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     favoritedSegmentLocations: favoritedSegmentLocations,
                     isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
                     favoritedHighlightColor: favoritedHighlightColor,
+                    favoritedElsewhereSegmentLocations: favoritedElsewhereSegmentLocations,
+                    favoritedElsewhereHighlightColor: favoritedElsewhereHighlightColor,
                     isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
                     unplayedDimmingLocation: unplayedDimmingLocation,
                     unplayedAlpha: unplayedAlpha,

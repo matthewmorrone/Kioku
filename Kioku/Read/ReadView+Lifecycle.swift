@@ -377,7 +377,8 @@ extension ReadView {
                     stemAvailable: stemAvailableForActiveAudio,
                     isListeningToStem: $isListeningToStem,
                     favoritedSegmentLocations: favoritedSegmentLocations,
-                    isFavoritedHighlightEnabled: isFavoritedHighlightEnabled
+                    isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
+                    favoritedElsewhereSegmentLocations: favoritedElsewhereSegmentLocations
                 )
                 .opacity(isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(isShowingLyricsView)
