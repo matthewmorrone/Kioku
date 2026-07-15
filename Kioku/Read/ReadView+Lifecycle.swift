@@ -397,6 +397,7 @@ extension ReadView {
                 segmenter: segmenter,
                 lexicon: lexicon,
                 sourceNoteID: activeNoteID,
+                note: currentDisplayedNote,
                 lemmaForSurface: { segmenter.preferredLemma(for: $0) },
                 lemmaCandidatesForSurface: { segmenter.lemmaCandidates(for: $0) },
                 onMergeLeft: { edgeIndex in
