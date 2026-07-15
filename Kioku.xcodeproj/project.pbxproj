@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		E32B0CE32F57BC070020F5C2 /* data_manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDE2F57BC070020F5C2 /* data_manifest.json */; };
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
+		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = E4E800022F90000100FFF001 /* SwiftWhisper */; };
 		E4WKA00012FA0000200000001 /* SwiftWhisperAlign in Frameworks */ = {isa = PBXBuildFile; productRef = E4WKA00022FA0000200000002 /* SwiftWhisperAlign */; };
 		F5MECAB012FA0000100000001 /* mecab in Frameworks */ = {isa = PBXBuildFile; productRef = F5MECAB022FA0000100000001 /* mecab */; };
@@ -364,6 +365,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
