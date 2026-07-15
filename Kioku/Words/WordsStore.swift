@@ -274,12 +274,16 @@ final class WordsStore: ObservableObject {
 
             let surfaceWasInSet = encounteredSet.contains(encountered)
             let noteWasAttached = sourceNoteID.map { noteIDs.contains($0) } ?? false
-            // "Saved here" = both the surface is in the set AND the note is attached
-            // (when there's a note context). Without a note context, surface membership
-            // alone determines it.
+            // "Saved here" must mirror ComputedSavedWordState.isStarFilled — the predicate that
+            // decides whether the star renders filled — or a single tap on an already-filled
+            // star can silently no-op (attach this note to a globally-saved card, which the
+            // star still renders as filled) instead of removing it, requiring a second tap.
+            // Filled means: attributed to this note, OR saved with no note attribution at all
+            // (`noteIDs.isEmpty`) — a global save with zero note attributions. Without a note
+            // context, surface membership alone determines it.
             let wasSavedHere: Bool = {
                 guard sourceNoteID != nil else { return surfaceWasInSet }
-                return surfaceWasInSet && noteWasAttached
+                return surfaceWasInSet && (noteWasAttached || noteIDs.isEmpty)
             }()
 
             if wasSavedHere {

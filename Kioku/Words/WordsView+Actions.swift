@@ -50,7 +50,7 @@ extension WordsView {
         case .markedWrong:
             filtered = filtered.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
         case .dueForReview:
-            filtered = filtered.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
+            filtered = filtered.filter { reviewStore.isDueForReview(id: $0.canonicalEntryID) }
         case .neverReviewed:
             filtered = filtered.filter { reviewStore.stats[$0.canonicalEntryID] == nil }
         case .learned:

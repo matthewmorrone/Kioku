@@ -93,6 +93,10 @@ enum KiokuCoreTextAttributedStringBuilder {
         var favoritedSegmentLocations: Set<Int> = []
         var isFavoritedHighlightEnabled: Bool = false
         var favoritedHighlightColor: UIColor = .systemYellow
+        // Saved-but-only-under-a-different-note segments — the hollow-yellow "saved elsewhere"
+        // star's in-text counterpart. Disjoint from favoritedSegmentLocations by construction.
+        var favoritedElsewhereSegmentLocations: Set<Int> = []
+        var favoritedElsewhereHighlightColor: UIColor = .systemOrange
         // When true, the renderer is in segment-packed mode and handles inter-segment
         // spacing via per-segment X placement. The builder must NOT inject its
         // ruby-overhang kerning compensation in that case — the kern bump would inflate
@@ -210,6 +214,18 @@ enum KiokuCoreTextAttributedStringBuilder {
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
                 guard inputs.favoritedSegmentLocations.contains(nsRange.location) else { continue }
                 result.addAttribute(.foregroundColor, value: inputs.favoritedHighlightColor, range: nsRange)
+            }
+        }
+
+        // "Saved elsewhere" highlight — same precedence as the favorited pass above (applied
+        // right after it; the two location sets are disjoint by construction upstream, so order
+        // between them doesn't matter).
+        if inputs.isFavoritedHighlightEnabled && inputs.favoritedElsewhereSegmentLocations.isEmpty == false {
+            for segmentRange in inputs.segmentationRanges {
+                let nsRange = NSRange(segmentRange, in: inputs.text)
+                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+                guard inputs.favoritedElsewhereSegmentLocations.contains(nsRange.location) else { continue }
+                result.addAttribute(.foregroundColor, value: inputs.favoritedElsewhereHighlightColor, range: nsRange)
             }
         }
 

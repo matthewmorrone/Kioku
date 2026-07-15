@@ -37,6 +37,7 @@ struct SettingsView: View {
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
     @AppStorage(DictionarySettings.includeArchaicReadingsKey) private var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
     @AppStorage(DictionarySettings.showJapaneseInPopoverKey) private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
+    @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey) private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
     @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
     @AppStorage(SegmentationDemotions.storageKey) private var demotionsRaw: String = SegmentationDemotions.defaultRawValue
 
@@ -431,6 +432,7 @@ struct SettingsView: View {
                 Section {
                     Toggle("Include Archaic & Obscure Readings", isOn: $includeArchaicReadings)
                     Toggle("Show Japanese in Popover", isOn: $showJapaneseInPopover)
+                    Toggle("Open Full Lookup on Tap", isOn: $prefersSheetDirectSegmentActions)
                 } header: {
                     Text("Dictionary")
                 }
@@ -534,6 +536,10 @@ struct SettingsView: View {
                 } header: {
                     Text("Data")
                 }
+
+                // MARK: Downloaded Models — extracted to its own file (self-contained @State +
+                // alerts) so this file stays under the 1000-line invariant cap.
+                DownloadedModelsSection()
             }
             .scrollDismissesKeyboard(.interactively)
             .washiBackground()
@@ -795,6 +801,7 @@ struct SettingsView: View {
         f.countStyle = .file
         return f.string(fromByteCount: Int64(bytes))
     }
+
 
     // Fetches the current notification authorization status and pending count.
     private func refreshWotdStatus() async {
