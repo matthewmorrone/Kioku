@@ -55,8 +55,11 @@ nonisolated enum DownloadedModelsStore {
     }
 
     // Recursive byte sum of regular files under `root`, or 0 if unreadable/nil — mirrors
-    // CachesCleaner.totalRegularFileBytes so the two size readouts stay comparable.
-    private static func sizeBytes(at root: URL?) -> Int {
+    // CachesCleaner.totalRegularFileBytes so the two size readouts stay comparable. Not private:
+    // the public API above always resolves real Application Support paths (downloaded models,
+    // if any, live there), so tests exercise this pure path-in/byte-count-out logic directly
+    // against disposable temp directories instead of touching real on-device model state.
+    static func sizeBytes(at root: URL?) -> Int {
         guard let root else { return 0 }
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
@@ -75,8 +78,9 @@ nonisolated enum DownloadedModelsStore {
 
     // Removes every top-level entry under `root` (the model's contents) but leaves the empty
     // directory in place — ModelStorage.directory(for:) always recreates it on next access
-    // anyway, and an empty directory costs nothing.
-    private static func removeContents(of root: URL?) {
+    // anyway, and an empty directory costs nothing. Not private: see sizeBytes' comment on why
+    // tests target this directly instead of the real-path public API.
+    static func removeContents(of root: URL?) {
         guard let root else { return }
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: []) else { return }
