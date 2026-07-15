@@ -164,12 +164,7 @@ struct ContentView: View {
             // dictionary.sqlite isn't bundled — download it if this is a fresh install, then
             // rebuild the read resources so DictionaryStore() (which failed silently above,
             // since nothing was downloaded yet) succeeds on this second attempt.
-            Task {
-                await dictionaryDownloadManager.downloadIfNeeded()
-                if dictionaryDownloadManager.isInstalled {
-                    rebuildReadResources()
-                }
-            }
+            Task { await downloadDictionaryAndRebuildIfNeeded() }
         }
         // Navigate to Words tab and open the word detail when a notification deep link arrives.
         // The notification's surface is threaded into the route so WordsView.detailWord can resolve
@@ -231,9 +226,21 @@ struct ContentView: View {
         .overlay {
             if !dictionaryDownloadManager.isInstalled {
                 DictionaryDownloadGateView(downloadManager: dictionaryDownloadManager) {
-                    Task { await dictionaryDownloadManager.downloadIfNeeded() }
+                    Task { await downloadDictionaryAndRebuildIfNeeded() }
                 }
             }
+        }
+    }
+
+    // Downloads dictionary.sqlite if needed and rebuilds the read resources once it succeeds,
+    // so DictionaryStore() (which fails silently until the file is on disk) gets a working
+    // dictionaryStore without requiring a relaunch. Shared by the onAppear kickoff and the
+    // download gate's Retry button — a bare downloadIfNeeded() call with no follow-up would
+    // leave the gate dismissed but every tab still running with a nil dictionaryStore.
+    private func downloadDictionaryAndRebuildIfNeeded() async {
+        await dictionaryDownloadManager.downloadIfNeeded()
+        if dictionaryDownloadManager.isInstalled {
+            rebuildReadResources()
         }
     }
 
