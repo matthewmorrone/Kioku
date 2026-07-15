@@ -68,6 +68,10 @@ struct JapaneseInputTextField: UIViewRepresentable {
     // Recent Searches row that sets searchText) need to propagate in; focus binding toggled to
     // false elsewhere needs to resign first-responder.
     func updateUIView(_ uiView: UITextField, context: Context) {
+        // Recovers the radical picker if the accessory was built before dictionary.sqlite
+        // finished downloading (see JapaneseInputAccessory.refreshDictionaryStoreIfNeeded) —
+        // a no-op once dictionaryStore is already resolved.
+        context.coordinator.accessory?.refreshDictionaryStoreIfNeeded()
         if uiView.text != text {
             uiView.text = text
         }

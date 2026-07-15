@@ -250,6 +250,14 @@ struct ContentView: View {
         guard !dictionaryDownloadManager.isInstalled else { return }
         await dictionaryDownloadManager.downloadIfNeeded()
         if dictionaryDownloadManager.isInstalled {
+            // The pre-download rebuild (onAppear's loadReadResourcesIfNeeded()) already
+            // published readResources.ready = true with a nil dictionaryStore, so
+            // .onChange(of: readResources.ready) already fired once this session. Reset it here
+            // so that onChange's stable-key migration + WOTD refresh — which need the REAL
+            // store, not the placeholder one — fire again once this rebuild republishes ready
+            // with dictionaryStore actually populated, instead of silently no-opping on an
+            // already-true value.
+            readResources.ready = false
             rebuildReadResources()
         }
     }
