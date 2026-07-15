@@ -221,23 +221,33 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: clipboardCoordinator.hasPendingClipboard)
-        // Blocks every tab until dictionary.sqlite has been downloaded (see
-        // DictionaryDownloadManager) — nearly all of them depend on dictionaryStore being non-nil.
-        .overlay {
+        // Non-blocking status banner while dictionary.sqlite downloads (see
+        // DictionaryDownloadManager) — every tab underneath stays fully usable. A full-screen
+        // gate would violate AGENTS.md's "mandatory network dependency" non-goal and its
+        // "dictionary lookup failure must not block editing" failure boundary; dictionaryStore
+        // staying nil already degrades dictionary-dependent views gracefully on its own.
+        .overlay(alignment: .bottom) {
             if !dictionaryDownloadManager.isInstalled {
-                DictionaryDownloadGateView(downloadManager: dictionaryDownloadManager) {
+                DictionaryDownloadBanner(downloadManager: dictionaryDownloadManager) {
                     Task { await downloadDictionaryAndRebuildIfNeeded() }
                 }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: dictionaryDownloadManager.isInstalled)
     }
 
     // Downloads dictionary.sqlite if needed and rebuilds the read resources once it succeeds,
     // so DictionaryStore() (which fails silently until the file is on disk) gets a working
     // dictionaryStore without requiring a relaunch. Shared by the onAppear kickoff and the
-    // download gate's Retry button — a bare downloadIfNeeded() call with no follow-up would
-    // leave the gate dismissed but every tab still running with a nil dictionaryStore.
+    // download banner's Retry button. Early-returns when already installed: downloadIfNeeded()
+    // itself would also no-op in that case, but without this guard rebuildReadResources() (an
+    // expensive full SQLite scan + trie build) would still re-run on every single normal launch,
+    // duplicating the rebuild loadReadResourcesIfNeeded() already kicked off moments earlier.
     private func downloadDictionaryAndRebuildIfNeeded() async {
+        guard !dictionaryDownloadManager.isInstalled else { return }
         await dictionaryDownloadManager.downloadIfNeeded()
         if dictionaryDownloadManager.isInstalled {
             rebuildReadResources()

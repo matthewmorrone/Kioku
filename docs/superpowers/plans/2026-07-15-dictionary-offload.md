@@ -501,8 +501,22 @@ EOF
 
 ### Task 4: First-launch download gate
 
+**Post-review correction (discovered during PR review, not anticipated by this plan):** the
+full-screen blocking gate described below shipped initially, but a PR review comment correctly
+identified that it violates `AGENTS.md`'s Architecture Non-Goals ("must never introduce... a
+mandatory network dependency") and Failure Boundaries ("dictionary lookup failure must not block
+editing", "missing optional datasets must degrade gracefully") — the app was completely unusable
+offline on a fresh install, including for non-dictionary features like plain note editing. Fixed
+by replacing `DictionaryDownloadGateView` (full-screen `VStack`, `.overlay { }` covering
+everything) with `DictionaryDownloadBanner` (compact `HStack`, `.overlay(alignment: .bottom) { }`,
+styled identically to the existing `ClipboardLookupBanner`) — every tab stays fully usable
+underneath it, and `dictionaryStore` staying `nil` degrades gracefully exactly as it already did
+throughout the app before this plan existed. The steps below describe the ORIGINAL (superseded)
+blocking design; see the `fix(dictionary): address PR review findings` and follow-up commits on
+`feat/dictionary-offload` for the actual shipped banner implementation.
+
 **Files:**
-- Create: `Kioku/Dictionary/DictionaryDownloadGateView.swift`
+- Create: `Kioku/Dictionary/DictionaryDownloadGateView.swift` (superseded — see correction above; shipped as `DictionaryDownloadBanner.swift`)
 - Modify: `Kioku/ContentView.swift`
 
 **Interfaces:**

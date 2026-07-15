@@ -112,6 +112,12 @@ final class DictionaryDownloadManager {
 
         do {
             try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+            // Re-downloadable, ~350MB — keep it out of iCloud/device backups, mirroring
+            // ModelStorage.directory(for:)'s identical reasoning for the speech models.
+            var directoryURL = Self.directory
+            var excludedFromBackup = URLResourceValues()
+            excludedFromBackup.isExcludedFromBackup = true
+            try? directoryURL.setResourceValues(excludedFromBackup)
 
             logger.info("downloadIfNeeded: starting from \(Self.remoteURL)")
             let delegate = DictionaryDownloadProgressDelegate { [weak self] value in
