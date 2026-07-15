@@ -60,13 +60,26 @@ final class DictionaryDownloadManager {
         directory.appendingPathComponent("dictionary.sqlite")
     }
 
+    // Records which releaseTag installedDatabaseURL's bytes actually came from. Without this,
+    // isInstalled would treat ANY file at that path as current — so bumping releaseTag/
+    // expectedSHA256 for a future dictionary.sqlite rebuild (see the comment above) would leave
+    // existing installs silently stuck on old, checksum-mismatched-with-the-new-pin bytes
+    // forever, since the app would never re-check them once installed once.
+    nonisolated static var installedReleaseMarkerURL: URL {
+        directory.appendingPathComponent("dictionary.sqlite.release")
+    }
+
     // Static existence check for call sites without a DictionaryDownloadManager instance
     // (DictionaryStore's init has no observable-state owner to ask). Mirrors the instance
     // isInstalled's logic exactly; kept separate rather than having the instance property
     // delegate to this, because the instance property is meant to be the reactive source of
     // truth for SwiftUI and a static forwarding call would add an indirection with no benefit.
+    // Requires the release marker to match the CURRENT releaseTag, not just file presence — see
+    // installedReleaseMarkerURL.
     nonisolated static var isInstalled: Bool {
-        FileManager.default.fileExists(atPath: installedDatabaseURL.path)
+        guard FileManager.default.fileExists(atPath: installedDatabaseURL.path) else { return false }
+        let installedTag = try? String(contentsOf: installedReleaseMarkerURL, encoding: .utf8)
+        return installedTag == releaseTag
     }
 
     // Reflects on-disk state; refreshed at init and after a successful download. An instance
@@ -83,6 +96,10 @@ final class DictionaryDownloadManager {
 
     // Downloads dictionary.sqlite to Application Support, verifying its checksum before making
     // it visible at installedDatabaseURL. No-op if already installed or a download is in flight.
+    // Explicitly @MainActor (redundant with this project's default MainActor isolation, but
+    // documents that every direct property write below is safe to interleave with the delegate's
+    // Task { @MainActor in ... } hop without a lock, since both land on the same serial executor).
+    @MainActor
     func downloadIfNeeded() async {
         guard !isInstalled else { return }
         guard progress == nil else {
@@ -119,6 +136,7 @@ final class DictionaryDownloadManager {
                 try FileManager.default.removeItem(at: Self.installedDatabaseURL)
             }
             try FileManager.default.moveItem(at: tempURL, to: Self.installedDatabaseURL)
+            try Self.releaseTag.write(to: Self.installedReleaseMarkerURL, atomically: true, encoding: .utf8)
             logger.info("downloadIfNeeded: installed to \(Self.installedDatabaseURL.path)")
 
             progress = nil
