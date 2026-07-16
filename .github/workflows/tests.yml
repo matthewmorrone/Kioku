@@ -68,6 +68,15 @@ jobs:
       - name: Decompress handwriting-ja.model
         run: bash scripts/ensure_handwriting_model.sh
 
+      # Parallel testing (Xcode's default for simulator destinations) spins up multiple
+      # simulator "clones" that run test classes concurrently on the runner's finite cores.
+      # The heaviest tests (LexiconTests, SegmenterIntegrationTests, InflectionFormNamesTests,
+      # AlignmentQualityTests) each trigger TestReadResources.shared()'s full SQLite scan +
+      # 327k-record trie build on first use — when multiple clones do that simultaneously they
+      # starve each other badly enough to blow past normal execution time (one observed run:
+      # a single test took 126s instead of its usual <1s) and fail outright. Serial execution
+      # (matching how on-device runs against Monoceros always behave — no clones there) doesn't
+      # hit this; disabling it trades CI wall-clock time for determinism.
       - name: Build & test
         run: |
           set -o pipefail
@@ -75,6 +84,7 @@ jobs:
             -project Kioku.xcodeproj \
             -scheme Kioku \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -parallel-testing-enabled NO \
             -enableCodeCoverage YES \
             -derivedDataPath build \
             -resultBundlePath build/Kioku.xcresult \
