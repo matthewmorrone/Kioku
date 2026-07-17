@@ -38,6 +38,7 @@ struct ContentView: View {
     @State private var shouldActivateReadEditMode = false
     @State private var readResources = ReadResources()
     @State private var hasLoadedReadResources = false
+    @State private var dictionaryDownloadManager = DictionaryDownloadManager()
     @AppStorage("kioku.lastActiveNoteID") private var lastActiveNoteID = ""
     // Drives the live re-apply of nav/tab bar chrome when the user toggles the theme in Settings.
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
@@ -160,6 +161,10 @@ struct ContentView: View {
             // Same wiring for the LLM correction queue — it needs the store reference
             // to resolve note IDs and persist corrections after each run.
             llmCorrectionQueue.attach(store: notesStore)
+            // dictionary.sqlite isn't bundled — download it if this is a fresh install, then
+            // rebuild the read resources so DictionaryStore() (which failed silently above,
+            // since nothing was downloaded yet) succeeds on this second attempt.
+            Task { await downloadDictionaryAndRebuildIfNeeded() }
         }
         // Navigate to Words tab and open the word detail when a notification deep link arrives.
         // The notification's surface is threaded into the route so WordsView.detailWord can resolve
@@ -216,6 +221,45 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: clipboardCoordinator.hasPendingClipboard)
+        // Non-blocking status banner while dictionary.sqlite downloads (see
+        // DictionaryDownloadManager) — every tab underneath stays fully usable. A full-screen
+        // gate would violate AGENTS.md's "mandatory network dependency" non-goal and its
+        // "dictionary lookup failure must not block editing" failure boundary; dictionaryStore
+        // staying nil already degrades dictionary-dependent views gracefully on its own.
+        .overlay(alignment: .bottom) {
+            if !dictionaryDownloadManager.isInstalled {
+                DictionaryDownloadBanner(downloadManager: dictionaryDownloadManager) {
+                    Task { await downloadDictionaryAndRebuildIfNeeded() }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: dictionaryDownloadManager.isInstalled)
+    }
+
+    // Downloads dictionary.sqlite if needed and rebuilds the read resources once it succeeds,
+    // so DictionaryStore() (which fails silently until the file is on disk) gets a working
+    // dictionaryStore without requiring a relaunch. Shared by the onAppear kickoff and the
+    // download banner's Retry button. Early-returns when already installed: downloadIfNeeded()
+    // itself would also no-op in that case, but without this guard rebuildReadResources() (an
+    // expensive full SQLite scan + trie build) would still re-run on every single normal launch,
+    // duplicating the rebuild loadReadResourcesIfNeeded() already kicked off moments earlier.
+    private func downloadDictionaryAndRebuildIfNeeded() async {
+        guard !dictionaryDownloadManager.isInstalled else { return }
+        await dictionaryDownloadManager.downloadIfNeeded()
+        if dictionaryDownloadManager.isInstalled {
+            // The pre-download rebuild (onAppear's loadReadResourcesIfNeeded()) already
+            // published readResources.ready = true with a nil dictionaryStore, so
+            // .onChange(of: readResources.ready) already fired once this session. Reset it here
+            // so that onChange's stable-key migration + WOTD refresh — which need the REAL
+            // store, not the placeholder one — fire again once this rebuild republishes ready
+            // with dictionaryStore actually populated, instead of silently no-opping on an
+            // already-true value.
+            readResources.ready = false
+            rebuildReadResources()
+        }
     }
 
     // Reads the pasteboard, switches to Words, and populates the search field with the clipboard content.

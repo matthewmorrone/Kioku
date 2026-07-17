@@ -6,7 +6,7 @@ final class WordDisplayDataTests: XCTestCase {
     var store: DictionaryStore!
 
     override func setUpWithError() throws {
-        store = try DictionaryStore()
+        store = try DictionaryStore(databaseURL: TestReadResources.dictionaryDatabaseURL())
     }
 
     // fetchWordDisplayData for a known word returns a non-nil result with senses.
