@@ -6,7 +6,7 @@ final class PreferredKanaTests: XCTestCase {
     var store: DictionaryStore!
 
     override func setUpWithError() throws {
-        store = try DictionaryStore()
+        store = try DictionaryStore(databaseURL: TestReadResources.dictionaryDatabaseURL())
     }
 
     // 黄昏 has two kana readings: こうこん (alphabetically first) and たそがれ. The

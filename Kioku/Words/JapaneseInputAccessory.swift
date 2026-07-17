@@ -22,7 +22,9 @@ extension UITextView: JapaneseAccessoryResponder {}
 // binding in sync — the controller never touches the binding directly.
 final class JapaneseInputAccessory: NSObject {
     weak var responder: JapaneseAccessoryResponder?
-    let dictionaryStore: DictionaryStore?
+    // private(set), not let: refreshDictionaryStoreIfNeeded() below re-resolves this if the
+    // fallback in init failed — see its comment for why that's a real, not just theoretical, gap.
+    private(set) var dictionaryStore: DictionaryStore?
 
     private var currentMode: JapaneseInputMode = .keyboard
     private var accessoryHost: UIHostingController<KeyboardModeBar>?
@@ -172,6 +174,19 @@ final class JapaneseInputAccessory: NSObject {
             responder.inputView = inputContainer(for: host.view)
         }
         responder.reloadInputViews()
+    }
+
+    // Re-resolves dictionaryStore if the init-time fallback failed, and drops the cached radical
+    // host so it's rebuilt with the real store next time it's shown. Called from
+    // JapaneseInputTextField.updateUIView on every SwiftUI update pass. Needed because this
+    // accessory can be constructed (in makeUIView) during the window between app launch and
+    // dictionary.sqlite finishing its download (see DictionaryDownloadManager) — a window that
+    // didn't meaningfully exist before dictionary.sqlite was bundled, so this recovery path was
+    // previously untested territory, not truly dead code.
+    func refreshDictionaryStoreIfNeeded() {
+        guard dictionaryStore == nil, let refreshed = try? DictionaryStore() else { return }
+        dictionaryStore = refreshed
+        radicalHost = nil
     }
 
     // Lazily constructs the radical picker host wrapped in a sized container. The host outlives

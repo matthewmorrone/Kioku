@@ -83,8 +83,12 @@ final class TestReadResources {
             .deletingLastPathComponent()
     }
 
-    // Resolves the checked-in SQLite dictionary path used by the real app pipeline.
-    private static func dictionaryDatabaseURL() throws -> URL {
+    // Resolves the checked-in SQLite dictionary path used by the real app pipeline. Not
+    // private: tests that need their own DictionaryStore instance (rather than sharing the
+    // cached pipeline via shared()) construct it from this URL instead of DictionaryStore()'s
+    // no-arg init, which now depends on a real network download having already completed (see
+    // DictionaryDownloadManager) — unreliable in a fresh test environment.
+    static func dictionaryDatabaseURL() throws -> URL {
         try resolveResourceURL(fileName: "dictionary.sqlite")
     }
 

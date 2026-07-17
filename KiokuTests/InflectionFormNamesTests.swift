@@ -2,47 +2,52 @@ import XCTest
 @testable import Kioku
 
 // Pins the deinflection-chain → human-readable form mapping used in the lookup header.
+//
+// Chain labels here are the NORMALIZED form InflectionFormNames.describe(_:)/meaning(_:) actually
+// key on (see that file's header comment) — Deinflector.normalizedRuleLabel strips the raw
+// deinflection.json group name's "Forms" suffix and splits camelCase into lowercase
+// space-separated words ("negativePastForms" -> "negative past") before this table ever sees it.
 final class InflectionFormNamesTests: XCTestCase {
     // A single known form maps to its display name.
     func testSingleForm() {
-        XCTAssertEqual(InflectionFormNames.describe(["teForms"]), "te-form")
-        XCTAssertEqual(InflectionFormNames.describe(["politeForms"]), "polite")
+        XCTAssertEqual(InflectionFormNames.describe(["te"]), "te-form")
+        XCTAssertEqual(InflectionFormNames.describe(["polite"]), "polite")
     }
 
     // Multiple forms join in chain order with " · ".
     func testChainJoins() {
-        XCTAssertEqual(InflectionFormNames.describe(["politeForms", "pastForms"]), "polite · past")
+        XCTAssertEqual(InflectionFormNames.describe(["polite", "past"]), "polite · past")
     }
 
     // Negative forms map correctly (regression guard: the plain-negative rule used to live in
     // the progressiveForms catch-all and mislabeled as "progressive").
     func testNegativeForms() {
-        XCTAssertEqual(InflectionFormNames.describe(["negativeForms"]), "negative")
-        XCTAssertEqual(InflectionFormNames.describe(["negativeForms", "potentialForms"]), "negative · potential")
-        XCTAssertEqual(InflectionFormNames.describe(["negativePastForms"]), "negative past")
+        XCTAssertEqual(InflectionFormNames.describe(["negative"]), "negative")
+        XCTAssertEqual(InflectionFormNames.describe(["negative", "potential"]), "negative · potential")
+        XCTAssertEqual(InflectionFormNames.describe(["negative past"]), "negative past")
     }
 
     // Internal stem-recovery labels are dropped, leaving only user-facing forms.
     func testRecoveryLabelsDropped() {
-        XCTAssertEqual(InflectionFormNames.describe(["stemRecoveryForms", "teForms"]), "te-form")
+        XCTAssertEqual(InflectionFormNames.describe(["stem recovery", "te"]), "te-form")
     }
 
     // A chain of only internal labels yields "" so callers fall back to the lemma alone.
     func testAllInternalYieldsEmpty() {
-        XCTAssertEqual(InflectionFormNames.describe(["stemRecoveryForms"]), "")
+        XCTAssertEqual(InflectionFormNames.describe(["stem recovery"]), "")
         XCTAssertEqual(InflectionFormNames.describe([]), "")
     }
 
     // The meaning hint merges common combinations idiomatically and joins the rest.
     func testMeaningMergesAndJoins() {
-        XCTAssertEqual(InflectionFormNames.meaning(["negativeForms", "potentialForms"]), "can't ~")
-        XCTAssertEqual(InflectionFormNames.meaning(["potentialForms"]), "can ~")
-        XCTAssertEqual(InflectionFormNames.meaning(["desireForms", "pastForms"]), "want to ~ · did ~ (past)")
+        XCTAssertEqual(InflectionFormNames.meaning(["negative", "potential"]), "can't ~")
+        XCTAssertEqual(InflectionFormNames.meaning(["potential"]), "can ~")
+        XCTAssertEqual(InflectionFormNames.meaning(["desire", "past"]), "want to ~ · did ~ (past)")
     }
 
     // Structural-only chains have no meaning hint.
     func testMeaningEmptyForStructuralOnly() {
-        XCTAssertEqual(InflectionFormNames.meaning(["irregularForms"]), "")
+        XCTAssertEqual(InflectionFormNames.meaning(["irregular"]), "")
         XCTAssertEqual(InflectionFormNames.meaning([]), "")
     }
 }
