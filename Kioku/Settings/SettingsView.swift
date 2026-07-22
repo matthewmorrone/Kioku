@@ -138,9 +138,9 @@ struct SettingsView: View {
     @State private var isClearingCaches = false
     @State private var isShowingClearCachesConfirmation = false
 
-    // Advanced settings — segmentation engine/tuning, AI correction, debug overlays, and the dev
-    // bridge — pushed off the main Settings screen via the "Advanced" link. Same struct, so it
-    // shares every @State/@AppStorage; the sections are unchanged from their former inline position.
+    // Advanced settings — segmentation engine/tuning, debug overlays, and the dev bridge — pushed
+    // off the main Settings screen via the "Advanced" link. Same struct, so it shares every
+    // @State/@AppStorage; the sections are unchanged from their former inline position.
     @ViewBuilder
     private var advancedSettings: some View {
         // MARK: Segmentation — engine, then the two tuning chip-editors.
@@ -199,9 +199,6 @@ struct SettingsView: View {
             Text("Segmentation Demotions")
         }
 
-        // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
-        aiCorrectionSection
-
         #if DEBUG
         // MARK: Debug overlays — hidden in release builds.
         Section {
@@ -222,7 +219,8 @@ struct SettingsView: View {
         }
         #endif
 
-        BridgeSettingsSection(bridgeServer: bridgeServer)
+        // Foreground-only bridge isn't useful enough yet to surface in Settings.
+        // BridgeSettingsSection(bridgeServer: bridgeServer)
     }
 
     // Row id currently flashed via listRowBackground when a "bring into focus" scroll lands —
@@ -448,6 +446,9 @@ struct SettingsView: View {
                     Text("Transcription")
                 }
 
+                // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
+                aiCorrectionSection
+
                 // MARK: Learning — auto-mark words as learned past a chosen bar.
                 Section {
                     Toggle("Auto-mark as learned", isOn: $autoLearnEnabled)
@@ -481,8 +482,8 @@ struct SettingsView: View {
                     Text("Learning")
                 }
 
-                // MARK: Advanced — segmentation engine/tuning, AI correction, debug overlays, and
-                // the dev bridge, moved off the main screen to keep it focused. See advancedSettings.
+                // MARK: Advanced — segmentation engine/tuning, debug overlays, and the dev bridge,
+                // moved off the main screen to keep it focused. See advancedSettings.
                 Section {
                     NavigationLink {
                         Form { advancedSettings }
