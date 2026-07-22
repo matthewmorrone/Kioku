@@ -548,14 +548,14 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // picker presents these to the user in this order, with the auto-picked
     // candidate appearing first.
     //
-    // POS gating: when `surface` differs from the candidate (i.e. the
-    // deinflector applied a transition), keep the candidate only if it EITHER has no known POS
-    // data at all (sparse dictionary data — an imperfect candidate is more useful than none) OR
-    // has at least one entry whose POS confirms it actually conjugates (verb/adjective). A
-    // candidate with KNOWN POS data that's confirmed non-conjugating (e.g. noun-only) is
-    // excluded outright, even when it's the only trie hit reachable. This distinction matters:
-    // an earlier version fell back to the FULL unfiltered set whenever nothing survived the
-    // verb/adjective filter, which meant a coincidental deinflection chain landing on a real
+    // POS gating applies ONLY to `deinflected` candidates (see resolvedTrieLemmas) — surfaces the
+    // deinflector reached via an actual conjugation-chain guess. Keep such a candidate only if it
+    // EITHER has no known POS data at all (sparse dictionary data — an imperfect candidate is more
+    // useful than none) OR has at least one entry whose POS confirms it actually conjugates
+    // (verb/adjective). A candidate with KNOWN POS data that's confirmed non-conjugating (e.g.
+    // noun-only) is excluded outright, even when it's the only trie hit reachable. This distinction
+    // matters: an earlier version fell back to the FULL unfiltered set whenever nothing survived
+    // the verb/adjective filter, which meant a coincidental deinflection chain landing on a real
     // but unrelated dictionary noun (どこかに →[に→ぬ]→ どこかぬ →[かぬ→く]→ どこく, JMdict's
     // archaic word for "Turkey") won by default — there was nothing else in the pool to prefer
     // it over. Distinguishing "no POS data" from "confirmed non-verb POS" (mirroring the same
@@ -563,17 +563,23 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // what lets this case return no candidate instead of a wrong one. When `surface == candidate`
     // the gate is skipped — the user typed the dictionary form directly, so all POS classes are
     // legitimate.
+    //
+    // `trusted` candidates (exact trie hits, iteration-mark expansions, kana-script normalization
+    // like katakana スマイ → hiragana すまい) bypass the gate entirely: they're script/notation
+    // equivalences, not conjugation guesses, so "does it conjugate" isn't a meaningful filter for
+    // them — a common noun written in katakana must still resolve regardless of its POS.
     func lemmaCandidates(for surface: String) -> [String] {
-        let lemmas = resolvedTrieLemmas(for: surface)
-        guard lemmas.isEmpty == false else { return [] }
+        let (trusted, deinflected) = resolvedTrieLemmasBySource(for: surface)
+        guard trusted.isEmpty == false || deinflected.isEmpty == false else { return [] }
 
-        let pool = lemmas.filter { lemma in
+        let gatedDeinflected = deinflected.filter { lemma in
             if lemma == surface { return true }
             guard let meta = trie.hitMeta(for: lemma), meta.entryIDs.isEmpty == false else { return true }
             let posBits = meta.entryIDs.map { partOfSpeechByEntryID[$0] ?? 0 }
             guard posBits.contains(where: { $0 != 0 }) else { return true }
             return posBits.contains { PartOfSpeech.isVerb($0) || PartOfSpeech.isAdjective($0) }
         }
+        let pool = trusted.union(gatedDeinflected)
 
         return pool.sorted { lhs, rhs in
             let lhsScore = preferredLemmaScore(for: lhs, sourceSurface: surface)
@@ -594,24 +600,42 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
 
     // Resolves all trie-backed lemmas reachable from a surface, including alternate candidates from the deinflector
-    // and iteration mark expansion (々, ゝ, ヽ).
+    // and iteration mark expansion (々, ゝ, ヽ). Union of resolvedTrieLemmasBySource's two buckets, for callers
+    // that only need "does anything resolve" / "list every reachable lemma" without the POS-gating distinction.
     private func resolvedTrieLemmas(for surface: String) -> Set<String> {
-        var lemmas = matchedTrieLemmas(for: surface)
+        let (trusted, deinflected) = resolvedTrieLemmasBySource(for: surface)
+        return trusted.union(deinflected)
+    }
+
+    // Same resolution as resolvedTrieLemmas, but split by source so lemmaCandidates can gate only
+    // genuine deinflection guesses: `trusted` holds exact trie hits, iteration-mark expansions, and
+    // kana-script normalization (katakana↔hiragana) — script/notation equivalences that hold
+    // regardless of POS. `deinflected` holds candidates the deinflector reached via an actual
+    // conjugation-chain guess, which POS gating uses to reject coincidental hits on a real but
+    // unrelated non-conjugating word (see lemmaCandidates).
+    private func resolvedTrieLemmasBySource(for surface: String) -> (trusted: Set<String>, deinflected: Set<String>) {
+        var trusted = matchedTrieLemmas(for: surface)
+        var deinflected = Set<String>()
         let hasExactSurfaceMatch = trie.contains(surface)
 
         // Expand iteration marks (e.g. 人々→人人) so reduplicated forms resolve through the trie.
         let expandedCandidates = ScriptClassifier.iterationExpandedCandidates(for: surface)
         for expanded in expandedCandidates where expanded != surface {
-            lemmas.formUnion(matchedTrieLemmas(for: expanded))
+            trusted.formUnion(matchedTrieLemmas(for: expanded))
         }
 
         if let deinflector {
             let candidates = deinflector.generateCandidates(for: surface)
             for candidate in candidates {
-                if hasExactSurfaceMatch, candidate != surface, deinflector.isNormalizedKanaCandidate(candidate, for: surface) {
+                let isKanaNormalized = deinflector.isNormalizedKanaCandidate(candidate, for: surface)
+                if hasExactSurfaceMatch, candidate != surface, isKanaNormalized {
                     continue
                 }
-                lemmas.formUnion(matchedTrieLemmas(for: candidate))
+                if isKanaNormalized {
+                    trusted.formUnion(matchedTrieLemmas(for: candidate))
+                } else {
+                    deinflected.formUnion(matchedTrieLemmas(for: candidate))
+                }
             }
 
             // Second deinflection pass for derivational bases. A lexicalized れる/られる form
@@ -623,15 +647,15 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // only widens the candidate set (feeding the frequency tiebreak + lemma picker); it does
             // not change the chosen primary lemma. Gated on the れる suffix to keep it cheap and
             // scoped to the passive/spontaneous/potential class where the base carries the frequency.
-            let firstPassLemmas = lemmas
+            let firstPassLemmas = trusted.union(deinflected)
             for lemma in firstPassLemmas where lemma != surface && lemma.hasSuffix("れる") {
                 for base in deinflector.generateCandidates(for: lemma) where base != lemma {
-                    lemmas.formUnion(matchedTrieLemmas(for: base))
+                    deinflected.formUnion(matchedTrieLemmas(for: base))
                 }
             }
         }
 
-        return lemmas
+        return (trusted, deinflected)
     }
 
     // Builds a debug summary showing how the current resolver pipeline admits one emitted lemma for a surface.
