@@ -251,8 +251,12 @@ struct WordDetailView: View {
             // Human-readable grammatical form of the inflected surface (e.g. "potential · negative"),
             // reusing the same deinflection seam (Lexicon.inflectionInfo + InflectionFormNames) that
             // drives the Read-tab lookup header. Nil for base forms or chains with no displayable step.
+            // Also nil when a compound-verb derivation is showing: describing 歩いてゆこう's raw
+            // deinflection chain ("auxiliary · contraction · te-form") duplicates and reads far
+            // muddier than the compoundVerbParts gloss line already rendered just below it.
             let formDescription: String? = {
-                guard let lexicon,
+                guard derivation?.compoundVerbParts == nil,
+                      let lexicon,
                       let info = lexicon.inflectionInfo(surface: word.surface),
                       info.lemma != word.surface else { return nil }
                 let described = InflectionFormNames.describe(info.chain)
@@ -516,6 +520,7 @@ struct WordDetailView: View {
                 // the same insight in two places, one clean (header) and one raw (this list).
                 if sublatticePaths.count > 1, derivation?.compoundVerbParts == nil {
                     Section("Paths") {
+                        sublatticeDiagram
                         ForEach(Array(sublatticePaths.enumerated()), id: \.offset) { _, path in
                             Text(path.joined(separator: " · "))
                                 .font(.subheadline)
@@ -888,7 +893,12 @@ struct WordDetailView: View {
         // Also keyed on activeEntryID so tapping a homonym definition (which re-points the card to a
         // different entry) re-runs the load: that re-orders the saved entry to the front and refreshes
         // its sense references / loanword / conjugation data for the newly-active entry.
-        .task(id: "\(dictionaryStore != nil)|\(activeEntryID)") {
+        // Also keyed on word.surface: loadDisplayData's compound-verb derivation (歩いてゆこう →
+        // 歩く + ゆく) depends on the exact surface, not just the entry. Without this, reopening the
+        // same entry with a different surface (e.g. its plain lemma, then later an inflected compound)
+        // reused the first presentation's stale `derivation` instead of recomputing, since the task id
+        // hadn't changed.
+        .task(id: "\(dictionaryStore != nil)|\(activeEntryID)|\(word.surface)") {
             await loadDisplayData()
         }
     }

@@ -73,17 +73,18 @@ extension WordsView {
             // simultaneous tap would fire alongside the buttons, opening detail on a speaker tap.)
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        if let headword {
-                            Text(headword).font(.title3.weight(.semibold))
-                            if let reading, reading != headword {
-                                Text(reading).font(.subheadline).foregroundStyle(.secondary)
-                            }
-                        } else if let reading {
-                            Text(reading).font(.title3.weight(.semibold))
-                        } else {
-                            // Pending materialization (or dict-drift orphan) — show the surface.
-                            Text(surface).font(.title3.weight(.semibold))
+                    // ViewThatFits tries the inline HStack (headword + reading side by side,
+                    // one line) first; for a long headword like a whole example sentence, that
+                    // doesn't fit at .lineLimit(1) and it falls back to stacking the reading on
+                    // its own line below instead of wrapping the two mid-word next to each other.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            headwordReadingTexts(headword: headword, reading: reading, surface: surface)
+                        }
+                        .lineLimit(1)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            headwordReadingTexts(headword: headword, reading: reading, surface: surface)
                         }
                     }
                     if let gloss {
@@ -130,6 +131,24 @@ extension WordsView {
         .modifier(SwipeActionsWhenNotEditing(isEditing: editMode == .active) {
             wordRowSwipeAction(entryID: entryID, surface: surface, entry: entry)
         })
+    }
+
+    // The headword + reading (or surface fallback) content, factored out so wordRow's
+    // ViewThatFits can place the identical Text sequence inside either an HStack (inline, one
+    // line) or a VStack (stacked) without duplicating the branching logic.
+    @ViewBuilder
+    private func headwordReadingTexts(headword: String?, reading: String?, surface: String) -> some View {
+        if let headword {
+            Text(headword).font(.title3.weight(.semibold))
+            if let reading, reading != headword {
+                Text(reading).font(.subheadline).foregroundStyle(.secondary)
+            }
+        } else if let reading {
+            Text(reading).font(.title3.weight(.semibold))
+        } else {
+            // Pending materialization (or dict-drift orphan) — show the surface.
+            Text(surface).font(.title3.weight(.semibold))
+        }
     }
 
     // The single trailing-swipe "remove" action, contextual to whichever scope the row is

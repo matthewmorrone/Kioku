@@ -30,28 +30,29 @@ final class WordVariantsTests: XCTestCase {
         )
     }
 
-    // Saved surface is a kanji form; entry has one other kanji + one kana.
-    // Expect both alternates surfaced (combined list has 2 items, passes the
-    // non-empty threshold).
-    func testSurfacesBothKanjiAndKanaAlternatesForKanjiSurface() {
+    // Saved surface is a kanji form; entry has one other kanji + two kana forms.
+    // The first kana form (いだく) is the entry's primary reading — already shown
+    // as the headword's reading elsewhere on screen, not a distinct spelling —
+    // so only the second kana form (だく) surfaces alongside the kanji alternate.
+    func testSurfacesKanjiAlternateAndSecondaryKanaForKanjiSurface() {
         let e = entry(
             kanji: [kanji("抱く"), kanji("懐く")],
             kana:  [kana("いだく"), kana("だく")]
         )
         let result = WordVariants.alternateSpellings(savedSurface: "抱く", entry: e)
-        XCTAssertEqual(Set(result), Set(["懐く", "いだく", "だく"]))
+        XCTAssertEqual(Set(result), Set(["懐く", "だく"]))
     }
 
-    // Saved surface is a kanji form; entry has only one kana variant. The
-    // previous "only when count > 1" gate would have hidden this, but now that
-    // we also include kanji variants we surface single alternates too.
+    // Saved surface is a kanji form; entry has only one kana form (its primary
+    // reading), which is excluded as just the headword's own reading restated —
+    // so only the kanji alternate surfaces.
     func testSurfacesSoloKanjiAlternateForKanjiSurface() {
         let e = entry(
             kanji: [kanji("抱く"), kanji("懐く")],
             kana:  [kana("だく")]
         )
         let result = WordVariants.alternateSpellings(savedSurface: "抱く", entry: e)
-        XCTAssertEqual(Set(result), Set(["懐く", "だく"]))
+        XCTAssertEqual(Set(result), Set(["懐く"]))
     }
 
     // Saved surface is pure kana. JMdict's kana → kanji mapping is many-to-one
@@ -69,6 +70,8 @@ final class WordVariantsTests: XCTestCase {
     // Archaic kana forms (re_inf "ok") and search-only kana forms (re_inf "sk")
     // are dictionary noise; existing kana filter excluded them. Same for kanji:
     // out-dated kanji ("oK") and search-only kanji ("sK") should not surface.
+    // だく is the entry's primary (first) kana form, so it's excluded as the
+    // headword's own reading regardless of the archaic/search-only filter.
     func testExcludesArchaicAndSearchOnlyForms() {
         let e = entry(
             kanji: [
@@ -78,25 +81,28 @@ final class WordVariantsTests: XCTestCase {
                 kanji("検抱く", info: "sK"),         // drop (search-only kanji)
             ],
             kana: [
-                kana("だく"),                        // keep
+                kana("だく"),                        // drop (primary reading, not an alternate)
                 kana("いだく"),                      // keep
                 kana("ふるだく", info: "ok"),        // drop (out-dated kana)
                 kana("けんだく", info: "sk"),        // drop (search-only kana)
             ]
         )
         let result = WordVariants.alternateSpellings(savedSurface: "抱く", entry: e)
-        XCTAssertEqual(Set(result), Set(["懐く", "だく", "いだく"]))
+        XCTAssertEqual(Set(result), Set(["懐く", "いだく"]))
     }
 
     // Irregular kanji ("iK") and irregular kana ("ik") are legitimate writings
-    // that the user might encounter and want to recognize. Keep them.
+    // that the user might encounter and want to recognize. Keep them. The
+    // irregular kana form here is the entry's SECOND kana form specifically —
+    // the first (primary reading) is always dropped regardless of its info tag,
+    // so a single-kana-form entry couldn't demonstrate this rule on its own.
     func testKeepsIrregularForms() {
         let e = entry(
             kanji: [kanji("抱く"), kanji("懐く", info: "iK")],
-            kana:  [kana("だく", info: "ik")]
+            kana:  [kana("だく"), kana("いだく", info: "ik")]
         )
         let result = WordVariants.alternateSpellings(savedSurface: "抱く", entry: e)
-        XCTAssertEqual(Set(result), Set(["懐く", "だく"]))
+        XCTAssertEqual(Set(result), Set(["懐く", "いだく"]))
     }
 
     // An entry with no real alternates beyond the saved surface returns empty,

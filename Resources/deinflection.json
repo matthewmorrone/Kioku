@@ -2643,6 +2643,32 @@
       ]
     },
     {
+      "kanaIn": "ていく",
+      "kanaOut": "て",
+      "rulesIn": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ],
+      "rulesOut": [
+        "v1",
+        "v5",
+        "vs",
+        "vk"
+      ]
+    },
+    {
+      "kanaIn": "でいく",
+      "kanaOut": "で",
+      "rulesIn": [
+        "v5"
+      ],
+      "rulesOut": [
+        "v5"
+      ]
+    },
+    {
       "kanaIn": "ちゃう",
       "kanaOut": "る",
       "rulesIn": [

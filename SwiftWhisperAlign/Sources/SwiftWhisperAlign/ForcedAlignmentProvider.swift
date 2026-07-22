@@ -4,7 +4,7 @@
 // then extracts DTW-based per-token timestamps and maps them to lyric lines.
 
 import AVFoundation
-import whisper_cpp
+@preconcurrency import whisper_cpp
 
 // Runs forced alignment of lyric lines against an audio file using whisper.cpp.
 // Creates a whisper context with DTW enabled via whisper_context_params so that
@@ -315,7 +315,7 @@ public final class ForcedAlignmentProvider {
         frames: [Float],
         nonSpeech: NonSpeechDetector
     ) -> [AlignedLine] {
-        var tokenTimestamps = AlignmentTimestampMath.repairDegenerateTimestamps(rawTimestamps)
+        let tokenTimestamps = AlignmentTimestampMath.repairDegenerateTimestamps(rawTimestamps)
 
         // Build a VAD mask once; each line boundary queries it.
         let vad = VoiceActivityDetector(frames: frames)
@@ -479,9 +479,10 @@ public final class ForcedAlignmentProvider {
             params.logits_filter_callback_user_data = unmanagedState.toOpaque()
 
             let paramsForCall = params
+            let ctxBox = UncheckedSendableBox(value: ctx)
             let result: Int32 = await withCheckedContinuation { (cont: CheckedContinuation<Int32, Never>) in
                 DispatchQueue.global(qos: .userInitiated).async {
-                    let r = whisper_full(ctx, paramsForCall, windowFrames, Int32(windowFrames.count))
+                    let r = whisper_full(ctxBox.value, paramsForCall, windowFrames, Int32(windowFrames.count))
                     cont.resume(returning: r)
                 }
             }
@@ -669,7 +670,7 @@ private final class SegmentCallbackBox {
     }
 
     // Called from the C callback when nNew segments have been decoded.
-    // Uses segment t0/t1 to interpolate line timing proportionally.
+    // Uses each text token's per-token DTW timestamp (t_dtw) to place line boundaries.
     func handleNewSegments(ctx: OpaquePointer, nNew: Int32) {
         let begToken = whisper_token_beg(ctx)
         let eotToken = whisper_token_eot(ctx)
@@ -677,8 +678,6 @@ private final class SegmentCallbackBox {
         let firstNew = totalSegments - nNew
 
         for seg in firstNew..<totalSegments {
-            let segT0 = Double(whisper_full_get_segment_t0(ctx, seg)) * 0.01
-            let segT1 = Double(whisper_full_get_segment_t1(ctx, seg)) * 0.01
             let tokenCount = whisper_full_n_tokens(ctx, seg)
 
             // Count text tokens in this segment.

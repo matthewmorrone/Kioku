@@ -168,6 +168,11 @@ extension WordsView {
                         // Explicit Return/Search records the phrase as a .query history
                         // entry. HistoryStore.record(query:) handles dedup + bump-to-top.
                         historyStore.record(query: searchText)
+                        // Tapping the keyboard's own search button should dismiss it, same as
+                        // the leading magnifying-glass button above — returning `true` from
+                        // UITextFieldDelegate's textFieldShouldReturn does NOT auto-dismiss a
+                        // UIKit UITextField's keyboard, so this has to be explicit.
+                        isSearchFieldFocused = false
                     }
                 )
                 if searchText.isEmpty == false {

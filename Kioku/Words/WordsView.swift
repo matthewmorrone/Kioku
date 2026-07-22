@@ -239,6 +239,26 @@ struct WordsView: View {
         let inStore = wordsStore.words.contains(where: { $0.canonicalEntryID == entryID })
         WOTDDiag.log("detailWord entryID=\(entryID) hint=\(surfaceHint?.isEmpty == false) inStore=\(inStore) dictReady=\(dictionaryStore != nil)")
         if let saved = wordsStore.words.first(where: { $0.canonicalEntryID == entryID }) {
+            // A saved card remembers whichever surface it was first saved under (e.g. plain
+            // 歩く), but this navigation may carry a different, more specific surface — a
+            // compound-verb occurrence (歩いてゆこう) or other inflected form the user just
+            // tapped. Keep the saved metadata (notes, list membership, sense picks) but show
+            // the surface actually being looked up, so derivation/forms/header reflect it
+            // instead of silently falling back to whatever surface was saved first.
+            if let surfaceHint, surfaceHint.isEmpty == false, surfaceHint != saved.surface {
+                return SavedWord(
+                    canonicalEntryID: saved.canonicalEntryID,
+                    surface: surfaceHint,
+                    sourceNoteIDs: saved.sourceNoteIDs,
+                    wordListIDs: saved.wordListIDs,
+                    personalNote: saved.personalNote,
+                    savedAt: saved.savedAt,
+                    selectedSenseIDs: saved.selectedSenseIDs,
+                    selectedGlosses: saved.selectedGlosses,
+                    encounteredSurfaces: saved.encounteredSurfaces,
+                    entSeq: saved.entSeq
+                )
+            }
             return saved
         }
 

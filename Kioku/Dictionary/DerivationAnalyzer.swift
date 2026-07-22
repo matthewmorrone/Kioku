@@ -221,8 +221,8 @@ nonisolated enum DerivationAnalyzer {
     static let auxiliaryVerbs: Set<String> = [
         "続ける", "つづける", "始める", "はじめる", "終わる", "おわる",
         "出す", "だす", "込む", "こむ", "合う", "あう", "切る", "きる",
-        "もらう", "あげる", "くれる", "いく", "くる", "おく", "みる",
-        "しまう", "ある", "いる", "させる", "もらえる",
+        "もらう", "あげる", "くれる", "いく", "ゆく", "行く", "くる", "来る",
+        "おく", "みる", "しまう", "ある", "いる", "させる", "もらえる",
     ]
 
     // English glosses for the auxiliary role, used to annotate the compound-verb description.
@@ -238,7 +238,10 @@ nonisolated enum DerivationAnalyzer {
         "あげる": "do ~ for someone",
         "くれる": "do ~ for me",
         "いく": "go on ~ing",
+        "ゆく": "go on ~ing",
+        "行く": "go on ~ing",
         "くる": "come to ~",
+        "来る": "come to ~",
         "おく": "~ in advance",
         "みる": "try ~ing",
         "しまう": "~ completely / regrettably",

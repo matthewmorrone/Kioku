@@ -1,5 +1,23 @@
 import SwiftUI
 
+// One upward-arcing curve from a frame's bottom-left to bottom-right corner, peaking at the
+// frame's top-center — the sublattice diagram's visual "edge" connecting two lattice nodes.
+// Kept at file scope (not nested in the WordDetailView extension below) so it doesn't inherit
+// that type's MainActor isolation — Shape.path(in:) is a nonisolated protocol requirement, and
+// a nested conformance would need explicit `nonisolated` annotations to satisfy it instead.
+nonisolated struct LatticeArcShape: Shape {
+    // Draws the quadratic arc from the frame's bottom-left to bottom-right, peaking at top-center.
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: rect.maxY),
+            control: CGPoint(x: rect.midX, y: rect.minY)
+        )
+        return path
+    }
+}
+
 // Data-loading and presentation helpers for WordDetailView: the live saved-word lookup,
 // the async display-data/related-words/conjugation loader, reading inflection, and the
 // small reusable row/label view builders. Extracted from WordDetailView so the primary
@@ -38,6 +56,130 @@ extension WordDetailView {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(morphemes.map { $0.role.isEmpty ? $0.form : "\($0.form) \($0.role)" }.joined(separator: ", "))
+    }
+
+    // Visual lattice diagram for the "Paths" section, sitting above the existing flat text list
+    // (not replacing it). An actual node-and-edge graph: every distinct character-offset boundary
+    // any candidate path crosses is one NODE (a dot) sitting on a shared baseline; every distinct
+    // (position, text) segment is one EDGE — a curved arc connecting its start and end node,
+    // labeled with the segment text. Segments two or more paths agree on collapse into a single
+    // shared edge (sublatticeUniqueEdges dedupes by position+text) instead of drawing once per
+    // path; only where candidates genuinely diverge — different segmentations spanning an
+    // overlapping range — do the competing arcs get separate lanes (greedy interval packing,
+    // sublatticeEdgeLanes) so they fan out above the baseline instead of overlapping each other.
+    // sublatticePaths is `[[String]]` (no LatticeEdge/offset data), so positions are derived from
+    // cumulative character counts — the surface is identical across every path, so offsets are
+    // comparable without new data threaded in.
+    //
+    // Built from plain Shape/Circle/Text only, each ForEach a single flat level (no ForEach
+    // nested inside ForEach) — an earlier row-per-path version instead used Canvas inside a
+    // horizontal ScrollView inside this List row (a known-bad combination with List's
+    // row-measurement passes) and had a nested-generics chain implicated in an EXC_BAD_ACCESS
+    // crash. No horizontal ScrollView either: word surfaces here are short enough that this fits
+    // without one.
+    @ViewBuilder
+    var sublatticeDiagram: some View {
+        let charWidth: CGFloat = 22
+        let laneHeight: CGFloat = 22
+        let nodeRadius: CGFloat = 3
+        let labelHeadroom: CGFloat = 14
+
+        let edges = sublatticeUniqueEdges(for: sublatticePaths)
+        let laneByEdge = sublatticeEdgeLanes(for: edges)
+        let laneCount = max((laneByEdge.values.max() ?? 0) + 1, 1)
+        let allBoundaries = Set(edges.flatMap { [$0.start, $0.end] }).sorted()
+        let totalWidth = CGFloat(allBoundaries.max() ?? 0) * charWidth
+        // Arcs live above this y; nodes sit right on it, which is what visually ties every arc's
+        // endpoints together into one connected graph instead of floating independent curves.
+        let baselineY = CGFloat(laneCount) * laneHeight
+        let totalHeight = baselineY + nodeRadius * 2 + labelHeadroom
+
+        ZStack(alignment: .topLeading) {
+            ForEach(edges) { edge in
+                let lane = laneByEdge[edge] ?? 0
+                let arcHeight = CGFloat(lane + 1) * laneHeight
+                let tint = lane.isMultiple(of: 2) ? Color.accentColor : Color.secondary
+                LatticeArcShape()
+                    .stroke(tint.opacity(0.6), lineWidth: 1.5)
+                    .frame(width: max(CGFloat(edge.end - edge.start) * charWidth, 1), height: arcHeight)
+                    .overlay(alignment: .top) {
+                        // Sits right at the arc's peak (path(in:) peaks at the frame's top-center),
+                        // with an opaque background so it reads as breaking the line, not crossing it.
+                        Text(edge.text)
+                            .font(.caption2)
+                            .foregroundStyle(tint)
+                            .padding(.horizontal, 3)
+                            .background(Color(.systemBackground))
+                            .fixedSize()
+                    }
+                    .offset(x: CGFloat(edge.start) * charWidth, y: baselineY - arcHeight)
+            }
+
+            // The shared nodes: one dot per boundary position, sitting on the baseline every
+            // arc's endpoints land on.
+            ForEach(allBoundaries, id: \.self) { boundary in
+                Circle()
+                    .fill(Color.secondary)
+                    .frame(width: nodeRadius * 2, height: nodeRadius * 2)
+                    .offset(
+                        x: CGFloat(boundary) * charWidth - nodeRadius,
+                        y: baselineY - nodeRadius
+                    )
+            }
+        }
+        .frame(width: totalWidth, height: totalHeight, alignment: .topLeading)
+        .padding(.vertical, 4)
+        .accessibilityHidden(true) // The Text rows below already speak each path in full.
+    }
+
+    // One segment at a specific character-offset span — the lattice diagram's "edge." Hashable
+    // by (start, end, text) so two paths that pick the identical segment at the identical
+    // position collapse to the same value, which is what lets sublatticeUniqueEdges dedupe them.
+    struct SublatticeEdge: Hashable, Identifiable {
+        let start: Int
+        let end: Int
+        let text: String
+        var id: Self { self }
+    }
+
+    // Every distinct segment used by ANY candidate path, deduped by (position, text) — this is
+    // the actual "shared node" behavior: a segment two or more paths agree on becomes one Edge
+    // value regardless of how many paths reference it. Sorted for stable, deterministic layout:
+    // by start position, then longer spans first (reads more naturally as the "main" segment at
+    // a position), then text.
+    func sublatticeUniqueEdges(for paths: [[String]]) -> [SublatticeEdge] {
+        var seen = Set<SublatticeEdge>()
+        for path in paths {
+            var offset = 0
+            for segment in path {
+                seen.insert(SublatticeEdge(start: offset, end: offset + segment.count, text: segment))
+                offset += segment.count
+            }
+        }
+        return seen.sorted { lhs, rhs in
+            if lhs.start != rhs.start { return lhs.start < rhs.start }
+            if lhs.end != rhs.end { return lhs.end > rhs.end }
+            return lhs.text < rhs.text
+        }
+    }
+
+    // Greedy interval-graph lane assignment: edges are placed in the first lane whose last-placed
+    // edge ends at or before this edge's start (no horizontal overlap), else a new lane opens.
+    // Shared segments (agreed on by every path) need only ever occupy one lane; extra lanes only
+    // appear where candidate paths genuinely diverge into overlapping alternative segmentations.
+    func sublatticeEdgeLanes(for sortedEdges: [SublatticeEdge]) -> [SublatticeEdge: Int] {
+        var laneEnds: [Int] = []
+        var laneByEdge: [SublatticeEdge: Int] = [:]
+        for edge in sortedEdges {
+            if let lane = laneEnds.firstIndex(where: { $0 <= edge.start }) {
+                laneByEdge[edge] = lane
+                laneEnds[lane] = edge.end
+            } else {
+                laneByEdge[edge] = laneEnds.count
+                laneEnds.append(edge.end)
+            }
+        }
+        return laneByEdge
     }
 
     // SF Symbol for the header's save/learned toggle: a plain checkmark when learned, a plain
@@ -193,7 +335,11 @@ extension WordDetailView {
             // detection. edge.lemma is only ever populated by SegmentListView's own display
             // hydration, never by buildLattice itself — it's empty here, so resolve each edge's
             // surface through preferredLemma to get a real dictionary form (食べ → 食べる).
-            var componentLemmas = result.selectedEdges.map { segmenter.preferredLemma(for: $0.surface) ?? $0.surface }
+            // preferring: DerivationAnalyzer.auxiliaryVerbs so a tail like 歩いてゆこう's "ゆこう"
+            // resolves to the auxiliary ゆく rather than to itself — see preferredLemma(for:preferring:).
+            var componentLemmas = result.selectedEdges.map {
+                segmenter.preferredLemma(for: $0.surface, preferring: DerivationAnalyzer.auxiliaryVerbs) ?? $0.surface
+            }
 
             // Compound verbs (食べ始める = 食べ-stem + auxiliary 始める) sometimes collapse to a
             // single selected edge via Deinflector's compoundVerbRecoveryForms — correct for the
@@ -201,8 +347,12 @@ extension WordDetailView {
             // The full lattice (not just the winning path) still holds the natural two-token
             // split as its own edges; recover it so DerivationAnalyzer can still name the compound.
             if componentLemmas.count < 2,
-               let rawSplit = LatticeEdge.auxiliaryVerbSplit(from: result.latticeEdges, auxiliaries: DerivationAnalyzer.auxiliaryVerbs) {
-                componentLemmas = rawSplit.map { segmenter.preferredLemma(for: $0) ?? $0 }
+               let rawSplit = LatticeEdge.auxiliaryVerbSplit(
+                   from: result.latticeEdges,
+                   auxiliaries: DerivationAnalyzer.auxiliaryVerbs,
+                   lemmaResolver: { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) }
+               ) {
+                componentLemmas = rawSplit.map { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) ?? $0 }
             }
 
             // Derivation description for the header — names the base word + affix for derived

@@ -698,7 +698,8 @@ extension ReadView {
         // つづける → 続ける) independent of that special rule; try it before giving up entirely.
         if let split = LatticeEdge.auxiliaryVerbSplit(
             from: sublatticeEdgesForCurrentSelectedSegment(),
-            auxiliaries: DerivationAnalyzer.auxiliaryVerbs
+            auxiliaries: DerivationAnalyzer.auxiliaryVerbs,
+            lemmaResolver: { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) }
         ) {
             let resolvedBase = segmenter.preferredLemma(for: split[0]) ?? split[0]
             TapDiagnostics.mark("definitionPayload: retrying via auxiliaryVerbSplit base=\(resolvedBase)")

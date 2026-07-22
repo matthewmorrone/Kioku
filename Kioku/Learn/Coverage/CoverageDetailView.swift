@@ -21,6 +21,12 @@ struct CoverageLaunch: Identifiable {
 struct CoverageDetailView: View {
     let note: Note
     let dictionaryStore: DictionaryStore?
+    // Every identity SegmentListView's vocabRowCountsAsSaved marks as already-saved-for-this-note
+    // — the exact rule backing Vocab's "N already saved" count. `coverage` filters against this
+    // directly instead of independently re-deriving its own sourceNoteIDs/encounteredSurfaces
+    // logic, so the two screens' totals can't drift apart from two separately-coded versions of
+    // "is this word attributed to this note."
+    let savedIdentitiesForThisNote: Set<String>
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
@@ -36,9 +42,16 @@ struct CoverageDetailView: View {
     // The word chip tapped in an expanded level's word list — presents its WordDetailView.
     @State private var selectedWord: SavedWord?
 
-    // The live coverage grid for this note, recomputed from the stores on each render.
+    // The live coverage grid for this note, recomputed from the stores on each render. A word
+    // counts toward this note exactly when its surface is in savedIdentitiesForThisNote — the
+    // same rule Vocab's chip cloud uses, so this total is always the same number Vocab shows as
+    // already-saved, never an independently-derived approximation of it.
     private var coverage: NoteCoverage {
-        let words = wordsStore.words.filter { $0.sourceNoteIDs.contains(note.id) }
+        let words = wordsStore.words.filter { word in
+            word.encounteredSurfaces.contains {
+                savedIdentitiesForThisNote.contains($0.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
         return NoteCoverageCalculator.compute(
             words: words,
             level: { dictionaryStore?.jlptLevel(for: $0) },
@@ -48,14 +61,14 @@ struct CoverageDetailView: View {
     }
 
     var body: some View {
-        List {
-            summarySection
-            ForEach(coverage.levels, id: \.level) { level in
-                levelSection(level)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                summaryCard
+                levelsCard
             }
+            .padding(16)
         }
-        .navigationTitle(note.title.isEmpty ? "Coverage" : note.title)
-        .navigationBarTitleDisplayMode(.inline)
+        .background(Color(.systemGroupedBackground))
         .confirmationDialog("Study these words with…", isPresented: $showModeChooser, titleVisibility: .visible) {
             Button("Flashcards") { launch = CoverageLaunch(words: pendingWords, mode: .flashcards) }
             Button("Multiple Choice") { launch = CoverageLaunch(words: pendingWords, mode: .multipleChoice) }
@@ -73,58 +86,81 @@ struct CoverageDetailView: View {
     }
 
     // Note-wide summary: "N of M learned (P%)" with a progress bar, and a due-count callout.
-    private var summarySection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(coverage.learnedCount) of \(coverage.total) learned (\(Int((coverage.coverageFraction * 100).rounded()))%)")
-                    .font(.headline)
-                ProgressView(value: coverage.coverageFraction)
-                if coverage.dueCount > 0 {
-                    Label("\(coverage.dueCount) due for review", systemImage: "clock.badge.exclamationmark")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                }
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(coverage.learnedCount) of \(coverage.total) learned (\(Int((coverage.coverageFraction * 100).rounded()))%)")
+                .font(.headline)
+            ProgressView(value: coverage.coverageFraction)
+            if coverage.dueCount > 0 {
+                Label("\(coverage.dueCount) due for review", systemImage: "clock.badge.exclamationmark")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
             }
-            .padding(.vertical, 4)
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    // One level row: the level label + a "x/y learned" caption + three tappable stage chips, plus
-    // a chevron that expands the section to list every word at this level (grouped by stage) —
-    // the stage chips themselves only ever showed a count and launched a study session, with no
-    // way to just see which words were in a cell. The chevron sits directly above the word list
-    // it reveals (not up by the "x/y learned" line) so the tap target and what it changes are
-    // adjacent instead of separated by the unrelated stage-chip row.
-    private func levelSection(_ level: NoteCoverage.Level) -> some View {
+    // Every level stacked in a single card (one rounded rectangle, thin dividers between rows)
+    // instead of one List Section per level — that gave each level its own header/footer inset,
+    // which added up to more empty chrome than content on notes with several levels present.
+    private var levelsCard: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(coverage.levels.enumerated()), id: \.element.level) { index, level in
+                if index > 0 {
+                    Divider().padding(.leading, 14)
+                }
+                levelRow(level)
+            }
+        }
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    // One level row: a single tappable header line (level label + "x/y learned" caption +
+    // chevron) that expands to reveal the word list, plus the three stage chips. Collapsing the
+    // header and chevron into one line (instead of a full-width chevron button below the chips)
+    // removes a whole row's worth of height per level.
+    private func levelRow(_ level: NoteCoverage.Level) -> some View {
         let isExpanded = expandedLevels.contains(level.level)
-        return Section(header: Text(levelTitle(level.level))) {
-            Text("\(level.learnedCount)/\(level.total) learned")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        return VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    if isExpanded {
+                        expandedLevels.remove(level.level)
+                    } else {
+                        expandedLevels.insert(level.level)
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(levelTitle(level.level))
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minWidth: 48, alignment: .leading)
+                    Text("\(level.learnedCount)/\(level.total) learned")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
             HStack(spacing: 8) {
                 stageChip(level, .new, "New")
                 stageChip(level, .learning, "Learning")
                 stageChip(level, .learned, "Learned")
             }
-            Button {
-                if isExpanded {
-                    expandedLevels.remove(level.level)
-                } else {
-                    expandedLevels.insert(level.level)
-                }
-            } label: {
-                HStack {
-                    Spacer()
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-            }
-            .buttonStyle(.plain)
+
             if isExpanded {
                 wordList(level)
             }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
     // The expanded word list for a level: every word rendered as a small wrapping chip, tinted by

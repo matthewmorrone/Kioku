@@ -5,7 +5,7 @@
 // what Whisper actually transcribed in that range.
 
 import AVFoundation
-import whisper_cpp
+@preconcurrency import whisper_cpp
 
 public struct TranscriptionValidator {
     /// One Whisper-emitted segment with its time range and recognized text.
@@ -33,7 +33,7 @@ public struct TranscriptionValidator {
         let frames = try await decodeAudioFrames(from: audioURL)
         guard frames.isEmpty == false else { return [] }
 
-        var cparams = whisper_context_default_params()
+        let cparams = whisper_context_default_params()
         guard let ctx = modelURL.path.withCString({ path in
             whisper_init_from_file_with_params(path, cparams)
         }) else {
@@ -62,10 +62,11 @@ public struct TranscriptionValidator {
         // Run on a background queue so the synchronous whisper_full doesn't block
         // the caller's actor; cooperative cancellation is checked between segments
         // via abort_callback.
+        let ctxBox = UncheckedSendableBox(value: ctx)
         let result = await withCheckedContinuation { (continuation: CheckedContinuation<Int32, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 let r = frames.withUnsafeBufferPointer { buf -> Int32 in
-                    whisper_full(ctx, params, buf.baseAddress, Int32(buf.count))
+                    whisper_full(ctxBox.value, params, buf.baseAddress, Int32(buf.count))
                 }
                 continuation.resume(returning: r)
             }

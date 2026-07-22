@@ -103,7 +103,7 @@ public enum StemTranscriber {
                     let text = (try await ensureModel())
                         .transcribe(audio: piece, sampleRate: sampleRate, language: language)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
-                    MLX.GPU.clearCache()
+                    MLX.Memory.clearCache()
                     progress?("\(Int(t0))–\(Int(t1))s → \(text.prefix(16))")
                     keep(TranscriptCache.Piece(start: t0, end: t1, text: text))
                     // Checkpoint the instant the piece lands, so this work survives a kill.

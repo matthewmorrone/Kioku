@@ -216,7 +216,7 @@ enum OnDeviceLyricAligner {
         // SIGKILLs it (RUNNINGBOARD 0xDEAD10CC) for holding a resource lock while
         // suspending. This buys the seconds the on-device compute needs.
         #if canImport(UIKit)
-        let bg = await BackgroundTaskHolder.begin("kioku.lyric-alignment")
+        let bg = BackgroundTaskHolder.begin("kioku.lyric-alignment")
         defer { bg.endDetached() }
         #endif
 
@@ -276,7 +276,7 @@ enum OnDeviceLyricAligner {
         let input = AlignmentInput(audioURL: audioURL, lines: lines)
 
         #if canImport(UIKit)
-        let bg = await BackgroundTaskHolder.begin("kioku.lyric-alignment")
+        let bg = BackgroundTaskHolder.begin("kioku.lyric-alignment")
         defer { bg.endDetached() }
         #endif
 

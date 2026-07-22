@@ -151,6 +151,61 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertFalse(entries.isEmpty)
     }
 
+    // preferredLemma("ゆこう") resolves to "ゆこう" itself, not "ゆく" — the surface coincidentally
+    // has its own unrelated real dictionary entry, and preferredLemma's surface-equality preference
+    // ranks that self-match first (same failure shape as the どこかに/Turkey bug in
+    // testShichauLemmatizesToSuru's neighborhood). preferredLemma(for:preferring:) must look past
+    // that and find "ゆく" among the other candidates.
+    func testPreferredLemmaPreferringAuxiliaryFindsYukuOverSelfMatch() throws {
+        let resources = try sharedResources()
+        XCTAssertEqual(resources.segmenter.preferredLemma(for: "ゆこう"), "ゆこう")
+        XCTAssertEqual(
+            resources.segmenter.preferredLemma(for: "ゆこう", preferring: DerivationAnalyzer.auxiliaryVerbs),
+            "ゆく"
+        )
+    }
+
+    // 歩いてゆこう (歩く + てゆこう, the volitional of auxiliary ゆく) must recover as a compound verb
+    // end to end: auxiliaryVerbSplit finds the correct headEdge/tailEdge boundary, preferredLemma
+    // resolves both parts to real dictionary lemmas, and DerivationAnalyzer names the compound.
+    // Two coincidental false positives had to be fixed for this to work: (1) preferredLemma("ゆこう")
+    // preferring its own unrelated dictionary entry over the deinflected "ゆく", and (2)
+    // auxiliaryVerbSplit matching a shorter tail ("いてゆこう" → the real but wrong auxiliary いる)
+    // before ever considering the linguistically correct て-linked split.
+    func testAuxiliaryVerbSplitRecoversWalkingCompoundAcrossVolitionalTail() throws {
+        let resources = try sharedResources()
+        let surface = "歩いてゆこう"
+        let edges = try buildLattice(for: surface)
+
+        guard let split = LatticeEdge.auxiliaryVerbSplit(
+            from: edges,
+            auxiliaries: DerivationAnalyzer.auxiliaryVerbs,
+            lemmaResolver: { resources.segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) }
+        ) else {
+            XCTFail("auxiliaryVerbSplit found no split for 歩いてゆこう")
+            return
+        }
+        XCTAssertEqual(split, ["歩いて", "ゆこう"])
+
+        let resolvedSplit = split.map { resources.segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) ?? $0 }
+        XCTAssertEqual(resolvedSplit, ["歩く", "ゆく"])
+
+        let derived = DerivationAnalyzer.analyze(
+            surface: surface, components: resolvedSplit,
+            baseResolver: { lemma in
+                let entries = (try? resources.dictionaryStore.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
+                return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
+            },
+            glossResolver: { lemma in
+                let entries = (try? resources.dictionaryStore.lookup(surface: lemma, mode: .kanjiAndKana)) ?? []
+                return entries.first?.senses.first?.glosses.first
+            }
+        )
+        XCTAssertEqual(derived?.compoundVerbParts?.base, "歩く")
+        XCTAssertEqual(derived?.compoundVerbParts?.auxiliary, "ゆく")
+        XCTAssertEqual(derived?.compoundVerbParts?.baseGloss, "to walk")
+    }
+
     // Verifies mixed-script passive stems recover the underlying godan dictionary lemma.
     func testDeinflectorRecoversGodanPassiveLemmaForMixedScriptStem() throws {
         let candidates = try deinflectionCandidates(for: "導かれ")

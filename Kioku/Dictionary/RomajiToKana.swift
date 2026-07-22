@@ -20,6 +20,20 @@ nonisolated enum RomajiToKana {
         var didConvert = false
 
         while index < chars.count {
+            let current = chars[index]
+
+            // `n'` disambiguates a lone ん from the vowel/y syllable that would otherwise
+            // absorb it (kin'iro → きんいろ, not きにろ). The apostrophe isn't itself a
+            // syllable, so it must be consumed here or it leaks into the output; this has
+            // to run before matchSyllable below, which would otherwise claim the bare "n"
+            // on its own and leave the apostrophe stranded.
+            if current.lowercased() == "n", index + 1 < chars.count, chars[index + 1] == "'" {
+                output.append(current.isUppercase ? "ン" : "ん")
+                index += 2
+                didConvert = true
+                continue
+            }
+
             if let match = matchSyllable(chars, at: index) {
                 output += match.kana
                 index += match.consumed
@@ -34,8 +48,6 @@ nonisolated enum RomajiToKana {
                 }
                 continue
             }
-
-            let current = chars[index]
 
             // Sokuon: doubled consonant followed by a valid syllable.
             if isSokuonCandidate(current),
@@ -59,59 +71,20 @@ nonisolated enum RomajiToKana {
                 continue
             }
 
-            // `n` cases: nn, n', n+consonant → ん. Trailing n left as ASCII.
-            if current.lowercased() == "n", index + 1 < chars.count {
-                let next = chars[index + 1]
-                if next == "'" {
-                    output.append(current.isUppercase ? "ン" : "ん")
-                    index += 2
-                    didConvert = true
-                    continue
-                }
-                if next.lowercased() == "n" {
-                    // nn + vowel/y → consume one n (second n begins the next syllable).
-                    // nn at end or before any other consonant → consume both n's.
-                    let following = index + 2 < chars.count ? chars[index + 2] : nil
-                    let nextStartsNSyllable: Bool = {
-                        guard let follow = following else { return false }
-                        let lower = follow.lowercased()
-                        return lower == "a" || lower == "i" || lower == "u" || lower == "e" || lower == "o" || lower == "y"
-                    }()
-                    output.append(current.isUppercase ? "ン" : "ん")
-                    index += nextStartsNSyllable ? 1 : 2
-                    didConvert = true
-                    continue
-                }
-                if isConsonant(next), next.lowercased() != "y" {
-                    output.append(current.isUppercase ? "ン" : "ん")
-                    index += 1
-                    didConvert = true
-                    continue
-                }
-            }
-
             output.append(current)
             index += 1
         }
 
         guard didConvert else { return nil }
-        // Reject mixed-script garbage like "Hello" → "ヘllお". Trailing ASCII letters
-        // are kept (the "tan" → "たn" mid-typing case); embedded letters mean the
+        // Reject mixed-script garbage like "Hello" → "ヘllお"; embedded letters mean the
         // input wasn't really romaji.
         if hasEmbeddedAsciiLetter(output) { return nil }
         return Result(kana: output, didConvert: true)
     }
 
-    // True when `s` contains any ASCII letter other than a single trailing n/N
-    // (the deliberate "kon" → "こn" mid-typing case).
+    // True when `s` contains any ASCII letter.
     private static func hasEmbeddedAsciiLetter(_ s: String) -> Bool {
-        let scalars = Array(s.unicodeScalars)
-        var endIndex = scalars.count
-        if let last = scalars.last, last.value == 0x6E || last.value == 0x4E {
-            endIndex -= 1
-        }
-        for i in 0..<endIndex where isAsciiLetter(scalars[i]) { return true }
-        return false
+        s.unicodeScalars.contains(where: isAsciiLetter)
     }
 
     // True for ASCII A–Z or a–z.
@@ -233,7 +206,11 @@ nonisolated enum RomajiToKana {
         "ja": "じゃ", "ju": "じゅ", "jo": "じょ",
 
         // 1-letter vowels
-        "a": "あ", "i": "い", "u": "う", "e": "え", "o": "お"
+        "a": "あ", "i": "い", "u": "う", "e": "え", "o": "お",
+        // Mora nasal ん. Tried only after every longer match (na/ni/nu/ne/no, nya/nyu/nyo, nn+vowel…)
+        // fails, so greedy longest-match-first already resolves n-doubling and n-before-consonant
+        // correctly with no bespoke logic — see matchSyllable.
+        "n": "ん"
     ]
 
     // Katakana → ending romaji vowel. Used only for the long-vowel collapse check.

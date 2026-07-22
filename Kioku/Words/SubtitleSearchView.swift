@@ -156,6 +156,10 @@ struct SubtitleSearchView: View {
     private func runSearch() {
         let query = title.trimmingCharacters(in: .whitespaces)
         guard query.isEmpty == false else { return }
+        // Tapping the keyboard's own search button should dismiss it — returning `true` from
+        // UITextFieldDelegate's textFieldShouldReturn does NOT auto-dismiss a UIKit UITextField's
+        // keyboard, so this has to be explicit (matches WordsView+SearchBar's search field).
+        isTitleFocused = false
         errorText = nil
         isSearching = true
         hasSearched = true

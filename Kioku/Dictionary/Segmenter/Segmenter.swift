@@ -549,30 +549,31 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     // candidate appearing first.
     //
     // POS gating: when `surface` differs from the candidate (i.e. the
-    // deinflector applied a transition), the candidate must have at least
-    // one dictionary entry whose POS bits indicate a verb or adjective —
-    // only those parts of speech actually conjugate. Without this filter
-    // the deinflector mechanically yields any 2-char noun ending in -う/-つ/-る
-    // for the past-tense なった (なつ, なう, etc.), polluting the picker
-    // with semantically impossible candidates. When `surface == candidate`
-    // the gate is skipped — the user typed the dictionary form directly,
-    // so all POS classes are legitimate.
+    // deinflector applied a transition), keep the candidate only if it EITHER has no known POS
+    // data at all (sparse dictionary data — an imperfect candidate is more useful than none) OR
+    // has at least one entry whose POS confirms it actually conjugates (verb/adjective). A
+    // candidate with KNOWN POS data that's confirmed non-conjugating (e.g. noun-only) is
+    // excluded outright, even when it's the only trie hit reachable. This distinction matters:
+    // an earlier version fell back to the FULL unfiltered set whenever nothing survived the
+    // verb/adjective filter, which meant a coincidental deinflection chain landing on a real
+    // but unrelated dictionary noun (どこかに →[に→ぬ]→ どこかぬ →[かぬ→く]→ どこく, JMdict's
+    // archaic word for "Turkey") won by default — there was nothing else in the pool to prefer
+    // it over. Distinguishing "no POS data" from "confirmed non-verb POS" (mirroring the same
+    // distinction Lexicon.admittedLemmasAndPaths already makes for its own candidate gate) is
+    // what lets this case return no candidate instead of a wrong one. When `surface == candidate`
+    // the gate is skipped — the user typed the dictionary form directly, so all POS classes are
+    // legitimate.
     func lemmaCandidates(for surface: String) -> [String] {
         let lemmas = resolvedTrieLemmas(for: surface)
         guard lemmas.isEmpty == false else { return [] }
 
-        let conjugating = lemmas.filter { lemma in
+        let pool = lemmas.filter { lemma in
             if lemma == surface { return true }
-            guard let meta = trie.hitMeta(for: lemma) else { return false }
-            return meta.entryIDs.contains { entryID in
-                let bits = partOfSpeechByEntryID[entryID] ?? 0
-                return PartOfSpeech.isVerb(bits) || PartOfSpeech.isAdjective(bits)
-            }
+            guard let meta = trie.hitMeta(for: lemma), meta.entryIDs.isEmpty == false else { return true }
+            let posBits = meta.entryIDs.map { partOfSpeechByEntryID[$0] ?? 0 }
+            guard posBits.contains(where: { $0 != 0 }) else { return true }
+            return posBits.contains { PartOfSpeech.isVerb($0) || PartOfSpeech.isAdjective($0) }
         }
-        // Fall back to the unfiltered set when the filter eliminates
-        // everything — POS data might be sparse for some entries, and an
-        // imperfect candidate list is more useful than an empty one.
-        let pool = conjugating.isEmpty ? lemmas : conjugating
 
         return pool.sorted { lhs, rhs in
             let lhsScore = preferredLemmaScore(for: lhs, sourceSurface: surface)
