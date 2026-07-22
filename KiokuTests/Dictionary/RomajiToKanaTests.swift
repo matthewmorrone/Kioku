@@ -109,9 +109,10 @@ final class RomajiToKanaTests: XCTestCase {
         assertConverts("nyanko", to: "にゃんこ")
     }
 
-    func test_trailing_n_left_as_ascii() {
-        XCTAssertEqual(RomajiToKana.convert("tan")?.kana, "たn")
-        XCTAssertEqual(RomajiToKana.convert("kan")?.kana, "かn")
+    func test_trailing_n_becomes_n_mora() {
+        assertConverts("tan", to: "たん")
+        assertConverts("kan", to: "かん")
+        assertConverts("henshin", to: "へんしん")
     }
 
     // MARK: Katakana (uppercase)

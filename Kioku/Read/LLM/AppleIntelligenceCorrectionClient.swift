@@ -217,7 +217,7 @@ enum AppleIntelligenceCorrectionClient {
 
             if let onPartial {
                 let snapshot = Self.buildResponse(from: current)
-                await onPartial(snapshot)
+                onPartial(snapshot)
             }
         }
 

@@ -14,17 +14,16 @@ import Foundation
 //     --destination ./llm-debug.log
 // All static storage is `nonisolated` so the sink can be reached from the
 // non-isolated async paths (Tool.call, AppleIntelligenceCorrectionClient's
-// per-line task body) without an unnecessary main-actor hop. The NSLock is
-// `Sendable` for cross-actor reuse; the DateFormatter and URL are immutable
-// references and thread-safe for read-only use.
+// per-line task body) without an unnecessary main-actor hop. NSLock,
+// DateFormatter, and URL are all Sendable, so no `unsafe` opt-out is needed.
 enum LLMDebugLog {
-    nonisolated(unsafe) private static let lock = NSLock()
-    nonisolated(unsafe) private static let formatter: DateFormatter = {
+    nonisolated private static let lock = NSLock()
+    nonisolated private static let formatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss.SSS"
         return f
     }()
-    nonisolated(unsafe) private static let fileURL: URL = {
+    nonisolated private static let fileURL: URL = {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         return caches.appendingPathComponent("llm-debug.log")
     }()
@@ -63,7 +62,7 @@ enum LLMDebugLog {
 
         if let handle = try? FileHandle(forWritingTo: fileURL) {
             defer { try? handle.close() }
-            try? handle.seekToEnd()
+            _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: data)
         }
     }

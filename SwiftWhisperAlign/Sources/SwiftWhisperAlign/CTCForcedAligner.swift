@@ -304,7 +304,7 @@ public struct CTCForcedAligner {
                     })) ?? []
                 Self.breadcrumb("transcribed \(phrases.count) pieces over \(vadSegs.count) regions")
                 anchors = Self.extractAnchors(lines: input.lines, phrases: phrases, vadSegs: vadSegs)
-                MLX.GPU.clearCache()   // free the ASR model's GPU buffers before the aligner allocates
+                MLX.Memory.clearCache()   // free the ASR model's GPU buffers before the aligner allocates
                 Self.breadcrumb("anchors \(anchors.count)/\(input.lines.count): " +
                     anchors.prefix(12).map { "L\($0.line)@\(String(format: "%.0f", $0.time))" }.joined(separator: " "))
                 if cancellationCheck?() == true { throw CancellationError() }
@@ -490,7 +490,7 @@ public struct CTCForcedAligner {
         var lineTokens: [[AlignedToken]] = []
         var g = 0   // running non-WS char index across all lines, into charTime/charUnit
         for (i, line) in lines.enumerated() {
-            var start = lineStarts[i]
+            let start = lineStarts[i]
             // End = the line's real sung end, with two corrections for the sung-text-on-speech-CTC
             // mismatch:
             //   (1) perceptualOffset: CTC peaks lag the perceptual end of singing by ~150–250 ms
@@ -644,13 +644,13 @@ public struct CTCForcedAligner {
             let stems = separator.separate(mix)
             breadcrumb("← separate() returned chunk @\(start / sampleRate)s")
             guard let vocalsArr = stems["vocals"] else {
-                MLX.GPU.clearCache()
+                MLX.Memory.clearCache()
                 start += stride
                 continue
             }
             // [1, 2, n] row-major → first half = left, second half = right; downmix to mono.
             let vFlat = vocalsArr.asArray(Float.self)
-            MLX.GPU.clearCache()   // chunk is now plain Swift values; release the buffer pool
+            MLX.Memory.clearCache()   // chunk is now plain Swift values; release the buffer pool
             let half = vFlat.count / 2
             var chunkVocal = [Float](repeating: 0, count: half)
             for i in 0..<half { chunkVocal[i] = (vFlat[i] + vFlat[half + i]) * 0.5 }
@@ -1043,7 +1043,7 @@ public struct CTCForcedAligner {
                 let feedChars = max(24, Int(windowDur * songCharsPerSec))
                 let fedText = remaining.count > feedChars ? String(remaining.prefix(feedChars)) : remaining
                 let aligned = aligner.align(audio: window, text: fedText, sampleRate: audioRate)
-                MLX.GPU.clearCache()
+                MLX.Memory.clearCache()
                 if aligned.isEmpty { audioStart = windowEnd; continue }
                 let units = aligned.map { (start: Double($0.startTime), end: Double($0.endTime), text: $0.text) }
 
@@ -1129,7 +1129,7 @@ public struct CTCForcedAligner {
             // Release MLX's buffer cache from this pass — it grows unbounded across
             // align() calls otherwise (memory marched 2749→743→226 MB → OOM). align()
             // has already evaluated, so the result is plain values; nothing live is freed.
-            MLX.GPU.clearCache()
+            MLX.Memory.clearCache()
             if aligned.isEmpty { audioStart = windowEnd; continue }
             let units = aligned.map { (start: Double($0.startTime), end: Double($0.endTime), text: $0.text) }
 

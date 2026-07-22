@@ -94,68 +94,160 @@ struct SegmentListView: View {
     // single-tap save path was already lemma-only (so the toggle's "surface
     // mode" caused divergent semantics between Add All and tap-to-save). The
     // raw conjugation the user clicked is preserved in `encounteredSurfaces`.
-    // Extract-words view mode: the in-order, per-occurrence segment list ("Lines"), or the deduped
-    // vocabulary picker ("Vocab") — the SAME chip-cloud picker the subtitle importer uses, brought to
-    // any note. Vocab mode runs SubtitleVocabExtractor over the current (possibly hand-edited)
-    // segmentation, so it shows each dictionary form once, drops particles, and starts all-selected.
+    // Extract-words view mode: the in-order, per-occurrence segment list ("Lines"), or the same
+    // rows presented as a multi-select chip cloud ("Vocab"). Both modes read `displayRows` —
+    // there's no separate extraction path for Vocab — so the duplicates/particles toggles and
+    // the lemma-vs-surface identity resolution behave identically in both; Vocab is just a
+    // different way of looking at the same filtered list, with multi-select instead of per-row tap.
     enum ExtractMode: String, CaseIterable, Identifiable {
         case lines = "Lines", vocab = "Vocab", coverage = "Coverage"
         var id: String { rawValue }
     }
     @State private var extractMode: ExtractMode = .lines
-    // The deduped unique vocab for the current segmentation, plus the canonical entry ids left
-    // selected. Recomputed whenever Vocab mode is entered or the segmentation changes; selection
-    // resets to ALL on each recompute so deselections are always deliberate opt-outs.
-    @State private var extractedVocab: [SubtitleVocabExtractor.ExtractedVocab] = []
-    @State private var selectedVocabIDs: Set<Int64> = []
+    // Rows the user has explicitly flipped away from their DEFAULT checked state (see
+    // vocabRowCountsAsSaved) — starts empty every time the row set changes (resetVocabSelection),
+    // so opening/editing Vocab mode never shows a pending change until you actually touch
+    // something. A row's checked state is `vocabRowCountsAsSaved(identity) != flipped` (XOR).
+    @State private var selectedVocabSourceIndices: Set<Int> = []
 
-    // Rebuilds the unique-vocab set from the current edges and selects all of it. The segment list's
-    // edges don't carry a resolved lemma (Lines mode looks it up lazily), so hydrate each edge's
-    // lemma first — otherwise the extractor would dedupe by raw surface and split 食べた / 食べる into
-    // separate chips instead of collapsing them to 食べる, unlike the subtitle importer.
-    private func recomputeExtractedVocab() {
-        let hydratedEdges: [LatticeEdge] = edges.map { edge in
-            var copy = edge
-            if copy.lemma.isEmpty {
-                copy.lemma = lemmaForSurface(edge.surface) ?? ""
-            }
-            // Restored/persisted-segment notes rebuild their edges from SegmentRange, which carries
-            // neither lemma nor isDictionaryMatch — so the flag defaults false and the extractor's
-            // first guard would skip every edge. Force it on and let the extractor's dictionary
-            // resolution be the real filter (unresolvable surfaces/lemmas are dropped there anyway).
-            copy.isDictionaryMatch = true
-            return copy
+    // The ONE rule for "does this word count as saved for this note" — shared by the chip's
+    // default checked state, the Save/Remove baseline below, AND CoverageDetailView's total (fed
+    // via noteWordIdentities), so all three screens' numbers agree. Explicitly attributed to this
+    // note, OR known anywhere with no OTHER-note-specific attribution (i.e. not saved, or saved
+    // with no note attribution at all — the same "belongs to whatever note you're looking at"
+    // rule the in-text star/glow already use). A word saved only under a DIFFERENT note reads as
+    // not-yet-saved here; checking it attaches this note to the existing card rather than
+    // creating a duplicate (see saveSelectedVocab).
+    private func vocabRowCountsAsSaved(_ identity: String) -> Bool {
+        isSavedForCurrentNote(normalizedSurface: identity)
+            || (isSavedSurface(normalizedSurface: identity) && isSavedForOtherNotes(normalizedSurface: identity) == false)
+    }
+
+    // A row's live checked state: its default, unless the user flipped it.
+    private func vocabRowIsChecked(_ row: (sourceIndex: Int, edge: LatticeEdge)) -> Bool {
+        let identity = normalizedSurfaceForFiltering(resolvedRowSurface(for: row.edge))
+        let defaultChecked = vocabRowCountsAsSaved(identity)
+        return selectedVocabSourceIndices.contains(row.sourceIndex) ? defaultChecked == false : defaultChecked
+    }
+
+    // How many rows are checked right now vs. when this editing session started (the baseline —
+    // recomputed live from wordsStore truth, which doesn't change until Save commits, so it
+    // stays stable through a toggle session without needing to be snapshotted). The Save/Remove
+    // button shows exactly this difference.
+    private var vocabCheckedCount: Int { displayRows.filter { vocabRowIsChecked($0) }.count }
+    private var vocabBaselineCheckedCount: Int {
+        displayRows.filter { vocabRowCountsAsSaved(normalizedSurfaceForFiltering(resolvedRowSurface(for: $0.edge))) }.count
+    }
+    private var netVocabChangeCount: Int { vocabCheckedCount - vocabBaselineCheckedCount }
+
+    // Drives the collapsed All/None toggle in the Vocab header: true once every row is checked.
+    private var allVocabSelected: Bool {
+        displayRows.isEmpty == false && vocabCheckedCount == displayRows.count
+    }
+
+    // Clears every flip, returning the picker to its default (baseline) state. Called whenever
+    // the row set changes — entering Vocab mode, editing the segmentation, toggling
+    // duplicates/particles — and after a Save/Remove commits, since the freshly-persisted truth
+    // becomes the new baseline.
+    private func resetVocabSelectionToDefaults() {
+        selectedVocabSourceIndices = []
+    }
+
+    // Reports each vocab chip's frame (keyed by sourceIndex) in the "vocabChipSpace" coordinate
+    // space, so the paint-drag gesture below can hit-test a drag location against chip bounds
+    // without every chip needing its own gesture recognizer.
+    private struct VocabChipFramePreferenceKey: PreferenceKey {
+        static var defaultValue: [Int: CGRect] = [:]
+        // Merges frames reported by every chip into one dictionary, keyed by sourceIndex.
+        static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+            value.merge(nextValue()) { _, new in new }
         }
-        let vocab = SubtitleVocabExtractor.extract(fromEdges: hydratedEdges, dictionaryStore: dictionaryStore)
-        extractedVocab = vocab
-        selectedVocabIDs = Set(vocab.map { $0.canonicalEntryID })
+    }
+    @State private var vocabChipFrames: [Int: CGRect] = [:]
+    // The selection state a paint-drag applies to every chip it crosses, fixed to the opposite
+    // of whatever the first-touched chip's state was — nil between drags. This is what lets one
+    // continuous drag either multi-select or multi-deselect, depending on where it starts.
+    @State private var vocabPaintTarget: Bool?
+
+    // Drag-to-paint-select AND plain-tap-to-toggle, unified into one gesture at
+    // `minimumDistance: 0` so a stationary tap fires this too — not a separate `Button` per chip.
+    // Two competing recognizers (a Button's tap + a sibling DragGesture, at any minimumDistance)
+    // was tried and reverted: raising the threshold to 24pt still let ordinary taps trigger both,
+    // toggling the same chip twice and canceling out. One gesture, one code path, no race.
+    private var vocabPaintDragGesture: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("vocabChipSpace"))
+            .onChanged { value in
+                guard let sourceIndex = vocabChipFrames.first(where: { $0.value.contains(value.location) })?.key else { return }
+                if vocabPaintTarget == nil {
+                    vocabPaintTarget = selectedVocabSourceIndices.contains(sourceIndex) == false
+                }
+                guard let target = vocabPaintTarget else { return }
+                if target {
+                    selectedVocabSourceIndices.insert(sourceIndex)
+                } else {
+                    selectedVocabSourceIndices.remove(sourceIndex)
+                }
+            }
+            .onEnded { _ in
+                vocabPaintTarget = nil
+            }
     }
 
     // The deduped vocabulary picker: a scrollable chip cloud mirroring SubtitleImportView's, with a
-    // count + All/None bulk controls above it. Each chip toggles one unique word.
+    // count + All/None bulk controls above it. Each chip toggles one unique word — tapping flips
+    // just that chip, dragging across several sweeps them all to the same state (vocabPaintDragGesture).
     @ViewBuilder
     private var vocabChipPicker: some View {
         VStack(spacing: 8) {
             HStack(spacing: 12) {
-                Text("\(selectedVocabIDs.count) of \(extractedVocab.count) words selected")
+                Text("\(vocabCheckedCount) of \(displayRows.count) already saved")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 Spacer(minLength: 0)
-                Button("All") {
-                    selectedVocabIDs = Set(extractedVocab.map { $0.canonicalEntryID })
+                // Clears every flip (individual taps, paint-drags, and All/None) back to the
+                // baseline saved state, without touching anything already persisted — same
+                // effect as resetVocabSelectionToDefaults's other call sites (mode switches,
+                // filter toggles), just user-triggered instead of automatic.
+                optionToggleButton(
+                    title: "Reset",
+                    isOn: false,
+                    accessibilityLabel: "Reset Selections"
+                ) {
+                    resetVocabSelectionToDefaults()
                 }
-                .font(.subheadline)
-                .disabled(selectedVocabIDs.count == extractedVocab.count)
-                Button("None") {
-                    selectedVocabIDs.removeAll()
+                .disabled(selectedVocabSourceIndices.isEmpty)
+                // One pill that flips between "All" and "None" (and the action it performs)
+                // depending on whether everything is currently checked — instead of two separate
+                // plain-text buttons, one of which was always a no-op. "All" only ever flips
+                // currently-unchecked rows to checked (purely additive); "None" flips
+                // currently-checked rows to unchecked, which can include real, previously-saved
+                // words — the Save/Remove button's destructive styling is what surfaces that
+                // before anything is actually committed.
+                optionToggleButton(
+                    title: allVocabSelected ? "None" : "All",
+                    isOn: allVocabSelected,
+                    accessibilityLabel: allVocabSelected ? "Deselect All Words" : "Select All Words"
+                ) {
+                    if allVocabSelected {
+                        selectedVocabSourceIndices = Set(
+                            displayRows
+                                .filter { vocabRowCountsAsSaved(normalizedSurfaceForFiltering(resolvedRowSurface(for: $0.edge))) }
+                                .map { $0.sourceIndex }
+                        )
+                    } else {
+                        selectedVocabSourceIndices = Set(
+                            displayRows
+                                .filter { vocabRowCountsAsSaved(normalizedSurfaceForFiltering(resolvedRowSurface(for: $0.edge))) == false }
+                                .map { $0.sourceIndex }
+                        )
+                    }
                 }
-                .font(.subheadline)
-                .disabled(selectedVocabIDs.isEmpty)
+                .disabled(displayRows.isEmpty)
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
-            if extractedVocab.isEmpty {
+            if displayRows.isEmpty {
                 Spacer()
                 Text("No dictionary-backed vocabulary in this text.")
                     .font(.subheadline)
@@ -164,13 +256,16 @@ struct SegmentListView: View {
             } else {
                 ScrollView {
                     FlowLayout(spacing: 8) {
-                        ForEach(extractedVocab, id: \.canonicalEntryID) { item in
-                            vocabChip(item)
+                        ForEach(displayRows, id: \.sourceIndex) { row in
+                            vocabChip(row)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 4)
+                    .coordinateSpace(name: "vocabChipSpace")
+                    .onPreferenceChange(VocabChipFramePreferenceKey.self) { vocabChipFrames = $0 }
+                    .simultaneousGesture(vocabPaintDragGesture)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -178,49 +273,83 @@ struct SegmentListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    // One vocab chip: a capsule of the dictionary form, accent-filled when selected. A leading star
-    // marks words already saved (in any note) so the user can quickly deselect what they know.
+    // One vocab chip: a capsule of the row's resolved identity (lemma when one resolves,
+    // otherwise the raw surface — the same resolvedRowSurface Lines mode rows use). NOT a Button
+    // — tapping AND dragging both go through vocabPaintDragGesture on the container (see its
+    // comment for why a separate per-chip Button raced with that gesture); this view only renders
+    // and reports its own frame for hit-testing.
     @ViewBuilder
-    private func vocabChip(_ item: SubtitleVocabExtractor.ExtractedVocab) -> some View {
-        let isOn = selectedVocabIDs.contains(item.canonicalEntryID)
-        let alreadySaved = isSavedSurface(normalizedSurface: normalizedSurfaceForFiltering(item.lemma))
-        Button {
-            if isOn {
-                selectedVocabIDs.remove(item.canonicalEntryID)
+    private func vocabChip(_ row: (sourceIndex: Int, edge: LatticeEdge)) -> some View {
+        let identity = resolvedRowSurface(for: row.edge)
+        let normalizedIdentity = normalizedSurfaceForFiltering(identity)
+        let defaultChecked = vocabRowCountsAsSaved(normalizedIdentity)
+        let flipped = selectedVocabSourceIndices.contains(row.sourceIndex)
+        let isChecked = flipped ? defaultChecked == false : defaultChecked
+        // Only a checked→unchecked flip is destructive (detaches a real, previously-saved word);
+        // an unchecked→checked flip is purely additive, so it shares the checked/blue look.
+        let willBeRemoved = flipped && defaultChecked
+
+        let (foreground, fill, border, accessibilityState): (Color, Color, Color, String) = {
+            if willBeRemoved {
+                return (.red, Color.red.opacity(0.15), Color.red.opacity(0.45), "Will be removed from this note")
+            } else if isChecked {
+                return (.accentColor, Color.accentColor.opacity(0.15), Color.accentColor.opacity(0.45), flipped ? "Will be saved" : "Already saved")
             } else {
-                selectedVocabIDs.insert(item.canonicalEntryID)
+                return (.secondary, Color(.tertiarySystemFill), .clear, "New, not yet saved")
             }
-        } label: {
-            HStack(spacing: 4) {
-                if alreadySaved {
-                    Image(systemName: "star.fill")
-                        .font(.caption2)
-                }
-                Text(item.lemma)
-                    .font(.subheadline)
-            }
-            .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+        }()
+
+        Text(identity)
+            .font(.subheadline)
+            .foregroundStyle(foreground)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
+            .background(Capsule().fill(fill))
+            .overlay(Capsule().strokeBorder(border, lineWidth: 1))
+            .contentShape(Capsule())
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(identity)
+            .accessibilityValue(accessibilityState)
+            // Restores what Button gave for free: VoiceOver's activate action doesn't route
+            // through the drag gesture below, since that responds to real touch/drag events.
+            .accessibilityAction {
+                if flipped {
+                    selectedVocabSourceIndices.remove(row.sourceIndex)
+                } else {
+                    selectedVocabSourceIndices.insert(row.sourceIndex)
+                }
+            }
             .background(
-                Capsule().fill(isOn ? Color.accentColor.opacity(0.15) : Color(.tertiarySystemFill))
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: VocabChipFramePreferenceKey.self,
+                        value: [row.sourceIndex: proxy.frame(in: .named("vocabChipSpace"))]
+                    )
+                }
             )
-            .overlay(
-                Capsule().strokeBorder(
-                    isOn ? Color.accentColor.opacity(0.45) : Color.clear,
-                    lineWidth: 1
-                )
-            )
-        }
-        .buttonStyle(.plain)
     }
 
-    // The current note's learning-coverage breakdown, embedded directly (skipping the note-picker
-    // list the Learn tab's CoverageView shows) since this sheet is already scoped to one note.
+    // Every word identity (lemma when one resolves, else raw surface) Vocab mode currently
+    // displays — derived directly from `displayRows` (not a separate filter pass) so this is
+    // always exactly the same universe Vocab's header count is built from, including whatever
+    // the duplicates/particles toggles are currently set to.
+    private var noteVocabularyIdentities: Set<String> {
+        Set(displayRows.map { normalizedSurfaceForFiltering(resolvedRowSurface(for: $0.edge)) })
+    }
+
+    // The subset of noteVocabularyIdentities that vocabRowCountsAsSaved marks as already-saved —
+    // exactly the rule behind Vocab's "N already saved" count. Threaded into CoverageDetailView so
+    // its total is that same count, computed the same way, instead of an independently-derived one.
+    private var savedIdentitiesForThisNote: Set<String> {
+        noteVocabularyIdentities.filter(vocabRowCountsAsSaved)
+    }
+
+    // The current note's learning-coverage breakdown, embedded directly since this sheet is
+    // already scoped to one note.
     @ViewBuilder
     private var coveragePage: some View {
         if let note {
-            CoverageDetailView(note: note, dictionaryStore: dictionaryStore)
+            CoverageDetailView(note: note, dictionaryStore: dictionaryStore, savedIdentitiesForThisNote: savedIdentitiesForThisNote)
         } else {
             ContentUnavailableView(
                 "No note to show coverage for",
@@ -229,51 +358,55 @@ struct SegmentListView: View {
         }
     }
 
-    // Saves the selected unique vocab through the SAME merge path as Add All
-    // (commitAddAllVisibleWords), building its inputs straight from the extractor's already-resolved
-    // entry ids — so a Vocab-mode save and an Add All produce identical SavedWord state.
+    // Additions go through the exact same path Add All uses — just scoped to the flipped rows
+    // instead of every visible one (the override addAllVisibleWords(rows:) was already built
+    // for). Removals detach only this note's id via WordsStore.removeNoteMembership — the
+    // SavedWord itself is never deleted, even if that leaves it attributed to no notes at all. A
+    // flipped row that was checked ONLY via the "known elsewhere" shortcut (not genuinely
+    // attributed to this note) has nothing to detach, so it's a no-op rather than an error. Both
+    // add and remove run, then the picker resets to fresh defaults reflecting the just-committed
+    // truth — which becomes the new baseline for netVocabChangeCount.
     private func saveSelectedVocab() {
-        let selected = extractedVocab.filter { selectedVocabIDs.contains($0.canonicalEntryID) }
-        guard selected.isEmpty == false else { return }
+        var addRows: [(sourceIndex: Int, edge: LatticeEdge)] = []
+        var removeIdentities = Set<String>()
 
-        var orderedSurfaces: [String] = []
-        var lookup: [String: Int64] = [:]
-        var encounteredByIdentity: [String: Set<String>] = [:]
-        for item in selected {
-            let identity = normalizedSurfaceForFiltering(item.lemma)
+        for row in displayRows where selectedVocabSourceIndices.contains(row.sourceIndex) {
+            let identity = normalizedSurfaceForFiltering(resolvedRowSurface(for: row.edge))
             guard identity.isEmpty == false else { continue }
-            if lookup[identity] == nil {
-                orderedSurfaces.append(identity)
+            if vocabRowCountsAsSaved(identity) {
+                // Was checked, now unchecked — a genuine removal only if it was actually
+                // attributed to this note (not just known from elsewhere).
+                if isSavedForCurrentNote(normalizedSurface: identity) {
+                    removeIdentities.insert(identity)
+                }
+            } else {
+                addRows.append(row)
             }
-            lookup[identity] = item.canonicalEntryID
-            var encountered = Set(item.encounteredSurfaces.map { normalizedSurfaceForFiltering($0) })
-            encountered.insert(identity)
-            encounteredByIdentity[identity, default: []].formUnion(encountered)
         }
 
-        // Optimistic star flip for immediate feedback, then the shared merge + persist.
-        withAnimation(.easeOut(duration: 0.2)) {
-            for surface in orderedSurfaces {
-                savedWordSurfaces.insert(surface)
-            }
+        if addRows.isEmpty == false {
+            addAllVisibleWords(rows: addRows)
         }
-        let addedCount = commitAddAllVisibleWords(
-            orderedSurfaces: orderedSurfaces,
-            lookup: lookup,
-            encounteredByIdentity: encounteredByIdentity
-        )
 
-        addAllFeedbackTask?.cancel()
-        addAllFeedbackTask = Task { @MainActor in
-            addAllFeedbackMessage = addedCount == 0
-                ? "No new words added"
-                : (addedCount == 1 ? "Added 1 word" : "Added \(addedCount) words")
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if Task.isCancelled { return }
-            withAnimation(.easeOut(duration: 0.2)) {
-                addAllFeedbackMessage = nil
+        // Removal needs a real, stable note id to detach from — an unsaved note (sourceNoteID
+        // nil) has nothing to detach, so removeIdentities is skipped rather than acted on.
+        if let noteID = sourceNoteID, removeIdentities.isEmpty == false {
+            for identity in removeIdentities {
+                if let entryID = savedCanonicalEntryID(forIdentity: identity) {
+                    wordsStore.removeNoteMembership(wordID: entryID, noteID: noteID)
+                }
             }
+            applySavedWordState(entries: wordsStore.words)
         }
+
+        resetVocabSelectionToDefaults()
+    }
+
+    // Resolves the canonicalEntryID of an existing SavedWord matching this identity — used when
+    // unattributing a "will be removed" chip, since removeNoteMembership keys by canonicalEntryID
+    // rather than surface text.
+    private func savedCanonicalEntryID(forIdentity identity: String) -> Int64? {
+        wordsStore.words.first { $0.surface == identity || $0.encounteredSurfaces.contains(identity) }?.canonicalEntryID
     }
 
     var body: some View {
@@ -444,41 +577,49 @@ struct SegmentListView: View {
                 // sessions directly), so the bar is hidden rather than shown empty.
                 if extractMode != .coverage {
                 VStack(spacing: 8) {
-                    if extractMode == .vocab {
-                        // Vocab mode mirrors the subtitle importer's bottom action: the per-occurrence
-                        // duplicate/particle filters don't apply (the extractor already dedupes and
-                        // drops particles), so it's a single full-width save of the selected words.
-                        Button {
-                            saveSelectedVocab()
-                        } label: {
-                            Text("Save \(selectedVocabIDs.count) Words")
-                                .font(.system(size: 15, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 34)
+                    // duplicates/particles now apply to Lines and Vocab alike, since both render
+                    // the same `displayRows` — only the trailing action (Add All vs. Save
+                    // Selected) differs by mode.
+                    HStack(spacing: 10) {
+                        optionToggleButton(
+                            title: "duplicates",
+                            isOn: includesDuplicates,
+                            accessibilityLabel: "Include Duplicates"
+                        ) {
+                            includesDuplicates.toggle()
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(selectedVocabIDs.isEmpty)
-                        .accessibilityLabel("Save Selected Words")
-                    } else {
-                        HStack(spacing: 10) {
-                            optionToggleButton(
-                                title: "duplicates",
-                                isOn: includesDuplicates,
-                                accessibilityLabel: "Include Duplicates"
-                            ) {
-                                includesDuplicates.toggle()
+
+                        optionToggleButton(
+                            title: "particles",
+                            isOn: includesCommonParticles,
+                            accessibilityLabel: "Include Common Particles"
+                        ) {
+                            includesCommonParticles.toggle()
+                        }
+
+                        Spacer(minLength: 0)
+
+                        if extractMode == .vocab {
+                            // Net additions minus removals, per-request: +5/-3 nets to "Save 2
+                            // Words" rather than showing both counts. Negative net reads as a
+                            // removal action instead, with destructive styling since it detaches
+                            // word(s) from this note (though never deletes the SavedWord itself).
+                            let net = netVocabChangeCount
+                            Button(role: net < 0 ? .destructive : nil) {
+                                saveSelectedVocab()
+                            } label: {
+                                Text(net < 0 ? "Remove \(-net) Words" : "Save \(net) Words")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 30)
                             }
-
-                            optionToggleButton(
-                                title: "particles",
-                                isOn: includesCommonParticles,
-                                accessibilityLabel: "Include Common Particles"
-                            ) {
-                                includesCommonParticles.toggle()
-                            }
-
-                            Spacer(minLength: 0)
-
+                            .buttonStyle(.borderedProminent)
+                            .layoutPriority(1)
+                            .disabled(selectedVocabSourceIndices.isEmpty)
+                            .accessibilityLabel(net < 0 ? "Remove Selected Words From This Note" : "Save Selected Words")
+                        } else {
                             Button {
                                 addAllVisibleWords()
                             } label: {
@@ -526,13 +667,14 @@ struct SegmentListView: View {
             hydrateLemmasForEdgeSurfaces()
             scheduleCanonicalEntryIDHydrationForVisibleRows()
             rebuildSplitMenuCaches()
-            // Keep the vocab chips in sync when the user edits the segmentation while in Vocab mode.
-            if extractMode == .vocab { recomputeExtractedVocab() }
+            // Keep the vocab selection in sync when the user edits the segmentation while in
+            // Vocab mode — displayRows (and so the chip set) just changed under it.
+            if extractMode == .vocab { resetVocabSelectionToDefaults() }
         }
         .onChange(of: extractMode) { _, newMode in
-            // Build the deduped vocab lazily on first switch into Vocab mode (and rebuild on re-entry
-            // so it reflects any segmentation edits made in Lines mode).
-            if newMode == .vocab { recomputeExtractedVocab() }
+            // Reset the selection lazily on first switch into Vocab mode (and on re-entry, so it
+            // reflects any segmentation edits made in Lines mode).
+            if newMode == .vocab { resetVocabSelectionToDefaults() }
         }
         .onChange(of: latticeEdges.map(\.start)) { _, _ in
             rebuildSplitMenuCaches()
@@ -542,9 +684,13 @@ struct SegmentListView: View {
         }
         .onChange(of: includesDuplicates) { _, _ in
             scheduleCanonicalEntryIDHydrationForVisibleRows()
+            // displayRows' row set changed (occurrences collapse/expand) — resync Vocab selection.
+            if extractMode == .vocab { resetVocabSelectionToDefaults() }
         }
         .onChange(of: includesCommonParticles) { _, _ in
             scheduleCanonicalEntryIDHydrationForVisibleRows()
+            // displayRows' row set changed (particles appear/disappear) — resync Vocab selection.
+            if extractMode == .vocab { resetVocabSelectionToDefaults() }
         }
         .onDisappear {
             addAllFeedbackTask?.cancel()

@@ -14,7 +14,7 @@ let package = Package(
         // Model downloads at runtime via fromPretrained(); nothing is bundled.
         .package(url: "https://github.com/soniqo/speech-swift", branch: "main"),
         // MLX is pulled transitively by soniqo; declared directly (same version) so we can
-        // call MLX.GPU.clearCache() between alignment windows — MLX's buffer cache grows
+        // call MLX.Memory.clearCache() between alignment windows — MLX's buffer cache grows
         // unbounded across align() calls otherwise and OOM-kills the app on device.
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.30.0"),
     ],
@@ -29,6 +29,13 @@ let package = Package(
                 // (skips instrumental gaps, sets window boundaries at vocal pauses).
                 .product(name: "SpeechVAD", package: "speech-swift"),
                 .product(name: "MLX", package: "mlx-swift"),
+            ],
+            swiftSettings: [
+                // HTDemucsCoreMLSeparator's cblas_sgemm calls already pass the classic Int32
+                // M/N/K/lda/ldb/ldc signature; ACCELERATE_NEW_LAPACK alone opts into the
+                // updated (non-deprecated) CBLAS headers without ILP64's wider integer types,
+                // so no call sites need to change.
+                .unsafeFlags(["-Xcc", "-DACCELERATE_NEW_LAPACK"])
             ]
         ),
         .testTarget(

@@ -285,14 +285,16 @@ final class JapaneseInputAccessory: NSObject {
     // Routes an emitted character through the responder so its native delegate (editingChanged
     // / textViewDidChange) fires and the host's SwiftUI binding stays in sync.
     private func append(_ emitted: String) {
-        guard let keyInput = responder as? UIKeyInput else { return }
+        // JapaneseAccessoryResponder refines UITextInput, which refines UIKeyInput, so
+        // `responder` already conforms — no cast needed, just the nil check.
+        guard let keyInput = responder else { return }
         keyInput.insertText(emitted)
     }
 
     // Backspace one character at the cursor. UIKeyInput's deleteBackward respects the current
     // selection, so deleting in the middle of a string works as expected.
     private func deleteBackward() {
-        guard let keyInput = responder as? UIKeyInput else { return }
+        guard let keyInput = responder else { return }
         keyInput.deleteBackward()
     }
 

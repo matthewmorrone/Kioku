@@ -28,3 +28,17 @@ nonisolated protocol TextSegmenting: Sendable {
     // Builds a debug summary showing how the resolver pipeline admits one emitted lemma for a surface.
     func debugResolutionSummary(for surface: String, lemma: String) -> String
 }
+
+extension TextSegmenting {
+    // Like preferredLemma, but for auxiliary-verb detection: prefers whichever candidate is itself
+    // a known auxiliary verb, over the plain top-ranked pick. preferredLemma's surface-equality
+    // preference always ranks "the surface itself" first when it's independently a real dictionary
+    // entry — for most surfaces that's correct, but a few conjugated auxiliary tails coincidentally
+    // collide with an unrelated real headword (歩いてゆこう's tail "ゆこう" is both the volitional of
+    // the auxiliary ゆく AND, independently, its own unrelated dictionary entry), so the plain top
+    // pick silently discards the deinflection that would have named the auxiliary. Falls back to
+    // preferredLemma when no candidate is in `auxiliarySet`.
+    func preferredLemma(for surface: String, preferring auxiliarySet: Set<String>) -> String? {
+        lemmaCandidates(for: surface).first(where: auxiliarySet.contains) ?? preferredLemma(for: surface)
+    }
+}

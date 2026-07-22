@@ -74,7 +74,7 @@ final class CopyableLabel: UILabel, UIContextMenuInteractionDelegate {
             return nil
         }
 
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             let copyAction = UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in
                 self?.copyText()
             }

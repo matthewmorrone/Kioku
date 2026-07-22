@@ -520,9 +520,10 @@ extension ReadView {
         if let dictionaryStore,
            let rawSplit = LatticeEdge.auxiliaryVerbSplit(
                from: sublatticeEdgesForCurrentSelectedSegment(),
-               auxiliaries: DerivationAnalyzer.auxiliaryVerbs
+               auxiliaries: DerivationAnalyzer.auxiliaryVerbs,
+               lemmaResolver: { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) }
            ) {
-            let split = rawSplit.map { segmenter.preferredLemma(for: $0) ?? $0 }
+            let split = rawSplit.map { segmenter.preferredLemma(for: $0, preferring: DerivationAnalyzer.auxiliaryVerbs) ?? $0 }
             let derived = DerivationAnalyzer.analyze(surface: surface, components: split, baseResolver: { candidate in
                 let entries = (try? dictionaryStore.lookup(surface: candidate, mode: .kanjiAndKana)) ?? []
                 return entries.flatMap { $0.senses.compactMap(\.pos) }.flatMap { $0.components(separatedBy: ",") }
