@@ -18,6 +18,26 @@ import UIKit
 //      OOM (MXAppExitMetric.cumulativeMemoryResourceLimitExitCount), watchdog terminations,
 //      and any crash the system processed but the in-process handlers missed. Delivered the
 //      NEXT app launch via didReceive(_:), so this is the only way to learn about kernel kills.
+// Pre-extracted, Sendable snapshot of one MXCrashDiagnostic, built synchronously in
+// didReceive(_:) so the non-Sendable MetricKit payload doesn't have to cross actors.
+private struct CrashLoggerCrashItem: Sendable {
+    let timestamp: Date
+    let exceptionType: Int
+    let exceptionCode: Int
+    let signal: Int
+    let terminationReason: String
+    let virtualMemoryRegionInfo: String
+    let callStackTreeJSON: String
+}
+
+// Pre-extracted, Sendable snapshot of one MXHangDiagnostic, built synchronously in
+// didReceive(_:) so the non-Sendable MetricKit payload doesn't have to cross actors.
+private struct CrashLoggerHangItem: Sendable {
+    let timestamp: Date
+    let hangDuration: Double
+    let callStackTreeJSON: String
+}
+
 nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unchecked Sendable {
 
     static let shared = CrashLogger()
@@ -171,29 +191,14 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
     func didReceive(_ payloads: [MXDiagnosticPayload]) {
         // Pre-extract the minimal, Sendable data from payloads synchronously to avoid sending
         // non-Sendable types across actors.
-        struct CrashItem: Sendable {
-            let timestamp: Date
-            let exceptionType: Int
-            let exceptionCode: Int
-            let signal: Int
-            let terminationReason: String
-            let virtualMemoryRegionInfo: String
-            let callStackTreeJSON: String
-        }
-        struct HangItem: Sendable {
-            let timestamp: Date
-            let hangDuration: Double
-            let callStackTreeJSON: String
-        }
-
-        var crashes: [CrashItem] = []
-        var hangs: [HangItem] = []
+        var crashes: [CrashLoggerCrashItem] = []
+        var hangs: [CrashLoggerHangItem] = []
 
         for payload in payloads {
             let ts = payload.timeStampBegin
             if let crashDiags = payload.crashDiagnostics {
                 for crash in crashDiags {
-                    let item = CrashItem(
+                    let item = CrashLoggerCrashItem(
                         timestamp: ts,
                         exceptionType: crash.exceptionType?.intValue ?? -1,
                         exceptionCode: crash.exceptionCode?.intValue ?? -1,
@@ -207,7 +212,7 @@ nonisolated final class CrashLogger: NSObject, MXMetricManagerSubscriber, @unche
             }
             if let hangDiags = payload.hangDiagnostics {
                 for hang in hangDiags {
-                    let item = HangItem(
+                    let item = CrashLoggerHangItem(
                         timestamp: ts,
                         hangDuration: hang.hangDuration.value,
                         callStackTreeJSON: String(decoding: hang.callStackTree.jsonRepresentation(), as: UTF8.self)

@@ -29,7 +29,7 @@ actor JimakuProvider: SubtitleProvider {
             URLQueryItem(name: "query", value: title),
             URLQueryItem(name: "anime", value: "true"),
         ]
-        let entries = try await get([Entry].self, url: searchComponents.url!, apiKey: apiKey)
+        let entries = try await get([JimakuProviderEntry].self, url: searchComponents.url!, apiKey: apiKey)
 
         // Step 2: for each entry (capped), fetch its files filtered to the requested episode, and
         // flatten into one result per file labelled with its source show.
@@ -39,7 +39,7 @@ actor JimakuProvider: SubtitleProvider {
             if let episode {
                 fileComponents.queryItems = [URLQueryItem(name: "episode", value: String(episode))]
             }
-            guard let files = try? await get([FileEntry].self, url: fileComponents.url!, apiKey: apiKey) else {
+            guard let files = try? await get([JimakuProviderFileEntry].self, url: fileComponents.url!, apiKey: apiKey) else {
                 continue
             }
             for file in files {
@@ -112,23 +112,4 @@ actor JimakuProvider: SubtitleProvider {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
-    // MARK: - API response models (only the fields we use)
-
-    private struct Entry: Decodable {
-        let id: Int64
-        let name: String
-        let englishName: String?
-        // Prefer the canonical name; fall back to the English title when present.
-        var displayName: String { name.isEmpty ? (englishName ?? "Unknown") : name }
-        enum CodingKeys: String, CodingKey {
-            case id, name
-            case englishName = "english_name"
-        }
-    }
-
-    private struct FileEntry: Decodable {
-        let url: String
-        let name: String
-        let size: Int
-    }
 }

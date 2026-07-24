@@ -42,7 +42,7 @@ nonisolated struct AppBackupDocument: FileDocument {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let payload = try decoder.decode(AppBackupPayload.self, from: data)
-        guard payload.version == AppBackupPayload.currentVersion || payload.version == 1 else {
+        guard (1...AppBackupPayload.currentVersion).contains(payload.version) else {
             throw NSError(
                 domain: "Kioku.AppBackup",
                 code: 1,

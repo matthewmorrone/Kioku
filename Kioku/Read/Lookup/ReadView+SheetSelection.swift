@@ -360,7 +360,9 @@ extension ReadView {
 
     // Builds unique reading candidates for the currently selected segment(s), leading with the lexicon reading so it matches the LEXICON section.
     func uniqueReadingsForCurrentSelectedKanjiSegment() -> [String] {
-        guard let selectedBounds else {
+        guard let selectedBounds,
+              selectedBounds.lowerBound < segmentEdges.count,
+              selectedBounds.upperBound < segmentEdges.count else {
             return []
         }
 
@@ -443,7 +445,9 @@ extension ReadView {
 
     // Builds a formatted debug string showing key Lexicon method outputs for the currently selected surface.
     func lexiconDebugInfoForCurrentSelectedSegment() -> String {
-        guard let selectedBounds else {
+        guard let selectedBounds,
+              selectedBounds.lowerBound < segmentEdges.count,
+              selectedBounds.upperBound < segmentEdges.count else {
             return ""
         }
 
@@ -493,7 +497,9 @@ extension ReadView {
     // Returns the base lemma and inflection chain for the current selection when it is a conjugated/inflected form.
     // Returns nil when the surface matches its own lemma (i.e. no inflection occurred).
     func lemmaInfoForCurrentSelectedSegment() -> (lemma: String, chain: [String])? {
-        guard let selectedBounds, let lexicon else { return nil }
+        guard let selectedBounds, let lexicon,
+              selectedBounds.lowerBound < segmentEdges.count,
+              selectedBounds.upperBound < segmentEdges.count else { return nil }
         let selectedEdges = Array(segmentEdges[selectedBounds])
         guard let start = selectedEdges.first?.start, let end = selectedEdges.last?.end else { return nil }
         let surface = String(text[start..<end])
@@ -582,7 +588,9 @@ extension ReadView {
     // so callers can look up frequency for whichever reading is currently displayed.
     // Falls back to deinflected lemma forms when the surface has no direct frequency entry.
     func frequencyRankForCurrentSelectedSegment() -> [String: FrequencyData]? {
-        guard let selectedBounds else {
+        guard let selectedBounds,
+              selectedBounds.lowerBound < segmentEdges.count,
+              selectedBounds.upperBound < segmentEdges.count else {
             return nil
         }
 
@@ -595,7 +603,9 @@ extension ReadView {
 
     // Captures lattice edges enclosed by the currently selected merged segment span for future sheet UI usage.
     func sublatticeEdgesForCurrentSelectedSegment() -> [LatticeEdge] {
-        guard let selectedBounds else {
+        guard let selectedBounds,
+              selectedBounds.lowerBound < segmentEdges.count,
+              selectedBounds.upperBound < segmentEdges.count else {
             return []
         }
 

@@ -23,8 +23,8 @@ struct SettingsView: View {
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
 
     // Selected theme id — drives chrome (background/accent/typography) and the default token
-    // colors when "Custom Token Colors" is off. See Theme.ID for available themes.
-    @AppStorage(Theme.themeIDKey) var themeIDRaw: String = Theme.ID.system.rawValue
+    // colors when "Custom Token Colors" is off. See ThemeID for available themes.
+    @AppStorage(Theme.themeIDKey) var themeIDRaw: String = ThemeID.system.rawValue
 
     @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
     @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
@@ -693,14 +693,9 @@ struct SettingsView: View {
     }
 
     // Applies one validated app-backup snapshot to every persisted store in a single replace-all pass.
-    //
-    // Restore ordering makes the operation effectively atomic for the user:
-    // 1. The payload was already validated before the confirmation dialog.
-    // 2. Audio files are staged to disk first; any write failure rolls back the
-    //    staged files (skipping IDs a live note still references) and aborts
-    //    before a single store has been mutated.
-    // 3. Store replacement itself is non-throwing, so once staging succeeds the
-    //    swap cannot leave mixed old/new state.
+    // Audio files are staged first (rolled back on failure); notes are replaced next since disk-backed
+    // JSON is the only remaining store that can fail to persist — a failure there aborts before any
+    // other store is touched and surfaces an explicit error, instead of proceeding silently.
     private func importAppBackup(_ document: AppBackupDocument) {
         let payload = document.payload
         // Validation already rejected duplicate review IDs; uniquingKeysWith is a
@@ -731,6 +726,17 @@ struct SettingsView: View {
             }
         }
 
+        // Notes are the one store here that can genuinely fail to persist — bail before
+        // touching any other store instead of silently reporting success over stale notes.
+        notesStore.replaceAll(with: payload.notes)
+        if let notesError = notesStore.persistenceError {
+            for stagedID in stagedAttachmentIDs where liveAttachmentIDs.contains(stagedID) == false {
+                audioStore.deleteAttachment(stagedID)
+            }
+            showTransferAlert(title: "Import Failed", message: "Notes could not be restored, so no data was changed. \(notesError)")
+            return
+        }
+
         wordListsStore.replaceAll(with: payload.wordLists)
         wordsStore.replaceAll(with: payload.words)
         historyStore.replaceAll(with: payload.history)
@@ -742,7 +748,6 @@ struct SettingsView: View {
             learned: Set(payload.learned),
             notLearned: Set(payload.notLearned)
         )
-        notesStore.replaceAll(with: payload.notes)
 
         var message = "Imported \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.history.count) history entries, and \(payload.reviewStats.count) review records."
         if payload.audioAttachments.isEmpty == false {
@@ -831,12 +836,12 @@ struct SettingsView: View {
         }
     }
 
-    // Bridges the raw AppStorage string to a Picker-friendly Theme.ID binding. Falls back to
+    // Bridges the raw AppStorage string to a Picker-friendly ThemeID binding. Falls back to
     // System if the stored string ever desyncs from the enum (shouldn't happen, but the
     // picker can't render a nil tag).
-    private var themeIDBinding: Binding<Theme.ID> {
+    private var themeIDBinding: Binding<ThemeID> {
         Binding(
-            get: { Theme.ID(rawValue: themeIDRaw) ?? .system },
+            get: { ThemeID(rawValue: themeIDRaw) ?? .system },
             set: { themeIDRaw = $0.rawValue }
         )
     }

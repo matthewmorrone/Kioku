@@ -4,6 +4,10 @@ import mecab
 // Wraps the MeCab C library lifecycle and provides Swift-friendly tokenization of Japanese text.
 nonisolated final class MeCabTokenizer {
     private var mecabPtr: OpaquePointer?
+    // MeCab tagger instances reuse internal lattice/allocator state across calls and are not
+    // safe to parse from multiple threads concurrently; this instance is shared app-wide behind
+    // Lexicon and called from many independent background tasks, so access must be serialized.
+    private let lock = NSLock()
 
     // Initializes MeCab with the compiled dictionary at the given directory path.
     // MeCab requires a mecabrc config file even when dictionary path is passed via -d.
@@ -44,6 +48,8 @@ nonisolated final class MeCabTokenizer {
     // Tokenizes input text and returns parsed nodes with surface, features, and byte offsets.
     func tokenize(_ text: String) -> [MeCabNode] {
         guard let mecabPtr else { return [] }
+        lock.lock()
+        defer { lock.unlock() }
 
         // Pass the text as a C string so MeCab owns a consistent pointer for byte-offset computation.
         return text.withCString { cStr in
@@ -104,6 +110,8 @@ nonisolated final class MeCabTokenizer {
     // Returns the last error message from MeCab, if any.
     func lastError() -> String? {
         guard let mecabPtr else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
         let err = mecab_strerror(mecabPtr)
         return err.map { String(cString: $0) }
     }

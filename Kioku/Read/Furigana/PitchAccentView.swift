@@ -87,21 +87,25 @@ struct PitchAccentView: View {
         // Draw solid connecting line through all real mora.
         drawContourLine(context: &context, positions: moraPositions, color: color)
 
-        // Draw heiban arrow or particle with dashed connector.
-        if patternType == .heiban {
-            drawHeibanArrow(context: &context, lastPosition: moraPositions.last!, color: color)
-        } else if showsParticle {
-            let particleCenter = CGPoint(
-                x: CGFloat(morae.count) * dotSpacing + dotSpacing / 2,
-                y: lowY
-            )
-            drawParticleConnector(
-                context: &context,
-                from: moraPositions.last!,
-                to: particleCenter,
-                color: color
-            )
-            drawParticleDot(context: &context, center: particleCenter, color: color)
+        // Draw heiban arrow or particle with dashed connector. Guarded on a malformed/empty
+        // accent.kana (e.g. an edge-case dictionary record) producing no mora positions —
+        // every other geometry helper here guards similarly rather than force-unwrapping.
+        if let lastMoraPosition = moraPositions.last {
+            if patternType == .heiban {
+                drawHeibanArrow(context: &context, lastPosition: lastMoraPosition, color: color)
+            } else if showsParticle {
+                let particleCenter = CGPoint(
+                    x: CGFloat(morae.count) * dotSpacing + dotSpacing / 2,
+                    y: lowY
+                )
+                drawParticleConnector(
+                    context: &context,
+                    from: lastMoraPosition,
+                    to: particleCenter,
+                    color: color
+                )
+                drawParticleDot(context: &context, center: particleCenter, color: color)
+            }
         }
 
         // Draw filled dots with mora text on top of lines.
