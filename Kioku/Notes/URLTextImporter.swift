@@ -37,7 +37,10 @@ nonisolated enum URLTextImporter {
             extractPlainText(from: data)
         }.value
 
-        guard let text = extracted, text.isEmpty == false else { throw URLTextImporterError.emptyResult }
+        // Distinguish "couldn't parse as HTML at all" from "parsed fine but had no visible text" —
+        // extractPlainText returns nil only for the former.
+        guard let text = extracted else { throw URLTextImporterError.decodingFailed }
+        guard text.isEmpty == false else { throw URLTextImporterError.emptyResult }
         return text
     }
 
