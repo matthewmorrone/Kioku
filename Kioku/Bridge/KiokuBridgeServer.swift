@@ -1,7 +1,6 @@
 import Combine
 import Foundation
 import Network
-import os
 
 // Hosts a localhost/LAN HTTP listener for the MCP bridge.
 //
@@ -30,7 +29,6 @@ final class KiokuBridgeServer: ObservableObject {
     static let maxConcurrentConnections = 16
     static let connectionLifetimeSeconds: UInt64 = 15
 
-    private let logger = Logger(subsystem: "com.kioku.bridge", category: "server")
     private var routes: BridgeRouter = BridgeRouter()
     private var notesStore: NotesStore?
     private var listener: NWListener?
@@ -92,7 +90,7 @@ final class KiokuBridgeServer: ObservableObject {
             self.listener = newListener
         } catch {
             state = .failed("listener init failed: \(error.localizedDescription)")
-            logger.error("listener init failed: \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.bridgeServer, "listener init failed: \(error.localizedDescription)")
         }
     }
 
@@ -117,10 +115,10 @@ final class KiokuBridgeServer: ObservableObject {
         switch listenerState {
         case .ready:
             state = .running(port: port)
-            logger.info("bridge listening on \(port, privacy: .public)")
+            AppLog.info(.bridgeServer, "bridge listening on port \(port)")
         case .failed(let error):
             state = .failed(error.localizedDescription)
-            logger.error("listener failed: \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.bridgeServer, "listener failed: \(error.localizedDescription)")
         case .cancelled:
             state = .stopped
         case .setup, .waiting:
@@ -137,7 +135,7 @@ final class KiokuBridgeServer: ObservableObject {
     // never finishes a body) cannot hold buffers open indefinitely.
     private func accept(_ connection: NWConnection) {
         guard connections.count < Self.maxConcurrentConnections else {
-            logger.warning("connection refused: too many concurrent connections")
+            AppLog.error(.bridgeServer, "connection refused: too many concurrent connections")
             connection.cancel()
             return
         }
@@ -148,7 +146,7 @@ final class KiokuBridgeServer: ObservableObject {
         lifetimeTasksByID[id] = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.connectionLifetimeSeconds * 1_000_000_000)
             guard Task.isCancelled == false else { return }
-            self?.logger.warning("connection closed: lifetime deadline reached")
+            AppLog.error(.bridgeServer, "connection closed: lifetime deadline reached")
             self?.connectionsByID[id]?.cancel()
         }
 
@@ -189,7 +187,7 @@ final class KiokuBridgeServer: ObservableObject {
         buffer: Data
     ) {
         if let error {
-            logger.error("receive failed: \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.bridgeServer, "receive failed: \(error.localizedDescription)")
             connection.cancel()
             return
         }
@@ -214,7 +212,7 @@ final class KiokuBridgeServer: ObservableObject {
         do {
             parsed = try BridgeHTTPParser.parse(combined)
         } catch {
-            logger.error("parse failed: \(String(describing: error), privacy: .public)")
+            AppLog.error(.bridgeServer, "parse failed: \(String(describing: error))")
             write(.error(status: 400, code: "bad_request", message: "malformed http request"), on: connection) {
                 connection.cancel()
             }
@@ -246,10 +244,18 @@ final class KiokuBridgeServer: ObservableObject {
     // Authenticates and dispatches one parsed request. Auth failure short-circuits
     // before any handler runs so handlers don't need to repeat the check.
     private func handle(_ request: BridgeHTTPRequest) async -> BridgeHTTPResponse {
+        let bodyPreview = String(data: request.body, encoding: .utf8) ?? "(\(request.body.count) bytes, non-UTF8)"
+        AppLog.debug(.bridgeServer, "\(request.method) \(request.path) query=\(request.query) body:\n\(bodyPreview)")
+
         guard isAuthorized(headerValue: request.header("authorization")) else {
+            AppLog.error(.bridgeServer, "\(request.method) \(request.path) → 401 unauthorized")
             return .error(status: 401, code: "unauthorized", message: "missing or invalid bearer token")
         }
-        return await routes.dispatch(request)
+        let response = await routes.dispatch(request)
+
+        let responsePreview = String(data: response.body, encoding: .utf8) ?? "(\(response.body.count) bytes, non-UTF8)"
+        AppLog.debug(.bridgeServer, "\(request.method) \(request.path) → \(response.status) response:\n\(responsePreview)")
+        return response
     }
 
     // Serializes a response onto the wire and runs `then` once the bytes are flushed
@@ -271,7 +277,7 @@ final class KiokuBridgeServer: ObservableObject {
         connection.send(content: packet, completion: .contentProcessed { [weak self] error in
             Task { @MainActor [weak self] in
                 if let error {
-                    self?.logger.error("send failed: \(error.localizedDescription, privacy: .public)")
+                    AppLog.error(.bridgeServer, "send failed: \(error.localizedDescription)")
                 }
                 then()
             }

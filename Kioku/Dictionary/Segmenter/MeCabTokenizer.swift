@@ -13,7 +13,7 @@ nonisolated final class MeCabTokenizer {
     // that mecab_new2 splits on, producing nonexistent split paths and silent init failure.
     init?(dictionaryPath: String) {
         guard let rcPath = Bundle.main.path(forResource: "mecabrc", ofType: nil, inDirectory: "MeCab") else {
-            print("MeCabTokenizer: mecabrc not found in bundle")
+            AppLog.error(.segmentation, "MeCabTokenizer: mecabrc not found in bundle")
             return nil
         }
 
@@ -30,7 +30,7 @@ nonisolated final class MeCabTokenizer {
 
         guard mecabPtr != nil else {
             let err = mecab_strerror(nil).map { String(cString: $0) } ?? "unknown error"
-            print("MeCabTokenizer: init failed for \(dictionaryPath) — \(err)")
+            AppLog.error(.segmentation, "MeCabTokenizer: init failed for \(dictionaryPath) — \(err)")
             return nil
         }
     }
