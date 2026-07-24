@@ -14,24 +14,19 @@ nonisolated final class Deinflector {
     // "exception" list: their て-form takes the small-っ godan pattern — 知って, not 知て —
     // so they never legitimately match a rule whose rulesOut claims ["v1"]). Consulted by
     // deinflectionPaths to reject false-ichidan candidates a generic v1 rule would otherwise
-    // admit. Data, not scattered special cases — same rationale as SegmentationDemotions.
+    // admit. Sourced from deinflection.json's "nonIchidanRuVerbs" key (see loadNonIchidanRuVerbs)
+    // rather than hard-coded here, per the Deinflection Contract — Deinflector may only load
+    // rules, traverse the rule graph, and admit candidates, not embed word-specific exceptions.
     //
     // Deliberately excludes exception-class readings that ALSO have a real ichidan homophone
     // (verified against dictionary.sqlite, not assumed) — denylisting those would break the
     // legitimate ichidan verb instead of just rejecting the godan false-positive:
     //   いる (要る godan vs 居る/射る ichidan), かえる (帰る godan vs 変える ichidan),
     //   きる (切る godan vs 着る ichidan), へる (減る godan vs 経る ichidan).
-    private static let knownNonIchidanRuVerbs: Set<String> = [
-        "知る", "しる",       // to know — the reported bug (しちゃう must lemmatize to する, not しる)
-        "識る",              // alternate kanji for 知る, same reading/class
-        "走る", "はしる",     // to run
-        "限る", "かぎる",     // to limit
-        "参る", "まいる",     // to go/come (humble)
-        "蹴る", "ける",       // to kick
-    ]
+    private let knownNonIchidanRuVerbs: Set<String>
 
     // Stores deinflection rules used by candidate generation.
-    init(rules: [DeinflectionRule], trie: DictionaryTrie) {
+    init(rules: [DeinflectionRule], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = []) {
         self.rules = rules.sorted { lhs, rhs in
             lhs.kanaIn.count > rhs.kanaIn.count
         }
@@ -39,10 +34,11 @@ nonisolated final class Deinflector {
             (label: "rule", rule: rule)
         }
         self.trie = trie
+        self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
     }
 
     // Stores grouped deinflection rules while preserving group labels used for chain reporting.
-    init(groupedRules: [String: [DeinflectionRule]], trie: DictionaryTrie) {
+    init(groupedRules: [String: [DeinflectionRule]], trie: DictionaryTrie, nonIchidanRuVerbs: Set<String> = []) {
         let expandedLabeledRules = groupedRules
             .flatMap { label, grouped in
                 grouped.map { rule in
@@ -58,11 +54,31 @@ nonisolated final class Deinflector {
             labeledRule.rule
         }
         self.trie = trie
+        self.knownNonIchidanRuVerbs = nonIchidanRuVerbs
     }
 
-    // Loads grouped rules from JSON data while preserving rule-group labels.
+    // The non-rule sibling key alongside the rule groups (teForms, pastForms, …) in deinflection.json.
+    private static let nonIchidanRuVerbsKey = "nonIchidanRuVerbs"
+
+    // Loads grouped rules from JSON data while preserving rule-group labels. Strips the
+    // non-rule "nonIchidanRuVerbs" key first so the rest still decodes as pure rule groups.
     static func loadGroupedRules(from data: Data) throws -> [String: [DeinflectionRule]] {
-        try JSONDecoder().decode([String: [DeinflectionRule]].self, from: data)
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: data)
+        }
+        object.removeValue(forKey: nonIchidanRuVerbsKey)
+        let rulesData = try JSONSerialization.data(withJSONObject: object)
+        return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: rulesData)
+    }
+
+    // Loads the data-driven denylist of godan verbs that look ichidan (see knownNonIchidanRuVerbs)
+    // from deinflection.json's top-level "nonIchidanRuVerbs" array.
+    static func loadNonIchidanRuVerbs(from data: Data) throws -> Set<String> {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let verbs = object[nonIchidanRuVerbsKey] as? [String] else {
+            return []
+        }
+        return Set(verbs)
     }
 
     // Loads grouped rules from JSON data and flattens them into a linear rule list.
@@ -121,8 +137,10 @@ nonisolated final class Deinflector {
 
     // Builds a deinflector directly from a grouped-rule JSON file.
     convenience init(jsonFileURL: URL, trie: DictionaryTrie) throws {
-        let groupedRules = try Self.loadGroupedRules(from: jsonFileURL)
-        self.init(groupedRules: groupedRules, trie: trie)
+        let data = try Data(contentsOf: jsonFileURL)
+        let groupedRules = try Self.loadGroupedRules(from: data)
+        let nonIchidanRuVerbs = try Self.loadNonIchidanRuVerbs(from: data)
+        self.init(groupedRules: groupedRules, trie: trie, nonIchidanRuVerbs: nonIchidanRuVerbs)
     }
 
     // Builds a deinflector from grouped-rule JSON in the app bundle.
@@ -132,8 +150,14 @@ nonisolated final class Deinflector {
         resourceName: String = "deinflection",
         fileExtension: String = "json"
     ) throws {
-        let groupedRules = try Self.loadGroupedRules(bundle: bundle, resourceName: resourceName, fileExtension: fileExtension)
-        self.init(groupedRules: groupedRules, trie: trie)
+        guard let fileURL = bundle.url(forResource: resourceName, withExtension: fileExtension) else {
+            throw NSError(
+                domain: "Deinflector",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Missing deinflection rules file: \(resourceName).\(fileExtension)"]
+            )
+        }
+        try self.init(jsonFileURL: fileURL, trie: trie)
     }
 
     // Returns ordered labeled rules so callers can perform inflection inversion without reloading rule resources.
@@ -205,7 +229,7 @@ nonisolated final class Deinflector {
                 // false ichidan candidate, which then out-competes the correct "する" candidate
                 // (from an explicit irregular rule) in lemma ranking. Denylist known offenders
                 // rather than let this rule admit them under a grammar class they don't have.
-                if rule.rulesOut.contains("v1"), Self.knownNonIchidanRuVerbs.contains(candidateSurface) {
+                if rule.rulesOut.contains("v1"), knownNonIchidanRuVerbs.contains(candidateSurface) {
                     continue
                 }
                 let chainItem = normalizedRuleLabel(labeledRule.label)

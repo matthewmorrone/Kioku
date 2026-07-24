@@ -54,6 +54,7 @@ extension ReadView {
 
             segmentationRefreshTask?.cancel()
             furiganaComputationTask?.cancel()
+            llmCorrectionTask?.cancel()
             isLoadingSelectedNote = true
             activeNoteID = nil
             loadAudioAttachmentIfNeeded(attachmentID: nil)
@@ -92,6 +93,7 @@ extension ReadView {
 
         segmentationRefreshTask?.cancel()
         furiganaComputationTask?.cancel()
+        llmCorrectionTask?.cancel()
         pendingLLMChangedLocations = []
         pendingLLMChangedReadingLocations = []
         preLLMSegmentEntries = []

@@ -37,7 +37,7 @@ struct CoverageDetailView: View {
     @State private var showModeChooser = false
     @State private var launch: CoverageLaunch?
     // Which level rows are expanded to show their word list — keyed by the same optional JLPT
-    // N-number as NoteCoverage.Level.level, so "No level" (nil) can be tracked too.
+    // N-number as NoteCoverageLevel.level, so "No level" (nil) can be tracked too.
     @State private var expandedLevels: Set<Int?> = []
     // The word chip tapped in an expanded level's word list — presents its WordDetailView.
     @State private var selectedWord: SavedWord?
@@ -121,7 +121,7 @@ struct CoverageDetailView: View {
     // chevron) that expands to reveal the word list, plus the three stage chips. Collapsing the
     // header and chevron into one line (instead of a full-width chevron button below the chips)
     // removes a whole row's worth of height per level.
-    private func levelRow(_ level: NoteCoverage.Level) -> some View {
+    private func levelRow(_ level: NoteCoverageLevel) -> some View {
         let isExpanded = expandedLevels.contains(level.level)
         return VStack(alignment: .leading, spacing: 8) {
             Button {
@@ -167,7 +167,7 @@ struct CoverageDetailView: View {
     // its own mastery stage (see stageColor) instead of grouped under New/Learning/Learned text
     // headers — the color carries the distinction, so the chips read as distinct at a glance
     // without needing a label to sort them into. Tapping a chip opens that word's WordDetailView.
-    private func wordList(_ level: NoteCoverage.Level) -> some View {
+    private func wordList(_ level: NoteCoverageLevel) -> some View {
         FlowLayout(spacing: 6) {
             ForEach(MasteryStage.allCases, id: \.self) { stage in
                 ForEach(level.words(in: stage)) { word in
@@ -197,7 +197,7 @@ struct CoverageDetailView: View {
 
     // A single tappable stage chip. Tapping a non-empty chip resolves its words and opens the
     // mode chooser; an empty chip is disabled.
-    private func stageChip(_ level: NoteCoverage.Level, _ stage: MasteryStage, _ title: String) -> some View {
+    private func stageChip(_ level: NoteCoverageLevel, _ stage: MasteryStage, _ title: String) -> some View {
         let words = level.words(in: stage)
         return Button {
             pendingWords = words

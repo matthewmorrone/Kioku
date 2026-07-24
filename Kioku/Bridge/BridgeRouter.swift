@@ -9,30 +9,30 @@ typealias BridgeRouteHandler = (BridgeHTTPRequest) async -> BridgeHTTPResponse
 // Matching is intentionally simple — string equality on method and a regex-free path
 // template like `/v1/notes/:id/segments`. Path parameters are returned in
 // `request.query` under their template name so handlers don't need a separate API.
+// One registered route. Order matters — first match wins, so concrete paths must
+// be registered before parameterised ones.
+private struct BridgeRoute {
+    let method: String
+    let template: [BridgeRoutePathSegment]
+    let handler: BridgeRouteHandler
+}
+
+// Path segment type; either a literal token to match exactly or a parameter name
+// to capture into `request.query`.
+private enum BridgeRoutePathSegment: Equatable {
+    case literal(String)
+    case parameter(String)
+}
+
 struct BridgeRouter {
-    // One registered route. Order matters — first match wins, so concrete paths must
-    // be registered before parameterised ones.
-    private struct Route {
-        let method: String
-        let template: [PathSegment]
-        let handler: BridgeRouteHandler
-    }
-
-    // Path segment type; either a literal token to match exactly or a parameter name
-    // to capture into `request.query`.
-    private enum PathSegment: Equatable {
-        case literal(String)
-        case parameter(String)
-    }
-
-    private var routes: [Route] = []
+    private var routes: [BridgeRoute] = []
 
     // Registers a handler. `template` uses `:name` for path parameters, e.g.
     // `/v1/notes/:id/segments`. The handler receives the request with the
     // parameter values merged into `request.query`.
     mutating func add(method: String, template: String, handler: @escaping BridgeRouteHandler) {
         let segments = parseTemplate(template)
-        routes.append(Route(method: method.uppercased(), template: segments, handler: handler))
+        routes.append(BridgeRoute(method: method.uppercased(), template: segments, handler: handler))
     }
 
     // Dispatches a request, returning either the handler's response or a 404/405 envelope.
@@ -61,7 +61,7 @@ struct BridgeRouter {
     }
 
     // Returns captured parameters when the template matches, or nil when it doesn't.
-    private func match(template: [PathSegment], against segments: [String]) -> [String: String]? {
+    private func match(template: [BridgeRoutePathSegment], against segments: [String]) -> [String: String]? {
         var captured: [String: String] = [:]
         for (templateSegment, pathSegment) in zip(template, segments) {
             switch templateSegment {
@@ -76,8 +76,8 @@ struct BridgeRouter {
 
     // Splits a template string into typed segments. Empty segments (leading slash)
     // are dropped to match the way `request.path.split(separator: "/")` produces them.
-    private func parseTemplate(_ template: String) -> [PathSegment] {
-        template.split(separator: "/").map { piece -> PathSegment in
+    private func parseTemplate(_ template: String) -> [BridgeRoutePathSegment] {
+        template.split(separator: "/").map { piece -> BridgeRoutePathSegment in
             if piece.first == ":" {
                 return .parameter(String(piece.dropFirst()))
             }

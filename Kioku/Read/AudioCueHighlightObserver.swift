@@ -287,15 +287,10 @@ struct AudioCueHighlightObserver: View {
         return min(length, endU16)
     }
 
-    // Coarse character classification for chunking — enough to keep kanji runs together and
-    // separate them from kana / latin / punctuation. Not a tokenizer; just a tie-breaker for
-    // the linear-time fallback when no real segmentation is available.
-    private enum CharClass { case kanji, hiragana, katakana, latin, digit, whitespace, other }
-
     // Classifies a single scalar into one of the coarse buckets above by checking against
     // the relevant Unicode blocks. Whitespace falls through to a CharacterSet check; anything
     // else (punctuation, symbols) becomes .other so a punctuation run is treated as one chunk.
-    private func characterClass(of scalar: Unicode.Scalar) -> CharClass {
+    private func characterClass(of scalar: Unicode.Scalar) -> AudioCueCharClass {
         let v = scalar.value
         switch v {
         case 0x4E00...0x9FFF, 0x3400...0x4DBF: return .kanji
@@ -309,3 +304,8 @@ struct AudioCueHighlightObserver: View {
         }
     }
 }
+
+// Coarse character classification for chunking — enough to keep kanji runs together and
+// separate them from kana / latin / punctuation. Not a tokenizer; just a tie-breaker for
+// the linear-time fallback when no real segmentation is available.
+private enum AudioCueCharClass { case kanji, hiragana, katakana, latin, digit, whitespace, other }
