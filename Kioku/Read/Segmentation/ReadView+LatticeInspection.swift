@@ -17,16 +17,18 @@ extension ReadView {
             return
         }
 
-        _ = Lattice.sectionEdges(
+        let sectionEdges = Lattice.sectionEdges(
             from: segmentLatticeEdges,
             in: text,
             selectedStart: selectedStart,
             selectedEnd: selectedEnd
         )
 
-        // Logging disabled.
-        // for line in debugLines {
-        //     print(line)
-        // }
+        let lines = sectionEdges.map { edge in
+            let startOffset = text.distance(from: text.startIndex, to: edge.start)
+            let endOffset = text.distance(from: text.startIndex, to: edge.end)
+            return "  [\(startOffset),\(endOffset)) \(edge.surface)"
+        }
+        AppLog.debug(.segmentation, "inspectLattice: \(sectionEdges.count) edge(s) in selected span:\n\(lines.joined(separator: "\n"))")
     }
 }

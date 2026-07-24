@@ -62,13 +62,15 @@ extension ReadView {
         // single response; we apply it once at the end. Reading this once up
         // front avoids racing the @AppStorage value mid-request.
         let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
-        let willStream = useLLM && LLMSettings.activeProvider() == .appleIntelligence
+        let provider = LLMSettings.activeProvider()
+        let willStream = useLLM && provider == .appleIntelligence
 
         // Captured so a response that lands after the user has switched notes (cooperative
         // cancellation doesn't interrupt an in-flight network/model call) is discarded instead
         // of being applied against whatever note happens to be active when it arrives.
         let sourceNoteID = activeNoteID
 
+        AppLog.debug(.llmCorrection, "requestLLMCorrection starting — provider=\(provider) streaming=\(willStream) segments=\(currentSegments.count) isRetry=\(correctiveFeedback != nil)")
         isRequestingLLMCorrection = true
         llmCorrectionTask = Task {
             defer {
@@ -94,6 +96,7 @@ extension ReadView {
                         self.applyLLMStreamingPartial(merged, originalText: capturedText)
                     } : nil
                 )
+                LLMCorrectionService.logOutcome(provider: provider, result: .success(response))
 
                 await MainActor.run {
                     guard activeNoteID == sourceNoteID else { return }
@@ -123,6 +126,7 @@ extension ReadView {
                     }
                 }
             } catch {
+                LLMCorrectionService.logOutcome(provider: provider, result: .failure(error))
                 await MainActor.run {
                     llmCorrectionErrorMessage = error.localizedDescription
                     // Only a whole-response parse failure (nothing recognizable found, even
@@ -146,6 +150,7 @@ extension ReadView {
     // No-ops if there's no retry context (e.g. the user dismissed the alert first).
     func requestLLMCorrectionWithFeedback() {
         guard let context = llmCorrectionRetryContext else { return }
+        AppLog.debug(.llmCorrection, "retrying with corrective feedback — reason: \(context.reason)")
         let feedback = LLMCorrectionService.correctiveFeedback(
             previousRawResponse: context.rawResponse,
             reason: context.reason
@@ -174,7 +179,7 @@ extension ReadView {
             // A streaming partial failed validation — the per-line client
             // sanitizes input so this is rare, but if it happens, log and
             // skip rather than failing the whole run.
-            print("[LLM] streaming partial apply failed: \(msg)")
+            AppLog.error(.llmCorrection, "streaming partial apply failed: \(msg)")
         }
     }
 
@@ -358,8 +363,7 @@ extension ReadView {
 
         // Rebuild LatticeEdge values from the validated UTF-16 ranges.
         guard let rebuiltEdges = edgesFromSegmentRanges(validatedRanges, in: originalText) else {
-            // Logging disabled.
-            // print("[LLM] edgesFromSegmentRanges returned nil despite passing normalizedSegmentRanges")
+            AppLog.error(.llmCorrection, "edgesFromSegmentRanges returned nil despite passing normalizedSegmentRanges — this is a bug")
             return .surfaceMismatch("Segments validated but edge reconstruction failed — this is a bug.")
         }
 
@@ -622,7 +626,9 @@ extension ReadView {
     private func handleLLMCorrectionResult(_ result: LLMCorrectionResult) {
         switch result {
         case .applied(let diff, let changedLocations, let changedReadingLocations, let changesByLocation):
-            _ = diff
+            if diff.isEmpty == false {
+                AppLog.debug(.llmCorrection, "applied correction — \(diff.count) change(s):\n\(diff.joined(separator: "\n"))")
+            }
             if changedLocations.isEmpty == false {
                 pendingLLMChangedLocations = changedLocations
                 pendingLLMChangedReadingLocations = changedReadingLocations
@@ -633,12 +639,15 @@ extension ReadView {
                 hasAppliedLLMCorrectionForCurrentNote = true
             }
         case .surfaceMismatch(let msg):
+            AppLog.error(.llmCorrection, "surface mismatch: \(msg)")
             llmCorrectionErrorMessage = msg
             isShowingLLMCorrectionError = true
         case .networkError(let msg):
+            AppLog.error(.llmCorrection, "network error: \(msg)")
             llmCorrectionErrorMessage = msg
             isShowingLLMCorrectionError = true
         case .decodingError(let msg):
+            AppLog.error(.llmCorrection, "decoding error: \(msg)")
             llmCorrectionErrorMessage = msg
             isShowingLLMCorrectionError = true
         }

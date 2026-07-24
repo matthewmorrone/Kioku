@@ -10,15 +10,10 @@
 // in the app support directory managed by WhisperModelManager.
 
 import Foundation
-import OSLog
 import SwiftWhisperAlign
 #if canImport(UIKit)
 import UIKit
 #endif
-
-// Subsystem-tagged so Console.app filtering ("subsystem:matthewmorrone.Kioku
-// category:OnDeviceAlign") shows only alignment pipeline output.
-private let logger = Logger(subsystem: "matthewmorrone.Kioku", category: "OnDeviceAlign")
 
 // Entry point for on-device lyric alignment.
 enum OnDeviceLyricAligner {
@@ -41,23 +36,23 @@ enum OnDeviceLyricAligner {
     static func bestAvailableModelURL() -> URL? {
         let dir = WhisperModelManager.modelsDirectory
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
-            logger.error("models directory not found at \(dir.path)")
+            AppLog.error(.audioAlignment, "models directory not found at \(dir.path)")
             return nil
         }
 
         let preferenceOrder = ["ggml-medium.bin", "ggml-small.bin", "ggml-base.bin", "ggml-tiny.bin"]
         let binFiles = files.filter { $0.hasSuffix(".bin") }
-        logger.info("found \(binFiles.count) model(s): \(binFiles.sorted().joined(separator: ", "))")
+        AppLog.info(.audioAlignment, "found \(binFiles.count) model(s): \(binFiles.sorted().joined(separator: ", "))")
         guard binFiles.isEmpty == false else { return nil }
 
         for preferred in preferenceOrder {
             if binFiles.contains(preferred) {
-                logger.info("selected model: \(preferred)")
+                AppLog.info(.audioAlignment, "selected model: \(preferred)")
                 return dir.appendingPathComponent(preferred)
             }
         }
         let fallback = binFiles.sorted().first!
-        logger.info("selected model (fallback): \(fallback)")
+        AppLog.info(.audioAlignment, "selected model (fallback): \(fallback)")
         return dir.appendingPathComponent(fallback)
     }
 
@@ -102,7 +97,7 @@ enum OnDeviceLyricAligner {
                 try FileManager.default.removeItem(at: destination)
             }
             try FileManager.default.moveItem(at: tempURL, to: destination)
-            logger.info("GGML model saved to \(destination.path)")
+            AppLog.info(.audioAlignment, "GGML model saved to \(destination.path)")
         }
 
         // Always ensure the Core ML encoder is present so inference uses the Neural Engine.
@@ -126,7 +121,7 @@ enum OnDeviceLyricAligner {
     ) async {
         let encoderDir = coreMLEncoderURL(for: modelURL)
         guard FileManager.default.fileExists(atPath: encoderDir.path) == false else {
-            logger.debug("Core ML encoder already present: \(encoderDir.lastPathComponent)")
+            AppLog.debug(.audioAlignment, "Core ML encoder already present: \(encoderDir.lastPathComponent)")
             return
         }
 
@@ -138,7 +133,7 @@ enum OnDeviceLyricAligner {
             return
         }
 
-        logger.info("downloading Core ML encoder: \(zipName)")
+        AppLog.info(.audioAlignment, "downloading Core ML encoder: \(zipName)")
         await MainActor.run { onProgress("Downloading Core ML model...") }
 
         do {
@@ -151,7 +146,7 @@ enum OnDeviceLyricAligner {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
             guard status == 200 else {
                 try? FileManager.default.removeItem(at: tempZipURL)
-                logger.warning("HTTP \(status) for \(zipName); will use CPU fallback")
+                AppLog.error(.audioAlignment, "HTTP \(status) for \(zipName); will use CPU fallback")
                 return
             }
 
@@ -166,12 +161,12 @@ enum OnDeviceLyricAligner {
             try ZipExtractor.extract(zipData: zipData, to: modelsDir)
 
             if FileManager.default.fileExists(atPath: encoderDir.path) {
-                logger.info("Core ML encoder ready: \(encoderDir.path)")
+                AppLog.info(.audioAlignment, "Core ML encoder ready: \(encoderDir.path)")
             } else {
-                logger.warning("extraction succeeded but encoder dir not found — zip structure may differ")
+                AppLog.error(.audioAlignment, "extraction succeeded but encoder dir not found — zip structure may differ")
             }
         } catch {
-            logger.error("Core ML encoder download/extraction failed: \(error.localizedDescription); will use CPU fallback")
+            AppLog.error(.audioAlignment, "Core ML encoder download/extraction failed: \(error.localizedDescription); will use CPU fallback")
         }
     }
 
@@ -207,7 +202,7 @@ enum OnDeviceLyricAligner {
             )
         }
 
-        logger.info("force-aligning \(lines.count) line(s) via CTC")
+        AppLog.info(.audioAlignment, "force-aligning \(lines.count) line(s) via CTC")
 
         let input = AlignmentInput(audioURL: audioURL, lines: lines)
 
@@ -241,7 +236,7 @@ enum OnDeviceLyricAligner {
             onSegment: onSegment
         )
 
-        logger.info("alignment complete")
+        AppLog.info(.audioAlignment, "alignment complete")
         return srt
     }
 
@@ -272,7 +267,7 @@ enum OnDeviceLyricAligner {
             )
         }
 
-        logger.info("force-aligning \(lines.count) line(s) via CTC (detailed)")
+        AppLog.info(.audioAlignment, "force-aligning \(lines.count) line(s) via CTC (detailed)")
         let input = AlignmentInput(audioURL: audioURL, lines: lines)
 
         #if canImport(UIKit)
@@ -287,7 +282,7 @@ enum OnDeviceLyricAligner {
             onStage: onStage,
             onSegment: onSegment
         )
-        logger.info("alignment complete (detailed): \(result.lines.count) lines")
+        AppLog.info(.audioAlignment, "alignment complete (detailed): \(result.lines.count) lines")
         return result
     }
 
@@ -305,7 +300,7 @@ enum OnDeviceLyricAligner {
         cancellationCheck: (@Sendable () -> Bool)? = nil
     ) async throws -> SwiftWhisperAlign.AlignedLineTokens {
         let windowDesc = String(format: "[%.1fs, %.1fs]", windowStartSeconds, windowEndSeconds)
-        logger.info("re-aligning one line over \(windowDesc) using \(modelURL.lastPathComponent)")
+        AppLog.info(.audioAlignment, "re-aligning one line over \(windowDesc) using \(modelURL.lastPathComponent)")
         let aligner = ForcedAligner(modelURL: modelURL)
         return try await aligner.alignSingleLine(
             audioURL: audioURL,

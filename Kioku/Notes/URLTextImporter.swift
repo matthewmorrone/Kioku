@@ -18,18 +18,25 @@ nonisolated enum URLTextImporter {
             throw URLTextImporterError.invalidURL
         }
 
+        AppLog.debug(.notesImport, "URL import: GET \(url)")
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await URLSession.shared.data(from: url)
         } catch {
+            AppLog.error(.notesImport, "URL import: fetch failed for \(url) — \(error.localizedDescription)")
             throw URLTextImporterError.fetchFailed(underlying: error)
         }
 
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+        let mimeType = (response as? HTTPURLResponse)?.mimeType
+        AppLog.debug(.notesImport, "URL import: HTTP \(statusCode) mime=\(mimeType ?? "unknown") bytes=\(data.count)")
+
         // Only proceed for HTML/text MIME types — we'd produce gibberish on PDFs or images.
-        if let mime = (response as? HTTPURLResponse)?.mimeType,
+        if let mime = mimeType,
            mime.hasPrefix("text/") == false,
            mime != "application/xhtml+xml" {
+            AppLog.error(.notesImport, "URL import: unsupported mime type \(mime) for \(url)")
             throw URLTextImporterError.nonHTMLResponse(mimeType: mime)
         }
 
@@ -39,8 +46,15 @@ nonisolated enum URLTextImporter {
 
         // Distinguish "couldn't parse as HTML at all" from "parsed fine but had no visible text" —
         // extractPlainText returns nil only for the former.
-        guard let text = extracted else { throw URLTextImporterError.decodingFailed }
-        guard text.isEmpty == false else { throw URLTextImporterError.emptyResult }
+        guard let text = extracted else {
+            AppLog.error(.notesImport, "URL import: HTML decoding failed for \(url)")
+            throw URLTextImporterError.decodingFailed
+        }
+        guard text.isEmpty == false else {
+            AppLog.error(.notesImport, "URL import: extraction produced no text for \(url)")
+            throw URLTextImporterError.emptyResult
+        }
+        AppLog.debug(.notesImport, "URL import: extracted \(text.count) characters from \(url)")
         return text
     }
 

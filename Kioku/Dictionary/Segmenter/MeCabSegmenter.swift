@@ -11,11 +11,11 @@ nonisolated final class MeCabSegmenter: TextSegmenting, @unchecked Sendable {
     init?(dictionary: MeCabDictionary) {
         self.dictionary = dictionary
         guard let path = Bundle.main.path(forResource: dictionary.bundleDirectoryName, ofType: nil, inDirectory: "MeCab") else {
-            print("MeCabSegmenter: dictionary bundle path not found for \(dictionary.rawValue)")
+            AppLog.error(.segmentation, "MeCabSegmenter: dictionary bundle path not found for \(dictionary.rawValue)")
             return nil
         }
         guard let tok = MeCabTokenizer(dictionaryPath: path) else {
-            print("MeCabSegmenter: MeCabTokenizer initialization failed for \(dictionary.rawValue)")
+            AppLog.error(.segmentation, "MeCabSegmenter: MeCabTokenizer initialization failed for \(dictionary.rawValue)")
             return nil
         }
         self.tokenizer = tok
