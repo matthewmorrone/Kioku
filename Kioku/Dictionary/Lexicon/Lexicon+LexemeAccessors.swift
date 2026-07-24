@@ -17,7 +17,7 @@ extension Lexicon {
         do {
             return try dictionaryStore.lookupEntry(entryID: entryID)
         } catch {
-            print("lexeme lookup failed for id \(id): \(error)")
+            AppLog.error(.segmentation, "lexeme lookup failed for id \(id): \(error)")
             return nil
         }
     }

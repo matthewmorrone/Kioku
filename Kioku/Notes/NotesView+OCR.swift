@@ -60,11 +60,13 @@ extension NotesView {
     func importTextFromSelectedOCRImage(_ item: PhotosPickerItem) async {
         do {
             guard let imageData = try await item.loadTransferable(type: Data.self) else {
+                AppLog.error(.notesImport, "OCR: selected photo library item had no loadable image data")
                 ocrImportErrorMessage = "The selected image could not be loaded."
                 return
             }
             await importTextFromOCRImageData(imageData)
         } catch {
+            AppLog.error(.notesImport, "OCR: loadTransferable failed — \(error.localizedDescription)")
             ocrImportErrorMessage = error.localizedDescription
         }
     }
@@ -80,6 +82,7 @@ extension NotesView {
             selectedOCRImageItem = nil
         }
 
+        AppLog.debug(.notesImport, "OCR: starting recognition on \(imageData.count) bytes of image data")
         do {
             let recognizedText = try await Task.detached(priority: .userInitiated) {
                 try NotesView.recognizeText(in: imageData)
@@ -87,13 +90,16 @@ extension NotesView {
             let trimmedText = recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard trimmedText.isEmpty == false else {
+                AppLog.error(.notesImport, "OCR: no text recognized in image")
                 ocrImportErrorMessage = "No text was recognized in the selected image."
                 return
             }
 
+            AppLog.debug(.notesImport, "OCR: recognized text:\n\(trimmedText)")
             let recognizedNote = Note(content: trimmedText)
             onOCRImportedNote?(recognizedNote)
         } catch {
+            AppLog.error(.notesImport, "OCR: recognition failed — \(error.localizedDescription)")
             ocrImportErrorMessage = error.localizedDescription
         }
     }

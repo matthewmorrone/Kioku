@@ -107,10 +107,11 @@ final class LLMCorrectionQueue: ObservableObject {
             do {
                 try await processOne(noteID: next)
                 successCount += 1
+                AppLog.debug(.llmCorrection, "queue: corrected note \(next)")
             } catch {
                 failedNoteIDs.insert(next)
                 lastFailureMessage = error.localizedDescription
-                print("[LLMCorrectionQueue] failed for note \(next): \(error.localizedDescription)")
+                AppLog.error(.llmCorrection, "queue: failed for note \(next): \(error.localizedDescription)")
             }
             currentNoteID = nil
             runCompletedCount += 1
