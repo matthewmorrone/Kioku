@@ -26,21 +26,21 @@ nonisolated final class IPADicMatrix: @unchecked Sendable {
             buffer = nil
             lsize = 0
             rsize = 0
-            print("IPADicMatrix: matrix.bin not found in bundle — trie-Viterbi will fall back to POS buckets")
+            AppLog.error(.segmentation, "IPADicMatrix: matrix.bin not found in bundle — trie-Viterbi will fall back to POS buckets")
             return
         }
         guard let raw = try? Data(contentsOf: url) else {
             buffer = nil
             lsize = 0
             rsize = 0
-            print("IPADicMatrix: failed to read matrix.bin at \(url.path)")
+            AppLog.error(.segmentation, "IPADicMatrix: failed to read matrix.bin at \(url.path)")
             return
         }
         guard raw.count >= 4 else {
             buffer = nil
             lsize = 0
             rsize = 0
-            print("IPADicMatrix: matrix.bin too small (\(raw.count) bytes)")
+            AppLog.error(.segmentation, "IPADicMatrix: matrix.bin too small (\(raw.count) bytes)")
             return
         }
 
@@ -55,7 +55,7 @@ nonisolated final class IPADicMatrix: @unchecked Sendable {
             buffer = nil
             lsize = 0
             rsize = 0
-            print("IPADicMatrix: matrix.bin size \(raw.count) < expected \(expectedBytes) for \(l)×\(r)")
+            AppLog.error(.segmentation, "IPADicMatrix: matrix.bin size \(raw.count) < expected \(expectedBytes) for \(l)×\(r)")
             return
         }
 

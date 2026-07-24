@@ -52,12 +52,14 @@ final class ClipboardLookupCoordinator: ObservableObject {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false, ScriptClassifier.containsJapanese(trimmed) else {
             // Mark the change consumed so we don't re-read this clipboard on the next focus.
+            AppLog.debug(.clipboardLookup, "checkClipboard: no Japanese content, skipping (changeCount=\(currentChangeCount))")
             lastSeenChangeCount = currentChangeCount
             return
         }
         // Cap length so a pasted novel doesn't blow up the search field.
         pendingClipboardText = String(trimmed.prefix(200))
         hasPendingClipboard = true
+        AppLog.debug(.clipboardLookup, "checkClipboard: pending lookup — \(pendingClipboardText?.count ?? 0) chars: \(pendingClipboardText ?? "")")
     }
 
     // Returns the cached clipboard text (read once during `checkClipboard`) and marks the

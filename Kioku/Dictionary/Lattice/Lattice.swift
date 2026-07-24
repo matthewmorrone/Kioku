@@ -51,7 +51,7 @@ final class Lattice {
             let neighbours = (adjacency[id] ?? []).sorted().map(String.init).joined(separator: ",")
             return "  [\(id)] \(node.startOffset)..\(node.endOffset) \"\(node.surface)\"  adj:[\(neighbours)]"
         }
-        print("[Lattice] rebuilt \(builtNodes.count) nodes for \"\(text)\"\n" + lines.joined(separator: "\n"))
+        AppLog.debug(.segmentation, "[Lattice] rebuilt \(builtNodes.count) nodes for \"\(text)\"\n" + lines.joined(separator: "\n"))
     }
 
     // Returns lattice node IDs reachable within one undirected edge distance threshold from a seed node.

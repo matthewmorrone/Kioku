@@ -1,14 +1,5 @@
 import Foundation
 import Observation
-import OSLog
-
-// Subsystem-tagged so Console.app filtering ("subsystem:matthewmorrone.Kioku
-// category:Whisper") shows only model-manager output without LLM, alignment, or
-// playback noise. `nonisolated` because under Swift 6 file-scope lets in a file
-// that imports a UI framework (Observation here) infer @MainActor, but the
-// URLSessionDownloadDelegate callbacks below run on URLSession's delegate
-// queue and can't see a main-isolated reference. Logger is Sendable.
-nonisolated private let logger = Logger(subsystem: "matthewmorrone.Kioku", category: "Whisper")
 
 // Represents the resolved URL for a Whisper model, regardless of its origin.
 enum WhisperModelSource: Equatable {
@@ -101,7 +92,7 @@ final class WhisperModelManager {
     func download(_ model: WhisperDownloadableModel) async {
         let filename = model.filename
         guard downloadProgress[filename] == nil else {
-            logger.debug("download(\(filename)): already in flight, skipping")
+            AppLog.debug(.transcription, "download(\(filename)): already in flight, skipping")
             return
         }
 
@@ -115,7 +106,7 @@ final class WhisperModelManager {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let destination = dir.appendingPathComponent(filename)
 
-            logger.info("download(\(filename)): starting from \(model.remoteURL)")
+            AppLog.info(.transcription, "download(\(filename)): starting from \(model.remoteURL)")
 
             let delegate = WhisperDownloadProgressDelegate { [weak self] progress in
                 guard let self else { return }
@@ -125,7 +116,7 @@ final class WhisperModelManager {
             let (tempURL, response) = try await URLSession.shared.download(from: model.remoteURL, delegate: delegate)
 
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            logger.info("download(\(filename)): HTTP \(status), temp file at \(tempURL.path)")
+            AppLog.debug(.transcription, "download(\(filename)): HTTP \(status), temp file at \(tempURL.path)")
 
             guard status == 200 else {
                 throw WhisperDownloadError.httpError(status)
@@ -135,14 +126,14 @@ final class WhisperModelManager {
                 try FileManager.default.removeItem(at: destination)
             }
             try FileManager.default.moveItem(at: tempURL, to: destination)
-            logger.info("download(\(filename)): moved to \(destination.path)")
+            AppLog.info(.transcription, "download(\(filename)): moved to \(destination.path)")
 
             await MainActor.run {
                 downloadProgress.removeValue(forKey: filename)
                 refreshDownloadedModels()
             }
         } catch {
-            logger.error("download(\(filename)): failed — \(error.localizedDescription)")
+            AppLog.error(.transcription, "download(\(filename)): failed — \(error.localizedDescription)")
             await MainActor.run {
                 downloadProgress.removeValue(forKey: filename)
                 downloadErrors[filename] = error.localizedDescription
@@ -152,7 +143,7 @@ final class WhisperModelManager {
 
     // Cancels an in-progress download — removes partial state. The caller must cancel the Task.
     func cancelDownload(filename: String) {
-        logger.info("cancelDownload(\(filename))")
+        AppLog.info(.transcription, "cancelDownload(\(filename))")
         downloadProgress.removeValue(forKey: filename)
         downloadErrors.removeValue(forKey: filename)
     }
@@ -181,6 +172,11 @@ private final class WhisperDownloadProgressDelegate: NSObject, URLSessionDownloa
         self.onProgress = onProgress
     }
 
+    // Last percent (0-100) logged, so a multi-hundred-MB download logs roughly once per point of
+    // progress instead of once per ~16-64KB chunk — thousands of debug calls for a large model
+    // would otherwise both spam the console and repeatedly hit the file sink's lock.
+    private var lastLoggedPercent = -1
+
     // Forwards download progress to the onProgress closure as a 0–1 fraction.
     func urlSession(
         _ session: URLSession,
@@ -190,11 +186,15 @@ private final class WhisperDownloadProgressDelegate: NSObject, URLSessionDownloa
         totalBytesExpectedToWrite: Int64
     ) {
         guard totalBytesExpectedToWrite > 0 else {
-            logger.warning("progress: totalBytesExpectedToWrite unknown (redirect response?)")
+            AppLog.debug(.transcription, "progress: totalBytesExpectedToWrite unknown (redirect response?)")
             return
         }
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        logger.debug("progress: \(Int(progress * 100))% (\(totalBytesWritten)/\(totalBytesExpectedToWrite) bytes)")
+        let percent = Int(progress * 100)
+        if percent != lastLoggedPercent {
+            lastLoggedPercent = percent
+            AppLog.debug(.transcription, "progress: \(percent)% (\(totalBytesWritten)/\(totalBytesExpectedToWrite) bytes)")
+        }
         onProgress(progress)
     }
 
@@ -205,13 +205,13 @@ private final class WhisperDownloadProgressDelegate: NSObject, URLSessionDownloa
         didFinishDownloadingTo location: URL
     ) {
         // File move is handled by the async download(from:delegate:) continuation.
-        logger.debug("delegate didFinishDownloadingTo: \(location.path)")
+        AppLog.debug(.transcription, "delegate didFinishDownloadingTo: \(location.path)")
     }
 
     // Logs task-level errors from the URLSession delegate so failures are visible in the console.
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error {
-            logger.error("delegate didCompleteWithError: \(error.localizedDescription)")
+            AppLog.error(.transcription, "delegate didCompleteWithError: \(error.localizedDescription)")
         }
     }
 }

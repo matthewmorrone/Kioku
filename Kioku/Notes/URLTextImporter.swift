@@ -37,18 +37,25 @@ nonisolated enum URLTextImporter {
             throw ImportError.invalidURL
         }
 
+        AppLog.debug(.notesImport, "URL import: GET \(url)")
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await URLSession.shared.data(from: url)
         } catch {
+            AppLog.error(.notesImport, "URL import: fetch failed for \(url) — \(error.localizedDescription)")
             throw ImportError.fetchFailed(underlying: error)
         }
 
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+        let mimeType = (response as? HTTPURLResponse)?.mimeType
+        AppLog.debug(.notesImport, "URL import: HTTP \(statusCode) mime=\(mimeType ?? "unknown") bytes=\(data.count)")
+
         // Only proceed for HTML/text MIME types — we'd produce gibberish on PDFs or images.
-        if let mime = (response as? HTTPURLResponse)?.mimeType,
+        if let mime = mimeType,
            mime.hasPrefix("text/") == false,
            mime != "application/xhtml+xml" {
+            AppLog.error(.notesImport, "URL import: unsupported mime type \(mime) for \(url)")
             throw ImportError.nonHTMLResponse(mimeType: mime)
         }
 
@@ -56,7 +63,11 @@ nonisolated enum URLTextImporter {
             extractPlainText(from: data)
         }.value
 
-        guard let text = extracted, text.isEmpty == false else { throw ImportError.emptyResult }
+        guard let text = extracted, text.isEmpty == false else {
+            AppLog.error(.notesImport, "URL import: extraction produced no text for \(url)")
+            throw ImportError.emptyResult
+        }
+        AppLog.debug(.notesImport, "URL import: extracted \(text.count) characters from \(url)")
         return text
     }
 

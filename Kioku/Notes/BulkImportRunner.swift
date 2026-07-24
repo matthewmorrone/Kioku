@@ -35,6 +35,7 @@ final class BulkImportRunner: ObservableObject {
         guard isRunning == false, hasFinished == false else { return }
         isRunning = true
         createdNoteIDs.removeAll()
+        AppLog.info(.notesImport, "bulk import: starting run of \(plan.count) item(s)")
         defer {
             isRunning = false
             hasFinished = true
@@ -51,10 +52,13 @@ final class BulkImportRunner: ObservableObject {
             do {
                 try await process(item: item, whisperModelURL: whisperModelURL)
                 progressByItem[item.id]?.status = .completed
+                AppLog.debug(.notesImport, "bulk import: completed \"\(item.baseName)\"")
             } catch {
                 progressByItem[item.id]?.status = .failed(error.localizedDescription)
+                AppLog.error(.notesImport, "bulk import: failed \"\(item.baseName)\" — \(error.localizedDescription)")
             }
         }
+        AppLog.info(.notesImport, "bulk import: run finished — \(createdNoteIDs.count) note(s) created")
     }
 
     // Dispatches one plan item to the create-note or attach-audio path based on the URLs
