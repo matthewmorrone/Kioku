@@ -28,7 +28,8 @@ public enum StemTranscriber {
         // nil disables checkpointing (diagnostic callers) and transcribes fresh.
         cacheIdentity: String? = nil,
         progress: (@Sendable (String) -> Void)? = nil,
-        onFraction: (@Sendable (Double) -> Void)? = nil
+        onFraction: (@Sendable (Double) -> Void)? = nil,
+        cancellationCheck: (@Sendable () -> Bool)? = nil
     ) async throws -> [(start: Double, end: Double, text: String)] {
         guard stem.isEmpty == false else { return [] }
         let sr = Double(sampleRate)
@@ -94,6 +95,10 @@ public enum StemTranscriber {
 
         var doneChunks = 0
         for (t0, t1) in pieces {
+            // Each piece is a ~24s MLX forward pass; check between pieces so a mid-transcription
+            // cancel (e.g. the user cancelling alignment) doesn't have to wait for every remaining
+            // piece — up to ~30 in the worst case — to finish first.
+            if cancellationCheck?() == true { throw CancellationError() }
             if let hit = cached[key(t0)] {
                 keep(hit)   // resumed piece — no model work, no re-persist needed
             } else {

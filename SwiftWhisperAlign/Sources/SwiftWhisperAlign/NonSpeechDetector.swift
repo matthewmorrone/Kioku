@@ -68,8 +68,10 @@ struct NonSpeechDetector {
             loudness[i] = m
         }
 
-        // Step 2: 99.9th-percentile normalization.
-        let k = max(1, Int(ceil(Double(count) * 0.001)))
+        // Step 2: 99.9th-percentile normalization. k indexes into sortedDesc, which has
+        // tokenCount elements — must be sized off tokenCount, not the raw sample count,
+        // or this selects a far lower percentile than intended.
+        let k = max(1, Int(ceil(Double(tokenCount) * 0.001)))
         let sortedDesc = loudness.sorted(by: >)
         let percentile999 = sortedDesc[min(k - 1, sortedDesc.count - 1)]
         let norm = max(Float(1e-5), min(Float(1), percentile999 * 1.75))

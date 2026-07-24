@@ -35,11 +35,35 @@ public enum HTDemucsModelStore {
         try ModelStorage.directory(for: modelId).appendingPathComponent(modelDirName, isDirectory: true)
     }
 
+    // Serializes concurrent ensureModel() calls — without this, two callers needing HTDemucs
+    // at once (e.g. alignment and stem-transcription) could both pass the "missing" check,
+    // both remove the other's in-flight extraction, and both write to the same .mlmodelc
+    // path, risking a corrupted or partial install. A second caller joins the first's
+    // in-flight install instead of racing it.
+    private actor InstallCoordinator {
+        static let shared = InstallCoordinator()
+        private var inFlight: Task<URL, Error>?
+
+        func run(_ operation: @escaping @Sendable () async throws -> URL) async throws -> URL {
+            if let inFlight { return try await inFlight.value }
+            let task = Task { try await operation() }
+            inFlight = task
+            defer { inFlight = nil }
+            return try await task.value
+        }
+    }
+
     // Ensures HTDemucsSpec.mlmodelc is present at the model URL, downloading + extracting
     // the archive on first miss. Idempotent: subsequent calls no-op once the bundle is
     // on disk. `onStage` reports human-readable phase text the alignment HUD already
     // surfaces ("Downloading vocal isolator… 42%", "Extracting vocal isolator…").
     public static func ensureModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> URL {
+        try await InstallCoordinator.shared.run {
+            try await ensureModelUnguarded(onStage: onStage)
+        }
+    }
+
+    private static func ensureModelUnguarded(onStage: (@Sendable (String) -> Void)? = nil) async throws -> URL {
         // DIAGNOSTIC FALLBACK: a sideloaded copy under <App Documents>/HTDemucsSpec.mlmodelc
         // is preferred when present. CoreML's on-load device-specialization passes that worked
         // from the Documents path on 2026-06-19 / -24 started SIGKILLing once the model moved
