@@ -10,10 +10,7 @@
 
 import Foundation
 import Observation
-import OSLog
 import CryptoKit
-
-nonisolated private let logger = Logger(subsystem: "matthewmorrone.Kioku", category: "DictionaryDownload")
 
 // Errors produced while downloading or verifying the dictionary database.
 enum DictionaryDownloadError: LocalizedError {
@@ -103,7 +100,7 @@ final class DictionaryDownloadManager {
     func downloadIfNeeded() async {
         guard !isInstalled else { return }
         guard progress == nil else {
-            logger.debug("downloadIfNeeded: already in flight, skipping")
+            AppLog.debug(.dictionaryDownload, "downloadIfNeeded: already in flight, skipping")
             return
         }
 
@@ -119,7 +116,7 @@ final class DictionaryDownloadManager {
             excludedFromBackup.isExcludedFromBackup = true
             try? directoryURL.setResourceValues(excludedFromBackup)
 
-            logger.info("downloadIfNeeded: starting from \(Self.remoteURL)")
+            AppLog.info(.dictionaryDownload, "downloadIfNeeded: starting from \(Self.remoteURL)")
             let delegate = DictionaryDownloadProgressDelegate { [weak self] value in
                 guard let self else { return }
                 Task { @MainActor in self.progress = value }
@@ -127,14 +124,14 @@ final class DictionaryDownloadManager {
             let (tempURL, response) = try await URLSession.shared.download(from: Self.remoteURL, delegate: delegate)
 
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            logger.info("downloadIfNeeded: HTTP \(status), temp file at \(tempURL.path)")
+            AppLog.debug(.dictionaryDownload, "downloadIfNeeded: HTTP \(status), temp file at \(tempURL.path)")
             guard status == 200 else {
                 throw DictionaryDownloadError.httpError(status)
             }
 
             let digest = try Self.sha256(ofFileAt: tempURL)
             guard digest == Self.expectedSHA256 else {
-                logger.error("downloadIfNeeded: checksum mismatch (got \(digest))")
+                AppLog.error(.dictionaryDownload, "downloadIfNeeded: checksum mismatch — expected \(Self.expectedSHA256), got \(digest)")
                 throw DictionaryDownloadError.checksumMismatch
             }
 
@@ -143,12 +140,12 @@ final class DictionaryDownloadManager {
             }
             try FileManager.default.moveItem(at: tempURL, to: Self.installedDatabaseURL)
             try Self.releaseTag.write(to: Self.installedReleaseMarkerURL, atomically: true, encoding: .utf8)
-            logger.info("downloadIfNeeded: installed to \(Self.installedDatabaseURL.path)")
+            AppLog.info(.dictionaryDownload, "downloadIfNeeded: installed to \(Self.installedDatabaseURL.path)")
 
             progress = nil
             isInstalled = true
         } catch {
-            logger.error("downloadIfNeeded: failed — \(error.localizedDescription)")
+            AppLog.error(.dictionaryDownload, "downloadIfNeeded: failed — \(error.localizedDescription)")
             progress = nil
             errorMessage = error.localizedDescription
         }

@@ -8,6 +8,9 @@ import os
 //     --source karaoke-debug.log --destination /tmp/karaoke-debug.log
 // Also routed through os.Logger for live Console.app inspection. Thread-safe via a serial queue
 // so the playback observer can call it from its publisher callbacks without ordering hazards.
+// Gated by LogFeatureSettings' .audioAlignment toggle (Settings → Debug Logs) so this feature's
+// output can be silenced centrally alongside every other AppLog-backed feature, even though its
+// own file-sink mechanism predates and stays separate from AppLog's.
 enum KaraokeDebugLog {
     // All four constants are referenced from `nonisolated` static methods, so they must also be
     // nonisolated under the project's default-MainActor isolation. DispatchQueue, Logger, URL,
@@ -31,6 +34,7 @@ enum KaraokeDebugLog {
     // is set so production builds emit nothing and never create the log file.
     nonisolated static func log(_ message: @autoclosure () -> String) {
         #if DEBUG
+        guard LogFeatureSettings.isEnabled(.audioAlignment) else { return }
         let text = message()
         let stamp = formatter.string(from: Date())
         let line = "[\(stamp)] \(text)\n"

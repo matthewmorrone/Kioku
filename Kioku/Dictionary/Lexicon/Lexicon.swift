@@ -370,7 +370,7 @@ nonisolated public final class Lexicon {
             let lookupMode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
             return try dictionaryStore.lookup(surface: surface, mode: lookupMode)
         } catch {
-            print("lookup entries failed for surface \(surface): \(error)")
+            AppLog.error(.segmentation, "lookup entries failed for surface \(surface): \(error)")
             return []
         }
     }

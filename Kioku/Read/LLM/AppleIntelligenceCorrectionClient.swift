@@ -50,17 +50,17 @@ struct JapaneseWordLookupTool: Tool {
     func call(arguments: Arguments) async throws -> String {
         let trimmed = arguments.word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else {
-            LLMDebugLog.log("[JMdictTool] lookup(empty) → NO")
+            AppLog.debug(.llmCorrection, "[JMdictTool] lookup(empty) → NO")
             return "NO (empty input)"
         }
         // kanjiAndKana mode matches both indices, so all-kana and kanji
         // surfaces both resolve through the same call.
         if let entries = try? dictionary.lookup(surface: trimmed, mode: .kanjiAndKana),
            entries.isEmpty == false {
-            LLMDebugLog.log("[JMdictTool] lookup(\"\(trimmed)\") → YES (\(entries.count) entries)")
+            AppLog.debug(.llmCorrection, "[JMdictTool] lookup(\"\(trimmed)\") → YES (\(entries.count) entries)")
             return "YES — \"\(trimmed)\" is in the dictionary"
         }
-        LLMDebugLog.log("[JMdictTool] lookup(\"\(trimmed)\") → NO")
+        AppLog.debug(.llmCorrection, "[JMdictTool] lookup(\"\(trimmed)\") → NO")
         return "NO — \"\(trimmed)\" is not in the dictionary; do not merge into it."
     }
 }
@@ -102,6 +102,7 @@ enum AppleIntelligenceCorrectionClient {
         let parser = LLMCorrectionService()
         let lookupTool = dictionary.map { JapaneseWordLookupTool(dictionary: $0) }
 
+        AppLog.debug(.llmCorrection, "[AppleIntelligence] starting per-line correction — dictionary tool \(lookupTool == nil ? "disabled" : "enabled")")
         let lines = compactSegments
             .components(separatedBy: "\n")
             .filter { $0.isEmpty == false }
@@ -166,7 +167,9 @@ enum AppleIntelligenceCorrectionClient {
                 session = LanguageModelSession(instructions: LLMCorrectionService.systemPrompt)
             }
             do {
+                AppLog.debug(.llmCorrection, "[AppleIntelligence] line \(index) request:\n\(line)")
                 let response = try await session.respond(to: line, options: options)
+                AppLog.debug(.llmCorrection, "[AppleIntelligence] line \(index) raw response:\n\(response.content)")
                 let partial = try parser.parseCompactResponse(response.content)
                 // Per-line semantic validation: the parsed surfaces must
                 // concat back to the input line's raw text. The on-device
@@ -209,7 +212,7 @@ enum AppleIntelligenceCorrectionClient {
                 // the source — the line just doesn't get the AI's pass.
                 lastError = error
                 failedLineCount += 1
-                LLMDebugLog.log("[AppleIntelligence] skipped line — \(error.localizedDescription)")
+                AppLog.error(.llmCorrection, "[AppleIntelligence] line \(index) skipped — \(error.localizedDescription)")
             }
             await MainActor.run {
                 AICorrectionProgress.shared.advance()
@@ -228,6 +231,7 @@ enum AppleIntelligenceCorrectionClient {
             throw err
         }
 
+        AppLog.info(.llmCorrection, "[AppleIntelligence] finished — \(processedLineCount) line(s) processed, \(failedLineCount) fell back to baseline")
         return Self.buildResponse(from: current)
     }
 
