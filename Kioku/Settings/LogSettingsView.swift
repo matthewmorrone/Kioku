@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Renders Settings → Debug Logs: a per-LogFeature on/off toggle list plus actions on the shared
 // on-disk log mirror (AppLogFileSink). Layout: one section explaining the feature, one row per
@@ -55,7 +56,6 @@ struct LogSettingsView: View {
             }
             #endif
         }
-        .navigationTitle("Debug Logs")
     }
 
     // Bridges one feature's local @State toggle to LogFeatureSettings' UserDefaults-backed

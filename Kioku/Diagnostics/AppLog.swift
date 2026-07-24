@@ -37,24 +37,28 @@ enum AppLog {
     // NWConnection completion handlers, Task.detached bodies — the same reason the bespoke
     // loggers this replaces (LLMDebugLog, KaraokeDebugLog) were nonisolated too.
     nonisolated static func debug(_ feature: LogFeature, _ message: @autoclosure () -> String) {
-        emit(feature, level: .debug, message())
+        emit(feature, level: .debug, message)
     }
 
     // Marks a feature's notable lifecycle milestones (download started/finished, import
     // completed) — worth persisting past the in-memory debug buffer, but not every request.
     nonisolated static func info(_ feature: LogFeature, _ message: @autoclosure () -> String) {
-        emit(feature, level: .info, message())
+        emit(feature, level: .info, message)
     }
 
     // Marks a failure — network error, parse failure, validation rejection.
     nonisolated static func error(_ feature: LogFeature, _ message: @autoclosure () -> String) {
-        emit(feature, level: .error, message())
+        emit(feature, level: .error, message)
     }
 
-    // Shared implementation behind debug/info/error: checks the per-feature toggle once, then
-    // fans out to both sinks (live os.Logger, on-disk mirror) so callers never duplicate that logic.
-    nonisolated private static func emit(_ feature: LogFeature, level: OSLogType, _ text: String) {
+    // Shared implementation behind debug/info/error: checks the per-feature toggle BEFORE forcing
+    // the autoclosure, then fans out to both sinks (live os.Logger, on-disk mirror) so callers
+    // never duplicate that logic. Takes the message as an unevaluated closure (not a String) so a
+    // disabled feature really does skip building it — the whole point of the autoclosure at the
+    // call sites, which callers would silently lose if this evaluated eagerly.
+    nonisolated private static func emit(_ feature: LogFeature, level: OSLogType, _ message: () -> String) {
         guard LogFeatureSettings.isEnabled(feature) else { return }
+        let text = message()
         loggers[feature]?.log(level: level, "\(text, privacy: .private)")
         #if DEBUG
         AppLogFileSink.write(feature: feature, level: level, text: text)
