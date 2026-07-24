@@ -244,8 +244,10 @@ final class KiokuBridgeServer: ObservableObject {
     // Authenticates and dispatches one parsed request. Auth failure short-circuits
     // before any handler runs so handlers don't need to repeat the check.
     private func handle(_ request: BridgeHTTPRequest) async -> BridgeHTTPResponse {
-        let bodyPreview = String(data: request.body, encoding: .utf8) ?? "(\(request.body.count) bytes, non-UTF8)"
-        AppLog.debug(.bridgeServer, "\(request.method) \(request.path) query=\(request.query) body:\n\(bodyPreview)")
+        // Body decoding happens inside the AppLog.debug argument itself (not in a local let
+        // beforehand) so it's part of the deferred autoclosure — with Bridge Server logging
+        // disabled, a large request/response body is never UTF-8 decoded at all.
+        AppLog.debug(.bridgeServer, "\(request.method) \(request.path) query=\(request.query) body:\n\(Self.bodyPreview(request.body))")
 
         guard isAuthorized(headerValue: request.header("authorization")) else {
             AppLog.error(.bridgeServer, "\(request.method) \(request.path) → 401 unauthorized")
@@ -253,9 +255,16 @@ final class KiokuBridgeServer: ObservableObject {
         }
         let response = await routes.dispatch(request)
 
-        let responsePreview = String(data: response.body, encoding: .utf8) ?? "(\(response.body.count) bytes, non-UTF8)"
-        AppLog.debug(.bridgeServer, "\(request.method) \(request.path) → \(response.status) response:\n\(responsePreview)")
+        AppLog.debug(.bridgeServer, "\(request.method) \(request.path) → \(response.status) response:\n\(Self.bodyPreview(response.body))")
         return response
+    }
+
+    // Decodes a request/response body as UTF-8 for log previews, falling back to a byte-count
+    // placeholder for binary payloads. A plain function (not a stored preview) so callers can
+    // pass the call itself as a log interpolation argument, keeping the decode inside AppLog's
+    // deferred autoclosure instead of running unconditionally before the enabled-check.
+    private static func bodyPreview(_ data: Data) -> String {
+        String(data: data, encoding: .utf8) ?? "(\(data.count) bytes, non-UTF8)"
     }
 
     // Serializes a response onto the wire and runs `then` once the bytes are flushed
