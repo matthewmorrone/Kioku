@@ -1,5 +1,20 @@
 import SwiftUI
 
+// A pre-correction segment span, used by applyLLMCorrectionResponse's boundary diff to detect
+// splits, merges, and substitutions against the post-correction segments (LLMCorrectionNewSeg).
+private struct LLMCorrectionOldSeg {
+    let location: Int
+    let end: Int
+    let surface: String
+}
+
+// A post-correction segment span — see LLMCorrectionOldSeg.
+private struct LLMCorrectionNewSeg {
+    let location: Int
+    let end: Int
+    let surface: String
+}
+
 // Hosts LLM-driven segmentation and reading correction logic for the read screen.
 // Converts current view state into a request payload, applies validated responses,
 // and surfaces errors as alerts.
@@ -50,6 +65,11 @@ extension ReadView {
         let provider = LLMSettings.activeProvider()
         let willStream = useLLM && provider == .appleIntelligence
 
+        // Captured so a response that lands after the user has switched notes (cooperative
+        // cancellation doesn't interrupt an in-flight network/model call) is discarded instead
+        // of being applied against whatever note happens to be active when it arrives.
+        let sourceNoteID = activeNoteID
+
         AppLog.debug(.llmCorrection, "requestLLMCorrection starting — provider=\(provider) streaming=\(willStream) segments=\(currentSegments.count) isRetry=\(correctiveFeedback != nil)")
         isRequestingLLMCorrection = true
         llmCorrectionTask = Task {
@@ -67,6 +87,7 @@ extension ReadView {
                     dictionary: dictionaryStore,
                     correctiveFeedback: correctiveFeedback,
                     onPartial: willStream ? { @MainActor partial in
+                        guard self.activeNoteID == sourceNoteID else { return }
                         let merged = Self.mergeResponsePerLine(
                             response: partial,
                             originalText: capturedText,
@@ -78,6 +99,7 @@ extension ReadView {
                 LLMCorrectionService.logOutcome(provider: provider, result: .success(response))
 
                 await MainActor.run {
+                    guard activeNoteID == sourceNoteID else { return }
                     if willStream {
                         // Streaming already applied every line as it arrived;
                         // the final response equals the last partial. Just flag
@@ -373,24 +395,22 @@ extension ReadView {
         //
         // Strategy: for each new edge, find the old segment(s) that overlap its span.
         // Group new edges that share the same set of old segment(s).
-        struct OldSeg { let location: Int; let end: Int; let surface: String }
-        let oldSegs: [OldSeg] = segmentEdges.compactMap { edge in
+        let oldSegs: [LLMCorrectionOldSeg] = segmentEdges.compactMap { edge in
             let r = NSRange(edge.start..<edge.end, in: originalText)
             guard r.location != NSNotFound else { return nil }
-            return OldSeg(location: r.location, end: r.location + r.length, surface: edge.surface)
+            return LLMCorrectionOldSeg(location: r.location, end: r.location + r.length, surface: edge.surface)
         }
 
         // Map each new edge to its overlapping old segments (by span overlap).
-        struct NewSeg { let location: Int; let end: Int; let surface: String }
-        var newSegs: [NewSeg] = []
+        var newSegs: [LLMCorrectionNewSeg] = []
         for edge in rebuiltEdges {
             let r = NSRange(edge.start..<edge.end, in: originalText)
             guard r.location != NSNotFound, r.length > 0 else { continue }
-            newSegs.append(NewSeg(location: r.location, end: r.location + r.length, surface: edge.surface))
+            newSegs.append(LLMCorrectionNewSeg(location: r.location, end: r.location + r.length, surface: edge.surface))
         }
 
         // Returns existing segments that spatially overlap a proposed new segment.
-        func overlappingOld(for new: NewSeg) -> [OldSeg] {
+        func overlappingOld(for new: LLMCorrectionNewSeg) -> [LLMCorrectionOldSeg] {
             oldSegs.filter { $0.location < new.end && $0.end > new.location }
         }
 

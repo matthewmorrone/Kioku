@@ -486,12 +486,28 @@ final class NotesStore: ObservableObject {
 
         let currentIDs = Set(notes.map { $0.id })
 
-        // Write changed / new notes.
-        for note in notes {
-            if previousSnapshot[note.id] == note { continue }
-            let url = directory.appendingPathComponent("\(note.id.uuidString).json", isDirectory: false)
-            let data = try encoder.encode(note)
-            try fileWriter.write(data, to: url)
+        // Write changed / new notes. Tracks IDs written so far so a write failure partway
+        // through (e.g. disk full) can be rolled back — otherwise some note files would carry
+        // new content while _index.json (rewritten last, only on full success) still reflects
+        // the previous set, leaving a mixed old/new collection on disk with no way to recover.
+        var writtenNoteIDs: [UUID] = []
+        do {
+            for note in notes {
+                if previousSnapshot[note.id] == note { continue }
+                let url = directory.appendingPathComponent("\(note.id.uuidString).json", isDirectory: false)
+                let data = try encoder.encode(note)
+                try fileWriter.write(data, to: url)
+                writtenNoteIDs.append(note.id)
+            }
+        } catch {
+            rollbackPartialWrite(
+                writtenNoteIDs: writtenNoteIDs,
+                previousSnapshot: previousSnapshot,
+                directory: directory,
+                encoder: encoder,
+                fileWriter: fileWriter
+            )
+            throw error
         }
 
         // Remove notes we previously owned but are no longer present.
@@ -506,6 +522,28 @@ final class NotesStore: ObservableObject {
         let orderedIDs = notes.map { $0.id.uuidString }
         let indexData = try encoder.encode(orderedIDs)
         try fileWriter.write(indexData, to: indexURL)
+    }
+
+    // Best-effort recovery for a note-write pass that failed partway: restores previous content
+    // for notes that existed before this pass, and deletes newly-created files for notes that
+    // didn't, so a thrown write leaves disk consistent with the untouched _index.json rather
+    // than a mix of old and new note content. Errors here are swallowed since this already runs
+    // from a failure path and the original error is what propagates.
+    private static func rollbackPartialWrite(
+        writtenNoteIDs: [UUID],
+        previousSnapshot: [UUID: Note],
+        directory: URL,
+        encoder: JSONEncoder,
+        fileWriter: any NotesFileWriting
+    ) {
+        for id in writtenNoteIDs {
+            let url = directory.appendingPathComponent("\(id.uuidString).json", isDirectory: false)
+            if let previousNote = previousSnapshot[id], let data = try? encoder.encode(previousNote) {
+                try? fileWriter.write(data, to: url)
+            } else {
+                try? fileWriter.removeItem(at: url)
+            }
+        }
     }
 
     // Reads notes from disk using `_index.json` for ordering. Skips files that fail to

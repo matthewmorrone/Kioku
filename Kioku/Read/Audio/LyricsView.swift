@@ -96,7 +96,7 @@ struct LyricsView: View {
 
     // Even/odd segment-alternation colors for the active-cue card. Honors the user's custom
     // palette when enabled, and otherwise resolves to the active theme's default token colors
-    // (see Theme.Palette). Kept in lockstep with ReadView+Editor's branching so the karaoke
+    // (see ThemePalette). Kept in lockstep with ReadView+Editor's branching so the karaoke
     // card and the page render identically.
     private var resolvedEvenSegmentColor: UIColor {
         customTokenColorsEnabled

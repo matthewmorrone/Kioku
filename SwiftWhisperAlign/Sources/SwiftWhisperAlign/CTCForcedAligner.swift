@@ -105,10 +105,7 @@ public struct CTCForcedAligner {
         func start() {
             lock.lock(); minAvailBytes = .max; running = true; lock.unlock()
             Thread.detachNewThread { [weak self] in
-                while true {
-                    guard let self else { return }
-                    self.lock.lock(); let go = self.running; self.lock.unlock()
-                    if go == false { return }
+                while let self, self.isRunning {
                     #if os(iOS)
                     let a = UInt(os_proc_available_memory())
                     self.lock.lock(); if a < self.minAvailBytes { self.minAvailBytes = a }; self.lock.unlock()
@@ -116,6 +113,13 @@ public struct CTCForcedAligner {
                     usleep(50_000)   // 50 ms
                 }
             }
+        }
+
+        // Explicit loop condition for start()'s sampling thread, per the Loop Safety
+        // invariant — checked once per iteration instead of an unconditional while true.
+        private var isRunning: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return running
         }
 
         // Stops sampling and returns the peak pressure (lowest available memory) in MB.
@@ -301,7 +305,8 @@ public struct CTCForcedAligner {
                     // per ~24 s piece (so it starts at the first piece's fraction, never a stuck 0%).
                     onFraction: { frac in
                         onStage?("Transcribing… \(Int((frac * 100).rounded()))%")
-                    })) ?? []
+                    },
+                    cancellationCheck: cancellationCheck)) ?? []
                 Self.breadcrumb("transcribed \(phrases.count) pieces over \(vadSegs.count) regions")
                 anchors = Self.extractAnchors(lines: input.lines, phrases: phrases, vadSegs: vadSegs)
                 MLX.Memory.clearCache()   // free the ASR model's GPU buffers before the aligner allocates
@@ -944,7 +949,10 @@ public struct CTCForcedAligner {
 
         // (lineStart, lineEnd, t0, t1) spans: optional head, then between each anchor and the next.
         var spans: [(ls: Int, le: Int, t0: Double, t1: Double)] = []
-        if let first = sorted.first, first.line > 0 { spans.append((0, first.line, firstVocal, first.time)) }
+        // Unlike interior/tail spans (provably monotonic via the anchor chain), nothing
+        // guarantees firstVocal <= first.time — clamp so the head span can't invert and
+        // fall back to alignVADGated's whole-song search space.
+        if let first = sorted.first, first.line > 0 { spans.append((0, first.line, min(firstVocal, first.time), first.time)) }
         for k in 0..<sorted.count {
             let ls = sorted[k].line
             let le = k + 1 < sorted.count ? sorted[k + 1].line : n

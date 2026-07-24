@@ -5,19 +5,19 @@ import Foundation
 // Intervals (in seconds): a wrong answer drops the streak to 0 (10 minute relearn step), a correct
 // answer advances along [1d, 3d, 7d, 14d, 30d, 90d, 180d]. Picked over SM-2 because the steps
 // are easy to reason about and the state survives JSON round-trips without floating-point drift.
+// The two grades the existing flashcard UI surfaces.
+enum SRSAnswer {
+    case correct
+    case again
+}
+
+// Result of scheduling: the next due date and the new streak counter.
+struct SRSScheduleResult: Equatable {
+    let dueDate: Date
+    let consecutiveCorrect: Int
+}
+
 nonisolated enum SRSScheduler {
-    // The two grades the existing flashcard UI surfaces.
-    enum Answer {
-        case correct
-        case again
-    }
-
-    // Result of scheduling: the next due date and the new streak counter.
-    struct ScheduleResult: Equatable {
-        let dueDate: Date
-        let consecutiveCorrect: Int
-    }
-
     // Fixed interval ladder. Index 0 is the relearn step (used right after "again" or for the
     // very first review). Index 7+ caps at 180 days so cards don't drift years out.
     private static let intervalSeconds: [TimeInterval] = [
@@ -34,9 +34,9 @@ nonisolated enum SRSScheduler {
     // Returns the next schedule given the existing stats and the user's answer.
     static func schedule(
         previous: ReviewWordStats?,
-        answer: Answer,
+        answer: SRSAnswer,
         now: Date = Date()
-    ) -> ScheduleResult {
+    ) -> SRSScheduleResult {
         let priorStreak = previous?.consecutiveCorrect ?? 0
         let newStreak: Int
         let intervalIndex: Int
@@ -52,7 +52,7 @@ nonisolated enum SRSScheduler {
         }
 
         let nextDue = now.addingTimeInterval(intervalSeconds[intervalIndex])
-        return ScheduleResult(dueDate: nextDue, consecutiveCorrect: newStreak)
+        return SRSScheduleResult(dueDate: nextDue, consecutiveCorrect: newStreak)
     }
 
     // Human-readable label for the next-up interval — e.g. "1d", "10m". Used by the UI to preview

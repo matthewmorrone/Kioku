@@ -24,8 +24,8 @@ struct SettingsView: View {
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
 
     // Selected theme id — drives chrome (background/accent/typography) and the default token
-    // colors when "Custom Token Colors" is off. See Theme.ID for available themes.
-    @AppStorage(Theme.themeIDKey) var themeIDRaw: String = Theme.ID.system.rawValue
+    // colors when "Custom Token Colors" is off. See ThemeID for available themes.
+    @AppStorage(Theme.themeIDKey) var themeIDRaw: String = ThemeID.system.rawValue
 
     @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
     @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
@@ -712,12 +712,12 @@ struct SettingsView: View {
         }
     }
 
-    // Bridges the raw AppStorage string to a Picker-friendly Theme.ID binding. Falls back to
+    // Bridges the raw AppStorage string to a Picker-friendly ThemeID binding. Falls back to
     // System if the stored string ever desyncs from the enum (shouldn't happen, but the
     // picker can't render a nil tag).
-    private var themeIDBinding: Binding<Theme.ID> {
+    private var themeIDBinding: Binding<ThemeID> {
         Binding(
-            get: { Theme.ID(rawValue: themeIDRaw) ?? .system },
+            get: { ThemeID(rawValue: themeIDRaw) ?? .system },
             set: { themeIDRaw = $0.rawValue }
         )
     }

@@ -16,32 +16,64 @@ import UIKit
 // UIColor is the single source of truth so the SwiftUI tokens (`Theme.ink`) and the UIKit
 // appearance proxies draw from identical adaptive values; both light/dark traits are baked
 // into every adaptive UIColor.
-enum Theme {
+// Picker-backed theme identifier. `system` opts the app out of themed chrome entirely so the
+// UIKit appearance proxies are reset to defaults — i.e. it behaves like the pre-theme app.
+enum ThemeID: String, CaseIterable, Identifiable, Sendable {
+    case system
+    case washi
+    case sumi
 
-    // MARK: Identity
+    var id: String { rawValue }
 
-    // Picker-backed identifier. `system` opts the app out of themed chrome entirely so the
-    // UIKit appearance proxies are reset to defaults — i.e. it behaves like the pre-theme app.
-    enum ID: String, CaseIterable, Identifiable, Sendable {
-        case system
-        case washi
-        case sumi
-
-        var id: String { rawValue }
-
-        // Picker label. Short on purpose so the dropdown stays one line on narrow phones.
-        var displayName: String {
-            switch self {
-            case .system: return "System"
-            case .washi:  return "Washi"
-            case .sumi:   return "Sumi"
-            }
+    // Picker label. Short on purpose so the dropdown stays one line on narrow phones.
+    var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .washi:  return "Washi"
+        case .sumi:   return "Sumi"
         }
     }
+}
+
+// Carries every adaptive UIColor + the default token hexes for one theme. UIColors are
+// already trait-aware (light/dark folded inside each); the struct itself is light/dark
+// agnostic. Built once per theme at compile time and stored in the registry below.
+struct ThemePalette: Sendable {
+    let uiBackground: UIColor
+    let uiSurface: UIColor
+    let uiSurfaceSecondary: UIColor
+    let uiInk: UIColor
+    let uiInkSecondary: UIColor
+    let uiAccent: UIColor
+    let uiAccentDeep: UIColor
+    let uiHairline: UIColor
+    // Default token alternation colors when the user hasn't enabled Custom Token Colors.
+    // Hex strings (not UIColor) so existing render paths that parse from AppStorage keep
+    // the same code shape — they just pull the seed string from here instead of the
+    // hardcoded TokenColorSettings constants.
+    let defaultTokenColorAHex: String
+    let defaultTokenColorBHex: String
+    let defaultHighlightHex: String
+    // Whether to install Mincho UIKit title fonts / themed nav+tab chrome. The System
+    // theme leaves these off so the app looks Apple-native.
+    let installsCustomAppearance: Bool
+
+    // Factory: returns the palette for a given id. Plain switch instead of a dictionary
+    // so each branch can directly call the per-theme builder below.
+    static func palette(for id: ThemeID) -> ThemePalette {
+        switch id {
+        case .system: return Theme.systemPalette
+        case .washi:  return Theme.washiPalette
+        case .sumi:   return Theme.sumiPalette
+        }
+    }
+}
+
+enum Theme {
 
     // MARK: Storage
 
-    // New canonical key — raw string of `ID`.
+    // New canonical key — raw string of `ThemeID`.
     static let themeIDKey = "kioku.themeID"
     // Legacy on/off key. Kept readable for backward compat: a user upgrading from the boolean
     // toggle sees the new picker preselected to Washi (their old setting) without an explicit
@@ -64,8 +96,8 @@ enum Theme {
     // Reads the active id, with a one-line fall-through to the legacy boolean for users who
     // upgrade from before the picker existed. Pure read, no migration writes — keeps the
     // resolution stateless so a missing UserDefaults key never produces surprise writes.
-    static var activeID: ID {
-        if let raw = UserDefaults.standard.string(forKey: themeIDKey), let id = ID(rawValue: raw) {
+    static var activeID: ThemeID {
+        if let raw = UserDefaults.standard.string(forKey: themeIDKey), let id = ThemeID(rawValue: raw) {
             return id
         }
         return UserDefaults.standard.bool(forKey: storageKey) ? .washi : .system
@@ -80,15 +112,15 @@ enum Theme {
     // The palette of the currently-selected theme, with the user's custom hex overrides
     // applied when Custom Theme is on. Empty / unparseable hexes fall back to the base
     // theme's value, so a half-customized palette stays coherent.
-    static var activePalette: Palette {
-        let base = Palette.palette(for: activeID)
+    static var activePalette: ThemePalette {
+        let base = ThemePalette.palette(for: activeID)
         let defaults = UserDefaults.standard
         guard defaults.bool(forKey: customThemeEnabledKey) else { return base }
         let bg = UIColor(hexString: defaults.string(forKey: customBackgroundHexKey) ?? "") ?? base.uiBackground
         let surface = UIColor(hexString: defaults.string(forKey: customSurfaceHexKey) ?? "") ?? base.uiSurface
         let ink = UIColor(hexString: defaults.string(forKey: customInkHexKey) ?? "") ?? base.uiInk
         let accent = UIColor(hexString: defaults.string(forKey: customAccentHexKey) ?? "") ?? base.uiAccent
-        return Palette(
+        return ThemePalette(
             uiBackground: bg,
             uiSurface: surface,
             uiSurfaceSecondary: base.uiSurfaceSecondary,
@@ -104,42 +136,6 @@ enum Theme {
             // base theme is System (which normally skips the appearance proxies).
             installsCustomAppearance: true
         )
-    }
-
-    // MARK: Palette structure
-
-    // Carries every adaptive UIColor + the default token hexes for one theme. UIColors are
-    // already trait-aware (light/dark folded inside each); the struct itself is light/dark
-    // agnostic. Built once per theme at compile time and stored in the registry below.
-    struct Palette: Sendable {
-        let uiBackground: UIColor
-        let uiSurface: UIColor
-        let uiSurfaceSecondary: UIColor
-        let uiInk: UIColor
-        let uiInkSecondary: UIColor
-        let uiAccent: UIColor
-        let uiAccentDeep: UIColor
-        let uiHairline: UIColor
-        // Default token alternation colors when the user hasn't enabled Custom Token Colors.
-        // Hex strings (not UIColor) so existing render paths that parse from AppStorage keep
-        // the same code shape — they just pull the seed string from here instead of the
-        // hardcoded TokenColorSettings constants.
-        let defaultTokenColorAHex: String
-        let defaultTokenColorBHex: String
-        let defaultHighlightHex: String
-        // Whether to install Mincho UIKit title fonts / themed nav+tab chrome. The System
-        // theme leaves these off so the app looks Apple-native.
-        let installsCustomAppearance: Bool
-
-        // Factory: returns the palette for a given id. Plain switch instead of a dictionary
-        // so each branch can directly call the per-theme builder below.
-        static func palette(for id: ID) -> Palette {
-            switch id {
-            case .system: return systemPalette
-            case .washi:  return washiPalette
-            case .sumi:   return sumiPalette
-            }
-        }
     }
 
     // MARK: Adaptive color helper
@@ -162,7 +158,7 @@ enum Theme {
     // Token defaults are vivid iOS-system colors (blue/pink/green) — deliberately cool and
     // high-saturation so they don't read as a sibling of Washi's warm earth tones or Sumi's
     // muted plum/sage/gold. Each pair has strong contrast against the other two themes.
-    static let systemPalette = Palette(
+    static let systemPalette = ThemePalette(
         uiBackground: .systemBackground,
         uiSurface: .secondarySystemBackground,
         uiSurfaceSecondary: .tertiarySystemBackground,
@@ -182,7 +178,7 @@ enum Theme {
     // Warm kinari paper canvas in light, deep warm sumi in dark, single vermilion accent.
     // Token defaults shift toward sepia + ink-blue so segment alternation reads against the
     // paper rather than fighting the vermilion chrome.
-    static let washiPalette = Palette(
+    static let washiPalette = ThemePalette(
         uiBackground: adaptive(light: (245, 241, 232), dark: (21, 19, 14)),
         uiSurface: adaptive(light: (255, 253, 248), dark: (33, 30, 24)),
         uiSurfaceSecondary: adaptive(light: (251, 248, 241), dark: (42, 38, 32)),
@@ -208,7 +204,7 @@ enum Theme {
     // Ink-on-charcoal: a more graphic, monochrome-leaning take on the washi aesthetic with a
     // single muted gold accent instead of vermilion. Distinct from system dark mode because
     // of the warm sumi ink (never cold gray) and the gold highlight rule on themed cards.
-    static let sumiPalette = Palette(
+    static let sumiPalette = ThemePalette(
         uiBackground: adaptive(light: (240, 236, 228), dark: (16, 15, 12)),
         uiSurface: adaptive(light: (250, 247, 240), dark: (28, 26, 22)),
         uiSurfaceSecondary: adaptive(light: (246, 242, 233), dark: (40, 36, 30)),
@@ -229,7 +225,7 @@ enum Theme {
         installsCustomAppearance: true
     )
 
-    // MARK: Palette (UIColor properties — delegate to active palette)
+    // MARK: ThemePalette (UIColor properties — delegate to active palette)
 
     static var uiBackground: UIColor { activePalette.uiBackground }
     static var uiSurface: UIColor { activePalette.uiSurface }
@@ -240,7 +236,7 @@ enum Theme {
     static var uiAccentDeep: UIColor { activePalette.uiAccentDeep }
     static var uiHairline: UIColor { activePalette.uiHairline }
 
-    // MARK: Palette (SwiftUI tokens — also resolve at access)
+    // MARK: ThemePalette (SwiftUI tokens — also resolve at access)
 
     static var background: Color { Color(uiBackground) }
     static var surface: Color { Color(uiSurface) }
@@ -310,7 +306,7 @@ enum Theme {
 
     // Picker-side hook: rewrite both the new id key and the legacy boolean (so any non-View
     // reader that still consults the boolean stays in sync), then reapply the chrome.
-    static func setActive(_ id: ID) {
+    static func setActive(_ id: ThemeID) {
         UserDefaults.standard.set(id.rawValue, forKey: themeIDKey)
         UserDefaults.standard.set(id != .system, forKey: storageKey)
         applyGlobalAppearance()
@@ -355,7 +351,7 @@ private struct WashiBackground: ViewModifier {
     // them triggers a re-render. SwiftUI only tracks the specific @AppStorage properties it
     // sees referenced; `Theme.background` reads UserDefaults directly under the hood, so we
     // need explicit observers here to make those reads trigger view updates.
-    @AppStorage(Theme.themeIDKey) private var themeID: String = Theme.ID.system.rawValue
+    @AppStorage(Theme.themeIDKey) private var themeID: String = ThemeID.system.rawValue
     @AppStorage(Theme.customThemeEnabledKey) private var customEnabled: Bool = false
     @AppStorage(Theme.customBackgroundHexKey) private var customBackgroundHex: String = ""
 
@@ -364,7 +360,7 @@ private struct WashiBackground: ViewModifier {
     // the System theme is selected without overrides keeps Settings looking native; otherwise
     // the active palette's background shows through.
     func body(content: Content) -> some View {
-        let id = Theme.ID(rawValue: themeID) ?? .system
+        let id = ThemeID(rawValue: themeID) ?? .system
         let usesSystemCanvas = id == .system && !customEnabled
         content
             .scrollContentBackground(.hidden)
@@ -381,7 +377,7 @@ private struct ThemedTint: ViewModifier {
     // Observe both the theme id and the custom-theme keys so a custom-accent change forces a
     // re-render. Without the custom-enabled / custom-accent observers, a user picking a new
     // accent hex would update UserDefaults but the modifier wouldn't re-tint.
-    @AppStorage(Theme.themeIDKey) private var themeID: String = Theme.ID.system.rawValue
+    @AppStorage(Theme.themeIDKey) private var themeID: String = ThemeID.system.rawValue
     @AppStorage(Theme.customThemeEnabledKey) private var customEnabled: Bool = false
     @AppStorage(Theme.customAccentHexKey) private var customAccentHex: String = ""
 
