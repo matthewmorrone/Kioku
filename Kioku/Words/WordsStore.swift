@@ -100,6 +100,11 @@ final class WordsStore: ObservableObject {
         let updated = words.map { word in
             var detached = word
             detached.sourceNoteIDs.removeAll { noteIDs.contains($0) }
+            // Explicitly preserved rather than deleted (see the comment above), so if that
+            // leaves it with zero attribution it's now a genuine orphan going forward.
+            if detached.sourceNoteIDs.isEmpty {
+                detached.hasBeenOrphaned = true
+            }
             return detached
         }
         persist(updated)
@@ -133,7 +138,8 @@ final class WordsStore: ObservableObject {
             savedAt: old.savedAt,
             selectedSenseIDs: [],
             selectedGlosses: [],
-            encounteredSurfaces: encountered
+            encounteredSurfaces: encountered,
+            hasBeenOrphaned: old.hasBeenOrphaned || (existing?.hasBeenOrphaned ?? false)
         )
 
         // Keep the card roughly where the old one sat; drop both old and any target collision first.
@@ -165,6 +171,10 @@ final class WordsStore: ObservableObject {
             guard word.canonicalEntryID == wordID, word.sourceNoteIDs.contains(noteID) else { return word }
             var updated = word
             updated.sourceNoteIDs.removeAll { $0 == noteID }
+            // Never deleted here, so a drop to zero attribution is a real orphan going forward.
+            if updated.sourceNoteIDs.isEmpty {
+                updated.hasBeenOrphaned = true
+            }
             return updated
         })
     }
@@ -314,7 +324,8 @@ final class WordsStore: ObservableObject {
                     savedAt: existingEntry.savedAt,
                     selectedSenseIDs: existingEntry.selectedSenseIDs,
                     selectedGlosses: existingEntry.selectedGlosses,
-                    encounteredSurfaces: encounteredSet
+                    encounteredSurfaces: encounteredSet,
+                    hasBeenOrphaned: existingEntry.hasBeenOrphaned || orderedNoteIDs.isEmpty
                 )
             }
         } else {

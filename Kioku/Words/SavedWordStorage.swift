@@ -68,7 +68,8 @@ nonisolated enum SavedWordStorage {
                     savedAt: existing.savedAt,
                     selectedSenseIDs: mergedSenseIDs,
                     selectedGlosses: mergedGlosses,
-                    encounteredSurfaces: mergedEncountered
+                    encounteredSurfaces: mergedEncountered,
+                    hasBeenOrphaned: existing.hasBeenOrphaned || entry.hasBeenOrphaned
                 )
                 mergedByEntryID[entry.canonicalEntryID] = existing
                 continue

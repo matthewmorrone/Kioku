@@ -211,7 +211,8 @@ extension SegmentListView {
                     savedAt: existingEntry.savedAt,
                     selectedSenseIDs: existingEntry.selectedSenseIDs,
                     selectedGlosses: existingEntry.selectedGlosses,
-                    encounteredSurfaces: encountered
+                    encounteredSurfaces: encountered,
+                    hasBeenOrphaned: existingEntry.hasBeenOrphaned
                 )
             } else {
                 let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []

@@ -110,17 +110,26 @@ struct SegmentListView: View {
     // something. A row's checked state is `vocabRowCountsAsSaved(identity) != flipped` (XOR).
     @State private var selectedVocabSourceIndices: Set<Int> = []
 
-    // The ONE rule for "does this word count as saved for this note" — shared by the chip's
-    // default checked state, the Save/Remove baseline below, AND CoverageDetailView's total (fed
-    // via noteWordIdentities), so all three screens' numbers agree. Explicitly attributed to this
-    // note, OR known anywhere with no OTHER-note-specific attribution (i.e. not saved, or saved
-    // with no note attribution at all — the same "belongs to whatever note you're looking at"
-    // rule the in-text star/glow already use). A word saved only under a DIFFERENT note reads as
-    // not-yet-saved here; checking it attaches this note to the existing card rather than
-    // creating a duplicate (see saveSelectedVocab).
+    // The ONE rule for "does this word count as saved FOR THIS NOTE SPECIFICALLY" — shared by the
+    // chip's blue checked state, the Save/Remove baseline below, AND CoverageDetailView's total
+    // (fed via noteWordIdentities), so all three screens' numbers agree. Strictly per-note: only
+    // words actually attributed to the active note are checked. Everything else that's still
+    // known — saved standalone (Words tab / dictionary lookup, no note attribution at all) or
+    // attributed to a different note — is vocabRowKnownElsewhere's green state instead, never
+    // blue, so unchecking a word can never silently no-op with nothing to detach (see
+    // saveSelectedVocab / bug history).
     private func vocabRowCountsAsSaved(_ identity: String) -> Bool {
         isSavedForCurrentNote(normalizedSurface: identity)
-            || (isSavedSurface(normalizedSurface: identity) && isSavedForOtherNotes(normalizedSurface: identity) == false)
+    }
+
+    // True when this identity is known — saved standalone, or attributed to some other note —
+    // but not attributed to the active note: the chip's green "known elsewhere" state. Tapping
+    // one attaches this note to the existing card instead of creating a duplicate:
+    // addAllVisibleWords / commitAddAllVisibleWords already dedupe by canonicalEntryID, so it's
+    // the same add path "brand new" (gray) rows use. It never touches the word's other
+    // attributions.
+    private func vocabRowKnownElsewhere(_ identity: String) -> Bool {
+        isSavedForCurrentNote(normalizedSurface: identity) == false && isSavedSurface(normalizedSurface: identity)
     }
 
     // A row's live checked state: its default, unless the user flipped it.
@@ -285,15 +294,24 @@ struct SegmentListView: View {
         let defaultChecked = vocabRowCountsAsSaved(normalizedIdentity)
         let flipped = selectedVocabSourceIndices.contains(row.sourceIndex)
         let isChecked = flipped ? defaultChecked == false : defaultChecked
-        // Only a checked→unchecked flip is destructive (detaches a real, previously-saved word);
-        // an unchecked→checked flip is purely additive, so it shares the checked/blue look.
-        let willBeRemoved = flipped && defaultChecked
 
+        // Three colors: blue = attributed to this note (checked); gray = not known anywhere;
+        // green = known, just not for this note. Unchecking a checked row previews which of
+        // gray/green it's headed for — vocabRowWouldFullyRemove tells us whether the word has
+        // anything to fall back to (another note attribution, or having been an orphan before)
+        // once this note's attribution is set aside; that's exactly what decides
+        // detach-vs-fully-remove in saveSelectedVocab, so the color shown while editing always
+        // matches what Save is about to do.
         let (foreground, fill, border, accessibilityState): (Color, Color, Color, String) = {
-            if willBeRemoved {
-                return (.red, Color.red.opacity(0.15), Color.red.opacity(0.45), "Will be removed from this note")
-            } else if isChecked {
-                return (.accentColor, Color.accentColor.opacity(0.15), Color.accentColor.opacity(0.45), flipped ? "Will be saved" : "Already saved")
+            if isChecked {
+                return (.accentColor, Color.accentColor.opacity(0.15), Color.accentColor.opacity(0.45), flipped ? "Will be saved for this note" : "Already saved for this note")
+            } else if flipped {
+                if vocabRowWouldFullyRemove(normalizedIdentity) {
+                    return (.secondary, Color(.tertiarySystemFill), .clear, "Will be fully removed")
+                }
+                return (.green, Color.green.opacity(0.15), Color.green.opacity(0.45), "Will still be saved, just not for this note")
+            } else if vocabRowKnownElsewhere(normalizedIdentity) {
+                return (.green, Color.green.opacity(0.15), Color.green.opacity(0.45), "Saved elsewhere — tap to save for this note too")
             } else {
                 return (.secondary, Color(.tertiarySystemFill), .clear, "New, not yet saved")
             }
@@ -360,24 +378,31 @@ struct SegmentListView: View {
 
     // Additions go through the exact same path Add All uses — just scoped to the flipped rows
     // instead of every visible one (the override addAllVisibleWords(rows:) was already built
-    // for). Removals detach only this note's id via WordsStore.removeNoteMembership — the
-    // SavedWord itself is never deleted, even if that leaves it attributed to no notes at all. A
-    // flipped row that was checked ONLY via the "known elsewhere" shortcut (not genuinely
-    // attributed to this note) has nothing to detach, so it's a no-op rather than an error. Both
-    // add and remove run, then the picker resets to fresh defaults reflecting the just-committed
-    // truth — which becomes the new baseline for netVocabChangeCount.
+    // for). That one path covers both "brand new" rows AND "known elsewhere" rows the user just
+    // checked — addAllVisibleWords / commitAddAllVisibleWords already attach this note to an
+    // existing card by canonicalEntryID instead of duplicating it, so there's nothing extra to do
+    // here for that case. Removals split into two kinds, using the exact same
+    // vocabRowWouldFullyRemove check the chip previews with, so Save always does what the chip's
+    // color just promised: a row with something to fall back to (another note attribution, or
+    // having been an orphan before) detaches just this note's id via WordsStore.removeNoteMembership,
+    // leaving the card saved elsewhere (green); a row that's never existed independent of this
+    // note has nothing to fall back to, so unchecking it is a real, full unsave via
+    // WordsStore.remove instead. Both add and remove run, then the picker resets to fresh
+    // defaults reflecting the just-committed truth — which becomes the new baseline for
+    // netVocabChangeCount.
     private func saveSelectedVocab() {
         var addRows: [(sourceIndex: Int, edge: LatticeEdge)] = []
-        var removeIdentities = Set<String>()
+        var detachIdentities = Set<String>()
+        var fullyRemoveIdentities = Set<String>()
 
         for row in displayRows where selectedVocabSourceIndices.contains(row.sourceIndex) {
             let identity = normalizedSurfaceForFiltering(resolvedRowSurface(for: row.edge))
             guard identity.isEmpty == false else { continue }
             if vocabRowCountsAsSaved(identity) {
-                // Was checked, now unchecked — a genuine removal only if it was actually
-                // attributed to this note (not just known from elsewhere).
-                if isSavedForCurrentNote(normalizedSurface: identity) {
-                    removeIdentities.insert(identity)
+                if vocabRowWouldFullyRemove(identity) {
+                    fullyRemoveIdentities.insert(identity)
+                } else {
+                    detachIdentities.insert(identity)
                 }
             } else {
                 addRows.append(row)
@@ -388,25 +413,47 @@ struct SegmentListView: View {
             addAllVisibleWords(rows: addRows)
         }
 
-        // Removal needs a real, stable note id to detach from — an unsaved note (sourceNoteID
-        // nil) has nothing to detach, so removeIdentities is skipped rather than acted on.
-        if let noteID = sourceNoteID, removeIdentities.isEmpty == false {
-            for identity in removeIdentities {
+        if let noteID = sourceNoteID, detachIdentities.isEmpty == false {
+            for identity in detachIdentities {
                 if let entryID = savedCanonicalEntryID(forIdentity: identity) {
                     wordsStore.removeNoteMembership(wordID: entryID, noteID: noteID)
                 }
             }
+        }
+
+        if fullyRemoveIdentities.isEmpty == false {
+            let entryIDs = Set(fullyRemoveIdentities.compactMap(savedCanonicalEntryID(forIdentity:)))
+            if entryIDs.isEmpty == false {
+                wordsStore.remove(ids: entryIDs)
+            }
+        }
+
+        if detachIdentities.isEmpty == false || fullyRemoveIdentities.isEmpty == false {
             applySavedWordState(entries: wordsStore.words)
         }
 
         resetVocabSelectionToDefaults()
     }
 
-    // Resolves the canonicalEntryID of an existing SavedWord matching this identity — used when
-    // unattributing a "will be removed" chip, since removeNoteMembership keys by canonicalEntryID
-    // rather than surface text.
+    // Resolves the canonicalEntryID of an existing SavedWord matching this identity — used to
+    // resolve a "will be removed" chip's target, since both removeNoteMembership and
+    // WordsStore.remove key by canonicalEntryID rather than surface text.
     private func savedCanonicalEntryID(forIdentity identity: String) -> Int64? {
         wordsStore.words.first { $0.surface == identity || $0.encounteredSurfaces.contains(identity) }?.canonicalEntryID
+    }
+
+    // Whether unchecking this currently-checked identity would fully unsave it rather than just
+    // detach it from this note. Two ways to be safe to detach: it still has another note
+    // attribution once this note's is set aside (hasAttributionBeyondCurrentNote), or it's been
+    // an orphan before and can safely return to that state (SavedWord.hasBeenOrphaned). Neither
+    // holding means this note is the only thing that's ever backed the word, so removing it here
+    // has nothing to fall back to — a real, full unsave.
+    private func vocabRowWouldFullyRemove(_ identity: String) -> Bool {
+        if hasAttributionBeyondCurrentNote(normalizedSurface: identity) {
+            return false
+        }
+        let hasBeenOrphaned = wordsStore.words.first { $0.surface == identity || $0.encounteredSurfaces.contains(identity) }?.hasBeenOrphaned ?? false
+        return hasBeenOrphaned == false
     }
 
     var body: some View {
@@ -467,12 +514,12 @@ struct SegmentListView: View {
                                 let isSavedForOtherNotes = isSavedForOtherNotes(normalizedSurface: normalizedSurface)
                                 let isSavedElsewhere = isSavedSurface(normalizedSurface: normalizedSurface) && isSavedForOtherNotes == false
                                 // Three visual states:
-                                //   yellow filled ★  — saved here, or saved standalone (no note attribution)
-                                //   yellow hollow ☆  — saved only in other notes (signals "seen elsewhere")
-                                //   gray hollow   ☆  — not saved anywhere
-                                // The shape now carries "saved for this note"; the color carries
+                                //   primary filled   ★  — saved here, or saved standalone (no note attribution)
+                                //   primary hollow   ☆  — saved only in other notes (signals "seen elsewhere")
+                                //   secondary hollow ☆  — not saved anywhere
+                                // The shape carries "saved for this note"; the color carries
                                 // "saved anywhere." Previously the other-notes case was faded-gray
-                                // filled, which read as "muted-yellow-ish" and was easy to confuse
+                                // filled, which read as muted-yellow-ish and was easy to confuse
                                 // with the current-note state.
                                 let isStarFilled = isSavedForCurrentNote || isSavedElsewhere
                                 let isAnySaved = isStarFilled || isSavedForOtherNotes
@@ -702,7 +749,8 @@ struct SegmentListView: View {
                 reading: nil,
                 dictionaryStore: dictionaryStore,
                 segmenter: segmenter,
-                lexicon: lexicon
+                lexicon: lexicon,
+                noteID: sourceNoteID
             )
             .environmentObject(wordsStore)
             .environmentObject(wordListsStore)
