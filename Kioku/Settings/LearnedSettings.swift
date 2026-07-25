@@ -25,8 +25,10 @@ enum AutoLearnRule: String, CaseIterable, Identifiable {
 
 // UserDefaults keys + defaults for the auto-learn feature. Bound by @AppStorage in SettingsView
 // and read back by AutoLearnPolicy. Centralized here so the keys can't drift between the writer
-// (Settings UI) and the reader (ReviewStore.recordCorrect).
-enum LearnedSettings {
+// (Settings UI) and the reader (ReviewStore.recordCorrect). `nonisolated` since `current()` is a
+// plain synchronous UserDefaults read with no MainActor state — callable from any context,
+// including plain (non-`@MainActor`) unit tests and AutoLearnPolicy's own nonisolated default arg.
+nonisolated enum LearnedSettings {
     static let enabledKey    = "kioku.autoLearn.enabled"
     static let ruleKey       = "kioku.autoLearn.rule"
     static let thresholdKey  = "kioku.autoLearn.threshold"   // accuracy fraction, 0.0…1.0
@@ -60,8 +62,10 @@ enum LearnedSettings {
 }
 
 // Decides whether a word's freshly-updated review stats clear the auto-learn bar.
-// Consulted from ReviewStore.recordCorrect on every correct answer.
-enum AutoLearnPolicy {
+// Consulted from ReviewStore.recordCorrect on every correct answer. `nonisolated` (like
+// `LearnedSettings`) since it's pure rule evaluation with no MainActor state — callable from any
+// context, including plain (non-`@MainActor`) unit tests.
+nonisolated enum AutoLearnPolicy {
     // Gate + dispatch: returns false immediately when auto-learn is off, otherwise requires the
     // configured rule to independently clear all 6 `QuestionDirection` cases — a word graduates
     // only once every direction (kanji→meaning, meaning→kana, ...) has its own evidence clearing

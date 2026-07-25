@@ -76,8 +76,10 @@ enum StudyJapaneseForm: String, CaseIterable, Identifiable {
 // combinations `StudyField.randomPair` produces, given a stable name so per-word evidence can be
 // tracked per direction (see `ReviewWordStats.directionStats`) independently of the single
 // whole-word SRS streak. Persisted via `rawValue` in `ReviewWordStats`, so cases must not be
-// renamed/removed without a migration.
-enum QuestionDirection: String, Codable, CaseIterable, Hashable {
+// renamed/removed without a migration. `nonisolated` (like `ScriptClassifier`/`KanaNormalizer`)
+// since it's a pure, stateless mapping with no MainActor state — callable from any context,
+// including plain (non-`@MainActor`) unit tests.
+nonisolated enum QuestionDirection: String, Codable, CaseIterable, Hashable {
     case kanjiToMeaning, kanaToMeaning, kanjiToKana
     case meaningToKanji, meaningToKana, kanaToKanji
 
