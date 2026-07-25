@@ -1,0 +1,51 @@
+import Foundation
+
+// The dictionary kanji headword and kana reading for a saved word, resolved the same way across
+// every quiz/study view (FlashcardCard, MultipleChoiceView, FlashcardTypedAnswerControl,
+// FillInBlankView) — previously duplicated once per view. Centralizes only the
+// kanjiForms/preferredKana computation, NOT gloss/meaning resolution, which genuinely differs by
+// caller (FlashcardCard stacks every selected meaning for its back face; Multiple Choice/Fill in
+// the Blank pick a single gloss via fallback precedence) and stays defined at each call site.
+// `nonisolated` and synchronous — deliberately does no threading of its own. Every caller wraps
+// this in its own `Task.detached(priority: .utility)` to keep the SQLite work off the main actor
+// (each view owns its own fetch rather than sharing a cache, so display state can't drift from a
+// sibling's cached fetch); this type is the shared logic, not the shared execution context.
+nonisolated enum WordFormResolver {
+    // Computes kanji/kana from an already-fetched `DictionaryEntry` — for callers that also need
+    // other data from that same fetch (e.g. `entry.senses`, for gloss resolution) and would
+    // otherwise have to query the dictionary a second time just for this.
+    static func kanjiAndKana(
+        entry: DictionaryEntry,
+        store: DictionaryStore,
+        entryID: Int64,
+        selectedSenseIDs: [Int64],
+        selectedGlosses: [GlossRef]
+    ) -> (kanji: String?, kana: String?) {
+        let kanji = entry.kanjiForms.first?.text
+        let senseRestrictions = (try? store.fetchSenseRestrictions(entryID: entryID)) ?? []
+        let kana = entry.preferredKana(
+            selectedSenseIDs: selectedSenseIDs,
+            selectedGlosses: selectedGlosses,
+            senseRestrictions: senseRestrictions
+        )
+        return (kanji, kana)
+    }
+
+    // Convenience wrapper that also fetches the entry itself, for callers that need nothing else
+    // from the dictionary lookup (i.e. don't separately need `entry.senses` etc.).
+    static func fetchKanjiAndKana(
+        store: DictionaryStore,
+        entryID: Int64,
+        surface: String,
+        selectedSenseIDs: [Int64],
+        selectedGlosses: [GlossRef]
+    ) -> (kanji: String?, kana: String?)? {
+        guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
+            return nil
+        }
+        return kanjiAndKana(
+            entry: data.entry, store: store, entryID: entryID,
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+        )
+    }
+}
