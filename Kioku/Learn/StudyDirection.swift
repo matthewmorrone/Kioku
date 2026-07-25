@@ -120,4 +120,16 @@ nonisolated enum QuestionDirection: String, Codable, CaseIterable, Hashable {
         case .mixed, .mixedFields: return nil
         }
     }
+
+    // The inverse of `init(prompt:answer:)` — the concrete field pair this direction quizzes.
+    var fields: (prompt: StudyField, answer: StudyField) {
+        switch self {
+        case .kanjiToMeaning: return (.kanji, .meaning)
+        case .kanaToMeaning: return (.kana, .meaning)
+        case .kanjiToKana: return (.kanji, .kana)
+        case .meaningToKanji: return (.meaning, .kanji)
+        case .meaningToKana: return (.meaning, .kana)
+        case .kanaToKanji: return (.kana, .kanji)
+        }
+    }
 }
