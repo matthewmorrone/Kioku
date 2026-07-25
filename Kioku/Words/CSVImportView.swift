@@ -330,13 +330,14 @@ struct CSVImportView: View {
                     kanjiLiterals.append((surface, itemListIDs))
                     continue
                 }
-                var canonicalID = Int64(item.id.hashValue)
-                var senseIDs: [Int64] = []
-                if let store, let entry = Self.resolveEntry(surface: surface, kana: item.finalKana, store: store) {
-                    canonicalID = entry.entryId
-                    senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+                // Rows that can't be resolved to a real dictionary entry are skipped rather than
+                // saved under a fabricated ID — canonical_entry_id must reference an actual entry
+                // per the Saved Word Identity invariant, or lookups/review stats become permanently orphaned.
+                guard let store, let entry = Self.resolveEntry(surface: surface, kana: item.finalKana, store: store) else {
+                    continue
                 }
-                savedWords.append(SavedWord(canonicalEntryID: canonicalID, surface: surface, wordListIDs: itemListIDs, selectedSenseIDs: senseIDs))
+                let senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+                savedWords.append(SavedWord(canonicalEntryID: entry.entryId, surface: surface, wordListIDs: itemListIDs, selectedSenseIDs: senseIDs))
             }
             await target.add(savedWords)
             await MainActor.run {

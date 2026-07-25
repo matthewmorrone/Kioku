@@ -4,26 +4,8 @@ import Foundation
 // and, within each level, by mastery stage, plus note-wide totals. Pure value type produced by
 // NoteCoverageCalculator so it is unit-testable without stores or SwiftUI.
 struct NoteCoverage: Equatable {
-
-    // One JLPT-level row of the grid. `level` is the JLPT N-number (5…1) or nil for "No level".
-    struct Level: Equatable {
-        let level: Int?
-        let stageWords: [MasteryStage: [SavedWord]]
-
-        // Total words at this level across all stages.
-        var total: Int {
-            MasteryStage.allCases.reduce(0) { $0 + (stageWords[$1]?.count ?? 0) }
-        }
-
-        // Words at this level that have reached the Learned stage.
-        var learnedCount: Int { stageWords[.learned]?.count ?? 0 }
-
-        // The words at this level in a given stage (empty when none).
-        func words(in stage: MasteryStage) -> [SavedWord] { stageWords[stage] ?? [] }
-    }
-
     // Level rows, ordered easiest → hardest (N5→N1) then No level; only non-empty levels appear.
-    let levels: [Level]
+    let levels: [NoteCoverageLevel]
     // Total saved words in the note.
     let total: Int
     // How many of them are Learned.
@@ -74,7 +56,7 @@ enum NoteCoverageCalculator {
         }
 
         let levels = orderedKeys.map { key in
-            NoteCoverage.Level(level: key, stageWords: byLevel[key] ?? [:])
+            NoteCoverageLevel(level: key, stageWords: byLevel[key] ?? [:])
         }
 
         return NoteCoverage(

@@ -37,6 +37,7 @@ enum LLMResponseSalvage {
             let response = try await session.respond(to: rawResponse, options: options)
             return response.content
         } catch {
+            AppLog.error(.llmCorrection, "on-device salvage reformat session failed — \(error.localizedDescription)")
             return nil
         }
         #else

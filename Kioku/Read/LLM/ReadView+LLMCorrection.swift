@@ -1,5 +1,20 @@
 import SwiftUI
 
+// A pre-correction segment span, used by applyLLMCorrectionResponse's boundary diff to detect
+// splits, merges, and substitutions against the post-correction segments (LLMCorrectionNewSeg).
+private struct LLMCorrectionOldSeg {
+    let location: Int
+    let end: Int
+    let surface: String
+}
+
+// A post-correction segment span — see LLMCorrectionOldSeg.
+private struct LLMCorrectionNewSeg {
+    let location: Int
+    let end: Int
+    let surface: String
+}
+
 // Hosts LLM-driven segmentation and reading correction logic for the read screen.
 // Converts current view state into a request payload, applies validated responses,
 // and surfaces errors as alerts.
@@ -47,8 +62,15 @@ extension ReadView {
         // single response; we apply it once at the end. Reading this once up
         // front avoids racing the @AppStorage value mid-request.
         let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
-        let willStream = useLLM && LLMSettings.activeProvider() == .appleIntelligence
+        let provider = LLMSettings.activeProvider()
+        let willStream = useLLM && provider == .appleIntelligence
 
+        // Captured so a response that lands after the user has switched notes (cooperative
+        // cancellation doesn't interrupt an in-flight network/model call) is discarded instead
+        // of being applied against whatever note happens to be active when it arrives.
+        let sourceNoteID = activeNoteID
+
+        AppLog.debug(.llmCorrection, "requestLLMCorrection starting — provider=\(provider) streaming=\(willStream) segments=\(currentSegments.count) isRetry=\(correctiveFeedback != nil)")
         isRequestingLLMCorrection = true
         llmCorrectionTask = Task {
             defer {
@@ -65,6 +87,7 @@ extension ReadView {
                     dictionary: dictionaryStore,
                     correctiveFeedback: correctiveFeedback,
                     onPartial: willStream ? { @MainActor partial in
+                        guard self.activeNoteID == sourceNoteID else { return }
                         let merged = Self.mergeResponsePerLine(
                             response: partial,
                             originalText: capturedText,
@@ -73,8 +96,10 @@ extension ReadView {
                         self.applyLLMStreamingPartial(merged, originalText: capturedText)
                     } : nil
                 )
+                LLMCorrectionService.logOutcome(provider: provider, result: .success(response))
 
                 await MainActor.run {
+                    guard activeNoteID == sourceNoteID else { return }
                     if willStream {
                         // Streaming already applied every line as it arrived;
                         // the final response equals the last partial. Just flag
@@ -101,6 +126,7 @@ extension ReadView {
                     }
                 }
             } catch {
+                LLMCorrectionService.logOutcome(provider: provider, result: .failure(error))
                 await MainActor.run {
                     llmCorrectionErrorMessage = error.localizedDescription
                     // Only a whole-response parse failure (nothing recognizable found, even
@@ -124,6 +150,7 @@ extension ReadView {
     // No-ops if there's no retry context (e.g. the user dismissed the alert first).
     func requestLLMCorrectionWithFeedback() {
         guard let context = llmCorrectionRetryContext else { return }
+        AppLog.debug(.llmCorrection, "retrying with corrective feedback — reason: \(context.reason)")
         let feedback = LLMCorrectionService.correctiveFeedback(
             previousRawResponse: context.rawResponse,
             reason: context.reason
@@ -152,7 +179,7 @@ extension ReadView {
             // A streaming partial failed validation — the per-line client
             // sanitizes input so this is rare, but if it happens, log and
             // skip rather than failing the whole run.
-            print("[LLM] streaming partial apply failed: \(msg)")
+            AppLog.error(.llmCorrection, "streaming partial apply failed: \(msg)")
         }
     }
 
@@ -336,8 +363,7 @@ extension ReadView {
 
         // Rebuild LatticeEdge values from the validated UTF-16 ranges.
         guard let rebuiltEdges = edgesFromSegmentRanges(validatedRanges, in: originalText) else {
-            // Logging disabled.
-            // print("[LLM] edgesFromSegmentRanges returned nil despite passing normalizedSegmentRanges")
+            AppLog.error(.llmCorrection, "edgesFromSegmentRanges returned nil despite passing normalizedSegmentRanges — this is a bug")
             return .surfaceMismatch("Segments validated but edge reconstruction failed — this is a bug.")
         }
 
@@ -369,24 +395,22 @@ extension ReadView {
         //
         // Strategy: for each new edge, find the old segment(s) that overlap its span.
         // Group new edges that share the same set of old segment(s).
-        struct OldSeg { let location: Int; let end: Int; let surface: String }
-        let oldSegs: [OldSeg] = segmentEdges.compactMap { edge in
+        let oldSegs: [LLMCorrectionOldSeg] = segmentEdges.compactMap { edge in
             let r = NSRange(edge.start..<edge.end, in: originalText)
             guard r.location != NSNotFound else { return nil }
-            return OldSeg(location: r.location, end: r.location + r.length, surface: edge.surface)
+            return LLMCorrectionOldSeg(location: r.location, end: r.location + r.length, surface: edge.surface)
         }
 
         // Map each new edge to its overlapping old segments (by span overlap).
-        struct NewSeg { let location: Int; let end: Int; let surface: String }
-        var newSegs: [NewSeg] = []
+        var newSegs: [LLMCorrectionNewSeg] = []
         for edge in rebuiltEdges {
             let r = NSRange(edge.start..<edge.end, in: originalText)
             guard r.location != NSNotFound, r.length > 0 else { continue }
-            newSegs.append(NewSeg(location: r.location, end: r.location + r.length, surface: edge.surface))
+            newSegs.append(LLMCorrectionNewSeg(location: r.location, end: r.location + r.length, surface: edge.surface))
         }
 
         // Returns existing segments that spatially overlap a proposed new segment.
-        func overlappingOld(for new: NewSeg) -> [OldSeg] {
+        func overlappingOld(for new: LLMCorrectionNewSeg) -> [LLMCorrectionOldSeg] {
             oldSegs.filter { $0.location < new.end && $0.end > new.location }
         }
 
@@ -602,7 +626,9 @@ extension ReadView {
     private func handleLLMCorrectionResult(_ result: LLMCorrectionResult) {
         switch result {
         case .applied(let diff, let changedLocations, let changedReadingLocations, let changesByLocation):
-            _ = diff
+            if diff.isEmpty == false {
+                AppLog.debug(.llmCorrection, "applied correction — \(diff.count) change(s):\n\(diff.joined(separator: "\n"))")
+            }
             if changedLocations.isEmpty == false {
                 pendingLLMChangedLocations = changedLocations
                 pendingLLMChangedReadingLocations = changedReadingLocations
@@ -613,12 +639,15 @@ extension ReadView {
                 hasAppliedLLMCorrectionForCurrentNote = true
             }
         case .surfaceMismatch(let msg):
+            AppLog.error(.llmCorrection, "surface mismatch: \(msg)")
             llmCorrectionErrorMessage = msg
             isShowingLLMCorrectionError = true
         case .networkError(let msg):
+            AppLog.error(.llmCorrection, "network error: \(msg)")
             llmCorrectionErrorMessage = msg
             isShowingLLMCorrectionError = true
         case .decodingError(let msg):
+            AppLog.error(.llmCorrection, "decoding error: \(msg)")
             llmCorrectionErrorMessage = msg
             isShowingLLMCorrectionError = true
         }

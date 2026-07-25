@@ -227,9 +227,9 @@ nonisolated public final class DictionaryTrie {
     // Prints compact terminal metadata for one exact surface to validate trie metadata wiring.
     public func debugPrintHitMeta(for surface: String) {
         guard let hit = hitMeta(for: surface) else {
-            print("surface=\(surface) hit=nil")
+            AppLog.debug(.segmentation, "surface=\(surface) hit=nil")
             return
         }
-        print("surface=\(surface) ids=\(hit.entryIDs.count)")
+        AppLog.debug(.segmentation, "surface=\(surface) ids=\(hit.entryIDs.count)")
     }
 }

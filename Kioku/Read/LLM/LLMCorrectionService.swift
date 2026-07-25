@@ -49,13 +49,13 @@ final class LLMCorrectionService {
             guard stub.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
                 throw LLMCorrectionError.noKeyConfigured
             }
-            // Logging disabled.
-            // print("[LLM] Input:\n\(compactSegments)")
-            // print("[LLM] Stub response:\n\(stub)")
+            AppLog.debug(.llmCorrection, "[stub] Input:\n\(compactSegments)")
+            AppLog.debug(.llmCorrection, "[stub] Response:\n\(stub)")
             return try parseCompactResponse(stub)
         }
 
         let provider = LLMSettings.activeProvider()
+        AppLog.debug(.llmCorrection, "requestCorrections provider=\(provider) correctiveFeedback=\(correctiveFeedback != nil)")
 
         // On-device Apple Intelligence path: no API key, per-line chunked. The
         // onPartial callback is forwarded so the AI client can stream cumulative
@@ -81,9 +81,8 @@ final class LLMCorrectionService {
 
         let messages = buildMessages(compactSegments: compactSegments, correctiveFeedback: correctiveFeedback)
 
-        // Logging disabled.
-        // print("[LLM] System:\n\(messages.system)")
-        // print("[LLM] User:\n\(messages.user)")
+        AppLog.debug(.llmCorrection, "[\(provider)] System prompt:\n\(messages.system)")
+        AppLog.debug(.llmCorrection, "[\(provider)] User message:\n\(messages.user)")
 
         let raw: String
         switch provider {
@@ -100,6 +99,19 @@ final class LLMCorrectionService {
         return try await parseWithSalvage(raw)
     }
 
+    // Logs the outcome of a single correction request: how many segments came back, or which
+    // error surfaced. Called from ReadView+LLMCorrection right after requestCorrections
+    // resolves/throws so success and failure both leave a trace without every call site having
+    // to remember to add it individually.
+    static func logOutcome(provider: LLMProvider, result: Result<LLMCorrectionResponse, Error>) {
+        switch result {
+        case .success(let response):
+            AppLog.info(.llmCorrection, "[\(provider)] succeeded — \(response.segments.count) segment entries")
+        case .failure(let error):
+            AppLog.error(.llmCorrection, "[\(provider)] failed — \(error.localizedDescription)")
+        }
+    }
+
     // Parses a remote provider's raw response, escalating through the same recovery ladder
     // for every parse failure: lenient structural parse (parseCompactResponse) first; if THAT
     // finds nothing recognizable at all, an automatic, local, free on-device reformatting pass
@@ -108,13 +120,18 @@ final class LLMCorrectionService {
     // both have failed.
     private func parseWithSalvage(_ raw: String) async throws -> LLMCorrectionResponse {
         do {
-            return try parseCompactResponse(raw)
+            let parsed = try parseCompactResponse(raw)
+            AppLog.debug(.llmCorrection, "parsed \(parsed.segments.count) segment entries directly, no salvage needed")
+            return parsed
         } catch {
+            AppLog.error(.llmCorrection, "direct parse failed (\(error.localizedDescription)) — attempting on-device salvage reformat")
             if #available(iOS 26.0, *),
                let reformatted = await LLMResponseSalvage.reformat(rawResponse: raw, parseError: error.localizedDescription),
                let salvaged = try? parseCompactResponse(reformatted) {
+                AppLog.info(.llmCorrection, "salvage succeeded — \(salvaged.segments.count) segment entries after reformat:\n\(reformatted)")
                 return salvaged
             }
+            AppLog.error(.llmCorrection, "salvage did not recover a parseable response — surfacing unparseableAfterSalvage")
             throw LLMCorrectionError.unparseableAfterSalvage(rawResponse: raw, reason: error.localizedDescription)
         }
     }
@@ -271,8 +288,10 @@ final class LLMCorrectionService {
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
+        AppLog.debug(.llmCorrection, "[OpenAI] POST \(url) model=\(modelID) temperature=\(usingSearchModel ? "omitted" : "\(temperature)") body bytes=\(bodyData.count)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
         try validateHTTPResponse(response, data: data, provider: "OpenAI")
 
         // OpenAI wraps the model output in choices[0].message.content as a string.
@@ -286,8 +305,7 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.unexpectedResponseShape("OpenAI response missing choices[0].message.content")
         }
 
-        // Logging disabled.
-        // print("[LLM:OpenAI] Response:\n\(content)")
+        AppLog.debug(.llmCorrection, "[OpenAI] HTTP \(statusCode) raw response:\n\(content)")
         return content
     }
 
@@ -340,8 +358,10 @@ final class LLMCorrectionService {
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
+        AppLog.debug(.llmCorrection, "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) temperature=\(temperature) webSearch=\(LLMSettings.isWebSearchEnabled()) body bytes=\(bodyData.count)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
         try validateHTTPResponse(response, data: data, provider: "Claude")
 
         // Anthropic returns an array of content blocks. When web_search is enabled
@@ -363,8 +383,7 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.unexpectedResponseShape("Claude response had no text content blocks")
         }
 
-        // Logging disabled.
-        // print("[LLM:Claude] Response:\n\(text)")
+        AppLog.debug(.llmCorrection, "[Claude] HTTP \(statusCode) raw response:\n\(text)")
         return text
     }
 
@@ -375,6 +394,7 @@ final class LLMCorrectionService {
         }
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "(unreadable)"
+            AppLog.error(.llmCorrection, "[\(provider)] HTTP \(http.statusCode) error body:\n\(body)")
             throw LLMCorrectionError.networkError("\(provider) HTTP \(http.statusCode): \(body)")
         }
     }

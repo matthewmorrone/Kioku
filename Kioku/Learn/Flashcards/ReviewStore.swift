@@ -53,8 +53,10 @@ final class ReviewStore: ObservableObject {
     }
 
     // Records a correct answer: increments counters, clears the wrong flag, and reschedules
-    // the card via SRSScheduler so it reappears at the next interval up the ladder.
-    func recordCorrect(for id: Int64) {
+    // the card via SRSScheduler so it reappears at the next interval up the ladder. `direction`,
+    // when known, also feeds that direction's own evidence — see `AutoLearnPolicy.shouldMarkLearned`
+    // for why per-direction evidence (not just the whole-word streak below) gates auto-promotion.
+    func recordCorrect(for id: Int64, direction: QuestionDirection? = nil) {
         let prior = stats[id]
         var st = prior ?? ReviewWordStats(correct: 0, again: 0)
         st.correct += 1
@@ -63,14 +65,15 @@ final class ReviewStore: ObservableObject {
         let schedule = SRSScheduler.schedule(previous: prior, answer: .correct, now: now)
         st.dueDate = schedule.dueDate
         st.consecutiveCorrect = schedule.consecutiveCorrect
+        if let direction { st.recordDirectionAnswer(direction, correct: true) }
         stats[id] = st
         markedWrong.remove(id)
         lifetimeCorrect += 1
-        // Auto-promote to "learned" when this correct answer pushes the word over whatever
-        // bar the user configured in Settings. Only acts on a word the user hasn't marked
-        // either way (unmarked) — an explicit Learned is already done, and an explicit Not
-        // Learned is a deliberate signal we don't override from behind their back.
-        if learnedState(for: id) == .unmarked, AutoLearnPolicy.shouldMarkLearned(stats: st) {
+        // Auto-promote to "learned" when every direction's evidence clears whatever bar the user
+        // configured in Settings. Only acts on a word the user hasn't marked either way
+        // (unmarked) — an explicit Learned is already done, and an explicit Not Learned is a
+        // deliberate signal we don't override from behind their back.
+        if learnedState(for: id) == .unmarked, AutoLearnPolicy.shouldMarkLearned(directionStats: st.directionStats) {
             learned.insert(id)
             persistLearned()
         }
@@ -127,7 +130,8 @@ final class ReviewStore: ObservableObject {
 
     // Records an "again" answer: increments counters, adds the word to the wrong set, resets
     // the SRS streak, and reschedules the card to reappear after the short relearn step.
-    func recordAgain(for id: Int64) {
+    // `direction`, when known, also resets that direction's own streak (see `recordCorrect`).
+    func recordAgain(for id: Int64, direction: QuestionDirection? = nil) {
         let prior = stats[id]
         var st = prior ?? ReviewWordStats(correct: 0, again: 0)
         st.again += 1
@@ -136,6 +140,7 @@ final class ReviewStore: ObservableObject {
         let schedule = SRSScheduler.schedule(previous: prior, answer: .again, now: now)
         st.dueDate = schedule.dueDate
         st.consecutiveCorrect = schedule.consecutiveCorrect
+        if let direction { st.recordDirectionAnswer(direction, correct: false) }
         stats[id] = st
         markedWrong.insert(id)
         lifetimeAgain += 1

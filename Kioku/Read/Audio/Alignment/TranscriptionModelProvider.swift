@@ -1,7 +1,4 @@
 import Foundation
-import OSLog
-
-private let logger = Logger(subsystem: "matthewmorrone.Kioku", category: "Transcription")
 
 // Resolves the on-device Whisper model used for *transcription* (audio → text).
 //
@@ -36,7 +33,7 @@ enum TranscriptionModelProvider {
         if isModelPresent { return modelURL }
 
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        logger.info("downloading transcription model \(model.filename) from \(model.remoteURL)")
+        AppLog.info(.transcription, "downloading transcription model \(model.filename) from \(model.remoteURL)")
 
         let delegate = TranscriptionDownloadProgressDelegate(onProgress: onProgress)
         let (tempURL, response) = try await URLSession.shared.download(from: model.remoteURL, delegate: delegate)
@@ -54,7 +51,7 @@ enum TranscriptionModelProvider {
             try FileManager.default.removeItem(at: modelURL)
         }
         try FileManager.default.moveItem(at: tempURL, to: modelURL)
-        logger.info("transcription model ready at \(modelURL.path)")
+        AppLog.info(.transcription, "transcription model ready at \(modelURL.path)")
         return modelURL
     }
 }

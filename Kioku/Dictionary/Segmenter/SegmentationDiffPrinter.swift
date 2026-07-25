@@ -22,7 +22,7 @@ enum SegmentationDiffPrinter {
             if let mecab = MeCabSegmenter(dictionary: .ipadic) {
                 return stripWhitespace(mecab.longestMatchEdges(for: text).map(\.surface))
             } else {
-                print("[SegmentationDiff] IPAdic dictionary not available — skipping")
+                AppLog.debug(.segmentation, "[SegmentationDiff] IPAdic dictionary not available — skipping")
                 return nil
             }
         }
@@ -32,7 +32,7 @@ enum SegmentationDiffPrinter {
             if let mecab = MeCabSegmenter(dictionary: .unidic) {
                 return stripWhitespace(mecab.longestMatchEdges(for: text).map(\.surface))
             } else {
-                print("[SegmentationDiff] UniDic dictionary not available — skipping")
+                AppLog.debug(.segmentation, "[SegmentationDiff] UniDic dictionary not available — skipping")
                 return nil
             }
         }
@@ -145,7 +145,7 @@ enum SegmentationDiffPrinter {
 
         if divergences.isEmpty {
             let names = named.map(\.name).joined(separator: " / ")
-            print("[Segmentation] \(names): identical")
+            AppLog.debug(.segmentation, "[Segmentation] \(names): identical")
             return
         }
 
@@ -155,10 +155,10 @@ enum SegmentationDiffPrinter {
         let names = named.map(\.name).joined(separator: " / ")
         for (i, entry) in divergences.enumerated() {
             let text = entry[0].span.joined()
-            print("  \(i + 1). 「\(text)」")
+            AppLog.debug(.segmentation, "  \(i + 1). 「\(text)」")
             for item in entry {
                 let padded = item.name.padding(toLength: maxNameLen, withPad: " ", startingAt: 0)
-                print("     \(padded): \(item.span.joined(separator: " | "))")
+                AppLog.debug(.segmentation, "     \(padded): \(item.span.joined(separator: " | "))")
             }
         }
         */

@@ -633,11 +633,17 @@ public final class ForcedAlignmentProvider {
     // aligner actually runs. Stays on this class (not extracted to a namespace)
     // because the `loggerInstalled` static var can't move across files via an
     // extension without becoming public.
-    private static var loggerInstalled = false
-    private static func installSilentLogger() {
-        guard loggerInstalled == false else { return }
-        loggerInstalled = true
+    // `align`/`alignSingleLine` are both async and callable concurrently (e.g. an interactive
+    // single-line re-align overlapping a full-song align); a plain `Bool` guard read/written
+    // from both would be a data race. Swift initializes a static stored property's value
+    // lazily and exactly once, in a thread-safe manner, so this achieves the same
+    // install-once behavior without a lock.
+    private static let silentLoggerInstalled: Bool = {
         whisper_log_set({ _, _, _ in }, nil)
+        return true
+    }()
+    private static func installSilentLogger() {
+        _ = silentLoggerInstalled
     }
 }
 

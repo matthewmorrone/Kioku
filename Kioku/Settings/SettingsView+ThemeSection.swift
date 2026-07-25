@@ -14,10 +14,10 @@ extension SettingsView {
     // change flows into the label too.
     @ViewBuilder
     var themePickerMenu: some View {
-        let activeID = Theme.ID(rawValue: themeIDRaw) ?? .system
+        let activeID = ThemeID(rawValue: themeIDRaw) ?? .system
         let activeAccent = Color(Theme.activePalette.uiAccent)
         Menu {
-            ForEach(Theme.ID.allCases) { id in
+            ForEach(ThemeID.allCases) { id in
                 Button {
                     themeIDRaw = id.rawValue
                 } label: {
@@ -41,7 +41,7 @@ extension SettingsView {
         // Re-runs UIKit appearance proxies on every theme change so newly-pushed bars adopt
         // the new chrome immediately. `setActive` also mirrors the legacy boolean.
         .onChange(of: themeIDRaw) { _, newValue in
-            let id = Theme.ID(rawValue: newValue) ?? .system
+            let id = ThemeID(rawValue: newValue) ?? .system
             Theme.setActive(id)
         }
     }
@@ -54,8 +54,8 @@ extension SettingsView {
         Toggle("Custom Theme", isOn: $customThemeEnabled)
             .onChange(of: customThemeEnabled) { oldValue, newValue in
                 guard !oldValue, newValue else { return }
-                let id = Theme.ID(rawValue: themeIDRaw) ?? .system
-                let base = Theme.Palette.palette(for: id)
+                let id = ThemeID(rawValue: themeIDRaw) ?? .system
+                let base = ThemePalette.palette(for: id)
                 customBackgroundHex = base.uiBackground.hexString ?? ""
                 customSurfaceHex = base.uiSurface.hexString ?? ""
                 customInkHex = base.uiInk.hexString ?? ""
@@ -97,25 +97,25 @@ extension SettingsView {
     // is SwiftUI-only and doesn't reach UIKit chrome, so its setter skips the refresh.
     var customBackgroundBinding: Binding<Color> {
         Binding(
-            get: { Color(UIColor(hexString: customBackgroundHex) ?? Theme.Palette.palette(for: Theme.ID(rawValue: themeIDRaw) ?? .system).uiBackground) },
+            get: { Color(UIColor(hexString: customBackgroundHex) ?? ThemePalette.palette(for: ThemeID(rawValue: themeIDRaw) ?? .system).uiBackground) },
             set: { if let hex = UIColor($0).hexString { customBackgroundHex = hex; Theme.refreshGlobalAppearance() } }
         )
     }
     var customSurfaceBinding: Binding<Color> {
         Binding(
-            get: { Color(UIColor(hexString: customSurfaceHex) ?? Theme.Palette.palette(for: Theme.ID(rawValue: themeIDRaw) ?? .system).uiSurface) },
+            get: { Color(UIColor(hexString: customSurfaceHex) ?? ThemePalette.palette(for: ThemeID(rawValue: themeIDRaw) ?? .system).uiSurface) },
             set: { if let hex = UIColor($0).hexString { customSurfaceHex = hex } }
         )
     }
     var customInkBinding: Binding<Color> {
         Binding(
-            get: { Color(UIColor(hexString: customInkHex) ?? Theme.Palette.palette(for: Theme.ID(rawValue: themeIDRaw) ?? .system).uiInk) },
+            get: { Color(UIColor(hexString: customInkHex) ?? ThemePalette.palette(for: ThemeID(rawValue: themeIDRaw) ?? .system).uiInk) },
             set: { if let hex = UIColor($0).hexString { customInkHex = hex; Theme.refreshGlobalAppearance() } }
         )
     }
     var customAccentBinding: Binding<Color> {
         Binding(
-            get: { Color(UIColor(hexString: customAccentHex) ?? Theme.Palette.palette(for: Theme.ID(rawValue: themeIDRaw) ?? .system).uiAccent) },
+            get: { Color(UIColor(hexString: customAccentHex) ?? ThemePalette.palette(for: ThemeID(rawValue: themeIDRaw) ?? .system).uiAccent) },
             set: { if let hex = UIColor($0).hexString { customAccentHex = hex; Theme.refreshGlobalAppearance() } }
         )
     }
