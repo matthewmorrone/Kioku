@@ -286,6 +286,12 @@ extension SegmentListView {
     func isSavedForOtherNotes(normalizedSurface: String) -> Bool {
         currentSavedState.isSavedForOtherNotes(normalizedSurface, noteID: sourceNoteID, lemmaResolver: lemmaForSurface)
     }
+
+    // True when detaching the active note from this surface would still leave it known (another
+    // note attribution remains). See ComputedSavedWordState.hasAttributionBeyondCurrentNote.
+    func hasAttributionBeyondCurrentNote(normalizedSurface: String) -> Bool {
+        currentSavedState.hasAttributionBeyondCurrentNote(normalizedSurface, noteID: sourceNoteID, lemmaResolver: lemmaForSurface)
+    }
 }
 
 // Shared favorited-state predicate. This is THE single source of truth for "is this surface
@@ -330,6 +336,19 @@ extension SegmentListView.ComputedSavedWordState {
         guard let key = resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver),
               let notes = savedWordSourceNoteIDsBySurface[key] else { return false }
         return notes.isEmpty == false && notes.contains(noteID) == false
+    }
+
+    // Whether this surface would still be known as saved even with `noteID`'s attribution set
+    // aside — i.e. it has at least one OTHER note attribution. Distinct from isSavedForOtherNotes,
+    // which excludes words simultaneously attributed to `noteID` too (exactly the case this needs
+    // to include: a word attributed to both this note and another one). Drives Vocab mode's
+    // uncheck preview — detaching a word that has nothing else backing it is a full unsave, not a
+    // detach, so the chip should preview that outcome (gray) rather than a generic warning color.
+    func hasAttributionBeyondCurrentNote(_ normalizedSurface: String, noteID: UUID?, lemmaResolver: (String) -> String?) -> Bool {
+        guard let key = resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver),
+              let notes = savedWordSourceNoteIDsBySurface[key] else { return false }
+        guard let noteID else { return notes.isEmpty == false }
+        return notes.subtracting([noteID]).isEmpty == false
     }
 
     // The "filled star" predicate the extract-words list renders (isSavedForCurrentNote OR saved

@@ -256,7 +256,8 @@ struct WordsView: View {
                     selectedSenseIDs: saved.selectedSenseIDs,
                     selectedGlosses: saved.selectedGlosses,
                     encounteredSurfaces: saved.encounteredSurfaces,
-                    entSeq: saved.entSeq
+                    entSeq: saved.entSeq,
+                    hasBeenOrphaned: saved.hasBeenOrphaned
                 )
             }
             return saved
@@ -329,7 +330,8 @@ struct WordsView: View {
                     lexicon: lexicon,
                     initialSublatticePaths: selectedDetailSublatticePaths,
                     surfaceReadingData: surfaceReadingData,
-                    kanjiReadingFallback: kanjiReadingFallback
+                    kanjiReadingFallback: kanjiReadingFallback,
+                    noteID: singleActiveNoteID
                 )
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)

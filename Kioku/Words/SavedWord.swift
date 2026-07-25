@@ -24,6 +24,14 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // Provenance: which notes this word was saved from. Mutable so a word can be detached
     // from a single note ("Remove from <note>") without rebuilding the whole record.
     var sourceNoteIDs: [UUID]
+    // True once this card has ever sat with zero note attribution — either created that way
+    // (Words tab / dictionary lookup, no note involved) or detached down to empty by
+    // WordsStore.removeNoteMembership / detachNoteReferences. Never reset back to false once
+    // set, even after a later note attribution is added. Vocab mode's "undo the last note
+    // attribution" action reads this to decide whether reaching zero attribution again should
+    // leave the card as a standalone orphan (it's been there before) or fully delete it (it
+    // never had an existence independent of a note).
+    var hasBeenOrphaned: Bool
     // Every distinct surface string the user has actually saved for this card —
     // 食べた, 食べる, 食べます, etc. for the same verb. Per-surface star state
     // in the segment list reads this set: yellow only when the queried surface
@@ -54,7 +62,7 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // Creates a saved-word value with optional note-list and word-list memberships.
     // `encounteredSurfaces` defaults to `[surface]` so call sites that already pass a
     // surface get a sensible per-surface star state without having to spell it out.
-    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil, entSeq: Int64? = nil) {
+    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil, entSeq: Int64? = nil, hasBeenOrphaned: Bool? = nil) {
         self.canonicalEntryID = canonicalEntryID
         self.entSeq = entSeq
         self.surface = surface
@@ -67,6 +75,10 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         // nil → seed with the surface so a freshly-saved card has one encountered
         // member and stars correctly without extra wiring at every call site.
         self.encounteredSurfaces = encounteredSurfaces ?? Set([surface])
+        // nil → true only if this card is being created with no note attribution at all
+        // (a standalone save), so callers that already know their own history don't have to
+        // repeat sourceNoteIDs.isEmpty at every call site.
+        self.hasBeenOrphaned = hasBeenOrphaned ?? sourceNoteIDs.isEmpty
     }
 
     // Custom decoder so saves persisted before the selection fields existed load with [].
@@ -87,6 +99,12 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         // render path expands this in-memory with the derived lemma so legacy
         // cards starr on both surface and lemma rows — without writing back.
         encounteredSurfaces = try c.decodeIfPresent(Set<String>.self, forKey: .encounteredSurfaces) ?? Set([surface])
+        // Cards persisted before this field existed have no recorded history, so it's inferred
+        // from their current attribution: already-standalone cards are treated as having been
+        // orphaned (the only honest reading of "currently zero notes"); already-attributed cards
+        // are treated as never orphaned, since that's the closest available reading even though
+        // their true history further back isn't recoverable.
+        hasBeenOrphaned = try c.decodeIfPresent(Bool.self, forKey: .hasBeenOrphaned) ?? sourceNoteIDs.isEmpty
     }
 
     // Reconciles the stable key against the live dictionary, returning a corrected copy (or self
@@ -121,7 +139,8 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
             selectedSenseIDs: selectedSenseIDs,
             selectedGlosses: selectedGlosses,
             encounteredSurfaces: encounteredSurfaces,
-            entSeq: entSeq
+            entSeq: entSeq,
+            hasBeenOrphaned: hasBeenOrphaned
         )
     }
 

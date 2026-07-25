@@ -78,7 +78,7 @@ struct CoverageDetailView: View {
             studySheet(for: launch)
         }
         .sheet(item: $selectedWord) { word in
-            WordDetailView(word: word, reading: nil, dictionaryStore: dictionaryStore, segmenter: nil)
+            WordDetailView(word: word, reading: nil, dictionaryStore: dictionaryStore, segmenter: nil, noteID: note.id)
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .presentationDetents([.large])
