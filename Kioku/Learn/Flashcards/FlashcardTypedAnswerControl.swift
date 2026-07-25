@@ -56,6 +56,7 @@ struct FlashcardTypedAnswerControl: View {
         }
     }
 
+    // Correct/incorrect result plus a Next button, replacing the text field once the answer's checked.
     @ViewBuilder
     private func feedback(for verdict: AnswerScorer.Verdict) -> some View {
         VStack(spacing: 8) {
@@ -88,6 +89,7 @@ struct FlashcardTypedAnswerControl: View {
         )
     }
 
+    // Grades the typed answer against the resolved expected text and shows the verdict.
     private func check() {
         guard let expected else { return }
         verdict = AnswerScorer.grade(input: typedAnswer, expected: expected.text)
