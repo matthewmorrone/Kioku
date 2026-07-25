@@ -1,0 +1,127 @@
+import SwiftUI
+
+// Typed-input control shown in place of the Again/Know buttons when a Flashcards session has typed
+// grading enabled and the current card's resolved direction is a production direction (English
+// prompt, Japanese answer). Fetches the word's own kanji/kana independently of FlashcardCard's
+// private fetch — the same per-view fetch duplication FlashcardCard/MultipleChoiceView already use
+// (see FlashcardCard.resolveLiveContent's comment) rather than threading state through a new shared
+// cache. Grades the typed answer via AnswerScorer and reports the outcome upward so FlashcardsView
+// can record it via ReviewStore and advance the session, mirroring onKnow/onAgain.
+struct FlashcardTypedAnswerControl: View {
+    let word: SavedWord
+    let dictionaryStore: DictionaryStore?
+    let japaneseForm: StudyJapaneseForm
+    let onGraded: (_ correct: Bool, _ direction: QuestionDirection?) -> Void
+
+    @State private var typedAnswer: String = ""
+    @State private var expected: ExpectedAnswer?
+    @State private var verdict: AnswerScorer.Verdict?
+    @FocusState private var isFocused: Bool
+
+    private struct ExpectedAnswer {
+        let text: String
+        let isKanaOnlySurface: Bool
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if let verdict {
+                feedback(for: verdict)
+            } else {
+                TextField("Type the answer", text: $typedAnswer)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isFocused)
+                    .submitLabel(.done)
+                    .onSubmit { check() }
+                    .disabled(expected == nil)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+
+                Button { check() } label: {
+                    Label("Check", systemImage: "checkmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(expected == nil || typedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        // Keyed on the word's id (not just .task's default identity) so a fresh fetch — and a reset
+        // text field/verdict — happens every time the session advances to a new card, even though
+        // this view instance may be reused across cards by SwiftUI's diffing.
+        .task(id: word.canonicalEntryID) {
+            typedAnswer = ""
+            verdict = nil
+            expected = await resolveExpected()
+            isFocused = true
+        }
+    }
+
+    @ViewBuilder
+    private func feedback(for verdict: AnswerScorer.Verdict) -> some View {
+        VStack(spacing: 8) {
+            Label(
+                verdict.isCorrect ? "Correct" : "Incorrect — \(expected?.text ?? verdict.normalizedExpected)",
+                systemImage: verdict.isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill"
+            )
+            .foregroundStyle(verdict.isCorrect ? .green : .red)
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
+
+            Button {
+                onGraded(verdict.isCorrect, direction)
+            } label: {
+                Label("Next", systemImage: "arrow.right.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    // The direction this card's grade counts as evidence for, derived the same way
+    // MultipleChoiceView/FlashcardsView resolve every other englishToJapanese card — via the live
+    // kana-only fact this view already fetched, which is more accurate than a surface-only guess.
+    private var direction: QuestionDirection? {
+        guard let expected else { return nil }
+        return .forJapaneseEnglishAxis(
+            resolved: .englishToJapanese, form: japaneseForm, isKanaOnlySurface: expected.isKanaOnlySurface
+        )
+    }
+
+    private func check() {
+        guard let expected else { return }
+        verdict = AnswerScorer.grade(input: typedAnswer, expected: expected.text)
+        isFocused = false
+    }
+
+    // Resolves the expected Japanese text for the session's configured form, mirroring the same
+    // dictionary calls FlashcardCard/MultipleChoiceView already make.
+    private func resolveExpected() async -> ExpectedAnswer? {
+        guard let store = dictionaryStore else { return nil }
+        let entryID = word.canonicalEntryID
+        let surface = word.surface
+        let selectedSenseIDs = word.selectedSenseIDs
+        let selectedGlosses = word.selectedGlosses
+        let form = japaneseForm
+        return await Task.detached(priority: .utility) { () -> ExpectedAnswer? in
+            guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
+                return nil
+            }
+            let kanji = data.entry.kanjiForms.first?.text
+            let senseRestrictions = (try? store.fetchSenseRestrictions(entryID: entryID)) ?? []
+            let kana = data.entry.preferredKana(
+                selectedSenseIDs: selectedSenseIDs,
+                selectedGlosses: selectedGlosses,
+                senseRestrictions: senseRestrictions
+            )
+            let isKanaOnlySurface = kanji == nil
+            let text: String
+            switch form {
+            case .kanji: text = kanji ?? surface
+            case .kana: text = kana ?? surface
+            case .original: text = isKanaOnlySurface ? (kana ?? surface) : (kanji ?? surface)
+            }
+            return ExpectedAnswer(text: text, isKanaOnlySurface: isKanaOnlySurface)
+        }.value
+    }
+}
