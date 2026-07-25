@@ -55,6 +55,11 @@ struct FlashcardsView: View {
     @State private var showEndSessionConfirm: Bool = false
     @State private var direction: StudyDirection = .japaneseToEnglish
     @State private var japaneseForm: StudyJapaneseForm = .kanji
+    // When on, a card whose resolved direction is englishToJapanese (production: meaning→kanji/kana)
+    // is graded by typing the answer (via AnswerScorer) instead of self-reported flip+Know/Again.
+    // Cards that resolve to japaneseToEnglish are unaffected — English answers have too many valid
+    // phrasings to fuzzy-match reliably, so those stay self-graded regardless of this toggle.
+    @State private var typedGrading: Bool = false
     // Cap on how many cards a session runs. 0 (blank field) means "all in selection".
     @State private var cardCount: Int = 20
     @State private var scope: FlashcardScope = .all
@@ -82,7 +87,7 @@ struct FlashcardsView: View {
                         Spacer(minLength: 8)
                         cardStack
                         Spacer(minLength: 8)
-                        controls
+                        bottomControl
                     }
                     .padding()
                 }
@@ -178,12 +183,47 @@ struct FlashcardsView: View {
                     dragOffset: $dragOffset,
                     isSwipingOut: $isSwipingOut,
                     swipeDirection: $swipeDirection,
-                    onKnow: { know() },
-                    onAgain: { again() }
+                    // Swipe-to-grade is disabled for a card FlashcardTypedAnswerControl is grading —
+                    // otherwise a stray horizontal swipe on the (still English-only) front face would
+                    // grade the card before the user ever typed an answer. Flip-to-peek still works;
+                    // that's no worse than self-graded mode already allowing a peek-then-swipe.
+                    onKnow: { if isTypedGradingCard(word) == false { know() } },
+                    onAgain: { if isTypedGradingCard(word) == false { again() } }
                 )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: 360)
+    }
+
+    // True when the current card should be graded via FlashcardTypedAnswerControl rather than
+    // self-reported flip+Know/Again — typed grading is on, and this card's resolved direction is
+    // production (English prompt, Japanese answer).
+    private func isTypedGradingCard(_ word: SavedWord) -> Bool {
+        typedGrading && direction.resolved(seed: word.canonicalEntryID) == .englishToJapanese
+    }
+
+    // The typed-answer control when the current card calls for it, otherwise the usual
+    // Again/Detail/Know row.
+    @ViewBuilder
+    private var bottomControl: some View {
+        if session.indices.contains(index), isTypedGradingCard(session[index]) {
+            let word = session[index]
+            FlashcardTypedAnswerControl(
+                word: word,
+                dictionaryStore: dictionaryStore,
+                japaneseForm: japaneseForm,
+                onGraded: { correct, gradedDirection in
+                    if correct {
+                        know(direction: gradedDirection)
+                    } else {
+                        again(direction: gradedDirection)
+                    }
+                }
+            )
+            .id(word.canonicalEntryID)
+        } else {
+            controls
+        }
     }
 
     // Again / Detail / Know buttons shown while a session is active.
@@ -301,6 +341,13 @@ struct FlashcardsView: View {
             }
 
             Section {
+                Toggle("Typed answers", isOn: $typedGrading)
+                Text("English → 日本語 cards are graded by typing the answer instead of flipping. 日本語 → English cards are unaffected.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Picker("Scope", selection: $scope) {
                     ForEach(FlashcardScope.allCases) { s in
                         Text(scopeLabel(s)).tag(s)
@@ -355,24 +402,26 @@ struct FlashcardsView: View {
         index = 0; showBack = false; dragOffset = .zero
     }
 
-    // Records an "again", appends the card to the back of the queue, and advances.
-    private func again() {
+    // Records an "again", appends the card to the back of the queue, and advances. `direction`
+    // overrides the surface-heuristic resolution — passed by FlashcardTypedAnswerControl, which
+    // already fetched the word's live kanji/kana and so knows the direction more precisely.
+    private func again(direction overrideDirection: QuestionDirection? = nil) {
         guard session.isEmpty == false else { return }
         sessionAgain += 1; reviewedCount += 1
         let w = session[index]
-        reviewStore.recordAgain(for: w.canonicalEntryID, direction: questionDirection(for: w))
+        reviewStore.recordAgain(for: w.canonicalEntryID, direction: overrideDirection ?? questionDirection(for: w))
         session.remove(at: index)
         session.append(w)
         if index >= session.count { index = session.count - 1 }
         showBack = false
     }
 
-    // Records a "know", removes the card from the queue, and advances.
-    private func know() {
+    // Records a "know", removes the card from the queue, and advances. See `again` re: `direction`.
+    private func know(direction overrideDirection: QuestionDirection? = nil) {
         guard session.isEmpty == false else { return }
         sessionCorrect += 1; reviewedCount += 1
         let w = session[index]
-        reviewStore.recordCorrect(for: w.canonicalEntryID, direction: questionDirection(for: w))
+        reviewStore.recordCorrect(for: w.canonicalEntryID, direction: overrideDirection ?? questionDirection(for: w))
         session.remove(at: index)
         if session.isEmpty { return }
         if index >= session.count { index = max(0, session.count - 1) }
