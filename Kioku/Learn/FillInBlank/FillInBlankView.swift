@@ -404,14 +404,11 @@ struct FillInBlankView: View {
                 if gloss == nil { gloss = data.entry.senses.first?.glosses.first }
                 guard let gloss else { return nil }
 
-                let kanji = data.entry.kanjiForms.first?.text
-                let senseRestrictions = (try? store.fetchSenseRestrictions(entryID: entryID)) ?? []
-                let kana = data.entry.preferredKana(
-                    selectedSenseIDs: selectedSenseIDs,
-                    selectedGlosses: selectedGlosses,
-                    senseRestrictions: senseRestrictions
+                let forms = WordFormResolver.kanjiAndKana(
+                    entry: data.entry, store: store, entryID: entryID,
+                    selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
                 )
-                return (gloss, kanji, kana)
+                return (gloss, forms.kanji, forms.kana)
             }.value
 
             guard let resolved else { continue }

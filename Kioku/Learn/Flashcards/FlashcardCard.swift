@@ -126,17 +126,15 @@ struct FlashcardCard: View {
             guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
                 return nil
             }
-            // Pick the reading that fits the user's selected senses — JMdict stagr restricts
-            // some senses to specific kana forms (e.g. 黄昏's "dusk;twilight" sense is restricted
-            // to たそがれ even though the alphabetically-first kana form is こうこん).
-            let senseRestrictions = (try? store.fetchSenseRestrictions(entryID: entryID)) ?? []
-            let kana = data.entry.preferredKana(
-                selectedSenseIDs: selectedSenseIDs,
-                selectedGlosses: selectedGlosses,
-                senseRestrictions: senseRestrictions
+            // Kanji headword and the reading that fits the user's selected senses — JMdict stagr
+            // restricts some senses to specific kana forms (e.g. 黄昏's "dusk;twilight" sense is
+            // restricted to たそがれ even though the alphabetically-first kana form is こうこん).
+            let forms = WordFormResolver.kanjiAndKana(
+                entry: data.entry, store: store, entryID: entryID,
+                selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
             )
-            // Dictionary kanji headword (most common written form) for the 漢字 study form.
-            let kanji = data.entry.kanjiForms.first?.text
+            let kana = forms.kana
+            let kanji = forms.kanji
 
             var sensesByID: [Int64: DictionaryEntrySense] = [:]
             for sense in data.entry.senses { sensesByID[sense.senseID] = sense }

@@ -96,8 +96,8 @@ struct FlashcardTypedAnswerControl: View {
         isFocused = false
     }
 
-    // Resolves the expected Japanese text for the session's configured form, mirroring the same
-    // dictionary calls FlashcardCard/MultipleChoiceView already make.
+    // Resolves the expected Japanese text for the session's configured form, via the shared
+    // WordFormResolver every quiz/study view now uses for this same kanji/kana lookup.
     private func resolveExpected() async -> ExpectedAnswer? {
         guard let store = dictionaryStore else { return nil }
         let entryID = word.canonicalEntryID
@@ -106,22 +106,18 @@ struct FlashcardTypedAnswerControl: View {
         let selectedGlosses = word.selectedGlosses
         let form = japaneseForm
         return await Task.detached(priority: .utility) { () -> ExpectedAnswer? in
-            guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
+            guard let resolved = WordFormResolver.fetchKanjiAndKana(
+                store: store, entryID: entryID, surface: surface,
+                selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+            ) else {
                 return nil
             }
-            let kanji = data.entry.kanjiForms.first?.text
-            let senseRestrictions = (try? store.fetchSenseRestrictions(entryID: entryID)) ?? []
-            let kana = data.entry.preferredKana(
-                selectedSenseIDs: selectedSenseIDs,
-                selectedGlosses: selectedGlosses,
-                senseRestrictions: senseRestrictions
-            )
-            let isKanaOnlySurface = kanji == nil
+            let isKanaOnlySurface = resolved.kanji == nil
             let text: String
             switch form {
-            case .kanji: text = kanji ?? surface
-            case .kana: text = kana ?? surface
-            case .original: text = isKanaOnlySurface ? (kana ?? surface) : (kanji ?? surface)
+            case .kanji: text = resolved.kanji ?? surface
+            case .kana: text = resolved.kana ?? surface
+            case .original: text = isKanaOnlySurface ? (resolved.kana ?? surface) : (resolved.kanji ?? surface)
             }
             return ExpectedAnswer(text: text, isKanaOnlySurface: isKanaOnlySurface)
         }.value
