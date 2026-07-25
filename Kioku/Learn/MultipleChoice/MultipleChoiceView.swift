@@ -439,16 +439,13 @@ struct MultipleChoiceView: View {
                 if gloss == nil { gloss = data.entry.senses.first?.glosses.first }
                 guard let gloss else { return nil }
 
-                // Dictionary kanji headword (most common written form) and the reading that fits
-                // the selected senses — the same calls the flashcard face uses.
-                let kanji = data.entry.kanjiForms.first?.text
-                let senseRestrictions = (try? store.fetchSenseRestrictions(entryID: entryID)) ?? []
-                let kana = data.entry.preferredKana(
-                    selectedSenseIDs: selectedSenseIDs,
-                    selectedGlosses: selectedGlosses,
-                    senseRestrictions: senseRestrictions
+                // Dictionary kanji headword and the reading that fits the selected senses — the
+                // same shared computation every quiz/study view uses.
+                let forms = WordFormResolver.kanjiAndKana(
+                    entry: data.entry, store: store, entryID: entryID,
+                    selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
                 )
-                return (gloss, kanji, kana)
+                return (gloss, forms.kanji, forms.kana)
             }.value
 
             guard let resolved else { continue }
