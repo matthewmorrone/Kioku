@@ -86,11 +86,13 @@ enum WordOfTheDayScheduler {
         forceRefresh: Bool = false
     ) async {
         StartupTimer.mark("WOTD.refreshScheduleIfEnabled entered enabled=\(enabled) words=\(words.count) force=\(forceRefresh)")
+        AppLog.debug(.wordOfTheDay, "refreshScheduleIfEnabled: enabled=\(enabled) words=\(words.count) hour=\(hour) minute=\(minute) force=\(forceRefresh)")
         guard enabled else {
             await clearPendingWordOfTheDayRequests()
             clearPersistedScheduleState()
             clearWidgetMirror()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled cleared pending because disabled")
+            AppLog.debug(.wordOfTheDay, "refreshScheduleIfEnabled: disabled, cleared pending requests")
             return
         }
 
@@ -101,6 +103,7 @@ enum WordOfTheDayScheduler {
             clearPersistedScheduleState()
             clearWidgetMirror()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled cleared pending because unauthorized")
+            AppLog.debug(.wordOfTheDay, "refreshScheduleIfEnabled: notification authorization status=\(status.rawValue), cleared pending requests")
             return
         }
 
@@ -115,13 +118,16 @@ enum WordOfTheDayScheduler {
            isExistingScheduleFresh(signature: signature, expectedRequestCount: expectedRequestCount, pendingCount: pendingCount) {
             await syncWidgetMirrorFromPending()
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled keeping existing schedule pending=\(pendingCount)")
+            AppLog.debug(.wordOfTheDay, "refreshScheduleIfEnabled: existing schedule is fresh (pending=\(pendingCount), expected=\(expectedRequestCount)) — keeping it")
             return
         }
 
         guard let dictionaryStore else {
             StartupTimer.mark("WOTD.refreshScheduleIfEnabled missing dictionaryStore")
+            AppLog.error(.wordOfTheDay, "refreshScheduleIfEnabled: dictionaryStore unavailable, cannot (re)schedule")
             return
         }
+        AppLog.debug(.wordOfTheDay, "refreshScheduleIfEnabled: (re)scheduling — pending=\(pendingCount) expected=\(expectedRequestCount) forceRefresh=\(forceRefresh)")
         await scheduleUpcoming(
             words: words,
             dictionaryStore: dictionaryStore,
@@ -326,7 +332,9 @@ enum WordOfTheDayScheduler {
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
             let id = requestPrefix + identifierDateString(from: comps)
             let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
-            _ = await addRequest(request)
+            if let error = await addRequest(request) {
+                AppLog.error(.wordOfTheDay, "scheduleUpcoming: addRequest(\(id)) failed — \(error.localizedDescription)")
+            }
 
             let fireDate = calendar.date(from: comps) ?? day
             mirrorEntries.append(WordOfTheDayMirrorEntry(
@@ -343,6 +351,7 @@ enum WordOfTheDayScheduler {
         persistScheduleState(signature: scheduleSignature, requestCount: liveContentByEntryID.count)
         writeMirrorRetainingHistory(mirrorEntries, using: dictionaryStore)
         StartupTimer.mark("WOTD.scheduleUpcoming enqueued \(count) requests")
+        AppLog.info(.wordOfTheDay, "scheduleUpcoming: enqueued \(count) notification(s), first fires \(mirrorEntries.first?.fireDate.description ?? "n/a")")
     }
 
     // Resolves only the words that will actually be used in the pending notification batch.

@@ -3,14 +3,15 @@ import Foundation
 // Wāpuro-style romaji → kana converter for the dictionary search field.
 // Lowercase produces hiragana; uppercase produces katakana (with same-vowel long-vowel collapse to ー).
 // Returns nil when input is empty, contains kana/kanji, or produces no conversions.
-nonisolated enum RomajiToKana {
-    struct Result: Equatable {
-        let kana: String
-        let didConvert: Bool
-    }
+// Result of a RomajiToKana.convert call.
+struct RomajiToKanaResult: Equatable {
+    let kana: String
+    let didConvert: Bool
+}
 
+nonisolated enum RomajiToKana {
     // Converts a wāpuro romaji string into kana, returning nil if nothing converts.
-    static func convert(_ input: String) -> Result? {
+    static func convert(_ input: String) -> RomajiToKanaResult? {
         guard input.isEmpty == false else { return nil }
         if input.unicodeScalars.contains(where: isKanaOrKanji) { return nil }
 
@@ -79,7 +80,7 @@ nonisolated enum RomajiToKana {
         // Reject mixed-script garbage like "Hello" → "ヘllお"; embedded letters mean the
         // input wasn't really romaji.
         if hasEmbeddedAsciiLetter(output) { return nil }
-        return Result(kana: output, didConvert: true)
+        return RomajiToKanaResult(kana: output, didConvert: true)
     }
 
     // True when `s` contains any ASCII letter.

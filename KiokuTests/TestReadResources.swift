@@ -98,9 +98,11 @@ final class TestReadResources {
     }
 
     // Loads grouped deinflection rules using the same resource resolution path as the shared test harness.
+    // Goes through Deinflector.loadGroupedRules so the non-rule "nonIchidanRuVerbs" sibling key
+    // in deinflection.json is stripped the same way production loading strips it.
     static func groupedDeinflectionRules() throws -> [String: [DeinflectionRule]] {
         let rulesData = try Data(contentsOf: resolveResourceURL(fileName: "deinflection.json"))
-        return try JSONDecoder().decode([String: [DeinflectionRule]].self, from: rulesData)
+        return try Deinflector.loadGroupedRules(from: rulesData)
     }
 
     // Resolves a test resource from repository checkout paths or built bundle resources.

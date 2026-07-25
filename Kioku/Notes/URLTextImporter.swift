@@ -7,56 +7,54 @@ import UIKit
 // blog posts, etc.) and avoids the complexity of bundling a Readability-style extractor.
 nonisolated enum URLTextImporter {
 
-    enum ImportError: LocalizedError {
-        case invalidURL
-        case fetchFailed(underlying: Error)
-        case nonHTMLResponse(mimeType: String?)
-        case decodingFailed
-        case emptyResult
-
-        // Human-readable error strings used in the UI's failure alert.
-        var errorDescription: String? {
-            switch self {
-            case .invalidURL: return "That doesn't look like a valid URL."
-            case .fetchFailed(let underlying): return "Couldn't fetch the URL: \(underlying.localizedDescription)"
-            case .nonHTMLResponse(let mime): return "Expected an HTML page; got \(mime ?? "unknown content type")."
-            case .decodingFailed: return "Couldn't decode the page's HTML."
-            case .emptyResult: return "The page didn't contain any extractable text."
-            }
-        }
-    }
-
     // Fetches the URL, parses the HTML, and returns the visible text as a single trimmed string.
     static func extractText(from urlString: String) async throws -> String {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard var components = URLComponents(string: trimmed) else { throw ImportError.invalidURL }
+        guard var components = URLComponents(string: trimmed) else { throw URLTextImporterError.invalidURL }
         if components.scheme == nil {
             components.scheme = "https"
         }
         guard let url = components.url, let scheme = url.scheme, scheme.hasPrefix("http") else {
-            throw ImportError.invalidURL
+            throw URLTextImporterError.invalidURL
         }
 
+        AppLog.debug(.notesImport, "URL import: GET \(url)")
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await URLSession.shared.data(from: url)
         } catch {
-            throw ImportError.fetchFailed(underlying: error)
+            AppLog.error(.notesImport, "URL import: fetch failed for \(url) — \(error.localizedDescription)")
+            throw URLTextImporterError.fetchFailed(underlying: error)
         }
 
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+        let mimeType = (response as? HTTPURLResponse)?.mimeType
+        AppLog.debug(.notesImport, "URL import: HTTP \(statusCode) mime=\(mimeType ?? "unknown") bytes=\(data.count)")
+
         // Only proceed for HTML/text MIME types — we'd produce gibberish on PDFs or images.
-        if let mime = (response as? HTTPURLResponse)?.mimeType,
+        if let mime = mimeType,
            mime.hasPrefix("text/") == false,
            mime != "application/xhtml+xml" {
-            throw ImportError.nonHTMLResponse(mimeType: mime)
+            AppLog.error(.notesImport, "URL import: unsupported mime type \(mime) for \(url)")
+            throw URLTextImporterError.nonHTMLResponse(mimeType: mime)
         }
 
         let extracted = await Task.detached(priority: .userInitiated) {
             extractPlainText(from: data)
         }.value
 
-        guard let text = extracted, text.isEmpty == false else { throw ImportError.emptyResult }
+        // Distinguish "couldn't parse as HTML at all" from "parsed fine but had no visible text" —
+        // extractPlainText returns nil only for the former.
+        guard let text = extracted else {
+            AppLog.error(.notesImport, "URL import: HTML decoding failed for \(url)")
+            throw URLTextImporterError.decodingFailed
+        }
+        guard text.isEmpty == false else {
+            AppLog.error(.notesImport, "URL import: extraction produced no text for \(url)")
+            throw URLTextImporterError.emptyResult
+        }
+        AppLog.debug(.notesImport, "URL import: extracted \(text.count) characters from \(url)")
         return text
     }
 

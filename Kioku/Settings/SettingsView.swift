@@ -15,16 +15,17 @@ struct SettingsView: View {
     // clears it back to nil. Defaulted so existing call sites (previews, etc.) still compile.
     var scrollTarget: Binding<String?> = .constant(nil)
 
-    @EnvironmentObject private var notesStore: NotesStore
-    @EnvironmentObject private var wordsStore: WordsStore
-    @EnvironmentObject private var wordListsStore: WordListsStore
-    @EnvironmentObject private var historyStore: HistoryStore
-    @EnvironmentObject private var reviewStore: ReviewStore
+    // Not private: SettingsView+BackupSection.swift's export/import functions read these directly.
+    @EnvironmentObject var notesStore: NotesStore
+    @EnvironmentObject var wordsStore: WordsStore
+    @EnvironmentObject var wordListsStore: WordListsStore
+    @EnvironmentObject var historyStore: HistoryStore
+    @EnvironmentObject var reviewStore: ReviewStore
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
 
     // Selected theme id — drives chrome (background/accent/typography) and the default token
-    // colors when "Custom Token Colors" is off. See Theme.ID for available themes.
-    @AppStorage(Theme.themeIDKey) var themeIDRaw: String = Theme.ID.system.rawValue
+    // colors when "Custom Token Colors" is off. See ThemeID for available themes.
+    @AppStorage(Theme.themeIDKey) var themeIDRaw: String = ThemeID.system.rawValue
 
     @AppStorage(TypographySettings.textSizeKey) private var textSize = TypographySettings.defaultTextSize
     @AppStorage(TypographySettings.lineSpacingKey) private var lineSpacing = TypographySettings.defaultLineSpacing
@@ -112,7 +113,9 @@ struct SettingsView: View {
     @State private var wotdTestStatus: String?
     @State private var wotdTestTapCount = 0
 
-    @State private var exportDocument = AppBackupDocument(
+    // Not private: SettingsView+BackupSection.swift's export/import functions read and write
+    // these directly.
+    @State var exportDocument = AppBackupDocument(
         payload: AppBackupPayload(
             notes: [],
             words: [],
@@ -124,14 +127,14 @@ struct SettingsView: View {
             lifetimeAgain: 0
         )
     )
-    @State private var isShowingExporter = false
+    @State var isShowingExporter = false
     @State private var isShowingImporter = false
-    @State private var isShowingTransferAlert = false
-    @State private var transferAlertTitle = ""
-    @State private var transferAlertMessage = ""
+    @State var isShowingTransferAlert = false
+    @State var transferAlertTitle = ""
+    @State var transferAlertMessage = ""
     @State private var isShowingResetConfirmation = false
-    @State private var isShowingImportConfirmation = false
-    @State private var pendingImportDocument: AppBackupDocument?
+    @State var isShowingImportConfirmation = false
+    @State var pendingImportDocument: AppBackupDocument?
     // Snapshot of Library/Caches total size, refreshed when Settings appears and after a clear.
     // Drives the byte readout on the Clear Caches button so the user sees what's about to free.
     @State private var cachesBytes: Int = 0
@@ -502,6 +505,11 @@ struct SettingsView: View {
                         Label("Crash Logs", systemImage: "exclamationmark.triangle")
                     }
                     NavigationLink {
+                        LogSettingsView()
+                    } label: {
+                        Label("Debug Logs", systemImage: "text.alignleft")
+                    }
+                    NavigationLink {
                         AboutView()
                     } label: {
                         Label("About", systemImage: "info.circle")
@@ -621,136 +629,8 @@ struct SettingsView: View {
         }
     }
 
-    // Captures the latest full app state before presenting the system export flow.
-    private func beginAppExport() {
-        let reviewStats = reviewStore.stats
-            .map { AppBackupReviewStats(canonicalEntryID: $0.key, stats: $0.value) }
-            .sorted { $0.canonicalEntryID < $1.canonicalEntryID }
-
-        let notes = notesStore.exportNotes()
-        let audioStore = NotesAudioStore.shared
-        let audioAttachments: [AudioAttachmentBackup] = notes
-            .compactMap { $0.audioAttachmentID }
-            .compactMap { audioStore.exportAttachment(for: $0) }
-
-        exportDocument = AppBackupDocument(
-            payload: AppBackupPayload(
-                notes: notes,
-                words: wordsStore.words,
-                wordLists: wordListsStore.lists,
-                history: historyStore.entries,
-                reviewStats: reviewStats,
-                markedWrong: Array(reviewStore.markedWrong).sorted(),
-                learned: Array(reviewStore.learned).sorted(),
-                notLearned: Array(reviewStore.notLearned).sorted(),
-                lifetimeCorrect: reviewStore.lifetimeCorrect,
-                lifetimeAgain: reviewStore.lifetimeAgain,
-                audioAttachments: audioAttachments
-            )
-        )
-        isShowingExporter = true
-    }
-
-    // Reports whether the export operation finished or failed.
-    private func handleExportResult(_ result: Result<URL, Error>) {
-        switch result {
-        case .success:
-            showTransferAlert(title: "Export Complete", message: "Your app backup was saved successfully.")
-        case .failure(let error):
-            showTransferAlert(title: "Export Failed", message: error.localizedDescription)
-        }
-    }
-
-    // Validates the importer selection and loads the selected app-backup file.
-    private func handleImportResult(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let fileURL = urls.first else {
-                showTransferAlert(title: "Import Failed", message: "No file was selected.")
-                return
-            }
-
-            let hasSecurityScope = fileURL.startAccessingSecurityScopedResource()
-            defer {
-                if hasSecurityScope {
-                    fileURL.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            do {
-                let document = try AppBackupDocument(contentsOf: fileURL)
-                // Reject structurally invalid backups before the destructive
-                // replace-all confirmation is ever offered.
-                try AppBackupValidator.validate(document.payload)
-                pendingImportDocument = document
-                isShowingImportConfirmation = true
-            } catch {
-                showTransferAlert(title: "Import Failed", message: error.localizedDescription)
-            }
-        case .failure(let error):
-            showTransferAlert(title: "Import Failed", message: error.localizedDescription)
-        }
-    }
-
-    // Applies one validated app-backup snapshot to every persisted store in a single replace-all pass.
-    //
-    // Restore ordering makes the operation effectively atomic for the user:
-    // 1. The payload was already validated before the confirmation dialog.
-    // 2. Audio files are staged to disk first; any write failure rolls back the
-    //    staged files (skipping IDs a live note still references) and aborts
-    //    before a single store has been mutated.
-    // 3. Store replacement itself is non-throwing, so once staging succeeds the
-    //    swap cannot leave mixed old/new state.
-    private func importAppBackup(_ document: AppBackupDocument) {
-        let payload = document.payload
-        // Validation already rejected duplicate review IDs; uniquingKeysWith is a
-        // defense-in-depth guard so a missed case degrades instead of trapping.
-        let stats = Dictionary(
-            payload.reviewStats.map { ($0.canonicalEntryID, $0.reviewWordStats()) },
-            uniquingKeysWith: { current, _ in current }
-        )
-
-        let audioStore = NotesAudioStore.shared
-        let liveAttachmentIDs = Set(notesStore.notes.compactMap(\.audioAttachmentID))
-        var stagedAttachmentIDs: [UUID] = []
-        for attachment in payload.audioAttachments {
-            do {
-                try audioStore.importAttachment(attachment)
-                stagedAttachmentIDs.append(attachment.attachmentID)
-            } catch {
-                // Roll back files staged by this import; an ID also referenced by a
-                // live note predates the import and must survive the abort.
-                for stagedID in stagedAttachmentIDs where liveAttachmentIDs.contains(stagedID) == false {
-                    audioStore.deleteAttachment(stagedID)
-                }
-                showTransferAlert(
-                    title: "Import Failed",
-                    message: "An audio attachment could not be restored, so no data was changed. \(error.localizedDescription)"
-                )
-                return
-            }
-        }
-
-        wordListsStore.replaceAll(with: payload.wordLists)
-        wordsStore.replaceAll(with: payload.words)
-        historyStore.replaceAll(with: payload.history)
-        reviewStore.replaceAll(
-            stats: stats,
-            markedWrong: Set(payload.markedWrong),
-            lifetimeCorrect: payload.lifetimeCorrect,
-            lifetimeAgain: payload.lifetimeAgain,
-            learned: Set(payload.learned),
-            notLearned: Set(payload.notLearned)
-        )
-        notesStore.replaceAll(with: payload.notes)
-
-        var message = "Imported \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.history.count) history entries, and \(payload.reviewStats.count) review records."
-        if payload.audioAttachments.isEmpty == false {
-            message += " Restored \(payload.audioAttachments.count) audio attachment(s)."
-        }
-
-        showTransferAlert(title: "Import Complete", message: message)
-    }
+    // Export/import logic (beginAppExport, handleExportResult, handleImportResult,
+    // importAppBackup) lives in SettingsView+BackupSection.swift.
 
     // Clears all persisted user data: every store, attachment files (including
     // orphans no note references), derived song breakdowns, cached lyric
@@ -768,8 +648,9 @@ struct SettingsView: View {
         showTransferAlert(title: "Reset Complete", message: "All user data has been erased.")
     }
 
-    // Presents a single alert for import and export status messages.
-    private func showTransferAlert(title: String, message: String) {
+    // Presents a single alert for import and export status messages. Not private:
+    // SettingsView+BackupSection.swift's export/import functions call this too.
+    func showTransferAlert(title: String, message: String) {
         transferAlertTitle = title
         transferAlertMessage = message
         isShowingTransferAlert = true
@@ -831,12 +712,12 @@ struct SettingsView: View {
         }
     }
 
-    // Bridges the raw AppStorage string to a Picker-friendly Theme.ID binding. Falls back to
+    // Bridges the raw AppStorage string to a Picker-friendly ThemeID binding. Falls back to
     // System if the stored string ever desyncs from the enum (shouldn't happen, but the
     // picker can't render a nil tag).
-    private var themeIDBinding: Binding<Theme.ID> {
+    private var themeIDBinding: Binding<ThemeID> {
         Binding(
-            get: { Theme.ID(rawValue: themeIDRaw) ?? .system },
+            get: { ThemeID(rawValue: themeIDRaw) ?? .system },
             set: { themeIDRaw = $0.rawValue }
         )
     }

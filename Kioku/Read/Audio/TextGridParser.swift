@@ -1,19 +1,27 @@
 import Foundation
 
+// Failure case surfaced by TextGridParser.parse.
+enum TextGridParseError: Error, Equatable {
+    case malformed(String)
+}
+
+// One lexical token produced by TextGridParser's tokenizer.
+private enum TextGridToken: Equatable {
+    case number(Double)
+    case string(String)
+    case bareword(String)
+}
+
 // Parses Praat short-form TextGrid text into the unified TimedTextDocument.
 // Long-form (xmin = / text = labels) is intentionally out of scope for v1.
 nonisolated enum TextGridParser {
 
-    enum ParseError: Error, Equatable {
-        case malformed(String)
-    }
-
     // Parses a short-form Praat TextGrid string into a TimedTextDocument.
     // Times are converted from seconds to integer milliseconds at parse time.
-    // Throws ParseError.malformed for long-form input or unrecoverable structural problems.
+    // Throws TextGridParseError.malformed for long-form input or unrecoverable structural problems.
     static func parse(_ content: String) throws -> TimedTextDocument {
         if content.contains("item []:") || content.range(of: #"\bxmin\s*="#, options: .regularExpression) != nil {
-            throw ParseError.malformed("Long-form TextGrid is not supported in v1; convert to short-form.")
+            throw TextGridParseError.malformed("Long-form TextGrid is not supported in v1; convert to short-form.")
         }
 
         var tokens = tokenize(content)[...]
@@ -25,34 +33,34 @@ nonisolated enum TextGridParser {
         }
 
         guard case .number = tokens.first else {
-            throw ParseError.malformed("Missing file xmin.")
+            throw TextGridParseError.malformed("Missing file xmin.")
         }
         _ = tokens.popFirst()
         guard case let .number(fileXmax)? = tokens.popFirst() else {
-            throw ParseError.malformed("Missing file xmax.")
+            throw TextGridParseError.malformed("Missing file xmax.")
         }
         if case .bareword("exists")? = tokens.first {
             tokens = tokens.dropFirst()
         }
         guard case let .number(tierCountValue)? = tokens.popFirst() else {
-            throw ParseError.malformed("Missing tier count.")
+            throw TextGridParseError.malformed("Missing tier count.")
         }
         let tierCount = Int(tierCountValue)
 
         var tiers: [TimedTier] = []
         for _ in 0..<tierCount {
             guard case let .string(tierKind)? = tokens.popFirst() else {
-                throw ParseError.malformed("Missing tier kind.")
+                throw TextGridParseError.malformed("Missing tier kind.")
             }
             guard case let .string(tierName)? = tokens.popFirst() else {
-                throw ParseError.malformed("Missing tier name for tier of kind \(tierKind).")
+                throw TextGridParseError.malformed("Missing tier name for tier of kind \(tierKind).")
             }
             guard case .number = tokens.popFirst(),
                   case .number = tokens.popFirst() else {
-                throw ParseError.malformed("Missing tier xmin/xmax for tier \(tierName).")
+                throw TextGridParseError.malformed("Missing tier xmin/xmax for tier \(tierName).")
             }
             guard case let .number(intervalCountValue)? = tokens.popFirst() else {
-                throw ParseError.malformed("Missing interval count for tier \(tierName).")
+                throw TextGridParseError.malformed("Missing interval count for tier \(tierName).")
             }
             let intervalCount = Int(intervalCountValue)
 
@@ -62,7 +70,7 @@ nonisolated enum TextGridParser {
                     guard case let .number(xmin)? = tokens.popFirst(),
                           case let .number(xmax)? = tokens.popFirst(),
                           case let .string(label)? = tokens.popFirst() else {
-                        throw ParseError.malformed("Truncated interval in tier \(tierName).")
+                        throw TextGridParseError.malformed("Truncated interval in tier \(tierName).")
                     }
                     spans.append(
                         TimedSpan(
@@ -76,7 +84,7 @@ nonisolated enum TextGridParser {
                 // PointTier / TextTier — parse structurally, model as tier with zero spans.
                 for _ in 0..<intervalCount {
                     guard tokens.popFirst() != nil, tokens.popFirst() != nil else {
-                        throw ParseError.malformed("Truncated point in tier \(tierName).")
+                        throw TextGridParseError.malformed("Truncated point in tier \(tierName).")
                     }
                 }
             }
@@ -92,17 +100,11 @@ nonisolated enum TextGridParser {
 
     // MARK: - Tokenizer
 
-    private enum Token: Equatable {
-        case number(Double)
-        case string(String)
-        case bareword(String)
-    }
-
     // Splits the file into a stream of number / quoted-string / bareword tokens so the parser can
     // consume them in expected order without re-scanning the source. Comments (lines starting with `!`)
     // and whitespace are dropped. Inside a quoted string, `""` escapes a literal `"`.
-    private static func tokenize(_ source: String) -> [Token] {
-        var tokens: [Token] = []
+    private static func tokenize(_ source: String) -> [TextGridToken] {
+        var tokens: [TextGridToken] = []
         var iter = source.unicodeScalars.makeIterator()
         var pending: Unicode.Scalar? = nil
 

@@ -360,7 +360,7 @@ struct FlashcardsView: View {
         guard session.isEmpty == false else { return }
         sessionAgain += 1; reviewedCount += 1
         let w = session[index]
-        reviewStore.recordAgain(for: w.canonicalEntryID)
+        reviewStore.recordAgain(for: w.canonicalEntryID, direction: questionDirection(for: w))
         session.remove(at: index)
         session.append(w)
         if index >= session.count { index = session.count - 1 }
@@ -371,11 +371,27 @@ struct FlashcardsView: View {
     private func know() {
         guard session.isEmpty == false else { return }
         sessionCorrect += 1; reviewedCount += 1
-        reviewStore.recordCorrect(for: session[index].canonicalEntryID)
+        let w = session[index]
+        reviewStore.recordCorrect(for: w.canonicalEntryID, direction: questionDirection(for: w))
         session.remove(at: index)
         if session.isEmpty { return }
         if index >= session.count { index = max(0, session.count - 1) }
         showBack = false
+    }
+
+    // Resolves the concrete direction this card is grading, from the session's direction/form
+    // pickers plus a same-rule-of-thumb kana-only check as `FlashcardCard.isKanaOnly` uses for its
+    // own display fallback — approximated from the saved surface alone since, unlike FlashcardCard,
+    // this view doesn't fetch the word's live dictionary data. `.mixed` resolves deterministically
+    // per word via the same seed FlashcardCard uses, so the direction graded here always matches
+    // the face the user actually saw.
+    private func questionDirection(for word: SavedWord) -> QuestionDirection? {
+        let resolved = direction.resolved(seed: word.canonicalEntryID)
+        return .forJapaneseEnglishAxis(
+            resolved: resolved,
+            form: japaneseForm,
+            isKanaOnlySurface: ScriptClassifier.containsKanji(word.surface) == false
+        )
     }
 
     // Builds the session queue from the current scope selection and kicks off the session.

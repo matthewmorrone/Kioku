@@ -266,23 +266,23 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             byStart[offset, default: []].append(edge)
         }
 
-        print("=== LATTICE (\(edges.count) edges) ===")
+        AppLog.debug(.segmentation, "=== LATTICE (\(edges.count) edges) ===")
         for startOffset in byStart.keys.sorted() {
-            print("\(startOffset):")
+            AppLog.debug(.segmentation, "\(startOffset):")
             for edge in byStart[startOffset]!.sorted(by: { $0.surface < $1.surface }) {
                 let endOffset = text.distance(from: text.startIndex, to: edge.end)
                 let lemmas = resolvedTrieLemmas(for: edge.surface).sorted()
                 if lemmas.isEmpty {
-                    print("  [\(startOffset),\(endOffset)) \(escapedForDebug(edge.surface))")
+                    AppLog.debug(.segmentation, "  [\(startOffset),\(endOffset)) \(escapedForDebug(edge.surface))")
                 } else {
                     for lemma in lemmas {
                         let summary = debugResolutionSummary(for: edge.surface, lemma: lemma)
-                        print("  [\(startOffset),\(endOffset)) \(escapedForDebug(edge.surface)) → \(escapedForDebug(lemma)) [\(summary)]")
+                        AppLog.debug(.segmentation, "  [\(startOffset),\(endOffset)) \(escapedForDebug(edge.surface)) → \(escapedForDebug(lemma)) [\(summary)]")
                     }
                 }
             }
         }
-        print("================")
+        AppLog.debug(.segmentation, "================")
     }
 
     // Builds a greedy segmentation by selecting the farthest-reaching edge at each text index.
@@ -837,7 +837,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         let segments = longestMatchSegments(for: text)
 
         for segment in segments {
-            print(String(text[segment]))
+            AppLog.debug(.segmentation, String(text[segment]))
         }
     }
 
@@ -941,7 +941,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                 guard let prevScore = bestScore[prev] else { continue }
                 let t = SegmenterScoring.transitionCost(prev: edges[prev], next: edge)
                 if shouldLogPOSTransitions && t != 0 {
-                    print("POS transition \(edges[prev].surface) → \(edge.surface) \(t)")
+                    AppLog.debug(.segmentation, "POS transition \(edges[prev].surface) → \(edge.surface) \(t)")
                 }
                 let score = prevScore + nodeCost + t
                 if bestT == nil || score < bestT! { bestT = score; bestPrev = prev }

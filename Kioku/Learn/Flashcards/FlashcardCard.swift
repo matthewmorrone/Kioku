@@ -23,6 +23,15 @@ private enum FlashcardCardFace {
     case back
 }
 
+// One face's content. The Japanese cases carry the chosen written form (原文/漢字/かな);
+// the `answer` variant adds the kana reading beneath the headword ("inclusion of both").
+// Defined once so the front (prompt) and back (answer) share `faceView`.
+private enum FlashcardFaceContent {
+    case english
+    case japanesePrompt(StudyJapaneseForm)
+    case japaneseAnswer(StudyJapaneseForm)
+}
+
 // Renders one card in the stack with 3D flip and swipe-to-grade gestures.
 // Major sections: card face (front/back with lighting gradients), gesture handler, swipe-out animation.
 struct FlashcardCard: View {
@@ -259,15 +268,6 @@ struct FlashcardCard: View {
                 .padding(.top, japaneseTheme ? 8 : 0)
                 .frame(maxWidth: .infinity, maxHeight: 320)
         }
-    }
-
-    // One face's content. The Japanese cases carry the chosen written form (原文/漢字/かな);
-    // the `answer` variant adds the kana reading beneath the headword ("inclusion of both").
-    // Defined once so the front (prompt) and back (answer) share `faceView`.
-    private enum FlashcardFaceContent {
-        case english
-        case japanesePrompt(StudyJapaneseForm)
-        case japaneseAnswer(StudyJapaneseForm)
     }
 
     // Maps the (direction, form) pair to the front (prompt) and back (answer) content. `.mixed` is

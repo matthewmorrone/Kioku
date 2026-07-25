@@ -5,21 +5,22 @@ import Foundation
 // sense (zero overlap, or a tie between two senses) land in the `unrouted` bucket.
 // Heuristic only — Tatoeba sentences don't carry sense indices in JMdict, and this avoids
 // importing a separate tagged corpus.
-nonisolated enum SentenceSenseRouter {
-    // The result of routing: per-sense buckets plus a fallback bucket for ambiguous sentences.
-    struct Routing: Equatable {
-        let bySense: [Int64: [SentencePair]]
-        let unrouted: [SentencePair]
-    }
+// The result of SentenceSenseRouter.route: per-sense buckets plus a fallback bucket for
+// ambiguous sentences.
+struct SentenceSenseRouting: Equatable {
+    let bySense: [Int64: [SentencePair]]
+    let unrouted: [SentencePair]
+}
 
+nonisolated enum SentenceSenseRouter {
     // Computes the routing. Per-sense buckets are capped at `maxPerSense` (preserving input order).
     static func route(
         sentences: [SentencePair],
         senses: [DictionaryEntrySense],
         maxPerSense: Int = 2
-    ) -> Routing {
+    ) -> SentenceSenseRouting {
         guard senses.isEmpty == false else {
-            return Routing(bySense: [:], unrouted: sentences)
+            return SentenceSenseRouting(bySense: [:], unrouted: sentences)
         }
 
         // Pre-tokenize each sense's glosses so we tokenize each sense once, not per sentence.
@@ -61,7 +62,7 @@ nonisolated enum SentenceSenseRouter {
             }
         }
 
-        return Routing(bySense: bySense, unrouted: unrouted)
+        return SentenceSenseRouting(bySense: bySense, unrouted: unrouted)
     }
 
     // Tokenizes English text into content words: lowercased, ≥3 characters, stop-words filtered.

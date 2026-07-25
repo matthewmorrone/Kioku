@@ -1,6 +1,15 @@
 import SwiftUI
 import UIKit
 
+// One segment's horizontal spacing envelope (kerned glyph extent ∪ ruby frame), used by the
+// inter-segment spacing-correction pass in applyRenderState to measure and adjust visible gaps.
+private struct FuriganaSpacingEnvelope {
+    let minX: CGFloat
+    let maxX: CGFloat
+    let lineY: CGFloat
+    let nsRange: NSRange
+}
+
 // Render pipeline for the furigana renderer: SwiftUI's updateUIView entrypoint and the
 // applyRenderState worker that drives text-view typography sync, layout, kern correction,
 // overlay assembly, and debug geometry collection.
@@ -289,16 +298,10 @@ extension FuriganaTextRenderer {
         // (user kerning setting). Runs only on text-change renders — kerns persist on
         // textStorage, so scroll-driven updateUIView calls don't redo the work.
         if didRenderText, isRubySpacingEnabled {
-            struct SpacingEnvelope {
-                let minX: CGFloat
-                let maxX: CGFloat
-                let lineY: CGFloat
-                let nsRange: NSRange
-            }
             let baseFont = UIFont.systemFont(ofSize: textSize)
             let ignoredScalars = CharacterSet.whitespacesAndNewlines
-            let computeEnvelopes: () -> [SpacingEnvelope] = {
-                var result: [SpacingEnvelope] = []
+            let computeEnvelopes: () -> [FuriganaSpacingEnvelope] = {
+                var result: [FuriganaSpacingEnvelope] = []
                 for segmentRange in segmentationRanges {
                     let segmentText = String(text[segmentRange])
                     guard !segmentText.unicodeScalars.allSatisfy({ ignoredScalars.contains($0) }) else { continue }
@@ -328,7 +331,7 @@ extension FuriganaTextRenderer {
                         envMinX = min(envMinX, kanjiMidX - furiW / 2)
                         envMaxX = max(envMaxX, kanjiMidX + furiW / 2)
                     }
-                    result.append(SpacingEnvelope(minX: envMinX, maxX: envMaxX, lineY: segRect.midY, nsRange: nsRange))
+                    result.append(FuriganaSpacingEnvelope(minX: envMinX, maxX: envMaxX, lineY: segRect.midY, nsRange: nsRange))
                 }
                 return result
             }

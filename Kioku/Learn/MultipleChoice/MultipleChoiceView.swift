@@ -40,6 +40,10 @@ struct MultipleChoiceQuestion: Identifiable {
     let prompt: String
     let options: [String]
     let correct: String
+    // Which of the 6 named directions this question exercises, so answering it feeds that
+    // direction's own evidence in ReviewStore (see QuestionDirection). Nil only defensively —
+    // every path in buildQuestions resolves a concrete direction.
+    let direction: QuestionDirection?
 }
 
 // Renders the multiple-choice study mode: home configuration, active quiz, and summary.
@@ -373,12 +377,13 @@ struct MultipleChoiceView: View {
         guard selected == nil else { return }
         selected = option
         let id = questions[index].id
+        let direction = questions[index].direction
         if option == correct {
             sessionCorrect += 1
-            reviewStore.recordCorrect(for: id)
+            reviewStore.recordCorrect(for: id, direction: direction)
         } else {
             sessionWrong += 1
-            reviewStore.recordAgain(for: id)
+            reviewStore.recordAgain(for: id, direction: direction)
         }
     }
 
@@ -489,25 +494,36 @@ struct MultipleChoiceView: View {
             let prompt: String
             let correct: String
             let pool: Set<String>
+            let questionDirection: QuestionDirection?
             switch resolvedDirection {
             case .japaneseToEnglish:
                 prompt = item.japanese(for: japaneseForm)
                 correct = item.english
                 pool = englishStrings
+                questionDirection = .forJapaneseEnglishAxis(
+                    resolved: .japaneseToEnglish, form: japaneseForm, isKanaOnlySurface: item.kanji == nil
+                )
             case .englishToJapanese:
                 prompt = item.english
                 correct = item.japanese(for: japaneseForm)
                 pool = japaneseStrings
+                questionDirection = .forJapaneseEnglishAxis(
+                    resolved: .englishToJapanese, form: japaneseForm, isKanaOnlySurface: item.kanji == nil
+                )
             case .mixedFields:
                 let fields = StudyField.randomPair(seed: item.word.canonicalEntryID)
                 prompt = item.value(for: fields.prompt)
                 correct = item.value(for: fields.answer)
                 pool = fieldPools[fields.answer] ?? []
+                questionDirection = QuestionDirection(prompt: fields.prompt, answer: fields.answer)
             case .mixed:
                 // `resolved(seed:)` never returns `.mixed`; treat as Japanese→English defensively.
                 prompt = item.japanese(for: japaneseForm)
                 correct = item.english
                 pool = englishStrings
+                questionDirection = .forJapaneseEnglishAxis(
+                    resolved: .japaneseToEnglish, form: japaneseForm, isKanaOnlySurface: item.kanji == nil
+                )
             }
 
             // `.mixedFields` can land prompt == correct for a word whose kanji/kana both fall
@@ -529,7 +545,8 @@ struct MultipleChoiceView: View {
                 id: item.word.canonicalEntryID,
                 prompt: prompt,
                 options: options,
-                correct: correct
+                correct: correct,
+                direction: questionDirection
             ))
         }
         result.shuffle()
