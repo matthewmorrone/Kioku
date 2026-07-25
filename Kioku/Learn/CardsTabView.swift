@@ -11,6 +11,9 @@ enum LearnPage: Int, CaseIterable, Identifiable {
     case multipleChoice
     case cloze
     case kanaChart
+    // Appended last (not inserted earlier) so an existing install's persisted `learn.pageIndex`
+    // keeps pointing at the same page it did before — see the comment above about clamping.
+    case fillInBlank
     var id: Int { rawValue }
 }
 
@@ -84,6 +87,8 @@ struct LearnPagerView: View {
                 ClozeStudyHomeView()
                     .frame(width: width)
                 KanaChartView()
+                    .frame(width: width)
+                FillInBlankView(dictionaryStore: dictionaryStore)
                     .frame(width: width)
             }
             .frame(width: width, alignment: .leading)
