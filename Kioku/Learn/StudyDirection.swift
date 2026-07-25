@@ -1,8 +1,10 @@
 import Foundation
 
-// Shared "which way am I being quizzed" axis for the Learn-tab study modes (Flashcards and
-// Multiple Choice present the identical control). Orthogonal to `StudyJapaneseForm`: this picks
-// which side is the prompt; that picks how the Japanese side is written.
+// Shared "which way am I being quizzed" axis for the Learn-tab study modes. Orthogonal to
+// `StudyJapaneseForm`: this picks which side is the prompt; that picks how the Japanese side is
+// written. Multiple Choice uses this directly; Flashcards uses its own `FlashcardDirection`
+// instead (see its doc comment) since its card-face model needs a fixed, single kanji↔かな
+// direction that this enum has no equivalent for.
 enum StudyDirection: String, CaseIterable, Identifiable {
     // Prompt is Japanese, answer is the English meaning (recognition).
     case japaneseToEnglish = "日本語 → English"
@@ -17,11 +19,6 @@ enum StudyDirection: String, CaseIterable, Identifiable {
     // this mode picks the JP script per-question instead of using one fixed form throughout.
     case mixedFields = "Mixed (Kanji/Kana/Meaning)"
     var id: String { rawValue }
-
-    // Flashcards' face model only knows English vs. one fixed Japanese form (see
-    // `FlashcardCard.FlashcardFaceContent`); it has no notion of a kanji-only/kana-only card
-    // face, so `.mixedFields` is Multiple-Choice-only and left out of Flashcards' picker.
-    static let flashcardCases: [StudyDirection] = [.japaneseToEnglish, .englishToJapanese, .mixed]
 
     // Resolves `.mixed` to a concrete direction deterministically per item, so a card doesn't
     // flip its prompt/answer between re-renders. `seed` is typically the word's entry id.
