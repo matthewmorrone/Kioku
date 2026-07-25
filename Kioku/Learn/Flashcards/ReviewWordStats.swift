@@ -1,5 +1,20 @@
 import Foundation
 
+// Per-(word, direction) evidence, keyed by `QuestionDirection.rawValue` in
+// `ReviewWordStats.directionStats`. Tracks the same shape of counters as the whole-word stats but
+// scoped to one of the 6 quizzable directions, so graduation can require each direction to clear
+// independently instead of being satisfied by a streak in just one.
+struct DirectionStats: Codable, Hashable {
+    var correct: Int = 0
+    var again: Int = 0
+    var consecutiveCorrect: Int = 0
+
+    var total: Int { correct + again }
+    var accuracy: Double? {
+        total > 0 ? Double(correct) / Double(total) : nil
+    }
+}
+
 // Stores cumulative review results for one word, keyed by canonicalEntryID in ReviewStore.
 // Computed properties derive accuracy metrics from the stored counters.
 // SRS scheduling fields (`dueDate`, `consecutiveCorrect`) added in Tier 3; older JSON without
@@ -12,13 +27,25 @@ struct ReviewWordStats: Codable, Hashable {
     var dueDate: Date?
     // SRS: number of correct answers in a row since the last "again". Drives the interval ladder.
     var consecutiveCorrect: Int
+    // Per-direction evidence, keyed by `QuestionDirection.rawValue`. A direction with no entry has
+    // never been answered. Absent from pre-existing JSON; decodes to empty so old history migrates
+    // forward intact (see the custom decoder below).
+    var directionStats: [String: DirectionStats]
 
-    init(correct: Int, again: Int, lastReviewedAt: Date? = nil, dueDate: Date? = nil, consecutiveCorrect: Int = 0) {
+    init(
+        correct: Int,
+        again: Int,
+        lastReviewedAt: Date? = nil,
+        dueDate: Date? = nil,
+        consecutiveCorrect: Int = 0,
+        directionStats: [String: DirectionStats] = [:]
+    ) {
         self.correct = correct
         self.again = again
         self.lastReviewedAt = lastReviewedAt
         self.dueDate = dueDate
         self.consecutiveCorrect = consecutiveCorrect
+        self.directionStats = directionStats
     }
 
     // Custom decoder so SRS fields are optional in JSON — pre-Tier-3 review stats stay readable.
@@ -29,6 +56,7 @@ struct ReviewWordStats: Codable, Hashable {
         lastReviewedAt = try c.decodeIfPresent(Date.self, forKey: .lastReviewedAt)
         dueDate = try c.decodeIfPresent(Date.self, forKey: .dueDate)
         consecutiveCorrect = try c.decodeIfPresent(Int.self, forKey: .consecutiveCorrect) ?? 0
+        directionStats = try c.decodeIfPresent([String: DirectionStats].self, forKey: .directionStats) ?? [:]
     }
 
     // Total number of review attempts for this word.
@@ -39,5 +67,20 @@ struct ReviewWordStats: Codable, Hashable {
         let t = total
         guard t > 0 else { return nil }
         return Double(correct) / Double(t)
+    }
+
+    // Records one answer's outcome against a specific direction's counters, independent of the
+    // whole-word counters above (which the caller updates separately). Mirrors the "correct resets
+    // nothing, again resets the streak" shape of the whole-word SRS bookkeeping.
+    mutating func recordDirectionAnswer(_ direction: QuestionDirection, correct isCorrect: Bool) {
+        var ds = directionStats[direction.rawValue] ?? DirectionStats()
+        if isCorrect {
+            ds.correct += 1
+            ds.consecutiveCorrect += 1
+        } else {
+            ds.again += 1
+            ds.consecutiveCorrect = 0
+        }
+        directionStats[direction.rawValue] = ds
     }
 }

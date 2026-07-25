@@ -106,6 +106,68 @@ final class ReviewStoreTests: XCTestCase {
         XCTAssertEqual(store.stats[1]?.consecutiveCorrect, 1)
     }
 
+    // MARK: - direction stats
+
+    // recordCorrect with no direction argument (the pre-existing call shape) leaves
+    // directionStats untouched — back-compat for callers that don't resolve a direction.
+    func testRecordCorrectWithoutDirectionLeavesDirectionStatsEmpty() {
+        let store = makeStore()
+        store.recordCorrect(for: 1)
+        XCTAssertEqual(store.stats[1]?.directionStats, [:])
+    }
+
+    // recordCorrect(direction:) seeds that direction's own counters, leaving every other
+    // direction untouched.
+    func testRecordCorrectWithDirectionSeedsOnlyThatDirection() {
+        let store = makeStore()
+        store.recordCorrect(for: 1, direction: .kanjiToMeaning)
+
+        let ds = store.stats[1]?.directionStats[QuestionDirection.kanjiToMeaning.rawValue]
+        XCTAssertEqual(ds?.correct, 1)
+        XCTAssertEqual(ds?.again, 0)
+        XCTAssertEqual(ds?.consecutiveCorrect, 1)
+        XCTAssertNil(store.stats[1]?.directionStats[QuestionDirection.kanaToMeaning.rawValue])
+    }
+
+    // Repeated correct answers in the same direction compound that direction's own streak,
+    // independent of a different direction's counters for the same word.
+    func testDirectionStreaksAreIndependentPerDirection() {
+        let store = makeStore()
+        store.recordCorrect(for: 1, direction: .kanjiToMeaning)
+        store.recordCorrect(for: 1, direction: .kanjiToMeaning)
+        store.recordCorrect(for: 1, direction: .kanaToMeaning)
+
+        XCTAssertEqual(store.stats[1]?.directionStats[QuestionDirection.kanjiToMeaning.rawValue]?.consecutiveCorrect, 2)
+        XCTAssertEqual(store.stats[1]?.directionStats[QuestionDirection.kanaToMeaning.rawValue]?.consecutiveCorrect, 1)
+    }
+
+    // recordAgain(direction:) resets only that direction's streak and records the miss, leaving
+    // other directions' streaks intact.
+    func testRecordAgainResetsOnlyThatDirectionsStreak() {
+        let store = makeStore()
+        store.recordCorrect(for: 1, direction: .kanjiToMeaning)
+        store.recordCorrect(for: 1, direction: .kanjiToMeaning)
+        store.recordCorrect(for: 1, direction: .kanaToMeaning)
+
+        store.recordAgain(for: 1, direction: .kanjiToMeaning)
+
+        let kanjiToMeaning = store.stats[1]?.directionStats[QuestionDirection.kanjiToMeaning.rawValue]
+        XCTAssertEqual(kanjiToMeaning?.again, 1)
+        XCTAssertEqual(kanjiToMeaning?.consecutiveCorrect, 0, "streak resets to 0 after an 'again' in that direction")
+        XCTAssertEqual(store.stats[1]?.directionStats[QuestionDirection.kanaToMeaning.rawValue]?.consecutiveCorrect, 1)
+    }
+
+    // Direction stats persist across store instances alongside the rest of a word's stats.
+    func testDirectionStatsSurviveAcrossInstances() {
+        let writer = makeStore()
+        writer.recordCorrect(for: 1, direction: .meaningToKanji)
+        writer.recordAgain(for: 1, direction: .kanaToKanji)
+
+        let reader = makeStore()
+        XCTAssertEqual(reader.stats[1]?.directionStats[QuestionDirection.meaningToKanji.rawValue]?.correct, 1)
+        XCTAssertEqual(reader.stats[1]?.directionStats[QuestionDirection.kanaToKanji.rawValue]?.again, 1)
+    }
+
     // MARK: - isDue
 
     // A word with no recorded stats is treated as immediately due — the path that lights

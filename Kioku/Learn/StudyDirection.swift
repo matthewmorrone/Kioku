@@ -71,3 +71,51 @@ enum StudyJapaneseForm: String, CaseIterable, Identifiable {
     case kana = "かな"
     var id: String { rawValue }
 }
+
+// One of the 6 concrete (prompt, answer) field pairs a word can be quizzed on — the same
+// combinations `StudyField.randomPair` produces, given a stable name so per-word evidence can be
+// tracked per direction (see `ReviewWordStats.directionStats`) independently of the single
+// whole-word SRS streak. Persisted via `rawValue` in `ReviewWordStats`, so cases must not be
+// renamed/removed without a migration.
+enum QuestionDirection: String, Codable, CaseIterable, Hashable {
+    case kanjiToMeaning, kanaToMeaning, kanjiToKana
+    case meaningToKanji, meaningToKana, kanaToKanji
+
+    // Recognition: reading Japanese script and producing/picking the meaning, or reading kanji
+    // and producing/picking its kana. The "easier" half — no free production of Japanese script.
+    static let tier1: [QuestionDirection] = [.kanjiToMeaning, .kanaToMeaning, .kanjiToKana]
+    // Production: starting from the meaning (or kana) and producing Japanese script.
+    static let tier2: [QuestionDirection] = [.meaningToKanji, .meaningToKana, .kanaToKanji]
+
+    // Maps a `StudyField.randomPair` prompt/answer pair to its named direction. Returns nil for
+    // same-field pairs (never produced by `randomPair`, which always picks distinct fields).
+    init?(prompt: StudyField, answer: StudyField) {
+        switch (prompt, answer) {
+        case (.kanji, .meaning): self = .kanjiToMeaning
+        case (.kana, .meaning): self = .kanaToMeaning
+        case (.kanji, .kana): self = .kanjiToKana
+        case (.meaning, .kanji): self = .meaningToKanji
+        case (.meaning, .kana): self = .meaningToKana
+        case (.kana, .kanji): self = .kanaToKanji
+        default: return nil
+        }
+    }
+
+    // Resolves the direction actually shown to the user under the JP/English `StudyDirection`
+    // axis (as opposed to `.mixedFields`, which already carries an explicit field pair and should
+    // be resolved via `init(prompt:answer:)` instead). `resolved` must already have `.mixed`
+    // resolved to a concrete case (see `StudyDirection.resolved(seed:)`). `isKanaOnlySurface`
+    // disambiguates the `.original` form, which doesn't commit to kanji vs. kana on its own.
+    static func forJapaneseEnglishAxis(
+        resolved: StudyDirection,
+        form: StudyJapaneseForm,
+        isKanaOnlySurface: Bool
+    ) -> QuestionDirection? {
+        let field: StudyField = (form == .kana || (form == .original && isKanaOnlySurface)) ? .kana : .kanji
+        switch resolved {
+        case .japaneseToEnglish: return QuestionDirection(prompt: field, answer: .meaning)
+        case .englishToJapanese: return QuestionDirection(prompt: .meaning, answer: field)
+        case .mixed, .mixedFields: return nil
+        }
+    }
+}
