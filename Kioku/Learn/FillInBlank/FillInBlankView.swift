@@ -371,58 +371,92 @@ struct FillInBlankView: View {
     }
 
     // Resolves each saved word to its Japanese surface, kana reading, and primary English gloss.
-    // Mirrors MultipleChoiceView.resolveItems (each mode owns its own fetch — see that method's
-    // comment): detached utility-priority work per word, dropping any word whose dictionary lookup
-    // fails or yields no gloss so it can't produce a blank prompt.
+    // Each word's lookup runs as its own child task in a task group instead of one-at-a-time. Only
+    // Sendable primitives (not SavedWord/MultipleChoiceItem) cross into resolveWordFields, and
+    // results are correlated back to their word via entryID afterward — see
+    // MultipleChoiceView.resolveItems, which this mirrors exactly, for why. Drops any word whose
+    // dictionary lookup fails or yields no gloss so it can't produce a blank prompt; result order is
+    // unconstrained since buildQuestions shuffles the final list anyway.
     private func resolveItems(for words: [SavedWord]) async -> [MultipleChoiceItem] {
         guard let store = dictionaryStore else { return [] }
+        var wordsByID: [Int64: SavedWord] = [:]
+        for word in words { wordsByID[word.canonicalEntryID] = word }
+
+        let resolved = await withTaskGroup(of: ResolvedWordFields?.self) { group in
+            for word in words {
+                let entryID = word.canonicalEntryID
+                let surface = word.surface
+                let selectedSenseIDs = word.selectedSenseIDs
+                let selectedGlosses = word.selectedGlosses
+                group.addTask {
+                    await Self.resolveWordFields(
+                        store: store, entryID: entryID, surface: surface,
+                        selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+                    )
+                }
+            }
+            var results: [ResolvedWordFields] = []
+            for await item in group {
+                if let item { results.append(item) }
+            }
+            return results
+        }
+
         var items: [MultipleChoiceItem] = []
-        for word in words {
-            let entryID = word.canonicalEntryID
+        for r in resolved {
+            guard let word = wordsByID[r.entryID] else { continue }
             let surface = word.surface
-            let selectedSenseIDs = word.selectedSenseIDs
-            let selectedGlosses = word.selectedGlosses
-            let resolved = await Task.detached(priority: .utility) { () -> (english: String, kanji: String?, kana: String?)? in
-                guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
-                    return nil
-                }
-                var sensesByID: [Int64: DictionaryEntrySense] = [:]
-                for sense in data.entry.senses { sensesByID[sense.senseID] = sense }
-
-                var gloss: String?
-                for senseID in selectedSenseIDs where gloss == nil {
-                    gloss = sensesByID[senseID]?.glosses.first
-                }
-                if gloss == nil {
-                    for ref in selectedGlosses where gloss == nil {
-                        if let sense = sensesByID[ref.senseID],
-                           ref.glossIndex >= 0, ref.glossIndex < sense.glosses.count {
-                            gloss = sense.glosses[ref.glossIndex]
-                        }
-                    }
-                }
-                if gloss == nil { gloss = data.entry.senses.first?.glosses.first }
-                guard let gloss else { return nil }
-
-                let forms = WordFormResolver.kanjiAndKana(
-                    entry: data.entry, store: store, entryID: entryID,
-                    selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
-                )
-                return (gloss, forms.kanji, forms.kana)
-            }.value
-
-            guard let resolved else { continue }
-            let gloss = resolved.english.trimmingCharacters(in: .whitespacesAndNewlines)
+            let gloss = r.english.trimmingCharacters(in: .whitespacesAndNewlines)
             guard gloss.isEmpty == false else { continue }
-            let kanji = resolved.kanji?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let kanji = r.kanji?.trimmingCharacters(in: .whitespacesAndNewlines)
             let usableKanji = (kanji?.isEmpty == false && kanji != surface) ? kanji : nil
-            let kana = resolved.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let kana = r.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
             let usableKana = (kana?.isEmpty == false && kana != surface) ? kana : nil
             items.append(MultipleChoiceItem(
                 word: word, original: surface, kanji: usableKanji, kana: usableKana, english: gloss
             ))
         }
         return items
+    }
+
+    // Resolves one word's kanji/kana/gloss from the dictionary. `nonisolated`, and takes only
+    // Sendable primitives rather than SavedWord directly — see
+    // MultipleChoiceView.resolveWordFields for why this matters (this project's default actor
+    // isolation would otherwise make a plain `static func` implicitly @MainActor, silently
+    // serializing every "concurrent" lookup back onto the main thread).
+    private nonisolated static func resolveWordFields(
+        store: DictionaryStore,
+        entryID: Int64,
+        surface: String,
+        selectedSenseIDs: [Int64],
+        selectedGlosses: [GlossRef]
+    ) async -> ResolvedWordFields? {
+        guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
+            return nil
+        }
+        var sensesByID: [Int64: DictionaryEntrySense] = [:]
+        for sense in data.entry.senses { sensesByID[sense.senseID] = sense }
+
+        var gloss: String?
+        for senseID in selectedSenseIDs where gloss == nil {
+            gloss = sensesByID[senseID]?.glosses.first
+        }
+        if gloss == nil {
+            for ref in selectedGlosses where gloss == nil {
+                if let sense = sensesByID[ref.senseID],
+                   ref.glossIndex >= 0, ref.glossIndex < sense.glosses.count {
+                    gloss = sense.glosses[ref.glossIndex]
+                }
+            }
+        }
+        if gloss == nil { gloss = data.entry.senses.first?.glosses.first }
+        guard let gloss else { return nil }
+
+        let forms = WordFormResolver.kanjiAndKana(
+            entry: data.entry, store: store, entryID: entryID,
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+        )
+        return ResolvedWordFields(entryID: entryID, english: gloss, kanji: forms.kanji, kana: forms.kana)
     }
 
     // Returns saved words filtered by the selected notes AND the active scope (all / due / wrong)

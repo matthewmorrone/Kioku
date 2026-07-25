@@ -6,10 +6,11 @@ import Foundation
 // kanjiForms/preferredKana computation, NOT gloss/meaning resolution, which genuinely differs by
 // caller (FlashcardCard stacks every selected meaning for its back face; Multiple Choice/Fill in
 // the Blank pick a single gloss via fallback precedence) and stays defined at each call site.
-// `nonisolated` and synchronous — deliberately does no threading of its own. Every caller wraps
-// this in its own `Task.detached(priority: .utility)` to keep the SQLite work off the main actor
-// (each view owns its own fetch rather than sharing a cache, so display state can't drift from a
-// sibling's cached fetch); this type is the shared logic, not the shared execution context.
+// `nonisolated` and synchronous — deliberately does no threading of its own. Every caller runs
+// this off the main actor itself (via `Task.detached`, or a `nonisolated` task-group child task —
+// see MultipleChoiceView/FillInBlankView's `resolveWordFields`) rather than sharing a cache, so
+// display state can't drift from a sibling's cached fetch; this type is the shared logic, not the
+// shared execution context.
 nonisolated enum WordFormResolver {
     // Computes kanji/kana from an already-fetched `DictionaryEntry` — for callers that also need
     // other data from that same fetch (e.g. `entry.senses`, for gloss resolution) and would
@@ -48,4 +49,15 @@ nonisolated enum WordFormResolver {
             selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
         )
     }
+}
+
+// One word's resolved gloss + kanji/kana, keyed by entryID so a caller can correlate it back to
+// the originating SavedWord after collecting results from a task group — used by Multiple Choice's
+// and Fill in the Blank's `resolveWordFields`, which each cross this (not SavedWord or their own
+// item struct) over the task-group boundary, since it's a plain Sendable value.
+struct ResolvedWordFields: Sendable {
+    let entryID: Int64
+    let english: String
+    let kanji: String?
+    let kana: String?
 }
