@@ -38,7 +38,7 @@ struct FlashcardCard: View {
     let word: SavedWord
     let dictionaryStore: DictionaryStore?
     let isTop: Bool
-    let direction: StudyDirection
+    let direction: FlashcardDirection
     let japaneseForm: StudyJapaneseForm
     let preferredNoteID: UUID?
     @Binding var showBack: Bool
@@ -272,13 +272,17 @@ struct FlashcardCard: View {
     // resolved per card from the entry id so a card doesn't swap its sides between re-renders.
     private var faces: (front: FlashcardFaceContent, back: FlashcardFaceContent) {
         switch direction.resolved(seed: word.canonicalEntryID) {
-        // `.mixedFields` is Multiple-Choice-only (see `StudyDirection.flashcardCases`) and never
-        // reaches Flashcards via its picker; fall back to the same face as `.japaneseToEnglish`
-        // defensively rather than leaving the switch non-exhaustive.
-        case .japaneseToEnglish, .mixed, .mixedFields:
+        case .japaneseToEnglish, .mixed:
             return (.japanesePrompt(japaneseForm), .english)
         case .englishToJapanese:
             return (.english, .japaneseAnswer(japaneseForm))
+        // Both sides are Japanese script, no English at all — .japanesePrompt/.japaneseAnswer
+        // render independently of what the sibling face is, so no new FlashcardFaceContent case
+        // is needed here; pairing them this way just works.
+        case .kanjiToKana:
+            return (.japanesePrompt(.kanji), .japaneseAnswer(.kana))
+        case .kanaToKanji:
+            return (.japanesePrompt(.kana), .japaneseAnswer(.kanji))
         }
     }
 

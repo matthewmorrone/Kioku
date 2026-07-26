@@ -1,8 +1,38 @@
 import SwiftUI
 
-// Direction (which side is the prompt) and Japanese form (原文 / 漢字 / かな) are the shared
-// `StudyDirection` / `StudyJapaneseForm` axes — Flashcards and Multiple Choice present the
-// identical control. See `FlashcardCard` for how the pair maps to the front/back faces.
+// Japanese form (原文 / 漢字 / かな) is the shared `StudyJapaneseForm` axis — Flashcards and
+// Multiple Choice present the identical control for it. Direction is not fully shared: Flashcards
+// uses its own `FlashcardDirection` (a superset of `StudyDirection`'s JP/English pairing that also
+// offers kanji↔かな directly), since `StudyDirection` has no fixed, single-direction equivalent for
+// that — see `FlashcardDirection`'s doc comment. See `FlashcardCard` for how the pair maps to the
+// front/back faces.
+
+// Flashcards' own direction axis — a superset of the shared `StudyDirection` JP/English pairing
+// that also offers kanji↔かな directly (no English/meaning side at all), which `StudyDirection` has
+// no fixed-direction equivalent for: its only script-only option, `.mixedFields`, randomizes across
+// all 6 field pairs per question — including 2 that require English — which doesn't fit Flashcards'
+// single-direction-per-session shape. Kept as its own type (like `FillInBlankDirection`) rather than
+// adding cases to `StudyDirection`, so this doesn't ripple into Multiple Choice's `StudyDirection`
+// switches. `nonisolated` since it's a pure, stateless enum — callable from any context, including
+// plain (non-`@MainActor`) unit tests.
+nonisolated enum FlashcardDirection: String, CaseIterable, Identifiable {
+    case japaneseToEnglish = "日本語 → English"
+    case englishToJapanese = "English → 日本語"
+    case mixed = "Mixed"
+    case kanjiToKana = "漢字 → かな"
+    case kanaToKanji = "かな → 漢字"
+    var id: String { rawValue }
+
+    // Resolves `.mixed` to a concrete direction deterministically per item — matches
+    // `StudyDirection.resolved(seed:)` exactly, only ever randomizing between the JP/English pair
+    // (never into kanjiToKana/kanaToKanji), so existing "Mixed" sessions behave identically.
+    func resolved(seed: Int64) -> FlashcardDirection {
+        switch self {
+        case .mixed: return seed % 2 == 0 ? .japaneseToEnglish : .englishToJapanese
+        case .japaneseToEnglish, .englishToJapanese, .kanjiToKana, .kanaToKanji: return self
+        }
+    }
+}
 
 // Which slice of the saved-word collection feeds the next flashcard session.
 enum FlashcardScope: String, CaseIterable, Identifiable {
@@ -53,12 +83,14 @@ struct FlashcardsView: View {
     @State private var reviewedCount: Int = 0
 
     @State private var showEndSessionConfirm: Bool = false
-    @State private var direction: StudyDirection = .japaneseToEnglish
+    @State private var direction: FlashcardDirection = .japaneseToEnglish
     @State private var japaneseForm: StudyJapaneseForm = .kanji
     // When on, a card whose resolved direction is englishToJapanese (production: meaning→kanji/kana)
     // is graded by typing the answer (via AnswerScorer) instead of self-reported flip+Know/Again.
-    // Cards that resolve to japaneseToEnglish are unaffected — English answers have too many valid
-    // phrasings to fuzzy-match reliably, so those stay self-graded regardless of this toggle.
+    // Cards that resolve to japaneseToEnglish, kanjiToKana, or kanaToKanji are unaffected — the
+    // former because English answers have too many valid phrasings to fuzzy-match reliably; the
+    // latter two stay self-graded-only in this first pass (AnswerScorer would handle them fine, but
+    // extending typed grading to them is a separate follow-up).
     @State private var typedGrading: Bool = false
     // Cap on how many cards a session runs. 0 (blank field) means "all in selection".
     @State private var cardCount: Int = 20
@@ -330,7 +362,7 @@ struct FlashcardsView: View {
 
             Section {
                 Picker("Direction", selection: $direction) {
-                    ForEach(StudyDirection.flashcardCases) { d in Text(d.rawValue).tag(d) }
+                    ForEach(FlashcardDirection.allCases) { d in Text(d.rawValue).tag(d) }
                 }
                 .pickerStyle(.menu)
 
@@ -342,7 +374,7 @@ struct FlashcardsView: View {
 
             Section {
                 Toggle("Typed answers", isOn: $typedGrading)
-                Text("English → 日本語 cards are graded by typing the answer instead of flipping. 日本語 → English cards are unaffected.")
+                Text("English → 日本語 cards are graded by typing the answer instead of flipping. Every other direction is unaffected.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -433,14 +465,27 @@ struct FlashcardsView: View {
     // own display fallback — approximated from the saved surface alone since, unlike FlashcardCard,
     // this view doesn't fetch the word's live dictionary data. `.mixed` resolves deterministically
     // per word via the same seed FlashcardCard uses, so the direction graded here always matches
-    // the face the user actually saw.
+    // the face the user actually saw. kanjiToKana/kanaToKanji need no such approximation — they're
+    // already unambiguous QuestionDirection cases with no JP-form axis to resolve.
     private func questionDirection(for word: SavedWord) -> QuestionDirection? {
-        let resolved = direction.resolved(seed: word.canonicalEntryID)
-        return .forJapaneseEnglishAxis(
-            resolved: resolved,
-            form: japaneseForm,
-            isKanaOnlySurface: ScriptClassifier.containsKanji(word.surface) == false
-        )
+        switch direction.resolved(seed: word.canonicalEntryID) {
+        case .japaneseToEnglish:
+            return .forJapaneseEnglishAxis(
+                resolved: .japaneseToEnglish, form: japaneseForm,
+                isKanaOnlySurface: ScriptClassifier.containsKanji(word.surface) == false
+            )
+        case .englishToJapanese:
+            return .forJapaneseEnglishAxis(
+                resolved: .englishToJapanese, form: japaneseForm,
+                isKanaOnlySurface: ScriptClassifier.containsKanji(word.surface) == false
+            )
+        case .kanjiToKana:
+            return .kanjiToKana
+        case .kanaToKanji:
+            return .kanaToKanji
+        case .mixed:
+            return nil // resolved(seed:) never actually returns .mixed
+        }
     }
 
     // Builds the session queue from the current scope selection and kicks off the session.
