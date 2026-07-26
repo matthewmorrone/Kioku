@@ -263,7 +263,10 @@ struct FillInBlankView: View {
     // Note / direction / scope / count pickers and the start button, on the shared scaffold.
     private var reviewHome: some View {
         let candidates = wordsMatchingSelection()
-        let matchingWords = sentenceContext ? sentenceEligibleWords(candidates) : candidates
+        // Captured once so filtering and (if the user starts) session-building this render pass
+        // agree on the same note contents, rather than each independently reading notesStore.notes.
+        let notes = notesStore.notes
+        let matchingWords = sentenceContext ? sentenceEligibleWords(candidates, notes: notes) : candidates
         let matchingCount = matchingWords.count
         let minWords = 1
         return LearnHomeForm(
@@ -331,14 +334,21 @@ struct FillInBlankView: View {
 
     // Resolves the question pool asynchronously, then activates the session. When sentence context
     // is on, the word pool is narrowed to words with a resolvable sentence blank first, so the
-    // session only ever contains words the "Words in selection" count already promised.
+    // session only ever contains words the "Words in selection" count already promised. Notes are
+    // captured once here and threaded through both the filtering and the eventual question-building
+    // — not re-read from notesStore independently at each step — so they can't disagree with each
+    // other even in principle.
     private func startSessionFromHome() {
+        let notes = notesStore.notes
         let candidates = wordsMatchingSelection()
-        startSession(with: sentenceContext ? sentenceEligibleWords(candidates) : candidates)
+        let words = sentenceContext ? sentenceEligibleWords(candidates, notes: notes) : candidates
+        startSession(with: words, notes: notes)
     }
 
-    // Builds and activates a session over an explicit word set.
-    private func startSession(with words: [SavedWord]) {
+    // Builds and activates a session over an explicit word set. `notes` is the same snapshot
+    // startSessionFromHome used to compute `words`, so sentence-context question-building can't see
+    // a different note state than what was just used to decide which words are eligible.
+    private func startSession(with words: [SavedWord], notes: [Note]) {
         sessionActive = true
         isResolving = true
         sessionCorrect = 0
@@ -350,7 +360,6 @@ struct FillInBlankView: View {
         let dir = direction
         let limit = questionCount
         let useSentenceContext = sentenceContext
-        let notes = notesStore.notes
         Task {
             let built: [FillInBlankQuestion]
             if useSentenceContext {
@@ -389,10 +398,10 @@ struct FillInBlankView: View {
 
     // Filters to words whose source notes still contain their exact surface — the same check
     // buildSentenceQuestions uses, surfaced here so the "Words in selection" count on the home
-    // screen reflects reality before the user taps Start.
-    private func sentenceEligibleWords(_ words: [SavedWord]) -> [SavedWord] {
-        let notes = notesStore.notes
-        return words.filter { SentenceBlankResolver.findBlank(for: $0, notes: notes) != nil }
+    // screen reflects reality before the user taps Start. Takes `notes` explicitly (rather than
+    // reading notesStore.notes itself) so callers control exactly which snapshot is used.
+    private func sentenceEligibleWords(_ words: [SavedWord], notes: [Note]) -> [SavedWord] {
+        words.filter { SentenceBlankResolver.findBlank(for: $0, notes: notes) != nil }
     }
 
     // Builds one question per word with a resolvable sentence blank (see SentenceBlankResolver),
