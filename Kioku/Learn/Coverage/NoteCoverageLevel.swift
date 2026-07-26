@@ -10,8 +10,8 @@ struct NoteCoverageLevel: Equatable {
         MasteryStage.allCases.reduce(0) { $0 + (stageWords[$1]?.count ?? 0) }
     }
 
-    // Words at this level that have reached the Learned stage.
-    var learnedCount: Int { stageWords[.learned]?.count ?? 0 }
+    // Words at this level that have reached the Learned or Mastered stage.
+    var learnedCount: Int { (stageWords[.learned]?.count ?? 0) + (stageWords[.mastered]?.count ?? 0) }
 
     // The words at this level in a given stage (empty when none).
     func words(in stage: MasteryStage) -> [SavedWord] { stageWords[stage] ?? [] }

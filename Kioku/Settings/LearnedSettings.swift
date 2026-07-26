@@ -67,16 +67,39 @@ nonisolated enum LearnedSettings {
 // context, including plain (non-`@MainActor`) unit tests.
 nonisolated enum AutoLearnPolicy {
     // Gate + dispatch: returns false immediately when auto-learn is off, otherwise requires the
-    // configured rule to independently clear all 6 `QuestionDirection` cases — a word graduates
-    // only once every direction (kanji→meaning, meaning→kana, ...) has its own evidence clearing
-    // the bar, not just an aggregate whole-word streak that could come from one direction alone.
-    // A direction with no recorded answers yet has zero counters, which never clears any rule.
+    // configured rule to independently clear the 3 recognition (`QuestionDirection.tier1`) cases —
+    // a word reaches Learned once every recognition direction (kanji→meaning, kana→meaning,
+    // kanji→kana) has its own evidence clearing the bar, not just an aggregate whole-word streak
+    // that could come from one direction alone. See `shouldMarkMastered` for the stricter, all-6-
+    // direction bar.
     static func shouldMarkLearned(
         directionStats: [String: DirectionStats],
         config: LearnedSettings.Config = LearnedSettings.current()
     ) -> Bool {
+        allDirectionsClearBar(QuestionDirection.tier1, directionStats: directionStats, config: config)
+    }
+
+    // Stricter sibling of `shouldMarkLearned`: requires every direction, recognition AND
+    // production (all 6 `QuestionDirection` cases), to clear the bar — the Mastered stage.
+    static func shouldMarkMastered(
+        directionStats: [String: DirectionStats],
+        config: LearnedSettings.Config = LearnedSettings.current()
+    ) -> Bool {
+        allDirectionsClearBar(QuestionDirection.allCases, directionStats: directionStats, config: config)
+    }
+
+    // Shared gate behind both promotion checks above: false immediately when auto-learn is off,
+    // otherwise true only when every one of `directions` independently clears the configured
+    // rule. A direction with no recorded answers yet has zero counters, which never clears any
+    // rule. `directions` is the only thing that varies between Learned (tier1) and Mastered
+    // (allCases) — data-driven rather than duplicated per stage.
+    private static func allDirectionsClearBar(
+        _ directions: [QuestionDirection],
+        directionStats: [String: DirectionStats],
+        config: LearnedSettings.Config
+    ) -> Bool {
         guard config.enabled else { return false }
-        return QuestionDirection.allCases.allSatisfy { direction in
+        return directions.allSatisfy { direction in
             let ds = directionStats[direction.rawValue] ?? DirectionStats()
             return clearsBar(correct: ds.correct, again: ds.again, consecutiveCorrect: ds.consecutiveCorrect, config: config)
         }

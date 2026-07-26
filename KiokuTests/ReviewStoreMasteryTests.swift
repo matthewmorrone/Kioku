@@ -2,8 +2,8 @@ import XCTest
 @testable import Kioku
 
 // Verifies ReviewStore's canonical mastery-stage derivation: New (untouched), Learning
-// (engaged but below the learned bar), Learned (marked/auto-promoted), plus the disjoint
-// due-for-review overlay.
+// (engaged but below the learned bar), Learned (marked/auto-promoted), Mastered (every
+// direction, recognition + production, cleared), plus the disjoint due-for-review overlay.
 @MainActor
 final class ReviewStoreMasteryTests: XCTestCase {
     private var suiteName: String = ""
@@ -49,6 +49,22 @@ final class ReviewStoreMasteryTests: XCTestCase {
         let store = ReviewStore(userDefaults: defaults)
         store.setLearnedState(.learned, for: 1)
         XCTAssertEqual(store.masteryStage(for: 1), .learned)
+    }
+
+    // A word in the mastered set is Mastered — the stage above Learned, reached via
+    // `AutoLearnPolicy.shouldMarkMastered` (exercised end-to-end via `replaceAll` here, mirroring
+    // how a restored backup seeds the set).
+    func testMasteredWhenInMasteredSet() {
+        let store = ReviewStore(userDefaults: defaults)
+        store.replaceAll(stats: [:], markedWrong: [], lifetimeCorrect: 0, lifetimeAgain: 0, mastered: [1])
+        XCTAssertEqual(store.masteryStage(for: 1), .mastered)
+    }
+
+    // Mastered wins over an explicit Learned mark — it's the stricter, higher stage.
+    func testMasteredWinsOverLearned() {
+        let store = ReviewStore(userDefaults: defaults)
+        store.replaceAll(stats: [:], markedWrong: [], lifetimeCorrect: 0, lifetimeAgain: 0, learned: [1], mastered: [1])
+        XCTAssertEqual(store.masteryStage(for: 1), .mastered)
     }
 
     // A never-reviewed word is NOT due-for-review (unlike isDue, which treats it as due). This is
