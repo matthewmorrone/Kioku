@@ -49,6 +49,7 @@ struct FillInBlankView: View {
     let dictionaryStore: DictionaryStore?
 
     @EnvironmentObject private var wordsStore: WordsStore
+    @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var reviewStore: ReviewStore
 
     @State private var questions: [FillInBlankQuestion] = []
@@ -63,6 +64,10 @@ struct FillInBlankView: View {
     @State private var sessionWrong: Int = 0
 
     @State private var direction: FillInBlankDirection = .mixed
+    // When on, blanks a real sentence from one of the word's source notes (see
+    // SentenceBlankResolver) instead of asking for the bare word. Only words whose source note
+    // still contains their exact surface are eligible, so this can shrink the word pool.
+    @State private var sentenceContext: Bool = false
     @State private var scope: FlashcardScope = .all
     @State private var selectedNoteIDs: Set<UUID> = []
     // JLPT levels (N-number 5…1) to include; empty means no level filter. ANDs with scope + notes.
@@ -257,7 +262,12 @@ struct FillInBlankView: View {
 
     // Note / direction / scope / count pickers and the start button, on the shared scaffold.
     private var reviewHome: some View {
-        let matchingCount = wordsMatchingSelection().count
+        let candidates = wordsMatchingSelection()
+        // Captured once so filtering and (if the user starts) session-building this render pass
+        // agree on the same note contents, rather than each independently reading notesStore.notes.
+        let notes = notesStore.notes
+        let matchingWords = sentenceContext ? sentenceEligibleWords(candidates, notes: notes) : candidates
+        let matchingCount = matchingWords.count
         let minWords = 1
         return LearnHomeForm(
             startTitle: "Start Quiz",
@@ -270,13 +280,25 @@ struct FillInBlankView: View {
             }
 
             Section {
-                Picker("Direction", selection: $direction) {
-                    ForEach(FillInBlankDirection.allCases) { d in Text(d.rawValue).tag(d) }
-                }
-                .pickerStyle(.menu)
-                Text("Only directions with a kanji/kana answer are offered — a typed English answer has too many valid phrasings to grade reliably.")
+                Toggle("Sentence context", isOn: $sentenceContext)
+                Text("Blanks a real sentence from your notes instead of asking for a bare word. Only words whose saved note still contains their exact surface are eligible — the count below reflects that when this is on.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+            }
+
+            // The direction picker doesn't apply once the sentence itself supplies the context —
+            // sentence-context questions always ask for the exact surface that appeared, with the
+            // direction inferred from its script (see buildSentenceQuestions).
+            if sentenceContext == false {
+                Section {
+                    Picker("Direction", selection: $direction) {
+                        ForEach(FillInBlankDirection.allCases) { d in Text(d.rawValue).tag(d) }
+                    }
+                    .pickerStyle(.menu)
+                    Text("Only directions with a kanji/kana answer are offered — a typed English answer has too many valid phrasings to grade reliably.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section {
@@ -310,13 +332,23 @@ struct FillInBlankView: View {
         }
     }
 
-    // Resolves the question pool asynchronously, then activates the session.
+    // Resolves the question pool asynchronously, then activates the session. When sentence context
+    // is on, the word pool is narrowed to words with a resolvable sentence blank first, so the
+    // session only ever contains words the "Words in selection" count already promised. Notes are
+    // captured once here and threaded through both the filtering and the eventual question-building
+    // — not re-read from notesStore independently at each step — so they can't disagree with each
+    // other even in principle.
     private func startSessionFromHome() {
-        startSession(with: wordsMatchingSelection())
+        let notes = notesStore.notes
+        let candidates = wordsMatchingSelection()
+        let words = sentenceContext ? sentenceEligibleWords(candidates, notes: notes) : candidates
+        startSession(with: words, notes: notes)
     }
 
-    // Builds and activates a session over an explicit word set.
-    private func startSession(with words: [SavedWord]) {
+    // Builds and activates a session over an explicit word set. `notes` is the same snapshot
+    // startSessionFromHome used to compute `words`, so sentence-context question-building can't see
+    // a different note state than what was just used to decide which words are eligible.
+    private func startSession(with words: [SavedWord], notes: [Note]) {
         sessionActive = true
         isResolving = true
         sessionCorrect = 0
@@ -327,9 +359,15 @@ struct FillInBlankView: View {
         questions = []
         let dir = direction
         let limit = questionCount
+        let useSentenceContext = sentenceContext
         Task {
-            let items = await resolveItems(for: words)
-            let built = buildQuestions(from: items, direction: dir)
+            let built: [FillInBlankQuestion]
+            if useSentenceContext {
+                built = buildSentenceQuestions(from: words, notes: notes)
+            } else {
+                let items = await resolveItems(for: words)
+                built = buildQuestions(from: items, direction: dir)
+            }
             // A positive limit caps the quiz; 0 (or blank field) means quiz everything.
             questions = limit > 0 ? Array(built.prefix(limit)) : built
             isResolving = false
@@ -352,6 +390,35 @@ struct FillInBlankView: View {
             guard prompt != correct, correct.isEmpty == false else { continue }
             result.append(FillInBlankQuestion(
                 id: item.word.canonicalEntryID, prompt: prompt, correct: correct, direction: resolvedDirection
+            ))
+        }
+        result.shuffle()
+        return result
+    }
+
+    // Filters to words whose source notes still contain their exact surface — the same check
+    // buildSentenceQuestions uses, surfaced here so the "Words in selection" count on the home
+    // screen reflects reality before the user taps Start. Takes `notes` explicitly (rather than
+    // reading notesStore.notes itself) so callers control exactly which snapshot is used.
+    private func sentenceEligibleWords(_ words: [SavedWord], notes: [Note]) -> [SavedWord] {
+        words.filter { SentenceBlankResolver.findBlank(for: $0, notes: notes) != nil }
+    }
+
+    // Builds one question per word with a resolvable sentence blank (see SentenceBlankResolver),
+    // skipping any word whose source notes don't contain its surface. Direction is inferred from
+    // the blanked surface's script — contains kanji → meaningToKanji evidence, kana-only →
+    // meaningToKana — the same kana-only heuristic FlashcardsView already uses for its `.original`
+    // form ambiguity, since a sentence blank doesn't map onto one of AnswerScorer's fixed
+    // dictionary-field directions the way the standalone mode's questions do.
+    private func buildSentenceQuestions(from words: [SavedWord], notes: [Note]) -> [FillInBlankQuestion] {
+        var result: [FillInBlankQuestion] = []
+        for word in words {
+            guard let blank = SentenceBlankResolver.findBlank(for: word, notes: notes) else { continue }
+            let blankDirection: QuestionDirection = ScriptClassifier.containsKanji(blank.surface)
+                ? .meaningToKanji : .meaningToKana
+            let prompt = "\(blank.before)＿＿＿\(blank.after)"
+            result.append(FillInBlankQuestion(
+                id: word.canonicalEntryID, prompt: prompt, correct: blank.surface, direction: blankDirection
             ))
         }
         result.shuffle()
