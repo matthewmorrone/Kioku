@@ -2,7 +2,11 @@ import XCTest
 @testable import Kioku
 
 // Characterizes SentenceBlankResolver.findBlank — the reverse of Cloze's sentence-picking: given an
-// already-known word, find a sentence in its source notes containing it.
+// already-known word, find a sentence in its source notes containing it. `@MainActor` because
+// `Note`'s initializer is (unlike `SavedWord`'s) implicitly main-actor-isolated under this
+// project's default actor isolation — matching `PreferredKanaTests`/`WordDisplayDataTests`, which
+// need the same for their own model-type construction.
+@MainActor
 final class SentenceBlankResolverTests: XCTestCase {
 
     func testFindsSentenceContainingSurface() {
