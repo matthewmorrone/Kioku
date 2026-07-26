@@ -25,6 +25,11 @@ final class ReviewStore: ObservableObject {
     // counterpart to `learned` — distinct from "unmarked", so a word the user has flagged as
     // not-yet-known is its own filterable category. Mutually exclusive with `learned`.
     @Published private(set) var notLearned: Set<Int64> = []
+    // Words that have cleared every direction — recognition AND production (see
+    // `AutoLearnPolicy.shouldMarkMastered`). A superset relationship isn't enforced structurally;
+    // in practice a word only reaches here after `learned` already contains it, since tier1 is a
+    // subset of the directions tier2 requires.
+    @Published private(set) var mastered: Set<Int64> = []
     @Published private(set) var lifetimeCorrect: Int = 0
     @Published private(set) var lifetimeAgain: Int = 0
 
@@ -33,6 +38,7 @@ final class ReviewStore: ObservableObject {
     private let wrongKey = "kioku.review.wrong.v1"
     private let learnedKey = "kioku.review.learned.v1"
     private let notLearnedKey = "kioku.review.notLearned.v1"
+    private let masteredKey = "kioku.review.mastered.v1"
     private let lifetimeCorrectKey = "kioku.review.lifetimeCorrect.v1"
     private let lifetimeAgainKey = "kioku.review.lifetimeAgain.v1"
 
@@ -45,6 +51,7 @@ final class ReviewStore: ObservableObject {
         markedWrong = []
         learned = []
         notLearned = []
+        mastered = []
         lifetimeCorrect = 0
         lifetimeAgain = 0
         StartupTimer.measure("ReviewStore.init") {
@@ -69,13 +76,22 @@ final class ReviewStore: ObservableObject {
         stats[id] = st
         markedWrong.remove(id)
         lifetimeCorrect += 1
-        // Auto-promote to "learned" when every direction's evidence clears whatever bar the user
-        // configured in Settings. Only acts on a word the user hasn't marked either way
-        // (unmarked) — an explicit Learned is already done, and an explicit Not Learned is a
+        // Auto-promote to "learned" when every recognition direction's evidence clears whatever
+        // bar the user configured in Settings. Only acts on a word the user hasn't marked either
+        // way (unmarked) — an explicit Learned is already done, and an explicit Not Learned is a
         // deliberate signal we don't override from behind their back.
         if learnedState(for: id) == .unmarked, AutoLearnPolicy.shouldMarkLearned(directionStats: st.directionStats) {
             learned.insert(id)
             persistLearned()
+        }
+        // Auto-promote to "mastered" once every direction — recognition AND production — clears
+        // the bar too. Unlike the "learned" gate above, this doesn't require `.unmarked`: mastery
+        // normally follows an already-Learned word, so it only excludes an explicit "not learned"
+        // mark, the same deliberate override the "learned" promotion above respects.
+        if learnedState(for: id) != .notLearned, mastered.contains(id) == false,
+           AutoLearnPolicy.shouldMarkMastered(directionStats: st.directionStats) {
+            mastered.insert(id)
+            persistMastered()
         }
         persistStats()
         persistWrong()
@@ -118,11 +134,12 @@ final class ReviewStore: ObservableObject {
         notLearned.contains(id)
     }
 
-    // The canonical mastery stage for a word — the one definition of New/Learning/Learned used
-    // app-wide. Learned wins (manual mark or auto-promotion via AutoLearnPolicy); otherwise any
-    // engagement (review stats present, or an explicit not-learned mark) is Learning; a
-    // never-touched word is New.
+    // The canonical mastery stage for a word — the one definition of New/Learning/Learned/Mastered
+    // used app-wide. Mastered (every direction, recognition + production) wins over Learned
+    // (manual mark or recognition-only auto-promotion); otherwise any engagement (review stats
+    // present, or an explicit not-learned mark) is Learning; a never-touched word is New.
     func masteryStage(for id: Int64) -> MasteryStage {
+        if mastered.contains(id) { return .mastered }
         if learnedState(for: id) == .learned { return .learned }
         if stats[id] != nil || learnedState(for: id) == .notLearned { return .learning }
         return .new
@@ -183,18 +200,21 @@ final class ReviewStore: ObservableObject {
         lifetimeCorrect: Int,
         lifetimeAgain: Int,
         learned: Set<Int64> = [],
-        notLearned: Set<Int64> = []
+        notLearned: Set<Int64> = [],
+        mastered: Set<Int64> = []
     ) {
         self.stats = stats
         self.markedWrong = markedWrong
         self.learned = learned
         self.notLearned = notLearned
+        self.mastered = mastered
         self.lifetimeCorrect = lifetimeCorrect
         self.lifetimeAgain = lifetimeAgain
         persistStats()
         persistWrong()
         persistLearned()
         persistNotLearned()
+        persistMastered()
         persistLifetime()
     }
 
@@ -219,6 +239,10 @@ final class ReviewStore: ObservableObject {
 
         if let strings = userDefaults.array(forKey: notLearnedKey) as? [String] {
             notLearned = Set(strings.compactMap { Int64($0) })
+        }
+
+        if let strings = userDefaults.array(forKey: masteredKey) as? [String] {
+            mastered = Set(strings.compactMap { Int64($0) })
         }
 
         lifetimeCorrect = userDefaults.integer(forKey: lifetimeCorrectKey)
@@ -246,6 +270,11 @@ final class ReviewStore: ObservableObject {
     // Persists the explicit not-learned set, mirroring persistLearned.
     private func persistNotLearned() {
         userDefaults.set(notLearned.map { String($0) }, forKey: notLearnedKey)
+    }
+
+    // Persists the mastered set, mirroring persistLearned.
+    private func persistMastered() {
+        userDefaults.set(mastered.map { String($0) }, forKey: masteredKey)
     }
 
     // Persists lifetime counters as plain integers for cheap reads on subsequent launches.

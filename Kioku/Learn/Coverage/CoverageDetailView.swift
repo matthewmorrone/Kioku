@@ -153,6 +153,7 @@ struct CoverageDetailView: View {
                 stageChip(level, .new, "New")
                 stageChip(level, .learning, "Learning")
                 stageChip(level, .learned, "Learned")
+                stageChip(level, .mastered, "Mastered")
             }
 
             if isExpanded {
@@ -192,6 +193,7 @@ struct CoverageDetailView: View {
         case .new: return .gray
         case .learning: return .orange
         case .learned: return .green
+        case .mastered: return .blue
         }
     }
 

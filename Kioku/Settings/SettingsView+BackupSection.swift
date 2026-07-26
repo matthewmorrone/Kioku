@@ -27,6 +27,7 @@ extension SettingsView {
                 markedWrong: Array(reviewStore.markedWrong).sorted(),
                 learned: Array(reviewStore.learned).sorted(),
                 notLearned: Array(reviewStore.notLearned).sorted(),
+                mastered: Array(reviewStore.mastered).sorted(),
                 lifetimeCorrect: reviewStore.lifetimeCorrect,
                 lifetimeAgain: reviewStore.lifetimeAgain,
                 audioAttachments: audioAttachments
@@ -138,7 +139,8 @@ extension SettingsView {
             lifetimeCorrect: payload.lifetimeCorrect,
             lifetimeAgain: payload.lifetimeAgain,
             learned: Set(payload.learned),
-            notLearned: Set(payload.notLearned)
+            notLearned: Set(payload.notLearned),
+            mastered: Set(payload.mastered)
         )
 
         AppLog.info(.backup, "import: replaced all stores — \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.audioAttachments.count) audio attachments")
