@@ -293,7 +293,7 @@ private struct CoverageStudyLaunchSheet: View {
                     }
                 }
                 Section {
-                    LearnCountField(label: "Cards", count: $count)
+                    LearnCountField(label: "Items", count: $count)
                 } footer: {
                     Text("Leave blank to study every word in this selection.")
                 }
