@@ -8,11 +8,21 @@ enum CoverageStudyMode: Identifiable {
     var id: Int { self == .flashcards ? 0 : 1 }
 }
 
-// A pending scoped-study launch: the exact words a tapped cell resolved, plus the chosen mode.
+// A pending scoped-study launch: the exact words a tapped cell (or "study all") resolved, the
+// chosen mode, and the card/question cap the launch sheet's count field settled on.
 struct CoverageLaunch: Identifiable {
     let id = UUID()
     let words: [SavedWord]
     let mode: CoverageStudyMode
+    let count: Int
+}
+
+// A resolved set of words awaiting a mode + count choice — either one stage chip's cell, or every
+// word for the note regardless of level/stage ("Study All Words").
+struct CoverageStudySelection: Identifiable {
+    let id = UUID()
+    let title: String
+    let words: [SavedWord]
 }
 
 // The per-note learning-coverage breakdown: a summary header (learned %, due count) and one row
@@ -33,8 +43,10 @@ struct CoverageDetailView: View {
     @EnvironmentObject private var reviewStore: ReviewStore
     @EnvironmentObject private var wordListsStore: WordListsStore
 
-    @State private var pendingWords: [SavedWord] = []
-    @State private var showModeChooser = false
+    @State private var pendingSelection: CoverageStudySelection?
+    // Persists across launches within this view instance so re-opening the launch sheet keeps the
+    // last count the user chose, mirroring how Learn's own home screens retain their last value.
+    @State private var launchCount: Int = 20
     @State private var launch: CoverageLaunch?
     // Which level rows are expanded to show their word list — keyed by the same optional JLPT
     // N-number as NoteCoverageLevel.level, so "No level" (nil) can be tracked too.
@@ -69,10 +81,15 @@ struct CoverageDetailView: View {
             .padding(16)
         }
         .background(Color(.systemGroupedBackground))
-        .confirmationDialog("Study these words with…", isPresented: $showModeChooser, titleVisibility: .visible) {
-            Button("Flashcards") { launch = CoverageLaunch(words: pendingWords, mode: .flashcards) }
-            Button("Multiple Choice") { launch = CoverageLaunch(words: pendingWords, mode: .multipleChoice) }
-            Button("Cancel", role: .cancel) {}
+        .sheet(item: $pendingSelection) { selection in
+            CoverageStudyLaunchSheet(
+                selection: selection,
+                count: $launchCount,
+                onChooseMode: { mode in
+                    launch = CoverageLaunch(words: selection.words, mode: mode, count: launchCount)
+                    pendingSelection = nil
+                }
+            )
         }
         .sheet(item: $launch) { launch in
             studySheet(for: launch)
@@ -85,7 +102,8 @@ struct CoverageDetailView: View {
         }
     }
 
-    // Note-wide summary: "N of M learned (P%)" with a progress bar, and a due-count callout.
+    // Note-wide summary: "N of M learned (P%)" with a progress bar, a due-count callout, and a
+    // "study everything" escape hatch from the level × stage grid below.
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("\(coverage.learnedCount) of \(coverage.total) learned (\(Int((coverage.coverageFraction * 100).rounded()))%)")
@@ -95,6 +113,15 @@ struct CoverageDetailView: View {
                 Label("\(coverage.dueCount) due for review", systemImage: "clock.badge.exclamationmark")
                     .font(.footnote)
                     .foregroundStyle(.orange)
+            }
+            if coverage.total > 0 {
+                Button {
+                    pendingSelection = CoverageStudySelection(title: "All words", words: coverage.allWords)
+                } label: {
+                    Label("Study All Words", systemImage: "square.stack.3d.up")
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 4)
             }
         }
         .padding(14)
@@ -202,8 +229,10 @@ struct CoverageDetailView: View {
     private func stageChip(_ level: NoteCoverageLevel, _ stage: MasteryStage, _ title: String) -> some View {
         let words = level.words(in: stage)
         return Button {
-            pendingWords = words
-            showModeChooser = true
+            pendingSelection = CoverageStudySelection(
+                title: "\(levelTitle(level.level)) · \(title)",
+                words: words
+            )
         } label: {
             VStack(spacing: 2) {
                 Text("\(words.count)").font(.headline.monospacedDigit())
@@ -223,12 +252,12 @@ struct CoverageDetailView: View {
     private func studySheet(for launch: CoverageLaunch) -> some View {
         switch launch.mode {
         case .flashcards:
-            FlashcardsView(dictionaryStore: dictionaryStore, segmenter: nil, presetWords: launch.words)
+            FlashcardsView(dictionaryStore: dictionaryStore, segmenter: nil, presetWords: launch.words, presetCardCount: launch.count)
                 .environmentObject(wordsStore)
                 .environmentObject(notesStore)
                 .environmentObject(reviewStore)
         case .multipleChoice:
-            MultipleChoiceView(dictionaryStore: dictionaryStore, segmenter: nil, presetWords: launch.words)
+            MultipleChoiceView(dictionaryStore: dictionaryStore, segmenter: nil, presetWords: launch.words, presetQuestionCount: launch.count)
                 .environmentObject(wordsStore)
                 .environmentObject(notesStore)
                 .environmentObject(reviewStore)
@@ -239,5 +268,52 @@ struct CoverageDetailView: View {
     private func levelTitle(_ level: Int?) -> String {
         guard let level else { return "No level" }
         return "N\(level)"
+    }
+}
+
+// The step between picking a coverage cell (or "Study All Words") and actually launching a
+// session: shows how many words are in play and lets the user cap the session size — the same
+// control (`LearnCountField`) Learn's own Flashcards/Multiple Choice home screens expose, which a
+// Coverage-launched session used to skip entirely by auto-starting straight into the full cell.
+private struct CoverageStudyLaunchSheet: View {
+    let selection: CoverageStudySelection
+    @Binding var count: Int
+    let onChooseMode: (CoverageStudyMode) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(selection.title).font(.headline)
+                        Text("\(selection.words.count) words available")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Section {
+                    LearnCountField(label: "Cards", count: $count)
+                } footer: {
+                    Text("Leave blank to study every word in this selection.")
+                }
+                Section {
+                    Button { onChooseMode(.flashcards) } label: {
+                        Label("Flashcards", systemImage: "rectangle.on.rectangle.angled")
+                    }
+                    Button { onChooseMode(.multipleChoice) } label: {
+                        Label("Multiple Choice", systemImage: "checklist")
+                    }
+                }
+            }
+            .navigationTitle("Study")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

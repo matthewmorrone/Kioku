@@ -55,14 +55,25 @@ struct MultipleChoiceView: View {
     let segmenter: (any TextSegmenting)?
     // When non-nil, opens directly into a scoped session over these words (Coverage drill-down).
     var presetWords: [SavedWord]? = nil
+    // The question cap the Coverage launch sheet's count field settled on; nil means "use the
+    // default".
+    var presetQuestionCount: Int? = nil
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var reviewStore: ReviewStore
+    @Environment(\.dismiss) private var dismiss
 
     @State private var questions: [MultipleChoiceQuestion] = []
     // Guards the preset auto-start so it fires exactly once.
     @State private var didAutoStartPreset: Bool = false
+    // True for the lifetime of a Coverage-launched sheet — see FlashcardsView's isPresetSession for
+    // why "End"/"Choose Different Cards"/"Restart" all need to behave differently here than they do
+    // for a normal, home-screen-launched session.
+    @State private var isPresetSession: Bool = false
+    // The original preset words, kept around so Restart can rebuild the same scoped set — unlike
+    // `startSessionFromHome()`, which always pulls from the unfiltered note/scope/level pickers.
+    @State private var presetWordsSnapshot: [SavedWord] = []
     @State private var index: Int = 0
     @State private var selected: String?
     @State private var sessionActive: Bool = false
@@ -111,7 +122,14 @@ struct MultipleChoiceView: View {
             .toolbar {
                 LearnHomeTitle(title: "Multiple Choice", systemImage: "checklist")
                 ToolbarItem(placement: .topBarLeading) {
-                    if sessionActive {
+                    if isPresetSession {
+                        Button {
+                            if sessionActive { endSession() }
+                            dismiss()
+                        } label: {
+                            Label(sessionActive ? "End" : "Close", systemImage: sessionActive ? "xmark.circle" : "xmark")
+                        }
+                    } else if sessionActive {
                         Button { endSession() } label: {
                             Label("End", systemImage: "xmark.circle")
                         }
@@ -125,6 +143,9 @@ struct MultipleChoiceView: View {
         .onAppear {
             if let presetWords, didAutoStartPreset == false {
                 didAutoStartPreset = true
+                isPresetSession = true
+                presetWordsSnapshot = presetWords
+                if let presetQuestionCount { questionCount = presetQuestionCount }
                 startSession(with: presetWords)
             }
         }
@@ -271,13 +292,25 @@ struct MultipleChoiceView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
 
-            Button { startSessionFromHome() } label: {
+            Button {
+                if isPresetSession {
+                    startSession(with: presetWordsSnapshot)
+                } else {
+                    startSessionFromHome()
+                }
+            } label: {
                 Label("Restart", systemImage: "arrow.clockwise")
             }
             .buttonStyle(.borderedProminent)
 
-            Button { endSession() } label: {
-                Label("Choose Different Cards", systemImage: "slider.horizontal.3")
+            Button {
+                if isPresetSession {
+                    dismiss()
+                } else {
+                    endSession()
+                }
+            } label: {
+                Label(isPresetSession ? "Done" : "Choose Different Cards", systemImage: isPresetSession ? "checkmark.circle" : "slider.horizontal.3")
             }
             .buttonStyle(.bordered)
         }

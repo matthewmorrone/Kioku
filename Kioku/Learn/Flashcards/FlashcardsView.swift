@@ -60,15 +60,25 @@ struct FlashcardsView: View {
     // When non-nil, this view opens directly into a session over exactly these words (skipping the
     // home pickers) — used by the Coverage screen to drill a specific level × stage word set.
     var presetWords: [SavedWord]? = nil
+    // The card cap the Coverage launch sheet's count field settled on; nil (rather than 0) means
+    // "use the default", so a preset launch can still ask for "all" via 0 explicitly.
+    var presetCardCount: Int? = nil
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var reviewStore: ReviewStore
+    @Environment(\.dismiss) private var dismiss
 
     @State private var session: [SavedWord] = []
     @State private var sessionSource: [SavedWord] = []
     // Ensures the preset session auto-starts only once, so ending it doesn't immediately restart.
     @State private var didAutoStartPreset: Bool = false
+    // True for the lifetime of a Coverage-launched sheet. Governs the toolbar close affordance and
+    // what "End"/"Choose Different Cards" do: a preset session has no generic home screen to fall
+    // back to (its scope came from a specific coverage cell, not the note/scope/level pickers
+    // below), so those actions dismiss the sheet back to Coverage instead of landing on the
+    // unscoped, all-notes `reviewHome`.
+    @State private var isPresetSession: Bool = false
     @State private var index: Int = 0
     @State private var showBack: Bool = false
     @State private var shuffled: Bool = true
@@ -128,7 +138,17 @@ struct FlashcardsView: View {
             .toolbar {
                 LearnHomeTitle(title: "Flashcards", systemImage: "rectangle.on.rectangle.angled")
                 ToolbarItem(placement: .topBarLeading) {
-                    if session.isEmpty == false {
+                    if isPresetSession {
+                        Button {
+                            if session.isEmpty {
+                                dismiss()
+                            } else {
+                                showEndSessionConfirm = true
+                            }
+                        } label: {
+                            Label(session.isEmpty ? "Close" : "End", systemImage: session.isEmpty ? "xmark" : "xmark.circle")
+                        }
+                    } else if session.isEmpty == false {
                         Button { showEndSessionConfirm = true } label: {
                             Label("End", systemImage: "xmark.circle")
                         }
@@ -152,7 +172,13 @@ struct FlashcardsView: View {
                 }
             }
             .alert("End session?", isPresented: $showEndSessionConfirm) {
-                Button("End Session", role: .destructive) { endSessionEarly() }
+                Button("End Session", role: .destructive) {
+                    if isPresetSession {
+                        dismiss()
+                    } else {
+                        endSessionEarly()
+                    }
+                }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will stop the current review session.")
@@ -170,6 +196,8 @@ struct FlashcardsView: View {
             // Preset launch (from Coverage): seed the pool with the handed-in words and start once.
             if let presetWords, didAutoStartPreset == false {
                 didAutoStartPreset = true
+                isPresetSession = true
+                if let presetCardCount { cardCount = presetCardCount }
                 sessionSource = presetWords
                 startSession()
             }
@@ -339,8 +367,14 @@ struct FlashcardsView: View {
             .buttonStyle(.borderedProminent)
             .disabled(sessionSource.isEmpty)
 
-            Button { session = []; sessionSource = [] } label: {
-                Label("Choose Different Cards", systemImage: "slider.horizontal.3")
+            Button {
+                if isPresetSession {
+                    dismiss()
+                } else {
+                    session = []; sessionSource = []
+                }
+            } label: {
+                Label(isPresetSession ? "Done" : "Choose Different Cards", systemImage: isPresetSession ? "checkmark.circle" : "slider.horizontal.3")
             }
             .buttonStyle(.bordered)
         }
