@@ -55,14 +55,25 @@ struct MultipleChoiceView: View {
     let segmenter: (any TextSegmenting)?
     // When non-nil, opens directly into a scoped session over these words (Coverage drill-down).
     var presetWords: [SavedWord]? = nil
+    // The question cap the Coverage launch sheet's count field settled on; nil means "use the
+    // default".
+    var presetQuestionCount: Int? = nil
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var reviewStore: ReviewStore
+    @Environment(\.dismiss) private var dismiss
 
     @State private var questions: [MultipleChoiceQuestion] = []
     // Guards the preset auto-start so it fires exactly once.
     @State private var didAutoStartPreset: Bool = false
+    // True for the lifetime of a Coverage-launched sheet — see FlashcardsView's isPresetSession for
+    // why "End"/"Choose Different Cards"/"Restart" all need to behave differently here than they do
+    // for a normal, home-screen-launched session.
+    @State private var isPresetSession: Bool = false
+    // The original preset words, kept around so Restart can rebuild the same scoped set — unlike
+    // `startSessionFromHome()`, which always pulls from the unfiltered note/scope/level pickers.
+    @State private var presetWordsSnapshot: [SavedWord] = []
     @State private var index: Int = 0
     @State private var selected: String?
     @State private var sessionActive: Bool = false
@@ -111,7 +122,14 @@ struct MultipleChoiceView: View {
             .toolbar {
                 LearnHomeTitle(title: "Multiple Choice", systemImage: "checklist")
                 ToolbarItem(placement: .topBarLeading) {
-                    if sessionActive {
+                    if isPresetSession {
+                        Button {
+                            if sessionActive { endSession() }
+                            dismiss()
+                        } label: {
+                            Label(sessionActive ? "End" : "Close", systemImage: sessionActive ? "xmark.circle" : "xmark")
+                        }
+                    } else if sessionActive {
                         Button { endSession() } label: {
                             Label("End", systemImage: "xmark.circle")
                         }
@@ -125,6 +143,9 @@ struct MultipleChoiceView: View {
         .onAppear {
             if let presetWords, didAutoStartPreset == false {
                 didAutoStartPreset = true
+                isPresetSession = true
+                presetWordsSnapshot = presetWords
+                if let presetQuestionCount { questionCount = presetQuestionCount }
                 startSession(with: presetWords)
             }
         }
@@ -271,13 +292,25 @@ struct MultipleChoiceView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
 
-            Button { startSessionFromHome() } label: {
+            Button {
+                if isPresetSession {
+                    startSession(with: presetWordsSnapshot)
+                } else {
+                    startSessionFromHome()
+                }
+            } label: {
                 Label("Restart", systemImage: "arrow.clockwise")
             }
             .buttonStyle(.borderedProminent)
 
-            Button { endSession() } label: {
-                Label("Choose Different Cards", systemImage: "slider.horizontal.3")
+            Button {
+                if isPresetSession {
+                    dismiss()
+                } else {
+                    endSession()
+                }
+            } label: {
+                Label(isPresetSession ? "Done" : "Choose Different Cards", systemImage: isPresetSession ? "checkmark.circle" : "slider.horizontal.3")
             }
             .buttonStyle(.bordered)
         }
@@ -405,66 +438,101 @@ struct MultipleChoiceView: View {
     }
 
     // Resolves each saved word to its Japanese surface, kana reading, and primary English gloss.
-    // Mirrors the FlashcardCard lookup path: detached utility-priority work per word, dropping any
-    // word whose dictionary lookup fails or yields no gloss so it can't produce a blank option.
+    // Each word's lookup runs as its own child task in a task group instead of one-at-a-time, so a
+    // large word list resolves in roughly the time of the slowest single lookup rather than the sum
+    // of all of them. Only Sendable primitives (not SavedWord/MultipleChoiceItem) cross into
+    // resolveWordFields, and results are correlated back to their word via entryID afterward — the
+    // task group replaces the old per-word `Task.detached`, but the boundary-crossing shape mirrors
+    // it deliberately, down to constructing MultipleChoiceItem back on the caller's side. Drops any
+    // word whose dictionary lookup fails or yields no gloss so it can't produce a blank option;
+    // result order is unconstrained since buildQuestions shuffles the final list anyway.
     private func resolveItems(for words: [SavedWord]) async -> [MultipleChoiceItem] {
         guard let store = dictionaryStore else { return [] }
+        var wordsByID: [Int64: SavedWord] = [:]
+        for word in words { wordsByID[word.canonicalEntryID] = word }
+
+        let resolved = await withTaskGroup(of: ResolvedWordFields?.self) { group in
+            for word in words {
+                let entryID = word.canonicalEntryID
+                let surface = word.surface
+                let selectedSenseIDs = word.selectedSenseIDs
+                let selectedGlosses = word.selectedGlosses
+                group.addTask {
+                    await Self.resolveWordFields(
+                        store: store, entryID: entryID, surface: surface,
+                        selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+                    )
+                }
+            }
+            var results: [ResolvedWordFields] = []
+            for await item in group {
+                if let item { results.append(item) }
+            }
+            return results
+        }
+
         var items: [MultipleChoiceItem] = []
-        for word in words {
-            let entryID = word.canonicalEntryID
+        for r in resolved {
+            guard let word = wordsByID[r.entryID] else { continue }
             let surface = word.surface
-            let selectedSenseIDs = word.selectedSenseIDs
-            let selectedGlosses = word.selectedGlosses
-            let resolved = await Task.detached(priority: .utility) { () -> (english: String, kanji: String?, kana: String?)? in
-                guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
-                    return nil
-                }
-                var sensesByID: [Int64: DictionaryEntrySense] = [:]
-                for sense in data.entry.senses { sensesByID[sense.senseID] = sense }
-
-                // Prefer the user's explicit sense/gloss selections, falling back to the entry's
-                // first gloss — same precedence the flashcard back face uses.
-                var gloss: String?
-                for senseID in selectedSenseIDs where gloss == nil {
-                    gloss = sensesByID[senseID]?.glosses.first
-                }
-                if gloss == nil {
-                    for ref in selectedGlosses where gloss == nil {
-                        if let sense = sensesByID[ref.senseID],
-                           ref.glossIndex >= 0, ref.glossIndex < sense.glosses.count {
-                            gloss = sense.glosses[ref.glossIndex]
-                        }
-                    }
-                }
-                if gloss == nil { gloss = data.entry.senses.first?.glosses.first }
-                guard let gloss else { return nil }
-
-                // Dictionary kanji headword (most common written form) and the reading that fits
-                // the selected senses — the same calls the flashcard face uses.
-                let kanji = data.entry.kanjiForms.first?.text
-                let senseRestrictions = (try? store.fetchSenseRestrictions(entryID: entryID)) ?? []
-                let kana = data.entry.preferredKana(
-                    selectedSenseIDs: selectedSenseIDs,
-                    selectedGlosses: selectedGlosses,
-                    senseRestrictions: senseRestrictions
-                )
-                return (gloss, kanji, kana)
-            }.value
-
-            guard let resolved else { continue }
-            let gloss = resolved.english.trimmingCharacters(in: .whitespacesAndNewlines)
+            let gloss = r.english.trimmingCharacters(in: .whitespacesAndNewlines)
             guard gloss.isEmpty == false else { continue }
             // Keep kanji/kana only when distinct and non-empty; otherwise nil so the form falls
             // back to the original surface.
-            let kanji = resolved.kanji?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let kanji = r.kanji?.trimmingCharacters(in: .whitespacesAndNewlines)
             let usableKanji = (kanji?.isEmpty == false && kanji != surface) ? kanji : nil
-            let kana = resolved.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let kana = r.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
             let usableKana = (kana?.isEmpty == false && kana != surface) ? kana : nil
             items.append(MultipleChoiceItem(
                 word: word, original: surface, kanji: usableKanji, kana: usableKana, english: gloss
             ))
         }
         return items
+    }
+
+    // Resolves one word's kanji/kana/gloss from the dictionary. `nonisolated`, and takes only
+    // Sendable primitives rather than SavedWord directly: this project's default actor isolation
+    // would otherwise make a plain `static func` implicitly @MainActor, so every task-group child
+    // task would silently hop back onto the main actor to run it — serializing every "concurrent"
+    // lookup back onto the main thread and defeating the point of the task group entirely (same
+    // class of bug fixed the same way on QuestionDirection/AutoLearnPolicy elsewhere in Learn/).
+    private nonisolated static func resolveWordFields(
+        store: DictionaryStore,
+        entryID: Int64,
+        surface: String,
+        selectedSenseIDs: [Int64],
+        selectedGlosses: [GlossRef]
+    ) async -> ResolvedWordFields? {
+        guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
+            return nil
+        }
+        var sensesByID: [Int64: DictionaryEntrySense] = [:]
+        for sense in data.entry.senses { sensesByID[sense.senseID] = sense }
+
+        // Prefer the user's explicit sense/gloss selections, falling back to the entry's first
+        // gloss — same precedence the flashcard back face uses.
+        var gloss: String?
+        for senseID in selectedSenseIDs where gloss == nil {
+            gloss = sensesByID[senseID]?.glosses.first
+        }
+        if gloss == nil {
+            for ref in selectedGlosses where gloss == nil {
+                if let sense = sensesByID[ref.senseID],
+                   ref.glossIndex >= 0, ref.glossIndex < sense.glosses.count {
+                    gloss = sense.glosses[ref.glossIndex]
+                }
+            }
+        }
+        if gloss == nil { gloss = data.entry.senses.first?.glosses.first }
+        guard let gloss else { return nil }
+
+        // Dictionary kanji headword and the reading that fits the selected senses — the same
+        // shared computation every quiz/study view uses.
+        let forms = WordFormResolver.kanjiAndKana(
+            entry: data.entry, store: store, entryID: entryID,
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+        )
+        return ResolvedWordFields(entryID: entryID, english: gloss, kanji: forms.kanji, kana: forms.kana)
     }
 
     // Builds one question per item, drawing up to three distinct distractors from the other

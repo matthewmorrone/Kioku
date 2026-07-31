@@ -2,7 +2,7 @@ import Foundation
 
 // Versioned full-app backup payload covering all persisted Kioku user data.
 nonisolated struct AppBackupPayload: Codable {
-    static let currentVersion = 3
+    static let currentVersion = 4
 
     var version: Int
     var exportedAt: Date
@@ -15,6 +15,8 @@ nonisolated struct AppBackupPayload: Codable {
     // Tri-state learned marks (added in v3). Empty in pre-v3 backups, which decode to [].
     var learned: [Int64]
     var notLearned: [Int64]
+    // Mastered marks (added in v4). Empty in pre-v4 backups, which decode to [].
+    var mastered: [Int64]
     var lifetimeCorrect: Int
     var lifetimeAgain: Int
     // Audio file bytes, SRT text, and cues for notes that have audio attachments.
@@ -33,6 +35,7 @@ nonisolated struct AppBackupPayload: Codable {
         markedWrong: [Int64],
         learned: [Int64] = [],
         notLearned: [Int64] = [],
+        mastered: [Int64] = [],
         lifetimeCorrect: Int,
         lifetimeAgain: Int,
         audioAttachments: [AudioAttachmentBackup] = []
@@ -47,6 +50,7 @@ nonisolated struct AppBackupPayload: Codable {
         self.markedWrong = markedWrong
         self.learned = learned
         self.notLearned = notLearned
+        self.mastered = mastered
         self.lifetimeCorrect = lifetimeCorrect
         self.lifetimeAgain = lifetimeAgain
         self.audioAttachments = audioAttachments
@@ -54,7 +58,7 @@ nonisolated struct AppBackupPayload: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case version, exportedAt, notes, words, wordLists, history
-        case reviewStats, markedWrong, learned, notLearned, lifetimeCorrect, lifetimeAgain
+        case reviewStats, markedWrong, learned, notLearned, mastered, lifetimeCorrect, lifetimeAgain
         case audioAttachments
     }
 
@@ -71,6 +75,7 @@ nonisolated struct AppBackupPayload: Codable {
         markedWrong = try c.decode([Int64].self, forKey: .markedWrong)
         learned = (try? c.decode([Int64].self, forKey: .learned)) ?? []
         notLearned = (try? c.decode([Int64].self, forKey: .notLearned)) ?? []
+        mastered = (try? c.decode([Int64].self, forKey: .mastered)) ?? []
         lifetimeCorrect = try c.decode(Int.self, forKey: .lifetimeCorrect)
         lifetimeAgain = try c.decode(Int.self, forKey: .lifetimeAgain)
         audioAttachments = (try? c.decode([AudioAttachmentBackup].self, forKey: .audioAttachments)) ?? []

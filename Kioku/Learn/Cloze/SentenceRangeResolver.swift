@@ -2,8 +2,10 @@ import Foundation
 
 // Splits a Japanese text string into sentence-level NSRange segments.
 // Heuristic rules: split on 。！？ and on newlines; trims leading/trailing whitespace from each range.
-// Deterministic for fixed input — no external dependencies.
-enum SentenceRangeResolver {
+// Deterministic for fixed input — no external dependencies. `nonisolated` since it's pure,
+// stateless text processing with no MainActor state — callable from any context, including
+// SentenceBlankResolver (sentence-context Fill in the Blank) and plain unit tests.
+nonisolated enum SentenceRangeResolver {
     // Returns trimmed, non-empty NSRange values covering each sentence in the text.
     static func sentenceRanges(in text: NSString) -> [NSRange] {
         let n = text.length

@@ -8,7 +8,7 @@ struct NoteCoverage: Equatable {
     let levels: [NoteCoverageLevel]
     // Total saved words in the note.
     let total: Int
-    // How many of them are Learned.
+    // How many of them are Learned or Mastered (Mastered implies Learned).
     let learnedCount: Int
     // How many are due for review right now (disjoint from New; see ReviewStore.isDueForReview).
     let dueCount: Int
@@ -16,6 +16,13 @@ struct NoteCoverage: Equatable {
     // Note-wide learned fraction (0…1); 0 when the note has no words.
     var coverageFraction: Double {
         total == 0 ? 0 : Double(learnedCount) / Double(total)
+    }
+
+    // Every word across every level and every mastery stage, flattened — backs the "study all
+    // words for this note" launch that intentionally bypasses the level × stage split the chip
+    // grid otherwise enforces.
+    var allWords: [SavedWord] {
+        levels.flatMap { level in MasteryStage.allCases.flatMap { level.words(in: $0) } }
     }
 }
 
@@ -41,7 +48,7 @@ enum NoteCoverageCalculator {
             let lv = level(id)
             let st = stage(id)
             byLevel[lv, default: [:]][st, default: []].append(word)
-            if st == .learned { learnedCount += 1 }
+            if st == .learned || st == .mastered { learnedCount += 1 }
             if isDue(id) { dueCount += 1 }
         }
 
