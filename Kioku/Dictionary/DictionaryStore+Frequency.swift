@@ -44,8 +44,13 @@ extension DictionaryStore {
 
 
     // Builds the unified per-surface reading and frequency map from the materialized surface_readings table.
-    // Rows are pre-sorted by (surface ASC, best_rank ASC, reading ASC) at DB generation time,
-    // so a single sequential scan produces correctly-ordered readings without runtime sorting.
+    // Ordered by (surface ASC, best_rank ASC, wordfreq_zipf DESC, reading ASC): best_rank is an
+    // entry-wide value shared by every reading of a multi-reading entry (JPDB ranks one written
+    // form per entry), so when it ties, wordfreq_zipf — which IS stored per-reading — breaks the
+    // tie by actual usage before falling back to alphabetical. Without the zipf tie-break, ties
+    // fell through to plain alphabetical order on the reading string, which is why 二人 defaulted
+    // to ににん (に < ふ) and 一人 to いちにん (い < ひ) instead of the common ふたり/ひとり —
+    // this mirrors the fix already applied in generate_db.py's own materialization ORDER BY.
     // Each surface retains up to maxReadingsPerSurface distinct readings; frequency data is populated
     // for any reading that has at least one frequency signal (jpdb_rank or wordfreq_zipf).
     nonisolated func fetchSurfaceReadingData(maxReadingsPerSurface: Int = 8) throws -> [String: SurfaceReadingData] {
@@ -53,7 +58,7 @@ extension DictionaryStore {
             let sql = """
             SELECT surface, reading, jpdb_rank, wordfreq_zipf
             FROM surface_readings
-            ORDER BY surface, best_rank, reading
+            ORDER BY surface, best_rank, wordfreq_zipf DESC, reading
             """
 
             var statement: OpaquePointer?

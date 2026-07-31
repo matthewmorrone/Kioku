@@ -1677,6 +1677,17 @@ def materialize_canonical_entry_ids(conn):
             LEFT JOIN senses sn ON sn.entry_id = s.entry_id
             GROUP BY s.surface, s.entry_id
         ),
+        -- Adds a group-wide "does ANY entry sharing this surface have a real JPDB rank" signal
+        -- (mirrors DictionaryStore.FrequencySQL.siblingRealRankTier). A kanji row's wordfreq_zipf
+        -- is scored on the literal string, identically for every entry that writes it — it can't
+        -- tell 日-the-common-noun (ひ, jpdb_rank 223) apart from 日-the-colloquial-counter-suffix
+        -- (ち, no rank of its own), it's just repeating 日-the-character's overall corpus
+        -- ubiquity. Without surface_best_rank below, that borrowed zipf fell into the pseudo-rank
+        -- bucket table and numerically beat the noun's real rank.
+        m2 AS (
+            SELECT *, MIN(rank) OVER (PARTITION BY surface) AS surface_best_rank
+            FROM m
+        ),
         ranked AS (
             SELECT surface, entry_id,
                    ROW_NUMBER() OVER (
@@ -1684,6 +1695,15 @@ def materialize_canonical_entry_ids(conn):
                        ORDER BY
                            CASE WHEN is_functional = 1 THEN 0 ELSE 1 END ASC,
                            has_kanji ASC,
+                           -- Don't let a zipf pseudo-rank rescue this entry past a sibling (same
+                           -- surface) that has a genuine rank; a no-op when nobody in the group
+                           -- has any real rank (then everyone lands in tier 0, unchanged from
+                           -- before, and the zipf-beats-a-weak-rank COALESCE below still applies).
+                           CASE
+                               WHEN rank IS NOT NULL THEN 0
+                               WHEN surface_best_rank IS NOT NULL THEN 1
+                               ELSE 0
+                           END ASC,
                            COALESCE(
                                rank,
                                CASE
@@ -1703,7 +1723,7 @@ def materialize_canonical_entry_ids(conn):
                            min_sense ASC,
                            entry_id ASC
                    ) AS rn
-            FROM m
+            FROM m2
         )
         INSERT INTO surface_canonical_entry (surface, entry_id)
         SELECT surface, entry_id FROM ranked WHERE rn = 1;
