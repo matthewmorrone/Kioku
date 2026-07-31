@@ -50,6 +50,29 @@ extension DictionaryStore {
             """
         }
 
+        // Extra ORDER BY tier, evaluated BEFORE effectiveRank, that stops the zipf pseudo-rank
+        // from rescuing an entry past a SIBLING entry (same surface) that has a genuine JPDB
+        // rank. wordfreq_zipf on a kanji row is scored on the literal string, identically for
+        // every entry that writes it — it was never picking whether a bare-kanji surface like
+        // 日 named the common noun (ひ, jpdb_rank 223) or a niche colloquial counter suffix
+        // (ち, no jpdb_rank of its own); it was just repeating 日-the-character's overall
+        // corpus ubiquity. Without this tier, that borrowed score fell into the zipf pseudo-rank
+        // bucket table below and numerically beat the noun's real rank. `jpdbExpr` is this
+        // candidate's own rank; `surfaceHasRealRankExpr` is a group-wide signal (e.g. a window
+        // function over all candidates for the surface) that's non-null when at least one
+        // candidate in the group has a real rank. When NO candidate in the group has any real
+        // JPDB coverage, this tier is a no-op (everyone lands in tier 0) and effectiveRank's
+        // zipf-beats-a-weak-rank behavior still applies exactly as before.
+        static func siblingRealRankTier(jpdbExpr: String, surfaceHasRealRankExpr: String) -> String {
+            """
+            CASE
+                WHEN \(jpdbExpr) IS NOT NULL THEN 0
+                WHEN \(surfaceHasRealRankExpr) IS NOT NULL THEN 1
+                ELSE 0
+            END
+            """
+        }
+
         // Boolean EXISTS test: true when the entry has any sense tagged as a functional /
         // deictic part of speech — particle (prt), copula (cop), auxiliary (aux / aux-*), or
         // pre-noun adjectival (adj-pn). These are the words a bare-kana lookup almost always

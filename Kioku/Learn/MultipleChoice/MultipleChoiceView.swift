@@ -495,11 +495,18 @@ struct MultipleChoiceView: View {
             let correct: String
             let pool: Set<String>
             let questionDirection: QuestionDirection?
+            // Every other item whose own prompt-side value also equals this question's prompt is
+            // "correct-equivalent" (e.g. two saved words sharing the same English gloss, like
+            // やみ and くらやみ both meaning "darkness") — its answer-side value must be excluded
+            // from the distractor pool below, not just the literal `correct` string, or a
+            // synonym can be offered as a "wrong" option.
+            let collidingAnswers: Set<String>
             switch resolvedDirection {
             case .japaneseToEnglish:
                 prompt = item.japanese(for: japaneseForm)
                 correct = item.english
                 pool = englishStrings
+                collidingAnswers = Set(items.filter { $0.japanese(for: japaneseForm) == prompt }.map(\.english))
                 questionDirection = .forJapaneseEnglishAxis(
                     resolved: .japaneseToEnglish, form: japaneseForm, isKanaOnlySurface: item.kanji == nil
                 )
@@ -507,6 +514,7 @@ struct MultipleChoiceView: View {
                 prompt = item.english
                 correct = item.japanese(for: japaneseForm)
                 pool = japaneseStrings
+                collidingAnswers = Set(items.filter { $0.english == prompt }.map { $0.japanese(for: japaneseForm) })
                 questionDirection = .forJapaneseEnglishAxis(
                     resolved: .englishToJapanese, form: japaneseForm, isKanaOnlySurface: item.kanji == nil
                 )
@@ -515,12 +523,14 @@ struct MultipleChoiceView: View {
                 prompt = item.value(for: fields.prompt)
                 correct = item.value(for: fields.answer)
                 pool = fieldPools[fields.answer] ?? []
+                collidingAnswers = Set(items.filter { $0.value(for: fields.prompt) == prompt }.map { $0.value(for: fields.answer) })
                 questionDirection = QuestionDirection(prompt: fields.prompt, answer: fields.answer)
             case .mixed:
                 // `resolved(seed:)` never returns `.mixed`; treat as Japanese→English defensively.
                 prompt = item.japanese(for: japaneseForm)
                 correct = item.english
                 pool = englishStrings
+                collidingAnswers = Set(items.filter { $0.japanese(for: japaneseForm) == prompt }.map(\.english))
                 questionDirection = .forJapaneseEnglishAxis(
                     resolved: .japaneseToEnglish, form: japaneseForm, isKanaOnlySurface: item.kanji == nil
                 )
@@ -531,7 +541,7 @@ struct MultipleChoiceView: View {
             // ask a question with no real distinction between prompt and answer.
             guard prompt != correct else { continue }
 
-            var distractorPool = pool
+            var distractorPool = pool.subtracting(collidingAnswers)
             distractorPool.remove(correct)
             guard distractorPool.isEmpty == false else { continue }
 

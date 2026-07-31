@@ -81,40 +81,52 @@ extension DictionaryStore {
         // has many such collisions (この vs 此, その vs 園, あの vs 彼の) and the user always wants
         // the functional word. Gated to matchKana && !matchKanji so an explicit kanji-surface
         // lookup (tapping 我) doesn't promote a particle homograph over the intended kanji word.
+        // NB: `entry_id` here (not `e.id`) — this tier runs in the outer ORDER BY over the
+        // `candidates` CTE below, where the `entries e` alias is no longer in scope.
         let posBoostTier: String
         if matchKana && !matchKanji {
-            posBoostTier = "CASE WHEN \(FrequencySQL.functionalPosMatch(entryIDExpr: "e.id")) THEN 0 ELSE 1 END ASC,\n"
+            posBoostTier = "CASE WHEN \(FrequencySQL.functionalPosMatch(entryIDExpr: "entry_id")) THEN 0 ELSE 1 END ASC,\n"
         } else {
             posBoostTier = ""
         }
         let sql = """
-        SELECT e.id,
-               MIN(wf.jpdb_rank) AS best_jpdb,
-               MAX(wf.wordfreq_zipf) AS best_zipf,
-               EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = e.id) AS has_kanji,
-               COALESCE(MIN(s.order_index), \(FrequencySQL.noSenseSort)) AS min_sense
-        FROM entries e
-        \(frequencyJoin)
-        LEFT JOIN senses s ON s.entry_id = e.id
-        WHERE \(whereClause)
-        GROUP BY e.id
+        WITH candidates AS (
+            SELECT e.id AS entry_id,
+                   MIN(wf.jpdb_rank) AS best_jpdb,
+                   MAX(wf.wordfreq_zipf) AS best_zipf,
+                   EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = e.id) AS has_kanji,
+                   COALESCE(MIN(s.order_index), \(FrequencySQL.noSenseSort)) AS min_sense
+            FROM entries e
+            \(frequencyJoin)
+            LEFT JOIN senses s ON s.entry_id = e.id
+            WHERE \(whereClause)
+            GROUP BY e.id
+        )
+        SELECT entry_id, best_jpdb, best_zipf, has_kanji, min_sense,
+               -- Window over the whole candidate set (all entries matching this one surface) so
+               -- the sibling-rank tier below can see whether ANY of them has a real JPDB rank.
+               MIN(best_jpdb) OVER () AS surface_best_jpdb
+        FROM candidates
         ORDER BY
             \(posBoostTier)
             -- Tier 2: kana-only entries (no kanji forms) before kanji-bearing ones. Catches
             -- truly kana-only headwords (interjections, sound effects, casual kana usages)
             -- and is a no-op for kanji-surface lookups (where kana-only entries can't match
             -- anyway). For matchKanji-only the WHERE clause already excludes kana-only.
-            CASE WHEN EXISTS (SELECT 1 FROM kanji k WHERE k.entry_id = e.id) THEN 1 ELSE 0 END ASC,
-            -- Tier 3: effective rank — JPDB rank if present, else a pseudo-rank derived
+            CASE WHEN has_kanji THEN 1 ELSE 0 END ASC,
+            -- Tier 3: don't let a zipf pseudo-rank rescue a candidate past a sibling (same
+            -- surface) that has a genuine JPDB rank — see siblingRealRankTier's doc comment.
+            \(FrequencySQL.siblingRealRankTier(jpdbExpr: "best_jpdb", surfaceHasRealRankExpr: "surface_best_jpdb")) ASC,
+            -- Tier 4: effective rank — JPDB rank if present, else a pseudo-rank derived
             -- from the wordfreq Zipf score (general-corpus log frequency). Applied
             -- uniformly so a non-JPDB-ranked common word (e.g. a kanji entry JPDB didn't
             -- catalog) can still outrank an obscure JPDB-ranked homophone instead of
             -- crashing to 9999999. Zipf 7+ ≈ top-30 word, 6+ ≈ top-1k, etc.; bucket
             -- boundaries are deliberately wider than JPDB's so a high-confidence corpus
             -- signal beats a low-confidence JPDB ranking.
-            \(FrequencySQL.effectiveRank(jpdbExpr: "MIN(wf.jpdb_rank)", zipfExpr: "MAX(wf.wordfreq_zipf)")) ASC,
+            \(FrequencySQL.effectiveRank(jpdbExpr: "best_jpdb", zipfExpr: "best_zipf")) ASC,
             min_sense ASC,
-            e.id ASC
+            entry_id ASC
         """
 
         var statement: OpaquePointer?

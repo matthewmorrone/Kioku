@@ -337,7 +337,23 @@ struct CSVImportView: View {
                     continue
                 }
                 let senseIDs = DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
-                savedWords.append(SavedWord(canonicalEntryID: entry.entryId, surface: surface, wordListIDs: itemListIDs, selectedSenseIDs: senseIDs))
+                // Stores the entry's own headword (not the raw imported string) as `surface`, matching
+                // the Read-tab save convention (SegmentListView+SavedWords.toggleSavedWord): a conjugated
+                // import like 突き刺して must not be paired with lemma entry 突き刺す under its own
+                // surface, or dictionary-derived reading/kana displays (e.g. Word of the Day) end up
+                // combining a conjugated headword with the lemma's reading. The typed form is preserved
+                // in encounteredSurfaces so per-surface state still recognizes it.
+                let canonicalSurface = entry.firstEverydayKanji?.text
+                    ?? entry.kanjiForms.first?.text
+                    ?? entry.kanaForms.first?.text
+                    ?? surface
+                savedWords.append(SavedWord(
+                    canonicalEntryID: entry.entryId,
+                    surface: canonicalSurface,
+                    wordListIDs: itemListIDs,
+                    selectedSenseIDs: senseIDs,
+                    encounteredSurfaces: Set([canonicalSurface, surface])
+                ))
             }
             await target.add(savedWords)
             await MainActor.run {
