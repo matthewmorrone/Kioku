@@ -17,6 +17,13 @@ struct NoteCoverage: Equatable {
     var coverageFraction: Double {
         total == 0 ? 0 : Double(learnedCount) / Double(total)
     }
+
+    // Every word across every level and every mastery stage, flattened — backs the "study all
+    // words for this note" launch that intentionally bypasses the level × stage split the chip
+    // grid otherwise enforces.
+    var allWords: [SavedWord] {
+        levels.flatMap { level in MasteryStage.allCases.flatMap { level.words(in: $0) } }
+    }
 }
 
 // Builds a NoteCoverage from a word list plus injected lookups. Closures (rather than concrete
