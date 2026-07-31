@@ -40,6 +40,30 @@ final class NoteCoverageCalculatorTests: XCTestCase {
         XCTAssertEqual(n5.words(in: .new).map(\.canonicalEntryID), [2])
     }
 
+    // allWords flattens every level × stage cell back into one list, regardless of level or
+    // mastery stage — backs the Coverage screen's "Study All Words" launch.
+    func testAllWordsFlattensEveryLevelAndStage() {
+        let words = (1...5).map { SavedWord(canonicalEntryID: Int64($0), surface: "w\($0)") }
+        let level: (Int64) -> Int? = { id in
+            switch id {
+            case 1, 2: return 5   // N5
+            case 3, 5: return 4   // N4
+            default:   return nil // No level
+            }
+        }
+        let stage: (Int64) -> MasteryStage = { id in
+            switch id {
+            case 1, 5: return .learned
+            case 3:    return .learning
+            default:   return .new
+            }
+        }
+        let cov = NoteCoverageCalculator.compute(words: words, level: level, stage: stage, isDue: { _ in false })
+
+        XCTAssertEqual(Set(cov.allWords.map(\.canonicalEntryID)), Set(1...5))
+        XCTAssertEqual(cov.allWords.count, cov.total)
+    }
+
     // An empty note has zero coverage and no level rows (no divide-by-zero).
     func testEmptyNoteHasZeroCoverage() {
         let cov = NoteCoverageCalculator.compute(
