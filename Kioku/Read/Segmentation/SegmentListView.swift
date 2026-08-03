@@ -448,7 +448,6 @@ struct SegmentListView: View {
     // up the type-checker (SegmentListView's row already juggles a dozen lets per row) into a
     // multi-minute build timeout. A separate function with explicit per-statement types keeps
     // each call site a single expression for the checker to solve.
-    @ViewBuilder
     private func starIcon(isStarFilled: Bool, isAnySaved: Bool, learnedState: LearnedState) -> some View {
         let icon: String
         switch learnedState {
@@ -457,7 +456,7 @@ struct SegmentListView: View {
         case .unmarked:   icon = isStarFilled ? "star.fill" : "star"
         }
         let starColor: Color = (learnedState != .unmarked || isAnySaved) ? .primary : .secondary
-        Image(systemName: icon)
+        return Image(systemName: icon)
             .foregroundStyle(starColor)
             .font(.system(size: 16, weight: .semibold))
     }
