@@ -401,9 +401,10 @@ enum WordOfTheDayScheduler {
     // Swaps the day-0 slot with another entry from the shuffled order when it collides with
     // `lastFiredID` — the word most recently delivered — so a fresh reshuffle never repeats
     // yesterday's word as today's. No-op when there's no collision or no alternative to swap in
-    // (fewer than two saved words, or every word shares the same id). Internal (not private) and
-    // pure so it's unit testable without going through UNUserNotificationCenter.
-    static func avoidingImmediateRepeat(_ shuffled: [SavedWord], of lastFiredID: Int64?) -> [SavedWord] {
+    // (fewer than two saved words, or every word shares the same id). nonisolated (like
+    // WordOfTheDayMirror's selection helpers) since it touches no actor-isolated state, so it's
+    // unit testable synchronously without going through UNUserNotificationCenter.
+    nonisolated static func avoidingImmediateRepeat(_ shuffled: [SavedWord], of lastFiredID: Int64?) -> [SavedWord] {
         guard let lastFiredID,
               shuffled.count > 1,
               shuffled[0].canonicalEntryID == lastFiredID,
