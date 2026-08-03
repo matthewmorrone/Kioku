@@ -89,6 +89,10 @@ struct SettingsView: View {
     @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
 
     @AppStorage(TranscriptionEngine.storageKey) private var transcriptionEngine: String = TranscriptionEngine.appleSpeech.rawValue
+    // Backs the "Manage Whisper Models…" row below — lets a user download a model straight
+    // from Settings instead of only discovering the download sheet inside Bulk Import.
+    @State private var whisperModelManager = WhisperModelManager()
+    @State private var isWhisperDownloadSheetPresented = false
 
     @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
@@ -445,8 +449,18 @@ struct SettingsView: View {
                             Text(engine.displayName).tag(engine.rawValue)
                         }
                     }
+                    if transcriptionEngine == TranscriptionEngine.whisper.rawValue {
+                        Button {
+                            isWhisperDownloadSheetPresented = true
+                        } label: {
+                            Label("Manage Whisper Models…", systemImage: "arrow.down.circle")
+                        }
+                    }
                 } header: {
                     Text("Transcription")
+                }
+                .sheet(isPresented: $isWhisperDownloadSheetPresented) {
+                    WhisperDownloadSheet(manager: whisperModelManager) { _ in }
                 }
 
                 // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
