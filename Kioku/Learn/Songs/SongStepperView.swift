@@ -26,6 +26,8 @@ struct SongStepperView: View {
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     // Drives the lookup sheet's save star for tapped words (globally injected at the app root).
     @EnvironmentObject private var wordsStore: WordsStore
+    // Powers the lookup sheet's save button long-press learned-state menu.
+    @EnvironmentObject private var reviewStore: ReviewStore
     // Per-line expansion state. A line is "expanded" when its word/grammar explanations are
     // visible AND furigana is rendered above its Japanese — the two move together. Keyed by
     // `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
@@ -85,6 +87,12 @@ struct SongStepperView: View {
             },
             sheetSaveToggle: {
                 toggleSavedWord(canonicalEntryID: entryID, surface: surface)
+            },
+            sheetLearnedStateProvider: {
+                reviewStore.learnedState(for: entryID)
+            },
+            sheetSetLearnedState: { state in
+                reviewStore.setLearnedState(state, for: entryID)
             }
         )
     }

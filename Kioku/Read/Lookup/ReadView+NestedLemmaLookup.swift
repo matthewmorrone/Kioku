@@ -118,6 +118,14 @@ extension ReadView {
                     defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
                 )
             },
+            sheetLearnedStateProvider: { [weak nestedSheet] in
+                guard let entry = nestedSheet?.currentSheetDictionaryEntry else { return .unmarked }
+                return reviewStore.learnedState(for: entry.entryId)
+            },
+            sheetSetLearnedState: { [weak nestedSheet] state in
+                guard let entry = nestedSheet?.currentSheetDictionaryEntry else { return }
+                reviewStore.setLearnedState(state, for: entry.entryId)
+            },
             sheetOpenWordDetail: { [weak nestedSheet] in
                 guard let entry = resolvedEntry() else { return }
                 let reading = nestedSheet?.currentSheetUniqueReadings.first
