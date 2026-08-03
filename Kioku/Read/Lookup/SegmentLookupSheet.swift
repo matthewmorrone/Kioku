@@ -21,6 +21,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     private var popoverIsSavedProvider: (() -> Bool)?
     private var popoverIsSavedElsewhereProvider: (() -> Bool)?
     private var popoverOnSaveToggle: (() -> Void)?
+    // Powers the star's long-press learned-state menu, mirroring the Words tab's star.
+    private var popoverLearnedStateProvider: (() -> LearnedState)?
+    private var popoverOnSetLearnedState: ((LearnedState) -> Void)?
     private var popoverOnEscalate: (() -> Void)?
     private var popoverSurface: String = ""
     private static let popoverHorizontalInset: CGFloat = 10
@@ -76,6 +79,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     var sheetIsSavedElsewhereProvider: (() -> Bool)?
     // Toggles the saved state for the current segment's resolved lemma.
     var sheetSaveToggle: (() -> Void)?
+    // Powers the save button's long-press learned-state menu, mirroring the Words tab's star.
+    var sheetLearnedStateProvider: (() -> LearnedState)?
+    var sheetSetLearnedState: ((LearnedState) -> Void)?
     // Opens the word detail screen for the current segment's resolved lemma.
     var sheetOpenWordDetail: (() -> Void)?
     // Provides tappable word components: (surface, first gloss) pairs.
@@ -154,6 +160,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         isSavedProvider: (() -> Bool)? = nil,
         isSavedElsewhereProvider: (() -> Bool)? = nil,
         onSaveToggle: (() -> Void)? = nil,
+        learnedStateProvider: (() -> LearnedState)? = nil,
+        onSetLearnedState: ((LearnedState) -> Void)? = nil,
         onEscalate: (() -> Void)? = nil,
         onDismiss: (() -> Void)? = nil,
         sourceView: UIView,
@@ -176,6 +184,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
                 isSavedProvider: isSavedProvider,
                 isSavedElsewhereProvider: isSavedElsewhereProvider,
                 onSaveToggle: onSaveToggle,
+                learnedStateProvider: learnedStateProvider,
+                onSetLearnedState: onSetLearnedState,
                 onEscalate: onEscalate,
                 sourceView: sourceView,
                 sourceRect: sourceRect
@@ -199,6 +209,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
                 isSavedProvider: isSavedProvider,
                 isSavedElsewhereProvider: isSavedElsewhereProvider,
                 onSaveToggle: onSaveToggle,
+                learnedStateProvider: learnedStateProvider,
+                onSetLearnedState: onSetLearnedState,
                 onEscalate: onEscalate,
                 sourceView: sourceView,
                 sourceRect: sourceRect
@@ -214,6 +226,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         isSavedProvider: (() -> Bool)?,
         isSavedElsewhereProvider: (() -> Bool)?,
         onSaveToggle: (() -> Void)?,
+        learnedStateProvider: (() -> LearnedState)?,
+        onSetLearnedState: ((LearnedState) -> Void)?,
         onEscalate: (() -> Void)?,
         sourceView: UIView,
         sourceRect: CGRect
@@ -222,6 +236,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         popoverIsSavedProvider = isSavedProvider
         popoverIsSavedElsewhereProvider = isSavedElsewhereProvider
         popoverOnSaveToggle = onSaveToggle
+        popoverLearnedStateProvider = learnedStateProvider
+        popoverOnSetLearnedState = onSetLearnedState
         popoverOnEscalate = onEscalate
 
         applyPopoverWordButtonAppearance(surface: surface)
@@ -255,9 +271,25 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     private func refreshPopoverStarAppearance() {
         let isSaved = popoverIsSavedProvider?() ?? false
         let isSavedElsewhere = isSaved == false && (popoverIsSavedElsewhereProvider?() ?? false)
-        popoverStarButton?.setImage(UIImage(systemName: isSaved ? "star.fill" : "star"), for: .normal)
-        popoverStarButton?.tintColor = (isSaved || isSavedElsewhere) ? .systemYellow : .secondaryLabel
+        let learnedState = popoverLearnedStateProvider?() ?? .unmarked
+        let icon: String
+        switch learnedState {
+        case .learned:    icon = "checkmark"
+        case .notLearned: icon = "questionmark"
+        case .unmarked:   icon = isSaved ? "star.fill" : "star"
+        }
+        popoverStarButton?.setImage(UIImage(systemName: icon), for: .normal)
+        popoverStarButton?.tintColor = (learnedState != .unmarked || isSaved || isSavedElsewhere) ? .systemYellow : .secondaryLabel
         popoverStarButton?.accessibilityLabel = isSaved ? "Unsave" : (isSavedElsewhere ? "Save to This Note" : "Save")
+        // Rebuilt on every refresh (not set once) so the menu's setState closure always targets
+        // the currently-shown word — see the class-level comment on why this popover is reused
+        // in place rather than torn down and rebuilt when the user switches words.
+        if let onSetLearnedState = popoverOnSetLearnedState {
+            popoverStarButton?.menu = learnedStateUIMenu(setState: onSetLearnedState)
+            popoverStarButton?.showsMenuAsPrimaryAction = false
+        } else {
+            popoverStarButton?.menu = nil
+        }
     }
 
     // Renders the word button per the "Show Japanese in Popover" setting — either the surface
@@ -295,6 +327,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         isSavedProvider: (() -> Bool)?,
         isSavedElsewhereProvider: (() -> Bool)?,
         onSaveToggle: (() -> Void)?,
+        learnedStateProvider: (() -> LearnedState)?,
+        onSetLearnedState: ((LearnedState) -> Void)?,
         onEscalate: (() -> Void)?,
         sourceView: UIView,
         sourceRect: CGRect
@@ -309,6 +343,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         popoverIsSavedProvider = isSavedProvider
         popoverIsSavedElsewhereProvider = isSavedElsewhereProvider
         popoverOnSaveToggle = onSaveToggle
+        popoverLearnedStateProvider = learnedStateProvider
+        popoverOnSetLearnedState = onSetLearnedState
         popoverOnEscalate = onEscalate
 
         let viewController = UIViewController()
@@ -472,6 +508,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetIsSavedProvider: (() -> Bool)? = nil,
         sheetIsSavedElsewhereProvider: (() -> Bool)? = nil,
         sheetSaveToggle: (() -> Void)? = nil,
+        sheetLearnedStateProvider: (() -> LearnedState)? = nil,
+        sheetSetLearnedState: ((LearnedState) -> Void)? = nil,
         sheetOpenWordDetail: (() -> Void)? = nil,
         sheetWordComponentsProvider: (() -> [(surface: String, gloss: String?)]?)? = nil,
         sheetCompoundComponentsProvider: (() -> [(lemma: String, gloss: String?)]?)? = nil,
@@ -497,6 +535,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         self.sheetIsSavedProvider = sheetIsSavedProvider
         self.sheetIsSavedElsewhereProvider = sheetIsSavedElsewhereProvider
         self.sheetSaveToggle = sheetSaveToggle
+        self.sheetLearnedStateProvider = sheetLearnedStateProvider
+        self.sheetSetLearnedState = sheetSetLearnedState
         self.sheetOpenWordDetail = sheetOpenWordDetail
         self.sheetWordComponentsProvider = sheetWordComponentsProvider
         self.sheetCompoundComponentsProvider = sheetCompoundComponentsProvider
@@ -596,6 +636,8 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         sheetIsSavedProvider = nil
         sheetIsSavedElsewhereProvider = nil
         sheetSaveToggle = nil
+        sheetLearnedStateProvider = nil
+        sheetSetLearnedState = nil
         sheetOpenWordDetail = nil
         sheetWordComponentsProvider = nil
         sheetCompoundComponentsProvider = nil
