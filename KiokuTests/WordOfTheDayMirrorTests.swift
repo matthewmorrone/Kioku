@@ -104,4 +104,43 @@ final class WordOfTheDayMirrorTests: XCTestCase {
         XCTAssertEqual(parsed.entryID, 42)
         XCTAssertNil(parsed.surface)
     }
+
+    // MARK: - avoidingImmediateRepeat (no-repeat-of-yesterday's-word regression coverage)
+
+    private func word(_ id: Int64) -> SavedWord {
+        SavedWord(canonicalEntryID: id, surface: "語\(id)")
+    }
+
+    func testAvoidingImmediateRepeatSwapsOutCollidingWord() {
+        let shuffled = [word(1), word(2), word(3)]
+        let result = WordOfTheDayScheduler.avoidingImmediateRepeat(shuffled, of: 1)
+        XCTAssertNotEqual(result[0].canonicalEntryID, 1)
+        // Same multiset of words, just reordered.
+        XCTAssertEqual(Set(result.map(\.canonicalEntryID)), Set([1, 2, 3]))
+    }
+
+    func testAvoidingImmediateRepeatLeavesNonCollidingOrderUnchanged() {
+        let shuffled = [word(2), word(1), word(3)]
+        let result = WordOfTheDayScheduler.avoidingImmediateRepeat(shuffled, of: 1)
+        XCTAssertEqual(result.map(\.canonicalEntryID), [2, 1, 3])
+    }
+
+    func testAvoidingImmediateRepeatNoOpWhenLastFiredIDIsNil() {
+        let shuffled = [word(1), word(2)]
+        let result = WordOfTheDayScheduler.avoidingImmediateRepeat(shuffled, of: nil)
+        XCTAssertEqual(result.map(\.canonicalEntryID), [1, 2])
+    }
+
+    func testAvoidingImmediateRepeatNoOpWithSingleWord() {
+        let shuffled = [word(1)]
+        let result = WordOfTheDayScheduler.avoidingImmediateRepeat(shuffled, of: 1)
+        XCTAssertEqual(result.map(\.canonicalEntryID), [1])
+    }
+
+    func testAvoidingImmediateRepeatNoOpWhenEveryWordSharesTheSameID() {
+        // Degenerate case: nothing distinct to swap in, so the repeat is unavoidable.
+        let shuffled = [word(1), word(1)]
+        let result = WordOfTheDayScheduler.avoidingImmediateRepeat(shuffled, of: 1)
+        XCTAssertEqual(result.map(\.canonicalEntryID), [1, 1])
+    }
 }
