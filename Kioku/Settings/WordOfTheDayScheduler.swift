@@ -305,10 +305,15 @@ enum WordOfTheDayScheduler {
         }
 
         // Shuffle once per scheduling run; rotate through shuffled order to avoid
-        // bias toward earlier items while keeping the batch varied.
-        let shuffled = words.shuffled()
+        // bias toward earlier items while keeping the batch varied. The reshuffle has no memory of
+        // what was just delivered, so an unlucky shuffle can otherwise land the word that fired
+        // yesterday right back in the day-0 slot — the schedule gets rebuilt from scratch on ~every
+        // launch once a notification has fired (see isExistingScheduleFresh), so this collision is
+        // common, not rare.
         let calendar = Calendar.current
         let now = Date()
+        let lastFiredID = WordOfTheDayMirror.mostRecentEntry(in: WordOfTheDayMirror.load(), asOf: now)?.entryID
+        let shuffled = avoidingImmediateRepeat(words.shuffled(), of: lastFiredID)
         let count = max(1, min(daysToSchedule, 30))
         let wordsToResolve = selectedWords(forNotificationCount: count, from: shuffled)
         StartupTimer.mark("WOTD.scheduleUpcoming resolving live content for \(wordsToResolve.count) selected words")
@@ -391,6 +396,24 @@ enum WordOfTheDayScheduler {
         guard let state = loadPersistedScheduleState() else { return false }
         guard state.signature == signature else { return false }
         return state.requestCount == expectedRequestCount && pendingCount == expectedRequestCount
+    }
+
+    // Swaps the day-0 slot with another entry from the shuffled order when it collides with
+    // `lastFiredID` — the word most recently delivered — so a fresh reshuffle never repeats
+    // yesterday's word as today's. No-op when there's no collision or no alternative to swap in
+    // (fewer than two saved words, or every word shares the same id). Internal (not private) and
+    // pure so it's unit testable without going through UNUserNotificationCenter.
+    static func avoidingImmediateRepeat(_ shuffled: [SavedWord], of lastFiredID: Int64?) -> [SavedWord] {
+        guard let lastFiredID,
+              shuffled.count > 1,
+              shuffled[0].canonicalEntryID == lastFiredID,
+              let replacementIndex = shuffled.dropFirst().firstIndex(where: { $0.canonicalEntryID != lastFiredID })
+        else {
+            return shuffled
+        }
+        var result = shuffled
+        result.swapAt(0, replacementIndex)
+        return result
     }
 
     // Rotates through the shuffled list by day offset to reduce duplicates within a batch.
