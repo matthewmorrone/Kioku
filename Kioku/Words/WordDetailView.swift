@@ -342,17 +342,7 @@ struct WordDetailView: View {
                     .offset(x: 34)
                     .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
                     .contextMenu {
-                        // Deferred so the mark applies after the context menu tears down, rather
-                        // than queuing the re-render behind that work (see setLearnedDeferred).
-                        Button { setLearnedDeferred(.unmarked) } label: {
-                            Label("Favorite", systemImage: "star")
-                        }
-                        Button { setLearnedDeferred(.learned) } label: {
-                            Label("Learned", systemImage: "checkmark")
-                        }
-                        Button { setLearnedDeferred(.notLearned) } label: {
-                            Label("Not Learned", systemImage: "questionmark")
-                        }
+                        learnedStateMenuButtons(setState: learnedStateSetter(entryID: activeEntryID, reviewStore: reviewStore))
                     }
                 }
                 .frame(maxWidth: .infinity)

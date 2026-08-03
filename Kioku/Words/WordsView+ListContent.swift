@@ -113,7 +113,7 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave" : "Save")
                 .contextMenu {
-                    learnedMenuButtons(entryID: entryID)
+                    learnedStateMenuButtons(setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
                 }
             }
         }
@@ -209,30 +209,6 @@ extension WordsView {
         if japaneseTheme { return .white }
         if state != .unmarked || saved { return .primary }
         return .secondary
-    }
-
-    // The three status actions for the star's long-press context menu: each is a direct
-    // "set to this" (no toggle — the star slot already shows the current mark) with its own
-    // plain glyph. Favorite is the way back to a plain star without unsaving.
-    @ViewBuilder
-    func learnedMenuButtons(entryID: Int64) -> some View {
-        Button { setLearnedDeferred(.unmarked, entryID) } label: {
-            Label("Favorite", systemImage: "star")
-        }
-        Button { setLearnedDeferred(.learned, entryID) } label: {
-            Label("Learned", systemImage: "checkmark")
-        }
-        Button { setLearnedDeferred(.notLearned, entryID) } label: {
-            Label("Not Learned", systemImage: "questionmark")
-        }
-    }
-
-    // Applies the mark on the next runloop instead of synchronously inside the menu action.
-    // A synchronous write lands while UIKit is still tearing the context menu down, so the
-    // resulting re-render queues behind that work and the glyph only flips a beat after the
-    // menu is gone. Deferring lets the teardown finish, then the icon updates immediately.
-    func setLearnedDeferred(_ state: LearnedState, _ entryID: Int64) {
-        DispatchQueue.main.async { reviewStore.setLearnedState(state, for: entryID) }
     }
 
     // Speaks the row's Japanese pronunciation via ja-JP TTS. Prefers the kana reading (least
