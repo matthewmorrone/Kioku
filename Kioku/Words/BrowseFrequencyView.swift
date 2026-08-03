@@ -8,6 +8,7 @@ struct BrowseFrequencyView: View {
     let onToggleSave: (DictionaryEntry) -> Void
     let onSelectEntry: (DictionaryEntry) -> Void
 
+    @EnvironmentObject private var reviewStore: ReviewStore
     @State private var entries: [DictionaryEntry] = []
     @State private var isLoading = true
     @AppStorage("browseFrequency.limit") private var limit: Int = 1000
@@ -74,7 +75,9 @@ struct BrowseFrequencyView: View {
                             DictionarySearchResultRow(
                                 entry: entry,
                                 isSaved: isSaved(entry.entryId),
-                                onToggleSave: { onToggleSave(entry) }
+                                onToggleSave: { onToggleSave(entry) },
+                                learnedState: reviewStore.learnedState(for: entry.entryId),
+                                onSetLearnedState: learnedStateSetter(entryID: entry.entryId, reviewStore: reviewStore)
                             )
                         }
                     }
