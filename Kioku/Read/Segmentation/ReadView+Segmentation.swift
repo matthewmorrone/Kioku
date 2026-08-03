@@ -390,6 +390,8 @@ extension ReadView {
             isSavedProvider: { isSegmentSaved() },
             isSavedElsewhereProvider: { isSegmentSavedElsewhere() },
             onSaveToggle: { toggleSegmentSaved() },
+            learnedStateProvider: { currentSegmentLearnedState() },
+            onSetLearnedState: { setCurrentSegmentLearnedState($0) },
             onEscalate: {
                 presentFullLookupSheet(
                     tappedSegmentLocation: tappedSegmentLocation,
@@ -621,6 +623,8 @@ extension ReadView {
                 sheetIsSavedProvider: { isSegmentSaved() },
                 sheetIsSavedElsewhereProvider: { isSegmentSavedElsewhere() },
                 sheetSaveToggle: { toggleSegmentSaved() },
+                sheetLearnedStateProvider: { currentSegmentLearnedState() },
+                sheetSetLearnedState: { setCurrentSegmentLearnedState($0) },
                 sheetOpenWordDetail: {
                     guard let surface = currentSelectedSurface(),
                           let entry = resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
@@ -804,8 +808,7 @@ extension ReadView {
     // bookmark" fix this mirrors.
     func toggleSegmentSaved() {
         guard let surface = currentSelectedSurface(),
-              let entry = SegmentLookupSheet.shared.currentSheetDictionaryEntry
-                ?? resolvedDictionaryEntryForCurrentSelectedSegment() else { return }
+              let entry = currentSegmentDictionaryEntry() else { return }
         let lemma = segmenter.preferredLemma(for: surface)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let key = (lemma?.isEmpty == false ? lemma! : surface)
@@ -816,6 +819,26 @@ extension ReadView {
             sourceNoteID: activeNoteID,
             defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
         )
+    }
+
+    // The dictionary entry backing the currently selected/shown segment — same resolution
+    // toggleSegmentSaved uses, factored out so the learned-state provider/setter below read
+    // the identical entry rather than risking a second, slightly different resolution.
+    private func currentSegmentDictionaryEntry() -> DictionaryEntry? {
+        SegmentLookupSheet.shared.currentSheetDictionaryEntry
+            ?? resolvedDictionaryEntryForCurrentSelectedSegment()
+    }
+
+    // The star's long-press learned-state menu for the current segment, mirroring the Words tab.
+    func currentSegmentLearnedState() -> LearnedState {
+        guard let entry = currentSegmentDictionaryEntry() else { return .unmarked }
+        return reviewStore.learnedState(for: entry.entryId)
+    }
+
+    // Writes the mark for the current segment's resolved entry.
+    func setCurrentSegmentLearnedState(_ state: LearnedState) {
+        guard let entry = currentSegmentDictionaryEntry() else { return }
+        reviewStore.setLearnedState(state, for: entry.entryId)
     }
 
     // Builds de-duplicated lookup candidates in priority order: tapped surface first, then lemma fallback.
