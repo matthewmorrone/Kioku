@@ -564,9 +564,24 @@ final class SurfaceSheetViewController: UIViewController {
     func updateSaveButtonAppearance() {
         let isSaved = sheet?.sheetIsSavedProvider?() ?? false
         let isSavedElsewhere = isSaved == false && (sheet?.sheetIsSavedElsewhereProvider?() ?? false)
-        saveButton.setImage(UIImage(systemName: isSaved ? "star.fill" : "star"), for: .normal)
-        saveButton.tintColor = (isSaved || isSavedElsewhere) ? .systemYellow : .secondaryLabel
+        let learnedState = sheet?.sheetLearnedStateProvider?() ?? .unmarked
+        let icon: String
+        switch learnedState {
+        case .learned:    icon = "checkmark"
+        case .notLearned: icon = "questionmark"
+        case .unmarked:   icon = isSaved ? "star.fill" : "star"
+        }
+        saveButton.setImage(UIImage(systemName: icon), for: .normal)
+        saveButton.tintColor = (learnedState != .unmarked || isSaved || isSavedElsewhere) ? .systemYellow : .secondaryLabel
         saveButton.accessibilityLabel = isSaved ? "Unsave" : (isSavedElsewhere ? "Save to This Note" : "Save")
+        // Rebuilt on every refresh so the menu's setState closure always targets the currently
+        // shown word, mirroring SegmentLookupSheet's popover star (see its refresh comment).
+        if let setLearnedState = sheet?.sheetSetLearnedState {
+            saveButton.menu = learnedStateUIMenu(setState: setLearnedState)
+            saveButton.showsMenuAsPrimaryAction = false
+        } else {
+            saveButton.menu = nil
+        }
     }
 
     // Reflects whether the current surface resolved to a dictionary entry that can be opened.
