@@ -4,6 +4,8 @@ import SwiftUI
 struct SegmentListView: View {
     // Injected so that save/unsave operations trigger a refresh in WordsView without duplicating storage logic.
     @EnvironmentObject var wordsStore: WordsStore
+    // Powers the star's long-press learned-state menu, mirroring the Words tab.
+    @EnvironmentObject private var reviewStore: ReviewStore
     // Re-injected on the WordDetailView sheet below so list-membership UI inside the detail screen
     // resolves correctly when presented from this sheet.
     @EnvironmentObject private var wordListsStore: WordListsStore
@@ -442,6 +444,24 @@ struct SegmentListView: View {
         wordsStore.words.first { $0.surface == identity || $0.encounteredSurfaces.contains(identity) }?.canonicalEntryID
     }
 
+    // Extracted out of the row's label closure — inlining this branching there previously blew
+    // up the type-checker (SegmentListView's row already juggles a dozen lets per row) into a
+    // multi-minute build timeout. A separate function with explicit per-statement types keeps
+    // each call site a single expression for the checker to solve.
+    @ViewBuilder
+    private func starIcon(isStarFilled: Bool, isAnySaved: Bool, learnedState: LearnedState) -> some View {
+        let icon: String
+        switch learnedState {
+        case .learned:    icon = "checkmark"
+        case .notLearned: icon = "questionmark"
+        case .unmarked:   icon = isStarFilled ? "star.fill" : "star"
+        }
+        let starColor: Color = (learnedState != .unmarked || isAnySaved) ? .primary : .secondary
+        Image(systemName: icon)
+            .foregroundStyle(starColor)
+            .font(.system(size: 16, weight: .semibold))
+    }
+
     // Whether unchecking this currently-checked identity would fully unsave it rather than just
     // detach it from this note. Two ways to be safe to detach: it still has another note
     // attribution once this note's is set aside (hasAttributionBeyondCurrentNote), or it's been
@@ -523,15 +543,23 @@ struct SegmentListView: View {
                                 // with the current-note state.
                                 let isStarFilled = isSavedForCurrentNote || isSavedElsewhere
                                 let isAnySaved = isStarFilled || isSavedForOtherNotes
-                                let starColor: Color = isAnySaved ? .primary : .secondary
-                                Image(systemName: isStarFilled ? "star.fill" : "star")
-                                    .foregroundStyle(starColor)
-                                    .font(.system(size: 16, weight: .semibold))
+                                // The mark rides on the star slot, same as the Words tab: checkmark
+                                // when learned, question mark when explicitly not-learned, else the
+                                // three-state star above.
+                                let learnedState = canonicalEntryIDBySurface[normalizedSurface].map { reviewStore.learnedState(for: $0) } ?? .unmarked
+                                starIcon(isStarFilled: isStarFilled, isAnySaved: isAnySaved, learnedState: learnedState)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(
                                 isSavedForCurrentNote(normalizedSurface: normalizedSurfaceForFiltering(rowIdentity)) ? "Unsave Word" : "Save Word"
                             )
+                            // Separate from the row's own long-press menu (Word Details / Choose
+                            // Lemma / Merge / Split) below — this one is scoped to just the star.
+                            .contextMenu {
+                                if let entryID = canonicalEntryIDBySurface[normalizedSurfaceForFiltering(rowIdentity)] {
+                                    learnedStateMenuButtons(setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+                                }
+                            }
                         }
                         .padding(.vertical, 6)
                         // Whole-row hit area: tapping the segment text opens the same Word
