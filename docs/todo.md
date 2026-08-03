@@ -153,6 +153,65 @@ own sections.)
       (~37%). Both `generate_db.py` functions must stay in exact lockstep with
       `DictionaryStore.FrequencySQL` (shared-definition comments in both files explain why) if
       the ranking logic (functional/deictic POS boost, jpdb/wordfreq tie-breaking) ever changes.
+- [x] **`あなた` resolved to the wrong dictionary entry (彼方's glosses instead of 貴方's)** —
+      Fixed 2026-08-02/03. NOT a ranking-algorithm bug: `065090a` (2026-07-31) already fixed the
+      actual ranking defect (added `FrequencySQL.siblingRealRankTier` so a zipf-derived
+      pseudo-rank on a sibling entry can't outrank a real JPDB rank — see that function's doc
+      comment in `DictionaryStore+FrequencyRanking.swift`) and correctly regenerated
+      `dictionary.sqlite`. But `dictionary.sqlite` isn't bundled in the app (see the dict-offload
+      item above) — it's downloaded from a **pinned** GitHub Release
+      (`DictionaryDownloadManager.releaseTag`/`expectedSHA256`), and `065090a` regenerated the
+      local file without bumping either constant or publishing a new release. Every install, old
+      and fresh, stayed permanently on the pre-fix `dictionary-v1` asset — the fix was committed
+      but literally unreachable by any device. Root-caused by tracing a bad save (headword あなた
+      showing 彼方's "beyond/across/the other side/the distance" glosses) through
+      `SegmentListView`'s save path → `lookupFirstEntryID` → `canonicalEntryIDMap` →
+      `surface_canonical_entry` (all correct, both by inspection and by direct query) →
+      discovering the download pin was stale. Fixed: published `dictionary-v2` (verified
+      `d2d8e4e4…` matches both the release asset and the pinned hash), bumped
+      `DictionaryDownloadManager.releaseTag`/`expectedSHA256` and `data_manifest.json`'s
+      `dictionary` entry to match (`1f9a9fd`). A **stale saved word doesn't self-heal** —
+      `WordDetailView` reads `SavedWord.canonicalEntryID` directly, never re-resolving by surface
+      — so any card saved under the old pin needs a manual delete+re-save.
+      - **Regression tests added** (`KiokuTests/DictionaryDownloadManagerTests.swift`), guarding
+        against this exact failure mode recurring silently:
+        - `testLocalDictionarySQLiteMatchesPinnedRelease` — fails the moment
+          `Resources/dictionary.sqlite` and the pinned hash diverge (would have caught `065090a`
+          immediately).
+        - `testCanonicalEntryIDMapAgreesWithLiveRankingForEveryAmbiguousSurface` — exhaustively
+          compares `surface_canonical_entry`'s precomputed winner against `fetchMatchedEntries`'
+          live-ranked winner for every surface with >1 candidate entry (17,287 of ~456,249 total
+          surfaces as of this writing — a single-candidate surface can't disagree with itself, so
+          this is already complete coverage of everywhere the two implementations COULD diverge).
+        - `testKnownCollisionSurfacesResolveToTheCorrectEntry` — ground truth (verified
+          headword/gloss), independent of whether the two implementations merely agree with each
+          other (guards against a shared mistake surviving a future consolidation, see below).
+      - **Open follow-up — unify the two ranking implementations, not just detect their drift:**
+        `fetchMatchedEntries` (`DictionaryStore+RowFetching.swift`, live SQL, run per-lookup) and
+        `materialize_canonical_entry_ids` (`generate_db.py`, precomputed once at DB-build time
+        into `surface_canonical_entry`) are two independently hand-maintained implementations of
+        the identical selection priority, kept in sync only by a code-comment convention. Not
+        what caused this particular bug (verified both currently agree) — but a standing risk for
+        the next ranking tweak. Proposed design: extend `generate_db.py` to materialize the
+        **full ranked candidate list** per surface (not just the winner) into a new
+        `surface_ranked_entries(surface, entry_id, rank_position, jpdb_rank, wordfreq_zipf)`
+        table, windowed via `ROW_NUMBER() OVER (PARTITION BY surface ORDER BY <the same tiers>)`
+        instead of filtered to one `?1` parameter; make `surface_canonical_entry` a view
+        (`WHERE rank_position = 0`) so `fetchCanonicalEntryIDMap`'s SQL doesn't even need to
+        change; and replace `fetchMatchedEntries`'s live CTE/window-function ranking with a
+        trivial `WHERE surface = ?1 ORDER BY rank_position` indexed read — deleting
+        `DictionaryStore+FrequencyRanking.swift`'s tier logic (`effectiveRank`,
+        `siblingRealRankTier`, `functionalPosMatch`, the zipf bucket table) from the app
+        entirely, since after this only `generate_db.py` computes ranking, period. **Cost
+        measured 2026-08-03 against the current DB:** 456,249 distinct surfaces, only 489,162
+        total (surface, entry) candidate pairs — a 7% increase over today's winner-only row
+        count, not a multiplier (only 17,287 surfaces have >1 candidate; max fan-out for any
+        single surface is 51). Today's `surface_canonical_entry` table is 12.5MB inside a 365MB
+        `dictionary.sqlite`; the full-list version is estimated at ~14–18MB — negligible.
+        Requires regenerating and republishing as `dictionary-v3` once implemented, validated by
+        running `testCanonicalEntryIDMapAgreesWithLiveRankingForEveryAmbiguousSurface` before and
+        after as the golden-master check that the new query is truly equivalent, not just "looks
+        right" on a sample. Not started.
 - [x] Halfwidth katakana normalization in lookup (ｱｲｳｴｵ → アイウエオ)
 - [x] Lexicon lemma ranking respects saved-word surfaces when scoring inflection candidates (`Lexicon.swift:241-270` — `resolve()` ranks lexemes by saved surface + inflection-chain score)
 - [x] Use frequency data to influence segmentation path selection — Done. The Viterbi cost
