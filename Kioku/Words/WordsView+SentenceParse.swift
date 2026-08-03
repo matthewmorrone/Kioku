@@ -56,16 +56,20 @@ extension WordsView {
             Spacer(minLength: 0)
 
             if let entry = segment.entry {
+                let saved = isSaved(entry)
+                let learnedState = reviewStore.learnedState(for: entry.entryId)
                 Button {
                     toggleSave(entry)
                 } label: {
-                    let saved = isSaved(entry)
-                    Image(systemName: saved ? "star.fill" : "star")
-                        .foregroundStyle(saved ? Color.yellow : Color.secondary)
+                    Image(systemName: learnedIcon(state: learnedState, saved: saved))
+                        .foregroundStyle(learnedIconColor(state: learnedState, saved: saved))
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isSaved(entry) ? "Unsave Word" : "Save Word")
+                .accessibilityLabel(saved ? "Unsave Word" : "Save Word")
+                .contextMenu {
+                    learnedStateMenuButtons(setState: learnedStateSetter(entryID: entry.entryId, reviewStore: reviewStore))
+                }
             }
         }
         .padding(.vertical, 4)
