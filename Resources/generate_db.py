@@ -1147,7 +1147,11 @@ _KANA_RANGES = ((0x3040, 0x309F), (0x30A0, 0x30FF))
 
 
 def _is_pure_kana(text):
-    if not text:
+    # Registered as a SQLite scalar function (IS_PURE_KANA) applied to surface, a NOT NULL TEXT
+    # column, so SQLite itself never hands this a non-str/NULL value in practice — but a Python
+    # UDF that raises on unexpected input aborts the whole materialize_canonical_entry_ids query
+    # rather than just misclassifying one row, so guard defensively anyway.
+    if not isinstance(text, str) or not text:
         return False
     return all(any(lo <= ord(ch) <= hi for lo, hi in _KANA_RANGES) for ch in text)
 
