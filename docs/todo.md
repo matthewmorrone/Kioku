@@ -211,7 +211,46 @@ own sections.)
         Requires regenerating and republishing as `dictionary-v3` once implemented, validated by
         running `testCanonicalEntryIDMapAgreesWithLiveRankingForEveryAmbiguousSurface` before and
         after as the golden-master check that the new query is truly equivalent, not just "looks
-        right" on a sample. Not started.
+        right" on a sample. Not started — the drift bug below is fixed without doing this
+        consolidation, so this remains purely a future risk-reduction cleanup, not a live bug.
+      - **2026-08-05 — the "both currently agree" claim above turned out to be stale: found and
+        fixed the actual drift.** A later session ran the exhaustive test and got real failures —
+        70 of 17,287 ambiguous surfaces disagreed (e.g. その: precomputed picked the demonstrative,
+        `fetchMatchedEntries` picked 園 "garden"). Root causes, both now fixed:
+        1. **SQL correlated-subquery column collision** (`DictionaryStore+RowFetching.swift`,
+           `fetchMatchedEntries`'s `posBoostTier`): `FrequencySQL.functionalPosMatch` was called
+           with the bare column name `entry_id` as `entryIDExpr`, producing
+           `EXISTS (SELECT 1 FROM entry_functional_pos efp WHERE efp.entry_id = entry_id)`. Since
+           `entry_functional_pos` itself has a column named `entry_id`, SQLite resolves the
+           unqualified reference to the *innermost* scope — `efp.entry_id = efp.entry_id` — which
+           is trivially always true. The functional/deictic POS boost tier was silently a
+           complete no-op for every kana-surface lookup, on every build, since the tier was
+           introduced. Fixed by qualifying it as `candidates.entry_id` (the CTE the ORDER BY
+           actually runs over). Accounted for 49 of the 70 mismatches.
+        2. **Missing kanji-surface gate in `generate_db.py`**: `fetchMatchedEntries` intentionally
+           gates its functional-POS boost to `matchKana && !matchKanji` (pure-kana surfaces only)
+           so that tapping a kanji surface like 我 resolves to われ "self", not が's archaic-kanji
+           particle homograph — see that gate's comment. `materialize_canonical_entry_ids`
+           applied the boost to every surface unconditionally, with no equivalent gate. Fixed by
+           adding `_is_pure_kana()` (mirrors `ScriptClassifier.isPureKana`'s hiragana/katakana
+           Unicode ranges) and gating the `is_functional` tier on it, matching the live query.
+           Accounted for the remaining 21 mismatches. Verified 0 mismatches across all 17,287
+           ambiguous surfaces after both fixes, and `testKnownCollisionSurfacesResolveToTheCorrectEntry`
+           still passes. Regenerated `dictionary.sqlite` from the existing build (only
+           `materialize_canonical_entry_ids` needed to re-run — no JMdict/wordfreq/JPDB source
+           re-import required) and re-split the committed `dictionary.sqlite.zst.part-*` chunks;
+           bumped `DictionaryDownloadManager.releaseTag`/`expectedSHA256` and
+           `data_manifest.json`'s `dictionary` entry to `dictionary-v3` /
+           `8ca1dcc1cc6efa58f395bed9995440330fc49175741eb913f47186d291c65b70`.
+           **Still needed: publish the `dictionary-v3` GitHub Release itself** with that exact
+           `dictionary.sqlite` (reconstructible via `bash scripts/ensure_dictionary.sh` from this
+           commit's `.zst.part-*` chunks) as the asset — the session that made this fix had no
+           tool capable of uploading a ~365MB release asset. Until that release exists, a fresh
+           install's `DictionaryDownloadManager` download will 404 against the bumped
+           `releaseTag`, exactly the "regenerated but never republished" failure mode the
+           `testLocalDictionarySQLiteMatchesPinnedRelease` regression test and the `あなた` bug
+           above both exist to catch — this is the one gap that test can't catch, since it only
+           checks local-vs-pin agreement, not that the pinned release actually exists.
 - [x] Halfwidth katakana normalization in lookup (ｱｲｳｴｵ → アイウエオ)
 - [x] Lexicon lemma ranking respects saved-word surfaces when scoring inflection candidates (`Lexicon.swift:241-270` — `resolve()` ranks lexemes by saved surface + inflection-chain score)
 - [x] Use frequency data to influence segmentation path selection — Done. The Viterbi cost
