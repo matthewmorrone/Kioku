@@ -53,6 +53,10 @@ struct ReadView: View {
     @AppStorage(TokenColorSettings.colorBKey) var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
     @AppStorage(TokenColorSettings.highlightColorKey) var highlightHex: String = TokenColorSettings.defaultHighlightHex
     @AppStorage("kioku.settings.showFurigana") var isFuriganaVisible = true
+    // When on, furigana is suppressed for any segment whose word is marked learned or
+    // mastered (see ReviewStore). Independent of isFuriganaVisible, which is the master
+    // on/off switch — this only narrows what shows while furigana is otherwise on.
+    @AppStorage("kioku.settings.hideFuriganaForKnownWords") var isFuriganaHiddenForKnownWords = false
     @AppStorage("kioku.settings.colorAlternation") var isColorAlternationEnabled = true
     @AppStorage("kioku.settings.highlightUnknown") var isHighlightUnknownEnabled = false
     @AppStorage("kioku.settings.applyGlobally") var shouldApplyChangesGlobally = true
@@ -86,6 +90,9 @@ struct ReadView: View {
     @State var segmentRanges: [Range<String.Index>] = []
     // Cache for the favorited-highlight set so it isn't recomputed (deinflection sweep) on every body eval.
     @State var favoritedHighlightMemo = FavoritedHighlightMemo()
+    // Cache for the "hide furigana for known words" segment set — same memoization rationale
+    // as favoritedHighlightMemo above.
+    @State var knownWordFuriganaMemo = KnownWordFuriganaMemo()
     @State var unknownSegmentLocations: Set<Int> = []
     @State var selectedSegmentLocation: Int?
     @State var selectedHighlightRangeOverride: NSRange?
