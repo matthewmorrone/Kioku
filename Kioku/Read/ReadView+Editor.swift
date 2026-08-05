@@ -24,6 +24,17 @@ final class FavoritedHighlightMemo {
     var lemmaBySurface: [String: String] = [:]
 }
 
+// Reference-type cache for the "hide furigana for known words" computation. Same shape and
+// rationale as FavoritedHighlightMemo above: held by @State so it survives body re-evals, and
+// the lemma cache is keyed per-text so repeated recomputes (e.g. a review answer changing
+// reviewStore.learned) don't re-deinflect the whole note.
+final class KnownWordFuriganaMemo {
+    var signature: Int?
+    var locations: Set<Int> = []
+    var lemmaTextKey: Int = 0
+    var lemmaBySurface: [String: String] = [:]
+}
+
 // Reference-type mirror of the CoreText read view's live scroll offset. The CT renderer reports
 // every offset change here instead of into @State, so view-mode scrolling costs no SwiftUI body
 // re-eval per frame (each eval re-hashes the whole note for the typography fingerprint). The
@@ -176,6 +187,119 @@ extension ReadView {
         return (locations, elsewhereLocations)
     }
 
+    // UTF-16 locations of segments whose word is marked learned or mastered (ReviewStore),
+    // when the "hide furigana for known words" toggle is on — the Read-tab display option
+    // that lets a reader stop seeing readings for words they already know. Memoized the same
+    // way as favoritedSegmentLocations above: `body` re-evaluates far more often than the
+    // inputs (wordsStore.words, reviewStore's learned/mastered sets, segmentation) actually
+    // change, so a signature check skips the per-segment lemma-bridging sweep on a memo hit.
+    var furiganaSuppressedForKnownWordsSegmentLocations: Set<Int> {
+        ensureKnownWordFuriganaComputed()
+        return knownWordFuriganaMemo.locations
+    }
+
+    // Shared memo-check for furiganaSuppressedForKnownWordsSegmentLocations — recomputes at
+    // most once per signature change, mirroring ensureFavoritedHighlightComputed above.
+    private func ensureKnownWordFuriganaComputed() {
+        guard isFuriganaHiddenForKnownWords else {
+            knownWordFuriganaMemo.signature = nil
+            knownWordFuriganaMemo.locations = []
+            return
+        }
+
+        var hasher = Hasher()
+        hasher.combine(activeNoteID)
+        hasher.combine(segmentRanges.count)
+        if let first = segmentRanges.first { hasher.combine(NSRange(first, in: text).location) }
+        if let last = segmentRanges.last { hasher.combine(NSRange(last, in: text).location) }
+        for word in wordsStore.words {
+            hasher.combine(word.canonicalEntryID)
+            for surface in word.encounteredSurfaces.sorted() { hasher.combine(surface) }
+        }
+        for id in reviewStore.learned.sorted() { hasher.combine(id) }
+        for id in reviewStore.mastered.sorted() { hasher.combine(id) }
+        let signature = hasher.finalize()
+        if knownWordFuriganaMemo.signature == signature {
+            return
+        }
+
+        knownWordFuriganaMemo.signature = signature
+        knownWordFuriganaMemo.locations = computeFuriganaSuppressedForKnownWordsSegmentLocations()
+    }
+
+    // The heavy computation behind furiganaSuppressedForKnownWordsSegmentLocations, run only
+    // on a memo miss. Resolves each segment's surface to a canonicalEntryID via the saved
+    // words' encountered-surface sets (lemma-bridged, same technique as the favorited-glow
+    // computation above), then checks that entry against ReviewStore's learned/mastered sets.
+    // Words that were never saved have no canonicalEntryID to check and are left alone.
+    private func computeFuriganaSuppressedForKnownWordsSegmentLocations() -> Set<Int> {
+        guard reviewStore.learned.isEmpty == false || reviewStore.mastered.isEmpty == false else {
+            return []
+        }
+
+        var entryIDBySurface: [String: Int64] = [:]
+        for word in wordsStore.words {
+            entryIDBySurface[word.surface] = word.canonicalEntryID
+            for surface in word.encounteredSurfaces {
+                entryIDBySurface[surface] = word.canonicalEntryID
+            }
+        }
+        guard entryIDBySurface.isEmpty == false else { return [] }
+
+        let textKey = text.hashValue
+        if knownWordFuriganaMemo.lemmaTextKey != textKey {
+            knownWordFuriganaMemo.lemmaTextKey = textKey
+            knownWordFuriganaMemo.lemmaBySurface = [:]
+        }
+        let resolveLemma: (String) -> String? = { [segmenter, knownWordFuriganaMemo] surface in
+            if let cached = knownWordFuriganaMemo.lemmaBySurface[surface] { return cached }
+            let value = segmenter.preferredLemma(for: surface)
+            if let value { knownWordFuriganaMemo.lemmaBySurface[surface] = value }
+            return value
+        }
+
+        let ns = text as NSString
+        var locations = Set<Int>()
+        var isKnownBySurface: [String: Bool] = [:]
+        for range in segmentRanges {
+            let nsRange = NSRange(range, in: text)
+            guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+            let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard surface.isEmpty == false else { continue }
+
+            let isKnown = isKnownBySurface[surface] ?? {
+                let entryID = entryIDBySurface[surface] ?? resolveLemma(surface).flatMap { entryIDBySurface[$0] }
+                let value = entryID.map { reviewStore.learned.contains($0) || reviewStore.mastered.contains($0) } ?? false
+                isKnownBySurface[surface] = value
+                return value
+            }()
+
+            if isKnown {
+                locations.insert(nsRange.location)
+            }
+        }
+        return locations
+    }
+
+    // Furigana maps actually handed to the renderers: gated by the master Furigana toggle,
+    // and with entries dropped for segments whose word is suppressed by the "hide furigana
+    // for known words" setting. Computed once per body pass and reused at all three renderer
+    // call sites below (CoreText, FuriganaTextRenderer, RichTextEditor) so the read and edit
+    // surfaces never disagree about which readings are showing.
+    var displayedFuriganaBySegmentLocation: [Int: String] {
+        guard (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible else { return [:] }
+        let suppressed = furiganaSuppressedForKnownWordsSegmentLocations
+        guard suppressed.isEmpty == false else { return furiganaBySegmentLocation }
+        return furiganaBySegmentLocation.filter { suppressed.contains($0.key) == false }
+    }
+
+    var displayedFuriganaLengthBySegmentLocation: [Int: Int] {
+        guard (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible else { return [:] }
+        let suppressed = furiganaSuppressedForKnownWordsSegmentLocations
+        guard suppressed.isEmpty == false else { return furiganaLengthBySegmentLocation }
+        return furiganaLengthBySegmentLocation.filter { suppressed.contains($0.key) == false }
+    }
+
     var editorView: some View {
         VStack(spacing: 8) {
             ZStack {
@@ -183,8 +307,8 @@ extension ReadView {
                     KiokuCoreTextRendererView(
                         text: text,
                         segmentationRanges: segmentRanges,
-                        furiganaBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaBySegmentLocation : [:],
-                        furiganaLengthBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                        furiganaBySegmentLocation: displayedFuriganaBySegmentLocation,
+                        furiganaLengthBySegmentLocation: displayedFuriganaLengthBySegmentLocation,
                         isFuriganaVisible: isFuriganaVisible,
                         isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
                         isColorAlternationEnabled: isColorAlternationEnabled,
@@ -282,8 +406,8 @@ extension ReadView {
                     playbackHighlightRangeOverride: playbackHighlightRangeOverride,
                     activePlaybackCueIndex: activePlaybackCueIndex,
                     illegalMergeBoundaryLocation: illegalMergeBoundaryLocation,
-                    furiganaBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaBySegmentLocation : [:],
-                    furiganaLengthBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                    furiganaBySegmentLocation: displayedFuriganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: displayedFuriganaLengthBySegmentLocation,
                     isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
                     isRubySpacingEnabled: isRubySpacingEnabled,
                     isColorAlternationEnabled: isColorAlternationEnabled,
@@ -327,8 +451,8 @@ extension ReadView {
                     text: $text,
                     isLineWrappingEnabled: isLineWrappingEnabled,
                     segmentationRanges: segmentRanges,
-                    furiganaBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaBySegmentLocation : [:],
-                    furiganaLengthBySegmentLocation: (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible ? furiganaLengthBySegmentLocation : [:],
+                    furiganaBySegmentLocation: displayedFuriganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: displayedFuriganaLengthBySegmentLocation,
                     isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
                     isColorAlternationEnabled: isColorAlternationEnabled,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,

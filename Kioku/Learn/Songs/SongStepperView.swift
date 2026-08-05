@@ -28,12 +28,17 @@ struct SongStepperView: View {
     @EnvironmentObject private var wordsStore: WordsStore
     // Powers the lookup sheet's save button long-press learned-state menu.
     @EnvironmentObject private var reviewStore: ReviewStore
-    // Per-line expansion state. A line is "expanded" when its word/grammar explanations are
-    // visible AND furigana is rendered above its Japanese — the two move together. Keyed by
-    // `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
+    // Per-line expansion state: whether a line's word/grammar explanations are visible.
+    // Furigana on the Japanese row is independent of this (see ensureFuriganaCaches / the
+    // eager cache build). Keyed by `line.index` (not array offset) so it survives
+    // regenerate / breakdown rebuilds.
     @State private var expandedByLineIndex: Set<Int> = []
     @State private var isRegenerateConfirmationPresented: Bool = false
     @State private var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
+    // Per-kanji-run readings for word-list headwords, keyed by word surface. Built alongside
+    // furiganaCacheByLineIndex (see ensureFuriganaCaches) and handed to each SongLineCard so
+    // its "Show explanations" word list can render furigana too.
+    @State private var wordFuriganaBySurface: [String: [Int: String]] = [:]
     // Owns audio playback for "play this line" affordances. Stays nil-loaded when the
     // note has no audio attachment or no SRT — the matcher returns an empty map and the
     // cards omit play buttons.
@@ -170,13 +175,26 @@ struct SongStepperView: View {
         .preference(key: CardsStudySessionActivePreferenceKey.self, value: true)
         .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: true)
         // Reset per-line expansion / furigana caches when a fresh breakdown lands so a
-        // regenerate doesn't leave the previous lines visually mid-toggle. Fires only for
-        // explicit setBreakdown writes — disk-fault reads go through the non-published
-        // memo and don't touch `breakdownsByNoteID`.
+        // regenerate doesn't leave the previous lines visually mid-toggle, then eagerly
+        // resolve furigana for the new breakdown (see ensureFuriganaCaches) so lines and
+        // word lists show readings immediately rather than only after the user expands them.
+        // Fires only for explicit setBreakdown writes — disk-fault reads go through the
+        // non-published memo and don't touch `breakdownsByNoteID`.
         .onChange(of: songBreakdownStore.breakdownsByNoteID[note.id]) { _, newBreakdown in
-            guard newBreakdown != nil else { return }
+            guard let newBreakdown else { return }
             expandedByLineIndex = []
             furiganaCacheByLineIndex = [:]
+            wordFuriganaBySurface = [:]
+            ensureFuriganaCaches(for: newBreakdown)
+        }
+        // Covers the case this view appears with an already-cached breakdown on disk — the
+        // onChange above only fires on a *transition*, not on the initial value, so without
+        // this a breakdown opened straight from cache would show no furigana until some
+        // unrelated store write happened to fire the onChange.
+        .onAppear {
+            if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id) {
+                ensureFuriganaCaches(for: breakdown)
+            }
         }
         // Lazily loads the audio + cues for this note (if it has any) so the per-line
         // play buttons have something to seek into. Early-returns when there's no audio
@@ -377,6 +395,7 @@ struct SongStepperView: View {
                         referencedLine: referencedLine(for: line, in: breakdown),
                         isExpanded: expandedByLineIndex.contains(line.index),
                         furiganaCache: furiganaCacheByLineIndex[line.index],
+                        wordFurigana: wordFuriganaBySurface,
                         playbackRange: lineRangesByIndex[line.index],
                         onToggleExpansion: { toggleExpansion(for: line) },
                         onPlayLine: {
@@ -393,13 +412,10 @@ struct SongStepperView: View {
         }
     }
 
-    // Flips the per-line "expanded" state. Expanded means: word/grammar explanations are
-    // shown AND furigana is rendered above the Japanese — the two move together so that a
-    // user who taps either affordance gets a consistent "open this line" gesture.
-    // Lazily builds the furigana reading cache on first expand; cache is keyed by
-    // `line.index` so repeat toggles for the same line are O(1). The compute lives here
-    // (not in `SongLineCard`) because the segmenter and surfaceReadingData stay scoped to
-    // the stepper; the card receives only the resolved payload.
+    // Flips the per-line "expanded" state, which now controls only the word/grammar
+    // explanations — furigana is resolved eagerly for every line (see ensureFuriganaCaches)
+    // and no longer depends on this flag. The defensive rebuild below is a safety net for
+    // the (normally unreachable) case a line's cache wasn't populated by the eager pass.
     private func toggleExpansion(for line: SongLine) {
         if expandedByLineIndex.contains(line.index) {
             expandedByLineIndex.remove(line.index)
@@ -431,6 +447,39 @@ struct SongStepperView: View {
             furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line.original)
         }
         expandedByLineIndex = Set(breakdown.lines.map { $0.index })
+    }
+
+    // Eagerly resolves furigana for every line and every word-list headword in the
+    // breakdown, so readings are available as soon as a line or word list renders rather
+    // than only after the user taps to expand it (see SongLineCard.originalLine — furigana
+    // there no longer waits on the expansion toggle). Idempotent: skips any line/surface
+    // already cached, so calling this again after a partial build (or "Show all") is cheap.
+    private func ensureFuriganaCaches(for breakdown: SongBreakdown) {
+        for line in breakdown.lines where furiganaCacheByLineIndex[line.index] == nil {
+            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line.original)
+        }
+        for line in breakdown.lines {
+            for word in line.words where wordFuriganaBySurface[word.surface] == nil {
+                wordFuriganaBySurface[word.surface] = buildWordFuriganaRunReadings(for: word.surface)
+            }
+        }
+    }
+
+    // Resolves per-kanji-run readings for a single word-list headword. Same resolver as
+    // buildFuriganaCache below, just run against the word's own surface in isolation rather
+    // than the full line — the word list shows headwords out of their sentence context, so
+    // there's no surrounding text to segment against.
+    private func buildWordFuriganaRunReadings(for surface: String) -> [Int: String] {
+        guard let segmenter, surface.isEmpty == false else { return [:] }
+        let edges = segmenter.longestMatchEdges(for: surface)
+        return FuriganaResolver(
+            segmenter: segmenter,
+            kanjiReadingFallback: kanjiReadingFallback
+        ).build(
+            for: surface,
+            edges: edges,
+            surfaceReadingData: surfaceReadingData
+        ).byLocation
     }
 
     // Reuses the Read tab's resolver so the breakdown gets the exact same reading

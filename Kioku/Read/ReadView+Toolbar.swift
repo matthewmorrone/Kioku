@@ -216,6 +216,14 @@ extension ReadView {
             }
 
             displayOptionRow(
+                title: "Hide Furigana for Known Words",
+                systemImage: isFuriganaHiddenForKnownWords ? "eye.slash.circle.fill" : "eye.slash.circle",
+                isEnabled: isFuriganaHiddenForKnownWords
+            ) {
+                isFuriganaHiddenForKnownWords.toggle()
+            }
+
+            displayOptionRow(
                 title: "Apply Changes Globally",
                 systemImage: "arrow.triangle.branch",
                 isEnabled: shouldApplyChangesGlobally

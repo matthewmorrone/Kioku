@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // One line of a song breakdown rendered as a card inside the per-note vertical scroll.
 // Layout (top → bottom):
@@ -20,14 +21,17 @@ import SwiftUI
 struct SongLineCard: View {
     let line: SongLine
     let referencedLine: SongLine?
-    // Single per-line "expanded" flag controlling both the word/grammar explanations and
-    // whether the Japanese row renders with furigana via `FuriganaTextRenderer`. The two
-    // are bound on purpose: a user tapping either affordance opens (or closes) the same
-    // detail surface, which keeps the gesture model consistent across the card.
+    // Per-line "expanded" flag controlling the word/grammar explanations below the Japanese
+    // row. Furigana on the Japanese row itself is independent of this flag — see
+    // `originalLine` — so it's visible whether or not the explanations are open.
     let isExpanded: Bool
     // Lazily-populated cache; nil before the first expansion for this line. Owned by the
     // parent stepper so cache compute happens once per line per session.
     let furiganaCache: LineFuriganaCache?
+    // Per-kanji-run readings for word-list headwords, keyed by word surface. Owned by the
+    // parent stepper (it has the segmenter/surfaceReadingData in scope) and built eagerly
+    // alongside furiganaCache so every word in the explanations list can show furigana.
+    let wordFurigana: [String: [Int: String]]
     // The audio time-range matched to this line via the cue text-keyed lookup, or nil
     // when there's no audio attached, no SRT, or no cue matched this line's text. Nil
     // hides the play button entirely — "if available" semantics on the play affordance.
@@ -175,17 +179,22 @@ struct SongLineCard: View {
             && line.index > 1
     }
 
-    // Big Japanese row. Tapping toggles furigana on/off for this line only. The two
-    // branches share size/leading-alignment so toggling does not shift the surrounding
-    // layout. The plain branch carries its own SwiftUI tap gesture; the renderer branch
-    // routes taps through `onSegmentTapped` because a UIViewRepresentable wrapping
-    // UITextView intercepts touches before SwiftUI sees them.
+    // Big Japanese row. Furigana shows whenever the cache has readings for this line —
+    // independent of `isExpanded`, which now controls only the word/grammar explanations
+    // below. (Previously furigana was tied to the same flag, so collapsing the explanations
+    // — or simply never expanding a line — hid furigana too; readers want the reading aid
+    // available regardless of whether they've opened the explanations for that line.)
+    // Tapping the row still toggles the explanations. The two branches share size/leading-
+    // alignment so that toggle does not shift the surrounding layout. The plain branch
+    // carries its own SwiftUI tap gesture; the renderer branch routes taps through
+    // `onSegmentTapped` because a UIViewRepresentable wrapping UITextView intercepts
+    // touches before SwiftUI sees them.
     @ViewBuilder
     private var originalLine: some View {
-        if isExpanded, let cache = furiganaCache, cache.furiganaBySegmentLocation.isEmpty == false {
+        if let cache = furiganaCache, cache.furiganaBySegmentLocation.isEmpty == false {
             furiganaRow(cache: cache)
                 .accessibilityLabel(line.original)
-                .accessibilityHint("Tap to hide furigana and explanations")
+                .accessibilityHint(explanationsAccessibilityHint)
         } else {
             Text(line.original)
                 .font(.system(size: 28, weight: .medium))
@@ -195,8 +204,13 @@ struct SongLineCard: View {
                 .contentShape(Rectangle())
                 .onTapGesture { onToggleExpansion() }
                 .accessibilityLabel(line.original)
-                .accessibilityHint(furiganaLikelyAvailable ? "Tap to show furigana and explanations" : "Tap to show explanations")
+                .accessibilityHint(explanationsAccessibilityHint)
         }
+    }
+
+    private var explanationsAccessibilityHint: String {
+        guard hasExpandableDetail else { return "" }
+        return isExpanded ? "Tap to hide explanations" : "Tap to show explanations"
     }
 
     // Renders the line via FuriganaTextRenderer at the same 28pt size as the plain Text
@@ -246,18 +260,6 @@ struct SongLineCard: View {
             isScrollEnabled: false
         )
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // Heuristic for the VoiceOver hint: suppress "Tap to show furigana" when the line
-    // clearly has no kanji to annotate. A tight CJK Unified Ideographs check avoids
-    // importing ScriptClassifier just for this string of accessibility text.
-    private var furiganaLikelyAvailable: Bool {
-        if let cache = furiganaCache {
-            return cache.furiganaBySegmentLocation.isEmpty == false
-        }
-        return line.original.contains(where: { ch in
-            ch.unicodeScalars.contains(where: { (0x4E00...0x9FFF).contains($0.value) })
-        })
     }
 
     // Gist only — italicised so it reads as interpretation/voice rather than continuation
@@ -385,16 +387,16 @@ struct SongLineCard: View {
         return trimmed
     }
 
-    // Renders one word entry: surface, LLM definition wrapped beneath. Tapping the row opens
-    // the shared lookup sheet (via onWordTapped) so the breakdown's vocabulary is a jumping-off
-    // point into the dictionary, like tapping a segment in the read view.
+    // Renders one word entry: surface (with furigana when available), LLM definition wrapped
+    // beneath. Tapping the row opens the shared lookup sheet (via onWordTapped) so the
+    // breakdown's vocabulary is a jumping-off point into the dictionary, like tapping a
+    // segment in the read view.
     private func wordEntryRow(_ word: SongWord) -> some View {
         Button {
             onWordTapped(word)
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(word.surface)
-                    .font(.title3.weight(.semibold))
+                wordHeadword(word)
                 if word.definition.isEmpty == false {
                     // Strip inline-emphasis markers so `*foo*` / `**bar**` don't leak literal
                     // asterisks into the rendered definition.
@@ -409,5 +411,25 @@ struct SongLineCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Look up \(word.surface)")
+    }
+
+    // A word-list headword: furigana over kanji runs when the stepper resolved a reading for
+    // this surface, plain text otherwise (kana-only words, or a surface the resolver couldn't
+    // align). Font is a fixed UIFont matching `.title3.weight(.semibold)` since FuriganaLabel
+    // is a UIKit view and doesn't take a SwiftUI Font.
+    @ViewBuilder
+    private func wordHeadword(_ word: SongWord) -> some View {
+        if let runReadings = wordFurigana[word.surface], runReadings.isEmpty == false {
+            FuriganaLabel(
+                surface: word.surface,
+                reading: "",
+                font: .systemFont(ofSize: 20, weight: .semibold),
+                gap: CGFloat(furiganaGap),
+                explicitRunReadings: runReadings
+            )
+        } else {
+            Text(word.surface)
+                .font(.title3.weight(.semibold))
+        }
     }
 }
