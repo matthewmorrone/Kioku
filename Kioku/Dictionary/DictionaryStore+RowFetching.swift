@@ -81,11 +81,19 @@ extension DictionaryStore {
         // has many such collisions (この vs 此, その vs 園, あの vs 彼の) and the user always wants
         // the functional word. Gated to matchKana && !matchKanji so an explicit kanji-surface
         // lookup (tapping 我) doesn't promote a particle homograph over the intended kanji word.
-        // NB: `entry_id` here (not `e.id`) — this tier runs in the outer ORDER BY over the
-        // `candidates` CTE below, where the `entries e` alias is no longer in scope.
+        // NB: `candidates.entry_id` here (not `e.id`) — this tier runs in the outer ORDER BY
+        // over the `candidates` CTE below, where the `entries e` alias is no longer in scope.
+        // Must stay qualified: entry_functional_pos itself has a column named `entry_id`, so an
+        // unqualified `entry_id` inside functionalPosMatch's correlated EXISTS subquery resolves
+        // to that inner table (`efp.entry_id = efp.entry_id`, always true) instead of the outer
+        // candidate — silently turning this whole tier into a no-op. That shipped bug is why
+        // fetchMatchedEntries disagreed with the precomputed surface_canonical_entry table on
+        // every pure-kana surface where a functional/deictic entry should have won (e.g. その
+        // resolving to 園 "garden" instead of the demonstrative) — see
+        // testCanonicalEntryIDMapAgreesWithLiveRankingForEveryAmbiguousSurface.
         let posBoostTier: String
         if matchKana && !matchKanji {
-            posBoostTier = "CASE WHEN \(FrequencySQL.functionalPosMatch(entryIDExpr: "entry_id")) THEN 0 ELSE 1 END ASC,\n"
+            posBoostTier = "CASE WHEN \(FrequencySQL.functionalPosMatch(entryIDExpr: "candidates.entry_id")) THEN 0 ELSE 1 END ASC,\n"
         } else {
             posBoostTier = ""
         }
