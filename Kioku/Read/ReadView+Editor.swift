@@ -288,16 +288,20 @@ extension ReadView {
     // surfaces never disagree about which readings are showing.
     var displayedFuriganaBySegmentLocation: [Int: String] {
         guard (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible else { return [:] }
-        let suppressed = furiganaSuppressedForKnownWordsSegmentLocations
-        guard suppressed.isEmpty == false else { return furiganaBySegmentLocation }
-        return furiganaBySegmentLocation.filter { suppressed.contains($0.key) == false }
+        return furiganaExcludingKnownWordSuppressions(furiganaBySegmentLocation)
     }
 
     var displayedFuriganaLengthBySegmentLocation: [Int: Int] {
         guard (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible else { return [:] }
+        return furiganaExcludingKnownWordSuppressions(furiganaLengthBySegmentLocation)
+    }
+
+    // Shared filter behind both displayed* properties above, so the "hide furigana for known
+    // words" exclusion can't drift out of sync between the reading map and the length map.
+    private func furiganaExcludingKnownWordSuppressions<Value>(_ map: [Int: Value]) -> [Int: Value] {
         let suppressed = furiganaSuppressedForKnownWordsSegmentLocations
-        guard suppressed.isEmpty == false else { return furiganaLengthBySegmentLocation }
-        return furiganaLengthBySegmentLocation.filter { suppressed.contains($0.key) == false }
+        guard suppressed.isEmpty == false else { return map }
+        return map.filter { suppressed.contains($0.key) == false }
     }
 
     var editorView: some View {
