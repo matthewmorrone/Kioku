@@ -232,8 +232,13 @@ own sections.)
            so that tapping a kanji surface like 我 resolves to われ "self", not が's archaic-kanji
            particle homograph — see that gate's comment. `materialize_canonical_entry_ids`
            applied the boost to every surface unconditionally, with no equivalent gate. Fixed by
-           adding `_is_pure_kana()` (mirrors `ScriptClassifier.isPureKana`'s hiragana/katakana
-           Unicode ranges) and gating the `is_functional` tier on it, matching the live query.
+           adding `_is_pure_kana()`, gating the `is_functional` tier on it, matching the live
+           query. Its hiragana/katakana Unicode ranges are now *parsed directly out of*
+           `ScriptClassifier.swift`'s `isPureKana` source at generate_db.py import time
+           (`_load_kana_ranges_from_swift()`, regex-extracted, fails loudly if the source shape
+           changes) rather than a second hand-copied hex-literal constant kept in sync only by a
+           comment — a hand-copied literal here is exactly how the kanji-surface half of this same
+           bug happened, so this closes that hole rather than reintroducing it in miniature.
            Accounted for the remaining 21 mismatches. Verified 0 mismatches across all 17,287
            ambiguous surfaces after both fixes, and `testKnownCollisionSurfacesResolveToTheCorrectEntry`
            still passes. Regenerated `dictionary.sqlite` from the existing build (only
@@ -241,7 +246,7 @@ own sections.)
            re-import required) and re-split the committed `dictionary.sqlite.zst.part-*` chunks;
            bumped `DictionaryDownloadManager.releaseTag`/`expectedSHA256` and
            `data_manifest.json`'s `dictionary` entry to `dictionary-v3` /
-           `8ca1dcc1cc6efa58f395bed9995440330fc49175741eb913f47186d291c65b70`.
+           `e07fc95aff31cdfdea36211bcd4d2570734c1a06ebe7bccfefd2f5305ca302dc`.
            **Still needed: publish the `dictionary-v3` GitHub Release itself** with that exact
            `dictionary.sqlite` (reconstructible via `bash scripts/ensure_dictionary.sh` from this
            commit's `.zst.part-*` chunks) as the asset — the session that made this fix had no

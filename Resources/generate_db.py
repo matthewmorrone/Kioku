@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 import hashlib
 import bisect
@@ -8,6 +9,7 @@ import sys
 import time
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_CLASSIFIER_SWIFT_PATH = PROJECT_ROOT / "Kioku" / "Dictionary" / "ScriptClassifier.swift"
 RESOURCES_DIR = PROJECT_ROOT / "Resources"
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
@@ -1138,12 +1140,37 @@ def _is_functional_pos(pos_field):
     return any(tag in _FUNCTIONAL_POS_TAGS or tag.startswith("aux-") for tag in tags)
 
 
-# Hiragana (U+3040-U+309F) + katakana (U+30A0-U+30FF) blocks. Must match
-# Kioku/Dictionary/ScriptClassifier.swift's isPureKana ranges exactly — this decides which
-# fetchMatchedEntries mode (matchKana-only vs matchKanji-only) a surface is ranked under, so
-# materialize_canonical_entry_ids has to gate its functional-POS tier on the identical test or
-# the two implementations disagree on script-mixed rankings.
-_KANA_RANGES = ((0x3040, 0x309F), (0x30A0, 0x30FF))
+def _load_kana_ranges_from_swift():
+    # Parses the hiragana/katakana Unicode range bounds straight out of isPureKana in
+    # ScriptClassifier.swift instead of hand-copying the hex literals here, so there's exactly
+    # one place they're written down. This decides which fetchMatchedEntries mode (matchKana-only
+    # vs matchKanji-only) a surface is ranked under, so materialize_canonical_entry_ids's
+    # functional-POS gate has to classify a surface identically to the Swift app or the two
+    # ranking implementations silently disagree again — the exact bug class
+    # testCanonicalEntryIDMapAgreesWithLiveRankingForEveryAmbiguousSurface exists to catch, and
+    # a hand-copied second literal that nothing forces to stay in sync was how the kanji-surface
+    # half of that bug happened in the first place. Fails loudly (not a silent fallback to a
+    # possibly-stale hardcoded copy) if isPureKana's source ever changes shape enough that this
+    # regex stops matching — update the regex to match the new shape.
+    text = SCRIPT_CLASSIFIER_SWIFT_PATH.read_text(encoding="utf-8")
+    match = re.search(
+        r"func isPureKana.*?"
+        r"isHiragana = \(0x([0-9A-Fa-f]+)\.\.\.0x([0-9A-Fa-f]+)\).*?"
+        r"isKatakana = \(0x([0-9A-Fa-f]+)\.\.\.0x([0-9A-Fa-f]+)\)",
+        text,
+        re.DOTALL,
+    )
+    if not match:
+        raise RuntimeError(
+            f"Could not find isPureKana's hiragana/katakana Unicode ranges in "
+            f"{SCRIPT_CLASSIFIER_SWIFT_PATH} — materialize_canonical_entry_ids's pure-kana gate "
+            "depends on parsing this exact shape to stay in sync with the Swift implementation."
+        )
+    hira_lo, hira_hi, kata_lo, kata_hi = match.groups()
+    return ((int(hira_lo, 16), int(hira_hi, 16)), (int(kata_lo, 16), int(kata_hi, 16)))
+
+
+_KANA_RANGES = _load_kana_ranges_from_swift()
 
 
 def _is_pure_kana(text):

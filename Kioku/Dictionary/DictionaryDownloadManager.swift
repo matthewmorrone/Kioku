@@ -35,7 +35,7 @@ final class DictionaryDownloadManager {
     // deliberately (new tag + freshly computed hash) whenever dictionary.sqlite is rebuilt by
     // Resources/generate_db.py and re-published — see docs/superpowers/plans/2026-07-15-dictionary-offload.md Task 6.
     nonisolated static let releaseTag = "dictionary-v3"
-    nonisolated static let expectedSHA256 = "8ca1dcc1cc6efa58f395bed9995440330fc49175741eb913f47186d291c65b70"
+    nonisolated static let expectedSHA256 = "e07fc95aff31cdfdea36211bcd4d2570734c1a06ebe7bccfefd2f5305ca302dc"
 
     // Public GitHub Release asset URL — matthewmorrone/Kioku is a public repo, so this needs no
     // authentication to fetch, same as the pinned huggingface.co URL WhisperModelManager uses.
