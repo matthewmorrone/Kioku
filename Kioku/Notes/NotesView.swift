@@ -277,7 +277,7 @@ struct NotesView: View {
                 if hasBreakdown {
                     Image(systemName: "sparkles.rectangle.stack")
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("Has breakdown")
+                        .accessibilityLabel("Has a generated breakdown")
                 }
             }
             .font(.system(size: 14, weight: .medium))
