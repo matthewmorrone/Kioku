@@ -247,15 +247,32 @@ own sections.)
            bumped `DictionaryDownloadManager.releaseTag`/`expectedSHA256` and
            `data_manifest.json`'s `dictionary` entry to `dictionary-v3` /
            `e07fc95aff31cdfdea36211bcd4d2570734c1a06ebe7bccfefd2f5305ca302dc`.
-           **Still needed: publish the `dictionary-v3` GitHub Release itself** with that exact
-           `dictionary.sqlite` (reconstructible via `bash scripts/ensure_dictionary.sh` from this
-           commit's `.zst.part-*` chunks) as the asset — the session that made this fix had no
-           tool capable of uploading a ~365MB release asset. Until that release exists, a fresh
-           install's `DictionaryDownloadManager` download will 404 against the bumped
-           `releaseTag`, exactly the "regenerated but never republished" failure mode the
-           `testLocalDictionarySQLiteMatchesPinnedRelease` regression test and the `あなた` bug
-           above both exist to catch — this is the one gap that test can't catch, since it only
-           checks local-vs-pin agreement, not that the pinned release actually exists.
+           Publishing the `dictionary-v3` GitHub Release itself was initially left as a manual
+           step (the session that made this fix had no tool capable of uploading a ~365MB
+           release asset) — see the automation entry directly below, added the same day, which
+           closes that gap for this and every future dictionary rebuild.
+      - **2026-08-05 — automated publishing the GitHub Release, closing the gap above for good.**
+        Manually publishing after every dictionary rebuild is exactly the step that got skipped
+        in `065090a` (the original `あなた` bug) and had to be redone by hand again for
+        `dictionary-v3` above — a manual step a human has to remember days or weeks after the
+        code change that required it is not a reliable process. Added
+        `.github/workflows/publish-dictionary-release.yml`: on every push to `main` that touches
+        `Resources/dictionary.sqlite.zst.part-*` or `DictionaryDownloadManager.swift` (plus
+        `workflow_dispatch` for an on-demand check), it rebuilds `dictionary.sqlite` from the
+        committed chunks, reads `releaseTag`/`expectedSHA256` straight out of
+        `DictionaryDownloadManager.swift` (no separately-tracked version number to drift from the
+        code), verifies the rebuilt file matches the pin, and either confirms a release already
+        exists at that tag with a matching asset digest (compared via GitHub's own `digest` field
+        on the release-asset API — no need to download the ~350MB asset to verify it) or publishes
+        one. Tags are never reused for different content — a digest mismatch on an
+        already-existing tag fails the workflow loudly rather than silently leaving stale bytes
+        live. "Code says releaseTag=X" and "release X exists on GitHub with the pinned bytes" can
+        no longer drift apart. Considered and deferred: swapping GitHub Releases for a real
+        CDN-backed object store (S3+CloudFront, Cloudflare R2, Backblaze B2) — not an App Store
+        policy concern (this downloads a data file, not code, which Apple's rules allow), but
+        GitHub Releases isn't rated/built as a production CDN, so at real install volume it's a
+        reliability risk (throttling/outage) rather than a rejection risk. Worth doing if
+        reliability at scale becomes a problem; not urgent while install volume is low.
 - [x] Halfwidth katakana normalization in lookup (ｱｲｳｴｵ → アイウエオ)
 - [x] Lexicon lemma ranking respects saved-word surfaces when scoring inflection candidates (`Lexicon.swift:241-270` — `resolve()` ranks lexemes by saved surface + inflection-chain score)
 - [x] Use frequency data to influence segmentation path selection — Done. The Viterbi cost

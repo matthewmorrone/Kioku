@@ -33,7 +33,11 @@ final class DictionaryDownloadManager {
     // pinnedRevision reasoning in WhisperModelManager.swift: a moving tag means a future edit to
     // the release silently changes the bytes every install receives. Bump both of these
     // deliberately (new tag + freshly computed hash) whenever dictionary.sqlite is rebuilt by
-    // Resources/generate_db.py and re-published — see docs/superpowers/plans/2026-07-15-dictionary-offload.md Task 6.
+    // Resources/generate_db.py — see docs/superpowers/plans/2026-07-15-dictionary-offload.md
+    // Task 6. Publishing the matching GitHub Release is then automatic (not a manual follow-up
+    // step to remember): .github/workflows/publish-dictionary-release.yml runs on every push to
+    // main that touches this pin and publishes it if it isn't live yet — see docs/todo.md's
+    // 2026-08-05 entry for why a manual step here kept getting skipped.
     nonisolated static let releaseTag = "dictionary-v3"
     nonisolated static let expectedSHA256 = "e07fc95aff31cdfdea36211bcd4d2570734c1a06ebe7bccfefd2f5305ca302dc"
 
