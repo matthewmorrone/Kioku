@@ -17,6 +17,7 @@ struct NotesView: View {
     @EnvironmentObject private var store: NotesStore
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var savedKanjiStore: SavedKanjiStore
+    @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     @State private var editMode: EditMode = .inactive
     @State private var selectedNoteIDs = Set<UUID>()
     @State private var notePendingRename: Note?
@@ -252,12 +253,14 @@ struct NotesView: View {
         .toolbar(.visible, for: .tabBar)
     }
 
-    // Shows whether a note currently has stored audio and/or subtitle files attached.
+    // Shows whether a note currently has stored audio/subtitle files attached and/or a
+    // generated breakdown.
     @ViewBuilder
     private func noteAttachmentIndicators(for note: Note) -> some View {
         let attachmentState = attachmentState(for: note)
+        let hasBreakdown = songBreakdownStore.breakdown(forNoteID: note.id) != nil
 
-        if attachmentState.hasAudio || attachmentState.hasSubtitles {
+        if attachmentState.hasAudio || attachmentState.hasSubtitles || hasBreakdown {
             HStack(spacing: 8) {
                 if attachmentState.hasAudio {
                     Image(systemName: "waveform")
@@ -269,6 +272,12 @@ struct NotesView: View {
                     Image(systemName: "captions.bubble")
                         .foregroundStyle(.secondary)
                         .accessibilityLabel("Has subtitles")
+                }
+
+                if hasBreakdown {
+                    Image(systemName: "sparkles.rectangle.stack")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Has a generated breakdown")
                 }
             }
             .font(.system(size: 14, weight: .medium))
