@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 import hashlib
 import bisect
@@ -8,6 +9,7 @@ import sys
 import time
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_CLASSIFIER_SWIFT_PATH = PROJECT_ROOT / "Kioku" / "Dictionary" / "ScriptClassifier.swift"
 RESOURCES_DIR = PROJECT_ROOT / "Resources"
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
@@ -1138,6 +1140,49 @@ def _is_functional_pos(pos_field):
     return any(tag in _FUNCTIONAL_POS_TAGS or tag.startswith("aux-") for tag in tags)
 
 
+def _load_kana_ranges_from_swift():
+    # Parses the hiragana/katakana Unicode range bounds straight out of isPureKana in
+    # ScriptClassifier.swift instead of hand-copying the hex literals here, so there's exactly
+    # one place they're written down. This decides which fetchMatchedEntries mode (matchKana-only
+    # vs matchKanji-only) a surface is ranked under, so materialize_canonical_entry_ids's
+    # functional-POS gate has to classify a surface identically to the Swift app or the two
+    # ranking implementations silently disagree again — the exact bug class
+    # testCanonicalEntryIDMapAgreesWithLiveRankingForEveryAmbiguousSurface exists to catch, and
+    # a hand-copied second literal that nothing forces to stay in sync was how the kanji-surface
+    # half of that bug happened in the first place. Fails loudly (not a silent fallback to a
+    # possibly-stale hardcoded copy) if isPureKana's source ever changes shape enough that this
+    # regex stops matching — update the regex to match the new shape.
+    text = SCRIPT_CLASSIFIER_SWIFT_PATH.read_text(encoding="utf-8")
+    match = re.search(
+        r"func isPureKana.*?"
+        r"isHiragana = \(0x([0-9A-Fa-f]+)\.\.\.0x([0-9A-Fa-f]+)\).*?"
+        r"isKatakana = \(0x([0-9A-Fa-f]+)\.\.\.0x([0-9A-Fa-f]+)\)",
+        text,
+        re.DOTALL,
+    )
+    if not match:
+        raise RuntimeError(
+            f"Could not find isPureKana's hiragana/katakana Unicode ranges in "
+            f"{SCRIPT_CLASSIFIER_SWIFT_PATH} — materialize_canonical_entry_ids's pure-kana gate "
+            "depends on parsing this exact shape to stay in sync with the Swift implementation."
+        )
+    hira_lo, hira_hi, kata_lo, kata_hi = match.groups()
+    return ((int(hira_lo, 16), int(hira_hi, 16)), (int(kata_lo, 16), int(kata_hi, 16)))
+
+
+_KANA_RANGES = _load_kana_ranges_from_swift()
+
+
+def _is_pure_kana(text):
+    # Registered as a SQLite scalar function (IS_PURE_KANA) applied to surface, a NOT NULL TEXT
+    # column, so SQLite itself never hands this a non-str/NULL value in practice — but a Python
+    # UDF that raises on unexpected input aborts the whole materialize_canonical_entry_ids query
+    # rather than just misclassifying one row, so guard defensively anyway.
+    if not isinstance(text, str) or not text:
+        return False
+    return all(any(lo <= ord(ch) <= hi for lo, hi in _KANA_RANGES) for ch in text)
+
+
 def populate_functional_pos(conn):
     # Precomputes DictionaryStore.FrequencySQL.functionalPosMatch's "does this entry have a
     # functional-POS sense" check into a plain indexed table instead of a correlated EXISTS +
@@ -1648,6 +1693,16 @@ def materialize_canonical_entry_ids(conn):
     # surfaces) on the user's device instead of once here. Must be run after word_frequency
     # and entry_functional_pos are materialized, and kept in exact lockstep with
     # DictionaryStore.FrequencySQL — see that Swift file for the shared-definition rationale.
+    #
+    # The functional/deictic POS boost is gated to pure-kana surfaces (IS_PURE_KANA below),
+    # mirroring fetchMatchedEntries's `matchKana && !matchKanji` gate on the same tier
+    # (DictionaryStore+RowFetching.swift): particles like が/の have archaic kanji forms
+    # (我, 乃), so an entry's functional-POS tag must not promote it over the kanji word a
+    # kanji-surface lookup (tapping 我 in text) clearly intended. Without this gate here, this
+    # table would rank kanji surfaces differently than the live query does — exactly the drift
+    # testCanonicalEntryIDMapAgreesWithLiveRankingForEveryAmbiguousSurface exists to catch.
+    conn.create_function("IS_PURE_KANA", 1, lambda text: 1 if _is_pure_kana(text) else 0)
+
     print("Materializing surface_canonical_entry lookup table...")
     conn.executescript(
         """
@@ -1693,7 +1748,7 @@ def materialize_canonical_entry_ids(conn):
                    ROW_NUMBER() OVER (
                        PARTITION BY surface
                        ORDER BY
-                           CASE WHEN is_functional = 1 THEN 0 ELSE 1 END ASC,
+                           CASE WHEN is_functional = 1 AND IS_PURE_KANA(surface) THEN 0 ELSE 1 END ASC,
                            has_kanji ASC,
                            -- Don't let a zipf pseudo-rank rescue this entry past a sibling (same
                            -- surface) that has a genuine rank; a no-op when nobody in the group
