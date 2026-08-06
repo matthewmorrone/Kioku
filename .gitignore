@@ -1,7 +1,11 @@
 __pycache__
 Resources/dictionary.sqlite
-# Reassembled from the committed dictionary.sqlite.zst.part-* chunks; transient.
+# Downloaded by scripts/ensure_dictionary.sh from the GitHub Release pinned in
+# DictionaryDownloadManager.swift — not committed (see that script's comment
+# for why: it used to be a committed, split zstd archive, but that grew the
+# repo by ~150MB on every dictionary rebuild).
 Resources/dictionary.sqlite.zst
+Resources/dictionary.sqlite.zst.part-*
 Resources/jmdict-eng-3.6.2.json
 Resources/JPDB_v2.2_Frequency_Kana.json
 Resources/ggml-tiny.bin

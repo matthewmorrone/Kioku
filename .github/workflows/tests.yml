@@ -57,9 +57,10 @@ jobs:
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep -E 'iPhone (15|16|17)' | head -10
 
-      # The dictionary sqlite is committed as a zstd archive (~63 MB) and
-      # decompressed on demand; the raw file (~215 MB) is gitignored.
-      - name: Decompress dictionary.sqlite
+      # The dictionary sqlite is downloaded from the GitHub Release pinned in
+      # DictionaryDownloadManager.swift (not committed — the raw file, ~365 MB,
+      # is gitignored).
+      - name: Download dictionary.sqlite
         run: bash scripts/ensure_dictionary.sh
 
       # The handwriting model is committed as a zstd archive (~14 MB) and
