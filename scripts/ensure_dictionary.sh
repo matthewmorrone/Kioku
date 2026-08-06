@@ -1,44 +1,64 @@
 #!/usr/bin/env bash
-# Decompress Resources/dictionary.sqlite from its committed zstd archive when
-# missing or older than the archive. Idempotent — safe to run repeatedly,
-# called from scripts/setup.sh for local clones and from the CI workflow.
+# Downloads Resources/dictionary.sqlite from the GitHub Release pinned in
+# DictionaryDownloadManager.swift when missing or doesn't match that pin.
+# Idempotent — safe to run repeatedly, called from scripts/setup.sh for local
+# clones and from the CI workflow.
 #
-# The sqlite is derived from generate_db.py + the upstream data files listed
-# in data_manifest.json. Committing the compressed archive keeps CI self-contained
-# without paying LFS bandwidth. The archive is split into ~52 MB parts
-# (dictionary.sqlite.zst.part-aa, -ab, …) because the single .zst exceeds
-# GitHub's 100 MB per-file push limit; the parts are concatenated back before
-# decompression.
+# The sqlite is derived from generate_db.py + upstream data files that aren't
+# committed to this repo (see data_manifest.json for where to get them), so
+# this script can't regenerate it — only a developer with those raw inputs
+# locally can. Previously the compressed sqlite was committed directly to git
+# (split into <100MB parts) and reassembled here; every rebuild added a new
+# ~150MB blob that never diff-compresses against the last one, growing the
+# repo (and GitHub's storage of it) without bound. The GitHub Release
+# DictionaryDownloadManager downloads at runtime is now the one source of
+# truth here too, so nothing but this script and the small pin in
+# DictionaryDownloadManager.swift needs to be tracked in git.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SQLITE="$ROOT_DIR/Resources/dictionary.sqlite"
-PART_GLOB="$ROOT_DIR/Resources/dictionary.sqlite.zst.part-"*
-# A representative part for the staleness comparison (git checkout gives the
-# parts a uniform mtime, so any one of them is a fine reference point).
-FIRST_PART="$ROOT_DIR/Resources/dictionary.sqlite.zst.part-aa"
+PIN_SOURCE="$ROOT_DIR/Kioku/Dictionary/DictionaryDownloadManager.swift"
 
-if [[ ! -f "$FIRST_PART" ]]; then
-  echo "✗ Missing dictionary archive parts (Resources/dictionary.sqlite.zst.part-*) — repo state is incomplete." >&2
+RELEASE_TAG=$(python3 -c "
+import re
+text = open('$PIN_SOURCE').read()
+m = re.search(r'releaseTag = \"([^\"]+)\"', text)
+print(m.group(1) if m else '')
+")
+EXPECTED_SHA256=$(python3 -c "
+import re
+text = open('$PIN_SOURCE').read()
+m = re.search(r'expectedSHA256 = \"([^\"]+)\"', text)
+print(m.group(1) if m else '')
+")
+
+if [[ -z "$RELEASE_TAG" || -z "$EXPECTED_SHA256" ]]; then
+  echo "✗ Could not parse releaseTag/expectedSHA256 out of DictionaryDownloadManager.swift — has its source shape changed?" >&2
   exit 1
 fi
 
-# Skip if the decompressed file is already present and at least as recent as
-# the archive parts. `! -ot` is "not older than" — true when newer OR equal
-# mtime, which handles the freshly-decompressed case.
-if [[ -f "$SQLITE" && ! "$SQLITE" -ot "$FIRST_PART" ]]; then
-  exit 0
+# Skip the download entirely when an already-correct file is sitting there —
+# the common case for repeat local builds and warm CI caches.
+if [[ -f "$SQLITE" ]]; then
+  ACTUAL_SHA256=$(shasum -a 256 "$SQLITE" | awk '{print $1}')
+  if [[ "$ACTUAL_SHA256" == "$EXPECTED_SHA256" ]]; then
+    exit 0
+  fi
 fi
 
-if ! command -v zstd >/dev/null 2>&1; then
-  echo "✗ zstd not installed. On macOS: brew install zstd. On Linux: apt install zstd." >&2
+URL="https://github.com/matthewmorrone/Kioku/releases/download/$RELEASE_TAG/dictionary.sqlite"
+echo "→ Downloading dictionary.sqlite from $URL"
+curl -fL --retry 3 -o "$SQLITE.download" "$URL"
+
+# Verify before installing — a corrupt download or a tag that's drifted from
+# the pin must not silently become the app's dictionary.
+ACTUAL_SHA256=$(shasum -a 256 "$SQLITE.download" | awk '{print $1}')
+if [[ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]]; then
+  rm -f "$SQLITE.download"
+  echo "✗ Downloaded dictionary.sqlite sha256 ($ACTUAL_SHA256) doesn't match DictionaryDownloadManager.expectedSHA256 ($EXPECTED_SHA256)." >&2
   exit 1
 fi
 
-echo "→ Concatenating dictionary.sqlite.zst.part-* and decompressing → dictionary.sqlite"
-# Reassemble the parts (glob expands in sorted order: -aa, -ab, -ac) and stream
-# straight into the decompressor so no full-size intermediate .zst is written.
-cat $PART_GLOB | zstd -dc > "$SQLITE"
-# Bump mtime so subsequent invocations are silent even when zstd preserves
-# the source timestamp.
-touch "$SQLITE"
+mv "$SQLITE.download" "$SQLITE"
+echo "✓ dictionary.sqlite downloaded and verified ($RELEASE_TAG)."

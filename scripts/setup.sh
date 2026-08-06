@@ -19,8 +19,9 @@ fi
 chmod +x .githooks/pre-commit .githooks/pre-push \
          scripts/validate_invariants.sh scripts/hook_check_invariants.sh
 
-# 3. Decompress the committed dictionary + handwriting-model archives if the raw
-#    files are missing.
+# 3. Fetch the dictionary (downloaded from its pinned GitHub Release) and
+#    decompress the committed handwriting-model archive, if the raw files are
+#    missing or stale.
 echo
 bash scripts/ensure_dictionary.sh
 bash scripts/ensure_handwriting_model.sh

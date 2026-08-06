@@ -273,6 +273,28 @@ own sections.)
         GitHub Releases isn't rated/built as a production CDN, so at real install volume it's a
         reliability risk (throttling/outage) rather than a rejection risk. Worth doing if
         reliability at scale becomes a problem; not urgent while install volume is low.
+      - **2026-08-05 — stopped committing the archive to git, closing the actual repo-bloat
+        problem instead of just automating around it.** The design above still committed
+        `Resources/dictionary.sqlite.zst.part-*` (~113MB across 3 parts) to git on every rebuild
+        so CI/local dev could reassemble it — but compressed binaries don't diff-compress, so
+        every rebuild added a full new ~150MB blob to the repo's history permanently (33 distinct
+        historical versions of those 3 paths by this point), on GitHub's side too. Fixed by making
+        the GitHub Release DictionaryDownloadManager already downloads at runtime the ONE source
+        of truth for CI and local dev as well, instead of a second, git-committed copy:
+        `scripts/ensure_dictionary.sh` now downloads `Resources/dictionary.sqlite` straight from
+        `https://github.com/matthewmorrone/Kioku/releases/download/<releaseTag>/dictionary.sqlite`
+        (parsing `releaseTag`/`expectedSHA256` out of `DictionaryDownloadManager.swift`, same as
+        the publish workflow always did) and verifies its sha256, skipping the download entirely
+        when an already-correct file is present. Removed the three `.zst.part-*` blobs from git
+        tracking (their historical versions remain in git history — not rewritten, just no longer
+        added to) and gitignored the pattern. `.github/workflows/publish-dictionary-release.yml`
+        is deleted, not adapted: it worked by reassembling and verifying the *committed* chunks,
+        which no longer exist, and it could never regenerate `dictionary.sqlite` itself in
+        CI — `generate_db.py`'s upstream inputs (JMDict, KANJIDIC, JPDB frequency data, etc.) are
+        gitignored and only present on whichever machine actually ran the generator. Replaced with
+        `scripts/publish_dictionary_release.sh`, a local script run by hand after regenerating and
+        bumping the pin (same verify-then-`gh release create` logic, just from the developer's own
+        machine instead of a runner that can never have the right bytes to check against).
 - [x] Halfwidth katakana normalization in lookup (ｱｲｳｴｵ → アイウエオ)
 - [x] Lexicon lemma ranking respects saved-word surfaces when scoring inflection candidates (`Lexicon.swift:241-270` — `resolve()` ranks lexemes by saved surface + inflection-chain score)
 - [x] Use frequency data to influence segmentation path selection — Done. The Viterbi cost
