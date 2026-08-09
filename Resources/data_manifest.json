@@ -156,9 +156,17 @@
       "path": "Resources/MeCab-unidic-optional/unidic/",
       "required": false,
       "derived": false,
-      "url": "https://clrd.ninjal.ac.jp/unidic_archive/",
+      "url": "https://clrd.ninjal.ac.jp/unidic_archive/cwj/2.1.2/unidic-mecab-2.1.2_bin.zip",
       "sha256": null,
-      "provenance": "UniDic-MeCab (~196MB) — the largest single resource in the project, and NOT bundled into the app: it lives outside Resources/MeCab/ (which Xcode bundles wholesale as a folder reference) specifically so it's excluded from the shipped app. Reachable only via Settings → Segmentation → Engine: MeCab, then Dictionary: UniDic — two manual changes past the trie default, exercised by essentially no users. Likely sourced from the NINJAL UniDic archive (same host family as this manifest's pitch-accent entry, unidic-mecab_kana-accent-2.1.2_src.zip) but not byte-verified against a specific release the way ipadic was. To restore full MeCab-UniDic support: obtain a matching unidic-mecab release and place its sys.dic/unk.dic/char.bin/dicrc/matrix.bin under Resources/MeCab-unidic-optional/unidic/, then re-add that path as a bundled Resources build-phase entry in Kioku.xcodeproj if you want it shipped again."
+      "deletedLocally": "2026-08-09 — removed from disk to reclaim 196MB; was confirmed unused (not referenced by Kioku.xcodeproj's build phases, not read by SegmenterBackend.swift or any other Swift source by path). Verified the restore link below is still live and version-matches this entry (same cwj/2.1.2 directory the pitch-accent entry's unidic-mecab_kana-accent-2.1.2_src.zip already comes from) before deleting.",
+      "perFileSHA256BeforeDeletion": {
+        "unidic/sys.dic": "ecf1169a9093b67eabebdf563652f436e591974d487d9bdc7c1572d2c90addde",
+        "unidic/unk.dic": "750939ed0283bd8c12c0a38ab9edb2d14fa99633d029a1cc6ef82ffdfe2db902",
+        "unidic/char.bin": "dd31396563d8924645b80fd3c9aa7b13ca089d7748f25553a1d6bc3f9b511ae8",
+        "unidic/dicrc": "8caf337c81e7041d5ef86027d85576a556a6198c464ee3c3145cd0714d43416c",
+        "unidic/matrix.bin": "88fb99efe1075d9b8b40e01bb2751e4095f1612618f2490af776eb5ed39190a9"
+      },
+      "provenance": "UniDic-MeCab (~196MB) — the largest single resource in the project, and NOT bundled into the app: it lives outside Resources/MeCab/ (which Xcode bundles wholesale as a folder reference) specifically so it's excluded from the shipped app. Reachable only via Settings → Segmentation → Engine: MeCab, then Dictionary: UniDic — two manual changes past the trie default, exercised by essentially no users. Sourced from the NINJAL UniDic archive (same host family as this manifest's pitch-accent entry). To restore: download the url above (unidic-mecab-2.1.2_bin.zip, ~44MB — the pre-built binary distribution, not the larger _src.zip), extract sys.dic/unk.dic/char.bin/dicrc/matrix.bin into Resources/MeCab-unidic-optional/unidic/, verify each against perFileSHA256BeforeDeletion above, then re-add that path as a bundled Resources build-phase entry in Kioku.xcodeproj if you want it shipped again."
     }
   ]
 }
