@@ -43,6 +43,12 @@ struct WordDetailView: View {
 
     // All entries matching the saved surface; saved entry is first.
     @State var allDisplayData: [WordDisplayData] = []
+    // True once loadDisplayData has completed a real attempt against a live dictionaryStore
+    // (not just bailed early because the store was still nil). Distinguishes "still loading" —
+    // where the content sections should stay silent and let the .task retry — from "loaded and
+    // genuinely came back empty," where the user needs a visible way out instead of staring at a
+    // permanently blank sheet (see the Word-of-the-Day stale-entryID case in WordDetailView+Helpers).
+    @State var hasAttemptedLoad = false
     // Readings sharing this word's kanji spelling — both cross-entry heteronyms (抱く → いだく/だく/
     // うだく, distinct entries) and within-entry kana variants (涙 → なみだ/なだ, one entry), each tied
     // to its entry. Populated by loadDisplayData; drives the header reading switcher, which dedupes by
@@ -532,6 +538,16 @@ struct WordDetailView: View {
                                 }
                             }
                         }
+                    }
+                } else if hasAttemptedLoad {
+                    // A real lookup ran against a live dictionaryStore and came back with nothing —
+                    // most commonly a Word-of-the-Day notification whose entryID/surface no longer
+                    // resolves because the dictionary was rebuilt after the notification was baked
+                    // (see loadDisplayData in WordDetailView+Helpers.swift). Without this, the sheet
+                    // would stay silently blank below the header forever.
+                    ContentUnavailableView("Couldn't load this word", systemImage: "exclamationmark.triangle")
+                    Button("Retry") {
+                        Task { await loadDisplayData() }
                     }
                 }
 
