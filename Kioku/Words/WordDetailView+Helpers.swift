@@ -306,6 +306,7 @@ extension WordDetailView {
 
         allDisplayData = results
         readingVariants = variants
+        hasAttemptedLoad = true
 
         guard results.isEmpty == false else { return }
         let store = dictionaryStore
