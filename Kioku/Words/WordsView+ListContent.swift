@@ -48,10 +48,9 @@ extension WordsView {
         let headword = surfaceIsKana ? nil : entry?.kanjiForms.first?.text
         let reading = surfaceIsKana ? surface : entry?.kanaForms.first?.text
 
-        // Plain content so List(selection:) keeps its native selection gestures (incl. the
-        // swipe-across-rows multiselect in edit mode). The detail tap rides on a
-        // simultaneousGesture so it coexists with the List's tap-to-select; the star is
-        // hidden in edit mode so the row has one clear tap target.
+        // While editing, central content stays a plain view (see its comment below) so
+        // List(selection:) keeps its native selection gestures (incl. the swipe-across-rows
+        // multiselect); the star is hidden in edit mode so the row has one clear tap target.
         return HStack(spacing: 12) {
             // Leading pronunciation button. Hidden in edit mode so List(selection:)'s own
             // selection circle takes the leading slot — i.e. the audio control is "replaced
@@ -69,36 +68,34 @@ extension WordsView {
             }
             // Central content is the only open-detail tap target. The leading speaker and
             // trailing star buttons sit OUTSIDE this region, so tapping either fires just its
-            // own action — the row's simultaneousGesture (below) never covers them. (A row-wide
-            // simultaneous tap would fire alongside the buttons, opening detail on a speaker tap.)
-            HStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 4) {
-                    // ViewThatFits tries the inline HStack (headword + reading side by side,
-                    // one line) first; for a long headword like a whole example sentence, that
-                    // doesn't fit at .lineLimit(1) and it falls back to stacking the reading on
-                    // its own line below instead of wrapping the two mid-word next to each other.
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            headwordReadingTexts(headword: headword, reading: reading, surface: surface)
-                        }
-                        .lineLimit(1)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            headwordReadingTexts(headword: headword, reading: reading, surface: surface)
-                        }
-                    }
-                    if let gloss {
-                        Text(gloss).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                    }
+            // own action.
+            //
+            // Two different shapes depending on edit mode, not one view with a gesture modifier:
+            // .contextMenu reliably coexists with a Button's own tap recognizer (proven by the
+            // star button, which has always worked this way) but silently fails to fire when the
+            // only tap handling nearby is .onTapGesture or .simultaneousGesture(TapGesture())
+            // instead — which is what this used to be, and why the row's long-press menu stopped
+            // appearing. But a Button here would also compete with List(selection:)'s own
+            // native row-tap-to-select gesture while editing, which the previous
+            // simultaneousGesture was specifically chosen to stay out of the way of — so edit
+            // mode keeps the old plain-view shape (no Button, no gesture, no context menu) and
+            // lets List(selection:) handle the tap entirely on its own; only the normal,
+            // non-editing shape needs to satisfy .contextMenu.
+            if editMode == .active {
+                wordRowCentralContent(headword: headword, reading: reading, surface: surface, gloss: gloss)
+                    .contentShape(Rectangle())
+            } else {
+                Button {
+                    onTap()
+                } label: {
+                    wordRowCentralContent(headword: headword, reading: reading, surface: surface, gloss: gloss)
+                        .contentShape(Rectangle())
                 }
-                Spacer(minLength: 0)
+                .buttonStyle(.plain)
+                .contextMenu {
+                    wordRowMenu(entryID: entryID, surface: surface, entry: entry, onTap: onTap)
+                }
             }
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    if editMode != .active { onTap() }
-                }
-            )
             if editMode != .active {
                 Button {
                     toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
@@ -120,9 +117,6 @@ extension WordsView {
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .contextMenu {
-            wordRowMenu(entryID: entryID, surface: surface, entry: entry, onTap: onTap)
-        }
         // Attaching .swipeActions at all — even with an empty button set — fights
         // List(selection:)'s native multi-select circle for the same row gesture machinery,
         // leaving the circle visually stuck on whichever row last rendered it. So this isn't
@@ -131,6 +125,35 @@ extension WordsView {
         .modifier(SwipeActionsWhenNotEditing(isEditing: editMode == .active) {
             wordRowSwipeAction(entryID: entryID, surface: surface, entry: entry)
         })
+    }
+
+    // wordRow's central headword/reading/gloss block, factored out so its edit-mode and
+    // non-edit-mode branches (a plain view vs. a Button, per wordRow's comment) can share the
+    // same content instead of duplicating it inline in both branches.
+    @ViewBuilder
+    private func wordRowCentralContent(headword: String?, reading: String?, surface: String, gloss: String?) -> some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                // ViewThatFits tries the inline HStack (headword + reading side by side, one
+                // line) first; for a long headword like a whole example sentence, that doesn't
+                // fit at .lineLimit(1) and it falls back to stacking the reading on its own line
+                // below instead of wrapping the two mid-word next to each other.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        headwordReadingTexts(headword: headword, reading: reading, surface: surface)
+                    }
+                    .lineLimit(1)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        headwordReadingTexts(headword: headword, reading: reading, surface: surface)
+                    }
+                }
+                if let gloss {
+                    Text(gloss).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     // The headword + reading (or surface fallback) content, factored out so wordRow's
