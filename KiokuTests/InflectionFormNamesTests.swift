@@ -3,8 +3,8 @@ import XCTest
 
 // Pins the deinflection-chain → human-readable form mapping used in the lookup header.
 //
-// Chain labels here are the NORMALIZED form InflectionFormNames.describe(_:)/meaning(_:) actually
-// key on (see that file's header comment) — Deinflector.normalizedRuleLabel strips the raw
+// Chain labels here are the NORMALIZED form InflectionFormNames.describe(_:) actually
+// keys on (see that file's header comment) — Deinflector.normalizedRuleLabel strips the raw
 // deinflection.json group name's "Forms" suffix and splits camelCase into lowercase
 // space-separated words ("negativePastForms" -> "negative past") before this table ever sees it.
 final class InflectionFormNamesTests: XCTestCase {
@@ -36,18 +36,5 @@ final class InflectionFormNamesTests: XCTestCase {
     func testAllInternalYieldsEmpty() {
         XCTAssertEqual(InflectionFormNames.describe(["stem recovery"]), "")
         XCTAssertEqual(InflectionFormNames.describe([]), "")
-    }
-
-    // The meaning hint merges common combinations idiomatically and joins the rest.
-    func testMeaningMergesAndJoins() {
-        XCTAssertEqual(InflectionFormNames.meaning(["negative", "potential"]), "can't ~")
-        XCTAssertEqual(InflectionFormNames.meaning(["potential"]), "can ~")
-        XCTAssertEqual(InflectionFormNames.meaning(["desire", "past"]), "want to ~ · did ~ (past)")
-    }
-
-    // Structural-only chains have no meaning hint.
-    func testMeaningEmptyForStructuralOnly() {
-        XCTAssertEqual(InflectionFormNames.meaning(["irregular"]), "")
-        XCTAssertEqual(InflectionFormNames.meaning([]), "")
     }
 }
