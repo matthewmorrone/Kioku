@@ -52,7 +52,7 @@ struct LearnActivityHome: View {
                     .monospacedDigit()
                     .foregroundStyle(poolCount < activity.minimumPoolSize ? .red : .primary)
             }
-            LearnCountField(label: activity.unitLabel, count: $options.count)
+            LearnCountPicker(label: activity.unitLabel, count: $options.count)
         }
     }
 }

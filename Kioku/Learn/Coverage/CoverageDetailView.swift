@@ -301,7 +301,7 @@ struct CoverageDetailView: View {
 
 // The step between picking a coverage cell (or "Study All Words") and actually launching a
 // session: shows how many words are in play and lets the user cap the session size — the same
-// control (`LearnCountField`) Learn's own Flashcards/Multiple Choice home screens expose, which a
+// control (`LearnCountPicker`) Learn's own start screens expose, which a
 // Coverage-launched session used to skip entirely by auto-starting straight into the full cell.
 private struct CoverageStudyLaunchSheet: View {
     let selection: CoverageStudySelection
@@ -321,7 +321,7 @@ private struct CoverageStudyLaunchSheet: View {
                     }
                 }
                 Section {
-                    LearnCountField(label: "Items", count: $count)
+                    LearnCountPicker(label: "Items", count: $count)
                 }
                 Section {
                     ForEach(CoverageStudyMode.allCases) { mode in
