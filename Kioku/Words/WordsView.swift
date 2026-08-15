@@ -286,15 +286,28 @@ struct WordsView: View {
     }
 
     // The reading the detail sheet should open its header on. A route-supplied reading (the Word of
-    // the Day deep link, the Read-tab lookup sheet) applies only to the word it arrived with; for
-    // every other word the saved card's own pinned reading is used, so the reading switcher's choice
-    // survives closing and reopening the sheet, and a stale route reading can't leak onto an
-    // unrelated word. Nil for an unsaved, un-routed word — the header falls back to the entry.
+    // the Day deep link, the Read-tab lookup sheet) describes one specific occurrence — possibly an
+    // inflected surface — so it applies only to the presentation it arrived with; every other open
+    // uses the saved card's own pinned reading, so the reading switcher's choice survives closing
+    // and reopening the sheet. Nil for an unsaved, un-routed word — the header falls back to the
+    // entry. The entry-id guard is belt to clearRouteDetailContext's braces: the route data is
+    // cleared on dismiss, so it can't outlive its presentation even for a re-tap of the same entry.
     private func detailReading(for word: SavedWord) -> String? {
         if let selectedDetailReading, selectedDetailReadingEntryID == word.canonicalEntryID {
             return selectedDetailReading
         }
         return wordsStore.words.first { $0.canonicalEntryID == word.canonicalEntryID }?.selectedReading
+    }
+
+    // Drops the route-supplied detail context when the sheet closes, scoping it to exactly one
+    // presentation. Without this, tapping the same entry later from the list (a path that sets only
+    // selectedDetailWord) would reopen on the earlier route's reading — showing an inflected reading
+    // over the lemma and seeding the switcher's activeReading from it — and would reuse that route's
+    // sublattice paths instead of recomputing from the segmenter. Both default cleanly when empty.
+    private func clearRouteDetailContext() {
+        selectedDetailReading = nil
+        selectedDetailReadingEntryID = nil
+        selectedDetailSublatticePaths = []
     }
 
     // Applies a cross-tab route, either by opening a word detail or populating the search query.
@@ -337,7 +350,7 @@ struct WordsView: View {
                 customSearchBar
                 resultsList
             }
-            .sheet(item: $selectedDetailWord) { word in
+            .sheet(item: $selectedDetailWord, onDismiss: clearRouteDetailContext) { word in
                 let _ = WOTDDiag.log("sheet PRESENTING entryID=\(word.canonicalEntryID)")
                 WordDetailView(
                     word: word,

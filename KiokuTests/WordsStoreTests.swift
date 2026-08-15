@@ -649,6 +649,19 @@ final class WordsStoreTests: XCTestCase {
         XCTAssertNil(store.words.first { $0.canonicalEntryID == 200 }?.selectedReading)
     }
 
+    // ...but the TARGET's own reading names a kana form of the target entry and is still valid, so
+    // merging onto an already-saved card must not reset it. The lemma-picker and sense-card
+    // re-points don't re-record a reading afterwards, so this is the only thing preserving it.
+    func testRepointKeepsTheTargetCardsChosenReading() {
+        let store = makeStore()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "下", selectedReading: "した"))
+        store.add(SavedWord(canonicalEntryID: 200, surface: "涙", selectedReading: "なだ"))
+
+        store.repoint(fromEntryID: 100, toEntryID: 200, lemma: "涙")
+
+        XCTAssertEqual(store.words.first { $0.canonicalEntryID == 200 }?.selectedReading, "なだ")
+    }
+
     // Cards written before this field existed decode as "no explicit choice" rather than failing
     // to decode and wiping the user's saved words.
     func testLegacyPayloadWithoutReadingDecodesAsNoChoice() throws {

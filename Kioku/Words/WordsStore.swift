@@ -116,9 +116,12 @@ final class WordsStore: ObservableObject {
     // folds into encounteredSurfaces; sense/gloss selections reset because they reference the
     // OLD entry's senses. If the target entry is already saved, the two cards merge onto it
     // (union of lists/notes/surfaces) so identity (keyed by canonicalEntryID) stays unique.
-    // `selectedReading` is deliberately dropped for the same reason as the selections: it named a
-    // kana form of the OLD entry. The reading switcher, whose heteronym flips route through here,
-    // re-records the target's reading with setReading right after calling this.
+    // The OLD card's `selectedReading` is dropped for the same reason as the selections: it named a
+    // kana form of the OLD entry. The TARGET's own reading is kept, though — it names a kana form of
+    // newID and is still valid, so merging a card onto an entry the user had already pinned a
+    // reading on must not reset that entry to its dictionary default. The reading switcher, whose
+    // heteronym flips route through here, then overwrites with setReading; the lemma-picker and
+    // sense-card re-points don't, which is exactly why the target's value has to survive on its own.
     func repoint(fromEntryID oldID: Int64, toEntryID newID: Int64, lemma: String) {
         guard oldID != newID,
               let old = words.first(where: { $0.canonicalEntryID == oldID }) else { return }
@@ -142,7 +145,8 @@ final class WordsStore: ObservableObject {
             selectedSenseIDs: [],
             selectedGlosses: [],
             encounteredSurfaces: encountered,
-            hasBeenOrphaned: old.hasBeenOrphaned || (existing?.hasBeenOrphaned ?? false)
+            hasBeenOrphaned: old.hasBeenOrphaned || (existing?.hasBeenOrphaned ?? false),
+            selectedReading: existing?.selectedReading
         )
 
         // Keep the card roughly where the old one sat; drop both old and any target collision first.
