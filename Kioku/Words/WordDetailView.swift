@@ -292,11 +292,7 @@ struct WordDetailView: View {
                       let info = lexicon.inflectionInfo(surface: word.surface),
                       info.lemma != word.surface else { return nil }
                 let described = InflectionFormNames.describe(info.chain)
-                guard described.isEmpty == false else { return nil }
-                // Append the grammatical meaning the form conveys (e.g. "potential · negative —
-                // can't ~") so the detail glosses the verb in its surfaced form, not just names it.
-                let meaning = InflectionFormNames.meaning(info.chain)
-                return meaning.isEmpty ? described : "\(described)  —  \(meaning)"
+                return described.isEmpty ? nil : described
             }()
             VStack(spacing: 10) {
                 // Headword row: the title hugs its content (.fixedSize) and centers as if it

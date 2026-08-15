@@ -618,8 +618,8 @@ final class SegmenterIntegrationTests: XCTestCase {
 
     // InflectionFormNames used to be keyed by the raw deinflection.json group names ("teForms",
     // "progressiveForms"), but Deinflector.normalizedRuleLabel already strips "Forms" and splits
-    // camelCase before a chain ever leaves the deinflector — so every describe(_:)/meaning(_:)
-    // lookup missed silently and no word ever showed a grammatical-form caption. 見てる (見る's
+    // camelCase before a chain ever leaves the deinflector — so every describe(_:) lookup missed
+    // silently and no word ever showed a grammatical-form caption. 見てる (見る's
     // casual progressive contraction) is a real example: its chain is ["progressive"], not
     // ["progressiveForms"].
     func testInflectionFormNamesMatchesRealDeinflectorChain() throws {
@@ -634,7 +634,6 @@ final class SegmenterIntegrationTests: XCTestCase {
         XCTAssertEqual(info.lemma, "見る")
         XCTAssertEqual(info.chain, ["progressive"])
         XCTAssertEqual(InflectionFormNames.describe(info.chain), "progressive")
-        XCTAssertEqual(InflectionFormNames.meaning(info.chain), "is ~-ing")
     }
 
     // キス is tagged "n,vs" in JMdict — a suru-noun with no written "キスする" headword (the vs tag
