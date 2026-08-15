@@ -40,10 +40,11 @@ struct LearnActivityHome: View {
         }
     }
 
-    // Pool, cap, and result in one section so they read as the sum they are: this configuration
-    // reaches N words, you're capping at M, so the session runs this many. The cap is the only
-    // editable row; keeping it beside its own result is what stops it reading as a second,
-    // mysteriously uneditable copy of the same number.
+    // How much of the collection this configuration reaches, and the cap on how much of it to run.
+    // No third "and so the session will be N long" row: that is just min(pool, limit), readable
+    // from the two numbers above it, and it can't be exact anyway — words that can't supply the
+    // selected directions only drop out during the dictionary resolution that Start kicks off. The
+    // session header reports the real count once it's known.
     private var countsSection: some View {
         Section {
             LabeledContent("Words in pool") {
@@ -51,18 +52,8 @@ struct LearnActivityHome: View {
                     .monospacedDigit()
                     .foregroundStyle(poolCount < activity.minimumPoolSize ? .red : .primary)
             }
-            LearnCountField(label: "Limit", count: $options.count)
-            LabeledContent(activity.unitLabel) {
-                Text("\(plannedQuestionCount)")
-                    .monospacedDigit()
-                    .fontWeight(.semibold)
-            }
+            LearnCountField(label: activity.unitLabel, count: $options.count)
         }
-    }
-
-    // How many items the session will run: the whole pool, or the cap when one is set and it bites.
-    private var plannedQuestionCount: Int {
-        options.count > 0 ? min(poolCount, options.count) : poolCount
     }
 }
 
