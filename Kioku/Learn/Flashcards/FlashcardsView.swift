@@ -388,7 +388,9 @@ struct FlashcardsView: View {
 
     // Note / direction / scope / shuffle pickers and session start button, on the shared scaffold.
     private var reviewHome: some View {
-        let matchingCount = wordsMatchingSelection().count
+        // One pass backs both the count and the hint below — see StudyWordSelection.
+        let selection = matchingSelection()
+        let matchingCount = selection.words.count
         return LearnHomeForm(
             startTitle: "Start Flashcards",
             startEnabled: matchingCount > 0,
@@ -453,7 +455,7 @@ struct FlashcardsView: View {
                     // Name the learned exclusion whenever it's holding cards back — otherwise a
                     // shrunken (or empty) count reads as a bug to someone who can see those words
                     // sitting right there in the Words tab.
-                    if let hint = learnedExclusionHint {
+                    if let hint = StudyWordPool.learnedExclusionHint(hiddenLearnedCount: selection.hiddenLearnedCount) {
                         Text(hint).font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -461,27 +463,6 @@ struct FlashcardsView: View {
                 .padding(.vertical, 6)
             }
         }
-    }
-
-    // The "N learned words hidden" note for this mode's home screen, computed by re-running the
-    // same selection with the exclusion off. Nil when nothing is being held back. See
-    // StudyWordPool.learnedExclusionHint.
-    private var learnedExclusionHint: String? {
-        StudyWordPool.learnedExclusionHint(
-            excludeLearned: excludeLearned,
-            matchedCount: wordsMatchingSelection().count,
-            matchedIgnoringLearnedCount: StudyWordPool.matching(
-                words: wordsStore.words,
-                scope: scope,
-                noteIDs: selectedNoteIDs,
-                jlptLevels: selectedJLPTLevels,
-                excludeLearned: false,
-                jlptLevel: { dictionaryStore?.jlptLevel(for: $0) },
-                stage: { reviewStore.masteryStage(for: $0) },
-                isDue: { reviewStore.isDue(id: $0) },
-                isMarkedWrong: { reviewStore.markedWrong.contains($0) }
-            ).count
-        )
     }
 
     // Starts a fresh pass through sessionSource, resetting all counters.
@@ -569,10 +550,12 @@ struct FlashcardsView: View {
         sessionTotalCount = 0; reviewedCount = 0
     }
 
-    // Returns saved words filtered by the selected notes AND the active scope (all / due / wrong)
+    // The pool for the current pickers: the selected notes AND the active scope (all / due / wrong)
     // AND the selected JLPT levels (empty = any level), with already-learned words excluded per the
     // shared setting. Delegates to StudyWordPool so this mode can't drift from the other two.
-    private func wordsMatchingSelection() -> [SavedWord] {
+    // Returns the whole selection (words + how many the exclusion held back) so a caller that needs
+    // both doesn't run the filter twice; use `wordsMatchingSelection()` when only the words matter.
+    private func matchingSelection() -> StudyWordSelection {
         StudyWordPool.matching(
             words: wordsStore.words,
             scope: scope,
@@ -586,6 +569,9 @@ struct FlashcardsView: View {
         )
     }
 
+    // Just the eligible words, for the callers that don't need the held-back count.
+    private func wordsMatchingSelection() -> [SavedWord] { matchingSelection().words }
+
     // Builds the picker chip label, suffixing the count of words currently in that scope. Counts
     // through the same pool as the session itself, so an excluded learned word is never advertised.
     private func scopeLabel(_ s: FlashcardScope) -> String {
@@ -597,7 +583,7 @@ struct FlashcardsView: View {
             isDue: { reviewStore.isDue(id: $0) },
             isMarkedWrong: { reviewStore.markedWrong.contains($0) }
         )
-        return "\(s.label) (\(scoped.count))"
+        return "\(s.label) (\(scoped.words.count))"
     }
 
 }

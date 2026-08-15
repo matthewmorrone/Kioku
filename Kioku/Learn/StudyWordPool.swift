@@ -1,5 +1,17 @@
 import Foundation
 
+// One pass of the Learn-tab pool filter: the words a session may draw from, plus how many the
+// learned exclusion held back. The count rides along because every caller that wants the pool also
+// wants to explain a short one, and deriving it separately means running the whole filter twice on
+// every render. Pure stored properties — the rule lives on StudyWordPool.
+nonisolated struct StudyWordSelection {
+    // Words eligible for a session, after the note, JLPT, scope, and learned filters.
+    let words: [SavedWord]
+    // How many words cleared the note/JLPT/scope filters but were dropped for being Learned or
+    // Mastered. Always 0 when the exclusion is off. Drives the home screens' hint.
+    let hiddenLearnedCount: Int
+}
+
 // Decides which saved words a Learn-tab study session may draw from. Flashcards, Multiple Choice,
 // and Fill in the Blank each used to carry their own private copy of this filter, which is how
 // "learned" words kept showing up in study sets: the exclusion has to hold in all three (and in the
@@ -10,13 +22,9 @@ import Foundation
 // callable from plain (non-`@MainActor`) unit tests.
 nonisolated enum StudyWordPool {
     // The words eligible for a session: note filter AND JLPT filter AND scope, with words the user
-    // has already learned dropped up front when `excludeLearned` is on (the default — see
-    // LearnedSettings.excludeLearnedKey).
-    //
-    // Learned exclusion is applied BEFORE the scope, not after, so the scope reads as a slice of the
-    // studiable pool: "Due" means "due among the words I'm still learning", not "due, minus the ones
-    // that then vanish". Both `.learned` and `.mastered` are dropped — mastered is strictly further
-    // along, and `masteryStage` is the app's one definition of that ladder (see ReviewStore).
+    // has already learned dropped when `excludeLearned` is on (the default — see
+    // LearnedSettings.excludeLearnedKey). Both `.learned` and `.mastered` go: mastered is strictly
+    // further along, and `masteryStage` is the app's one definition of that ladder (see ReviewStore).
     //
     // Preset sessions (Coverage drilling into a specific level × stage cell, including the Learned
     // cell) deliberately do NOT route through here — they hand their exact word set to the view.
@@ -30,7 +38,7 @@ nonisolated enum StudyWordPool {
         stage: (Int64) -> MasteryStage,
         isDue: (Int64) -> Bool,
         isMarkedWrong: (Int64) -> Bool
-    ) -> [SavedWord] {
+    ) -> StudyWordSelection {
         var base = words
         if noteIDs.isEmpty == false {
             base = base.filter { word in
@@ -49,9 +57,15 @@ nonisolated enum StudyWordPool {
         )
     }
 
-    // The learned exclusion + scope slice on their own, without the note/JLPT filters. Backs both
+    // The scope slice plus the learned exclusion, without the note/JLPT filters. Backs both
     // `matching` and the scope pickers' "(N)" counts, so a count can never advertise cards the
     // session would then refuse to deal.
+    //
+    // Scope runs first and the exclusion partitions what's left. The two are independent per-word
+    // predicates, so the resulting word set is the same either way — but this order makes the
+    // held-back count fall out of the partition instead of costing a second pass over the pool.
+    // The count is scoped, so it reads as "learned words that are due" under the Due scope rather
+    // than "learned words anywhere", which is what the user is being told about.
     static func scoped(
         words: [SavedWord],
         scope: FlashcardScope,
@@ -59,31 +73,32 @@ nonisolated enum StudyWordPool {
         stage: (Int64) -> MasteryStage,
         isDue: (Int64) -> Bool,
         isMarkedWrong: (Int64) -> Bool
-    ) -> [SavedWord] {
-        var base = words
-        if excludeLearned {
-            base = base.filter { isStudiable(stage($0.canonicalEntryID)) }
-        }
+    ) -> StudyWordSelection {
+        let inScope: [SavedWord]
         switch scope {
         case .all:
-            return base
+            inScope = words
         case .dueNow:
-            return base.filter { isDue($0.canonicalEntryID) }
+            inScope = words.filter { isDue($0.canonicalEntryID) }
         case .markedWrong:
-            return base.filter { isMarkedWrong($0.canonicalEntryID) }
+            inScope = words.filter { isMarkedWrong($0.canonicalEntryID) }
         }
+        guard excludeLearned else {
+            return StudyWordSelection(words: inScope, hiddenLearnedCount: 0)
+        }
+        let studiable = inScope.filter { isStudiable(stage($0.canonicalEntryID)) }
+        return StudyWordSelection(words: studiable, hiddenLearnedCount: inScope.count - studiable.count)
     }
 
     // The one-line explanation a mode's home screen shows when the learned exclusion is why its
-    // selection came up short. Nil when the exclusion is off or removed nothing — in that case the
-    // shortfall has some other cause (no saved words, too narrow a note/level/scope filter) and the
-    // mode's own message already covers it. Centralized so all three modes word it identically and
-    // point at the same escape hatch, which lives in Settings where nothing on this screen hints at it.
-    static func learnedExclusionHint(excludeLearned: Bool, matchedCount: Int, matchedIgnoringLearnedCount: Int) -> String? {
-        guard excludeLearned, matchedIgnoringLearnedCount > matchedCount else { return nil }
-        let hidden = matchedIgnoringLearnedCount - matchedCount
-        let noun = hidden == 1 ? "word" : "words"
-        return "\(hidden) learned \(noun) hidden. Turn off “Skip learned words” in Settings to review them anyway."
+    // selection came up short. Nil when nothing was held back — the shortfall then has some other
+    // cause (no saved words, too narrow a note/level/scope filter) and the mode's own message
+    // already covers it. Centralized so all three modes word it identically and point at the same
+    // escape hatch, which lives in Settings where nothing on their own screen hints at it.
+    static func learnedExclusionHint(hiddenLearnedCount: Int) -> String? {
+        guard hiddenLearnedCount > 0 else { return nil }
+        let noun = hiddenLearnedCount == 1 ? "word" : "words"
+        return "\(hiddenLearnedCount) learned \(noun) hidden. Turn off “Skip learned words” in Settings to review them anyway."
     }
 
     // Whether a word at this stage still belongs in a study set. New and Learning do; Learned and
