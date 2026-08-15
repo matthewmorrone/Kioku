@@ -5,8 +5,10 @@ import Foundation
 // Learned means every recognition direction (QuestionDirection.tier1: kanji→meaning, kana→meaning,
 // kanji→kana) clears the auto-learn bar; Mastered additionally requires every production direction
 // (tier2) to clear it too. "Due for review" is a separate orthogonal flag
-// (ReviewStore.isDueForReview), not a stage.
-enum MasteryStage: Hashable, CaseIterable {
+// (ReviewStore.isDueForReview), not a stage. `nonisolated` (like AutoLearnRule) so pure rule code
+// off the main actor can name these cases — StudyWordPool's learned exclusion is written against
+// this ladder and is unit-tested outside any actor.
+nonisolated enum MasteryStage: Hashable, CaseIterable {
     // Never reviewed and not manually marked either way.
     case new
     // Engaged — reviewed at least once, or explicitly marked "not learned" — but below the bar.

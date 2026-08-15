@@ -116,6 +116,9 @@ final class WordsStore: ObservableObject {
     // folds into encounteredSurfaces; sense/gloss selections reset because they reference the
     // OLD entry's senses. If the target entry is already saved, the two cards merge onto it
     // (union of lists/notes/surfaces) so identity (keyed by canonicalEntryID) stays unique.
+    // `selectedReading` is deliberately dropped for the same reason as the selections: it named a
+    // kana form of the OLD entry. The reading switcher, whose heteronym flips route through here,
+    // re-records the target's reading with setReading right after calling this.
     func repoint(fromEntryID oldID: Int64, toEntryID newID: Int64, lemma: String) {
         guard oldID != newID,
               let old = words.first(where: { $0.canonicalEntryID == oldID }) else { return }
@@ -232,6 +235,20 @@ final class WordsStore: ObservableObject {
         })
     }
 
+    // Records (or clears, with nil) the kana reading the user picked for one saved word via the
+    // detail view's reading switcher. Separate from setSelection because the reading axis is
+    // independent of the sense/gloss axis — flipping 涙 to なだ must not disturb which definitions
+    // are pinned, and vice versa. A no-op on an unsaved entry: there's no card to record it on.
+    func setReading(id: Int64, reading: String?) {
+        guard words.contains(where: { $0.canonicalEntryID == id }) else { return }
+        persist(words.map { word in
+            guard word.canonicalEntryID == id else { return word }
+            var updated = word
+            updated.selectedReading = reading
+            return updated
+        })
+    }
+
     // Reorders words in response to a drag-and-drop move gesture from the list.
     func move(fromOffsets: IndexSet, toOffset: Int) {
         var updated = words
@@ -325,7 +342,11 @@ final class WordsStore: ObservableObject {
                     selectedSenseIDs: existingEntry.selectedSenseIDs,
                     selectedGlosses: existingEntry.selectedGlosses,
                     encounteredSurfaces: encounteredSet,
-                    hasBeenOrphaned: existingEntry.hasBeenOrphaned || orderedNoteIDs.isEmpty
+                    entSeq: existingEntry.entSeq,
+                    hasBeenOrphaned: existingEntry.hasBeenOrphaned || orderedNoteIDs.isEmpty,
+                    // Toggling note/surface membership must not disturb the reading the user
+                    // picked with the detail-view switcher — it's a display choice, not provenance.
+                    selectedReading: existingEntry.selectedReading
                 )
             }
         } else {

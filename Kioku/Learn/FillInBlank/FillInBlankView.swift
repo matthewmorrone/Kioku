@@ -69,6 +69,9 @@ struct FillInBlankView: View {
     // still contains their exact surface are eligible, so this can shrink the word pool.
     @State private var sentenceContext: Bool = false
     @State private var scope: FlashcardScope = .all
+    // Skip words already at the Learned/Mastered stage. Shared with the other Learn modes via
+    // LearnedSettings; toggled in Settings → Learning. See StudyWordPool.
+    @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearned = LearnedSettings.defaultExcludeLearned
     @State private var selectedNoteIDs: Set<UUID> = []
     // JLPT levels (N-number 5…1) to include; empty means no level filter. ANDs with scope + notes.
     @State private var selectedJLPTLevels: Set<Int> = []
@@ -325,6 +328,11 @@ struct FillInBlankView: View {
                         Text("No words match this selection")
                             .font(.footnote).foregroundStyle(.red)
                     }
+                    // Name the learned exclusion whenever it's holding words back, so a shortfall
+                    // isn't mistaken for missing saved words. See StudyWordPool.
+                    if let hint = learnedExclusionHint {
+                        Text(hint).font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 6)
@@ -455,10 +463,12 @@ struct FillInBlankView: View {
                 let surface = word.surface
                 let selectedSenseIDs = word.selectedSenseIDs
                 let selectedGlosses = word.selectedGlosses
+                let chosenReading = word.selectedReading
                 group.addTask {
                     await Self.resolveWordFields(
                         store: store, entryID: entryID, surface: surface,
-                        selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+                        selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+                        chosenReading: chosenReading
                     )
                 }
             }
@@ -496,7 +506,8 @@ struct FillInBlankView: View {
         entryID: Int64,
         surface: String,
         selectedSenseIDs: [Int64],
-        selectedGlosses: [GlossRef]
+        selectedGlosses: [GlossRef],
+        chosenReading: String?
     ) async -> ResolvedWordFields? {
         guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
             return nil
@@ -521,48 +532,61 @@ struct FillInBlankView: View {
 
         let forms = WordFormResolver.kanjiAndKana(
             entry: data.entry, store: store, entryID: entryID,
-            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+            chosenReading: chosenReading
         )
         return ResolvedWordFields(entryID: entryID, english: gloss, kanji: forms.kanji, kana: forms.kana)
     }
 
-    // Returns saved words filtered by the selected notes AND the active scope (all / due / wrong)
-    // AND the selected JLPT levels (empty = any level).
-    private func wordsMatchingSelection() -> [SavedWord] {
-        var base = wordsStore.words
-        if selectedNoteIDs.isEmpty == false {
-            base = base.filter { word in
-                word.sourceNoteIDs.contains(where: { selectedNoteIDs.contains($0) })
-            }
-        }
-        if selectedJLPTLevels.isEmpty == false {
-            base = base.filter { word in
-                guard let level = dictionaryStore?.jlptLevel(for: word.canonicalEntryID) else { return false }
-                return selectedJLPTLevels.contains(level)
-            }
-        }
-        switch scope {
-        case .all:
-            return base
-        case .dueNow:
-            return base.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
-        case .markedWrong:
-            return base.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
-        }
+    // The "N learned words hidden" note for this mode's home screen, computed by re-running the
+    // same selection with the exclusion off. Nil when nothing is being held back. See
+    // StudyWordPool.learnedExclusionHint.
+    private var learnedExclusionHint: String? {
+        StudyWordPool.learnedExclusionHint(
+            excludeLearned: excludeLearned,
+            matchedCount: wordsMatchingSelection().count,
+            matchedIgnoringLearnedCount: StudyWordPool.matching(
+                words: wordsStore.words,
+                scope: scope,
+                noteIDs: selectedNoteIDs,
+                jlptLevels: selectedJLPTLevels,
+                excludeLearned: false,
+                jlptLevel: { dictionaryStore?.jlptLevel(for: $0) },
+                stage: { reviewStore.masteryStage(for: $0) },
+                isDue: { reviewStore.isDue(id: $0) },
+                isMarkedWrong: { reviewStore.markedWrong.contains($0) }
+            ).count
+        )
     }
 
-    // Builds the scope picker label, suffixing the count of words currently in that scope.
+    // Returns saved words filtered by the selected notes AND the active scope (all / due / wrong)
+    // AND the selected JLPT levels (empty = any level), with already-learned words excluded per the
+    // shared setting. Delegates to StudyWordPool so this mode can't drift from the other two.
+    private func wordsMatchingSelection() -> [SavedWord] {
+        StudyWordPool.matching(
+            words: wordsStore.words,
+            scope: scope,
+            noteIDs: selectedNoteIDs,
+            jlptLevels: selectedJLPTLevels,
+            excludeLearned: excludeLearned,
+            jlptLevel: { dictionaryStore?.jlptLevel(for: $0) },
+            stage: { reviewStore.masteryStage(for: $0) },
+            isDue: { reviewStore.isDue(id: $0) },
+            isMarkedWrong: { reviewStore.markedWrong.contains($0) }
+        )
+    }
+
+    // Builds the scope picker label, suffixing the count of words currently in that scope. Counts
+    // through the same pool as the session itself, so an excluded learned word is never advertised.
     private func scopeLabel(_ s: FlashcardScope) -> String {
-        let base = wordsStore.words
-        let scoped: [SavedWord]
-        switch s {
-        case .all:
-            scoped = base
-        case .dueNow:
-            scoped = base.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
-        case .markedWrong:
-            scoped = base.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
-        }
+        let scoped = StudyWordPool.scoped(
+            words: wordsStore.words,
+            scope: s,
+            excludeLearned: excludeLearned,
+            stage: { reviewStore.masteryStage(for: $0) },
+            isDue: { reviewStore.isDue(id: $0) },
+            isMarkedWrong: { reviewStore.markedWrong.contains($0) }
+        )
         return "\(s.label) (\(scoped.count))"
     }
 }
