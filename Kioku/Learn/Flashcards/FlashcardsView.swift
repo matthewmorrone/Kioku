@@ -43,13 +43,6 @@ struct FlashcardsView: View {
     @State private var reviewedCount: Int = 0
 
     @State private var showEndSessionConfirm: Bool = false
-    // When on, a card whose resolved direction is englishToJapanese (production: meaning→kanji/kana)
-    // is graded by typing the answer (via AnswerScorer) instead of self-reported flip+Know/Again.
-    // Cards that resolve to japaneseToEnglish, kanjiToKana, or kanaToKanji are unaffected — the
-    // former because English answers have too many valid phrasings to fuzzy-match reliably; the
-    // latter two stay self-graded-only in this first pass (AnswerScorer would handle them fine, but
-    // extending typed grading to them is a separate follow-up).
-    @State private var typedGrading: Bool = false
     @State private var detailWord: SavedWord?
     // Note / JLPT / scope / direction / count, persisted under this activity's own key prefix.
     @StateObject private var options = LearnActivityOptions(activity: .flashcards)
@@ -74,7 +67,7 @@ struct FlashcardsView: View {
                         Spacer(minLength: 8)
                         cardStack
                         Spacer(minLength: 8)
-                        bottomControl
+                        controls
                     }
                     .padding()
                 }
@@ -100,20 +93,13 @@ struct FlashcardsView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    // Restart: deals the same pool again from the top. Sessions are always
+                    // shuffled, so this reshuffles too — one button, not a restart beside a
+                    // separate shuffle that did the identical thing.
                     Button { startSession() } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .disabled(sessionSource.isEmpty)
-                }
-                if session.isEmpty == false || sessionSource.isEmpty == false {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        // Reshuffles and restarts. Sessions are always shuffled, so this is an
-                        // action ("deal again"), not a mode.
-                        Button { startSession() } label: {
-                            Image(systemName: "shuffle")
-                        }
-                        .disabled(sessionSource.isEmpty)
-                    }
                 }
             }
             .alert("End session?", isPresented: $showEndSessionConfirm) {
@@ -187,23 +173,12 @@ struct FlashcardsView: View {
                     dragOffset: $dragOffset,
                     isSwipingOut: $isSwipingOut,
                     swipeDirection: $swipeDirection,
-                    // Swipe-to-grade is disabled for a card FlashcardTypedAnswerControl is grading —
-                    // otherwise a stray horizontal swipe on the (still English-only) front face would
-                    // grade the card before the user ever typed an answer. Flip-to-peek still works;
-                    // that's no worse than self-graded mode already allowing a peek-then-swipe.
-                    onKnow: { if isTypedGradingCard(word) == false { know() } },
-                    onAgain: { if isTypedGradingCard(word) == false { again() } }
+                    onKnow: { know() },
+                    onAgain: { again() }
                 )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: 360)
-    }
-
-    // True when the current card should be graded via FlashcardTypedAnswerControl rather than
-    // self-reported flip+Know/Again — typed grading is on, and this card's resolved direction is
-    // production (English prompt, Japanese answer).
-    private func isTypedGradingCard(_ word: SavedWord) -> Bool {
-        typedGrading && resolvedDirection(for: word).answerIsMeaning == false
     }
 
     // The direction this card is being asked in: one of the session's ticked directions, chosen
@@ -216,30 +191,6 @@ struct FlashcardsView: View {
             seed: word.canonicalEntryID,
             hasKanjiForm: LearnWordPool.estimatedHasKanjiForm(word, reviewStore: reviewStore)
         ) ?? .kanaToMeaning
-    }
-
-    // The typed-answer control when the current card calls for it, otherwise the usual
-    // Again/Detail/Know row.
-    @ViewBuilder
-    private var bottomControl: some View {
-        if session.indices.contains(index), isTypedGradingCard(session[index]) {
-            let word = session[index]
-            FlashcardTypedAnswerControl(
-                word: word,
-                dictionaryStore: dictionaryStore,
-                direction: resolvedDirection(for: word),
-                onGraded: { correct, gradedDirection, gradedHasKanjiForm in
-                    if correct {
-                        know(direction: gradedDirection, hasKanjiForm: gradedHasKanjiForm)
-                    } else {
-                        again(direction: gradedDirection, hasKanjiForm: gradedHasKanjiForm)
-                    }
-                }
-            )
-            .id(word.canonicalEntryID)
-        } else {
-            controls
-        }
     }
 
     // Again / Detail / Know buttons shown while a session is active.
@@ -337,19 +288,14 @@ struct FlashcardsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // The shared start screen, plus Flashcards' own typed-answer toggle.
+    // The shared start screen; every activity configures identically now.
     private var reviewHome: some View {
         LearnActivityHome(
             activity: activity,
             options: options,
             dictionaryStore: dictionaryStore,
             poolCount: eligibleWords().count,
-            onStart: { startSessionFromHome() },
-            extraSections: {
-                Section {
-                    Toggle("Typed answers", isOn: $typedGrading)
-                }
-            }
+            onStart: { startSessionFromHome() }
         )
     }
 
@@ -378,9 +324,8 @@ struct FlashcardsView: View {
     }
 
     // Records an "again", appends the card to the back of the queue, and advances. `direction` and
-    // `hasKanjiForm` override the surface-heuristic resolution — passed by
-    // FlashcardTypedAnswerControl, which already fetched the word's live kanji/kana and so knows
-    // both more precisely.
+    // `hasKanjiForm` override the surface-heuristic resolution when a caller knows
+    // both more precisely — the Coverage-launched paths pass them.
     private func again(direction overrideDirection: QuestionDirection? = nil, hasKanjiForm: Bool? = nil) {
         guard session.isEmpty == false else { return }
         sessionAgain += 1; reviewedCount += 1

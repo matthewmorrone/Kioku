@@ -2,16 +2,15 @@ import SwiftUI
 
 // The single start screen behind every Learn activity, rendered from a `LearnActivity` descriptor
 // and the activity's persisted `LearnActivityOptions`. Replaces three hand-built Forms that drifted
-// apart while offering the same controls. Activities that need a control of their own (Flashcards'
-// typed-answer toggle) pass it as `extraSections`; everything else is shared here.
-struct LearnActivityHome<Extra: View>: View {
+// apart while offering the same controls — all three now configure identically, so this takes no
+// per-activity content at all.
+struct LearnActivityHome: View {
     let activity: LearnActivity
     @ObservedObject var options: LearnActivityOptions
     let dictionaryStore: DictionaryStore?
     // Words that pass every filter AND can be asked at least one of the ticked directions.
     let poolCount: Int
     let onStart: () -> Void
-    @ViewBuilder var extraSections: Extra
 
     var body: some View {
         LearnHomeForm(
@@ -37,20 +36,14 @@ struct LearnActivityHome<Extra: View>: View {
                 .pickerStyle(.segmented)
             }
 
-            Section {
-                LearnCountField(label: activity.unitLabel, count: $options.count)
-            }
-
-            extraSections
-
             countsSection
         }
     }
 
-    // The pool the session draws from, and how many questions that actually yields once the count
-    // cap applies. Two numbers rather than one because they answer different questions: the pool
-    // says how much of your collection this configuration reaches, the question count says how long
-    // the session will be.
+    // Pool, cap, and result in one section so they read as the sum they are: this configuration
+    // reaches N words, you're capping at M, so the session runs this many. The cap is the only
+    // editable row; keeping it beside its own result is what stops it reading as a second,
+    // mysteriously uneditable copy of the same number.
     private var countsSection: some View {
         Section {
             LabeledContent("Words in pool") {
@@ -58,9 +51,11 @@ struct LearnActivityHome<Extra: View>: View {
                     .monospacedDigit()
                     .foregroundStyle(poolCount < activity.minimumPoolSize ? .red : .primary)
             }
+            LearnCountField(label: "Limit", count: $options.count)
             LabeledContent(activity.unitLabel) {
                 Text("\(plannedQuestionCount)")
                     .monospacedDigit()
+                    .fontWeight(.semibold)
             }
         }
     }

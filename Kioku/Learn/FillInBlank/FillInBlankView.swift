@@ -295,15 +295,14 @@ struct FillInBlankView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // The shared start screen; Fill in the Blank adds no controls of its own.
+    // The shared start screen — identical for every activity.
     private var reviewHome: some View {
         LearnActivityHome(
             activity: activity,
             options: options,
             dictionaryStore: dictionaryStore,
             poolCount: eligibleWords().count,
-            onStart: { startSessionFromHome() },
-            extraSections: { EmptyView() }
+            onStart: { startSessionFromHome() }
         )
     }
 
