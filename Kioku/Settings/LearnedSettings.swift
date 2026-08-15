@@ -71,21 +71,31 @@ nonisolated enum AutoLearnPolicy {
     // a word reaches Learned once every recognition direction (kanji→meaning, kana→meaning,
     // kanji→kana) has its own evidence clearing the bar, not just an aggregate whole-word streak
     // that could come from one direction alone. See `shouldMarkMastered` for the stricter, all-6-
-    // direction bar.
+    // direction bar. `hasKanjiForm: false` drops the kanji directions from the requirement (see
+    // `QuestionDirection.applicable`), leaving かな→English as the whole recognition bar — without
+    // it a kana-only word could never be promoted, since its kanji directions are never asked.
     static func shouldMarkLearned(
         directionStats: [String: DirectionStats],
+        hasKanjiForm: Bool = true,
         config: LearnedSettings.Config = LearnedSettings.current()
     ) -> Bool {
-        allDirectionsClearBar(QuestionDirection.tier1, directionStats: directionStats, config: config)
+        allDirectionsClearBar(
+            QuestionDirection.applicable(QuestionDirection.tier1, hasKanjiForm: hasKanjiForm),
+            directionStats: directionStats, config: config
+        )
     }
 
     // Stricter sibling of `shouldMarkLearned`: requires every direction, recognition AND
     // production (all 6 `QuestionDirection` cases), to clear the bar — the Mastered stage.
     static func shouldMarkMastered(
         directionStats: [String: DirectionStats],
+        hasKanjiForm: Bool = true,
         config: LearnedSettings.Config = LearnedSettings.current()
     ) -> Bool {
-        allDirectionsClearBar(QuestionDirection.allCases, directionStats: directionStats, config: config)
+        allDirectionsClearBar(
+            QuestionDirection.applicable(QuestionDirection.allCases, hasKanjiForm: hasKanjiForm),
+            directionStats: directionStats, config: config
+        )
     }
 
     // Shared gate behind both promotion checks above: false immediately when auto-learn is off,

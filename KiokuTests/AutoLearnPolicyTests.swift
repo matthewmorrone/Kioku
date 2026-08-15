@@ -139,4 +139,34 @@ final class AutoLearnPolicyTests: XCTestCase {
         stats[QuestionDirection.meaningToKana.rawValue] = DirectionStats(correct: 1, again: 2, consecutiveCorrect: 0)
         XCTAssertFalse(AutoLearnPolicy.shouldMarkMastered(directionStats: stats, config: cfg))
     }
+
+    // MARK: - kana-only words (hasKanjiForm: false)
+
+    // A kana-only word can never be asked any kanji direction, so its recognition bar is
+    // かな→English alone. Held to the full tier1 it would be stuck below Learned forever.
+    func testShouldMarkLearnedIgnoresKanjiDirectionsForKanaOnlyWord() {
+        let cfg = config(rule: .consecutiveCorrect, streak: 3)
+        let stats = directionStats(for: [.kanaToMeaning], correct: 3, again: 0, consecutiveCorrect: 3)
+        XCTAssertFalse(AutoLearnPolicy.shouldMarkLearned(directionStats: stats, hasKanjiForm: true, config: cfg))
+        XCTAssertTrue(AutoLearnPolicy.shouldMarkLearned(directionStats: stats, hasKanjiForm: false, config: cfg))
+    }
+
+    // Mastery for a kana-only word means both of its askable directions — one recognition, one
+    // production — clear the bar. Recognition alone still isn't enough.
+    func testShouldMarkMasteredRequiresBothKanaDirectionsForKanaOnlyWord() {
+        let cfg = config(rule: .consecutiveCorrect, streak: 3)
+        let recognitionOnly = directionStats(for: [.kanaToMeaning], correct: 3, again: 0, consecutiveCorrect: 3)
+        XCTAssertFalse(AutoLearnPolicy.shouldMarkMastered(directionStats: recognitionOnly, hasKanjiForm: false, config: cfg))
+
+        let both = directionStats(for: [.kanaToMeaning, .meaningToKana], correct: 3, again: 0, consecutiveCorrect: 3)
+        XCTAssertTrue(AutoLearnPolicy.shouldMarkMastered(directionStats: both, hasKanjiForm: false, config: cfg))
+    }
+
+    // The relaxation is strictly about kanji: a below-bar かな direction still blocks promotion.
+    func testKanaOnlyWordStillBlockedByWeakKanaDirection() {
+        let cfg = config(rule: .consecutiveCorrect, streak: 3)
+        var stats = directionStats(for: [.kanaToMeaning, .meaningToKana], correct: 3, again: 0, consecutiveCorrect: 3)
+        stats[QuestionDirection.meaningToKana.rawValue] = DirectionStats(correct: 1, again: 2, consecutiveCorrect: 0)
+        XCTAssertFalse(AutoLearnPolicy.shouldMarkMastered(directionStats: stats, hasKanjiForm: false, config: cfg))
+    }
 }

@@ -39,6 +39,10 @@ struct FillInBlankQuestion: Identifiable {
     let prompt: String
     let correct: String
     let direction: QuestionDirection
+    // Whether the word has a kanji form, so answering can tell ReviewStore which promotion bar
+    // applies (see `QuestionDirection.applicable`). Nil when this question was built without
+    // authoritative dictionary data — read as "assume it does", the conservative default.
+    let hasKanjiForm: Bool?
 }
 
 // Renders the fill-in-the-blank study mode: type the answer instead of picking it (Multiple
@@ -56,6 +60,10 @@ struct FillInBlankView: View {
     @State private var index: Int = 0
     @State private var typedAnswer: String = ""
     @State private var verdict: AnswerScorer.Verdict?
+    // Set when the user gave up and revealed the answer rather than typing one. Graded the same as a
+    // wrong answer (a revealed answer isn't recall), but labeled differently so the feedback doesn't
+    // accuse them of getting something wrong that they never attempted.
+    @State private var didReveal: Bool = false
     @State private var sessionActive: Bool = false
     @State private var isResolving: Bool = false
     @FocusState private var isFocused: Bool
@@ -159,20 +167,30 @@ struct FillInBlankView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(typedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                // Escape hatch: Check is disabled on an empty field, so without this a blanked
+                // question the user can't answer would strand the whole session.
+                Button { reveal(question: question) } label: {
+                    Label("Show Answer", systemImage: "eye")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
         }
         .onAppear { isFocused = true }
     }
 
-    // Correct/incorrect result plus a Next/Finish button, replacing the text field once checked.
+    // Correct/incorrect result plus a Next/Finish button, replacing the text field once checked. A
+    // revealed answer shows the answer neutrally rather than as an incorrect attempt, even though
+    // it's scored the same.
     @ViewBuilder
     private func feedback(for verdict: AnswerScorer.Verdict, correct: String) -> some View {
         VStack(spacing: 12) {
             Label(
-                verdict.isCorrect ? "Correct" : "Incorrect — \(correct)",
-                systemImage: verdict.isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill"
+                didReveal ? correct : (verdict.isCorrect ? "Correct" : "Incorrect — \(correct)"),
+                systemImage: didReveal ? "eye" : (verdict.isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill")
             )
-            .foregroundStyle(verdict.isCorrect ? .green : .red)
+            .foregroundStyle(didReveal ? Color.secondary : (verdict.isCorrect ? .green : .red))
             .font(.headline)
             .frame(maxWidth: .infinity)
             .multilineTextAlignment(.center)
@@ -193,17 +211,34 @@ struct FillInBlankView: View {
         isFocused = false
         if result.isCorrect {
             sessionCorrect += 1
-            reviewStore.recordCorrect(for: question.id, direction: question.direction)
+            reviewStore.recordCorrect(
+                for: question.id, direction: question.direction, hasKanjiForm: question.hasKanjiForm
+            )
         } else {
             sessionWrong += 1
-            reviewStore.recordAgain(for: question.id, direction: question.direction)
+            reviewStore.recordAgain(
+                for: question.id, direction: question.direction, hasKanjiForm: question.hasKanjiForm
+            )
         }
+    }
+
+    // Gives up on the current question: shows the answer and scores it as wrong, so a word the user
+    // couldn't produce still comes back around in review rather than being silently passed over.
+    private func reveal(question: FillInBlankQuestion) {
+        didReveal = true
+        verdict = AnswerScorer.grade(input: "", expected: question.correct)
+        isFocused = false
+        sessionWrong += 1
+        reviewStore.recordAgain(
+            for: question.id, direction: question.direction, hasKanjiForm: question.hasKanjiForm
+        )
     }
 
     // Clears the answer field and verdict, and advances to the next question (or the summary).
     private func advance() {
         typedAnswer = ""
         verdict = nil
+        didReveal = false
         index += 1
         isFocused = true
     }
@@ -281,9 +316,6 @@ struct FillInBlankView: View {
 
             Section {
                 Toggle("Sentence context", isOn: $sentenceContext)
-                Text("Blanks a real sentence from your notes instead of asking for a bare word. Only words whose saved note still contains their exact surface are eligible — the count below reflects that when this is on.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
 
             // The direction picker doesn't apply once the sentence itself supplies the context —
@@ -295,9 +327,6 @@ struct FillInBlankView: View {
                         ForEach(FillInBlankDirection.allCases) { d in Text(d.rawValue).tag(d) }
                     }
                     .pickerStyle(.menu)
-                    Text("Only directions with a kanji/kana answer are offered — a typed English answer has too many valid phrasings to grade reliably.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -321,10 +350,6 @@ struct FillInBlankView: View {
                         .font(.largeTitle.weight(.semibold))
                         .monospacedDigit()
                         .foregroundStyle(matchingCount < minWords ? .red : .primary)
-                    if matchingCount < minWords {
-                        Text("No words match this selection")
-                            .font(.footnote).foregroundStyle(.red)
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 6)
@@ -356,6 +381,7 @@ struct FillInBlankView: View {
         index = 0
         typedAnswer = ""
         verdict = nil
+        didReveal = false
         questions = []
         let dir = direction
         let limit = questionCount
@@ -389,7 +415,8 @@ struct FillInBlankView: View {
             let correct = item.value(for: fields.answer)
             guard prompt != correct, correct.isEmpty == false else { continue }
             result.append(FillInBlankQuestion(
-                id: item.word.canonicalEntryID, prompt: prompt, correct: correct, direction: resolvedDirection
+                id: item.word.canonicalEntryID, prompt: prompt, correct: correct,
+                direction: resolvedDirection, hasKanjiForm: item.hasKanjiForm
             ))
         }
         result.shuffle()
@@ -417,8 +444,13 @@ struct FillInBlankView: View {
             let blankDirection: QuestionDirection = ScriptClassifier.containsKanji(blank.surface)
                 ? .meaningToKanji : .meaningToKana
             let prompt = "\(blank.before)＿＿＿\(blank.after)"
+            // Sentence questions are built without a dictionary lookup, so kanji in the blanked
+            // surface is the only positive evidence available; its absence proves nothing (the
+            // word may still have a kanji headword), hence nil rather than false.
             result.append(FillInBlankQuestion(
-                id: word.canonicalEntryID, prompt: prompt, correct: blank.surface, direction: blankDirection
+                id: word.canonicalEntryID, prompt: prompt, correct: blank.surface,
+                direction: blankDirection,
+                hasKanjiForm: ScriptClassifier.containsKanji(blank.surface) ? true : nil
             ))
         }
         result.shuffle()
@@ -433,6 +465,7 @@ struct FillInBlankView: View {
         index = 0
         typedAnswer = ""
         verdict = nil
+        didReveal = false
         sessionCorrect = 0
         sessionWrong = 0
     }
@@ -479,8 +512,11 @@ struct FillInBlankView: View {
             let usableKanji = (kanji?.isEmpty == false && kanji != surface) ? kanji : nil
             let kana = r.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
             let usableKana = (kana?.isEmpty == false && kana != surface) ? kana : nil
+            // Kanji visible in the surface counts even if the dictionary reported no headword, so
+            // this can never wrongly claim a kanji-bearing word is kana-only.
             items.append(MultipleChoiceItem(
-                word: word, original: surface, kanji: usableKanji, kana: usableKana, english: gloss
+                word: word, original: surface, kanji: usableKanji, kana: usableKana, english: gloss,
+                hasKanjiForm: kanji?.isEmpty == false || ScriptClassifier.containsKanji(surface)
             ))
         }
         return items

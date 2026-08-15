@@ -55,8 +55,10 @@ struct KanaChartView: View {
     private var modeSwipe: some Gesture {
         DragGesture(minimumDistance: 20)
             .onEnded { value in
-                // Ignore mostly-horizontal drags.
-                guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                // Require the same 2:1 dominance the Learn pager demands of a horizontal swipe, so
+                // an ambiguous diagonal changes neither the page nor the representation instead of
+                // whichever recogniser happens to accept it first.
+                guard abs(value.translation.height) > abs(value.translation.width) * 2 else { return }
                 withAnimation(.easeInOut(duration: 0.2)) {
                     representation = value.translation.height < 0
                         ? representation.next

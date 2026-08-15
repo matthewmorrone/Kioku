@@ -11,11 +11,16 @@ struct FlashcardTypedAnswerControl: View {
     let word: SavedWord
     let dictionaryStore: DictionaryStore?
     let japaneseForm: StudyJapaneseForm
-    let onGraded: (_ correct: Bool, _ direction: QuestionDirection?) -> Void
+    // `hasKanjiForm` is authoritative here (this view fetched the headword), unlike the host's
+    // surface-only heuristic — see FlashcardsView.surfaceKanjiEvidence.
+    let onGraded: (_ correct: Bool, _ direction: QuestionDirection?, _ hasKanjiForm: Bool?) -> Void
 
     @State private var typedAnswer: String = ""
     @State private var expected: ExpectedAnswer?
     @State private var verdict: AnswerScorer.Verdict?
+    // Set when the user revealed the answer instead of typing one — graded as wrong (a revealed
+    // answer isn't recall), but labeled neutrally rather than as a failed attempt.
+    @State private var didReveal: Bool = false
     @FocusState private var isFocused: Bool
 
     private struct ExpectedAnswer {
@@ -43,6 +48,15 @@ struct FlashcardTypedAnswerControl: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(expected == nil || typedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                // Typed mode replaces Again/Know, so without this a card the user can't answer has
+                // no way forward at all — Check stays disabled on an empty field.
+                Button { reveal() } label: {
+                    Label("Show Answer", systemImage: "eye")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(expected == nil)
             }
         }
         // Keyed on the word's id (not just .task's default identity) so a fresh fetch — and a reset
@@ -51,26 +65,29 @@ struct FlashcardTypedAnswerControl: View {
         .task(id: word.canonicalEntryID) {
             typedAnswer = ""
             verdict = nil
+            didReveal = false
             expected = await resolveExpected()
             isFocused = true
         }
     }
 
-    // Correct/incorrect result plus a Next button, replacing the text field once the answer's checked.
+    // Correct/incorrect result plus a Next button, replacing the text field once the answer's
+    // checked. A revealed answer is shown neutrally rather than as an incorrect attempt.
     @ViewBuilder
     private func feedback(for verdict: AnswerScorer.Verdict) -> some View {
+        let answer = expected?.text ?? verdict.normalizedExpected
         VStack(spacing: 8) {
             Label(
-                verdict.isCorrect ? "Correct" : "Incorrect — \(expected?.text ?? verdict.normalizedExpected)",
-                systemImage: verdict.isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill"
+                didReveal ? answer : (verdict.isCorrect ? "Correct" : "Incorrect — \(answer)"),
+                systemImage: didReveal ? "eye" : (verdict.isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill")
             )
-            .foregroundStyle(verdict.isCorrect ? .green : .red)
+            .foregroundStyle(didReveal ? Color.secondary : (verdict.isCorrect ? .green : .red))
             .font(.headline)
             .frame(maxWidth: .infinity)
             .multilineTextAlignment(.center)
 
             Button {
-                onGraded(verdict.isCorrect, direction)
+                onGraded(verdict.isCorrect, direction, expected.map { $0.isKanaOnlySurface == false })
             } label: {
                 Label("Next", systemImage: "arrow.right.circle.fill")
                     .frame(maxWidth: .infinity)
@@ -87,6 +104,15 @@ struct FlashcardTypedAnswerControl: View {
         return .forJapaneseEnglishAxis(
             resolved: .englishToJapanese, form: japaneseForm, isKanaOnlySurface: expected.isKanaOnlySurface
         )
+    }
+
+    // Gives up on the current card: shows the answer and scores it as wrong, so the word stays in
+    // rotation instead of being silently passed over.
+    private func reveal() {
+        guard let expected else { return }
+        didReveal = true
+        verdict = AnswerScorer.grade(input: "", expected: expected.text)
+        isFocused = false
     }
 
     // Grades the typed answer against the resolved expected text and shows the verdict.

@@ -63,9 +63,10 @@ final class ReviewStore: ObservableObject {
     // the card via SRSScheduler so it reappears at the next interval up the ladder. `direction`,
     // when known, also feeds that direction's own evidence — see `AutoLearnPolicy.shouldMarkLearned`
     // for why per-direction evidence (not just the whole-word streak below) gates auto-promotion.
-    func recordCorrect(for id: Int64, direction: QuestionDirection? = nil) {
+    func recordCorrect(for id: Int64, direction: QuestionDirection? = nil, hasKanjiForm: Bool? = nil) {
         let prior = stats[id]
         var st = prior ?? ReviewWordStats(correct: 0, again: 0)
+        if let hasKanjiForm { st.hasKanjiForm = hasKanjiForm }
         st.correct += 1
         let now = Date()
         st.lastReviewedAt = now
@@ -80,7 +81,10 @@ final class ReviewStore: ObservableObject {
         // bar the user configured in Settings. Only acts on a word the user hasn't marked either
         // way (unmarked) — an explicit Learned is already done, and an explicit Not Learned is a
         // deliberate signal we don't override from behind their back.
-        if learnedState(for: id) == .unmarked, AutoLearnPolicy.shouldMarkLearned(directionStats: st.directionStats) {
+        if learnedState(for: id) == .unmarked,
+           AutoLearnPolicy.shouldMarkLearned(
+               directionStats: st.directionStats, hasKanjiForm: st.hasKanjiForm ?? true
+           ) {
             learned.insert(id)
             persistLearned()
         }
@@ -89,7 +93,9 @@ final class ReviewStore: ObservableObject {
         // normally follows an already-Learned word, so it only excludes an explicit "not learned"
         // mark, the same deliberate override the "learned" promotion above respects.
         if learnedState(for: id) != .notLearned, mastered.contains(id) == false,
-           AutoLearnPolicy.shouldMarkMastered(directionStats: st.directionStats) {
+           AutoLearnPolicy.shouldMarkMastered(
+               directionStats: st.directionStats, hasKanjiForm: st.hasKanjiForm ?? true
+           ) {
             mastered.insert(id)
             persistMastered()
         }
@@ -148,9 +154,12 @@ final class ReviewStore: ObservableObject {
     // Records an "again" answer: increments counters, adds the word to the wrong set, resets
     // the SRS streak, and reschedules the card to reappear after the short relearn step.
     // `direction`, when known, also resets that direction's own streak (see `recordCorrect`).
-    func recordAgain(for id: Int64, direction: QuestionDirection? = nil) {
+    // `hasKanjiForm` is recorded here too, even though a wrong answer promotes nothing, so the fact
+    // is already on file by the time a later correct answer evaluates the bar.
+    func recordAgain(for id: Int64, direction: QuestionDirection? = nil, hasKanjiForm: Bool? = nil) {
         let prior = stats[id]
         var st = prior ?? ReviewWordStats(correct: 0, again: 0)
+        if let hasKanjiForm { st.hasKanjiForm = hasKanjiForm }
         st.again += 1
         let now = Date()
         st.lastReviewedAt = now

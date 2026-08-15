@@ -9,6 +9,11 @@ struct MultipleChoiceItem: Identifiable {
     let kanji: String?       // dictionary kanji headword (漢字)
     let kana: String?        // kana reading (かな)
     let english: String
+    // Whether the word has a kanji form at all — distinct from `kanji != nil`, which is also nil
+    // when the headword merely equals the surface. Feeds the promotion bar via ReviewStore, where a
+    // kana-only word must not be held to directions it can never be asked (see
+    // `QuestionDirection.applicable`).
+    let hasKanjiForm: Bool
     var id: Int64 { word.canonicalEntryID }
 
     // The Japanese string to display for the chosen form, falling back to the original surface
@@ -44,6 +49,8 @@ struct MultipleChoiceQuestion: Identifiable {
     // direction's own evidence in ReviewStore (see QuestionDirection). Nil only defensively —
     // every path in buildQuestions resolves a concrete direction.
     let direction: QuestionDirection?
+    // Carried from the source item so answering can tell ReviewStore which promotion bar applies.
+    let hasKanjiForm: Bool
 }
 
 // Renders the multiple-choice study mode: home configuration, active quiz, and summary.
@@ -411,12 +418,13 @@ struct MultipleChoiceView: View {
         selected = option
         let id = questions[index].id
         let direction = questions[index].direction
+        let hasKanjiForm = questions[index].hasKanjiForm
         if option == correct {
             sessionCorrect += 1
-            reviewStore.recordCorrect(for: id, direction: direction)
+            reviewStore.recordCorrect(for: id, direction: direction, hasKanjiForm: hasKanjiForm)
         } else {
             sessionWrong += 1
-            reviewStore.recordAgain(for: id, direction: direction)
+            reviewStore.recordAgain(for: id, direction: direction, hasKanjiForm: hasKanjiForm)
         }
     }
 
@@ -483,8 +491,12 @@ struct MultipleChoiceView: View {
             let usableKanji = (kanji?.isEmpty == false && kanji != surface) ? kanji : nil
             let kana = r.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
             let usableKana = (kana?.isEmpty == false && kana != surface) ? kana : nil
+            // Kanji visible in the surface counts even if the dictionary reported no headword, so
+            // this can never wrongly claim a kanji-bearing word is kana-only.
+            let hasKanjiForm = kanji?.isEmpty == false || ScriptClassifier.containsKanji(surface)
             items.append(MultipleChoiceItem(
-                word: word, original: surface, kanji: usableKanji, kana: usableKana, english: gloss
+                word: word, original: surface, kanji: usableKanji, kana: usableKana, english: gloss,
+                hasKanjiForm: hasKanjiForm
             ))
         }
         return items
@@ -624,7 +636,8 @@ struct MultipleChoiceView: View {
                 prompt: prompt,
                 options: options,
                 correct: correct,
-                direction: questionDirection
+                direction: questionDirection,
+                hasKanjiForm: item.hasKanjiForm
             ))
         }
         result.shuffle()

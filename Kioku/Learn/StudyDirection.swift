@@ -118,6 +118,23 @@ nonisolated enum QuestionDirection: String, Codable, CaseIterable, Hashable {
         }
     }
 
+    // True when 漢字 sits on either side of this direction, so it can only be asked of a word that
+    // actually has a kanji form.
+    var requiresKanji: Bool {
+        let pair = fields
+        return pair.prompt == .kanji || pair.answer == .kanji
+    }
+
+    // Narrows a direction list to the ones a word can actually be quizzed in. A kana-only word
+    // (こと, きれい, most loanwords) has no kanji form to read or produce, so all four kanji
+    // directions are unaskable for it — leaving them in the promotion bar would strand it below
+    // Learned forever, since a direction that's never asked can never accumulate evidence. What's
+    // left for such a word is かな→English (recognition) and English→かな (production), one on
+    // each side of the Learned/Mastered split.
+    static func applicable(_ directions: [QuestionDirection], hasKanjiForm: Bool) -> [QuestionDirection] {
+        hasKanjiForm ? directions : directions.filter { $0.requiresKanji == false }
+    }
+
     // The inverse of `init(prompt:answer:)` — the concrete field pair this direction quizzes.
     var fields: (prompt: StudyField, answer: StudyField) {
         switch self {

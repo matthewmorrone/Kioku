@@ -272,11 +272,11 @@ struct FlashcardsView: View {
                 word: word,
                 dictionaryStore: dictionaryStore,
                 japaneseForm: japaneseForm,
-                onGraded: { correct, gradedDirection in
+                onGraded: { correct, gradedDirection, gradedHasKanjiForm in
                     if correct {
-                        know(direction: gradedDirection)
+                        know(direction: gradedDirection, hasKanjiForm: gradedHasKanjiForm)
                     } else {
-                        again(direction: gradedDirection)
+                        again(direction: gradedDirection, hasKanjiForm: gradedHasKanjiForm)
                     }
                 }
             )
@@ -408,9 +408,6 @@ struct FlashcardsView: View {
 
             Section {
                 Toggle("Typed answers", isOn: $typedGrading)
-                Text("English → 日本語 cards are graded by typing the answer instead of flipping. Every other direction is unaffected.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
 
             Section {
@@ -468,14 +465,19 @@ struct FlashcardsView: View {
         index = 0; showBack = false; dragOffset = .zero
     }
 
-    // Records an "again", appends the card to the back of the queue, and advances. `direction`
-    // overrides the surface-heuristic resolution — passed by FlashcardTypedAnswerControl, which
-    // already fetched the word's live kanji/kana and so knows the direction more precisely.
-    private func again(direction overrideDirection: QuestionDirection? = nil) {
+    // Records an "again", appends the card to the back of the queue, and advances. `direction` and
+    // `hasKanjiForm` override the surface-heuristic resolution — passed by
+    // FlashcardTypedAnswerControl, which already fetched the word's live kanji/kana and so knows
+    // both more precisely.
+    private func again(direction overrideDirection: QuestionDirection? = nil, hasKanjiForm: Bool? = nil) {
         guard session.isEmpty == false else { return }
         sessionAgain += 1; reviewedCount += 1
         let w = session[index]
-        reviewStore.recordAgain(for: w.canonicalEntryID, direction: overrideDirection ?? questionDirection(for: w))
+        reviewStore.recordAgain(
+            for: w.canonicalEntryID,
+            direction: overrideDirection ?? questionDirection(for: w),
+            hasKanjiForm: hasKanjiForm ?? surfaceKanjiEvidence(for: w)
+        )
         session.remove(at: index)
         session.append(w)
         if index >= session.count { index = session.count - 1 }
@@ -483,15 +485,28 @@ struct FlashcardsView: View {
     }
 
     // Records a "know", removes the card from the queue, and advances. See `again` re: `direction`.
-    private func know(direction overrideDirection: QuestionDirection? = nil) {
+    private func know(direction overrideDirection: QuestionDirection? = nil, hasKanjiForm: Bool? = nil) {
         guard session.isEmpty == false else { return }
         sessionCorrect += 1; reviewedCount += 1
         let w = session[index]
-        reviewStore.recordCorrect(for: w.canonicalEntryID, direction: overrideDirection ?? questionDirection(for: w))
+        reviewStore.recordCorrect(
+            for: w.canonicalEntryID,
+            direction: overrideDirection ?? questionDirection(for: w),
+            hasKanjiForm: hasKanjiForm ?? surfaceKanjiEvidence(for: w)
+        )
         session.remove(at: index)
         if session.isEmpty { return }
         if index >= session.count { index = max(0, session.count - 1) }
         showBack = false
+    }
+
+    // What the saved surface alone can prove about the word having a kanji form. Kanji in the
+    // surface is conclusive; its absence is not (a word saved as ありがとう may still have the
+    // headword 有難う), so that case reports nil — unknown — rather than claiming kana-only and
+    // wrongly relaxing the word's promotion bar. The typed-answer control, which does fetch the
+    // headword, passes the authoritative answer instead.
+    private func surfaceKanjiEvidence(for word: SavedWord) -> Bool? {
+        ScriptClassifier.containsKanji(word.surface) ? true : nil
     }
 
     // Resolves the concrete direction this card is grading, from the session's direction/form
