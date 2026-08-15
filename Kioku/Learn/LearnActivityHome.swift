@@ -22,10 +22,11 @@ struct LearnActivityHome<Extra: View>: View {
             Section {
                 FlashcardNotePicker(selectedNoteIDs: $options.selectedNoteIDs)
                 FlashcardJLPTPicker(dictionaryStore: dictionaryStore, selectedLevels: $options.selectedJLPTLevels)
+                LearnDirectionPicker(
+                    supported: activity.supportedDirections,
+                    selection: $options.directions
+                )
             }
-
-            directionSection(QuestionDirection.tier1, header: "Recognition")
-            directionSection(QuestionDirection.tier2, header: "Production")
 
             Section {
                 Picker("Scope", selection: $options.scope) {
@@ -44,33 +45,6 @@ struct LearnActivityHome<Extra: View>: View {
 
             countsSection
         }
-    }
-
-    // One tier's directions as individual toggles. Split across two sections because the tiers are
-    // exactly the Learned and Mastered bars — ticking a whole section is how you drill one stage.
-    @ViewBuilder
-    private func directionSection(_ tier: [QuestionDirection], header: String) -> some View {
-        Section {
-            ForEach(tier.filter(activity.supportedDirections.contains)) { direction in
-                Toggle(direction.label, isOn: binding(for: direction))
-            }
-        } header: {
-            Text(header)
-        }
-    }
-
-    // Toggling a direction in or out of the persisted selection. Writing through the whole
-    // `DirectionSelection` (rather than mutating the set in place) is what triggers the options
-    // object's `didSet` persistence.
-    private func binding(for direction: QuestionDirection) -> Binding<Bool> {
-        Binding(
-            get: { options.directions.directions.contains(direction) },
-            set: { isOn in
-                var next = options.directions.directions
-                if isOn { next.insert(direction) } else { next.remove(direction) }
-                options.directions = DirectionSelection(directions: next)
-            }
-        )
     }
 
     // The pool the session draws from, and how many questions that actually yields once the count
@@ -94,5 +68,88 @@ struct LearnActivityHome<Extra: View>: View {
     // How many items the session will run: the whole pool, or the cap when one is set and it bites.
     private var plannedQuestionCount: Int {
         options.count > 0 ? min(poolCount, options.count) : poolCount
+    }
+}
+
+// Multiselect dropdown choosing which of the 6 directions a session draws from — the same Menu
+// idiom as the note and JLPT pickers it sits beside, rather than a row of toggles. The menu is
+// split into Recognition and Production sections because those groups are exactly the Learned and
+// Mastered bars, with a header button on each to take or drop the whole tier in one tap.
+struct LearnDirectionPicker: View {
+    let supported: [QuestionDirection]
+    @Binding var selection: DirectionSelection
+
+    var body: some View {
+        HStack {
+            Text("Directions")
+            Spacer()
+            Menu(summary) {
+                Button { selection = DirectionSelection(directions: Set(supported)) } label: {
+                    if selection.directions.count == supported.count {
+                        Label("All", systemImage: "checkmark")
+                    } else {
+                        Text("All")
+                    }
+                }
+                tierSection(QuestionDirection.tier1, title: "Recognition")
+                tierSection(QuestionDirection.tier2, title: "Production")
+            }
+        }
+    }
+
+    // One tier: a button that takes or drops the whole tier, then its individual directions.
+    @ViewBuilder
+    private func tierSection(_ tier: [QuestionDirection], title: String) -> some View {
+        let directions = tier.filter(supported.contains)
+        Section(title) {
+            Button { toggleTier(directions) } label: {
+                if directions.allSatisfy(selection.directions.contains) {
+                    Label("All \(title)", systemImage: "checkmark")
+                } else {
+                    Text("All \(title)")
+                }
+            }
+            ForEach(directions) { direction in
+                Button { toggle(direction) } label: {
+                    if selection.directions.contains(direction) {
+                        Label(direction.label, systemImage: "checkmark")
+                    } else {
+                        Text(direction.label)
+                    }
+                }
+            }
+        }
+    }
+
+    // Adds or removes one direction. Writing a whole new `DirectionSelection` (rather than mutating
+    // the set through the binding) is what triggers the options object's persistence.
+    private func toggle(_ direction: QuestionDirection) {
+        var next = selection.directions
+        if next.contains(direction) { next.remove(direction) } else { next.insert(direction) }
+        selection = DirectionSelection(directions: next)
+    }
+
+    // Takes the whole tier, or drops it when it's already fully selected.
+    private func toggleTier(_ directions: [QuestionDirection]) {
+        var next = selection.directions
+        if directions.allSatisfy(next.contains) {
+            for direction in directions { next.remove(direction) }
+        } else {
+            for direction in directions { next.insert(direction) }
+        }
+        selection = DirectionSelection(directions: next)
+    }
+
+    // Short label describing the current selection for the menu's trigger text. Names the tier when
+    // the selection is exactly one of them, since "the three that gate Learned" is a selection
+    // worth recognising at a glance rather than reading back as a count.
+    private var summary: String {
+        let chosen = selection.directions
+        if chosen.isEmpty { return "None" }
+        if chosen.count == supported.count { return "All" }
+        if chosen == Set(QuestionDirection.tier1.filter(supported.contains)) { return "Recognition" }
+        if chosen == Set(QuestionDirection.tier2.filter(supported.contains)) { return "Production" }
+        if chosen.count == 1, let only = chosen.first { return only.label }
+        return "\(chosen.count) directions"
     }
 }
