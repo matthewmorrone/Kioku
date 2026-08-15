@@ -43,18 +43,34 @@ struct LearnCountField: View {
         HStack {
             Text(label)
             Spacer()
-            TextField("All", value: $count, format: .number)
+            // Bound through `Int?` rather than `Int` so clearing the field is a value the binding
+            // can represent. Against a non-optional Int an empty field simply fails to parse and
+            // snaps back to the previous number, which made the advertised "blank means all"
+            // impossible to actually enter.
+            TextField("All", value: optionalCount, format: .number)
                 .keyboardType(.numberPad)
                 .multilineTextAlignment(.trailing)
                 .frame(maxWidth: 80)
                 .focused($focused)
         }
+        // The field is only as wide as the digits in it, so without this the tap target is a couple
+        // of characters at the far edge of the row and the number reads as static text.
+        .contentShape(Rectangle())
+        .onTapGesture { focused = true }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { focused = false }
             }
         }
+    }
+
+    // Bridges the stored "0 means no limit" convention to the empty field that expresses it.
+    private var optionalCount: Binding<Int?> {
+        Binding(
+            get: { count > 0 ? count : nil },
+            set: { count = $0 ?? 0 }
+        )
     }
 }
 
