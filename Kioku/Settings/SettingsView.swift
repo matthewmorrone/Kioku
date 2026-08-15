@@ -707,7 +707,9 @@ struct SettingsView: View {
 
     // Triggers a background schedule refresh with the current words and settings.
     private func rescheduleWordOfTheDay() {
-        let words = wordsStore.words
+        // Already-learned words have nothing left to teach, so they'd only be a wasted notification.
+        let learnedEntryIDs = reviewStore.learned
+        let words = wordsStore.words.filter { learnedEntryIDs.contains($0.canonicalEntryID) == false }
         let store = dictionaryStore
         let enabled = wotdEnabled
         let hour = wotdHour

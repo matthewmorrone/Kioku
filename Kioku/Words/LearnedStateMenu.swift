@@ -6,15 +6,20 @@ import UIKit
 // definition so every star in the app (Words list, Word Detail, sentence-parse rows, dictionary
 // search results, Read-tab segment list, and the Read-tab lookup popover/sheet) offers the
 // identical Favorite/Learned/Not Learned choices instead of drifting copies.
+//
+// Rendered as Toggle rather than Button so the currently-active option shows a checkmark inside
+// the menu itself — SwiftUI renders a Toggle inside Menu/.contextMenu content as a checkable
+// item automatically. The binding's `set` ignores whatever value SwiftUI would assign and always
+// calls setState with this option's own state; only `get` (compared against currentState) matters.
 @ViewBuilder
-func learnedStateMenuButtons(setState: @escaping (LearnedState) -> Void) -> some View {
-    Button { setState(.unmarked) } label: {
+func learnedStateMenuButtons(currentState: LearnedState, setState: @escaping (LearnedState) -> Void) -> some View {
+    Toggle(isOn: Binding(get: { currentState == .unmarked }, set: { _ in setState(.unmarked) })) {
         Label("Favorite", systemImage: "star")
     }
-    Button { setState(.learned) } label: {
+    Toggle(isOn: Binding(get: { currentState == .learned }, set: { _ in setState(.learned) })) {
         Label("Learned", systemImage: "checkmark")
     }
-    Button { setState(.notLearned) } label: {
+    Toggle(isOn: Binding(get: { currentState == .notLearned }, set: { _ in setState(.notLearned) })) {
         Label("Not Learned", systemImage: "questionmark")
     }
 }
@@ -28,13 +33,14 @@ func learnedStateSetter(entryID: Int64, reviewStore: ReviewStore) -> (LearnedSta
 }
 
 // UIKit equivalent of learnedStateMenuButtons, for the Read-tab lookup popover/sheet. Attach via
-// `button.menu = learnedStateUIMenu(setState:)` with `button.showsMenuAsPrimaryAction = false` so
-// a plain tap still fires the button's normal touchUpInside action while touch-and-hold shows
-// this menu.
-func learnedStateUIMenu(setState: @escaping (LearnedState) -> Void) -> UIMenu {
+// `button.menu = learnedStateUIMenu(currentState:setState:)` with
+// `button.showsMenuAsPrimaryAction = false` so a plain tap still fires the button's normal
+// touchUpInside action while touch-and-hold shows this menu. `.state = .on` is UIMenu's own
+// checked-item indicator, the UIKit counterpart of the SwiftUI Toggle-in-Menu trick above.
+func learnedStateUIMenu(currentState: LearnedState, setState: @escaping (LearnedState) -> Void) -> UIMenu {
     UIMenu(children: [
-        UIAction(title: "Favorite", image: UIImage(systemName: "star")) { _ in setState(.unmarked) },
-        UIAction(title: "Learned", image: UIImage(systemName: "checkmark")) { _ in setState(.learned) },
-        UIAction(title: "Not Learned", image: UIImage(systemName: "questionmark")) { _ in setState(.notLearned) },
+        UIAction(title: "Favorite", image: UIImage(systemName: "star"), state: currentState == .unmarked ? .on : .off) { _ in setState(.unmarked) },
+        UIAction(title: "Learned", image: UIImage(systemName: "checkmark"), state: currentState == .learned ? .on : .off) { _ in setState(.learned) },
+        UIAction(title: "Not Learned", image: UIImage(systemName: "questionmark"), state: currentState == .notLearned ? .on : .off) { _ in setState(.notLearned) },
     ])
 }

@@ -110,7 +110,7 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave" : "Save")
                 .contextMenu {
-                    learnedStateMenuButtons(setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
                 }
             }
         }
@@ -122,8 +122,20 @@ extension WordsView {
         // leaving the circle visually stuck on whichever row last rendered it. So this isn't
         // just "hide the buttons," it's "don't attach the modifier" while editing. Edit mode
         // already has its own batch remove via the toolbar, so swipe isn't needed there anyway.
+        //
+        // The learned-state marks ride along here too, not just on the star's own .contextMenu
+        // above: List(selection:)'s native row-selection gesture machinery makes .contextMenu
+        // unreliable on its rows (same root cause as the Lines row's star menu — see
+        // SegmentListView's comment on that), so this is the belt to that menu's suspenders
+        // rather than a replacement for it. Remove/Unfavorite stays first so a full swipe keeps
+        // doing what it always did.
         .modifier(SwipeActionsWhenNotEditing(isEditing: editMode == .active) {
             wordRowSwipeAction(entryID: entryID, surface: surface, entry: entry)
+            Menu {
+                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+            } label: {
+                Label("Mark…", systemImage: "ellipsis.circle")
+            }
         })
     }
 

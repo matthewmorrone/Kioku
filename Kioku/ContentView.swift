@@ -374,7 +374,9 @@ struct ContentView: View {
     // Schedules a deferred WOTD refresh so startup can stay responsive while still validating stale schedules.
     private func scheduleWotdRefresh(reason: String, delayNanoseconds: UInt64, forceRefresh: Bool) {
         wotdRefreshTask?.cancel()
-        let words = wordsStore.words
+        // Already-learned words have nothing left to teach, so they'd only be a wasted notification.
+        let learnedEntryIDs = reviewStore.learned
+        let words = wordsStore.words.filter { learnedEntryIDs.contains($0.canonicalEntryID) == false }
         let store = readResources.dictionaryStore
         let enabled = UserDefaults.standard.bool(forKey: WordOfTheDayScheduler.enabledKey)
         let hour = UserDefaults.standard.object(forKey: WordOfTheDayScheduler.hourKey) != nil

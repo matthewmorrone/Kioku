@@ -493,7 +493,7 @@ struct SegmentListView: View {
         // resolves to.
         .contextMenu {
             if let entryID = canonicalEntryIDBySurface[normalizedIdentity] {
-                learnedStateMenuButtons(setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
             }
         }
     }
@@ -786,7 +786,8 @@ struct SegmentListView: View {
                             )
                             .contextMenu {
                                 if let entryID = canonicalEntryIDBySurface[normalizedSurfaceForFiltering(rowIdentity)] {
-                                    learnedStateMenuButtons(setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+                                    let learnedState = reviewStore.learnedState(for: entryID)
+                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
                                 }
                             }
                         }
@@ -794,20 +795,11 @@ struct SegmentListView: View {
                         // Kept alongside the star's own context menu above, not replacing it.
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             if let entryID = canonicalEntryIDBySurface[normalizedSurfaceForFiltering(rowIdentity)] {
-                                Button {
-                                    learnedStateSetter(entryID: entryID, reviewStore: reviewStore)(.unmarked)
+                                let learnedState = reviewStore.learnedState(for: entryID)
+                                Menu {
+                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
                                 } label: {
-                                    Label("Favorite", systemImage: "star")
-                                }
-                                Button {
-                                    learnedStateSetter(entryID: entryID, reviewStore: reviewStore)(.learned)
-                                } label: {
-                                    Label("Learned", systemImage: "checkmark")
-                                }
-                                Button {
-                                    learnedStateSetter(entryID: entryID, reviewStore: reviewStore)(.notLearned)
-                                } label: {
-                                    Label("Not Learned", systemImage: "questionmark")
+                                    Label("Mark…", systemImage: "ellipsis.circle")
                                 }
                             }
                         }

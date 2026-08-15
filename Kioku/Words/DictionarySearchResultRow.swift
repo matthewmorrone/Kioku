@@ -80,7 +80,7 @@ struct DictionarySearchResultRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
             .contextMenu {
-                learnedStateMenuButtons(setState: onSetLearnedState)
+                learnedStateMenuButtons(currentState: learnedState, setState: onSetLearnedState)
             }
         }
         .padding(.vertical, 4)

@@ -9,11 +9,9 @@ import SwiftUI
 enum LearnPage: Int, CaseIterable, Identifiable {
     case flashcards
     case multipleChoice
+    case fillInBlank
     case cloze
     case kanaChart
-    // Appended last (not inserted earlier) so an existing install's persisted `learn.pageIndex`
-    // keeps pointing at the same page it did before — see the comment above about clamping.
-    case fillInBlank
     var id: Int { rawValue }
 }
 
@@ -84,11 +82,11 @@ struct LearnPagerView: View {
                     .frame(width: width)
                 MultipleChoiceView(dictionaryStore: dictionaryStore, segmenter: segmenter)
                     .frame(width: width)
+                FillInBlankView(dictionaryStore: dictionaryStore)
+                    .frame(width: width)
                 ClozeStudyHomeView()
                     .frame(width: width)
                 KanaChartView()
-                    .frame(width: width)
-                FillInBlankView(dictionaryStore: dictionaryStore)
                     .frame(width: width)
             }
             .frame(width: width, alignment: .leading)
