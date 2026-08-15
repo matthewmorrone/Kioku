@@ -104,11 +104,13 @@ struct FlashcardTypedAnswerControl: View {
         let surface = word.surface
         let selectedSenseIDs = word.selectedSenseIDs
         let selectedGlosses = word.selectedGlosses
+        let chosenReading = word.selectedReading
         let form = japaneseForm
         return await Task.detached(priority: .utility) { () -> ExpectedAnswer? in
             guard let resolved = WordFormResolver.fetchKanjiAndKana(
                 store: store, entryID: entryID, surface: surface,
-                selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+                selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+                chosenReading: chosenReading
             ) else {
                 return nil
             }

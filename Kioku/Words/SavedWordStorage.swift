@@ -59,6 +59,10 @@ nonisolated enum SavedWordStorage {
                 // encountered form from both inputs and reseeds with only the preferred surface.
                 // Pinned by WordsStoreTests.testNormalizedEntriesMergesEncounteredSurfacesFromDuplicates.
                 let mergedEncountered = existing.encounteredSurfaces.union(entry.encounteredSurfaces)
+                // Same precedence as the selections above: an explicit reading choice on either
+                // duplicate survives the merge, preferring the one already in hand. Omitting this
+                // would silently reset the card to the entry's default kana on the next dedup pass.
+                let mergedReading = existing.selectedReading ?? entry.selectedReading
                 existing = SavedWord(
                     canonicalEntryID: existing.canonicalEntryID,
                     surface: preferredSurface,
@@ -69,7 +73,9 @@ nonisolated enum SavedWordStorage {
                     selectedSenseIDs: mergedSenseIDs,
                     selectedGlosses: mergedGlosses,
                     encounteredSurfaces: mergedEncountered,
-                    hasBeenOrphaned: existing.hasBeenOrphaned || entry.hasBeenOrphaned
+                    entSeq: existing.entSeq ?? entry.entSeq,
+                    hasBeenOrphaned: existing.hasBeenOrphaned || entry.hasBeenOrphaned,
+                    selectedReading: mergedReading
                 )
                 mergedByEntryID[entry.canonicalEntryID] = existing
                 continue

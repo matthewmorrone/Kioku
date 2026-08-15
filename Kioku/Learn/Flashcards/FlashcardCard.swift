@@ -122,6 +122,7 @@ struct FlashcardCard: View {
         let surface = word.surface
         let selectedSenseIDs = word.selectedSenseIDs
         let selectedGlosses = word.selectedGlosses
+        let chosenReading = word.selectedReading
         return await Task.detached(priority: .utility) {
             guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
                 return nil
@@ -131,7 +132,8 @@ struct FlashcardCard: View {
             // restricted to たそがれ even though the alphabetically-first kana form is こうこん).
             let forms = WordFormResolver.kanjiAndKana(
                 entry: data.entry, store: store, entryID: entryID,
-                selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+                selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+                chosenReading: chosenReading
             )
             let kana = forms.kana
             let kanji = forms.kanji

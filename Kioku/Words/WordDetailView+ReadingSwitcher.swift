@@ -31,11 +31,30 @@ extension WordDetailView {
         }
     }
 
+    // The reading the user picked with the switcher on some earlier visit, read off the live saved
+    // card for whichever entry is active now (so a re-point this session can't surface the previous
+    // entry's reading). Nil when the word isn't saved or was never switched.
+    var savedChosenReading: String? {
+        wordsStore.words.first { $0.canonicalEntryID == activeEntryID }?.selectedReading
+    }
+
     // The reading to render above the headword. Once the switcher flips (either case), displayedReading
-    // is authoritative. Otherwise: the exact reading handed in by the lookup sheet while still on the
-    // opened entry, else the active homograph's projected reading (いだかれ → だかれ).
+    // is authoritative. Then a reading persisted by an earlier flip — a deliberate choice, so it
+    // outranks both the sheet-supplied reading and the entry default — projected onto the surface the
+    // same way a live flip is. Otherwise: the exact reading handed in by the lookup sheet while still
+    // on the opened entry, else the active homograph's projected reading (いだかれ → だかれ).
     func headerReading(entry: DictionaryEntry?) -> String? {
         if let displayedReading { return displayedReading }
+        if let chosen = savedChosenReading {
+            let forms = switchableReadings.first { $0.reading == chosen }?.entry ?? entry
+            guard let forms else { return chosen }
+            return projectedReading(
+                surface: word.surface,
+                baseReading: chosen,
+                kanjiForms: forms.kanjiForms,
+                kanaForms: forms.kanaForms
+            ) ?? chosen
+        }
         if activeEntryID == word.canonicalEntryID, let reading { return reading }
         if let active = switchableReadings.first(where: { $0.entry?.entryId == activeEntryID }),
            let activeEntry = active.entry {
@@ -73,6 +92,8 @@ extension WordDetailView {
     // displayedReading so the header furigana flips; when the target reading belongs to a DIFFERENT
     // entry (a heteronym) it also re-points the saved word via the shared homonym switch path so the
     // Definition follows. Within-entry readings share one entry, so only the furigana changes.
+    // Either way the choice is persisted onto the saved card (see persistChosenReading) so it also
+    // shows in the Words list, on reopen, and on study cards — not just in this open view.
     func switchReading(_ direction: ReadingSwitchDirection, among readings: [ReadingVariants.Variant]) {
         guard readings.count > 1 else { return }
         let total = readings.count
@@ -93,9 +114,21 @@ extension WordDetailView {
         if let targetEntryID = target.entry?.entryId, targetEntryID != activeEntryID {
             switchSavedEntry(to: targetEntryID)
         }
+        // After any re-point, so the reading lands on the entry the card now points at (repoint
+        // rebuilds the card and clears the old entry's reading — see WordsStore.repoint).
+        persistChosenReading(target.reading)
         // switchSavedEntry arms a scroll-into-view meant for tapping a homonym card far down the
         // list. The switcher already shows only the active reading in place, so cancel that scroll
         // to keep the header steady while cycling readings.
         scrollTargetEntryID = nil
+    }
+
+    // Writes the switcher's pick onto the saved card. Stores the target's PLAIN dictionary reading,
+    // not the inflected projection shown in the header (いだかれ → だかれ): the card's stored surface
+    // is the lemma, so every other reader — the Words list row, the study cards — needs the lemma's
+    // reading to pair with it. A no-op when the entry isn't saved (the detail view also opens for
+    // unsaved search results and nested related-word lookups); nothing to record there.
+    func persistChosenReading(_ reading: String) {
+        wordsStore.setReading(id: activeEntryID, reading: reading)
     }
 }

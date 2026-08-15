@@ -115,9 +115,11 @@ struct WordDetailView: View {
     // are one entry, so repointedEntryID can't express the flip). Nil until switched; then it is the
     // authoritative displayed reading. Cross-entry (heteronym) flips also set it. See WordDetailView+ReadingSwitcher.
     @State var displayedReading: String? = nil
-    // The reading currently active — the switcher override once flipped, else the opened reading.
-    // Deliberately does NOT consult switchableReadings (which reads this) so there is no recursion.
-    var activeReading: String? { displayedReading ?? reading }
+    // The reading currently active — the switcher override once flipped, then any reading persisted
+    // by an earlier flip (so reopening the view resumes cycling from where the user left off rather
+    // than from the entry's default), else the opened reading. Deliberately does NOT consult
+    // switchableReadings (which reads this) so there is no recursion.
+    var activeReading: String? { displayedReading ?? savedChosenReading ?? reading }
     // Set by a homonym re-point tap so the List scrolls the now-saved card into view once the
     // async reload settles (the card the user tapped may sit far down the list). Cleared after
     // the scroll fires. See the .onChange(of: allDisplayData.first…) below.

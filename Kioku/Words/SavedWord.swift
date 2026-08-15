@@ -54,6 +54,14 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // Gloss-level selections — one entry per specific synonym the user pinned. Mutually
     // exclusive with selectedSenseIDs at the sense granularity (see invariant above).
     var selectedGlosses: [GlossRef]
+    // The kana reading the user picked with the detail view's reading switcher (涙 なみだ ↔ なだ),
+    // as a plain dictionary reading — never an inflected projection, so it reads correctly against
+    // the stored lemma surface. Nil means "no explicit choice", and every reader falls back to the
+    // entry's own preferred kana as before. Persisted because the switcher's effect has to outlive
+    // the open detail view: the Words list row, the detail header on reopen, and the study cards
+    // all read this. Cross-entry heteronym flips (抱く いだく ↔ だく) re-point the card to the other
+    // entry AND record the reading here, so both halves of the switcher survive.
+    var selectedReading: String?
 
     var id: Int64 {
         canonicalEntryID
@@ -62,7 +70,7 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // Creates a saved-word value with optional note-list and word-list memberships.
     // `encounteredSurfaces` defaults to `[surface]` so call sites that already pass a
     // surface get a sensible per-surface star state without having to spell it out.
-    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil, entSeq: Int64? = nil, hasBeenOrphaned: Bool? = nil) {
+    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil, entSeq: Int64? = nil, hasBeenOrphaned: Bool? = nil, selectedReading: String? = nil) {
         self.canonicalEntryID = canonicalEntryID
         self.entSeq = entSeq
         self.surface = surface
@@ -72,6 +80,7 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         self.savedAt = savedAt
         self.selectedSenseIDs = selectedSenseIDs
         self.selectedGlosses = selectedGlosses
+        self.selectedReading = selectedReading
         // nil → seed with the surface so a freshly-saved card has one encountered
         // member and stars correctly without extra wiring at every call site.
         self.encounteredSurfaces = encounteredSurfaces ?? Set([surface])
@@ -94,6 +103,9 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         savedAt = try c.decodeIfPresent(Date.self, forKey: .savedAt) ?? Date()
         selectedSenseIDs = try c.decodeIfPresent([Int64].self, forKey: .selectedSenseIDs) ?? []
         selectedGlosses = try c.decodeIfPresent([GlossRef].self, forKey: .selectedGlosses) ?? []
+        // Cards saved before the reading switcher persisted anything decode as nil, which is
+        // exactly "no explicit choice" — readers fall back to the entry's preferred kana.
+        selectedReading = try c.decodeIfPresent(String.self, forKey: .selectedReading)
         // Legacy cards (persisted before encounteredSurfaces existed) get seeded
         // with the stored surface as the sole encountered form. The segment-list
         // render path expands this in-memory with the derived lemma so legacy
@@ -140,7 +152,8 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
             selectedGlosses: selectedGlosses,
             encounteredSurfaces: encounteredSurfaces,
             entSeq: entSeq,
-            hasBeenOrphaned: hasBeenOrphaned
+            hasBeenOrphaned: hasBeenOrphaned,
+            selectedReading: selectedReading
         )
     }
 

@@ -89,6 +89,10 @@ struct WordsView: View {
     @State var selectedDetailWord: SavedWord?
     // Reading that was active in the lookup sheet when this word detail was opened, if available.
     @State var selectedDetailReading: String?
+    // Which entry `selectedDetailReading` was captured for. Only one route (WordsRoute.detail) ever
+    // supplies a reading, while several paths open the sheet without touching it, so without this
+    // the last route's reading would leak onto the next, unrelated word opened from a row.
+    @State var selectedDetailReadingEntryID: Int64?
     @State var selectedDetailSublatticePaths: [[String]] = []
     @State var activeFilterNoteIDs: Set<UUID> = []
     @State var activeFilterListIDs: Set<UUID> = []
@@ -281,6 +285,31 @@ struct WordsView: View {
         return SavedWord(canonicalEntryID: entryID, surface: surface)
     }
 
+    // The reading the detail sheet should open its header on. A route-supplied reading (the Word of
+    // the Day deep link, the Read-tab lookup sheet) describes one specific occurrence — possibly an
+    // inflected surface — so it applies only to the presentation it arrived with; every other open
+    // uses the saved card's own pinned reading, so the reading switcher's choice survives closing
+    // and reopening the sheet. Nil for an unsaved, un-routed word — the header falls back to the
+    // entry. The entry-id guard is belt to clearRouteDetailContext's braces: the route data is
+    // cleared on dismiss, so it can't outlive its presentation even for a re-tap of the same entry.
+    private func detailReading(for word: SavedWord) -> String? {
+        if let selectedDetailReading, selectedDetailReadingEntryID == word.canonicalEntryID {
+            return selectedDetailReading
+        }
+        return wordsStore.words.first { $0.canonicalEntryID == word.canonicalEntryID }?.selectedReading
+    }
+
+    // Drops the route-supplied detail context when the sheet closes, scoping it to exactly one
+    // presentation. Without this, tapping the same entry later from the list (a path that sets only
+    // selectedDetailWord) would reopen on the earlier route's reading — showing an inflected reading
+    // over the lemma and seeding the switcher's activeReading from it — and would reuse that route's
+    // sublattice paths instead of recomputing from the segmenter. Both default cleanly when empty.
+    private func clearRouteDetailContext() {
+        selectedDetailReading = nil
+        selectedDetailReadingEntryID = nil
+        selectedDetailSublatticePaths = []
+    }
+
     // Applies a cross-tab route, either by opening a word detail or populating the search query.
     private func consumePendingRoute(_ route: WordsRoute?) {
         guard let route else { return }
@@ -294,6 +323,7 @@ struct WordsView: View {
                 showRecentSearches = false
                 selectedDetailWord = word
                 selectedDetailReading = reading
+                selectedDetailReadingEntryID = word.canonicalEntryID
                 selectedDetailSublatticePaths = sublatticePaths
                 // Opening a word via a deep link (e.g. the Word of the Day notification) is a
                 // lookup like any other, so record it to history — the search-result and browse
@@ -320,11 +350,11 @@ struct WordsView: View {
                 customSearchBar
                 resultsList
             }
-            .sheet(item: $selectedDetailWord) { word in
+            .sheet(item: $selectedDetailWord, onDismiss: clearRouteDetailContext) { word in
                 let _ = WOTDDiag.log("sheet PRESENTING entryID=\(word.canonicalEntryID)")
                 WordDetailView(
                     word: word,
-                    reading: selectedDetailReading,
+                    reading: detailReading(for: word),
                     dictionaryStore: dictionaryStore,
                     segmenter: segmenter,
                     lexicon: lexicon,
