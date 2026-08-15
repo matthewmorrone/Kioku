@@ -1,43 +1,5 @@
 import SwiftUI
 
-// A saved word resolved to its display strings on every side, used to build questions and to
-// supply distractors. Resolved once at session start so per-question assembly stays synchronous.
-// `kanji`/`kana` are nil when the dictionary has no distinct kanji headword / reading.
-struct MultipleChoiceItem: Identifiable {
-    let word: SavedWord
-    let original: String     // saved/encountered surface (原文)
-    let kanji: String?       // dictionary kanji headword (漢字)
-    let kana: String?        // kana reading (かな)
-    let english: String
-    // Whether the word has a kanji form at all — distinct from `kanji != nil`, which is also nil
-    // when the headword merely equals the surface. Feeds the promotion bar via ReviewStore, where a
-    // kana-only word must not be held to directions it can never be asked (see
-    // `QuestionDirection.applicable`).
-    let hasKanjiForm: Bool
-    var id: Int64 { word.canonicalEntryID }
-
-    // The Japanese string to display for the chosen form, falling back to the original surface
-    // when the requested kanji headword / kana reading isn't available.
-    func japanese(for form: StudyJapaneseForm) -> String {
-        switch form {
-        case .original: return original
-        case .kanji: return kanji ?? original
-        case .kana: return kana ?? original
-        }
-    }
-
-    // The display string for one of the three quizzable fields, used by `.mixedFields`. Kanji/kana
-    // fall back to the original surface (same rule as `japanese(for:)`) when the dictionary has no
-    // distinct form, so every item can still stand in for any field.
-    func value(for field: StudyField) -> String {
-        switch field {
-        case .kanji: return kanji ?? original
-        case .kana: return kana ?? original
-        case .meaning: return english
-        }
-    }
-}
-
 // One assembled question: a prompt, the shuffled options (including the correct one), and which
 // option is correct. Options are plain strings so comparison and feedback colouring are trivial.
 struct MultipleChoiceQuestion: Identifiable {
@@ -45,10 +7,9 @@ struct MultipleChoiceQuestion: Identifiable {
     let prompt: String
     let options: [String]
     let correct: String
-    // Which of the 6 named directions this question exercises, so answering it feeds that
-    // direction's own evidence in ReviewStore (see QuestionDirection). Nil only defensively —
-    // every path in buildQuestions resolves a concrete direction.
-    let direction: QuestionDirection?
+    // Which of the 6 directions this question exercises, so answering it feeds that direction's
+    // own evidence in ReviewStore (see QuestionDirection).
+    let direction: QuestionDirection
     // Carried from the source item so answering can tell ReviewStore which promotion bar applies.
     let hasKanjiForm: Bool
 }
@@ -83,22 +44,18 @@ struct MultipleChoiceView: View {
     @State private var presetWordsSnapshot: [SavedWord] = []
     @State private var index: Int = 0
     @State private var selected: String?
+    // Set when the user gave up rather than picking. Scored wrong like any miss, but it highlights
+    // the answer without blaming a choice the user never made.
+    @State private var didReveal: Bool = false
     @State private var sessionActive: Bool = false
     @State private var isResolving: Bool = false
 
     @State private var sessionCorrect: Int = 0
     @State private var sessionWrong: Int = 0
 
-    // Default drills all three fields against each other (kanji/kana/meaning) rather than just
-    // JP-vs-English, so kanji↔kana gets exercised directly too.
-    @State private var direction: StudyDirection = .mixedFields
-    @State private var japaneseForm: StudyJapaneseForm = .kanji
-    @State private var scope: FlashcardScope = .all
-    @State private var selectedNoteIDs: Set<UUID> = []
-    // JLPT levels (N-number 5…1) to include; empty means no level filter. ANDs with scope + notes.
-    @State private var selectedJLPTLevels: Set<Int> = []
-    // Cap on how many questions a quiz runs. 0 (empty field) means "all available".
-    @State private var questionCount: Int = 20
+    // Note / JLPT / scope / direction / count, persisted under this activity's own key prefix.
+    @StateObject private var options = LearnActivityOptions(activity: .multipleChoice)
+    private let activity = LearnActivity.multipleChoice
 
     // Number of answer choices presented per question (correct + up to three distractors).
     private let optionCount = 4
@@ -152,7 +109,7 @@ struct MultipleChoiceView: View {
                 didAutoStartPreset = true
                 isPresetSession = true
                 presetWordsSnapshot = presetWords
-                if let presetQuestionCount { questionCount = presetQuestionCount }
+                if let presetQuestionCount { options.count = presetQuestionCount }
                 startSession(with: presetWords)
             }
         }
@@ -190,7 +147,30 @@ struct MultipleChoiceView: View {
                     optionButton(option, correct: question.correct)
                 }
             }
+
+            // Every other activity offers a way past a question you can't answer; without this the
+            // only exit here is a deliberate wrong guess, which reads as a worse answer than
+            // admitting you don't know.
+            if selected == nil {
+                Button { reveal(question: question) } label: {
+                    Label("Show Answer", systemImage: "eye")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
         }
+    }
+
+    // Gives up on the current question: highlights the correct option and scores it wrong, so the
+    // word stays in rotation rather than being silently passed over.
+    private func reveal(question: MultipleChoiceQuestion) {
+        guard selected == nil else { return }
+        didReveal = true
+        selected = question.correct
+        sessionWrong += 1
+        reviewStore.recordAgain(
+            for: question.id, direction: question.direction, hasKanjiForm: question.hasKanjiForm
+        )
     }
 
     // One answer option. Before answering it's a neutral filled capsule; after answering the
@@ -324,69 +304,29 @@ struct MultipleChoiceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // Note / direction / scope / count pickers and the start button, on the shared scaffold.
+    // The shared start screen; Multiple Choice adds no controls of its own.
     private var reviewHome: some View {
-        let matchingCount = wordsMatchingSelection().count
-        return LearnHomeForm(
-            startTitle: "Start Quiz",
-            startEnabled: matchingCount >= optionCount,
-            onStart: { startSessionFromHome() }
-        ) {
-            Section {
-                FlashcardNotePicker(selectedNoteIDs: $selectedNoteIDs)
-                FlashcardJLPTPicker(dictionaryStore: dictionaryStore, selectedLevels: $selectedJLPTLevels)
-            }
+        LearnActivityHome(
+            activity: activity,
+            options: options,
+            dictionaryStore: dictionaryStore,
+            poolCount: eligibleWords().count,
+            onStart: { startSessionFromHome() },
+            extraSections: { EmptyView() }
+        )
+    }
 
-            Section {
-                Picker("Direction", selection: $direction) {
-                    ForEach(StudyDirection.allCases) { d in Text(d.rawValue).tag(d) }
-                }
-                .pickerStyle(.menu)
-
-                // `.mixedFields` picks the JP script (kanji vs kana) per question itself, so this
-                // fixed, whole-session form picker doesn't apply and would be misleading to show.
-                if direction != .mixedFields {
-                    Picker("Japanese", selection: $japaneseForm) {
-                        ForEach(StudyJapaneseForm.allCases) { f in Text(f.rawValue).tag(f) }
-                    }
-                    .pickerStyle(.segmented)
-                }
-            }
-
-            Section {
-                Picker("Scope", selection: $scope) {
-                    ForEach(FlashcardScope.allCases) { s in
-                        Text(scopeLabel(s)).tag(s)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section {
-                LearnCountField(label: "Questions", count: $questionCount)
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Words in selection").font(.caption).foregroundStyle(.secondary)
-                    Text("\(matchingCount)")
-                        .font(.largeTitle.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(matchingCount < optionCount ? .red : .primary)
-                    if matchingCount < optionCount {
-                        Text("Need at least \(optionCount) words to build a quiz")
-                            .font(.footnote).foregroundStyle(.red)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-            }
-        }
+    // Words passing every filter and askable in at least one selected direction.
+    private func eligibleWords() -> [SavedWord] {
+        LearnWordPool.eligibleWords(
+            in: wordsStore.words, options: options,
+            reviewStore: reviewStore, dictionaryStore: dictionaryStore
+        )
     }
 
     // Resolves the question pool asynchronously, then activates the session.
     private func startSessionFromHome() {
-        startSession(with: wordsMatchingSelection())
+        startSession(with: eligibleWords())
     }
 
     // Builds and activates a session over an explicit word set — shared by the home picker and by
@@ -398,13 +338,13 @@ struct MultipleChoiceView: View {
         sessionWrong = 0
         index = 0
         selected = nil
+        didReveal = false
         questions = []
-        let dir = direction
-        let form = japaneseForm
-        let limit = questionCount
+        let selection = options.directions
+        let limit = options.count
         Task {
-            let items = await resolveItems(for: words)
-            let built = buildQuestions(from: items, direction: dir, japaneseForm: form)
+            let items = await LearnWordPool.resolveItems(for: words, dictionaryStore: dictionaryStore)
+            let built = buildQuestions(from: items, selection: selection)
             // A positive limit caps the quiz; 0 (or blank field) means quiz everything.
             questions = limit > 0 ? Array(built.prefix(limit)) : built
             isResolving = false
@@ -414,7 +354,7 @@ struct MultipleChoiceView: View {
     // Records the answer against ReviewStore (correct feeds SRS, wrong marks for relearn) and
     // freezes the option buttons so the feedback colours stay until the user taps Next.
     private func answer(_ option: String, correct: String) {
-        guard selected == nil else { return }
+        guard selected == nil, didReveal == false else { return }
         selected = option
         let id = questions[index].id
         let direction = questions[index].direction
@@ -431,6 +371,7 @@ struct MultipleChoiceView: View {
     // Advances to the next question, or falls through to the summary when the pool is exhausted.
     private func advance() {
         selected = nil
+        didReveal = false
         index += 1
     }
 
@@ -441,125 +382,17 @@ struct MultipleChoiceView: View {
         questions = []
         index = 0
         selected = nil
+        didReveal = false
         sessionCorrect = 0
         sessionWrong = 0
     }
 
-    // Resolves each saved word to its Japanese surface, kana reading, and primary English gloss.
-    // Each word's lookup runs as its own child task in a task group instead of one-at-a-time, so a
-    // large word list resolves in roughly the time of the slowest single lookup rather than the sum
-    // of all of them. Only Sendable primitives (not SavedWord/MultipleChoiceItem) cross into
-    // resolveWordFields, and results are correlated back to their word via entryID afterward — the
-    // task group replaces the old per-word `Task.detached`, but the boundary-crossing shape mirrors
-    // it deliberately, down to constructing MultipleChoiceItem back on the caller's side. Drops any
-    // word whose dictionary lookup fails or yields no gloss so it can't produce a blank option;
-    // result order is unconstrained since buildQuestions shuffles the final list anyway.
-    private func resolveItems(for words: [SavedWord]) async -> [MultipleChoiceItem] {
-        guard let store = dictionaryStore else { return [] }
-        var wordsByID: [Int64: SavedWord] = [:]
-        for word in words { wordsByID[word.canonicalEntryID] = word }
-
-        let resolved = await withTaskGroup(of: ResolvedWordFields?.self) { group in
-            for word in words {
-                let entryID = word.canonicalEntryID
-                let surface = word.surface
-                let selectedSenseIDs = word.selectedSenseIDs
-                let selectedGlosses = word.selectedGlosses
-                group.addTask {
-                    await Self.resolveWordFields(
-                        store: store, entryID: entryID, surface: surface,
-                        selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
-                    )
-                }
-            }
-            var results: [ResolvedWordFields] = []
-            for await item in group {
-                if let item { results.append(item) }
-            }
-            return results
-        }
-
-        var items: [MultipleChoiceItem] = []
-        for r in resolved {
-            guard let word = wordsByID[r.entryID] else { continue }
-            let surface = word.surface
-            let gloss = r.english.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard gloss.isEmpty == false else { continue }
-            // Keep kanji/kana only when distinct and non-empty; otherwise nil so the form falls
-            // back to the original surface.
-            let kanji = r.kanji?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let usableKanji = (kanji?.isEmpty == false && kanji != surface) ? kanji : nil
-            let kana = r.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let usableKana = (kana?.isEmpty == false && kana != surface) ? kana : nil
-            // Kanji visible in the surface counts even if the dictionary reported no headword, so
-            // this can never wrongly claim a kanji-bearing word is kana-only.
-            let hasKanjiForm = kanji?.isEmpty == false || ScriptClassifier.containsKanji(surface)
-            items.append(MultipleChoiceItem(
-                word: word, original: surface, kanji: usableKanji, kana: usableKana, english: gloss,
-                hasKanjiForm: hasKanjiForm
-            ))
-        }
-        return items
-    }
-
-    // Resolves one word's kanji/kana/gloss from the dictionary. `nonisolated`, and takes only
-    // Sendable primitives rather than SavedWord directly: this project's default actor isolation
-    // would otherwise make a plain `static func` implicitly @MainActor, so every task-group child
-    // task would silently hop back onto the main actor to run it — serializing every "concurrent"
-    // lookup back onto the main thread and defeating the point of the task group entirely (same
-    // class of bug fixed the same way on QuestionDirection/AutoLearnPolicy elsewhere in Learn/).
-    private nonisolated static func resolveWordFields(
-        store: DictionaryStore,
-        entryID: Int64,
-        surface: String,
-        selectedSenseIDs: [Int64],
-        selectedGlosses: [GlossRef]
-    ) async -> ResolvedWordFields? {
-        guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
-            return nil
-        }
-        var sensesByID: [Int64: DictionaryEntrySense] = [:]
-        for sense in data.entry.senses { sensesByID[sense.senseID] = sense }
-
-        // Prefer the user's explicit sense/gloss selections, falling back to the entry's first
-        // gloss — same precedence the flashcard back face uses.
-        var gloss: String?
-        for senseID in selectedSenseIDs where gloss == nil {
-            gloss = sensesByID[senseID]?.glosses.first
-        }
-        if gloss == nil {
-            for ref in selectedGlosses where gloss == nil {
-                if let sense = sensesByID[ref.senseID],
-                   ref.glossIndex >= 0, ref.glossIndex < sense.glosses.count {
-                    gloss = sense.glosses[ref.glossIndex]
-                }
-            }
-        }
-        if gloss == nil { gloss = data.entry.senses.first?.glosses.first }
-        guard let gloss else { return nil }
-
-        // Dictionary kanji headword and the reading that fits the selected senses — the same
-        // shared computation every quiz/study view uses.
-        let forms = WordFormResolver.kanjiAndKana(
-            entry: data.entry, store: store, entryID: entryID,
-            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
-        )
-        return ResolvedWordFields(entryID: entryID, english: gloss, kanji: forms.kanji, kana: forms.kana)
-    }
-
     // Builds one question per item, drawing up to three distinct distractors from the other
-    // items' answer-side strings. Items whose answer side has no distinct distractors at all are
-    // dropped (can't form a meaningful choice). Under `.mixed`, each question independently picks
-    // a direction. The final question list is shuffled.
-    private func buildQuestions(
-        from items: [MultipleChoiceItem],
-        direction: StudyDirection,
-        japaneseForm: StudyJapaneseForm
-    ) -> [MultipleChoiceQuestion] {
-        // Precomputed answer pools per direction so distractor selection stays O(1) per question.
-        let englishStrings = Set(items.map(\.english))
-        let japaneseStrings = Set(items.map { $0.japanese(for: japaneseForm) })
-        // Per-field pools for `.mixedFields`, keyed the same way `item.value(for:)` resolves.
+    // items' answer-side strings. Items the selection can't ask at all, whose prompt and answer
+    // would read identically, or whose answer side has no distinct distractors are dropped. The
+    // final question list is shuffled.
+    private func buildQuestions(from items: [StudyItem], selection: DirectionSelection) -> [MultipleChoiceQuestion] {
+        // Per-field answer pools so distractor selection stays O(1) per question.
         let fieldPools: [StudyField: Set<String>] = [
             .kanji: Set(items.map { $0.value(for: .kanji) }),
             .kana: Set(items.map { $0.value(for: .kana) }),
@@ -568,60 +401,24 @@ struct MultipleChoiceView: View {
 
         var result: [MultipleChoiceQuestion] = []
         for item in items {
-            // Resolve `.mixed` to a concrete direction per question (stable per entry id).
-            let resolvedDirection = direction.resolved(seed: item.word.canonicalEntryID)
-
-            let prompt: String
-            let correct: String
-            let pool: Set<String>
-            let questionDirection: QuestionDirection?
-            // Every other item whose own prompt-side value also equals this question's prompt is
-            // "correct-equivalent" (e.g. two saved words sharing the same English gloss, like
-            // やみ and くらやみ both meaning "darkness") — its answer-side value must be excluded
-            // from the distractor pool below, not just the literal `correct` string, or a
-            // synonym can be offered as a "wrong" option.
-            let collidingAnswers: Set<String>
-            switch resolvedDirection {
-            case .japaneseToEnglish:
-                prompt = item.japanese(for: japaneseForm)
-                correct = item.english
-                pool = englishStrings
-                collidingAnswers = Set(items.filter { $0.japanese(for: japaneseForm) == prompt }.map(\.english))
-                questionDirection = .forJapaneseEnglishAxis(
-                    resolved: .japaneseToEnglish, form: japaneseForm, isKanaOnlySurface: item.kanji == nil
-                )
-            case .englishToJapanese:
-                prompt = item.english
-                correct = item.japanese(for: japaneseForm)
-                pool = japaneseStrings
-                collidingAnswers = Set(items.filter { $0.english == prompt }.map { $0.japanese(for: japaneseForm) })
-                questionDirection = .forJapaneseEnglishAxis(
-                    resolved: .englishToJapanese, form: japaneseForm, isKanaOnlySurface: item.kanji == nil
-                )
-            case .mixedFields:
-                let fields = StudyField.randomPair(seed: item.word.canonicalEntryID)
-                prompt = item.value(for: fields.prompt)
-                correct = item.value(for: fields.answer)
-                pool = fieldPools[fields.answer] ?? []
-                collidingAnswers = Set(items.filter { $0.value(for: fields.prompt) == prompt }.map { $0.value(for: fields.answer) })
-                questionDirection = QuestionDirection(prompt: fields.prompt, answer: fields.answer)
-            case .mixed:
-                // `resolved(seed:)` never returns `.mixed`; treat as Japanese→English defensively.
-                prompt = item.japanese(for: japaneseForm)
-                correct = item.english
-                pool = englishStrings
-                collidingAnswers = Set(items.filter { $0.japanese(for: japaneseForm) == prompt }.map(\.english))
-                questionDirection = .forJapaneseEnglishAxis(
-                    resolved: .japaneseToEnglish, form: japaneseForm, isKanaOnlySurface: item.kanji == nil
-                )
-            }
-
-            // `.mixedFields` can land prompt == correct for a word whose kanji/kana both fall
-            // back to the same original surface (no distinct dictionary forms) — skip rather than
-            // ask a question with no real distinction between prompt and answer.
+            // One direction per word, picked from the ticked set it's eligible for and stable per
+            // entry id so the question doesn't reshape between re-renders.
+            guard let direction = selection.resolved(seed: item.id, hasKanjiForm: item.hasKanjiForm) else { continue }
+            let fields = direction.fields
+            let prompt = item.value(for: fields.prompt)
+            let correct = item.value(for: fields.answer)
+            // A word whose kanji and kana both fall back to the same surface has no real
+            // distinction between the two sides — skip rather than ask it.
             guard prompt != correct else { continue }
 
-            var distractorPool = pool.subtracting(collidingAnswers)
+            // Every other item whose own prompt-side value also equals this question's prompt is
+            // "correct-equivalent" (e.g. やみ and くらやみ both meaning "darkness") — its answer-side
+            // value must be excluded from the distractor pool, not just the literal `correct`
+            // string, or a synonym gets offered as a "wrong" option.
+            let collidingAnswers = Set(
+                items.filter { $0.value(for: fields.prompt) == prompt }.map { $0.value(for: fields.answer) }
+            )
+            var distractorPool = (fieldPools[fields.answer] ?? []).subtracting(collidingAnswers)
             distractorPool.remove(correct)
             guard distractorPool.isEmpty == false else { continue }
 
@@ -632,54 +429,15 @@ struct MultipleChoiceView: View {
             var options = distractors + [correct]
             options.shuffle()
             result.append(MultipleChoiceQuestion(
-                id: item.word.canonicalEntryID,
+                id: item.id,
                 prompt: prompt,
                 options: options,
                 correct: correct,
-                direction: questionDirection,
+                direction: direction,
                 hasKanjiForm: item.hasKanjiForm
             ))
         }
         result.shuffle()
         return result
-    }
-
-    // Returns saved words filtered by the selected notes AND the active scope (all / due / wrong).
-    private func wordsMatchingSelection() -> [SavedWord] {
-        var base = wordsStore.words
-        if selectedNoteIDs.isEmpty == false {
-            base = base.filter { word in
-                word.sourceNoteIDs.contains(where: { selectedNoteIDs.contains($0) })
-            }
-        }
-        if selectedJLPTLevels.isEmpty == false {
-            base = base.filter { word in
-                guard let level = dictionaryStore?.jlptLevel(for: word.canonicalEntryID) else { return false }
-                return selectedJLPTLevels.contains(level)
-            }
-        }
-        switch scope {
-        case .all:
-            return base
-        case .dueNow:
-            return base.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
-        case .markedWrong:
-            return base.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
-        }
-    }
-
-    // Builds the scope picker label, suffixing the count of words currently in that scope.
-    private func scopeLabel(_ s: FlashcardScope) -> String {
-        let base = wordsStore.words
-        let scoped: [SavedWord]
-        switch s {
-        case .all:
-            scoped = base
-        case .dueNow:
-            scoped = base.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
-        case .markedWrong:
-            scoped = base.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
-        }
-        return "\(s.label) (\(scoped.count))"
     }
 }

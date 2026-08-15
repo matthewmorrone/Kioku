@@ -23,13 +23,13 @@ private enum FlashcardCardFace {
     case back
 }
 
-// One face's content. The Japanese cases carry the chosen written form (原文/漢字/かな);
-// the `answer` variant adds the kana reading beneath the headword ("inclusion of both").
-// Defined once so the front (prompt) and back (answer) share `faceView`.
+// One face's content. The Japanese cases carry which script that side shows (漢字/かな); the
+// `answer` variant adds the kana reading beneath the headword ("inclusion of both"). Defined once
+// so the front (prompt) and back (answer) share `faceView`.
 private enum FlashcardFaceContent {
     case english
-    case japanesePrompt(StudyJapaneseForm)
-    case japaneseAnswer(StudyJapaneseForm)
+    case japanesePrompt(StudyField)
+    case japaneseAnswer(StudyField)
 }
 
 // Renders one card in the stack with 3D flip and swipe-to-grade gestures.
@@ -38,8 +38,9 @@ struct FlashcardCard: View {
     let word: SavedWord
     let dictionaryStore: DictionaryStore?
     let isTop: Bool
-    let direction: FlashcardDirection
-    let japaneseForm: StudyJapaneseForm
+    // The concrete direction this card grades — already resolved from the session's selection by
+    // the host, so both faces and the recorded evidence describe the same question.
+    let direction: QuestionDirection
     let preferredNoteID: UUID?
     @Binding var showBack: Bool
     @Binding var dragOffset: CGSize
@@ -268,34 +269,34 @@ struct FlashcardCard: View {
         }
     }
 
-    // Maps the (direction, form) pair to the front (prompt) and back (answer) content. `.mixed` is
-    // resolved per card from the entry id so a card doesn't swap its sides between re-renders.
+    // Maps the direction's (prompt, answer) field pair onto the front and back faces. Both faces
+    // render independently of what the sibling shows, so script-to-script directions (漢字→かな,
+    // かな→漢字) need no special pairing — the field mapping alone covers all six.
     private var faces: (front: FlashcardFaceContent, back: FlashcardFaceContent) {
-        switch direction.resolved(seed: word.canonicalEntryID) {
-        case .japaneseToEnglish, .mixed:
-            return (.japanesePrompt(japaneseForm), .english)
-        case .englishToJapanese:
-            return (.english, .japaneseAnswer(japaneseForm))
-        // Both sides are Japanese script, no English at all — .japanesePrompt/.japaneseAnswer
-        // render independently of what the sibling face is, so no new FlashcardFaceContent case
-        // is needed here; pairing them this way just works.
-        case .kanjiToKana:
-            return (.japanesePrompt(.kanji), .japaneseAnswer(.kana))
-        case .kanaToKanji:
-            return (.japanesePrompt(.kana), .japaneseAnswer(.kanji))
+        let pair = direction.fields
+        return (face(for: pair.prompt, isAnswer: false), face(for: pair.answer, isAnswer: true))
+    }
+
+    // One field's face content. English reads the same on either side; the Japanese scripts differ
+    // only in that the answer side also shows the kana reading beneath the headword.
+    private func face(for field: StudyField, isAnswer: Bool) -> FlashcardFaceContent {
+        switch field {
+        case .meaning: return .english
+        case .kanji, .kana: return isAnswer ? .japaneseAnswer(field) : .japanesePrompt(field)
         }
     }
 
     private var frontFace: some View { faceView(faces.front) }
     private var backFace: some View { faceView(faces.back) }
 
-    // The Japanese string for a written form, falling back to the encountered surface when the
-    // dictionary kanji headword / reading isn't available.
-    private func japaneseText(for form: StudyJapaneseForm, displaySurface: String, displayKana: String?) -> String {
-        switch form {
-        case .original: return displaySurface
+    // The Japanese string for one script, falling back to the encountered surface when the
+    // dictionary kanji headword / reading isn't available. `.meaning` never reaches here — `face`
+    // routes it to `.english` — but the switch has to be total.
+    private func japaneseText(for field: StudyField, displaySurface: String, displayKana: String?) -> String {
+        switch field {
         case .kanji: return liveContent?.kanji ?? displaySurface
         case .kana: return displayKana ?? displaySurface
+        case .meaning: return displaySurface
         }
     }
 

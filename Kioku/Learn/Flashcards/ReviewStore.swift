@@ -104,6 +104,13 @@ final class ReviewStore: ObservableObject {
         persistLifetime()
     }
 
+    // What's on file about the word having a kanji form, or nil when no study mode has yet recorded
+    // an answer for it with dictionary data in hand. Callers deciding pool eligibility fall back to
+    // the saved surface; callers deciding promotion assume true (see `ReviewWordStats`).
+    func hasKanjiForm(for id: Int64) -> Bool? {
+        stats[id]?.hasKanjiForm
+    }
+
     // The current tri-state mark for a word, derived from the two mutually-exclusive sets.
     func learnedState(for id: Int64) -> LearnedState {
         if learned.contains(id) { return .learned }

@@ -10,7 +10,9 @@ import SwiftUI
 struct FlashcardTypedAnswerControl: View {
     let word: SavedWord
     let dictionaryStore: DictionaryStore?
-    let japaneseForm: StudyJapaneseForm
+    // The direction this card is being asked in; its answer field decides which script the typed
+    // answer is compared against.
+    let direction: QuestionDirection
     // `hasKanjiForm` is authoritative here (this view fetched the headword), unlike the host's
     // surface-only heuristic — see FlashcardsView.surfaceKanjiEvidence.
     let onGraded: (_ correct: Bool, _ direction: QuestionDirection?, _ hasKanjiForm: Bool?) -> Void
@@ -96,16 +98,6 @@ struct FlashcardTypedAnswerControl: View {
         }
     }
 
-    // The direction this card's grade counts as evidence for, derived the same way
-    // MultipleChoiceView/FlashcardsView resolve every other englishToJapanese card — via the live
-    // kana-only fact this view already fetched, which is more accurate than a surface-only guess.
-    private var direction: QuestionDirection? {
-        guard let expected else { return nil }
-        return .forJapaneseEnglishAxis(
-            resolved: .englishToJapanese, form: japaneseForm, isKanaOnlySurface: expected.isKanaOnlySurface
-        )
-    }
-
     // Gives up on the current card: shows the answer and scores it as wrong, so the word stays in
     // rotation instead of being silently passed over.
     private func reveal() {
@@ -130,7 +122,7 @@ struct FlashcardTypedAnswerControl: View {
         let surface = word.surface
         let selectedSenseIDs = word.selectedSenseIDs
         let selectedGlosses = word.selectedGlosses
-        let form = japaneseForm
+        let answerField = direction.fields.answer
         return await Task.detached(priority: .utility) { () -> ExpectedAnswer? in
             guard let resolved = WordFormResolver.fetchKanjiAndKana(
                 store: store, entryID: entryID, surface: surface,
@@ -139,11 +131,14 @@ struct FlashcardTypedAnswerControl: View {
                 return nil
             }
             let isKanaOnlySurface = resolved.kanji == nil
+            // Only Japanese-script answers reach this control (see
+            // FlashcardsView.isTypedGradingCard), so `.meaning` never applies; it falls back to the
+            // surface rather than widening the switch.
             let text: String
-            switch form {
+            switch answerField {
             case .kanji: text = resolved.kanji ?? surface
             case .kana: text = resolved.kana ?? surface
-            case .original: text = isKanaOnlySurface ? (resolved.kana ?? surface) : (resolved.kanji ?? surface)
+            case .meaning: text = surface
             }
             return ExpectedAnswer(text: text, isKanaOnlySurface: isKanaOnlySurface)
         }.value
