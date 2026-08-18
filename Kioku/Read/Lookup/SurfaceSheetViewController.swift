@@ -577,7 +577,14 @@ final class SurfaceSheetViewController: UIViewController {
         // Rebuilt on every refresh so the menu's setState closure always targets the currently
         // shown word, mirroring SegmentLookupSheet's popover star (see its refresh comment).
         if let setLearnedState = sheet?.sheetSetLearnedState {
-            saveButton.menu = learnedStateUIMenu(currentState: learnedState, setState: setLearnedState)
+            // Deferred write + self-refresh for the same reason as the popover star: applying the
+            // mark inline collides with the menu's teardown and the icon flips a beat late.
+            saveButton.menu = learnedStateUIMenu(currentState: learnedState) { [weak self] state in
+                DispatchQueue.main.async {
+                    setLearnedState(state)
+                    self?.updateSaveButtonAppearance()
+                }
+            }
             saveButton.showsMenuAsPrimaryAction = false
         } else {
             saveButton.menu = nil
