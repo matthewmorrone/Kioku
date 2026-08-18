@@ -355,14 +355,6 @@ struct WordDetailView: View {
                 .overlay(alignment: .leading) { readingSwitcherChevron(.previous) }
                 .overlay(alignment: .trailing) { readingSwitcherChevron(.next) }
 
-                // Grammatical form of the inflected surface, beneath the headword/lemma — surfaces
-                // the derivation (e.g. "potential · negative") that was previously only in the
-                // Paths debug tool. Hidden for base forms.
-                if let formDescription {
-                    Text(formDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
                 // Plain-text gloss line for compound verbs, above the badge row — e.g.
                 // "to search for + continue ~ing (auxiliary)". Falls back to the bare lemma
                 // form when a gloss wasn't resolvable so the line stays readable either way.
@@ -387,6 +379,20 @@ struct WordDetailView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
+                    }
+
+                    // Grammatical form of the inflected surface (e.g. "potential · negative") —
+                    // alongside POS/verb-type/frequency rather than its own line above, since it's
+                    // the same kind of at-a-glance metadata about the word. Styled to match the
+                    // compound-verb/frequency-tier badges beside it. Hidden for base forms.
+                    if let formDescription {
+                        Text(formDescription)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
+                            .fixedSize()
                     }
 
                     // "Compound verb" category badge — styled to match the frequency-tier badge
