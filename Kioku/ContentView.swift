@@ -52,6 +52,11 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     // Set by notification and read-tab actions; consumed by WordsView.
     @State private var pendingWordsRoute: WordsRoute? = nil
+    // Where to send the user when a routed word detail closes. Set only for routes that hijacked
+    // the user out of another tab (the Read tab's "Look Up in Words"), so closing the detail
+    // returns them to their reading position; nil for notification deep links, which have no
+    // in-app origin to return to.
+    @State private var wordDetailReturnTab: ContentTab? = nil
     // Set by "bring this setting into focus" actions (e.g. the lyrics view's Background Audio
     // button); consumed by SettingsView to scroll to and briefly highlight the named row.
     @State private var pendingSettingsScrollTarget: String? = nil
@@ -102,7 +107,7 @@ struct ContentView: View {
             }
 
             // Renders the Words tab entry point; pendingWordsRoute carries notification and read-tab routes.
-            WordsView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, kanjiReadingFallback: readResources.kanjiReadingFallback, pendingRoute: $pendingWordsRoute)
+            WordsView(dictionaryStore: readResources.dictionaryStore, segmenter: readResources.segmenter, lexicon: readResources.lexicon, surfaceReadingData: readResources.surfaceReadingData, kanjiReadingFallback: readResources.kanjiReadingFallback, pendingRoute: $pendingWordsRoute, onRouteDetailDismissed: handleRoutedWordDetailDismissed)
                 .environmentObject(wordsStore)
                 .environmentObject(savedKanjiStore)
                 .environmentObject(wordListsStore)
@@ -172,6 +177,9 @@ struct ContentView: View {
         .onChange(of: wotdNavigation.pendingTarget) { _, target in
             guard let target else { return }
             WOTDDiag.log("ContentView route entryID=\(target.entryID) hasSurface=\(target.surface != nil) -> Words tab")
+            // A notification launch has no in-app origin, so closing this detail should leave the
+            // user in Words — drop any return tab an earlier Read-tab lookup left behind.
+            wordDetailReturnTab = nil
             selectedTab = .words
             DispatchQueue.main.async {
                 pendingWordsRoute = .detail(entryID: target.entryID, surface: target.surface)
@@ -289,10 +297,21 @@ struct ContentView: View {
 
     // Open-word-detail callback from ReadView: switch to Words and push a detail route.
     private func handleOpenWordDetail(entryID: Int64, surface: String, reading: String?, sublatticePaths: [[String]]) {
+        wordDetailReturnTab = selectedTab
         selectedTab = .words
         DispatchQueue.main.async {
             pendingWordsRoute = .detail(entryID: entryID, surface: surface, reading: reading, sublatticePaths: sublatticePaths)
         }
+    }
+
+    // A routed word detail closed: hop back to the tab that opened it (Read), since the user
+    // never chose to be in Words. Skipped when they've since navigated somewhere else themselves —
+    // yanking them out of a tab they picked would be worse than leaving them there.
+    private func handleRoutedWordDetailDismissed() {
+        guard let returnTab = wordDetailReturnTab else { return }
+        wordDetailReturnTab = nil
+        guard selectedTab == .words, returnTab != .words else { return }
+        selectedTab = returnTab
     }
 
     // Active-note-changed callback from ReadView: persist for restoreLastActiveNote.

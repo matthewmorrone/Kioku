@@ -285,7 +285,15 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         // the currently-shown word — see the class-level comment on why this popover is reused
         // in place rather than torn down and rebuilt when the user switches words.
         if let onSetLearnedState = popoverOnSetLearnedState {
-            popoverStarButton?.menu = learnedStateUIMenu(currentState: learnedState, setState: onSetLearnedState)
+            // The mark is applied (and the glyph refreshed) on the next runloop rather than inline:
+            // a synchronous write lands while UIKit is still tearing the menu down, which delays the
+            // resulting icon change by a beat — same reasoning as learnedStateSetter.
+            popoverStarButton?.menu = learnedStateUIMenu(currentState: learnedState) { [weak self] state in
+                DispatchQueue.main.async {
+                    onSetLearnedState(state)
+                    self?.refreshPopoverStarAppearance()
+                }
+            }
             popoverStarButton?.showsMenuAsPrimaryAction = false
         } else {
             popoverStarButton?.menu = nil
