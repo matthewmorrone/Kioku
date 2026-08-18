@@ -57,6 +57,9 @@ struct FillInBlankView: View {
     // Note / JLPT / scope / direction / count, persisted under this activity's own key prefix.
     @StateObject private var options = LearnActivityOptions(activity: .fillInBlank)
     private let activity = LearnActivity.fillInBlank
+    // Skip words already at the Learned/Mastered stage. Shared with the other Learn modes via
+    // LearnedSettings; toggled in Settings → Learning. See StudyWordPool.
+    @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearned = LearnedSettings.defaultExcludeLearned
 
     var body: some View {
         NavigationStack {
@@ -301,22 +304,23 @@ struct FillInBlankView: View {
             activity: activity,
             options: options,
             dictionaryStore: dictionaryStore,
-            poolCount: eligibleWords().count,
+            pool: pool(),
             onStart: { startSessionFromHome() }
         )
     }
 
-    // Words passing every filter and askable in at least one selected direction.
-    private func eligibleWords() -> [SavedWord] {
-        LearnWordPool.eligibleWords(
-            in: wordsStore.words, options: options,
+    // Words passing every filter and askable in at least one selected direction, plus the count
+    // the learned exclusion held back.
+    private func pool() -> StudyWordSelection {
+        LearnWordPool.eligible(
+            in: wordsStore.words, options: options, excludeLearned: excludeLearned,
             reviewStore: reviewStore, dictionaryStore: dictionaryStore
         )
     }
 
     // Resolves the question pool asynchronously, then activates the session.
     private func startSessionFromHome() {
-        startSession(with: eligibleWords())
+        startSession(with: pool().words)
     }
 
     // Builds and activates a session over an explicit word set — shared by the home picker and by

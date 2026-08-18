@@ -8,14 +8,15 @@ struct LearnActivityHome: View {
     let activity: LearnActivity
     @ObservedObject var options: LearnActivityOptions
     let dictionaryStore: DictionaryStore?
-    // Words that pass every filter AND can be asked at least one of the ticked directions.
-    let poolCount: Int
+    // Words that pass every filter AND can be asked at least one of the ticked directions, plus
+    // how many the learned exclusion held back.
+    let pool: StudyWordSelection
     let onStart: () -> Void
 
     var body: some View {
         LearnHomeForm(
             startTitle: activity.startTitle,
-            startEnabled: poolCount >= activity.minimumPoolSize && options.directions.isEmpty == false,
+            startEnabled: pool.words.count >= activity.minimumPoolSize && options.directions.isEmpty == false,
             onStart: onStart
         ) {
             Section {
@@ -48,11 +49,18 @@ struct LearnActivityHome: View {
     private var countsSection: some View {
         Section {
             LabeledContent("Words in pool") {
-                Text("\(poolCount)")
+                Text("\(pool.words.count)")
                     .monospacedDigit()
-                    .foregroundStyle(poolCount < activity.minimumPoolSize ? .red : .primary)
+                    .foregroundStyle(pool.words.count < activity.minimumPoolSize ? .red : .primary)
             }
             LearnCountPicker(label: activity.unitLabel, count: $options.count)
+        } footer: {
+            // Only explanation shown on this screen, and only when it applies: a pool cut short by
+            // the learned exclusion has its cause and its escape hatch in Settings, where nothing
+            // here would otherwise point.
+            if let hint = StudyWordPool.learnedExclusionHint(hiddenLearnedCount: pool.hiddenLearnedCount) {
+                Text(hint)
+            }
         }
     }
 }

@@ -562,4 +562,118 @@ final class WordsStoreTests: XCTestCase {
         XCTAssertEqual(store.words.count, 1)
         XCTAssertEqual(store.words.first?.canonicalEntryID, 100)
     }
+
+    // MARK: - Chosen reading (the detail view's reading switcher)
+
+    // The switcher's pick has to reach storage, not just the open view — that's the whole reason
+    // the Words list row didn't reflect it.
+    func testSetReadingPersistsAcrossStoreInstances() {
+        let store = makeStore()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "涙"))
+
+        store.setReading(id: 100, reading: "なだ")
+
+        XCTAssertEqual(store.words.first?.selectedReading, "なだ")
+        XCTAssertEqual(makeReaderStore().words.first?.selectedReading, "なだ", "survives a reload")
+    }
+
+    // Passing nil clears the pick, returning the card to the entry's default kana.
+    func testSetReadingWithNilClearsTheChoice() {
+        let store = makeStore()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "涙", selectedReading: "なだ"))
+
+        store.setReading(id: 100, reading: nil)
+
+        XCTAssertNil(store.words.first?.selectedReading)
+    }
+
+    // Recording a reading must not disturb the other card, or the sense/gloss selections that
+    // share the card — the reading axis is independent of the definition axis.
+    func testSetReadingLeavesOtherCardsAndSelectionsUntouched() {
+        let store = makeStore()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "涙", selectedSenseIDs: [7], selectedGlosses: [GlossRef(senseID: 9, glossIndex: 1)]))
+        store.add(SavedWord(canonicalEntryID: 200, surface: "抱く"))
+
+        store.setReading(id: 100, reading: "なだ")
+
+        let target = store.words.first { $0.canonicalEntryID == 100 }
+        XCTAssertEqual(target?.selectedSenseIDs, [7], "sense selection preserved")
+        XCTAssertEqual(target?.selectedGlosses, [GlossRef(senseID: 9, glossIndex: 1)], "gloss selection preserved")
+        XCTAssertNil(store.words.first { $0.canonicalEntryID == 200 }?.selectedReading, "other card untouched")
+    }
+
+    // Recording a reading for an entry that isn't saved can't invent a card — the detail view also
+    // opens for unsaved search results and nested related-word lookups.
+    func testSetReadingOnUnsavedEntryIsNoOp() {
+        let store = makeStore()
+        store.setReading(id: 999, reading: "なだ")
+        XCTAssertTrue(store.words.isEmpty)
+    }
+
+    // Toggling note/surface membership rebuilds the card, so the reading has to be carried through
+    // explicitly or a later save/unsave would silently reset the display back to the default kana.
+    func testToggleSurfaceMembershipPreservesChosenReading() {
+        let store = makeStore()
+        let noteID = UUID()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "涙", encounteredSurfaces: ["涙"], selectedReading: "なだ"))
+
+        store.toggle(canonicalEntryID: 100, storedSurface: "涙", encounteredSurface: "涙だ", sourceNoteID: noteID)
+
+        XCTAssertEqual(store.words.first?.selectedReading, "なだ")
+    }
+
+    // The dedup pass also rebuilds cards; an explicit reading on either duplicate has to survive it.
+    func testNormalizedEntriesPreservesChosenReadingFromEitherDuplicate() {
+        let fromExisting = SavedWordStorage.normalizedEntries([
+            SavedWord(canonicalEntryID: 100, surface: "涙", selectedReading: "なだ"),
+            SavedWord(canonicalEntryID: 100, surface: "涙")
+        ])
+        XCTAssertEqual(fromExisting.first?.selectedReading, "なだ")
+
+        let fromDuplicate = SavedWordStorage.normalizedEntries([
+            SavedWord(canonicalEntryID: 100, surface: "涙"),
+            SavedWord(canonicalEntryID: 100, surface: "涙", selectedReading: "なだ")
+        ])
+        XCTAssertEqual(fromDuplicate.first?.selectedReading, "なだ", "falls through to the duplicate when the first has none")
+    }
+
+    // A re-point (the heteronym half of the switcher, and the homonym-card tap) deliberately drops
+    // the reading: it named a kana form of the OLD entry. The switcher re-records the target's own
+    // reading immediately afterwards; this pins that the carried-over value isn't the stale one.
+    func testRepointDropsTheOldEntrysChosenReading() {
+        let store = makeStore()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "抱く", selectedReading: "いだく"))
+
+        store.repoint(fromEntryID: 100, toEntryID: 200, lemma: "抱く")
+
+        XCTAssertNil(store.words.first { $0.canonicalEntryID == 200 }?.selectedReading)
+    }
+
+    // ...but the TARGET's own reading names a kana form of the target entry and is still valid, so
+    // merging onto an already-saved card must not reset it. The lemma-picker and sense-card
+    // re-points don't re-record a reading afterwards, so this is the only thing preserving it.
+    func testRepointKeepsTheTargetCardsChosenReading() {
+        let store = makeStore()
+        store.add(SavedWord(canonicalEntryID: 100, surface: "下", selectedReading: "した"))
+        store.add(SavedWord(canonicalEntryID: 200, surface: "涙", selectedReading: "なだ"))
+
+        store.repoint(fromEntryID: 100, toEntryID: 200, lemma: "涙")
+
+        XCTAssertEqual(store.words.first { $0.canonicalEntryID == 200 }?.selectedReading, "なだ")
+    }
+
+    // Cards written before this field existed decode as "no explicit choice" rather than failing
+    // to decode and wiping the user's saved words.
+    func testLegacyPayloadWithoutReadingDecodesAsNoChoice() throws {
+        let legacy = """
+        [{"canonicalEntryID":100,"surface":"涙","sourceNoteIDs":[],"wordListIDs":[],\
+        "selectedSenseIDs":[],"selectedGlosses":[],"encounteredSurfaces":["涙"]}]
+        """
+        defaults.set(Data(legacy.utf8), forKey: Self.storageKey)
+
+        let store = makeStore()
+
+        XCTAssertEqual(store.words.count, 1)
+        XCTAssertNil(store.words.first?.selectedReading)
+    }
 }

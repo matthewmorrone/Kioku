@@ -83,6 +83,9 @@ struct SettingsView: View {
     @AppStorage(LearnedSettings.thresholdKey) private var autoLearnThreshold: Double = LearnedSettings.defaultThreshold
     @AppStorage(LearnedSettings.minReviewsKey) private var autoLearnMinReviews: Int = LearnedSettings.defaultMinReviews
     @AppStorage(LearnedSettings.streakKey) private var autoLearnStreak: Int = LearnedSettings.defaultStreak
+    // Whether the Learn tab's study modes skip Learned/Mastered words. Read by each mode through
+    // StudyWordPool; this is the single place it's set.
+    @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearnedInStudy: Bool = LearnedSettings.defaultExcludeLearned
 
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
@@ -466,8 +469,14 @@ struct SettingsView: View {
                 // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
                 aiCorrectionSection
 
-                // MARK: Learning — auto-mark words as learned past a chosen bar.
+                // MARK: Learning — auto-mark words as learned past a chosen bar, and whether the
+                // Learn tab keeps drilling words that have got there.
                 Section {
+                    Toggle("Skip learned words", isOn: $excludeLearnedInStudy)
+                    Text("Flashcards, Multiple Choice, and Fill in the Blank leave out words marked learned or mastered. Coverage sessions launched from a specific stage are unaffected.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
                     Toggle("Auto-mark as learned", isOn: $autoLearnEnabled)
                     if autoLearnEnabled {
                         Picker("Rule", selection: $autoLearnRuleRaw) {

@@ -34,6 +34,15 @@ nonisolated enum LearnedSettings {
     static let thresholdKey  = "kioku.autoLearn.threshold"   // accuracy fraction, 0.0…1.0
     static let minReviewsKey = "kioku.autoLearn.minReviews"
     static let streakKey     = "kioku.autoLearn.streak"
+    // Whether the Learn tab's study modes skip words already at the Learned/Mastered stage.
+    // Read by every Learn mode through StudyWordPool; written by the Settings toggle. Defaults to
+    // ON — a word marked learned is one the user has said they're done drilling, so keeping it in
+    // the rotation is the surprising behavior, not the other way round. Lives here rather than in
+    // an @AppStorage default so the key and its default can't drift between reader and writer (the
+    // Bool default has to be spelled at both, and `false` is the wrong one).
+    static let excludeLearnedKey = "kioku.study.excludeLearned"
+
+    static let defaultExcludeLearned = true
 
     static let defaultThreshold  = 0.9
     static let defaultMinReviews = 3

@@ -37,56 +37,37 @@ struct StudyItem: Identifiable {
 // Multiple Choice, and Fill in the Blank, where the three copies had already drifted.
 @MainActor
 enum LearnWordPool {
-    // Words passing the note / JLPT / scope filters AND askable in at least one ticked direction.
-    // The direction test uses `estimatedHasKanjiForm`, so this is exact for words already reviewed
-    // with dictionary data and a good estimate otherwise; `resolveItems` re-checks against the real
-    // headword when the session is built, which is why the built question count can come in under
-    // the pool count.
-    static func eligibleWords(
+    // The words a session may draw from. The note / JLPT / scope / learned-exclusion rule lives in
+    // `StudyWordPool` (pure, closure-injected, independently tested); this adds the one filter that
+    // is this layer's own — a word must be askable in at least one of the ticked directions, which
+    // needs the kanji-form estimate below and so can't live in that pure rule.
+    //
+    // `hiddenLearnedCount` rides through untouched: it explains a pool shortened by the learned
+    // exclusion, and a word dropped for having no askable direction isn't that.
+    static func eligible(
         in words: [SavedWord],
         options: LearnActivityOptions,
+        excludeLearned: Bool,
         reviewStore: ReviewStore,
         dictionaryStore: DictionaryStore?
-    ) -> [SavedWord] {
-        filtered(words, options: options, reviewStore: reviewStore, dictionaryStore: dictionaryStore)
-            .filter { word in
-                options.directions
-                    .askable(hasKanjiForm: estimatedHasKanjiForm(word, reviewStore: reviewStore))
-                    .isEmpty == false
-            }
-    }
-
-    // The note / JLPT / scope filters alone, without the direction test — what the scope picker's
-    // own counts are built from, since those describe the collection, not the configured session.
-    static func filtered(
-        _ words: [SavedWord],
-        options: LearnActivityOptions,
-        reviewStore: ReviewStore,
-        dictionaryStore: DictionaryStore?
-    ) -> [SavedWord] {
-        var base = words
-        if options.selectedNoteIDs.isEmpty == false {
-            base = base.filter { word in
-                word.sourceNoteIDs.contains(where: { options.selectedNoteIDs.contains($0) })
-            }
+    ) -> StudyWordSelection {
+        let selection = StudyWordPool.matching(
+            words: words,
+            scope: options.scope,
+            noteIDs: options.selectedNoteIDs,
+            jlptLevels: options.selectedJLPTLevels,
+            excludeLearned: excludeLearned,
+            jlptLevel: { dictionaryStore?.jlptLevel(for: $0) },
+            stage: { reviewStore.masteryStage(for: $0) },
+            isDue: { reviewStore.isDue(id: $0) },
+            isMarkedWrong: { reviewStore.markedWrong.contains($0) }
+        )
+        let askable = selection.words.filter { word in
+            options.directions
+                .askable(hasKanjiForm: estimatedHasKanjiForm(word, reviewStore: reviewStore))
+                .isEmpty == false
         }
-        if options.selectedJLPTLevels.isEmpty == false {
-            base = base.filter { word in
-                guard let level = dictionaryStore?.jlptLevel(for: word.canonicalEntryID) else { return false }
-                return options.selectedJLPTLevels.contains(level)
-            }
-        }
-        return scoped(base, scope: options.scope, reviewStore: reviewStore)
-    }
-
-    // Narrows to one scope slice. Split out so the scope picker can label each option with its own
-    // count without re-running the note/JLPT filters three times.
-    static func scoped(_ words: [SavedWord], scope: FlashcardScope, reviewStore: ReviewStore) -> [SavedWord] {
-        switch scope {
-        case .all: return words
-        case .dueNow: return words.filter { reviewStore.isDue(id: $0.canonicalEntryID) }
-        case .markedWrong: return words.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
-        }
+        return StudyWordSelection(words: askable, hiddenLearnedCount: selection.hiddenLearnedCount)
     }
 
     // Best cheap answer to "does this word have a kanji form?" — the fact recorded by a previous
@@ -117,10 +98,12 @@ enum LearnWordPool {
                 let surface = word.surface
                 let selectedSenseIDs = word.selectedSenseIDs
                 let selectedGlosses = word.selectedGlosses
+                let chosenReading = word.selectedReading
                 group.addTask {
                     await resolveWordFields(
                         store: store, entryID: entryID, surface: surface,
-                        selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+                        selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+                        chosenReading: chosenReading
                     )
                 }
             }
@@ -163,7 +146,8 @@ enum LearnWordPool {
         entryID: Int64,
         surface: String,
         selectedSenseIDs: [Int64],
-        selectedGlosses: [GlossRef]
+        selectedGlosses: [GlossRef],
+        chosenReading: String?
     ) async -> ResolvedWordFields? {
         guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
             return nil
@@ -188,7 +172,8 @@ enum LearnWordPool {
 
         let forms = WordFormResolver.kanjiAndKana(
             entry: data.entry, store: store, entryID: entryID,
-            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+            chosenReading: chosenReading
         )
         return ResolvedWordFields(
             entryID: entryID, english: primary, kanji: forms.kanji, kana: forms.kana, glosses: glosses

@@ -47,6 +47,9 @@ struct FlashcardsView: View {
     // Note / JLPT / scope / direction / count, persisted under this activity's own key prefix.
     @StateObject private var options = LearnActivityOptions(activity: .flashcards)
     private let activity = LearnActivity.flashcards
+    // Skip words already at the Learned/Mastered stage. Shared with the other Learn modes via
+    // LearnedSettings; toggled in Settings → Learning. See StudyWordPool.
+    @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearned = LearnedSettings.defaultExcludeLearned
     // Opt-in Japanese theme; switches the grading labels to Mincho また / わかった when on.
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
 
@@ -294,15 +297,16 @@ struct FlashcardsView: View {
             activity: activity,
             options: options,
             dictionaryStore: dictionaryStore,
-            poolCount: eligibleWords().count,
+            pool: pool(),
             onStart: { startSessionFromHome() }
         )
     }
 
-    // Words passing every filter and askable in at least one selected direction.
-    private func eligibleWords() -> [SavedWord] {
-        LearnWordPool.eligibleWords(
-            in: wordsStore.words, options: options,
+    // Words passing every filter and askable in at least one selected direction, plus the count
+    // the learned exclusion held back.
+    private func pool() -> StudyWordSelection {
+        LearnWordPool.eligible(
+            in: wordsStore.words, options: options, excludeLearned: excludeLearned,
             reviewStore: reviewStore, dictionaryStore: dictionaryStore
         )
     }
@@ -368,7 +372,7 @@ struct FlashcardsView: View {
 
     // Builds the session queue from the current scope selection and kicks off the session.
     private func startSessionFromHome() {
-        sessionSource = eligibleWords()
+        sessionSource = pool().words
         startSession()
     }
 

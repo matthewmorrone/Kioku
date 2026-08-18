@@ -56,6 +56,9 @@ struct MultipleChoiceView: View {
     // Note / JLPT / scope / direction / count, persisted under this activity's own key prefix.
     @StateObject private var options = LearnActivityOptions(activity: .multipleChoice)
     private let activity = LearnActivity.multipleChoice
+    // Skip words already at the Learned/Mastered stage. Shared with the other Learn modes via
+    // LearnedSettings; toggled in Settings → Learning. See StudyWordPool.
+    @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearned = LearnedSettings.defaultExcludeLearned
 
     // Number of answer choices presented per question (correct + up to three distractors).
     private let optionCount = 4
@@ -310,22 +313,23 @@ struct MultipleChoiceView: View {
             activity: activity,
             options: options,
             dictionaryStore: dictionaryStore,
-            poolCount: eligibleWords().count,
+            pool: pool(),
             onStart: { startSessionFromHome() }
         )
     }
 
-    // Words passing every filter and askable in at least one selected direction.
-    private func eligibleWords() -> [SavedWord] {
-        LearnWordPool.eligibleWords(
-            in: wordsStore.words, options: options,
+    // Words passing every filter and askable in at least one selected direction, plus the count
+    // the learned exclusion held back.
+    private func pool() -> StudyWordSelection {
+        LearnWordPool.eligible(
+            in: wordsStore.words, options: options, excludeLearned: excludeLearned,
             reviewStore: reviewStore, dictionaryStore: dictionaryStore
         )
     }
 
     // Resolves the question pool asynchronously, then activates the session.
     private func startSessionFromHome() {
-        startSession(with: eligibleWords())
+        startSession(with: pool().words)
     }
 
     // Builds and activates a session over an explicit word set — shared by the home picker and by

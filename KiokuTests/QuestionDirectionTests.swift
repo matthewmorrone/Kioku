@@ -1,9 +1,9 @@
 import XCTest
 @testable import Kioku
 
-// Characterizes QuestionDirection's two entry points: the direct StudyField prompt/answer mapping
-// (used by Multiple Choice's `.mixedFields`) and the JP/English axis resolver (used by both study
-// modes' `.japaneseToEnglish`/`.englishToJapanese`/`.mixed`).
+// Characterizes QuestionDirection: the StudyField prompt/answer mapping every activity builds its
+// questions from, the tier split that defines the Learned and Mastered bars, and the kanji
+// applicability rule that keeps a kana-only word from being held to directions it can't be asked.
 final class QuestionDirectionTests: XCTestCase {
 
     // MARK: - init(prompt:answer:)
@@ -34,6 +34,7 @@ final class QuestionDirectionTests: XCTestCase {
         XCTAssertEqual(tier1.union(tier2), Set(QuestionDirection.allCases))
         XCTAssertEqual(tier1.count, 3)
         XCTAssertEqual(tier2.count, 3)
+    }
 
     // MARK: - kanji applicability
 

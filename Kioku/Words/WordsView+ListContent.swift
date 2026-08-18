@@ -30,11 +30,14 @@ extension WordsView {
     // The single row used for search results, saved words, and history entries. `entry` is
     // the materialized DictionaryEntry; while it's still being fetched it's nil and we fall
     // back to showing `surface`. `gloss` lets search results show the query-matched sense.
+    // `chosenReading` is the reading the user pinned with the detail view's reading switcher —
+    // only saved-word rows have one, so it defaults to nil for search-result and history rows.
     func wordRow(
         entryID: Int64,
         surface: String,
         entry: DictionaryEntry?,
         gloss: String?,
+        chosenReading: String? = nil,
         onTap: @escaping () -> Void
     ) -> some View {
         let saved = isSavedByID(entryID)
@@ -46,7 +49,15 @@ extension WordsView {
         // let headword = entry?.kanjiForms.first?.text
         // let reading = entry?.kanaForms.first?.text
         let headword = surfaceIsKana ? nil : entry?.kanjiForms.first?.text
-        let reading = surfaceIsKana ? surface : entry?.kanaForms.first?.text
+        // A reading the user pinned with the detail view's reading switcher wins over the entry's
+        // first kana form (涙 shows なだ, not なみだ, once switched) — otherwise the switch appeared
+        // to do nothing back in the list. Validated against the entry's own kana forms so a reading
+        // left over from a dictionary rebuild or a re-point can't render a form this entry lacks.
+        let pinnedReading: String? = {
+            guard let chosenReading, let entry else { return nil }
+            return entry.kanaForms.contains { $0.text == chosenReading } ? chosenReading : nil
+        }()
+        let reading = pinnedReading ?? (surfaceIsKana ? surface : entry?.kanaForms.first?.text)
 
         // While editing, central content stays a plain view (see its comment below) so
         // List(selection:) keeps its native selection gestures (incl. the swipe-across-rows
@@ -511,6 +522,7 @@ extension WordsView {
                     surface: word.surface,
                     entry: entry,
                     gloss: rowGloss,
+                    chosenReading: word.selectedReading,
                     onTap: {
                         isSearchFieldFocused = false
                         selectedDetailWord = word

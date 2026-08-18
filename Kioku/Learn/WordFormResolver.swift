@@ -20,9 +20,17 @@ nonisolated enum WordFormResolver {
         store: DictionaryStore,
         entryID: Int64,
         selectedSenseIDs: [Int64],
-        selectedGlosses: [GlossRef]
+        selectedGlosses: [GlossRef],
+        chosenReading: String? = nil
     ) -> (kanji: String?, kana: String?) {
         let kanji = entry.kanjiForms.first?.text
+        // A reading the user pinned with the detail view's switcher is an explicit choice, so it
+        // outranks the sense-derived preferred kana — a card studied for 涙/なだ should be quizzed
+        // on なだ. Only honored when the entry actually still has that kana form, so a reading left
+        // behind by a dictionary rebuild degrades to the computed default instead of a wrong answer.
+        if let chosenReading, entry.kanaForms.contains(where: { $0.text == chosenReading }) {
+            return (kanji, chosenReading)
+        }
         let senseRestrictions = (try? store.fetchSenseRestrictions(entryID: entryID)) ?? []
         let kana = entry.preferredKana(
             selectedSenseIDs: selectedSenseIDs,
@@ -39,14 +47,16 @@ nonisolated enum WordFormResolver {
         entryID: Int64,
         surface: String,
         selectedSenseIDs: [Int64],
-        selectedGlosses: [GlossRef]
+        selectedGlosses: [GlossRef],
+        chosenReading: String? = nil
     ) -> (kanji: String?, kana: String?)? {
         guard let data = try? store.fetchWordDisplayData(entryID: entryID, surface: surface) else {
             return nil
         }
         return kanjiAndKana(
             entry: data.entry, store: store, entryID: entryID,
-            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses
+            selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
+            chosenReading: chosenReading
         )
     }
 }
