@@ -137,6 +137,24 @@ final class ReviewStore: ObservableObject {
         persistNotLearned()
     }
 
+    // Wipes every trace of a word's study history — the Learned/Not-Learned mark, mastery,
+    // SRS stats (accuracy, due date, streak), and the transient wrong flag. Called by WordsStore
+    // when a word is fully unsaved and "Retain Learn Data on Word Deletion" is off (see
+    // SettingsView's toggle) — the default is to forget, on the theory that removing a word from
+    // your list is an explicit "I don't want this tracked" signal, not just list housekeeping.
+    func clearAllData(for id: Int64) {
+        stats.removeValue(forKey: id)
+        markedWrong.remove(id)
+        learned.remove(id)
+        notLearned.remove(id)
+        mastered.remove(id)
+        persistStats()
+        persistWrong()
+        persistLearned()
+        persistNotLearned()
+        persistMastered()
+    }
+
     // True when the word has been marked learned (manually or automatically).
     func isLearned(id: Int64) -> Bool {
         learned.contains(id)

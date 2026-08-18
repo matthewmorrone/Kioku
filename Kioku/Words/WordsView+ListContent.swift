@@ -240,21 +240,24 @@ extension WordsView {
     // MARK: - Learned state (star ↔ checkbox ↔ question mark)
 
     // SF Symbol for the trailing toggle, by mark: a plain checkmark for learned, a plain
-    // question mark for explicitly not-learned, else the save star (filled when saved).
+    // question mark for explicitly not-learned, else the save star (filled when saved). Gated on
+    // `saved` — ReviewStore's Learned/Not-Learned mark is keyed by canonicalEntryID and outlives
+    // the SavedWord card, so an unsaved word always reverts to the hollow star instead of keeping
+    // its old glyph, which would otherwise make an unsave tap look like it did nothing.
     func learnedIcon(state: LearnedState, saved: Bool) -> String {
+        guard saved else { return "star" }
         switch state {
         case .learned:    return "checkmark"
         case .notLearned: return "questionmark"
-        case .unmarked:   return saved ? "star.fill" : "star"
+        case .unmarked:   return "star.fill"
         }
     }
 
     // Neutral (monochrome) icon color — no more yellow/blue. White under the Japanese theme,
-    // primary for any filled state (learned/not-learned/saved), secondary for the empty star.
+    // primary while saved (any mark), secondary for the empty/unsaved star.
     func learnedIconColor(state: LearnedState, saved: Bool) -> Color {
         if japaneseTheme { return .white }
-        if state != .unmarked || saved { return .primary }
-        return .secondary
+        return saved ? .primary : .secondary
     }
 
     // Speaks the row's Japanese pronunciation via ja-JP TTS. Prefers the kana reading (least
@@ -534,47 +537,36 @@ extension WordsView {
         }
     }
 
-    // History: word-lookup (`.entry`) rows only, via the unified wordRow. Typed `.query`
-    // searches used to interleave here but disrupted the flow, so they now live in their own
-    // Recent Searches scope (recentSearchesContent).
+    // History: word-lookup (`.entry`) rows via the unified wordRow, interleaved with typed
+    // free-text (`.query`) rows via queryHistoryRow — one chronological log, newest first.
     @ViewBuilder
     var historyContent: some View {
-        let entries = sortedHistory.filter { $0.kind == .entry }
+        let entries = sortedHistory
         if entries.isEmpty {
             Text("No lookup history yet")
                 .foregroundStyle(.secondary)
         } else {
             ForEach(entries) { entry in
-                let materialized = materializedHistory[entry.canonicalEntryID]
-                wordRow(
-                    entryID: entry.canonicalEntryID,
-                    surface: entry.surface,
-                    entry: materialized,
-                    gloss: materialized?.senses.first?.glosses.first,
-                    onTap: {
-                        // Deliberately NOT re-recorded: revisiting a word from the history
-                        // list shouldn't refresh its timestamp and yank it to the top —
-                        // history reflects when the word was originally looked up.
-                        // historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
-                        selectedDetailWord = wordForHistory(entry)
-                    }
-                )
-                .tag(entry.canonicalEntryID)
-            }
-        }
-    }
-
-    // Recent Searches scope: the typed free-text queries, newest first, each tappable to re-run
-    // the search. Lives apart from History so a word-lookup log stays uncluttered by phrases.
-    @ViewBuilder
-    var recentSearchesContent: some View {
-        let queries = sortedHistory.filter { $0.kind == .query }
-        if queries.isEmpty {
-            Text("No recent searches yet")
-                .foregroundStyle(.secondary)
-        } else {
-            ForEach(queries) { entry in
-                queryHistoryRow(entry)
+                switch entry.kind {
+                case .entry:
+                    let materialized = materializedHistory[entry.canonicalEntryID]
+                    wordRow(
+                        entryID: entry.canonicalEntryID,
+                        surface: entry.surface,
+                        entry: materialized,
+                        gloss: materialized?.senses.first?.glosses.first,
+                        onTap: {
+                            // Deliberately NOT re-recorded: revisiting a word from the history
+                            // list shouldn't refresh its timestamp and yank it to the top —
+                            // history reflects when the word was originally looked up.
+                            // historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
+                            selectedDetailWord = wordForHistory(entry)
+                        }
+                    )
+                    .tag(entry.canonicalEntryID)
+                case .query:
+                    queryHistoryRow(entry)
+                }
             }
         }
     }

@@ -1,11 +1,13 @@
 import SwiftUI
 
-// Filter sheet: a single-value "Show" dropdown plus a "Sort" dropdown. The Show menu picks
-// the one thing the Words screen displays — Favorites, a source note, or a word list —
-// with "New List…" as the last item. History is the default (nothing selected), so it's not
-// an explicit option: un-picking the active scope (tap the checked item again) returns to it.
-// Each list is a submenu carrying its own Show/Rename/Reorder/Delete actions, since a menu
-// row can't be long-pressed.
+// Filter sheet for the Words screen. History/Favorites is the one mutually-exclusive "base
+// view" choice (a 2-way segmented control, since exactly one is always showing) — History
+// includes both word lookups and typed free-text searches together, newest first. Everything
+// else — Review Status, JLPT Level, Note, List, plus Sort and Kanji below — is an independent,
+// composable narrowing filter with its own row/menu, mirroring how Sort and Kanji already
+// worked: picking a Review Status AND a Note AND a List all combine (see
+// WordsView+Actions.visibleWords, which already ANDs them together). Picking any of these
+// narrowing filters switches the base view to Favorites, since they only apply to saved words.
 struct WordsFilterView: View {
     @EnvironmentObject private var wordListsStore: WordListsStore
     @EnvironmentObject private var wordsStore: WordsStore
@@ -16,18 +18,14 @@ struct WordsFilterView: View {
     @Binding var activeFilterNoteIDs: Set<UUID>
     @Binding var activeFilterListIDs: Set<UUID>
     @Binding var statScope: WordsStatScope
-    // Active JLPT-level scope (N-number 5…1) or nil. Single-value like the other scopes.
+    // Active JLPT-level scope (N-number 5…1) or nil. Single-value like the other narrowing filters.
     @Binding var jlptLevel: Int?
     // True when the screen shows the saved/favorites list rather than the lookup history.
-    // History is the showSavedWords == false default.
     @Binding var showSavedWords: Bool
-    // True when the screen shows the typed-query Recent Searches scope. Mutually exclusive
-    // with Favorites/note/list/History.
-    @Binding var showRecentSearches: Bool
     @Binding var sortOrder: WordsSortOrder
-    // Orthogonal kanji-content refinement (All / Kanji Only / No Kanji); composes with the
-    // active "Show" scope rather than replacing it, so it gets its own section.
-    @Binding var kanjiFilter: WordsKanjiFilter
+    // Orthogonal kanji-content refinement; composes with every other filter rather than
+    // replacing them. Off by default (pure-kana only).
+    @Binding var showKanji: Bool
 
     @State private var newListName = ""
     @State private var renameText = ""
@@ -39,20 +37,20 @@ struct WordsFilterView: View {
         NavigationStack {
             List {
                 Section {
-                    Menu {
-                        scopeMenuContent
-                    } label: {
-                        HStack {
-                            Text("Show")
-                            Spacer()
-                            Text(currentScopeLabel).foregroundStyle(.secondary)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .contentShape(Rectangle())
+                    Picker("Base view", selection: $showSavedWords) {
+                        Text("History").tag(false)
+                        Text("Favorites").tag(true)
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
+
+                Section { reviewStatusRow }
+                Section { jlptLevelRow }
+                if notesWithSavedWords.isEmpty == false {
+                    Section { noteRow }
+                }
+                Section { listRow }
 
                 Section {
                     Picker(selection: $sortOrder) {
@@ -65,18 +63,8 @@ struct WordsFilterView: View {
                     .pickerStyle(.menu)
                 }
 
-                // Kanji-content refinement. Segmented so the three states are visible at a
-                // glance and one tap away — it's a frequent toggle, unlike the long Sort list.
-                // The label rides the section header since a segmented Picker hides its inline
-                // label inside a List row.
-                Section("Kanji") {
-                    Picker("Kanji", selection: $kanjiFilter) {
-                        ForEach(WordsKanjiFilter.allCases) { filter in
-                            Text(filter.title).tag(filter)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                Section {
+                    Toggle("Show Kanji", isOn: $showKanji)
                 }
             }
             .navigationTitle("Show")
@@ -94,56 +82,33 @@ struct WordsFilterView: View {
         }
     }
 
-    // MARK: - Dropdown content
+    // MARK: - Narrowing filter rows
 
-    // The items inside the "Show" dropdown: Favorites first, then stat scopes, then notes,
-    // then list submenus, then "New List…" last. Active scope carries a checkmark; tapping it again clears to History.
-    @ViewBuilder
-    private var scopeMenuContent: some View {
-        // Explicit History entry — was previously implicit (any scope re-tapped
-        // returned here, but there was no direct path TO History from another
-        // scope without knowing which one was active). Carries the same checkmark
-        // affordance as every other scope when it's the active one.
-        Button { selectHistory() } label: {
-            Label("History", systemImage: isHistoryScope ? "checkmark" : "clock.arrow.circlepath")
+    private var reviewStatusRow: some View {
+        Menu {
+            Button { tapStatScope(.markedWrong) } label: {
+                Label(markedWrongLabel, systemImage: statScope == .markedWrong ? "checkmark" : "xmark.circle")
+            }
+            Button { tapStatScope(.dueForReview) } label: {
+                Label(dueForReviewLabel, systemImage: statScope == .dueForReview ? "checkmark" : "clock")
+            }
+            Button { tapStatScope(.neverReviewed) } label: {
+                Label(neverReviewedLabel, systemImage: statScope == .neverReviewed ? "checkmark" : "circle.dashed")
+            }
+            Button { tapStatScope(.learned) } label: {
+                Label(learnedLabel, systemImage: statScope == .learned ? "checkmark" : "checkmark.circle")
+            }
+            Button { tapStatScope(.notLearned) } label: {
+                Label(notLearnedLabel, systemImage: statScope == .notLearned ? "checkmark" : "questionmark.circle")
+            }
+        } label: {
+            filterRowLabel(title: "Review Status", value: reviewStatusLabel)
         }
+    }
 
-        Button { tapFavorites() } label: {
-            Label("Favorites", systemImage: isFavoritesScope ? "checkmark" : "star.fill")
-        }
-
-        Button { tapStatScope(.markedWrong) } label: {
-            let active = statScope == .markedWrong
-            Label(markedWrongLabel, systemImage: active ? "checkmark" : "xmark.circle")
-        }
-
-        Button { tapStatScope(.dueForReview) } label: {
-            let active = statScope == .dueForReview
-            Label(dueForReviewLabel, systemImage: active ? "checkmark" : "clock")
-        }
-
-        Button { tapStatScope(.neverReviewed) } label: {
-            let active = statScope == .neverReviewed
-            Label(neverReviewedLabel, systemImage: active ? "checkmark" : "circle.dashed")
-        }
-
-        Button { tapStatScope(.learned) } label: {
-            let active = statScope == .learned
-            Label(learnedLabel, systemImage: active ? "checkmark" : "checkmark.circle")
-        }
-
-        Button { tapStatScope(.notLearned) } label: {
-            let active = statScope == .notLearned
-            Label(notLearnedLabel, systemImage: active ? "checkmark" : "questionmark.circle")
-        }
-
-        Button { tapRecentSearches() } label: {
-            Label("Recent Searches", systemImage: showRecentSearches ? "checkmark" : "magnifyingglass")
-        }
-
-        // JLPT proficiency level (N5 easiest … N1 hardest). Single-value, nested so it doesn't
-        // crowd the top-level list. Levels are unofficial estimates; only saved words with a
-        // known level appear. Re-tapping the active level clears back to History.
+    // JLPT proficiency level (N5 easiest … N1 hardest). Levels are unofficial estimates; only
+    // saved words with a known level appear. Re-tapping the active level clears back to "Any".
+    private var jlptLevelRow: some View {
         Menu {
             // N-numbers descend 5→1 so the menu reads N5 (easiest) first.
             ForEach(Array(stride(from: 5, through: 1, by: -1)), id: \.self) { level in
@@ -152,93 +117,104 @@ struct WordsFilterView: View {
                 }
             }
         } label: {
-            Label(jlptLevel == nil ? "JLPT Level" : "JLPT N\(jlptLevel ?? 0)",
-                  systemImage: jlptLevel == nil ? "graduationcap" : "checkmark")
+            filterRowLabel(title: "JLPT Level", value: jlptLevelLabel)
         }
+    }
 
-        ForEach(notesWithSavedWords) { (note: Note) in
-            Button { tapNote(note.id) } label: {
-                Label(resolvedTitle(for: note),
-                      systemImage: activeFilterNoteIDs.contains(note.id) ? "checkmark" : "doc.text")
+    private var noteRow: some View {
+        Menu {
+            ForEach(notesWithSavedWords) { (note: Note) in
+                Button { tapNote(note.id) } label: {
+                    Label(resolvedTitle(for: note),
+                          systemImage: activeFilterNoteIDs.contains(note.id) ? "checkmark" : "doc.text")
+                }
             }
+        } label: {
+            filterRowLabel(title: "Note", value: noteLabel)
         }
+    }
 
-        ForEach(Array(wordListsStore.lists.enumerated()), id: \.element.id) { index, list in
-            Menu {
-                Button { tapList(list.id) } label: {
-                    let active = activeFilterListIDs.contains(list.id)
-                    Label(active ? "Hide" : "Show", systemImage: active ? "eye.slash" : "eye")
-                }
-                Button { beginRename(list) } label: {
-                    Label("Rename…", systemImage: "pencil")
-                }
-                if index > 0 {
-                    Button { moveList(from: index, to: index - 1) } label: {
-                        Label("Move Up", systemImage: "arrow.up")
+    // Each list is a submenu carrying its own Show/Rename/Reorder/Delete actions, since a menu
+    // row can't be long-pressed.
+    private var listRow: some View {
+        Menu {
+            ForEach(Array(wordListsStore.lists.enumerated()), id: \.element.id) { index, list in
+                Menu {
+                    Button { tapList(list.id) } label: {
+                        let active = activeFilterListIDs.contains(list.id)
+                        Label(active ? "Hide" : "Show", systemImage: active ? "eye.slash" : "eye")
                     }
-                }
-                if index < wordListsStore.lists.count - 1 {
-                    Button { moveList(from: index, to: index + 2) } label: {
-                        Label("Move Down", systemImage: "arrow.down")
+                    Button { beginRename(list) } label: {
+                        Label("Rename…", systemImage: "pencil")
                     }
+                    if index > 0 {
+                        Button { moveList(from: index, to: index - 1) } label: {
+                            Label("Move Up", systemImage: "arrow.up")
+                        }
+                    }
+                    if index < wordListsStore.lists.count - 1 {
+                        Button { moveList(from: index, to: index + 2) } label: {
+                            Label("Move Down", systemImage: "arrow.down")
+                        }
+                    }
+                    Button(role: .destructive) { deleteList(list.id) } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Label("\(list.name)  (\(wordCount(for: list.id)))",
+                          systemImage: activeFilterListIDs.contains(list.id) ? "checkmark" : "folder")
                 }
-                Button(role: .destructive) { deleteList(list.id) } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-            } label: {
-                Label("\(list.name)  (\(wordCount(for: list.id)))",
-                      systemImage: activeFilterListIDs.contains(list.id) ? "checkmark" : "folder")
             }
-        }
 
-        Divider()
+            Divider()
 
-        Button { isNewListAlertPresented = true } label: {
-            Label("New List…", systemImage: "square.and.pencil")
+            Button { isNewListAlertPresented = true } label: {
+                Label("New List…", systemImage: "square.and.pencil")
+            }
+        } label: {
+            filterRowLabel(title: "List", value: listLabel)
         }
     }
 
-    // MARK: - Current scope
-
-    // Favorites is active when showing saved words with no note/list/stat/JLPT narrowing.
-    // True when no scope/filter is active — the History default state. Used to
-    // mark the explicit History menu row with a checkmark, mirroring the indicator
-    // every other scope shows when active.
-    private var isHistoryScope: Bool {
-        showSavedWords == false
-            && activeFilterNoteIDs.isEmpty
-            && activeFilterListIDs.isEmpty
-            && statScope == .none
-            && showRecentSearches == false
-            && jlptLevel == nil
+    // Shared row chrome for the narrowing-filter menus above, matching the base-view row's look.
+    private func filterRowLabel(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value).foregroundStyle(.secondary)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
     }
 
-    private var isFavoritesScope: Bool {
-        showSavedWords && activeFilterNoteIDs.isEmpty && activeFilterListIDs.isEmpty
-            && statScope == .none && jlptLevel == nil
-    }
+    // MARK: - Row value labels
 
-    // Label shown on the collapsed dropdown — the one thing currently displayed.
-    private var currentScopeLabel: String {
-        if showRecentSearches { return "Recent Searches" }
-        if showSavedWords == false { return "History" }
-        if let jlptLevel { return "JLPT N\(jlptLevel)" }
-        if let noteID = activeFilterNoteIDs.first,
-           let note = notesStore.note(withID: noteID) {
-            return resolvedTitle(for: note)
-        }
-        if let listID = activeFilterListIDs.first,
-           let list = wordListsStore.lists.first(where: { $0.id == listID }) {
-            return list.name
-        }
+    private var reviewStatusLabel: String {
         switch statScope {
+        case .none:          return "Any"
         case .markedWrong:   return "Marked Wrong"
         case .dueForReview:  return "Due for Review"
         case .neverReviewed: return "Never Reviewed"
         case .learned:       return "Learned"
         case .notLearned:    return "Not Learned"
-        case .none:          return "Favorites"
         }
+    }
+
+    private var jlptLevelLabel: String {
+        jlptLevel.map { "N\($0)" } ?? "Any"
+    }
+
+    private var noteLabel: String {
+        guard let noteID = activeFilterNoteIDs.first, let note = notesStore.note(withID: noteID) else { return "Any" }
+        return resolvedTitle(for: note)
+    }
+
+    private var listLabel: String {
+        guard let listID = activeFilterListIDs.first,
+              let list = wordListsStore.lists.first(where: { $0.id == listID }) else { return "Any" }
+        return list.name
     }
 
     // Badge labels showing counts for each stat scope option.
@@ -267,106 +243,36 @@ struct WordsFilterView: View {
         return count > 0 ? "Not Learned (\(count))" : "Not Learned"
     }
 
-    // MARK: - Scope selection (single-value; tapping the active scope returns to History)
+    // MARK: - Narrowing filter selection (each is independent; re-tapping the active choice clears
+    // just that one filter — the others, and the base view, are untouched)
 
-    // Toggles Favorites; when already active, falls back to the History default.
-    private func tapFavorites() {
-        if isFavoritesScope { selectHistory() } else { selectFavorites() }
-    }
-
-    // Toggles a stat scope; re-tapping the active one returns to History.
     private func tapStatScope(_ scope: WordsStatScope) {
-        if statScope == scope { selectHistory() } else { selectStatScope(scope) }
+        statScope = statScope == scope ? .none : scope
+        activateFavorites()
     }
 
-    // Toggles a note filter; re-tapping the active note returns to History.
-    private func tapNote(_ noteID: UUID) {
-        if activeFilterNoteIDs.contains(noteID) { selectHistory() } else { selectNote(noteID) }
-    }
-
-    // Toggles a list filter; re-tapping the active list returns to History.
-    private func tapList(_ listID: UUID) {
-        if activeFilterListIDs.contains(listID) { selectHistory() } else { selectList(listID) }
-    }
-
-    // Toggles the Recent Searches scope; re-tapping it returns to History.
-    private func tapRecentSearches() {
-        if showRecentSearches { selectHistory() } else { selectRecentSearches() }
-    }
-
-    // Returns to the History default — the no-scope-selected state.
-    private func selectHistory() {
-        activeFilterNoteIDs = []
-        activeFilterListIDs = []
-        statScope = .none
-        showSavedWords = false
-        showRecentSearches = false
-        jlptLevel = nil
-    }
-
-    // Shows all favorites with no note/list/stat narrowing.
-    private func selectFavorites() {
-        activeFilterNoteIDs = []
-        activeFilterListIDs = []
-        statScope = .none
-        showSavedWords = true
-        showRecentSearches = false
-        jlptLevel = nil
-    }
-
-    // Filters the saved view to a stat-based scope.
-    private func selectStatScope(_ scope: WordsStatScope) {
-        activeFilterNoteIDs = []
-        activeFilterListIDs = []
-        statScope = scope
-        showSavedWords = true
-        showRecentSearches = false
-        jlptLevel = nil
-    }
-
-    // Filters the saved view to a single source note.
-    private func selectNote(_ noteID: UUID) {
-        activeFilterNoteIDs = [noteID]
-        activeFilterListIDs = []
-        statScope = .none
-        showSavedWords = true
-        showRecentSearches = false
-        jlptLevel = nil
-    }
-
-    // Filters the saved view to a single word list.
-    private func selectList(_ listID: UUID) {
-        activeFilterListIDs = [listID]
-        activeFilterNoteIDs = []
-        statScope = .none
-        showSavedWords = true
-        showRecentSearches = false
-        jlptLevel = nil
-    }
-
-    // Shows only the typed free-text searches; clears every other scope.
-    private func selectRecentSearches() {
-        activeFilterNoteIDs = []
-        activeFilterListIDs = []
-        statScope = .none
-        showSavedWords = false
-        showRecentSearches = true
-        jlptLevel = nil
-    }
-
-    // Toggles a JLPT-level scope; re-tapping the active level returns to History.
+    // Toggles a JLPT-level filter; re-tapping the active level clears it.
     private func tapJLPT(_ level: Int) {
-        if jlptLevel == level { selectHistory() } else { selectJLPT(level) }
+        jlptLevel = jlptLevel == level ? nil : level
+        activateFavorites()
     }
 
-    // Filters the saved view to a single JLPT level; clears every other scope.
-    private func selectJLPT(_ level: Int) {
-        activeFilterNoteIDs = []
-        activeFilterListIDs = []
-        statScope = .none
+    // Toggles a note filter; re-tapping the active note clears it.
+    private func tapNote(_ noteID: UUID) {
+        activeFilterNoteIDs = activeFilterNoteIDs.contains(noteID) ? [] : [noteID]
+        activateFavorites()
+    }
+
+    // Toggles a list filter; re-tapping the active list clears it.
+    private func tapList(_ listID: UUID) {
+        activeFilterListIDs = activeFilterListIDs.contains(listID) ? [] : [listID]
+        activateFavorites()
+    }
+
+    // Narrowing filters only apply to saved words (see WordsView+Actions.visibleWords), so
+    // picking one always switches the base view to Favorites.
+    private func activateFavorites() {
         showSavedWords = true
-        showRecentSearches = false
-        jlptLevel = level
     }
 
     // MARK: - List CRUD
@@ -404,12 +310,13 @@ struct WordsFilterView: View {
         renameText = ""
     }
 
-    // Creates a new word list and immediately selects it as the active scope.
+    // Creates a new word list and immediately selects it as the active list filter.
     private func commitNewList() {
         let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             let newID = wordListsStore.create(name: trimmed)
-            selectList(newID)
+            activeFilterListIDs = [newID]
+            activateFavorites()
         }
         newListName = ""
     }

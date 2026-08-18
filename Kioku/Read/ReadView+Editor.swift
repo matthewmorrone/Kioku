@@ -20,6 +20,10 @@ final class FavoritedHighlightMemo {
     // hollow-yellow "saved elsewhere" state. Disjoint from `locations` by construction (see
     // computeFavoritedSegmentLocations).
     var elsewhereLocations: Set<Int> = []
+    // Subsets of `locations` (this note) whose word is marked Learned / Not Learned (ReviewStore) —
+    // each Learned-state category gets its own color; see computeFavoritedSegmentLocations.
+    var learnedLocations: Set<Int> = []
+    var notLearnedLocations: Set<Int> = []
     var lemmaTextKey: Int = 0
     var lemmaBySurface: [String: String] = [:]
 }
@@ -110,13 +114,28 @@ extension ReadView {
         return favoritedHighlightMemo.elsewhereLocations
     }
 
-    // Shared memo-check for both favorited-location computed vars above — recomputes at most
+    // Subset of favoritedSegmentLocations marked Learned — see FavoritedHighlightMemo.learnedLocations.
+    var favoritedLearnedSegmentLocations: Set<Int> {
+        ensureFavoritedHighlightComputed()
+        return favoritedHighlightMemo.learnedLocations
+    }
+
+    // Subset of favoritedSegmentLocations marked Not Learned, same rationale as
+    // favoritedLearnedSegmentLocations above.
+    var favoritedNotLearnedSegmentLocations: Set<Int> {
+        ensureFavoritedHighlightComputed()
+        return favoritedHighlightMemo.notLearnedLocations
+    }
+
+    // Shared memo-check for the favorited-location computed vars above — recomputes at most
     // once per signature change regardless of which (or both) properties are read this pass.
     private func ensureFavoritedHighlightComputed() {
         guard isFavoritedHighlightEnabled else {
             favoritedHighlightMemo.signature = nil
             favoritedHighlightMemo.locations = []
             favoritedHighlightMemo.elsewhereLocations = []
+            favoritedHighlightMemo.learnedLocations = []
+            favoritedHighlightMemo.notLearnedLocations = []
             return
         }
 
@@ -130,19 +149,27 @@ extension ReadView {
             for surface in word.encounteredSurfaces.sorted() { hasher.combine(surface) }
             for noteID in word.sourceNoteIDs { hasher.combine(noteID) }
         }
+        hasher.combine(isFavoritedHighlightShowingFavorite)
+        hasher.combine(isFavoritedHighlightShowingLearned)
+        hasher.combine(isFavoritedHighlightShowingNotLearned)
+        hasher.combine(isFavoritedHighlightShowingElsewhere)
+        for id in reviewStore.learned.sorted() { hasher.combine(id) }
+        for id in reviewStore.notLearned.sorted() { hasher.combine(id) }
         let signature = hasher.finalize()
         if favoritedHighlightMemo.signature == signature {
             return
         }
 
-        let (locations, elsewhereLocations) = computeFavoritedSegmentLocations()
+        let result = computeFavoritedSegmentLocations()
         favoritedHighlightMemo.signature = signature
-        favoritedHighlightMemo.locations = locations
-        favoritedHighlightMemo.elsewhereLocations = elsewhereLocations
+        favoritedHighlightMemo.locations = result.locations
+        favoritedHighlightMemo.learnedLocations = result.learnedLocations
+        favoritedHighlightMemo.notLearnedLocations = result.notLearnedLocations
+        favoritedHighlightMemo.elsewhereLocations = result.elsewhereLocations
     }
 
     // The heavy computation behind the favorited-location properties, run only on a memo miss.
-    private func computeFavoritedSegmentLocations() -> (locations: Set<Int>, elsewhereLocations: Set<Int>) {
+    private func computeFavoritedSegmentLocations() -> (locations: Set<Int>, learnedLocations: Set<Int>, notLearnedLocations: Set<Int>, elsewhereLocations: Set<Int>) {
         // Per-segment lemma resolution is the dominant cost; reuse it across recomputes for the same
         // text so toggling a favorite doesn't re-deinflect the whole note.
         let textKey = text.hashValue
@@ -164,12 +191,15 @@ extension ReadView {
             lemmaResolver: resolver,
             lemmaCache: [:]
         )
-        guard state.savedWordSurfaces.isEmpty == false else { return ([], []) }
+        guard state.savedWordSurfaces.isEmpty == false else { return ([], [], [], []) }
 
         let ns = text as NSString
         var locations = Set<Int>()
+        var learnedLocations = Set<Int>()
+        var notLearnedLocations = Set<Int>()
         var elsewhereLocations = Set<Int>()
         var verdictBySurface: [String: (filled: Bool, elsewhere: Bool)] = [:]
+        var learnedStateBySurface: [String: LearnedState] = [:]
         for range in segmentRanges {
             let nsRange = NSRange(range, in: text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
@@ -181,10 +211,57 @@ extension ReadView {
                 verdictBySurface[surface] = v
                 return v
             }()
-            if verdict.filled { locations.insert(nsRange.location) }
-            else if verdict.elsewhere { elsewhereLocations.insert(nsRange.location) }
+            guard verdict.filled || verdict.elsewhere else { continue }
+
+            let learnedState = learnedStateBySurface[surface] ?? {
+                let entryID = canonicalEntryIDForFavoritedSurface(surface, lemmaResolver: resolver)
+                let value = entryID.map { reviewStore.learnedState(for: $0) } ?? .unmarked
+                learnedStateBySurface[surface] = value
+                return value
+            }()
+
+            // Each category has its own independent visibility toggle and its own fixed color —
+            // not mutually exclusive, so any combination can be showing at once. "Elsewhere" is
+            // an optional recolor on top of that, not a fourth gate on the other three: an
+            // out-of-note word tints orange only while Elsewhere is on; turn it off and it falls
+            // through to its own Favorite/Learned/Not-Learned color like any other favorited word
+            // instead of disappearing.
+            if verdict.elsewhere && isFavoritedHighlightShowingElsewhere {
+                elsewhereLocations.insert(nsRange.location)
+            } else {
+                switch learnedState {
+                case .learned:
+                    if isFavoritedHighlightShowingLearned { learnedLocations.insert(nsRange.location) }
+                case .notLearned:
+                    if isFavoritedHighlightShowingNotLearned { notLearnedLocations.insert(nsRange.location) }
+                case .unmarked:
+                    if isFavoritedHighlightShowingFavorite { locations.insert(nsRange.location) }
+                }
+            }
         }
-        return (locations, elsewhereLocations)
+        return (locations, learnedLocations, notLearnedLocations, elsewhereLocations)
+    }
+
+    // Resolves the canonicalEntryID backing a favorited surface by scanning wordsStore.words
+    // directly — each entry's OWN (encounteredSurfaces ∪ storedSurface, lemma-bridged) set, not
+    // a flattened cross-entry union. A flat surface→id dictionary lets two different saved words
+    // that happen to share a surface silently collide (whichever entry populated the dictionary
+    // last wins for every surface it touches), which was exactly the earlier bug where every
+    // favorited word in a note inherited one unrelated entry's Learned mark. Entries attributed
+    // to the active note win ties, matching isStarFilled's own note preference.
+    private func canonicalEntryIDForFavoritedSurface(_ surface: String, lemmaResolver: (String) -> String?) -> Int64? {
+        let lemma = lemmaResolver(surface)
+        var fallback: Int64?
+        for word in wordsStore.words {
+            let matches = word.surface == surface || word.encounteredSurfaces.contains(surface)
+                || (lemma.map { word.surface == $0 || word.encounteredSurfaces.contains($0) } ?? false)
+            guard matches else { continue }
+            if let activeNoteID, word.sourceNoteIDs.contains(activeNoteID) {
+                return word.canonicalEntryID
+            }
+            if fallback == nil { fallback = word.canonicalEntryID }
+        }
+        return fallback
     }
 
     // UTF-16 locations of segments whose word is marked learned or mastered (ReviewStore),
@@ -350,11 +427,13 @@ extension ReadView {
                         inFlightSegmentLocations: inFlightLineSegmentLocations,
                         favoritedSegmentLocations: favoritedSegmentLocations,
                         isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
-                        favoritedHighlightColor: customTokenColorsEnabled
-                            ? (UIColor(hexString: highlightHex) ?? .systemYellow)
-                            : (UIColor(hexString: Theme.activePalette.defaultHighlightHex) ?? .systemYellow),
+                        favoritedHighlightColor: UIColor(hexString: favoritedFavoriteHex) ?? .systemYellow,
+                        favoritedLearnedSegmentLocations: favoritedLearnedSegmentLocations,
+                        favoritedLearnedHighlightColor: UIColor(hexString: favoritedLearnedHex) ?? .systemGreen,
+                        favoritedNotLearnedSegmentLocations: favoritedNotLearnedSegmentLocations,
+                        favoritedNotLearnedHighlightColor: UIColor(hexString: favoritedNotLearnedHex) ?? .systemPurple,
                         favoritedElsewhereSegmentLocations: favoritedElsewhereSegmentLocations,
-                        favoritedElsewhereHighlightColor: .systemOrange,
+                        favoritedElsewhereHighlightColor: UIColor(hexString: favoritedElsewhereHex) ?? .systemOrange,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,

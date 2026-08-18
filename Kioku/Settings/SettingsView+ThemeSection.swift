@@ -90,6 +90,43 @@ extension SettingsView {
         }
     }
 
+    // Learned/Not-Learned colors for the Favorited Highlight display option. Unlike
+    // customTokenColorRows above, these aren't gated behind a "Custom Token Colors" toggle —
+    // Favorited Highlight is switched on/off from the Read toolbar itself, so its colors are
+    // always available to customize here.
+    @ViewBuilder
+    var favoritedHighlightColorRows: some View {
+        ColorPicker("Favorite", selection: favoritedFavoriteHighlightBinding, supportsOpacity: false)
+        ColorPicker("Learned", selection: favoritedLearnedHighlightBinding, supportsOpacity: false)
+        ColorPicker("Not Learned", selection: favoritedNotLearnedHighlightBinding, supportsOpacity: false)
+        ColorPicker("Elsewhere", selection: favoritedElsewhereHighlightBinding, supportsOpacity: false)
+    }
+
+    var favoritedFavoriteHighlightBinding: Binding<Color> {
+        Binding(
+            get: { Color(UIColor(hexString: favoritedFavoriteHex) ?? UIColor(hexString: TokenColorSettings.defaultFavoritedFavoriteHex)!) },
+            set: { if let hex = UIColor($0).hexString { favoritedFavoriteHex = hex } }
+        )
+    }
+    var favoritedLearnedHighlightBinding: Binding<Color> {
+        Binding(
+            get: { Color(UIColor(hexString: favoritedLearnedHex) ?? UIColor(hexString: TokenColorSettings.defaultFavoritedLearnedHex)!) },
+            set: { if let hex = UIColor($0).hexString { favoritedLearnedHex = hex } }
+        )
+    }
+    var favoritedNotLearnedHighlightBinding: Binding<Color> {
+        Binding(
+            get: { Color(UIColor(hexString: favoritedNotLearnedHex) ?? UIColor(hexString: TokenColorSettings.defaultFavoritedNotLearnedHex)!) },
+            set: { if let hex = UIColor($0).hexString { favoritedNotLearnedHex = hex } }
+        )
+    }
+    var favoritedElsewhereHighlightBinding: Binding<Color> {
+        Binding(
+            get: { Color(UIColor(hexString: favoritedElsewhereHex) ?? UIColor(hexString: TokenColorSettings.defaultFavoritedElsewhereHex)!) },
+            set: { if let hex = UIColor($0).hexString { favoritedElsewhereHex = hex } }
+        )
+    }
+
     // Custom-theme color bindings: hex AppStorage <-> SwiftUI Color, with a fall-through to
     // the active base theme's color when the stored hex is empty or unparseable. The
     // background / ink / accent setters also call `refreshGlobalAppearance` so the UIKit nav

@@ -378,6 +378,8 @@ extension ReadView {
                     isListeningToStem: $isListeningToStem,
                     favoritedSegmentLocations: favoritedSegmentLocations,
                     isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
+                    favoritedLearnedSegmentLocations: favoritedLearnedSegmentLocations,
+                    favoritedNotLearnedSegmentLocations: favoritedNotLearnedSegmentLocations,
                     favoritedElsewhereSegmentLocations: favoritedElsewhereSegmentLocations
                 )
                 .opacity(isShowingLyricsView ? 1 : 0)

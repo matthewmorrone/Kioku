@@ -166,6 +166,9 @@ struct ContentView: View {
             // Same wiring for the LLM correction queue — it needs the store reference
             // to resolve note IDs and persist corrections after each run.
             llmCorrectionQueue.attach(store: notesStore)
+            // Same pattern again: WordsStore needs ReviewStore to clear a word's study history
+            // when it's fully unsaved (see ReviewDataRetentionSettings).
+            wordsStore.attach(reviewStore: reviewStore)
             // dictionary.sqlite isn't bundled — download it if this is a fresh install, then
             // rebuild the read resources so DictionaryStore() (which failed silently above,
             // since nothing was downloaded yet) succeeds on this second attempt.

@@ -24,9 +24,8 @@ extension WordsView {
                 return matchesNote && matchesList
             }
         }
-        // Saved kanji are by definition kanji literals, so the "No Kanji" refinement hides them
-        // entirely; "All" and "Kanji Only" leave them visible.
-        if kanjiFilter == .noKanji {
+        // Saved kanji are by definition kanji literals, so hiding kanji hides them entirely.
+        if showKanjiInSavedWords == false {
             filtered = []
         }
         return filtered.sorted { $0.savedAt > $1.savedAt }
@@ -63,12 +62,7 @@ extension WordsView {
             filtered = filtered.filter { dictionaryStore?.jlptLevel(for: $0.canonicalEntryID) == jlptLevel }
         }
 
-        switch kanjiFilter {
-        case .all:
-            break
-        case .onlyKanji:
-            filtered = filtered.filter { ScriptClassifier.containsKanji($0.surface) }
-        case .noKanji:
+        if showKanjiInSavedWords == false {
             filtered = filtered.filter { ScriptClassifier.containsKanji($0.surface) == false }
         }
 
@@ -95,9 +89,6 @@ extension WordsView {
     // `.entry` rows (query rows aren't words). Search/parse modes force edit mode off, so
     // they never reach the selection menu and default to empty here.
     var selectableWordIDs: [Int64] {
-        // Recent Searches shows only free-text query rows, which carry no word identity —
-        // nothing here is selectable, so don't let "Select All" reach hidden history entries.
-        if showRecentSearches { return [] }
         if searchText.isEmpty && activeTab == .saved {
             return visibleWords.map(\.canonicalEntryID)
         }
@@ -112,7 +103,6 @@ extension WordsView {
     // selectableWordIDs is gated by tab. Drives Select All and the batch-remove count for
     // kanji, which ride a parallel String selection set since List(selection:) is Int64-keyed.
     var selectableKanjiLiterals: [String] {
-        if showRecentSearches { return [] }
         if searchText.isEmpty && activeTab == .saved {
             return visibleSavedKanji.map(\.literal)
         }

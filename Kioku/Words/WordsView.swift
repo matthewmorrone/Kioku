@@ -39,26 +39,6 @@ enum WordsStatScope: String {
     case notLearned
 }
 
-// Orthogonal kanji-content refinement applied on top of the active "Show" scope and sort.
-// Unlike the single-value scopes, this composes with whatever scope is active (e.g. Favorites
-// + Kanji Only), so it lives in its own picker rather than the "Show" dropdown. Filters the
-// saved view by whether an entry's surface contains kanji (via ScriptClassifier.containsKanji).
-enum WordsKanjiFilter: String, CaseIterable, Identifiable {
-    case all          // no kanji-content filtering (default)
-    case onlyKanji    // surfaces containing at least one kanji
-    case noKanji      // pure-kana surfaces (no kanji)
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all: "All"
-        case .onlyKanji: "Kanji Only"
-        case .noKanji: "No Kanji"
-        }
-    }
-}
-
 // Cross-tab routing for the Words screen.
 enum WordsRoute: Equatable {
     case detail(entryID: Int64, surface: String?, reading: String? = nil, sublatticePaths: [[String]] = [])
@@ -134,14 +114,11 @@ struct WordsView: View {
     @State var isRadicalInputPresented = false
     @State var isHandwritingPresented = false
     @State var activeTab: WordsTab = .history
-    // A "Show" scope alongside Favorites/note/list: when true the list shows only the typed
-    // free-text searches (.query history), which are otherwise kept out of the lookup History
-    // so they don't disrupt its flow. Mutually exclusive with the other scopes.
-    @State var showRecentSearches = false
     @AppStorage("savedWordsSortOrder") var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
     @AppStorage("historySortOrder") var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
-    // Persisted kanji-content refinement (All / Kanji Only / No Kanji); see WordsKanjiFilter.
-    @AppStorage("savedWordsKanjiFilter") var kanjiFilterRaw: String = WordsKanjiFilter.all.rawValue
+    // Whether kanji-containing words show in the saved list at all — off by default (pure-kana
+    // only). Composes with whatever "Show" scope is active (e.g. Favorites + hide kanji).
+    @AppStorage("savedWordsShowKanji") var showKanjiInSavedWords = false
     // Opt-in Japanese theme; when on, the row's audio + favorite icons render white (see wordRow).
     @AppStorage(Theme.storageKey) var japaneseTheme = false
     @State var searchText = ""
@@ -159,13 +136,6 @@ struct WordsView: View {
 
     var savedSort: WordsSortOrder { WordsSortOrder(rawValue: savedSortOrder) ?? .newestFirst }
     var historySort: WordsSortOrder { WordsSortOrder(rawValue: historySortOrderRaw) ?? .newestFirst }
-    var kanjiFilter: WordsKanjiFilter { WordsKanjiFilter(rawValue: kanjiFilterRaw) ?? .all }
-    // Bridges the enum-typed picker selection to the persisted raw string. Hoisted out of the
-    // WordsFilterView call site so the body ViewBuilder stays within the type-checker's budget.
-    var kanjiFilterBinding: Binding<WordsKanjiFilter> {
-        Binding(get: { kanjiFilter }, set: { kanjiFilterRaw = $0.rawValue })
-    }
-
     // Sort writes to whichever list is currently visible — saved vs history have separate
     // persisted AppStorage keys but the user only sees one sort menu at a time, so the binding
     // delegates based on activeTab.
@@ -195,9 +165,8 @@ struct WordsView: View {
                 get: { activeTab == .saved },
                 set: { activeTab = $0 ? .saved : .history }
             ),
-            showRecentSearches: $showRecentSearches,
             sortOrder: sortOrderBinding,
-            kanjiFilter: kanjiFilterBinding
+            showKanji: $showKanjiInSavedWords
         )
         .environmentObject(wordListsStore)
         .environmentObject(wordsStore)
@@ -332,7 +301,6 @@ struct WordsView: View {
             WOTDDiag.log("consume .detail entryID=\(entryID) resolved=\(word != nil)")
             if let word {
                 activeTab = .saved
-                showRecentSearches = false
                 selectedDetailWord = word
                 selectedDetailReading = reading
                 selectedDetailReadingEntryID = word.canonicalEntryID
@@ -346,7 +314,6 @@ struct WordsView: View {
 
         case let .search(query):
             activeTab = .saved
-            showRecentSearches = false
             selectedDetailWord = nil
             editMode = .inactive
             selectedWordIDs.removeAll()
@@ -561,11 +528,7 @@ struct WordsView: View {
         // text searches with no word behind them) carry no Int64 tag, so they're simply not
         // selectable — which is correct, you can't add a search phrase to a list.
         List(selection: $selectedWordIDs) {
-            if searchText.isEmpty && showRecentSearches {
-                // Recent Searches scope: only the typed free-text queries, separated out of
-                // History so they don't interrupt the word-lookup flow.
-                recentSearchesContent
-            } else if searchText.isEmpty && activeTab == .saved {
+            if searchText.isEmpty && activeTab == .saved {
                 // Saved tab: kanji rows (their own Section at the top), then favorites.
                 // Both are filtered by the active note/list scope via visibleSavedKanji /
                 // visibleWords, so a list filter narrows BOTH lists in lockstep.

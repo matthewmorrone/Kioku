@@ -63,6 +63,10 @@ struct SettingsView: View {
     @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
     @AppStorage(TokenColorSettings.highlightColorKey) var highlightHex: String = TokenColorSettings.defaultHighlightHex
+    @AppStorage(TokenColorSettings.favoritedFavoriteColorKey) var favoritedFavoriteHex: String = TokenColorSettings.defaultFavoritedFavoriteHex
+    @AppStorage(TokenColorSettings.favoritedLearnedColorKey) var favoritedLearnedHex: String = TokenColorSettings.defaultFavoritedLearnedHex
+    @AppStorage(TokenColorSettings.favoritedNotLearnedColorKey) var favoritedNotLearnedHex: String = TokenColorSettings.defaultFavoritedNotLearnedHex
+    @AppStorage(TokenColorSettings.favoritedElsewhereColorKey) var favoritedElsewhereHex: String = TokenColorSettings.defaultFavoritedElsewhereHex
     // Custom Theme: when on, the four hexes below override the active theme's chrome colors
     // (background / surface / ink / accent). Other palette slots keep the theme's values so a
     // half-customized palette stays coherent. The Read view's toolbar still owns the on/off
@@ -86,6 +90,9 @@ struct SettingsView: View {
     // Whether the Learn tab's study modes skip Learned/Mastered words. Read by each mode through
     // StudyWordPool; this is the single place it's set.
     @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearnedInStudy: Bool = LearnedSettings.defaultExcludeLearned
+    // Whether unsaving a word keeps its ReviewStore data (Learned mark, mastery, SRS stats)
+    // instead of wiping it — see ReviewDataRetentionSettings and WordsStore.clearReviewDataIfNeeded.
+    @AppStorage(ReviewDataRetentionSettings.retainOnDeletionKey) private var retainLearnDataOnWordDeletion: Bool = ReviewDataRetentionSettings.defaultRetainOnDeletion
 
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
@@ -343,6 +350,16 @@ struct SettingsView: View {
                     Text("Theme")
                 }
 
+                // Per-state colors for the Read tab's "Favorited Highlight" display option
+                // (Favorite/unmarked reuses the Highlight Color above). Its own section since
+                // it's independent of Custom Token Colors — Favorited Highlight has its own
+                // on/off toggle in the Read toolbar.
+                Section {
+                    favoritedHighlightColorRows
+                } header: {
+                    Text("Favorited Highlight")
+                }
+
                 // MARK: Audio
                 Section {
                     Picker("Highlight Granularity", selection: $lyricsHighlightGranularityRaw) {
@@ -504,6 +521,8 @@ struct SettingsView: View {
                             Stepper("Correct in a row: \(autoLearnStreak)", value: $autoLearnStreak, in: 1...20)
                         }
                     }
+
+                    Toggle("Retain learn data on word deletion", isOn: $retainLearnDataOnWordDeletion)
                 } header: {
                     Text("Learning")
                 }

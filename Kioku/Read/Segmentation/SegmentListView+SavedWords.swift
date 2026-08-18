@@ -150,6 +150,13 @@ extension SegmentListView {
         var savedWordSourceNoteIDsByEntryID: [Int64: Set<UUID>]
         var savedWordSourceNoteIDsBySurface: [String: Set<UUID>]
         var savedWordSurfaces: Set<String>
+        // Every key in savedWordSurfaces maps back to the entry that put it there — populated in
+        // lockstep with savedWordSurfaces below, so a caller that resolves a surface via
+        // resolvedSavedKey(for:lemmaResolver:) can look up the SAME entry isStarFilled matched,
+        // instead of re-deriving the surface→entry mapping with separate (and potentially
+        // inconsistent) logic. Last-write-wins on the rare case two entries share a surface —
+        // savedWordSurfaces is already a flat union with the same ambiguity.
+        var savedWordEntryIDBySurface: [String: Int64] = [:]
     }
 
     // Pure computation extracted from `applySavedWordState` so it can run on
@@ -166,6 +173,7 @@ extension SegmentListView {
         var sourceNoteIDsByEntryID: [Int64: Set<UUID>] = [:]
         var sourceNoteIDsBySurface: [String: Set<UUID>] = [:]
         var unionEncountered = Set<String>()
+        var entryIDBySurface: [String: Int64] = [:]
         var updatedLemmaCache = lemmaCache
 
         savedWordEntryIDs.reserveCapacity(entries.count)
@@ -206,6 +214,7 @@ extension SegmentListView {
                 unionEncountered.insert(surface)
                 let merged = sourceNoteIDsBySurface[surface, default: Set<UUID>()].union(entryNoteIDs)
                 sourceNoteIDsBySurface[surface] = merged
+                entryIDBySurface[surface] = entry.canonicalEntryID
             }
         }
 
@@ -213,7 +222,8 @@ extension SegmentListView {
             savedWordEntryIDs: savedWordEntryIDs,
             savedWordSourceNoteIDsByEntryID: sourceNoteIDsByEntryID,
             savedWordSourceNoteIDsBySurface: sourceNoteIDsBySurface,
-            savedWordSurfaces: unionEncountered
+            savedWordSurfaces: unionEncountered,
+            savedWordEntryIDBySurface: entryIDBySurface
         )
         return (state, updatedLemmaCache)
     }
@@ -318,6 +328,14 @@ extension SegmentListView.ComputedSavedWordState {
     // Saved under any note (or with no note attribution).
     func isSavedSurface(_ normalizedSurface: String, lemmaResolver: (String) -> String?) -> Bool {
         resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver) != nil
+    }
+
+    // The canonicalEntryID backing a saved surface, resolved through the exact same key
+    // isStarFilled/isSavedForOtherNotes use — so a caller checking "which word is this?" agrees
+    // with whichever of those already said "yes" for this surface.
+    func canonicalEntryID(for normalizedSurface: String, lemmaResolver: (String) -> String?) -> Int64? {
+        guard let key = resolvedSavedKey(for: normalizedSurface, lemmaResolver: lemmaResolver) else { return nil }
+        return savedWordEntryIDBySurface[key]
     }
 
     // Saved AND attributed to `noteID` (nil note context collapses to "saved anywhere").

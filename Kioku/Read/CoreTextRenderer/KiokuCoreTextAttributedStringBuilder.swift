@@ -93,6 +93,15 @@ enum KiokuCoreTextAttributedStringBuilder {
         var favoritedSegmentLocations: Set<Int> = []
         var isFavoritedHighlightEnabled: Bool = false
         var favoritedHighlightColor: UIColor = .systemYellow
+        // Subset of favorited (this-note) segments marked Learned — recolored separately when
+        // the "Favorited Highlight" submenu is set to "Different Colors". Disjoint from
+        // favoritedSegmentLocations by construction upstream.
+        var favoritedLearnedSegmentLocations: Set<Int> = []
+        var favoritedLearnedHighlightColor: UIColor = .systemGreen
+        // Subset of favorited (this-note) segments marked Not Learned, same disjointness
+        // rationale as favoritedLearnedSegmentLocations above.
+        var favoritedNotLearnedSegmentLocations: Set<Int> = []
+        var favoritedNotLearnedHighlightColor: UIColor = .systemPurple
         // Saved-but-only-under-a-different-note segments — the hollow-yellow "saved elsewhere"
         // star's in-text counterpart. Disjoint from favoritedSegmentLocations by construction.
         var favoritedElsewhereSegmentLocations: Set<Int> = []
@@ -214,6 +223,28 @@ enum KiokuCoreTextAttributedStringBuilder {
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
                 guard inputs.favoritedSegmentLocations.contains(nsRange.location) else { continue }
                 result.addAttribute(.foregroundColor, value: inputs.favoritedHighlightColor, range: nsRange)
+            }
+        }
+
+        // Learned-word subset of the favorited highlight — same precedence as the favorited pass
+        // above, disjoint from favoritedSegmentLocations by construction upstream.
+        if inputs.isFavoritedHighlightEnabled && inputs.favoritedLearnedSegmentLocations.isEmpty == false {
+            for segmentRange in inputs.segmentationRanges {
+                let nsRange = NSRange(segmentRange, in: inputs.text)
+                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+                guard inputs.favoritedLearnedSegmentLocations.contains(nsRange.location) else { continue }
+                result.addAttribute(.foregroundColor, value: inputs.favoritedLearnedHighlightColor, range: nsRange)
+            }
+        }
+
+        // Not-Learned-word subset of the favorited highlight — same precedence/disjointness as
+        // the Learned pass above.
+        if inputs.isFavoritedHighlightEnabled && inputs.favoritedNotLearnedSegmentLocations.isEmpty == false {
+            for segmentRange in inputs.segmentationRanges {
+                let nsRange = NSRange(segmentRange, in: inputs.text)
+                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+                guard inputs.favoritedNotLearnedSegmentLocations.contains(nsRange.location) else { continue }
+                result.addAttribute(.foregroundColor, value: inputs.favoritedNotLearnedHighlightColor, range: nsRange)
             }
         }
 

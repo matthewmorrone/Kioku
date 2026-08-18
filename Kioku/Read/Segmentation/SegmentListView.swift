@@ -597,14 +597,22 @@ struct SegmentListView: View {
     // up the type-checker (SegmentListView's row already juggles a dozen lets per row) into a
     // multi-minute build timeout. A separate function with explicit per-statement types keeps
     // each call site a single expression for the checker to solve.
+    // The checkmark/questionmark glyph is a Learned/Not-Learned mark on a SAVED word — gated on
+    // isAnySaved so unsaving a learned/not-learned word visibly reverts to a hollow star instead
+    // of leaving the same glyph on screen (ReviewStore's mark is keyed by canonicalEntryID and
+    // outlives the SavedWord card, so learnedState alone can't tell "still saved" from "not").
     private func starIcon(isStarFilled: Bool, isAnySaved: Bool, learnedState: LearnedState) -> some View {
         let icon: String
-        switch learnedState {
-        case .learned:    icon = "checkmark"
-        case .notLearned: icon = "questionmark"
-        case .unmarked:   icon = isStarFilled ? "star.fill" : "star"
+        if isAnySaved {
+            switch learnedState {
+            case .learned:    icon = "checkmark"
+            case .notLearned: icon = "questionmark"
+            case .unmarked:   icon = isStarFilled ? "star.fill" : "star"
+            }
+        } else {
+            icon = "star"
         }
-        let starColor: Color = (learnedState != .unmarked || isAnySaved) ? .primary : .secondary
+        let starColor: Color = isAnySaved ? .primary : .secondary
         return Image(systemName: icon)
             .foregroundStyle(starColor)
             .font(.system(size: 16, weight: .semibold))

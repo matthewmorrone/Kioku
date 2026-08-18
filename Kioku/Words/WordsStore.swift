@@ -43,6 +43,25 @@ final class WordsStore: ObservableObject {
     // captured DictionaryStore is documented thread-safe (nonisolated, read-only after populate).
     private var stableKeyResolver: (entSeqForEntryID: (Int64) -> Int64?, entryIDForEntSeq: (Int64) -> Int64?)?
 
+    // Weak reference to the review store, wired up once via attach(reviewStore:) — see its doc
+    // comment. Used only to clear a word's study history when it's fully unsaved (ContentView
+    // can't have WordsStore depend on ReviewStore at construction time; both are sibling
+    // @StateObjects, same pattern as bridgeServer.attach(notesStore:)).
+    private weak var reviewStore: ReviewStore?
+
+    // Wires the review store in after both stores exist (ContentView's onAppear, same pattern as
+    // bridgeServer.attach(notesStore:) and llmCorrectionQueue.attach(store:)).
+    func attach(reviewStore: ReviewStore) {
+        self.reviewStore = reviewStore
+    }
+
+    // Clears a fully-unsaved word's ReviewStore data (Learned/Not-Learned mark, mastery, SRS
+    // stats) unless the user opted to retain it — see ReviewDataRetentionSettings.
+    private func clearReviewDataIfNeeded(for id: Int64) {
+        guard userDefaults.bool(forKey: ReviewDataRetentionSettings.retainOnDeletionKey) == false else { return }
+        reviewStore?.clearAllData(for: id)
+    }
+
     // Installs the stable-key resolver and reconciles existing saved words against the live
     // dictionary: legacy cards get their ent_seq backfilled from the current row id, and cards with
     // a known ent_seq get canonicalEntryID re-resolved so a dictionary rebuild can't leave them
@@ -84,6 +103,7 @@ final class WordsStore: ObservableObject {
     // Removes a word by canonical entry id.
     func remove(id: Int64) {
         persist(words.filter { $0.canonicalEntryID != id })
+        clearReviewDataIfNeeded(for: id)
     }
 
     // Removes many words in one persist cycle. Bulk callers (multi-select delete in WordsView)
@@ -92,6 +112,7 @@ final class WordsStore: ObservableObject {
     func remove(ids: Set<Int64>) {
         guard !ids.isEmpty else { return }
         persist(words.filter { !ids.contains($0.canonicalEntryID) })
+        for id in ids { clearReviewDataIfNeeded(for: id) }
     }
 
     // Detaches deleted-note provenance without deleting saved vocabulary.
@@ -334,6 +355,10 @@ final class WordsStore: ObservableObject {
 
             if encounteredSet.isEmpty && noteIDs.isEmpty {
                 entries.remove(at: existingIndex)
+                // Only a true full removal (no encountered surfaces, no note attributions left
+                // anywhere) counts as "unsaved" — detaching one note/surface while the card
+                // survives elsewhere must NOT touch review data.
+                clearReviewDataIfNeeded(for: canonicalEntryID)
             } else {
                 let orderedNoteIDs = noteIDs.sorted { $0.uuidString < $1.uuidString }
                 entries[existingIndex] = SavedWord(

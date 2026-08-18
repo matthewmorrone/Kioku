@@ -83,6 +83,16 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     var favoritedSegmentLocations: Set<Int> = []
     var isFavoritedHighlightEnabled: Bool = false
     var favoritedHighlightColor: UIColor = .systemYellow
+    // Subset of favorited (this-note) locations whose word is marked Learned, recolored
+    // separately when the "Favorited Highlight" submenu is set to "Different Colors". Disjoint
+    // from favoritedSegmentLocations by construction upstream. Defaulted empty/yellow so call
+    // sites that don't surface the scope submenu (lyrics/song) need not pass it.
+    var favoritedLearnedSegmentLocations: Set<Int> = []
+    var favoritedLearnedHighlightColor: UIColor = .systemGreen
+    // Subset of favorited (this-note) locations whose word is marked Not Learned, same
+    // rationale/disjointness as favoritedLearnedSegmentLocations above.
+    var favoritedNotLearnedSegmentLocations: Set<Int> = []
+    var favoritedNotLearnedHighlightColor: UIColor = .systemPurple
     // Saved, but only under a note OTHER than the active one — the hollow-yellow "saved
     // elsewhere" star's in-text counterpart, tinted a distinct color so it doesn't read as a
     // favorite of THIS note. Disjoint from favoritedSegmentLocations by construction upstream.
@@ -306,9 +316,13 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         for location in changedReadingLocations.sorted() { typographyHasher.combine(location) }
         for location in inFlightSegmentLocations.sorted() { typographyHasher.combine(location) }
         for location in favoritedSegmentLocations.sorted() { typographyHasher.combine(location) }
+        for location in favoritedLearnedSegmentLocations.sorted() { typographyHasher.combine(location) }
+        for location in favoritedNotLearnedSegmentLocations.sorted() { typographyHasher.combine(location) }
         for location in favoritedElsewhereSegmentLocations.sorted() { typographyHasher.combine(location) }
         typographyHasher.combine(isFavoritedHighlightEnabled)
         typographyHasher.combine(favoritedHighlightColor.description)
+        typographyHasher.combine(favoritedLearnedHighlightColor.description)
+        typographyHasher.combine(favoritedNotLearnedHighlightColor.description)
         typographyHasher.combine(favoritedElsewhereHighlightColor.description)
         typographyHasher.combine(unplayedDimmingLocation ?? -1)
         typographyHasher.combine(unplayedAlpha)
@@ -342,6 +356,10 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     favoritedSegmentLocations: favoritedSegmentLocations,
                     isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
                     favoritedHighlightColor: favoritedHighlightColor,
+                    favoritedLearnedSegmentLocations: favoritedLearnedSegmentLocations,
+                    favoritedLearnedHighlightColor: favoritedLearnedHighlightColor,
+                    favoritedNotLearnedSegmentLocations: favoritedNotLearnedSegmentLocations,
+                    favoritedNotLearnedHighlightColor: favoritedNotLearnedHighlightColor,
                     favoritedElsewhereSegmentLocations: favoritedElsewhereSegmentLocations,
                     favoritedElsewhereHighlightColor: favoritedElsewhereHighlightColor,
                     isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
