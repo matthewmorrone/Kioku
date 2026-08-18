@@ -1,14 +1,38 @@
 import SwiftUI
 
-// A pending scoped-study launch: the exact words a tapped cell (or "study all") resolved, and the
-// question cap the launch sheet's count field settled on. Always launches Multiple Choice —
-// Flashcards used to be offered as a second mode here but isn't anymore (Cloze was already
-// intentionally excluded: it is sentence-based and has no saved-word-set selection model, see
-// the design spec).
+// Which activity a scoped Coverage drill opens into. Cloze is intentionally absent: it is
+// sentence-based and has no saved-word-set selection model.
+enum CoverageStudyMode: String, CaseIterable, Identifiable {
+    case multipleChoice
+    case flashcards
+    case fillInBlank
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .multipleChoice: return "Multiple Choice"
+        case .flashcards: return "Flashcards"
+        case .fillInBlank: return "Fill in the Blank"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .multipleChoice: return "checklist"
+        case .flashcards: return "rectangle.on.rectangle.angled"
+        case .fillInBlank: return "square.and.pencil"
+        }
+    }
+}
+
+// A pending scoped-study launch: the exact words a tapped cell (or "study all") resolved, the
+// activity to drill them in, and the cap the launch sheet's count field settled on.
 struct CoverageLaunch: Identifiable {
     let id = UUID()
     let words: [SavedWord]
     let count: Int
+    let mode: CoverageStudyMode
 }
 
 // A resolved set of words awaiting a mode + count choice — either one stage chip's cell, or every
@@ -21,7 +45,7 @@ struct CoverageStudySelection: Identifiable {
 
 // The per-note learning-coverage breakdown: a summary header (learned %, due count) and one row
 // per JLPT level, each split into tappable New/Learning/Learned stage chips that launch a scoped
-// Flashcards or Multiple Choice session over exactly that cell's words.
+// session over exactly that cell's words, in whichever activity the launch sheet picks.
 struct CoverageDetailView: View {
     let note: Note
     let dictionaryStore: DictionaryStore?
@@ -79,8 +103,8 @@ struct CoverageDetailView: View {
             CoverageStudyLaunchSheet(
                 selection: selection,
                 count: $launchCount,
-                onStart: {
-                    launch = CoverageLaunch(words: selection.words, count: launchCount)
+                onStart: { mode in
+                    launch = CoverageLaunch(words: selection.words, count: launchCount, mode: mode)
                     pendingSelection = nil
                 }
             )
@@ -241,12 +265,31 @@ struct CoverageDetailView: View {
         .opacity(words.isEmpty ? 0.4 : 1)
     }
 
-    // The presented scoped session, re-injecting the stores MultipleChoiceView requires.
+    // The presented scoped session, re-injecting the stores each activity requires.
+    @ViewBuilder
     private func studySheet(for launch: CoverageLaunch) -> some View {
-        MultipleChoiceView(dictionaryStore: dictionaryStore, segmenter: nil, presetWords: launch.words, presetQuestionCount: launch.count)
-            .environmentObject(wordsStore)
-            .environmentObject(notesStore)
-            .environmentObject(reviewStore)
+        Group {
+            switch launch.mode {
+            case .multipleChoice:
+                MultipleChoiceView(
+                    dictionaryStore: dictionaryStore, segmenter: nil,
+                    presetWords: launch.words, presetQuestionCount: launch.count
+                )
+            case .flashcards:
+                FlashcardsView(
+                    dictionaryStore: dictionaryStore, segmenter: nil,
+                    presetWords: launch.words, presetCardCount: launch.count
+                )
+            case .fillInBlank:
+                FillInBlankView(
+                    dictionaryStore: dictionaryStore,
+                    presetWords: launch.words, presetQuestionCount: launch.count
+                )
+            }
+        }
+        .environmentObject(wordsStore)
+        .environmentObject(notesStore)
+        .environmentObject(reviewStore)
     }
 
     // Human label for a JLPT level row: "N5"…"N1", or "No level" for words not on any list.
@@ -258,12 +301,12 @@ struct CoverageDetailView: View {
 
 // The step between picking a coverage cell (or "Study All Words") and actually launching a
 // session: shows how many words are in play and lets the user cap the session size — the same
-// control (`LearnCountField`) Learn's own Flashcards/Multiple Choice home screens expose, which a
+// control (`LearnCountPicker`) Learn's own start screens expose, which a
 // Coverage-launched session used to skip entirely by auto-starting straight into the full cell.
 private struct CoverageStudyLaunchSheet: View {
     let selection: CoverageStudySelection
     @Binding var count: Int
-    let onStart: () -> Void
+    let onStart: (CoverageStudyMode) -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -278,13 +321,13 @@ private struct CoverageStudyLaunchSheet: View {
                     }
                 }
                 Section {
-                    LearnCountField(label: "Items", count: $count)
-                } footer: {
-                    Text("Leave blank to study every word in this selection.")
+                    LearnCountPicker(label: "Items", count: $count)
                 }
                 Section {
-                    Button { onStart() } label: {
-                        Label("Multiple Choice", systemImage: "checklist")
+                    ForEach(CoverageStudyMode.allCases) { mode in
+                        Button { onStart(mode) } label: {
+                            Label(mode.title, systemImage: mode.systemImage)
+                        }
                     }
                 }
             }

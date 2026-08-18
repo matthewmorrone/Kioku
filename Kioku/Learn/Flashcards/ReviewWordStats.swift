@@ -31,6 +31,13 @@ struct ReviewWordStats: Codable, Hashable {
     // never been answered. Absent from pre-existing JSON; decodes to empty so old history migrates
     // forward intact (see the custom decoder below).
     var directionStats: [String: DirectionStats]
+    // Whether the word has a kanji form, learned from whichever study mode last recorded an answer
+    // with authoritative dictionary data in hand. Nil means not established yet, which the
+    // promotion bars read as "assume it does" — the conservative reading, since wrongly assuming
+    // kana-only would relax the bar for a word that genuinely has kanji to learn. Only ever set to
+    // `false` by a caller that resolved the word's headword, never inferred from its saved surface
+    // (a kana-written surface like ありがとう can still have the headword 有難う).
+    var hasKanjiForm: Bool?
 
     init(
         correct: Int,
@@ -38,7 +45,8 @@ struct ReviewWordStats: Codable, Hashable {
         lastReviewedAt: Date? = nil,
         dueDate: Date? = nil,
         consecutiveCorrect: Int = 0,
-        directionStats: [String: DirectionStats] = [:]
+        directionStats: [String: DirectionStats] = [:],
+        hasKanjiForm: Bool? = nil
     ) {
         self.correct = correct
         self.again = again
@@ -46,6 +54,7 @@ struct ReviewWordStats: Codable, Hashable {
         self.dueDate = dueDate
         self.consecutiveCorrect = consecutiveCorrect
         self.directionStats = directionStats
+        self.hasKanjiForm = hasKanjiForm
     }
 
     // Custom decoder so SRS fields are optional in JSON — pre-Tier-3 review stats stay readable.
@@ -57,6 +66,7 @@ struct ReviewWordStats: Codable, Hashable {
         dueDate = try c.decodeIfPresent(Date.self, forKey: .dueDate)
         consecutiveCorrect = try c.decodeIfPresent(Int.self, forKey: .consecutiveCorrect) ?? 0
         directionStats = try c.decodeIfPresent([String: DirectionStats].self, forKey: .directionStats) ?? [:]
+        hasKanjiForm = try c.decodeIfPresent(Bool.self, forKey: .hasKanjiForm)
     }
 
     // Total number of review attempts for this word.

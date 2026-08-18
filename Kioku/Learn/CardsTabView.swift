@@ -55,6 +55,19 @@ struct LearnPagerView: View {
     @State private var dotsHidden: Bool = false
     @State private var sessionActive: Bool = false
 
+    // The axis a drag committed to, decided once on its first movement and held for the rest of the
+    // gesture. Without this lock a mostly-vertical scroll that wobbles horizontally (or ends with a
+    // diagonal flick) could still drive the pager, since the old per-frame axis test could flip
+    // mid-drag and `onEnded` didn't consult the axis at all.
+    @State private var dragAxis: DragAxis?
+
+    private enum DragAxis { case horizontal, vertical }
+
+    // How much more horizontal than vertical a drag's first movement must be to claim the pager.
+    // A deliberate left/right swipe sits within ~20° of flat; requiring 2:1 (~27°) leaves those
+    // untouched while rejecting the diagonal drift of an up/down scroll.
+    private static let horizontalClaimRatio: CGFloat = 2
+
     // Clamps any index into the valid page range so a stale stored value (e.g. from a build with
     // more pages) can't drive the offset out of bounds.
     private func clampedIndex(_ raw: Int) -> Int {
@@ -92,9 +105,9 @@ struct LearnPagerView: View {
             .frame(width: width, alignment: .leading)
             .offset(x: -CGFloat(pageIndex) * width + dragOffset)
             // `.simultaneousGesture` (NOT `.highPriorityGesture`) so child ScrollViews and
-            // Lists keep their own pan recognisers. The axis filter in `onChanged` decides
-            // whether *we* care about a given drag: mostly-horizontal moves drive the pager;
-            // mostly-vertical ones leave `dragOffset` at 0 and let the child scroll. A
+            // Lists keep their own pan recognisers. Each drag locks to one axis on its first
+            // movement (see `dragAxis`): only a clearly horizontal one drives the pager, and a
+            // drag that went to the child leaves `dragOffset` at 0 and can't page on release. A
             // high-priority gesture would starve the child even when we don't act, which
             // is why vertical scrolling in the Breakdown screen wasn't working.
             //
@@ -104,10 +117,25 @@ struct LearnPagerView: View {
                 sessionActive ? nil :
                 DragGesture(minimumDistance: 20)
                     .onChanged { value in
-                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                        // The first callback arrives only after 20pt of travel, so its translation
+                        // is a reliable direction sample to lock the axis on.
+                        if dragAxis == nil {
+                            dragAxis = abs(value.translation.width)
+                                > abs(value.translation.height) * Self.horizontalClaimRatio
+                                ? .horizontal : .vertical
+                        }
+                        guard dragAxis == .horizontal else { return }
                         dragOffset = rubberBanded(value.translation.width)
                     }
                     .onEnded { value in
+                        let axis = dragAxis
+                        dragAxis = nil
+                        // A drag that never claimed the horizontal axis belongs to the child scroll
+                        // view; it must not page even if its flick predicts far to one side.
+                        guard axis == .horizontal else {
+                            dragOffset = 0
+                            return
+                        }
                         let threshold = width * 0.25
                         let velocity = value.predictedEndTranslation.width - value.translation.width
                         let dx = value.translation.width + velocity * 0.3

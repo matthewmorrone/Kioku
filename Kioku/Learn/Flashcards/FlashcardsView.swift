@@ -1,56 +1,5 @@
 import SwiftUI
 
-// Japanese form (原文 / 漢字 / かな) is the shared `StudyJapaneseForm` axis — Flashcards and
-// Multiple Choice present the identical control for it. Direction is not fully shared: Flashcards
-// uses its own `FlashcardDirection` (a superset of `StudyDirection`'s JP/English pairing that also
-// offers kanji↔かな directly), since `StudyDirection` has no fixed, single-direction equivalent for
-// that — see `FlashcardDirection`'s doc comment. See `FlashcardCard` for how the pair maps to the
-// front/back faces.
-
-// Flashcards' own direction axis — a superset of the shared `StudyDirection` JP/English pairing
-// that also offers kanji↔かな directly (no English/meaning side at all), which `StudyDirection` has
-// no fixed-direction equivalent for: its only script-only option, `.mixedFields`, randomizes across
-// all 6 field pairs per question — including 2 that require English — which doesn't fit Flashcards'
-// single-direction-per-session shape. Kept as its own type (like `FillInBlankDirection`) rather than
-// adding cases to `StudyDirection`, so this doesn't ripple into Multiple Choice's `StudyDirection`
-// switches. `nonisolated` since it's a pure, stateless enum — callable from any context, including
-// plain (non-`@MainActor`) unit tests.
-nonisolated enum FlashcardDirection: String, CaseIterable, Identifiable {
-    case japaneseToEnglish = "日本語 → English"
-    case englishToJapanese = "English → 日本語"
-    case mixed = "Mixed"
-    case kanjiToKana = "漢字 → かな"
-    case kanaToKanji = "かな → 漢字"
-    var id: String { rawValue }
-
-    // Resolves `.mixed` to a concrete direction deterministically per item — matches
-    // `StudyDirection.resolved(seed:)` exactly, only ever randomizing between the JP/English pair
-    // (never into kanjiToKana/kanaToKanji), so existing "Mixed" sessions behave identically.
-    func resolved(seed: Int64) -> FlashcardDirection {
-        switch self {
-        case .mixed: return seed % 2 == 0 ? .japaneseToEnglish : .englishToJapanese
-        case .japaneseToEnglish, .englishToJapanese, .kanjiToKana, .kanaToKanji: return self
-        }
-    }
-}
-
-// Which slice of the saved-word collection feeds the next flashcard session. Shared by all three
-// word-based Learn modes. `nonisolated` (like FlashcardDirection above) because StudyWordPool —
-// pure, actor-free, unit-tested on its own — switches over these cases.
-nonisolated enum FlashcardScope: String, CaseIterable, Identifiable {
-    case all
-    case dueNow
-    case markedWrong
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .all: "All"
-        case .dueNow: "Due"
-        case .markedWrong: "Wrong"
-        }
-    }
-}
-
 // Renders the flashcard study mode: home configuration, active session, and session summary.
 // Major sections: toolbar, session header, card stack, grading controls, review home form, session complete state.
 struct FlashcardsView: View {
@@ -83,7 +32,6 @@ struct FlashcardsView: View {
     @State private var isPresetSession: Bool = false
     @State private var index: Int = 0
     @State private var showBack: Bool = false
-    @State private var shuffled: Bool = true
 
     @State private var dragOffset: CGSize = .zero
     @State private var isSwipingOut: Bool = false
@@ -95,27 +43,15 @@ struct FlashcardsView: View {
     @State private var reviewedCount: Int = 0
 
     @State private var showEndSessionConfirm: Bool = false
-    @State private var direction: FlashcardDirection = .japaneseToEnglish
-    @State private var japaneseForm: StudyJapaneseForm = .kanji
-    // When on, a card whose resolved direction is englishToJapanese (production: meaning→kanji/kana)
-    // is graded by typing the answer (via AnswerScorer) instead of self-reported flip+Know/Again.
-    // Cards that resolve to japaneseToEnglish, kanjiToKana, or kanaToKanji are unaffected — the
-    // former because English answers have too many valid phrasings to fuzzy-match reliably; the
-    // latter two stay self-graded-only in this first pass (AnswerScorer would handle them fine, but
-    // extending typed grading to them is a separate follow-up).
-    @State private var typedGrading: Bool = false
-    // Cap on how many cards a session runs. 0 (blank field) means "all in selection".
-    @State private var cardCount: Int = 20
-    @State private var scope: FlashcardScope = .all
-    @State private var selectedNoteIDs: Set<UUID> = []
-    // JLPT levels (N-number 5…1) to include; empty means no level filter. ANDs with scope + notes.
-    @State private var selectedJLPTLevels: Set<Int> = []
     @State private var detailWord: SavedWord?
-    // Opt-in Japanese theme; switches the grading labels to Mincho また / わかった when on.
-    @AppStorage(Theme.storageKey) private var japaneseTheme = false
+    // Note / JLPT / scope / direction / count, persisted under this activity's own key prefix.
+    @StateObject private var options = LearnActivityOptions(activity: .flashcards)
+    private let activity = LearnActivity.flashcards
     // Skip words already at the Learned/Mastered stage. Shared with the other Learn modes via
     // LearnedSettings; toggled in Settings → Learning. See StudyWordPool.
     @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearned = LearnedSettings.defaultExcludeLearned
+    // Opt-in Japanese theme; switches the grading labels to Mincho また / わかった when on.
+    @AppStorage(Theme.storageKey) private var japaneseTheme = false
 
     var body: some View {
         NavigationStack {
@@ -134,7 +70,7 @@ struct FlashcardsView: View {
                         Spacer(minLength: 8)
                         cardStack
                         Spacer(minLength: 8)
-                        bottomControl
+                        controls
                     }
                     .padding()
                 }
@@ -160,20 +96,13 @@ struct FlashcardsView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    // Restart: deals the same pool again from the top. Sessions are always
+                    // shuffled, so this reshuffles too — one button, not a restart beside a
+                    // separate shuffle that did the identical thing.
                     Button { startSession() } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .disabled(sessionSource.isEmpty)
-                }
-                if session.isEmpty == false || sessionSource.isEmpty == false {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            shuffled.toggle()
-                            if sessionSource.isEmpty == false { startSession() }
-                        } label: {
-                            Image(systemName: shuffled ? "shuffle" : "shuffle.slash")
-                        }
-                    }
                 }
             }
             .alert("End session?", isPresented: $showEndSessionConfirm) {
@@ -202,7 +131,7 @@ struct FlashcardsView: View {
             if let presetWords, didAutoStartPreset == false {
                 didAutoStartPreset = true
                 isPresetSession = true
-                if let presetCardCount { cardCount = presetCardCount }
+                if let presetCardCount { options.count = presetCardCount }
                 sessionSource = presetWords
                 startSession()
             }
@@ -241,54 +170,30 @@ struct FlashcardsView: View {
                     word: word,
                     dictionaryStore: dictionaryStore,
                     isTop: word.canonicalEntryID == topID,
-                    direction: direction,
-                    japaneseForm: japaneseForm,
-                    preferredNoteID: selectedNoteIDs.count == 1 ? selectedNoteIDs.first : nil,
+                    direction: resolvedDirection(for: word),
+                    preferredNoteID: options.selectedNoteIDs.count == 1 ? options.selectedNoteIDs.first : nil,
                     showBack: $showBack,
                     dragOffset: $dragOffset,
                     isSwipingOut: $isSwipingOut,
                     swipeDirection: $swipeDirection,
-                    // Swipe-to-grade is disabled for a card FlashcardTypedAnswerControl is grading —
-                    // otherwise a stray horizontal swipe on the (still English-only) front face would
-                    // grade the card before the user ever typed an answer. Flip-to-peek still works;
-                    // that's no worse than self-graded mode already allowing a peek-then-swipe.
-                    onKnow: { if isTypedGradingCard(word) == false { know() } },
-                    onAgain: { if isTypedGradingCard(word) == false { again() } }
+                    onKnow: { know() },
+                    onAgain: { again() }
                 )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: 360)
     }
 
-    // True when the current card should be graded via FlashcardTypedAnswerControl rather than
-    // self-reported flip+Know/Again — typed grading is on, and this card's resolved direction is
-    // production (English prompt, Japanese answer).
-    private func isTypedGradingCard(_ word: SavedWord) -> Bool {
-        typedGrading && direction.resolved(seed: word.canonicalEntryID) == .englishToJapanese
-    }
-
-    // The typed-answer control when the current card calls for it, otherwise the usual
-    // Again/Detail/Know row.
-    @ViewBuilder
-    private var bottomControl: some View {
-        if session.indices.contains(index), isTypedGradingCard(session[index]) {
-            let word = session[index]
-            FlashcardTypedAnswerControl(
-                word: word,
-                dictionaryStore: dictionaryStore,
-                japaneseForm: japaneseForm,
-                onGraded: { correct, gradedDirection in
-                    if correct {
-                        know(direction: gradedDirection)
-                    } else {
-                        again(direction: gradedDirection)
-                    }
-                }
-            )
-            .id(word.canonicalEntryID)
-        } else {
-            controls
-        }
+    // The direction this card is being asked in: one of the session's ticked directions, chosen
+    // per word and stable across re-renders, and narrowed to what the word can actually be asked
+    // (a kana-only word is never handed a 漢字 direction). Falls back to かな→English when the
+    // selection somehow leaves the word nothing — unreachable for a card that came through the
+    // pool filter, which drops exactly those words.
+    private func resolvedDirection(for word: SavedWord) -> QuestionDirection {
+        options.directions.resolved(
+            seed: word.canonicalEntryID,
+            hasKanjiForm: LearnWordPool.estimatedHasKanjiForm(word, reviewStore: reviewStore)
+        ) ?? .kanaToMeaning
     }
 
     // Again / Detail / Know buttons shown while a session is active.
@@ -386,83 +291,24 @@ struct FlashcardsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // Note / direction / scope / shuffle pickers and session start button, on the shared scaffold.
+    // The shared start screen; every activity configures identically now.
     private var reviewHome: some View {
-        // One pass backs both the count and the hint below — see StudyWordSelection.
-        let selection = matchingSelection()
-        let matchingCount = selection.words.count
-        return LearnHomeForm(
-            startTitle: "Start Flashcards",
-            startEnabled: matchingCount > 0,
+        LearnActivityHome(
+            activity: activity,
+            options: options,
+            dictionaryStore: dictionaryStore,
+            pool: pool(),
             onStart: { startSessionFromHome() }
-        ) {
-            Section {
-                FlashcardNotePicker(selectedNoteIDs: $selectedNoteIDs)
-                FlashcardJLPTPicker(dictionaryStore: dictionaryStore, selectedLevels: $selectedJLPTLevels)
-            }
+        )
+    }
 
-            Section {
-                Picker("Direction", selection: $direction) {
-                    ForEach(FlashcardDirection.allCases) { d in Text(d.rawValue).tag(d) }
-                }
-                .pickerStyle(.menu)
-
-                Picker("Japanese", selection: $japaneseForm) {
-                    ForEach(StudyJapaneseForm.allCases) { f in Text(f.rawValue).tag(f) }
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section {
-                Toggle("Typed answers", isOn: $typedGrading)
-                Text("English → 日本語 cards are graded by typing the answer instead of flipping. Every other direction is unaffected.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Picker("Scope", selection: $scope) {
-                    ForEach(FlashcardScope.allCases) { s in
-                        Text(scopeLabel(s)).tag(s)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section {
-                LearnCountField(label: "Cards", count: $cardCount)
-            }
-
-            Section {
-                Button {
-                    shuffled.toggle()
-                } label: {
-                    Label(
-                        shuffled ? "Shuffle On" : "Shuffle Off",
-                        systemImage: shuffled ? "shuffle" : "shuffle.slash"
-                    )
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Cards in selection").font(.caption).foregroundStyle(.secondary)
-                    Text("\(matchingCount)")
-                        .font(.largeTitle.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(matchingCount == 0 ? .red : .primary)
-                    if matchingCount == 0 {
-                        Text("No cards match this selection").font(.footnote).foregroundStyle(.red)
-                    }
-                    // Name the learned exclusion whenever it's holding cards back — otherwise a
-                    // shrunken (or empty) count reads as a bug to someone who can see those words
-                    // sitting right there in the Words tab.
-                    if let hint = StudyWordPool.learnedExclusionHint(hiddenLearnedCount: selection.hiddenLearnedCount) {
-                        Text(hint).font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-            }
-        }
+    // Words passing every filter and askable in at least one selected direction, plus the count
+    // the learned exclusion held back.
+    private func pool() -> StudyWordSelection {
+        LearnWordPool.eligible(
+            in: wordsStore.words, options: options, excludeLearned: excludeLearned,
+            reviewStore: reviewStore, dictionaryStore: dictionaryStore
+        )
     }
 
     // Starts a fresh pass through sessionSource, resetting all counters.
@@ -473,22 +319,26 @@ struct FlashcardsView: View {
         }
         sessionCorrect = 0; sessionAgain = 0; reviewedCount = 0
         session = sessionSource
-        if shuffled { session.shuffle() }
-        // A positive cardCount caps the deck (after the shuffle, so a capped session is a random
+        session.shuffle()
+        // A positive count caps the deck (after the shuffle, so a capped session is a random
         // subset); 0 / blank means run every card in the selection.
-        if cardCount > 0 { session = Array(session.prefix(cardCount)) }
+        if options.count > 0 { session = Array(session.prefix(options.count)) }
         sessionTotalCount = session.count
         index = 0; showBack = false; dragOffset = .zero
     }
 
-    // Records an "again", appends the card to the back of the queue, and advances. `direction`
-    // overrides the surface-heuristic resolution — passed by FlashcardTypedAnswerControl, which
-    // already fetched the word's live kanji/kana and so knows the direction more precisely.
-    private func again(direction overrideDirection: QuestionDirection? = nil) {
+    // Records an "again", appends the card to the back of the queue, and advances. `direction` and
+    // `hasKanjiForm` override the surface-heuristic resolution when a caller knows
+    // both more precisely — the Coverage-launched paths pass them.
+    private func again(direction overrideDirection: QuestionDirection? = nil, hasKanjiForm: Bool? = nil) {
         guard session.isEmpty == false else { return }
         sessionAgain += 1; reviewedCount += 1
         let w = session[index]
-        reviewStore.recordAgain(for: w.canonicalEntryID, direction: overrideDirection ?? questionDirection(for: w))
+        reviewStore.recordAgain(
+            for: w.canonicalEntryID,
+            direction: overrideDirection ?? resolvedDirection(for: w),
+            hasKanjiForm: hasKanjiForm ?? surfaceKanjiEvidence(for: w)
+        )
         session.remove(at: index)
         session.append(w)
         if index >= session.count { index = session.count - 1 }
@@ -496,48 +346,33 @@ struct FlashcardsView: View {
     }
 
     // Records a "know", removes the card from the queue, and advances. See `again` re: `direction`.
-    private func know(direction overrideDirection: QuestionDirection? = nil) {
+    private func know(direction overrideDirection: QuestionDirection? = nil, hasKanjiForm: Bool? = nil) {
         guard session.isEmpty == false else { return }
         sessionCorrect += 1; reviewedCount += 1
         let w = session[index]
-        reviewStore.recordCorrect(for: w.canonicalEntryID, direction: overrideDirection ?? questionDirection(for: w))
+        reviewStore.recordCorrect(
+            for: w.canonicalEntryID,
+            direction: overrideDirection ?? resolvedDirection(for: w),
+            hasKanjiForm: hasKanjiForm ?? surfaceKanjiEvidence(for: w)
+        )
         session.remove(at: index)
         if session.isEmpty { return }
         if index >= session.count { index = max(0, session.count - 1) }
         showBack = false
     }
 
-    // Resolves the concrete direction this card is grading, from the session's direction/form
-    // pickers plus a same-rule-of-thumb kana-only check as `FlashcardCard.isKanaOnly` uses for its
-    // own display fallback — approximated from the saved surface alone since, unlike FlashcardCard,
-    // this view doesn't fetch the word's live dictionary data. `.mixed` resolves deterministically
-    // per word via the same seed FlashcardCard uses, so the direction graded here always matches
-    // the face the user actually saw. kanjiToKana/kanaToKanji need no such approximation — they're
-    // already unambiguous QuestionDirection cases with no JP-form axis to resolve.
-    private func questionDirection(for word: SavedWord) -> QuestionDirection? {
-        switch direction.resolved(seed: word.canonicalEntryID) {
-        case .japaneseToEnglish:
-            return .forJapaneseEnglishAxis(
-                resolved: .japaneseToEnglish, form: japaneseForm,
-                isKanaOnlySurface: ScriptClassifier.containsKanji(word.surface) == false
-            )
-        case .englishToJapanese:
-            return .forJapaneseEnglishAxis(
-                resolved: .englishToJapanese, form: japaneseForm,
-                isKanaOnlySurface: ScriptClassifier.containsKanji(word.surface) == false
-            )
-        case .kanjiToKana:
-            return .kanjiToKana
-        case .kanaToKanji:
-            return .kanaToKanji
-        case .mixed:
-            return nil // resolved(seed:) never actually returns .mixed
-        }
+    // What the saved surface alone can prove about the word having a kanji form. Kanji in the
+    // surface is conclusive; its absence is not (a word saved as ありがとう may still have the
+    // headword 有難う), so that case reports nil — unknown — rather than claiming kana-only and
+    // wrongly relaxing the word's promotion bar. The typed-answer control, which does fetch the
+    // headword, passes the authoritative answer instead.
+    private func surfaceKanjiEvidence(for word: SavedWord) -> Bool? {
+        ScriptClassifier.containsKanji(word.surface) ? true : nil
     }
 
     // Builds the session queue from the current scope selection and kicks off the session.
     private func startSessionFromHome() {
-        sessionSource = wordsMatchingSelection()
+        sessionSource = pool().words
         startSession()
     }
 
@@ -548,42 +383,6 @@ struct FlashcardsView: View {
         isSwipingOut = false; swipeDirection = 0
         sessionCorrect = 0; sessionAgain = 0
         sessionTotalCount = 0; reviewedCount = 0
-    }
-
-    // The pool for the current pickers: the selected notes AND the active scope (all / due / wrong)
-    // AND the selected JLPT levels (empty = any level), with already-learned words excluded per the
-    // shared setting. Delegates to StudyWordPool so this mode can't drift from the other two.
-    // Returns the whole selection (words + how many the exclusion held back) so a caller that needs
-    // both doesn't run the filter twice; use `wordsMatchingSelection()` when only the words matter.
-    private func matchingSelection() -> StudyWordSelection {
-        StudyWordPool.matching(
-            words: wordsStore.words,
-            scope: scope,
-            noteIDs: selectedNoteIDs,
-            jlptLevels: selectedJLPTLevels,
-            excludeLearned: excludeLearned,
-            jlptLevel: { dictionaryStore?.jlptLevel(for: $0) },
-            stage: { reviewStore.masteryStage(for: $0) },
-            isDue: { reviewStore.isDue(id: $0) },
-            isMarkedWrong: { reviewStore.markedWrong.contains($0) }
-        )
-    }
-
-    // Just the eligible words, for the callers that don't need the held-back count.
-    private func wordsMatchingSelection() -> [SavedWord] { matchingSelection().words }
-
-    // Builds the picker chip label, suffixing the count of words currently in that scope. Counts
-    // through the same pool as the session itself, so an excluded learned word is never advertised.
-    private func scopeLabel(_ s: FlashcardScope) -> String {
-        let scoped = StudyWordPool.scoped(
-            words: wordsStore.words,
-            scope: s,
-            excludeLearned: excludeLearned,
-            stage: { reviewStore.masteryStage(for: $0) },
-            isDue: { reviewStore.isDue(id: $0) },
-            isMarkedWrong: { reviewStore.markedWrong.contains($0) }
-        )
-        return "\(s.label) (\(scoped.words.count))"
     }
 
 }

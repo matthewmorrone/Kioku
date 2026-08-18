@@ -61,13 +61,17 @@ nonisolated enum WordFormResolver {
     }
 }
 
-// One word's resolved gloss + kanji/kana, keyed by entryID so a caller can correlate it back to
-// the originating SavedWord after collecting results from a task group — used by Multiple Choice's
-// and Fill in the Blank's `resolveWordFields`, which each cross this (not SavedWord or their own
-// item struct) over the task-group boundary, since it's a plain Sendable value.
+// One word's resolved glosses + kanji/kana, keyed by entryID so a caller can correlate it back to
+// the originating SavedWord after collecting results from a task group — used by
+// `LearnWordPool.resolveWordFields`, which crosses this (not SavedWord or StudyItem) over the
+// task-group boundary, since it's a plain Sendable value.
 struct ResolvedWordFields: Sendable {
     let entryID: Int64
+    // The primary gloss — the one shown as a prompt or as the single expected answer.
     let english: String
     let kanji: String?
     let kana: String?
+    // Every gloss of the word's selected senses, `english` first. The accepted-answer set when a
+    // typed answer is English, where "to eat" / "eat" are the same answer.
+    let glosses: [String]
 }

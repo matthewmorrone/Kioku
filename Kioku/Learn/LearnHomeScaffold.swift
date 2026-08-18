@@ -24,35 +24,52 @@ struct LearnHomeForm<Content: View>: View {
                 .disabled(startEnabled == false)
             }
         }
-        // Swipe down over any start form to dismiss a numeric keyboard (the count field has no
-        // return key); `LearnCountField` supplies a Done button as the explicit affordance.
+        // Kept for any text entry a host adds to the form; the shared controls are all menus.
         .scrollDismissesKeyboard(.interactively)
         .washiBackground()
     }
 }
 
-// A standard "limit the session size" numeric field for the Learn start screens. Owns its own
-// focus so it can offer a keyboard Done button (the numberPad has no return key); 0 / blank means
-// "no limit". Both Flashcards and Multiple Choice use it so the control reads identically.
-struct LearnCountField: View {
+// The standard "how long should this session be?" control for the Learn start screens and the
+// Coverage launch sheet. A menu of preset sizes rather than a text field: the values people
+// actually pick are a short list, and the free-text version was a keypad-only field whose tap
+// target was the width of its own digits. 0 means "no limit" and shows as All.
+struct LearnCountPicker: View {
     let label: String
     @Binding var count: Int
-    @FocusState private var focused: Bool
+
+    // Session sizes worth offering. Small steps near the bottom, where the difference between 10
+    // and 15 questions is felt, and coarser above.
+    private static let choices = [5, 10, 15, 20, 25, 30, 50, 100]
 
     var body: some View {
         HStack {
             Text(label)
             Spacer()
-            TextField("All", value: $count, format: .number)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 80)
-                .focused($focused)
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focused = false }
+            Menu(count > 0 ? "\(count)" : "All") {
+                Button { count = 0 } label: {
+                    if count == 0 {
+                        Label("All", systemImage: "checkmark")
+                    } else {
+                        Text("All")
+                    }
+                }
+                Divider()
+                ForEach(Self.choices, id: \.self) { choice in
+                    Button { count = choice } label: {
+                        if count == choice {
+                            Label("\(choice)", systemImage: "checkmark")
+                        } else {
+                            Text("\(choice)")
+                        }
+                    }
+                }
+                // A count restored from a previous build (or a Coverage launch) that isn't one of
+                // the presets stays selectable rather than silently vanishing from its own menu.
+                if count > 0, Self.choices.contains(count) == false {
+                    Divider()
+                    Button { } label: { Label("\(count)", systemImage: "checkmark") }
+                }
             }
         }
     }

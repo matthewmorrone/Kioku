@@ -1,9 +1,9 @@
 import XCTest
 @testable import Kioku
 
-// Characterizes QuestionDirection's two entry points: the direct StudyField prompt/answer mapping
-// (used by Multiple Choice's `.mixedFields`) and the JP/English axis resolver (used by both study
-// modes' `.japaneseToEnglish`/`.englishToJapanese`/`.mixed`).
+// Characterizes QuestionDirection: the StudyField prompt/answer mapping every activity builds its
+// questions from, the tier split that defines the Learned and Mastered bars, and the kanji
+// applicability rule that keeps a kana-only word from being held to directions it can't be asked.
 final class QuestionDirectionTests: XCTestCase {
 
     // MARK: - init(prompt:answer:)
@@ -17,7 +17,7 @@ final class QuestionDirectionTests: XCTestCase {
         XCTAssertEqual(QuestionDirection(prompt: .kana, answer: .kanji), .kanaToKanji)
     }
 
-    // Same-field pairs are never produced by StudyField.randomPair; the initializer rejects them.
+    // Same-field pairs name no direction; the initializer rejects them.
     func testInitReturnsNilForSameFieldPair() {
         XCTAssertNil(QuestionDirection(prompt: .kanji, answer: .kanji))
         XCTAssertNil(QuestionDirection(prompt: .kana, answer: .kana))
@@ -36,56 +36,41 @@ final class QuestionDirectionTests: XCTestCase {
         XCTAssertEqual(tier2.count, 3)
     }
 
-    // MARK: - forJapaneseEnglishAxis
+    // MARK: - kanji applicability
 
-    func testJapaneseToEnglishWithKanjiForm() {
-        let dir = QuestionDirection.forJapaneseEnglishAxis(
-            resolved: .japaneseToEnglish, form: .kanji, isKanaOnlySurface: false
+    // The four directions with 漢字 on either side are the ones a kana-only word can never be
+    // asked, and exactly those are dropped for it.
+    func testApplicableDropsKanjiDirectionsForKanaOnlyWords() {
+        let all = QuestionDirection.allCases
+        XCTAssertEqual(QuestionDirection.applicable(all, hasKanjiForm: true), all)
+        XCTAssertEqual(
+            QuestionDirection.applicable(all, hasKanjiForm: false),
+            [.kanaToMeaning, .meaningToKana]
         )
-        XCTAssertEqual(dir, .kanjiToMeaning)
     }
 
-    func testJapaneseToEnglishWithKanaForm() {
-        let dir = QuestionDirection.forJapaneseEnglishAxis(
-            resolved: .japaneseToEnglish, form: .kana, isKanaOnlySurface: false
-        )
-        XCTAssertEqual(dir, .kanaToMeaning)
+    // Recognition and production each keep exactly one askable direction for a kana-only word, so
+    // both mastery stages stay reachable.
+    func testKanaOnlyWordKeepsOneDirectionPerTier() {
+        XCTAssertEqual(QuestionDirection.applicable(QuestionDirection.tier1, hasKanjiForm: false), [.kanaToMeaning])
+        XCTAssertEqual(QuestionDirection.applicable(QuestionDirection.tier2, hasKanjiForm: false), [.meaningToKana])
     }
 
-    func testEnglishToJapaneseWithKanjiForm() {
-        let dir = QuestionDirection.forJapaneseEnglishAxis(
-            resolved: .englishToJapanese, form: .kanji, isKanaOnlySurface: false
-        )
-        XCTAssertEqual(dir, .meaningToKanji)
+    // `requiresKanji` is what drives the filtering above, and holds for either side of the arrow.
+    func testRequiresKanjiCoversBothSides() {
+        XCTAssertTrue(QuestionDirection.kanjiToMeaning.requiresKanji)
+        XCTAssertTrue(QuestionDirection.meaningToKanji.requiresKanji)
+        XCTAssertTrue(QuestionDirection.kanjiToKana.requiresKanji)
+        XCTAssertTrue(QuestionDirection.kanaToKanji.requiresKanji)
+        XCTAssertFalse(QuestionDirection.kanaToMeaning.requiresKanji)
+        XCTAssertFalse(QuestionDirection.meaningToKana.requiresKanji)
     }
 
-    func testEnglishToJapaneseWithKanaForm() {
-        let dir = QuestionDirection.forJapaneseEnglishAxis(
-            resolved: .englishToJapanese, form: .kana, isKanaOnlySurface: false
+    // Only the two English-answer directions need gloss-set grading.
+    func testAnswerIsMeaningIdentifiesEnglishAnswers() {
+        XCTAssertEqual(
+            Set(QuestionDirection.allCases.filter(\.answerIsMeaning)),
+            [.kanjiToMeaning, .kanaToMeaning]
         )
-        XCTAssertEqual(dir, .meaningToKana)
-    }
-
-    // .original defers to the kana-only flag: a kana-only word's "original" form is kana...
-    func testOriginalFormWithKanaOnlySurfaceActsAsKana() {
-        let dir = QuestionDirection.forJapaneseEnglishAxis(
-            resolved: .japaneseToEnglish, form: .original, isKanaOnlySurface: true
-        )
-        XCTAssertEqual(dir, .kanaToMeaning)
-    }
-
-    // ...while a word with kanji present is treated as its kanji form.
-    func testOriginalFormWithoutKanaOnlySurfaceActsAsKanji() {
-        let dir = QuestionDirection.forJapaneseEnglishAxis(
-            resolved: .japaneseToEnglish, form: .original, isKanaOnlySurface: false
-        )
-        XCTAssertEqual(dir, .kanjiToMeaning)
-    }
-
-    // .mixed/.mixedFields must already be resolved to a concrete case before calling; passing
-    // either through defensively yields nil rather than a wrong guess.
-    func testUnresolvedDirectionsReturnNil() {
-        XCTAssertNil(QuestionDirection.forJapaneseEnglishAxis(resolved: .mixed, form: .kanji, isKanaOnlySurface: false))
-        XCTAssertNil(QuestionDirection.forJapaneseEnglishAxis(resolved: .mixedFields, form: .kanji, isKanaOnlySurface: false))
     }
 }
