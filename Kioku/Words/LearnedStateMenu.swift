@@ -28,8 +28,27 @@ func learnedStateMenuButtons(currentState: LearnedState, setState: @escaping (Le
 // a synchronous write lands while UIKit is still tearing the menu down, so the resulting
 // re-render queues behind that work and the glyph only flips a beat late. Deferring lets
 // teardown finish first, then the icon updates immediately.
-func learnedStateSetter(entryID: Int64, wordsStore: WordsStore) -> (LearnedState) -> Void {
-    { state in DispatchQueue.main.async { wordsStore.setLearnedState(state, for: entryID) } }
+//
+// `surface` lets setLearnedState create the card on the spot when the word isn't saved yet —
+// Learned/Not-Learned/Favorite from this menu always mean saved, never a silent no-op.
+func learnedStateSetter(
+    entryID: Int64,
+    wordsStore: WordsStore,
+    surface: String,
+    sourceNoteID: UUID? = nil,
+    defaultSenseIDs: [Int64] = []
+) -> (LearnedState) -> Void {
+    { state in
+        DispatchQueue.main.async {
+            wordsStore.setLearnedState(
+                state,
+                for: entryID,
+                ensureSavedWithSurface: surface,
+                sourceNoteID: sourceNoteID,
+                defaultSenseIDs: defaultSenseIDs
+            )
+        }
+    }
 }
 
 // UIKit equivalent of learnedStateMenuButtons, for the Read-tab lookup popover/sheet. Attach via

@@ -77,7 +77,12 @@ struct BrowseFrequencyView: View {
                                 isSaved: isSaved(entry.entryId),
                                 onToggleSave: { onToggleSave(entry) },
                                 learnedState: wordsStore.learnedState(for: entry.entryId),
-                                onSetLearnedState: learnedStateSetter(entryID: entry.entryId, wordsStore: wordsStore)
+                                onSetLearnedState: learnedStateSetter(
+                                    entryID: entry.entryId,
+                                    wordsStore: wordsStore,
+                                    surface: entry.primarySearchSurface,
+                                    defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+                                )
                             )
                         }
                     }

@@ -348,7 +348,13 @@ struct WordDetailView: View {
                     .offset(x: 34)
                     .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
                     .contextMenu {
-                        learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: activeEntryID, wordsStore: wordsStore))
+                        learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(
+                            entryID: activeEntryID,
+                            wordsStore: wordsStore,
+                            surface: word.surface,
+                            sourceNoteID: noteID,
+                            defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
+                        ))
                     }
                 }
                 .frame(maxWidth: .infinity)

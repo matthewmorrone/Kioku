@@ -136,14 +136,37 @@ final class WordsStore: ObservableObject {
         words.first(where: { $0.canonicalEntryID == id })?.learnedMark ?? .unmarked
     }
 
-    // Sets the tri-state mark. A no-op on an unsaved entry — there's no card to mark. The single
-    // write path for both the star long-press menu and the auto-learn promotion in recordCorrect.
-    func setLearnedState(_ state: LearnedState, for id: Int64) {
-        guard words.contains(where: { $0.canonicalEntryID == id }) else { return }
+    // Sets the tri-state mark. Learned/Not-Learned (and Favorite, i.e. cleared back to
+    // .unmarked) mean saved by definition — there's no "marked but not saved" state — so on an
+    // unsaved entry this creates the card first, matching toggle()'s brand-new-card shape.
+    // `ensureSavedWithSurface` is nil for the auto-learn promotion in recordCorrect, which only
+    // ever marks a card that's already saved by construction, so the no-surface fallback there
+    // is still a safe no-op rather than creating a surfaceless card.
+    func setLearnedState(
+        _ state: LearnedState,
+        for id: Int64,
+        ensureSavedWithSurface surface: String? = nil,
+        sourceNoteID: UUID? = nil,
+        defaultSenseIDs: [Int64] = []
+    ) {
         var updated = words
         if let idx = updated.firstIndex(where: { $0.canonicalEntryID == id }) {
             updated[idx].learnedMark = state
+            persist(updated)
+            return
         }
+        guard let surface else { return }
+        let noteIDs: [UUID] = sourceNoteID.map { [$0] } ?? []
+        updated.append(
+            SavedWord(
+                canonicalEntryID: id,
+                surface: surface,
+                sourceNoteIDs: noteIDs,
+                selectedSenseIDs: defaultSenseIDs,
+                encounteredSurfaces: [surface],
+                learnedMark: state
+            )
+        )
         persist(updated)
     }
 

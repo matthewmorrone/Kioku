@@ -124,7 +124,13 @@ extension ReadView {
             },
             sheetSetLearnedState: { [weak nestedSheet] state in
                 guard let entry = nestedSheet?.currentSheetDictionaryEntry else { return }
-                wordsStore.setLearnedState(state, for: entry.entryId)
+                wordsStore.setLearnedState(
+                    state,
+                    for: entry.entryId,
+                    ensureSavedWithSurface: lemma,
+                    sourceNoteID: activeNoteID,
+                    defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+                )
             },
             sheetOpenWordDetail: { [weak nestedSheet] in
                 guard let entry = resolvedEntry() else { return }

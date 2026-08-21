@@ -492,7 +492,7 @@ struct SegmentListView: View {
         // resolves to.
         .contextMenu {
             if let entryID = canonicalEntryIDBySurface[normalizedIdentity] {
-                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
+                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore, surface: identity, sourceNoteID: sourceNoteID))
             }
         }
     }
@@ -794,7 +794,7 @@ struct SegmentListView: View {
                             .contextMenu {
                                 if let entryID = canonicalEntryIDBySurface[normalizedSurfaceForFiltering(rowIdentity)] {
                                     let learnedState = wordsStore.learnedState(for: entryID)
-                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
+                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore, surface: rowLemma.isEmpty ? rowIdentity : rowLemma, sourceNoteID: sourceNoteID))
                                 }
                             }
                         }
@@ -804,7 +804,7 @@ struct SegmentListView: View {
                             if let entryID = canonicalEntryIDBySurface[normalizedSurfaceForFiltering(rowIdentity)] {
                                 let learnedState = wordsStore.learnedState(for: entryID)
                                 Menu {
-                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
+                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore, surface: rowLemma.isEmpty ? rowIdentity : rowLemma, sourceNoteID: sourceNoteID))
                                 } label: {
                                     Label("Mark…", systemImage: "ellipsis.circle")
                                 }

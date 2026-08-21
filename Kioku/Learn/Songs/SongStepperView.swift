@@ -96,7 +96,7 @@ struct SongStepperView: View {
                 wordsStore.learnedState(for: entryID)
             },
             sheetSetLearnedState: { state in
-                wordsStore.setLearnedState(state, for: entryID)
+                wordsStore.setLearnedState(state, for: entryID, ensureSavedWithSurface: surface)
             }
         )
     }

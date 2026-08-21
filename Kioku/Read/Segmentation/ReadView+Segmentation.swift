@@ -835,10 +835,23 @@ extension ReadView {
         return wordsStore.learnedState(for: entry.entryId)
     }
 
-    // Writes the mark for the current segment's resolved entry.
+    // Writes the mark for the current segment's resolved entry. Learned/Not-Learned means
+    // saved by definition, so this ensures the card exists first — same lemma-preferring
+    // surface key as toggleSegmentSaved above, so the created card matches what tapping the
+    // star directly would have produced.
     func setCurrentSegmentLearnedState(_ state: LearnedState) {
-        guard let entry = currentSegmentDictionaryEntry() else { return }
-        wordsStore.setLearnedState(state, for: entry.entryId)
+        guard let surface = currentSelectedSurface(),
+              let entry = currentSegmentDictionaryEntry() else { return }
+        let lemma = segmenter.preferredLemma(for: surface)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = (lemma?.isEmpty == false ? lemma! : surface)
+        wordsStore.setLearnedState(
+            state,
+            for: entry.entryId,
+            ensureSavedWithSurface: key,
+            sourceNoteID: activeNoteID,
+            defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
+        )
     }
 
     // Builds de-duplicated lookup candidates in priority order: tapped surface first, then lemma fallback.

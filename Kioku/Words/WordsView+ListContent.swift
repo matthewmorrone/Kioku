@@ -121,7 +121,12 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave" : "Save")
                 .contextMenu {
-                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
+                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(
+                        entryID: entryID,
+                        wordsStore: wordsStore,
+                        surface: surface,
+                        defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
+                    ))
                 }
             }
         }
@@ -143,7 +148,12 @@ extension WordsView {
         .modifier(SwipeActionsWhenNotEditing(isEditing: editMode == .active) {
             wordRowSwipeAction(entryID: entryID, surface: surface, entry: entry)
             Menu {
-                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
+                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(
+                    entryID: entryID,
+                    wordsStore: wordsStore,
+                    surface: surface,
+                    defaultSenseIDs: entry.map { DefaultSenseSelection.defaultSelectedSenseIDs(for: $0) } ?? []
+                ))
             } label: {
                 Label("Mark…", systemImage: "ellipsis.circle")
             }
@@ -240,10 +250,10 @@ extension WordsView {
     // MARK: - Learned state (star ↔ checkbox ↔ question mark)
 
     // SF Symbol for the trailing toggle, by mark: a plain checkmark for learned, a plain
-    // question mark for explicitly not-learned, else the save star (filled when saved). Gated on
-    // `saved` — ReviewStore's Learned/Not-Learned mark is keyed by canonicalEntryID and outlives
-    // the SavedWord card, so an unsaved word always reverts to the hollow star instead of keeping
-    // its old glyph, which would otherwise make an unsave tap look like it did nothing.
+    // question mark for explicitly not-learned, else the save star (filled when saved). The
+    // `learnedMark` lives on the SavedWord card itself (see WordsStore.setLearnedState), so
+    // `state` is already .unmarked whenever `saved` is false — this `guard` is just a defensive
+    // belt-and-suspenders, not a live code path.
     func learnedIcon(state: LearnedState, saved: Bool) -> String {
         guard saved else { return "star" }
         switch state {
