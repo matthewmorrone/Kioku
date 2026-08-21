@@ -41,7 +41,7 @@ extension WordsView {
         onTap: @escaping () -> Void
     ) -> some View {
         let saved = isSavedByID(entryID)
-        let learnedState = reviewStore.learnedState(for: entryID)
+        let learnedState = wordsStore.learnedState(for: entryID)
         // Respect the form the word was saved/looked up as: a pure-kana surface (あなた, たとえ)
         // means the user used the kana word — showing the entry's first kanji form (貴方, 例え)
         // attaches script they never saw. Kanji-bearing surfaces keep the kanji headword.
@@ -121,7 +121,7 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave" : "Save")
                 .contextMenu {
-                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
                 }
             }
         }
@@ -143,7 +143,7 @@ extension WordsView {
         .modifier(SwipeActionsWhenNotEditing(isEditing: editMode == .active) {
             wordRowSwipeAction(entryID: entryID, surface: surface, entry: entry)
             Menu {
-                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
             } label: {
                 Label("Mark…", systemImage: "ellipsis.circle")
             }

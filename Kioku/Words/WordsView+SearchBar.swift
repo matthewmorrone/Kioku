@@ -22,67 +22,69 @@ extension WordsView {
                     Label(editMode == .active ? "Done Editing" : "Edit",
                           systemImage: editMode == .active ? "checkmark.circle" : "pencil")
                 }
-                Button {
-                    isCSVImportPresented = true
+
+                Menu {
+                    Button {
+                        isCSVImportPresented = true
+                    } label: {
+                        Label("Import CSV", systemImage: "square.and.arrow.down")
+                    }
+                    Button {
+                        isSubtitleImportPresented = true
+                    } label: {
+                        Label("Import Subtitles", systemImage: "captions.bubble")
+                    }
+                    Button {
+                        isSubtitleSearchPresented = true
+                    } label: {
+                        Label("Search Subtitles Online", systemImage: "magnifyingglass.circle")
+                    }
                 } label: {
-                    Label("Import CSV", systemImage: "square.and.arrow.down")
-                }
-                Button {
-                    isSubtitleImportPresented = true
-                } label: {
-                    Label("Import Subtitles", systemImage: "captions.bubble")
-                }
-                Button {
-                    isSubtitleSearchPresented = true
-                } label: {
-                    Label("Search Subtitles Online", systemImage: "magnifyingglass.circle")
+                    Label("Import", systemImage: "square.and.arrow.down.on.square")
                 }
 
-                // Kanji-discovery entry points. These four destination views + their
+                // Kanji/vocab-discovery entry points. These destination views + their
                 // presentation flags survived the Words rebuild but were orphaned when the
                 // toolbar that triggered them was deleted (nothing set the flags to `true`).
                 // Re-homed here in the overflow menu. GUARD AGAINST RECURRENCE: if this menu is
                 // ever restructured, grep for `isBrowseFrequencyPresented = true` (and the other
-                // three flags) to confirm each trigger still exists before assuming it's wired.
-                Divider()
-                Button {
-                    isBrowseFrequencyPresented = true
+                // flags below) to confirm each trigger still exists before assuming it's wired.
+                Menu {
+                    Button {
+                        isBrowseFrequencyPresented = true
+                    } label: {
+                        Label("Browse Words", systemImage: "chart.bar.fill")
+                    }
+                    Button {
+                        isBrowseKanjiPresented = true
+                    } label: {
+                        Label("Browse Kanji", systemImage: "chart.bar.doc.horizontal.fill")
+                    }
+                    Button {
+                        isBrowseProficiencyPresented = true
+                    } label: {
+                        Label("By JLPT", systemImage: "graduationcap.fill")
+                    }
+                    // Folded into the main search: example sentences now surface inline beneath
+                    // entry results for phrase/sparse queries (WordsView.shouldShowSentenceResults).
+                    // Uncomment to restore the standalone corpus-search sheet.
+                    // Button {
+                    //     isSentenceSearchPresented = true
+                    // } label: {
+                    //     Label("Search Example Sentences", systemImage: "text.bubble")
+                    // }
+                    // Radical lookup and handwriting input are NOT here — they already live one
+                    // tap away as the 部/✋/⌨ mode bar above the keyboard whenever the search
+                    // field is focused (see JapaneseInputAccessory), so a menu entry would just
+                    // be a slower duplicate route to the same inline picker/canvas.
+                    Divider()
+                    Button {
+                        populateAnimatedKanjiList()
+                    } label: {
+                        Label("Create Animated Kanji List", systemImage: "sparkles")
+                    }
                 } label: {
-                    Label("Browse Words by Frequency", systemImage: "chart.bar.fill")
-                }
-                Button {
-                    isBrowseKanjiPresented = true
-                } label: {
-                    Label("Browse Kanji by Frequency", systemImage: "chart.bar.doc.horizontal.fill")
-                }
-                Button {
-                    isBrowseProficiencyPresented = true
-                } label: {
-                    Label("Browse by Proficiency Level", systemImage: "graduationcap.fill")
-                }
-                // Folded into the main search: example sentences now surface inline beneath
-                // entry results for phrase/sparse queries (WordsView.shouldShowSentenceResults).
-                // Uncomment to restore the standalone corpus-search sheet.
-                // Button {
-                //     isSentenceSearchPresented = true
-                // } label: {
-                //     Label("Search Example Sentences", systemImage: "text.bubble")
-                // }
-                Button {
-                    isRadicalInputPresented = true
-                } label: {
-                    Label("Find Kanji by Radical", systemImage: "square.grid.3x3")
-                }
-                Button {
-                    isHandwritingPresented = true
-                } label: {
-                    Label("Handwriting Input", systemImage: "pencil.and.scribble")
-                }
-                Divider()
-                Button {
-                    populateAnimatedKanjiList()
-                } label: {
-                    Label("Create Animated Kanji List", systemImage: "sparkles")
+                    Label("Browse", systemImage: "magnifyingglass")
                 }
 
                 // One selection menu for every tab. Because every word row selects into the

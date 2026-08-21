@@ -47,15 +47,15 @@ extension WordsView {
         case .none:
             break
         case .markedWrong:
-            filtered = filtered.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }
+            filtered = filtered.filter { wordsStore.markedWrong.contains($0.canonicalEntryID) }
         case .dueForReview:
-            filtered = filtered.filter { reviewStore.isDueForReview(id: $0.canonicalEntryID) }
+            filtered = filtered.filter { wordsStore.isDueForReview(id: $0.canonicalEntryID) }
         case .neverReviewed:
-            filtered = filtered.filter { reviewStore.stats[$0.canonicalEntryID] == nil }
+            filtered = filtered.filter { wordsStore.stats[$0.canonicalEntryID] == nil }
         case .learned:
-            filtered = filtered.filter { reviewStore.isLearned(id: $0.canonicalEntryID) }
+            filtered = filtered.filter { wordsStore.isLearned(id: $0.canonicalEntryID) }
         case .notLearned:
-            filtered = filtered.filter { reviewStore.isNotLearned(id: $0.canonicalEntryID) }
+            filtered = filtered.filter { wordsStore.isNotLearned(id: $0.canonicalEntryID) }
         }
 
         if let jlptLevel {
@@ -141,15 +141,15 @@ extension WordsView {
         case .zToA:        return words.sorted { $0.surface > $1.surface }
         case .mostWrong:
             return words.sorted {
-                (reviewStore.stats[$0.canonicalEntryID]?.again ?? 0) >
-                (reviewStore.stats[$1.canonicalEntryID]?.again ?? 0)
+                (wordsStore.stats[$0.canonicalEntryID]?.again ?? 0) >
+                (wordsStore.stats[$1.canonicalEntryID]?.again ?? 0)
             }
         case .worstAccuracy:
             // Words with reviews sort by accuracy ascending (worst first).
             // Unreviewed words (nil accuracy) go at the end.
             return words.sorted { lhs, rhs in
-                let la = reviewStore.stats[lhs.canonicalEntryID]?.accuracy
-                let ra = reviewStore.stats[rhs.canonicalEntryID]?.accuracy
+                let la = wordsStore.stats[lhs.canonicalEntryID]?.accuracy
+                let ra = wordsStore.stats[rhs.canonicalEntryID]?.accuracy
                 switch (la, ra) {
                 case (nil, nil): return lhs.surface < rhs.surface
                 case (nil, _):   return false
@@ -159,8 +159,8 @@ extension WordsView {
             }
         case .mostReviewed:
             return words.sorted {
-                (reviewStore.stats[$0.canonicalEntryID]?.total ?? 0) >
-                (reviewStore.stats[$1.canonicalEntryID]?.total ?? 0)
+                (wordsStore.stats[$0.canonicalEntryID]?.total ?? 0) >
+                (wordsStore.stats[$1.canonicalEntryID]?.total ?? 0)
             }
         }
     }
@@ -302,20 +302,6 @@ extension WordsView {
             storedSurface: entry.primarySearchSurface,
             defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
         )
-    }
-
-    // Single emit handler shared by radical and handwriting input — both modal and inline
-    // (JapaneseInputTextField) routes call this so multi-character composition works the same
-    // way everywhere. The sheet stays open; users close it explicitly (modal: Close button;
-    // inline: tap ⌨ on the mode bar).
-    func handleEmitToSearch(_ emitted: String) {
-        searchText += emitted
-    }
-
-    // Backspace from the handwriting sheet — undoes the last appended character.
-    func handleHandwritingDeleteBackward() {
-        guard searchText.isEmpty == false else { return }
-        searchText.removeLast()
     }
 
     // Opens one browse-frequency result in the detail sheet, dismissing the browse sheet first.

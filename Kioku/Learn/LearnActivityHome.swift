@@ -66,9 +66,11 @@ struct LearnActivityHome: View {
 }
 
 // Multiselect dropdown choosing which of the 6 directions a session draws from — the same Menu
-// idiom as the note and JLPT pickers it sits beside, rather than a row of toggles. The menu is
-// split into Recognition and Production sections because those groups are exactly the Learned and
-// Mastered bars, with a header button on each to take or drop the whole tier in one tap.
+// idiom as the note and JLPT pickers it sits beside, rather than a row of toggles. Flat, not
+// nested: Recognition and Production (exactly the Learned and Mastered bars) are themselves the
+// tier-select controls — tapping either toggles that whole tier and checkmarks when it's fully
+// selected — with their directions listed directly beneath, so there's no separate "All
+// Recognition"/"All Production" row repeating a title that's already right there.
 struct LearnDirectionPicker: View {
     let supported: [QuestionDirection]
     @Binding var selection: DirectionSelection
@@ -78,38 +80,32 @@ struct LearnDirectionPicker: View {
             Text("Directions")
             Spacer()
             Menu(summary) {
-                Button { selection = DirectionSelection(directions: Set(supported)) } label: {
-                    if selection.directions.count == supported.count {
-                        Label("All", systemImage: "checkmark")
-                    } else {
-                        Text("All")
-                    }
-                }
-                tierSection(QuestionDirection.tier1, title: "Recognition")
-                tierSection(QuestionDirection.tier2, title: "Production")
+                tierRows(QuestionDirection.tier1, title: "Recognition")
+                Divider()
+                tierRows(QuestionDirection.tier2, title: "Production")
             }
         }
     }
 
-    // One tier: a button that takes or drops the whole tier, then its individual directions.
+    // One tier: a row that takes or drops the whole tier (the tier name doubles as its own "select
+    // all" control), followed directly by its individual directions.
     @ViewBuilder
-    private func tierSection(_ tier: [QuestionDirection], title: String) -> some View {
+    private func tierRows(_ tier: [QuestionDirection], title: String) -> some View {
         let directions = tier.filter(supported.contains)
-        Section(title) {
-            Button { toggleTier(directions) } label: {
-                if directions.allSatisfy(selection.directions.contains) {
-                    Label("All \(title)", systemImage: "checkmark")
-                } else {
-                    Text("All \(title)")
-                }
+        let tierFullySelected = directions.isEmpty == false && directions.allSatisfy(selection.directions.contains)
+        Button { toggleTier(directions) } label: {
+            if tierFullySelected {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
             }
-            ForEach(directions) { direction in
-                Button { toggle(direction) } label: {
-                    if selection.directions.contains(direction) {
-                        Label(direction.label, systemImage: "checkmark")
-                    } else {
-                        Text(direction.label)
-                    }
+        }
+        ForEach(directions) { direction in
+            Button { toggle(direction) } label: {
+                if selection.directions.contains(direction) {
+                    Label(direction.label, systemImage: "checkmark")
+                } else {
+                    Text(direction.label)
                 }
             }
         }

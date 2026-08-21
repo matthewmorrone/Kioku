@@ -31,7 +31,6 @@ struct WordDetailView: View {
 
     // Provides per-word review statistics keyed by canonicalEntryID.
     // Non-private (like wordsStore) so the WordDetailView+Helpers extension can read it.
-    @EnvironmentObject var reviewStore: ReviewStore
     // Provides the list of all user-created word lists so membership can be displayed.
     @EnvironmentObject private var wordListsStore: WordListsStore
     // Provides note titles for resolving sourceNoteIDs to human-readable labels.
@@ -40,6 +39,9 @@ struct WordDetailView: View {
     // Records lookups so the Related Words / Synonyms tap path matches every other lookup
     // entry point (search results, browse, WOTD deep link) which already record on tap.
     @EnvironmentObject var historyStore: HistoryStore
+    // Dismisses this sheet when a source-note name in "Saved" is tapped, so the Read-tab jump
+    // (routed through ReadNoteNavigation) is actually visible instead of sitting behind this sheet.
+    @Environment(\.dismiss) private var dismiss
 
     // All entries matching the saved surface; saved entry is first.
     @State var allDisplayData: [WordDisplayData] = []
@@ -323,7 +325,7 @@ struct WordDetailView: View {
                 .overlay(alignment: .trailing) {
                     let isSaved = isSavedForCurrentNoteOrStandalone
                     let isElsewhere = isSavedOnlyElsewhere
-                    let learnedState = reviewStore.learnedState(for: activeEntryID)
+                    let learnedState = wordsStore.learnedState(for: activeEntryID)
                     Button {
                         wordsStore.toggle(
                             canonicalEntryID: activeEntryID,
@@ -346,7 +348,7 @@ struct WordDetailView: View {
                     .offset(x: 34)
                     .accessibilityLabel(isSaved ? "Unsave Word" : "Save Word")
                     .contextMenu {
-                        learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: activeEntryID, reviewStore: reviewStore))
+                        learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: activeEntryID, wordsStore: wordsStore))
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -560,7 +562,10 @@ struct WordDetailView: View {
                 // the same "how does this decompose" question more clearly — showing both duplicated
                 // the same insight in two places, one clean (header) and one raw (this list).
                 if sublatticePaths.count > 1, derivation?.compoundVerbParts == nil {
-                    Section("Paths") {
+                    Section("Paths — rows") {
+                        sublatticeDiagramRowsPerPath
+                    }
+                    Section("Paths — arcs") {
                         sublatticeDiagram
                         ForEach(Array(sublatticePaths.enumerated()), id: \.offset) { _, path in
                             Text(path.joined(separator: " · "))
@@ -778,7 +783,7 @@ struct WordDetailView: View {
 
                 // Review statistics section — always shown; "Not yet reviewed" for words never studied.
                 Section("Review") {
-                    if let stats = reviewStore.stats[activeEntryID] {
+                    if let stats = wordsStore.stats[activeEntryID] {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Correct")
@@ -845,9 +850,13 @@ struct WordDetailView: View {
                 if sourceNotes.isEmpty == false || memberLists.isEmpty == false {
                     Section("Saved") {
                         ForEach(sourceNotes, id: \.id) { note in
-                            Label(note.title, systemImage: "doc.text")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            Button {
+                                ReadNoteNavigation.shared.pendingTarget = ReadNoteTarget(noteID: note.id, surface: currentSavedWord.surface)
+                                dismiss()
+                            } label: {
+                                Label(note.title, systemImage: "doc.text")
+                                    .font(.subheadline)
+                            }
                         }
                         ForEach(memberLists, id: \.id) { list in
                             Label(list.name, systemImage: "list.bullet")
@@ -906,7 +915,6 @@ struct WordDetailView: View {
                 .environmentObject(wordsStore)
                 .environmentObject(wordListsStore)
                 .environmentObject(notesStore)
-                .environmentObject(reviewStore)
                 .environmentObject(historyStore)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)

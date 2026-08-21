@@ -832,13 +832,13 @@ extension ReadView {
     // The star's long-press learned-state menu for the current segment, mirroring the Words tab.
     func currentSegmentLearnedState() -> LearnedState {
         guard let entry = currentSegmentDictionaryEntry() else { return .unmarked }
-        return reviewStore.learnedState(for: entry.entryId)
+        return wordsStore.learnedState(for: entry.entryId)
     }
 
     // Writes the mark for the current segment's resolved entry.
     func setCurrentSegmentLearnedState(_ state: LearnedState) {
         guard let entry = currentSegmentDictionaryEntry() else { return }
-        reviewStore.setLearnedState(state, for: entry.entryId)
+        wordsStore.setLearnedState(state, for: entry.entryId)
     }
 
     // Builds de-duplicated lookup candidates in priority order: tapped surface first, then lemma fallback.

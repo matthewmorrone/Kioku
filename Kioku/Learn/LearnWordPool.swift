@@ -48,7 +48,7 @@ enum LearnWordPool {
         in words: [SavedWord],
         options: LearnActivityOptions,
         excludeLearned: Bool,
-        reviewStore: ReviewStore,
+        wordsStore: WordsStore,
         dictionaryStore: DictionaryStore?
     ) -> StudyWordSelection {
         let selection = StudyWordPool.matching(
@@ -58,13 +58,13 @@ enum LearnWordPool {
             jlptLevels: options.selectedJLPTLevels,
             excludeLearned: excludeLearned,
             jlptLevel: { dictionaryStore?.jlptLevel(for: $0) },
-            stage: { reviewStore.masteryStage(for: $0) },
-            isDue: { reviewStore.isDue(id: $0) },
-            isMarkedWrong: { reviewStore.markedWrong.contains($0) }
+            stage: { wordsStore.masteryStage(for: $0) },
+            isDue: { wordsStore.isDue(id: $0) },
+            isMarkedWrong: { wordsStore.markedWrong.contains($0) }
         )
         let askable = selection.words.filter { word in
             options.directions
-                .askable(hasKanjiForm: estimatedHasKanjiForm(word, reviewStore: reviewStore))
+                .askable(hasKanjiForm: estimatedHasKanjiForm(word, wordsStore: wordsStore))
                 .isEmpty == false
         }
         return StudyWordSelection(words: askable, hiddenLearnedCount: selection.hiddenLearnedCount)
@@ -74,8 +74,8 @@ enum LearnWordPool {
     // review when there is one, otherwise whether the saved surface shows any kanji. Used only for
     // pool counting, never for promotion: a wrong guess here changes a number on screen, whereas
     // the promotion bars insist on a resolved headword before relaxing (see ReviewWordStats).
-    static func estimatedHasKanjiForm(_ word: SavedWord, reviewStore: ReviewStore) -> Bool {
-        reviewStore.hasKanjiForm(for: word.canonicalEntryID)
+    static func estimatedHasKanjiForm(_ word: SavedWord, wordsStore: WordsStore) -> Bool {
+        wordsStore.hasKanjiForm(for: word.canonicalEntryID)
             ?? ScriptClassifier.containsKanji(word.surface)
     }
 

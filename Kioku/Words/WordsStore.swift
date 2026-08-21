@@ -32,8 +32,20 @@ final class WordsStore: ObservableObject {
         self.storageKey = storageKey
         let key = storageKey
         let defaults = userDefaults
-        words = StartupTimer.measure("WordsStore.init") {
+        let loaded = StartupTimer.measure("WordsStore.init") {
             SavedWordStorage.loadSavedWords(storageKey: key, userDefaults: defaults)
+        }
+        let migrated = WordsStore.mergingLegacyReviewStoreData(into: loaded, userDefaults: defaults)
+        words = migrated
+        lifetimeCorrect = defaults.integer(forKey: WordsStore.lifetimeCorrectKey)
+        lifetimeAgain = defaults.integer(forKey: WordsStore.lifetimeAgainKey)
+        refreshReviewCaches()
+        // The migration reads from (and clears) the legacy kioku.review.* keys — if it actually
+        // changed anything, write the merged data into kioku.words.v1 immediately so it isn't
+        // re-derived from those now-cleared keys again, and isn't lost if the app is killed
+        // before anything else triggers a save.
+        if migrated.map(\.canonicalEntryID) != loaded.map(\.canonicalEntryID) || zip(migrated, loaded).contains(where: { $0.learnedMark != $1.learnedMark || $0.mastered != $1.mastered || $0.markedWrong != $1.markedWrong || $0.reviewStats != $1.reviewStats }) {
+            persist(migrated)
         }
     }
 
@@ -43,23 +55,263 @@ final class WordsStore: ObservableObject {
     // captured DictionaryStore is documented thread-safe (nonisolated, read-only after populate).
     private var stableKeyResolver: (entSeqForEntryID: (Int64) -> Int64?, entryIDForEntSeq: (Int64) -> Int64?)?
 
-    // Weak reference to the review store, wired up once via attach(reviewStore:) — see its doc
-    // comment. Used only to clear a word's study history when it's fully unsaved (ContentView
-    // can't have WordsStore depend on ReviewStore at construction time; both are sibling
-    // @StateObjects, same pattern as bridgeServer.attach(notesStore:)).
-    private weak var reviewStore: ReviewStore?
+    // MARK: - Review
+    //
+    // Formerly a separate ReviewStore class with its own persisted dictionaries, keyed by
+    // canonicalEntryID and prone to drifting out of sync with WordsStore (a word's card and its
+    // study history could independently exist or not exist). Merged so a SavedWord's Learned mark,
+    // mastery, and SRS stats are just more fields on the one row that word already has here —
+    // deleting a word deletes its whole row, review history included, with no separate store or
+    // setting to keep them artificially in sync.
+    //
+    // The four collections below are DERIVED from `words` (recomputed in refreshReviewCaches(),
+    // called from init and persist()) rather than stored independently — `words` stays the single
+    // source of truth for what gets encoded to disk. They exist purely so call sites that need
+    // O(1) membership checks (list filtering, row rendering) don't have to linear-scan `words`
+    // themselves; every call site works identically to when these lived on ReviewStore.
+    @Published private(set) var learned: Set<Int64> = []
+    @Published private(set) var notLearned: Set<Int64> = []
+    @Published private(set) var mastered: Set<Int64> = []
+    @Published private(set) var markedWrong: Set<Int64> = []
+    @Published private(set) var stats: [Int64: ReviewWordStats] = [:]
 
-    // Wires the review store in after both stores exist (ContentView's onAppear, same pattern as
-    // bridgeServer.attach(notesStore:) and llmCorrectionQueue.attach(store:)).
-    func attach(reviewStore: ReviewStore) {
-        self.reviewStore = reviewStore
+    // Lifetime correct/again counts are the one piece of review data that ISN'T per-word — they're
+    // a running total across every review ever done, including for words later deleted (removing
+    // a card shouldn't erase how many reviews you've ever done). Kept as their own UserDefaults
+    // values under the same keys ReviewStore used, so they survive the merge untouched.
+    @Published private(set) var lifetimeCorrect: Int = 0
+    @Published private(set) var lifetimeAgain: Int = 0
+    private static let lifetimeCorrectKey = "kioku.review.lifetimeCorrect.v1"
+    private static let lifetimeAgainKey = "kioku.review.lifetimeAgain.v1"
+
+    // Writes the two lifetime counters to UserDefaults.
+    private func persistLifetime() {
+        userDefaults.set(lifetimeCorrect, forKey: WordsStore.lifetimeCorrectKey)
+        userDefaults.set(lifetimeAgain, forKey: WordsStore.lifetimeAgainKey)
     }
 
-    // Clears a fully-unsaved word's ReviewStore data (Learned/Not-Learned mark, mastery, SRS
-    // stats) unless the user opted to retain it — see ReviewDataRetentionSettings.
-    private func clearReviewDataIfNeeded(for id: Int64) {
-        guard userDefaults.bool(forKey: ReviewDataRetentionSettings.retainOnDeletionKey) == false else { return }
-        reviewStore?.clearAllData(for: id)
+    // Zeroes the lifetime counters — used by Settings' "Reset All Data", alongside
+    // replaceAll(with: []) clearing every word's per-word review fields.
+    func resetLifetimeCounts() {
+        lifetimeCorrect = 0
+        lifetimeAgain = 0
+        persistLifetime()
+    }
+
+    // Overall correct / (correct + again) ratio across all sessions; nil when no reviews recorded.
+    var lifetimeAccuracy: Double? {
+        let total = lifetimeCorrect + lifetimeAgain
+        guard total > 0 else { return nil }
+        return Double(lifetimeCorrect) / Double(total)
+    }
+
+    // Rebuilds the derived caches above from `words`. Called whenever `words` changes (persist())
+    // so the caches never have a chance to disagree with the array they're derived from.
+    private func refreshReviewCaches() {
+        var learnedSet = Set<Int64>()
+        var notLearnedSet = Set<Int64>()
+        var masteredSet = Set<Int64>()
+        var wrongSet = Set<Int64>()
+        var statsDict: [Int64: ReviewWordStats] = [:]
+        for word in words {
+            switch word.learnedMark {
+            case .learned: learnedSet.insert(word.canonicalEntryID)
+            case .notLearned: notLearnedSet.insert(word.canonicalEntryID)
+            case .unmarked: break
+            }
+            if word.mastered { masteredSet.insert(word.canonicalEntryID) }
+            if word.markedWrong { wrongSet.insert(word.canonicalEntryID) }
+            if let reviewStats = word.reviewStats { statsDict[word.canonicalEntryID] = reviewStats }
+        }
+        learned = learnedSet
+        notLearned = notLearnedSet
+        mastered = masteredSet
+        markedWrong = wrongSet
+        stats = statsDict
+    }
+
+    // The current tri-state mark for a word, derived from the two mutually-exclusive sets above
+    // (or read straight off the card, equivalently).
+    func learnedState(for id: Int64) -> LearnedState {
+        words.first(where: { $0.canonicalEntryID == id })?.learnedMark ?? .unmarked
+    }
+
+    // Sets the tri-state mark. A no-op on an unsaved entry — there's no card to mark. The single
+    // write path for both the star long-press menu and the auto-learn promotion in recordCorrect.
+    func setLearnedState(_ state: LearnedState, for id: Int64) {
+        guard words.contains(where: { $0.canonicalEntryID == id }) else { return }
+        var updated = words
+        if let idx = updated.firstIndex(where: { $0.canonicalEntryID == id }) {
+            updated[idx].learnedMark = state
+        }
+        persist(updated)
+    }
+
+    // True when the word has been marked learned (manually or automatically).
+    func isLearned(id: Int64) -> Bool { learned.contains(id) }
+
+    // True when the word has been explicitly marked not-learned.
+    func isNotLearned(id: Int64) -> Bool { notLearned.contains(id) }
+
+    // What's on file about the word having a kanji form, or nil when no study mode has yet recorded
+    // an answer for it with dictionary data in hand.
+    func hasKanjiForm(for id: Int64) -> Bool? { stats[id]?.hasKanjiForm }
+
+    // The canonical mastery stage for a word — New/Learning/Learned/Mastered.
+    func masteryStage(for id: Int64) -> MasteryStage {
+        if mastered.contains(id) { return .mastered }
+        if learnedState(for: id) == .learned { return .learned }
+        if stats[id] != nil || learnedState(for: id) == .notLearned { return .learning }
+        return .new
+    }
+
+    // True when the word is due — never reviewed (no stats) or its `dueDate` has elapsed.
+    func isDue(id: Int64, at date: Date = Date()) -> Bool {
+        guard let st = stats[id] else { return true }
+        guard let due = st.dueDate else { return true }
+        return due <= date
+    }
+
+    // True only when the word has been reviewed before AND its scheduled interval has lapsed.
+    func isDueForReview(id: Int64, at date: Date = Date()) -> Bool {
+        guard let st = stats[id], let due = st.dueDate else { return false }
+        return due <= date
+    }
+
+    // Number of saved words currently due for review.
+    func dueCount(among wordsList: [SavedWord], at date: Date = Date()) -> Int {
+        wordsList.reduce(0) { $0 + (isDue(id: $1.canonicalEntryID, at: date) ? 1 : 0) }
+    }
+
+    // Records a correct answer: increments counters, clears the wrong flag, and reschedules the
+    // card via SRSScheduler so it reappears at the next interval up the ladder. A no-op on an
+    // unsaved entry.
+    func recordCorrect(for id: Int64, direction: QuestionDirection? = nil, hasKanjiForm: Bool? = nil) {
+        guard let idx = words.firstIndex(where: { $0.canonicalEntryID == id }) else { return }
+        var updated = words
+        var word = updated[idx]
+        let prior = word.reviewStats
+        var st = prior ?? ReviewWordStats(correct: 0, again: 0)
+        if let hasKanjiForm { st.hasKanjiForm = hasKanjiForm }
+        st.correct += 1
+        let now = Date()
+        st.lastReviewedAt = now
+        let schedule = SRSScheduler.schedule(previous: prior, answer: .correct, now: now)
+        st.dueDate = schedule.dueDate
+        st.consecutiveCorrect = schedule.consecutiveCorrect
+        if let direction { st.recordDirectionAnswer(direction, correct: true) }
+        word.reviewStats = st
+        word.markedWrong = false
+        lifetimeCorrect += 1
+        // Auto-promote to "learned" when every recognition direction's evidence clears whatever
+        // bar the user configured in Settings. Only acts on a word the user hasn't marked either
+        // way (unmarked) — an explicit Learned is already done, and an explicit Not Learned is a
+        // deliberate signal we don't override from behind their back.
+        if word.learnedMark == .unmarked,
+           AutoLearnPolicy.shouldMarkLearned(directionStats: st.directionStats, hasKanjiForm: st.hasKanjiForm ?? true) {
+            word.learnedMark = .learned
+        }
+        // Auto-promote to "mastered" once every direction — recognition AND production — clears
+        // the bar too. Doesn't require `.unmarked`: mastery normally follows an already-Learned
+        // word, so it only excludes an explicit "not learned" mark.
+        if word.learnedMark != .notLearned, word.mastered == false,
+           AutoLearnPolicy.shouldMarkMastered(directionStats: st.directionStats, hasKanjiForm: st.hasKanjiForm ?? true) {
+            word.mastered = true
+        }
+        updated[idx] = word
+        persistLifetime()
+        persist(updated)
+    }
+
+    // Records an "again" answer: increments counters, sets the wrong flag, resets the SRS streak,
+    // and reschedules the card to reappear after the short relearn step. A no-op on an unsaved entry.
+    func recordAgain(for id: Int64, direction: QuestionDirection? = nil, hasKanjiForm: Bool? = nil) {
+        guard let idx = words.firstIndex(where: { $0.canonicalEntryID == id }) else { return }
+        var updated = words
+        var word = updated[idx]
+        let prior = word.reviewStats
+        var st = prior ?? ReviewWordStats(correct: 0, again: 0)
+        if let hasKanjiForm { st.hasKanjiForm = hasKanjiForm }
+        st.again += 1
+        let now = Date()
+        st.lastReviewedAt = now
+        let schedule = SRSScheduler.schedule(previous: prior, answer: .again, now: now)
+        st.dueDate = schedule.dueDate
+        st.consecutiveCorrect = schedule.consecutiveCorrect
+        if let direction { st.recordDirectionAnswer(direction, correct: false) }
+        word.reviewStats = st
+        word.markedWrong = true
+        lifetimeAgain += 1
+        updated[idx] = word
+        persistLifetime()
+        persist(updated)
+    }
+
+    // Replaces the review side of every card in one pass — used only by app-backup restore, which
+    // ships review data as a separate legacy payload section (pre-dating the merge) keyed by
+    // canonicalEntryID. Words with no matching entry in any of the sets/dict are left at their
+    // (already-merged, from the words array itself) defaults.
+    func applyLegacyReviewBackup(
+        stats reviewStats: [Int64: ReviewWordStats],
+        markedWrong wrongIDs: Set<Int64>,
+        learned learnedIDs: Set<Int64>,
+        notLearned notLearnedIDs: Set<Int64>,
+        mastered masteredIDs: Set<Int64>,
+        lifetimeCorrect: Int,
+        lifetimeAgain: Int
+    ) {
+        let updated = words.map { word -> SavedWord in
+            var word = word
+            if let s = reviewStats[word.canonicalEntryID] { word.reviewStats = s }
+            if learnedIDs.contains(word.canonicalEntryID) { word.learnedMark = .learned }
+            else if notLearnedIDs.contains(word.canonicalEntryID) { word.learnedMark = .notLearned }
+            word.mastered = masteredIDs.contains(word.canonicalEntryID)
+            word.markedWrong = wrongIDs.contains(word.canonicalEntryID)
+            return word
+        }
+        self.lifetimeCorrect = lifetimeCorrect
+        self.lifetimeAgain = lifetimeAgain
+        persistLifetime()
+        persist(updated)
+    }
+
+    // One-time migration off the pre-merge ReviewStore's separate UserDefaults keys, run from
+    // init before `words` is ever published. Reads (and, on a real match, clears) the legacy
+    // kioku.review.* keys and folds their data into the matching SavedWord rows by
+    // canonicalEntryID. A no-op — cheap, since the guard bails before touching UserDefaults
+    // further — for new installs and for anyone who's already been through this once (the keys
+    // are gone by then). `static` so it can run before `self` is fully initialized.
+    private static func mergingLegacyReviewStoreData(into words: [SavedWord], userDefaults: UserDefaults) -> [SavedWord] {
+        guard let statsData = userDefaults.data(forKey: "kioku.review.stats.v1") else { return words }
+        let legacyStats: [Int64: ReviewWordStats] = (try? JSONDecoder().decode([String: ReviewWordStats].self, from: statsData))
+            .map { decoded in
+                decoded.reduce(into: [Int64: ReviewWordStats]()) { result, pair in
+                    if let id = Int64(pair.key) { result[id] = pair.value }
+                }
+            } ?? [:]
+        let legacyLearned = Set((userDefaults.array(forKey: "kioku.review.learned.v1") as? [String] ?? []).compactMap { Int64($0) })
+        let legacyNotLearned = Set((userDefaults.array(forKey: "kioku.review.notLearned.v1") as? [String] ?? []).compactMap { Int64($0) })
+        let legacyMastered = Set((userDefaults.array(forKey: "kioku.review.mastered.v1") as? [String] ?? []).compactMap { Int64($0) })
+        let legacyWrong = Set((userDefaults.array(forKey: "kioku.review.wrong.v1") as? [String] ?? []).compactMap { Int64($0) })
+
+        let migrated = words.map { word -> SavedWord in
+            var word = word
+            if let s = legacyStats[word.canonicalEntryID] { word.reviewStats = s }
+            if legacyLearned.contains(word.canonicalEntryID) { word.learnedMark = .learned }
+            else if legacyNotLearned.contains(word.canonicalEntryID) { word.learnedMark = .notLearned }
+            if legacyMastered.contains(word.canonicalEntryID) { word.mastered = true }
+            if legacyWrong.contains(word.canonicalEntryID) { word.markedWrong = true }
+            return word
+        }
+        // Cleared so this migration can't re-run (and clobber later manual edits) on a future
+        // launch. Lifetime counters are left alone — WordsStore reads them directly under the
+        // same keys ReviewStore used, no migration needed for those.
+        userDefaults.removeObject(forKey: "kioku.review.stats.v1")
+        userDefaults.removeObject(forKey: "kioku.review.wrong.v1")
+        userDefaults.removeObject(forKey: "kioku.review.learned.v1")
+        userDefaults.removeObject(forKey: "kioku.review.notLearned.v1")
+        userDefaults.removeObject(forKey: "kioku.review.mastered.v1")
+        return migrated
     }
 
     // Installs the stable-key resolver and reconciles existing saved words against the live
@@ -100,10 +352,11 @@ final class WordsStore: ObservableObject {
         persist(words + newWords)
     }
 
-    // Removes a word by canonical entry id.
+    // Removes a word by canonical entry id. Its review history (learned mark, mastery, SRS stats)
+    // goes with it — they're fields on this same row now, not a separate store, so there's no
+    // second step to keep in sync.
     func remove(id: Int64) {
         persist(words.filter { $0.canonicalEntryID != id })
-        clearReviewDataIfNeeded(for: id)
     }
 
     // Removes many words in one persist cycle. Bulk callers (multi-select delete in WordsView)
@@ -112,7 +365,6 @@ final class WordsStore: ObservableObject {
     func remove(ids: Set<Int64>) {
         guard !ids.isEmpty else { return }
         persist(words.filter { !ids.contains($0.canonicalEntryID) })
-        for id in ids { clearReviewDataIfNeeded(for: id) }
     }
 
     // Detaches deleted-note provenance without deleting saved vocabulary.
@@ -167,7 +419,15 @@ final class WordsStore: ObservableObject {
             selectedGlosses: [],
             encounteredSurfaces: encountered,
             hasBeenOrphaned: old.hasBeenOrphaned || (existing?.hasBeenOrphaned ?? false),
-            selectedReading: existing?.selectedReading
+            selectedReading: existing?.selectedReading,
+            // Review history follows the correction like everything else here — prefer the
+            // target entry's own accumulated history if it already had any (that's the TRUE
+            // record for the entry the user is actually being corrected onto), else carry over
+            // what had built up under the mispointed old entry rather than discarding it.
+            learnedMark: existing?.learnedMark ?? old.learnedMark,
+            mastered: existing?.mastered ?? old.mastered,
+            markedWrong: existing?.markedWrong ?? old.markedWrong,
+            reviewStats: existing?.reviewStats ?? old.reviewStats
         )
 
         // Keep the card roughly where the old one sat; drop both old and any target collision first.
@@ -284,6 +544,7 @@ final class WordsStore: ObservableObject {
     // Reloads the published words array from persistent storage. Called by external writers (e.g. SegmentListView) to keep the store in sync after a direct persist.
     func reload() {
         words = SavedWordStorage.loadSavedWords(storageKey: storageKey, userDefaults: userDefaults)
+        refreshReviewCaches()
     }
 
     // Replaces the saved-word store with one canonical snapshot.
@@ -354,11 +615,11 @@ final class WordsStore: ObservableObject {
             }
 
             if encounteredSet.isEmpty && noteIDs.isEmpty {
-                entries.remove(at: existingIndex)
                 // Only a true full removal (no encountered surfaces, no note attributions left
                 // anywhere) counts as "unsaved" — detaching one note/surface while the card
-                // survives elsewhere must NOT touch review data.
-                clearReviewDataIfNeeded(for: canonicalEntryID)
+                // survives elsewhere must NOT touch review data, and here the whole row (review
+                // fields included) simply goes away with it.
+                entries.remove(at: existingIndex)
             } else {
                 let orderedNoteIDs = noteIDs.sorted { $0.uuidString < $1.uuidString }
                 entries[existingIndex] = SavedWord(
@@ -375,7 +636,15 @@ final class WordsStore: ObservableObject {
                     hasBeenOrphaned: existingEntry.hasBeenOrphaned || orderedNoteIDs.isEmpty,
                     // Toggling note/surface membership must not disturb the reading the user
                     // picked with the detail-view switcher — it's a display choice, not provenance.
-                    selectedReading: existingEntry.selectedReading
+                    selectedReading: existingEntry.selectedReading,
+                    // Nor must it disturb the word's review history — GUARD AGAINST RECURRENCE:
+                    // every field added to SavedWord has to be threaded through here too, or a
+                    // plain note/surface toggle silently resets it (this is exactly the bug this
+                    // comment exists to prevent for the review fields specifically).
+                    learnedMark: existingEntry.learnedMark,
+                    mastered: existingEntry.mastered,
+                    markedWrong: existingEntry.markedWrong,
+                    reviewStats: existingEntry.reviewStats
                 )
             }
         } else {
@@ -417,6 +686,7 @@ final class WordsStore: ObservableObject {
         } ?? entries
         let normalized = SavedWordStorage.normalizedEntries(reconciled)
         words = normalized
+        refreshReviewCaches()
         let storageKey = self.storageKey
         // UserDefaults isn't formally Sendable in the SDK but Apple documents it as
         // thread-safe — wrap in an @unchecked Sendable box so the persistQueue capture

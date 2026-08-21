@@ -17,7 +17,6 @@ struct FlashcardsView: View {
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
-    @EnvironmentObject private var reviewStore: ReviewStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var session: [SavedWord] = []
@@ -192,7 +191,7 @@ struct FlashcardsView: View {
     private func resolvedDirection(for word: SavedWord) -> QuestionDirection {
         options.directions.resolved(
             seed: word.canonicalEntryID,
-            hasKanjiForm: LearnWordPool.estimatedHasKanjiForm(word, reviewStore: reviewStore)
+            hasKanjiForm: LearnWordPool.estimatedHasKanjiForm(word, wordsStore: wordsStore)
         ) ?? .kanaToMeaning
     }
 
@@ -263,7 +262,7 @@ struct FlashcardsView: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
 
-            if let acc = reviewStore.lifetimeAccuracy {
+            if let acc = wordsStore.lifetimeAccuracy {
                 Text("Lifetime accuracy: \(Int((acc * 100).rounded()))%")
                     .font(.footnote).foregroundStyle(.secondary)
             } else {
@@ -307,7 +306,7 @@ struct FlashcardsView: View {
     private func pool() -> StudyWordSelection {
         LearnWordPool.eligible(
             in: wordsStore.words, options: options, excludeLearned: excludeLearned,
-            reviewStore: reviewStore, dictionaryStore: dictionaryStore
+            wordsStore: wordsStore, dictionaryStore: dictionaryStore
         )
     }
 
@@ -334,7 +333,7 @@ struct FlashcardsView: View {
         guard session.isEmpty == false else { return }
         sessionAgain += 1; reviewedCount += 1
         let w = session[index]
-        reviewStore.recordAgain(
+        wordsStore.recordAgain(
             for: w.canonicalEntryID,
             direction: overrideDirection ?? resolvedDirection(for: w),
             hasKanjiForm: hasKanjiForm ?? surfaceKanjiEvidence(for: w)
@@ -350,7 +349,7 @@ struct FlashcardsView: View {
         guard session.isEmpty == false else { return }
         sessionCorrect += 1; reviewedCount += 1
         let w = session[index]
-        reviewStore.recordCorrect(
+        wordsStore.recordCorrect(
             for: w.canonicalEntryID,
             direction: overrideDirection ?? resolvedDirection(for: w),
             hasKanjiForm: hasKanjiForm ?? surfaceKanjiEvidence(for: w)

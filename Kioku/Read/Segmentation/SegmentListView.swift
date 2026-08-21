@@ -5,7 +5,6 @@ struct SegmentListView: View {
     // Injected so that save/unsave operations trigger a refresh in WordsView without duplicating storage logic.
     @EnvironmentObject var wordsStore: WordsStore
     // Powers the star's long-press learned-state menu, mirroring the Words tab.
-    @EnvironmentObject private var reviewStore: ReviewStore
     // Re-injected on the WordDetailView sheet below so list-membership UI inside the detail screen
     // resolves correctly when presented from this sheet.
     @EnvironmentObject private var wordListsStore: WordListsStore
@@ -418,7 +417,7 @@ struct SegmentListView: View {
         let defaultChecked = vocabRowCountsAsSaved(normalizedIdentity)
         let flipped = selectedVocabIdentities.contains(normalizedIdentity)
         let isChecked = flipped ? defaultChecked == false : defaultChecked
-        let learnedState = canonicalEntryIDBySurface[normalizedIdentity].map { reviewStore.learnedState(for: $0) } ?? .unmarked
+        let learnedState = canonicalEntryIDBySurface[normalizedIdentity].map { wordsStore.learnedState(for: $0) } ?? .unmarked
 
         // Three colors: blue = attributed to this note (checked); gray = not known anywhere;
         // green = known, just not for this note. Unchecking a checked row previews which of
@@ -493,7 +492,7 @@ struct SegmentListView: View {
         // resolves to.
         .contextMenu {
             if let entryID = canonicalEntryIDBySurface[normalizedIdentity] {
-                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+                learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
             }
         }
     }
@@ -785,7 +784,7 @@ struct SegmentListView: View {
                                 // The mark rides on the star slot, same as the Words tab: checkmark
                                 // when learned, question mark when explicitly not-learned, else the
                                 // three-state star above.
-                                let learnedState = canonicalEntryIDBySurface[normalizedSurface].map { reviewStore.learnedState(for: $0) } ?? .unmarked
+                                let learnedState = canonicalEntryIDBySurface[normalizedSurface].map { wordsStore.learnedState(for: $0) } ?? .unmarked
                                 starIcon(isStarFilled: isStarFilled, isAnySaved: isAnySaved, learnedState: learnedState)
                             }
                             .buttonStyle(.plain)
@@ -794,8 +793,8 @@ struct SegmentListView: View {
                             )
                             .contextMenu {
                                 if let entryID = canonicalEntryIDBySurface[normalizedSurfaceForFiltering(rowIdentity)] {
-                                    let learnedState = reviewStore.learnedState(for: entryID)
-                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+                                    let learnedState = wordsStore.learnedState(for: entryID)
+                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
                                 }
                             }
                         }
@@ -803,9 +802,9 @@ struct SegmentListView: View {
                         // Kept alongside the star's own context menu above, not replacing it.
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             if let entryID = canonicalEntryIDBySurface[normalizedSurfaceForFiltering(rowIdentity)] {
-                                let learnedState = reviewStore.learnedState(for: entryID)
+                                let learnedState = wordsStore.learnedState(for: entryID)
                                 Menu {
-                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, reviewStore: reviewStore))
+                                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entryID, wordsStore: wordsStore))
                                 } label: {
                                     Label("Mark…", systemImage: "ellipsis.circle")
                                 }

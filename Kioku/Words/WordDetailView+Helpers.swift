@@ -58,33 +58,64 @@ extension WordDetailView {
         .accessibilityLabel(morphemes.map { $0.role.isEmpty ? $0.form : "\($0.form) \($0.role)" }.joined(separator: ", "))
     }
 
-    // Visual lattice diagram for the "Paths" section, sitting above the existing flat text list
-    // (not replacing it). An actual node-and-edge graph: every distinct character-offset boundary
-    // any candidate path crosses is one NODE (a dot) sitting on a shared baseline; every distinct
+    // Visual chart for the "Paths" section, sitting above the existing flat text list (not
+    // replacing it): one row per candidate segmentation path, in sublatticePaths' existing
+    // most-divided-first order (see WordDetailView+Helpers's sort in the .task loader), each
+    // segment its own chip. Replaced an earlier shared-edge lattice-arc diagram (candidate paths
+    // sharing a segment collapsed into one curved arc, with divergent alternatives fanned into
+    // separate lanes) — mathematically that laid out correctly, but for any note with several
+    // divergent short segments the result was small, needle-thin arcs that didn't read as arcs at
+    // all. One row per path has no such failure mode: every row is a plain horizontal strip
+    // regardless of how many paths there are or how much they diverge.
+    @ViewBuilder
+    var sublatticeDiagramRowsPerPath: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(sublatticePaths.enumerated()), id: \.offset) { _, path in
+                HStack(spacing: 4) {
+                    ForEach(Array(path.enumerated()), id: \.offset) { _, segment in
+                        Text(segment)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(Color.accentColor.opacity(0.12))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1)
+                            )
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    // Visual lattice diagram for the "Paths" section, sitting above the flat text list (not
+    // replacing it). An actual node-and-edge graph: every distinct character-offset boundary any
+    // candidate path crosses is one NODE (a dot) sitting on a shared baseline; every distinct
     // (position, text) segment is one EDGE — a curved arc connecting its start and end node,
     // labeled with the segment text. Segments two or more paths agree on collapse into a single
-    // shared edge (sublatticeUniqueEdges dedupes by position+text) instead of drawing once per
-    // path; only where candidates genuinely diverge — different segmentations spanning an
-    // overlapping range — do the competing arcs get separate lanes (greedy interval packing,
-    // sublatticeEdgeLanes) so they fan out above the baseline instead of overlapping each other.
-    // sublatticePaths is `[[String]]` (no LatticeEdge/offset data), so positions are derived from
-    // cumulative character counts — the surface is identical across every path, so offsets are
-    // comparable without new data threaded in.
-    //
-    // Built from plain Shape/Circle/Text only, each ForEach a single flat level (no ForEach
-    // nested inside ForEach) — an earlier row-per-path version instead used Canvas inside a
-    // horizontal ScrollView inside this List row (a known-bad combination with List's
-    // row-measurement passes) and had a nested-generics chain implicated in an EXC_BAD_ACCESS
-    // crash. No horizontal ScrollView either: word surfaces here are short enough that this fits
-    // without one.
-    @ViewBuilder
+    // shared edge instead of drawing once per path; only where candidates genuinely diverge do the
+    // competing arcs get separate lanes (greedy interval packing, sublatticeEdgeLanes), fanning out
+    // above the baseline. Edges are ordered by sublatticeUniqueEdgesBiased — ranked by the FEWEST
+    // divisions among any path that uses an edge — so an edge exclusive to a more-divided path gets
+    // a higher lane than one belonging to a less-divided path, putting "most divisions" visually on
+    // top as originally asked for.
     var sublatticeDiagram: some View {
+        sublatticeArcDiagram(edges: sublatticeUniqueEdgesBiased(for: sublatticePaths))
+    }
+
+    // Shared rendering behind sublatticeDiagram: lays out a given edge list into lanes and draws
+    // each as a dome-and-stems arc (sublatticeArc) above the shared baseline nodes.
+    @ViewBuilder
+    private func sublatticeArcDiagram(edges: [SublatticeEdge]) -> some View {
         let charWidth: CGFloat = 22
         let laneHeight: CGFloat = 22
         let nodeRadius: CGFloat = 3
         let labelHeadroom: CGFloat = 14
 
-        let edges = sublatticeUniqueEdges(for: sublatticePaths)
         let laneByEdge = sublatticeEdgeLanes(for: edges)
         let laneCount = max((laneByEdge.values.max() ?? 0) + 1, 1)
         let allBoundaries = Set(edges.flatMap { [$0.start, $0.end] }).sorted()
@@ -97,22 +128,11 @@ extension WordDetailView {
         ZStack(alignment: .topLeading) {
             ForEach(edges) { edge in
                 let lane = laneByEdge[edge] ?? 0
-                let arcHeight = CGFloat(lane + 1) * laneHeight
+                let laneTotalHeight = CGFloat(lane + 1) * laneHeight
+                let arcWidth = max(CGFloat(edge.end - edge.start) * charWidth, 1)
                 let tint = lane.isMultiple(of: 2) ? Color.accentColor : Color.secondary
-                LatticeArcShape()
-                    .stroke(tint.opacity(0.6), lineWidth: 1.5)
-                    .frame(width: max(CGFloat(edge.end - edge.start) * charWidth, 1), height: arcHeight)
-                    .overlay(alignment: .top) {
-                        // Sits right at the arc's peak (path(in:) peaks at the frame's top-center),
-                        // with an opaque background so it reads as breaking the line, not crossing it.
-                        Text(edge.text)
-                            .font(.caption2)
-                            .foregroundStyle(tint)
-                            .padding(.horizontal, 3)
-                            .background(Color(.systemBackground))
-                            .fixedSize()
-                    }
-                    .offset(x: CGFloat(edge.start) * charWidth, y: baselineY - arcHeight)
+                sublatticeArc(text: edge.text, width: arcWidth, laneTotalHeight: laneTotalHeight, laneHeight: laneHeight, tint: tint)
+                    .offset(x: CGFloat(edge.start) * charWidth, y: baselineY - laneTotalHeight)
             }
 
             // The shared nodes: one dot per boundary position, sitting on the baseline every
@@ -132,35 +152,78 @@ extension WordDetailView {
         .accessibilityHidden(true) // The Text rows below already speak each path in full.
     }
 
+    // One edge's visual: a properly-proportioned dome (bowHeight is capped at one laneHeight and
+    // scales with the edge's own width, so it never gets taller than it is wide) sitting atop
+    // straight stems that bridge the remaining distance down to the shared baseline. A single
+    // curve stretched the entire lane depth used to render as a near-vertical spike for narrow
+    // edges deep in the stack; decoupling "how much this arc bows" (proportional to its own
+    // width, always dome-shaped) from "how far up its lane sits" (the stems) fixes that.
+    @ViewBuilder
+    private func sublatticeArc(text: String, width: CGFloat, laneTotalHeight: CGFloat, laneHeight: CGFloat, tint: Color) -> some View {
+        let bowHeight = min(width * 0.6, laneHeight)
+        let stemHeight = max(laneTotalHeight - bowHeight, 0)
+        let stemWidth: CGFloat = 1.5
+        ZStack(alignment: .top) {
+            if stemHeight > 0 {
+                Rectangle()
+                    .fill(tint.opacity(0.6))
+                    .frame(width: stemWidth, height: stemHeight)
+                    .offset(x: 0, y: bowHeight)
+                Rectangle()
+                    .fill(tint.opacity(0.6))
+                    .frame(width: stemWidth, height: stemHeight)
+                    .offset(x: width - stemWidth, y: bowHeight)
+            }
+            LatticeArcShape()
+                .stroke(tint.opacity(0.6), lineWidth: 1.5)
+                .frame(width: width, height: bowHeight)
+                .overlay(alignment: .top) {
+                    // Sits right at the dome's peak, with an opaque background so it reads as
+                    // breaking the line, not crossing it.
+                    Text(text)
+                        .font(.caption2)
+                        .foregroundStyle(tint)
+                        .padding(.horizontal, 3)
+                        .background(Color(.systemBackground))
+                        .fixedSize()
+                }
+        }
+        .frame(width: width, height: laneTotalHeight, alignment: .top)
+    }
+
+    // Edge sort backing sublatticeDiagram. Each edge is ranked by the FEWEST divisions among any
+    // path that uses it (an edge shared by a 3-division and a 2-division path ranks as 2), and
+    // edges are processed lowest-rank-first so greedy packing (sublatticeEdgeLanes) hands
+    // least-divided paths' edges the lower lanes and leaves higher lanes for edges exclusive to
+    // more-divided paths.
+    func sublatticeUniqueEdgesBiased(for paths: [[String]]) -> [SublatticeEdge] {
+        var minDivisionsByEdge: [SublatticeEdge: Int] = [:]
+        for path in paths {
+            var offset = 0
+            for segment in path {
+                let edge = SublatticeEdge(start: offset, end: offset + segment.count, text: segment)
+                minDivisionsByEdge[edge] = min(minDivisionsByEdge[edge] ?? path.count, path.count)
+                offset += segment.count
+            }
+        }
+        return minDivisionsByEdge.keys.sorted { lhs, rhs in
+            let lhsRank = minDivisionsByEdge[lhs] ?? 0
+            let rhsRank = minDivisionsByEdge[rhs] ?? 0
+            if lhsRank != rhsRank { return lhsRank < rhsRank }
+            if lhs.start != rhs.start { return lhs.start < rhs.start }
+            if lhs.end != rhs.end { return lhs.end > rhs.end }
+            return lhs.text < rhs.text
+        }
+    }
+
     // One segment at a specific character-offset span — the lattice diagram's "edge." Hashable
     // by (start, end, text) so two paths that pick the identical segment at the identical
-    // position collapse to the same value, which is what lets sublatticeUniqueEdges dedupe them.
+    // position collapse to the same value, which is what lets edges dedupe.
     struct SublatticeEdge: Hashable, Identifiable {
         let start: Int
         let end: Int
         let text: String
         var id: Self { self }
-    }
-
-    // Every distinct segment used by ANY candidate path, deduped by (position, text) — this is
-    // the actual "shared node" behavior: a segment two or more paths agree on becomes one Edge
-    // value regardless of how many paths reference it. Sorted for stable, deterministic layout:
-    // by start position, then longer spans first (reads more naturally as the "main" segment at
-    // a position), then text.
-    func sublatticeUniqueEdges(for paths: [[String]]) -> [SublatticeEdge] {
-        var seen = Set<SublatticeEdge>()
-        for path in paths {
-            var offset = 0
-            for segment in path {
-                seen.insert(SublatticeEdge(start: offset, end: offset + segment.count, text: segment))
-                offset += segment.count
-            }
-        }
-        return seen.sorted { lhs, rhs in
-            if lhs.start != rhs.start { return lhs.start < rhs.start }
-            if lhs.end != rhs.end { return lhs.end > rhs.end }
-            return lhs.text < rhs.text
-        }
     }
 
     // Greedy interval-graph lane assignment: edges are placed in the first lane whose last-placed
@@ -389,11 +452,12 @@ extension WordDetailView {
             }
 
             // Use pre-computed paths from the lookup sheet; fall back to computing from the segmenter.
-            if initialSublatticePaths.isEmpty {
-                sublatticePaths = LatticeEdge.validPaths(from: result.latticeEdges)
-            } else {
-                sublatticePaths = initialSublatticePaths
-            }
+            let paths = initialSublatticePaths.isEmpty
+                ? LatticeEdge.validPaths(from: result.latticeEdges)
+                : initialSublatticePaths
+            // Most-divided path (most segments) first, coarsest (fewest segments) last — the
+            // "Paths" list below the diagram reads finest-grained-first.
+            sublatticePaths = paths.sorted { $0.count > $1.count }
         }
 
         // Fetch kanji breakdown for each unique kanji character in the surface.

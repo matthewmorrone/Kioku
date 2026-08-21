@@ -29,7 +29,6 @@ struct MultipleChoiceView: View {
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
-    @EnvironmentObject private var reviewStore: ReviewStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var questions: [MultipleChoiceQuestion] = []
@@ -171,7 +170,7 @@ struct MultipleChoiceView: View {
         didReveal = true
         selected = question.correct
         sessionWrong += 1
-        reviewStore.recordAgain(
+        wordsStore.recordAgain(
             for: question.id, direction: question.direction, hasKanjiForm: question.hasKanjiForm
         )
     }
@@ -323,7 +322,7 @@ struct MultipleChoiceView: View {
     private func pool() -> StudyWordSelection {
         LearnWordPool.eligible(
             in: wordsStore.words, options: options, excludeLearned: excludeLearned,
-            reviewStore: reviewStore, dictionaryStore: dictionaryStore
+            wordsStore: wordsStore, dictionaryStore: dictionaryStore
         )
     }
 
@@ -364,10 +363,10 @@ struct MultipleChoiceView: View {
         let hasKanjiForm = questions[index].hasKanjiForm
         if option == correct {
             sessionCorrect += 1
-            reviewStore.recordCorrect(for: id, direction: direction, hasKanjiForm: hasKanjiForm)
+            wordsStore.recordCorrect(for: id, direction: direction, hasKanjiForm: hasKanjiForm)
         } else {
             sessionWrong += 1
-            reviewStore.recordAgain(for: id, direction: direction, hasKanjiForm: hasKanjiForm)
+            wordsStore.recordAgain(for: id, direction: direction, hasKanjiForm: hasKanjiForm)
         }
     }
 

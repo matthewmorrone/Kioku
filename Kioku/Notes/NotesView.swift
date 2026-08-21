@@ -126,7 +126,15 @@ struct NotesView: View {
                     pendingDeletion = nil
                 }
                 Button("Delete Note\(countSuffix(for: deletion))", role: .destructive) {
-                    performDelete(deletion)
+                    performDelete(deletion, alsoRemoveOrphanedWords: false)
+                }
+                // Only offered when something would actually be orphaned — a note with no
+                // note-only vocabulary just gets the one Delete button above.
+                let orphanCount = orphanedWordCount(for: deletion)
+                if orphanCount > 0 {
+                    Button("Delete Note\(countSuffix(for: deletion)) and \(orphanCount) Word\(orphanCount == 1 ? "" : "s")", role: .destructive) {
+                        performDelete(deletion, alsoRemoveOrphanedWords: true)
+                    }
                 }
             } message: { deletion in
                 Text(deleteDialogMessage(for: deletion))
@@ -352,9 +360,39 @@ struct NotesView: View {
         deletion.noteIDs.count == 1 ? "" : "s"
     }
 
-    // Explains that note deletion never removes independent saved vocabulary.
+    // Explains what note deletion does to attachments and, when relevant, to vocabulary that
+    // has nothing else backing it once this note is gone.
     private func deleteDialogMessage(for deletion: PendingNoteDeletion) -> String {
-        "This permanently removes the note\(countSuffix(for: deletion)) and its attachments. Saved words are kept."
+        let base = "This permanently removes the note\(countSuffix(for: deletion)) and its attachments."
+        let orphanCount = orphanedWordCount(for: deletion)
+        guard orphanCount > 0 else {
+            return base + " Saved words are kept."
+        }
+        let notePhrase = deletion.noteIDs.count == 1 ? "this note" : "these notes"
+        return base + " \(orphanCount) saved word\(orphanCount == 1 ? "" : "s") only attributed to \(notePhrase) would otherwise be orphaned — choose whether to keep or delete \(orphanCount == 1 ? "it" : "them") too."
+    }
+
+    // Saved words attributed ONLY to the note(s) about to be deleted — every other attribution
+    // has already been ruled out, so once this note is gone they'd have nothing left backing
+    // them. Excludes words with no note attribution at all (global saves), which aren't
+    // affected by this deletion either way. Must run BEFORE detachNoteReferences, which clears
+    // sourceNoteIDs and would make this test trivially empty afterward.
+    private func orphanedWords(for deletion: PendingNoteDeletion) -> [SavedWord] {
+        wordsStore.words.filter {
+            $0.sourceNoteIDs.isEmpty == false && Set($0.sourceNoteIDs).subtracting(deletion.noteIDs).isEmpty
+        }
+    }
+
+    // Saved kanji counterpart to orphanedWords(for:), same rationale.
+    private func orphanedKanji(for deletion: PendingNoteDeletion) -> [SavedKanji] {
+        savedKanjiStore.kanji.filter {
+            $0.sourceNoteIDs.isEmpty == false && Set($0.sourceNoteIDs).subtracting(deletion.noteIDs).isEmpty
+        }
+    }
+
+    // Combined count driving the dialog's copy and its conditional second delete button.
+    private func orphanedWordCount(for deletion: PendingNoteDeletion) -> Int {
+        orphanedWords(for: deletion).count + orphanedKanji(for: deletion).count
     }
 
     // Builds the per-note context menu shown from the notes list.
@@ -431,13 +469,24 @@ struct NotesView: View {
     }
 
     // Deletes the pending notes, detaches saved-word provenance, and clears the active selection.
-    // Takes the deletion the dialog was presenting so we act on exactly that note set, never a value
-    // that may have been replaced between presentation and confirmation.
-    private func performDelete(_ deletion: PendingNoteDeletion) {
+    // Takes the deletion the dialog was presenting so we act on exactly that note set, never a
+    // value that may have been replaced between presentation and confirmation. When
+    // alsoRemoveOrphanedWords is true, words/kanji attributed only to these notes are hard-
+    // removed instead of just detached — captured before detachNoteReferences runs, since that
+    // clears sourceNoteIDs and would make the "only this note" test always empty afterward.
+    private func performDelete(_ deletion: PendingNoteDeletion, alsoRemoveOrphanedWords: Bool) {
         let noteIDs = deletion.noteIDs
+        let wordIDsToRemove = alsoRemoveOrphanedWords ? Set(orphanedWords(for: deletion).map(\.canonicalEntryID)) : []
+        let kanjiLiteralsToRemove = alsoRemoveOrphanedWords ? orphanedKanji(for: deletion).map(\.literal) : []
 
         wordsStore.detachNoteReferences(noteIDs: noteIDs)
         savedKanjiStore.detachNoteReferences(noteIDs: noteIDs)
+        if wordIDsToRemove.isEmpty == false {
+            wordsStore.remove(ids: wordIDsToRemove)
+        }
+        for literal in kanjiLiteralsToRemove {
+            savedKanjiStore.remove(literal: literal)
+        }
         store.deleteNotes(ids: noteIDs)
         selectedNoteIDs.subtract(noteIDs)
         onUpdateSelectedNote?(nil)

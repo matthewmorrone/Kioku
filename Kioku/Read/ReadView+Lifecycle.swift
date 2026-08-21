@@ -226,6 +226,15 @@ extension ReadView {
                     refreshSegmentationRanges()
                 }
             }
+            .onChange(of: pendingScrollTarget) { _, _ in
+                jumpToPendingScrollSurfaceIfReady()
+            }
+            .onChange(of: activeNoteID) { _, _ in
+                // activeNoteID and text update together (loadSelectedNoteIfNeeded), but that load
+                // can finish either before or after pendingScrollTarget arrives from ContentView —
+                // whichever onChange fires last is the one that actually has both pieces ready.
+                jumpToPendingScrollSurfaceIfReady()
+            }
             .onChange(of: isEditMode) { _, editing in
                 if editing {
                     // Hand the CT read view's live scroll position to the editor. The CT
@@ -464,6 +473,42 @@ extension ReadView {
                             }
                         }
                 }
+            }
+        }
+    }
+
+    // Consumes pendingScrollTarget once the note it names is actually the one loaded into `text`
+    // — guards on activeNoteID rather than acting the instant the target arrives, since ContentView
+    // sets selectedReadNote and pendingScrollTarget together but loadSelectedNoteIfNeeded's text/
+    // activeNoteID update can land on either side of that in the update cycle. Finds the surface's
+    // first occurrence, selects it (the same highlight the lookup sheet's star context menu shows)
+    // and borrows playbackHighlightRangeOverride to scroll it into view — the one existing
+    // scroll-to-range mechanism in this renderer, normally driven by audio cue playback (see
+    // KiokuCoreTextRendererView's scrollRangeIntoView call). Safe to reuse outside playback: the
+    // "unplayed" dimming it also drives requires real cue data (cueHasReliableDimCoverage), which
+    // isn't present here, so only the scroll + a plain highlight tint apply.
+    func jumpToPendingScrollSurfaceIfReady() {
+        guard let target = pendingScrollTarget, activeNoteID == target.noteID else { return }
+        guard let range = text.range(of: target.surface) else {
+            pendingScrollTarget = nil
+            return
+        }
+        let nsRange = NSRange(range, in: text)
+        guard nsRange.length > 0 else {
+            pendingScrollTarget = nil
+            return
+        }
+        selectedSegmentLocation = nsRange.location
+        selectedHighlightRangeOverride = nsRange
+        playbackHighlightRangeOverride = nsRange
+        pendingScrollTarget = nil
+
+        pendingScrollHighlightClearTask?.cancel()
+        pendingScrollHighlightClearTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if Task.isCancelled { return }
+            if playbackHighlightRangeOverride == nsRange {
+                playbackHighlightRangeOverride = nil
             }
         }
     }

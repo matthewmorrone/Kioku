@@ -27,7 +27,6 @@ struct SongStepperView: View {
     // Drives the lookup sheet's save star for tapped words (globally injected at the app root).
     @EnvironmentObject private var wordsStore: WordsStore
     // Powers the lookup sheet's save button long-press learned-state menu.
-    @EnvironmentObject private var reviewStore: ReviewStore
     // Per-line expansion state: whether a line's word/grammar explanations are visible.
     // Furigana on the Japanese row is independent of this (see ensureFuriganaCaches / the
     // eager cache build). Keyed by `line.index` (not array offset) so it survives
@@ -94,10 +93,10 @@ struct SongStepperView: View {
                 toggleSavedWord(canonicalEntryID: entryID, surface: surface)
             },
             sheetLearnedStateProvider: {
-                reviewStore.learnedState(for: entryID)
+                wordsStore.learnedState(for: entryID)
             },
             sheetSetLearnedState: { state in
-                reviewStore.setLearnedState(state, for: entryID)
+                wordsStore.setLearnedState(state, for: entryID)
             }
         )
     }

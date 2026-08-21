@@ -7,6 +7,16 @@ nonisolated struct GlossRef: Codable, Hashable {
     let glossIndex: Int
 }
 
+// The per-word "have I learned this?" mark, shown on the star: a checkmark for learned, a
+// question mark for not-learned, and the plain star when the user hasn't said either way.
+// The two marks are mutually exclusive — setting one clears the other. Lives on SavedWord itself
+// (not a separate store) — see WordsStore's "MARK: - Review" section for why.
+nonisolated enum LearnedState: String, Codable, Hashable {
+    case unmarked
+    case learned
+    case notLearned
+}
+
 // Represents one saved word that can belong to multiple note-linked lists and user-created word lists.
 // `nonisolated` so import pipelines (CSV, bulk) can construct it from detached tasks.
 nonisolated struct SavedWord: Codable, Hashable, Identifiable {
@@ -62,6 +72,19 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // all read this. Cross-entry heteronym flips (抱く いだく ↔ だく) re-point the card to the other
     // entry AND record the reading here, so both halves of the switcher survive.
     var selectedReading: String?
+    // Everything below was formerly owned by a separate ReviewStore, keyed by canonicalEntryID in
+    // its own persisted dictionaries. Merged directly onto the card so there's one store, one
+    // persisted array, and no risk of the two drifting out of sync or silently disagreeing about
+    // which words exist. See WordsStore's "MARK: - Review" section for the derived Set/Dictionary
+    // caches (learned/notLearned/mastered/stats) that give O(1) lookups back despite the data now
+    // living per-card instead of in dedicated collections.
+    var learnedMark: LearnedState
+    var mastered: Bool
+    // Transient "currently in the wrong pile" flag — true after an "again" answer, cleared by the
+    // next "correct" one. Was ReviewStore.markedWrong.
+    var markedWrong: Bool
+    // SRS/accuracy history. Nil means never reviewed.
+    var reviewStats: ReviewWordStats?
 
     var id: Int64 {
         canonicalEntryID
@@ -70,7 +93,7 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     // Creates a saved-word value with optional note-list and word-list memberships.
     // `encounteredSurfaces` defaults to `[surface]` so call sites that already pass a
     // surface get a sensible per-surface star state without having to spell it out.
-    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil, entSeq: Int64? = nil, hasBeenOrphaned: Bool? = nil, selectedReading: String? = nil) {
+    init(canonicalEntryID: Int64, surface: String, sourceNoteIDs: [UUID] = [], wordListIDs: [UUID] = [], personalNote: String? = nil, savedAt: Date = Date(), selectedSenseIDs: [Int64] = [], selectedGlosses: [GlossRef] = [], encounteredSurfaces: Set<String>? = nil, entSeq: Int64? = nil, hasBeenOrphaned: Bool? = nil, selectedReading: String? = nil, learnedMark: LearnedState = .unmarked, mastered: Bool = false, markedWrong: Bool = false, reviewStats: ReviewWordStats? = nil) {
         self.canonicalEntryID = canonicalEntryID
         self.entSeq = entSeq
         self.surface = surface
@@ -81,6 +104,10 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         self.selectedSenseIDs = selectedSenseIDs
         self.selectedGlosses = selectedGlosses
         self.selectedReading = selectedReading
+        self.learnedMark = learnedMark
+        self.mastered = mastered
+        self.markedWrong = markedWrong
+        self.reviewStats = reviewStats
         // nil → seed with the surface so a freshly-saved card has one encountered
         // member and stars correctly without extra wiring at every call site.
         self.encounteredSurfaces = encounteredSurfaces ?? Set([surface])
@@ -117,6 +144,13 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
         // are treated as never orphaned, since that's the closest available reading even though
         // their true history further back isn't recoverable.
         hasBeenOrphaned = try c.decodeIfPresent(Bool.self, forKey: .hasBeenOrphaned) ?? sourceNoteIDs.isEmpty
+        // Cards persisted before the ReviewStore merge decode with the neutral/never-reviewed
+        // defaults — WordsStore's one-time migration (mergeLegacyReviewStoreDataIfNeeded) backfills
+        // real values from the old kioku.review.* keys on first load after the update.
+        learnedMark = try c.decodeIfPresent(LearnedState.self, forKey: .learnedMark) ?? .unmarked
+        mastered = try c.decodeIfPresent(Bool.self, forKey: .mastered) ?? false
+        markedWrong = try c.decodeIfPresent(Bool.self, forKey: .markedWrong) ?? false
+        reviewStats = try c.decodeIfPresent(ReviewWordStats.self, forKey: .reviewStats)
     }
 
     // Reconciles the stable key against the live dictionary, returning a corrected copy (or self
@@ -140,6 +174,10 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
     }
 
     // Returns a copy with only the two stable-key fields replaced, preserving everything else.
+    // canonicalEntryID and entSeq are both `let`, so this can't mutate a copy in place — every
+    // field has to be threaded through explicitly. GUARD AGAINST RECURRENCE: if a field is ever
+    // added to SavedWord without adding it here too, reconcilingStableKey (called on every
+    // dictionary-ready reconcile and every persist()) silently resets it to default.
     private func copyWith(canonicalEntryID: Int64, entSeq: Int64?) -> SavedWord {
         SavedWord(
             canonicalEntryID: canonicalEntryID,
@@ -153,7 +191,11 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
             encounteredSurfaces: encounteredSurfaces,
             entSeq: entSeq,
             hasBeenOrphaned: hasBeenOrphaned,
-            selectedReading: selectedReading
+            selectedReading: selectedReading,
+            learnedMark: learnedMark,
+            mastered: mastered,
+            markedWrong: markedWrong,
+            reviewStats: reviewStats
         )
     }
 

@@ -8,11 +8,15 @@ import UIKit
 struct ReadView: View {
     @Binding var selectedNote: Note?
     @Binding var shouldActivateEditModeOnLoad: Bool
+    // Set (via ReadNoteNavigation, by ContentView) when a tap on a Word Detail source note should
+    // land here and jump to that word's first occurrence. Consumed once activeNoteID matches
+    // target.noteID and cleared afterward — see jumpToPendingScrollSurfaceIfReady in
+    // ReadView+Lifecycle.swift.
+    @Binding var pendingScrollTarget: ReadNoteTarget?
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var wordsStore: WordsStore
     // Powers the lookup popover/sheet star's long-press learned-state menu, mirroring the Words tab.
-    @EnvironmentObject var reviewStore: ReviewStore
     // Read here (not just inside the breakdown sheet) so the title-row breakdown button can
     // show an activity indicator while a generation is running for the currently-open note.
     @EnvironmentObject var songBreakdownStore: SongBreakdownStore
@@ -188,6 +192,10 @@ struct ReadView: View {
     @State var audioAttachmentCues: [SubtitleCue] = []
     @State var audioAttachmentHighlightRanges: [NSRange?] = []
     @State var playbackHighlightRangeOverride: NSRange?
+    // Clears jumpToPendingScrollSurfaceIfReady's playbackHighlightRangeOverride borrow a few
+    // seconds after landing, so a "jump to this word" highlight fades rather than sitting
+    // indefinitely as if audio were still playing.
+    @State var pendingScrollHighlightClearTask: Task<Void, Never>?
     @State var activePlaybackCueIndex: Int? = nil
     @State var activeAudioAttachmentID: UUID? = nil
     // Cue index currently being re-aligned by the lyric view's in-place "fix word sweep"
@@ -267,6 +275,7 @@ struct ReadView: View {
     init(
         selectedNote: Binding<Note?>,
         shouldActivateEditModeOnLoad: Binding<Bool> = .constant(false),
+        pendingScrollTarget: Binding<ReadNoteTarget?> = .constant(nil),
         segmenter: any TextSegmenting,
         dictionaryStore: DictionaryStore?,
         lexicon: Lexicon? = nil,
@@ -282,6 +291,7 @@ struct ReadView: View {
     ) {
         _selectedNote = selectedNote
         _shouldActivateEditModeOnLoad = shouldActivateEditModeOnLoad
+        _pendingScrollTarget = pendingScrollTarget
         self.segmenter = segmenter
         self.dictionaryStore = dictionaryStore
         self.lexicon = lexicon

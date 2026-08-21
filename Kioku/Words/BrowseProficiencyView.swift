@@ -9,7 +9,7 @@ struct BrowseProficiencyView: View {
     let onToggleSave: (DictionaryEntry) -> Void
     let onSelectEntry: (DictionaryEntry) -> Void
 
-    @EnvironmentObject private var reviewStore: ReviewStore
+    @EnvironmentObject private var wordsStore: WordsStore
     @State private var entries: [DictionaryEntry] = []
     @State private var isLoading = true
     // Stored as the JLPT N-number: 5 = N5 (easiest) … 1 = N1 (hardest). Defaults to N5.
@@ -76,8 +76,8 @@ struct BrowseProficiencyView: View {
                                 entry: entry,
                                 isSaved: isSaved(entry.entryId),
                                 onToggleSave: { onToggleSave(entry) },
-                                learnedState: reviewStore.learnedState(for: entry.entryId),
-                                onSetLearnedState: learnedStateSetter(entryID: entry.entryId, reviewStore: reviewStore)
+                                learnedState: wordsStore.learnedState(for: entry.entryId),
+                                onSetLearnedState: learnedStateSetter(entryID: entry.entryId, wordsStore: wordsStore)
                             )
                         }
                         .buttonStyle(.plain)

@@ -13,7 +13,6 @@ struct WordsFilterView: View {
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var savedKanjiStore: SavedKanjiStore
     @EnvironmentObject private var notesStore: NotesStore
-    @EnvironmentObject private var reviewStore: ReviewStore
 
     @Binding var activeFilterNoteIDs: Set<UUID>
     @Binding var activeFilterListIDs: Set<UUID>
@@ -219,27 +218,27 @@ struct WordsFilterView: View {
 
     // Badge labels showing counts for each stat scope option.
     private var markedWrongLabel: String {
-        let count = wordsStore.words.filter { reviewStore.markedWrong.contains($0.canonicalEntryID) }.count
+        let count = wordsStore.words.filter { wordsStore.markedWrong.contains($0.canonicalEntryID) }.count
         return count > 0 ? "Marked Wrong (\(count))" : "Marked Wrong"
     }
 
     private var dueForReviewLabel: String {
-        let count = wordsStore.words.filter { reviewStore.isDueForReview(id: $0.canonicalEntryID) }.count
+        let count = wordsStore.words.filter { wordsStore.isDueForReview(id: $0.canonicalEntryID) }.count
         return "Due for Review (\(count))"
     }
 
     private var neverReviewedLabel: String {
-        let count = wordsStore.words.filter { reviewStore.stats[$0.canonicalEntryID] == nil }.count
+        let count = wordsStore.words.filter { wordsStore.stats[$0.canonicalEntryID] == nil }.count
         return count > 0 ? "Never Reviewed (\(count))" : "Never Reviewed"
     }
 
     private var learnedLabel: String {
-        let count = wordsStore.words.filter { reviewStore.isLearned(id: $0.canonicalEntryID) }.count
+        let count = wordsStore.words.filter { wordsStore.isLearned(id: $0.canonicalEntryID) }.count
         return count > 0 ? "Learned (\(count))" : "Learned"
     }
 
     private var notLearnedLabel: String {
-        let count = wordsStore.words.filter { reviewStore.isNotLearned(id: $0.canonicalEntryID) }.count
+        let count = wordsStore.words.filter { wordsStore.isNotLearned(id: $0.canonicalEntryID) }.count
         return count > 0 ? "Not Learned (\(count))" : "Not Learned"
     }
 

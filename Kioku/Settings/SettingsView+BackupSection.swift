@@ -7,7 +7,7 @@ import Foundation
 extension SettingsView {
     // Captures the latest full app state before presenting the system export flow.
     func beginAppExport() {
-        let reviewStats = reviewStore.stats
+        let reviewStats = wordsStore.stats
             .map { AppBackupReviewStats(canonicalEntryID: $0.key, stats: $0.value) }
             .sorted { $0.canonicalEntryID < $1.canonicalEntryID }
 
@@ -24,12 +24,12 @@ extension SettingsView {
                 wordLists: wordListsStore.lists,
                 history: historyStore.entries,
                 reviewStats: reviewStats,
-                markedWrong: Array(reviewStore.markedWrong).sorted(),
-                learned: Array(reviewStore.learned).sorted(),
-                notLearned: Array(reviewStore.notLearned).sorted(),
-                mastered: Array(reviewStore.mastered).sorted(),
-                lifetimeCorrect: reviewStore.lifetimeCorrect,
-                lifetimeAgain: reviewStore.lifetimeAgain,
+                markedWrong: Array(wordsStore.markedWrong).sorted(),
+                learned: Array(wordsStore.learned).sorted(),
+                notLearned: Array(wordsStore.notLearned).sorted(),
+                mastered: Array(wordsStore.mastered).sorted(),
+                lifetimeCorrect: wordsStore.lifetimeCorrect,
+                lifetimeAgain: wordsStore.lifetimeAgain,
                 audioAttachments: audioAttachments
             )
         )
@@ -133,14 +133,18 @@ extension SettingsView {
         wordListsStore.replaceAll(with: payload.wordLists)
         wordsStore.replaceAll(with: payload.words)
         historyStore.replaceAll(with: payload.history)
-        reviewStore.replaceAll(
+        // Applies the parallel review arrays on top of the just-restored words. For a backup
+        // exported after the ReviewStore/WordsStore merge this just reapplies the same data
+        // that `payload.words` already carries; for an older backup (where review data lived
+        // only in these separate arrays) this is what actually restores it.
+        wordsStore.applyLegacyReviewBackup(
             stats: stats,
             markedWrong: Set(payload.markedWrong),
-            lifetimeCorrect: payload.lifetimeCorrect,
-            lifetimeAgain: payload.lifetimeAgain,
             learned: Set(payload.learned),
             notLearned: Set(payload.notLearned),
-            mastered: Set(payload.mastered)
+            mastered: Set(payload.mastered),
+            lifetimeCorrect: payload.lifetimeCorrect,
+            lifetimeAgain: payload.lifetimeAgain
         )
 
         AppLog.info(.backup, "import: replaced all stores — \(payload.notes.count) notes, \(payload.words.count) words, \(payload.wordLists.count) lists, \(payload.audioAttachments.count) audio attachments")

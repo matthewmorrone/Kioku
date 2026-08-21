@@ -24,7 +24,6 @@ struct ContentView: View {
     @StateObject private var savedKanjiStore = SavedKanjiStore()
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
-    @StateObject private var reviewStore = ReviewStore()
     @StateObject private var songBreakdownStore = SongBreakdownStore()
     // Background queue that runs LLM correction on notes the bulk-import sheet
     // hands over. Attached to notesStore in onAppear for the same
@@ -48,6 +47,12 @@ struct ContentView: View {
     // Observes the same shared instance the AppDelegate registered the notification handler against,
     // so a deep-link target published from didReceive reaches this view.
     @ObservedObject private var wotdNavigation = WordOfTheDayNavigation.shared
+    @ObservedObject private var readNoteNavigation = ReadNoteNavigation.shared
+    // Set when readNoteNavigation resolves a note-open; ReadView consumes it once the target note
+    // is actually active (activeNoteID == target.noteID) to scroll/select the first occurrence of
+    // the surface. Carries the noteID too (not just the surface) so ReadView can tell this target
+    // apart from stale text still on screen from whichever note was active before the switch.
+    @State private var pendingReadScrollTarget: ReadNoteTarget?
     @StateObject private var clipboardCoordinator = ClipboardLookupCoordinator()
     @Environment(\.scenePhase) private var scenePhase
     // Set by notification and read-tab actions; consumed by WordsView.
@@ -73,6 +78,7 @@ struct ContentView: View {
             ReadView(
                 selectedNote: $selectedReadNote,
                 shouldActivateEditModeOnLoad: $shouldActivateReadEditMode,
+                pendingScrollTarget: $pendingReadScrollTarget,
                 segmenter: readResources.segmenter,
                 dictionaryStore: readResources.dictionaryStore,
                 lexicon: readResources.lexicon,
@@ -152,10 +158,10 @@ struct ContentView: View {
         .environmentObject(savedKanjiStore)
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
-        .environmentObject(reviewStore)
         .environmentObject(songBreakdownStore)
         .environmentObject(llmCorrectionQueue)
         .environmentObject(wotdNavigation)
+        .environmentObject(readNoteNavigation)
         .onAppear {
             StartupTimer.mark("onAppear fired")
             restoreLastActiveNote()
@@ -166,9 +172,6 @@ struct ContentView: View {
             // Same wiring for the LLM correction queue — it needs the store reference
             // to resolve note IDs and persist corrections after each run.
             llmCorrectionQueue.attach(store: notesStore)
-            // Same pattern again: WordsStore needs ReviewStore to clear a word's study history
-            // when it's fully unsaved (see ReviewDataRetentionSettings).
-            wordsStore.attach(reviewStore: reviewStore)
             // dictionary.sqlite isn't bundled — download it if this is a fresh install, then
             // rebuild the read resources so DictionaryStore() (which failed silently above,
             // since nothing was downloaded yet) succeeds on this second attempt.
@@ -188,6 +191,18 @@ struct ContentView: View {
                 pendingWordsRoute = .detail(entryID: target.entryID, surface: target.surface)
             }
             wotdNavigation.pendingTarget = nil
+        }
+        // Tapping a source-note name in Word Detail's "Saved" section routes through here — see
+        // ReadNoteNavigation's doc comment for why a singleton instead of a threaded callback.
+        // Opens the note and hands ReadView the surface to scroll/select once it's active; ReadView
+        // clears pendingReadScrollSurface itself once it's consumed it (see ReadView+Lifecycle.swift).
+        .onChange(of: readNoteNavigation.pendingTarget) { _, target in
+            guard let target, let note = notesStore.note(withID: target.noteID) else { return }
+            selectedReadNote = note
+            lastActiveNoteID = note.id.uuidString
+            selectedTab = .read
+            pendingReadScrollTarget = target
+            readNoteNavigation.pendingTarget = nil
         }
         // Rebuild the segmenter when the user switches backend or MeCab dictionary in Settings.
         .onChange(of: segmenterBackendSetting) { _, _ in
@@ -397,7 +412,7 @@ struct ContentView: View {
     private func scheduleWotdRefresh(reason: String, delayNanoseconds: UInt64, forceRefresh: Bool) {
         wotdRefreshTask?.cancel()
         // Already-learned words have nothing left to teach, so they'd only be a wasted notification.
-        let learnedEntryIDs = reviewStore.learned
+        let learnedEntryIDs = wordsStore.learned
         let words = wordsStore.words.filter { learnedEntryIDs.contains($0.canonicalEntryID) == false }
         let store = readResources.dictionaryStore
         let enabled = UserDefaults.standard.bool(forKey: WordOfTheDayScheduler.enabledKey)

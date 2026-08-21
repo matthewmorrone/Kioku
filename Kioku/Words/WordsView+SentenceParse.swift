@@ -57,7 +57,7 @@ extension WordsView {
 
             if let entry = segment.entry {
                 let saved = isSaved(entry)
-                let learnedState = reviewStore.learnedState(for: entry.entryId)
+                let learnedState = wordsStore.learnedState(for: entry.entryId)
                 Button {
                     toggleSave(entry)
                 } label: {
@@ -68,7 +68,7 @@ extension WordsView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(saved ? "Unsave Word" : "Save Word")
                 .contextMenu {
-                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entry.entryId, reviewStore: reviewStore))
+                    learnedStateMenuButtons(currentState: learnedState, setState: learnedStateSetter(entryID: entry.entryId, wordsStore: wordsStore))
                 }
             }
         }

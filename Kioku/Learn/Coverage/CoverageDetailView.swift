@@ -58,7 +58,6 @@ struct CoverageDetailView: View {
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
-    @EnvironmentObject private var reviewStore: ReviewStore
     @EnvironmentObject private var wordListsStore: WordListsStore
 
     @State private var pendingSelection: CoverageStudySelection?
@@ -85,8 +84,8 @@ struct CoverageDetailView: View {
         return NoteCoverageCalculator.compute(
             words: words,
             level: { dictionaryStore?.jlptLevel(for: $0) },
-            stage: { reviewStore.masteryStage(for: $0) },
-            isDue: { reviewStore.isDueForReview(id: $0) }
+            stage: { wordsStore.masteryStage(for: $0) },
+            isDue: { wordsStore.isDueForReview(id: $0) }
         )
     }
 
@@ -289,7 +288,6 @@ struct CoverageDetailView: View {
         }
         .environmentObject(wordsStore)
         .environmentObject(notesStore)
-        .environmentObject(reviewStore)
     }
 
     // Human label for a JLPT level row: "N5"…"N1", or "No level" for words not on any list.

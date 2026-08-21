@@ -28,8 +28,8 @@ func learnedStateMenuButtons(currentState: LearnedState, setState: @escaping (Le
 // a synchronous write lands while UIKit is still tearing the menu down, so the resulting
 // re-render queues behind that work and the glyph only flips a beat late. Deferring lets
 // teardown finish first, then the icon updates immediately.
-func learnedStateSetter(entryID: Int64, reviewStore: ReviewStore) -> (LearnedState) -> Void {
-    { state in DispatchQueue.main.async { reviewStore.setLearnedState(state, for: entryID) } }
+func learnedStateSetter(entryID: Int64, wordsStore: WordsStore) -> (LearnedState) -> Void {
+    { state in DispatchQueue.main.async { wordsStore.setLearnedState(state, for: entryID) } }
 }
 
 // UIKit equivalent of learnedStateMenuButtons, for the Read-tab lookup popover/sheet. Attach via

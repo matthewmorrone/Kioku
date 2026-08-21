@@ -31,7 +31,7 @@ final class FavoritedHighlightMemo {
 // Reference-type cache for the "hide furigana for known words" computation. Same shape and
 // rationale as FavoritedHighlightMemo above: held by @State so it survives body re-evals, and
 // the lemma cache is keyed per-text so repeated recomputes (e.g. a review answer changing
-// reviewStore.learned) don't re-deinflect the whole note.
+// wordsStore.learned) don't re-deinflect the whole note.
 final class KnownWordFuriganaMemo {
     var signature: Int?
     var locations: Set<Int> = []
@@ -153,8 +153,8 @@ extension ReadView {
         hasher.combine(isFavoritedHighlightShowingLearned)
         hasher.combine(isFavoritedHighlightShowingNotLearned)
         hasher.combine(isFavoritedHighlightShowingElsewhere)
-        for id in reviewStore.learned.sorted() { hasher.combine(id) }
-        for id in reviewStore.notLearned.sorted() { hasher.combine(id) }
+        for id in wordsStore.learned.sorted() { hasher.combine(id) }
+        for id in wordsStore.notLearned.sorted() { hasher.combine(id) }
         let signature = hasher.finalize()
         if favoritedHighlightMemo.signature == signature {
             return
@@ -215,7 +215,7 @@ extension ReadView {
 
             let learnedState = learnedStateBySurface[surface] ?? {
                 let entryID = canonicalEntryIDForFavoritedSurface(surface, lemmaResolver: resolver)
-                let value = entryID.map { reviewStore.learnedState(for: $0) } ?? .unmarked
+                let value = entryID.map { wordsStore.learnedState(for: $0) } ?? .unmarked
                 learnedStateBySurface[surface] = value
                 return value
             }()
@@ -268,7 +268,7 @@ extension ReadView {
     // when the "hide furigana for known words" toggle is on — the Read-tab display option
     // that lets a reader stop seeing readings for words they already know. Memoized the same
     // way as favoritedSegmentLocations above: `body` re-evaluates far more often than the
-    // inputs (wordsStore.words, reviewStore's learned/mastered sets, segmentation) actually
+    // inputs (wordsStore.words, wordsStore's learned/mastered sets, segmentation) actually
     // change, so a signature check skips the per-segment lemma-bridging sweep on a memo hit.
     var furiganaSuppressedForKnownWordsSegmentLocations: Set<Int> {
         ensureKnownWordFuriganaComputed()
@@ -293,8 +293,8 @@ extension ReadView {
             hasher.combine(word.canonicalEntryID)
             for surface in word.encounteredSurfaces.sorted() { hasher.combine(surface) }
         }
-        for id in reviewStore.learned.sorted() { hasher.combine(id) }
-        for id in reviewStore.mastered.sorted() { hasher.combine(id) }
+        for id in wordsStore.learned.sorted() { hasher.combine(id) }
+        for id in wordsStore.mastered.sorted() { hasher.combine(id) }
         let signature = hasher.finalize()
         if knownWordFuriganaMemo.signature == signature {
             return
@@ -310,7 +310,7 @@ extension ReadView {
     // computation above), then checks that entry against ReviewStore's learned/mastered sets.
     // Words that were never saved have no canonicalEntryID to check and are left alone.
     private func computeFuriganaSuppressedForKnownWordsSegmentLocations() -> Set<Int> {
-        guard reviewStore.learned.isEmpty == false || reviewStore.mastered.isEmpty == false else {
+        guard wordsStore.learned.isEmpty == false || wordsStore.mastered.isEmpty == false else {
             return []
         }
 
@@ -346,7 +346,7 @@ extension ReadView {
 
             let isKnown = isKnownBySurface[surface] ?? {
                 let entryID = entryIDBySurface[surface] ?? resolveLemma(surface).flatMap { entryIDBySurface[$0] }
-                let value = entryID.map { reviewStore.learned.contains($0) || reviewStore.mastered.contains($0) } ?? false
+                let value = entryID.map { wordsStore.learned.contains($0) || wordsStore.mastered.contains($0) } ?? false
                 isKnownBySurface[surface] = value
                 return value
             }()

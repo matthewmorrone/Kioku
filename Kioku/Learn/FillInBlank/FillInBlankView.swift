@@ -28,7 +28,6 @@ struct FillInBlankView: View {
     var presetQuestionCount: Int? = nil
 
     @EnvironmentObject private var wordsStore: WordsStore
-    @EnvironmentObject private var reviewStore: ReviewStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var questions: [FillInBlankQuestion] = []
@@ -205,12 +204,12 @@ struct FillInBlankView: View {
         isFocused = false
         if result.isCorrect {
             sessionCorrect += 1
-            reviewStore.recordCorrect(
+            wordsStore.recordCorrect(
                 for: question.id, direction: question.direction, hasKanjiForm: question.hasKanjiForm
             )
         } else {
             sessionWrong += 1
-            reviewStore.recordAgain(
+            wordsStore.recordAgain(
                 for: question.id, direction: question.direction, hasKanjiForm: question.hasKanjiForm
             )
         }
@@ -223,7 +222,7 @@ struct FillInBlankView: View {
         verdict = AnswerScorer.grade(input: "", anyOf: question.accepted)
         isFocused = false
         sessionWrong += 1
-        reviewStore.recordAgain(
+        wordsStore.recordAgain(
             for: question.id, direction: question.direction, hasKanjiForm: question.hasKanjiForm
         )
     }
@@ -314,7 +313,7 @@ struct FillInBlankView: View {
     private func pool() -> StudyWordSelection {
         LearnWordPool.eligible(
             in: wordsStore.words, options: options, excludeLearned: excludeLearned,
-            reviewStore: reviewStore, dictionaryStore: dictionaryStore
+            wordsStore: wordsStore, dictionaryStore: dictionaryStore
         )
     }
 

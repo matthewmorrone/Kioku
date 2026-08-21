@@ -20,7 +20,6 @@ struct SettingsView: View {
     @EnvironmentObject var wordsStore: WordsStore
     @EnvironmentObject var wordListsStore: WordListsStore
     @EnvironmentObject var historyStore: HistoryStore
-    @EnvironmentObject var reviewStore: ReviewStore
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
 
     // Selected theme id — drives chrome (background/accent/typography) and the default token
@@ -90,10 +89,6 @@ struct SettingsView: View {
     // Whether the Learn tab's study modes skip Learned/Mastered words. Read by each mode through
     // StudyWordPool; this is the single place it's set.
     @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearnedInStudy: Bool = LearnedSettings.defaultExcludeLearned
-    // Whether unsaving a word keeps its ReviewStore data (Learned mark, mastery, SRS stats)
-    // instead of wiping it — see ReviewDataRetentionSettings and WordsStore.clearReviewDataIfNeeded.
-    @AppStorage(ReviewDataRetentionSettings.retainOnDeletionKey) private var retainLearnDataOnWordDeletion: Bool = ReviewDataRetentionSettings.defaultRetainOnDeletion
-
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
@@ -521,8 +516,6 @@ struct SettingsView: View {
                             Stepper("Correct in a row: \(autoLearnStreak)", value: $autoLearnStreak, in: 1...20)
                         }
                     }
-
-                    Toggle("Retain learn data on word deletion", isOn: $retainLearnDataOnWordDeletion)
                 } header: {
                     Text("Learning")
                 }
@@ -681,8 +674,8 @@ struct SettingsView: View {
     private func resetAllData() {
         wordListsStore.replaceAll(with: [])
         wordsStore.replaceAll(with: [])
+        wordsStore.resetLifetimeCounts()
         historyStore.replaceAll(with: [])
-        reviewStore.replaceAll(stats: [:], markedWrong: [], lifetimeCorrect: 0, lifetimeAgain: 0)
         notesStore.replaceAll(with: [])
         songBreakdownStore.clearAll()
         NotesAudioStore.shared.deleteAllStoredFiles()
@@ -736,7 +729,7 @@ struct SettingsView: View {
     // Triggers a background schedule refresh with the current words and settings.
     private func rescheduleWordOfTheDay() {
         // Already-learned words have nothing left to teach, so they'd only be a wasted notification.
-        let learnedEntryIDs = reviewStore.learned
+        let learnedEntryIDs = wordsStore.learned
         let words = wordsStore.words.filter { learnedEntryIDs.contains($0.canonicalEntryID) == false }
         let store = dictionaryStore
         let enabled = wotdEnabled

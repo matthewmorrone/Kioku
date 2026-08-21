@@ -68,7 +68,6 @@ struct WordsView: View {
     @EnvironmentObject var wordListsStore: WordListsStore
     @EnvironmentObject var notesStore: NotesStore
     @EnvironmentObject var historyStore: HistoryStore
-    @EnvironmentObject var reviewStore: ReviewStore
 
     @State var selectedDetailWord: SavedWord?
     // Reading that was active in the lookup sheet when this word detail was opened, if available.
@@ -111,8 +110,6 @@ struct WordsView: View {
     @State var isBrowseKanjiPresented = false
     @State var isBrowseProficiencyPresented = false
     @State var isSentenceSearchPresented = false
-    @State var isRadicalInputPresented = false
-    @State var isHandwritingPresented = false
     @State var activeTab: WordsTab = .history
     @AppStorage("savedWordsSortOrder") var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
     @AppStorage("historySortOrder") var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
@@ -171,7 +168,6 @@ struct WordsView: View {
         .environmentObject(wordListsStore)
         .environmentObject(wordsStore)
         .environmentObject(notesStore)
-        .environmentObject(reviewStore)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
@@ -413,16 +409,6 @@ struct WordsView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $isHandwritingPresented) {
-                // Opens at ~2/3 height so the search field / results above stay visible while
-                // drawing; still draggable to full height for more canvas room.
-                HandwritingInputView(
-                    onEmit: handleEmitToSearch,
-                    onDeleteBackward: handleHandwritingDeleteBackward
-                )
-                    .presentationDetents([.fraction(0.66), .large])
-                    .presentationDragIndicator(.visible)
-            }
             .sheet(isPresented: $isBrowseFrequencyPresented) {
                 BrowseFrequencyView(
                     dictionaryStore: dictionaryStore,
@@ -456,14 +442,6 @@ struct WordsView: View {
                 SentenceSearchView(dictionaryStore: dictionaryStore)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $isRadicalInputPresented) {
-                RadicalInputView(
-                    dictionaryStore: dictionaryStore,
-                    onEmit: handleEmitToSearch
-                )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $isFilterSheetPresented) {
                 filterSheet
