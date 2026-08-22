@@ -13,6 +13,9 @@ struct NotesView: View {
     var onCreateNote: (() -> Void)? = nil
     var onUpdateSelectedNote: ((Note?) -> Void)? = nil
     var onOCRImportedNote: ((Note) -> Void)? = nil
+    // Supplies JLPT levels for the Difficulty sort. Optional because the dictionary is built
+    // asynchronously at launch; until it lands, Difficulty simply has nothing to rank by.
+    var dictionaryStore: DictionaryStore? = nil
 
     @EnvironmentObject private var store: NotesStore
     @EnvironmentObject private var wordsStore: WordsStore
@@ -28,6 +31,10 @@ struct NotesView: View {
     @State private var isShowingBulkImportSheet = false
     @State private var subtitleEditorAttachmentID: UUID?
     @State private var subtitleEditorNoteTitle: String = ""
+    // Sort selection persists across launches. Stored as the raw field string plus a direction
+    // flag rather than one combined case so adding a field later doesn't invalidate saved values.
+    @AppStorage("notes.sortField") private var sortFieldRaw = NotesSortField.manual.rawValue
+    @AppStorage("notes.sortAscending") private var sortAscending = NotesSortField.manual.defaultAscending
 
     // OCR state owned by NotesView. Declared here (not in the extension) because Swift
     // extensions on structs cannot add stored properties — only the helpers and the
@@ -45,7 +52,7 @@ struct NotesView: View {
             // progress is shown by CorrectionProgressOverlay (mounted globally in
             // ContentView so it follows the user between tabs), not inline here.
             List(selection: $selectedNoteIDs) {
-                ForEach(store.notes) { note in
+                ForEach(displayedNotes) { note in
                     // Renders a single note row with title and content preview.
                     HStack(alignment: .center, spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -81,13 +88,16 @@ struct NotesView: View {
                     .tag(note.id)
                     .deleteDisabled(editMode == .active)
                 }
-                .onMove(perform: store.moveNotes)
+                // Reordering is only meaningful against the stored order; under a derived sort
+                // there is no stable slot to drop into, so the handles are withheld instead of
+                // silently rewriting an order the sort would immediately override.
+                .onMove(perform: sortField == .manual ? store.moveNotes : nil)
                 .onDelete { offsets in
                     // Route swipe-to-delete through the same confirmation so the associated-word
                     // offer applies here too (it previously deleted immediately). Deferred
                     // assignment matches the context-menu path so swipe dismissal doesn't
                     // collide with the dialog presentation either.
-                    let notes = offsets.map { store.notes[$0] }
+                    let notes = offsets.compactMap { displayedNotes.indices.contains($0) ? displayedNotes[$0] : nil }
                     queuePendingDeletion(PendingNoteDeletion(
                         noteIDs: Set(notes.map(\.id)),
                         title: notes.count == 1 ? resolvedTitle(for: notes[0]) : nil
@@ -181,6 +191,8 @@ struct NotesView: View {
                     ocrImportToolbarButton
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    sortMenu
+
                     // Shows bulk-delete action while edit mode is active.
                     if editMode == .active {
                         Button {
@@ -259,6 +271,95 @@ struct NotesView: View {
             .environment(\.editMode, $editMode)
         }
         .toolbar(.visible, for: .tabBar)
+    }
+
+    // The currently selected sort field, defaulting to manual if a stored raw value is
+    // no longer recognized (e.g. after a downgrade).
+    private var sortField: NotesSortField {
+        NotesSortField(rawValue: sortFieldRaw) ?? .manual
+    }
+
+    // The list as shown: the store's order under `manual`, otherwise a derived ordering. The
+    // store array itself is never re-written by sorting, so the manual order always survives.
+    private var displayedNotes: [Note] {
+        // Snapshot the metrics once — the closure is called on every comparison, and
+        // metricsByNoteID rebuilds the whole table each time it is read.
+        let metrics = metricsByNoteID
+        return NotesSorting.sorted(
+            store.notes,
+            field: sortField,
+            ascending: sortAscending,
+            metrics: { metrics[$0.id] ?? NoteSortMetrics() }
+        )
+    }
+
+    // Learning metrics for every note in one pass over the saved words, rather than re-scanning
+    // the word list once per note inside the comparator (which would make the sort O(notes ×
+    // words × log notes)). Only computed for the two fields that need it.
+    private var metricsByNoteID: [UUID: NoteSortMetrics] {
+        guard sortField == .wordsToLearn || sortField == .difficulty else { return [:] }
+
+        var unlearned: [UUID: Int] = [:]
+        var levelTotals: [UUID: (sum: Int, count: Int)] = [:]
+
+        for word in wordsStore.words {
+            let id = word.canonicalEntryID
+            let stage = wordsStore.masteryStage(for: id)
+            let isUnlearned = stage != .learned && stage != .mastered
+            // jlptLevel is N-number (N5 = 5, easiest); invert so a bigger score means harder.
+            let difficulty = dictionaryStore?.jlptLevel(for: id).map { 6 - $0 }
+
+            for noteID in Set(word.sourceNoteIDs) {
+                if isUnlearned { unlearned[noteID, default: 0] += 1 }
+                if let difficulty {
+                    let running = levelTotals[noteID] ?? (0, 0)
+                    levelTotals[noteID] = (running.sum + difficulty, running.count + 1)
+                }
+            }
+        }
+
+        var result: [UUID: NoteSortMetrics] = [:]
+        for note in store.notes {
+            let totals = levelTotals[note.id]
+            result[note.id] = NoteSortMetrics(
+                wordsToLearn: unlearned[note.id] ?? 0,
+                difficulty: totals.map { Double($0.sum) / Double($0.count) }
+            )
+        }
+        return result
+    }
+
+    // Field picker plus a direction toggle. Direction is hidden for `manual`, which has only
+    // the one order; picking a new field resets the direction to that field's natural default
+    // (A→Z for names, newest/longest/hardest first for the rest).
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort By", selection: Binding(
+                get: { sortField },
+                set: { newField in
+                    guard newField != sortField else { return }
+                    sortFieldRaw = newField.rawValue
+                    sortAscending = newField.defaultAscending
+                }
+            )) {
+                ForEach(NotesSortField.allCases) { field in
+                    Text(field.title).tag(field)
+                }
+            }
+
+            if sortField != .manual {
+                Divider()
+                Picker("Order", selection: $sortAscending) {
+                    Text(sortField.directionLabel(ascending: false)).tag(false)
+                    Text(sortField.directionLabel(ascending: true)).tag(true)
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.system(size: 16))
+                .frame(width: 32, height: 32)
+        }
+        .accessibilityLabel("Sort Notes")
     }
 
     // Shows whether a note currently has stored audio/subtitle files attached and/or a

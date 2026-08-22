@@ -105,7 +105,8 @@ struct ContentView: View {
                 onSelectNote: handleNoteSelected,
                 onCreateNote: handleNewNoteRequested,
                 onUpdateSelectedNote: handleNoteUpdated,
-                onOCRImportedNote: handleOCRImported
+                onOCRImportedNote: handleOCRImported,
+                dictionaryStore: readResources.dictionaryStore
             )
             .tag(ContentTab.notes)
             .tabItem {
