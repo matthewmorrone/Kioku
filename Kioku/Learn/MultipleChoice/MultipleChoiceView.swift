@@ -396,11 +396,13 @@ struct MultipleChoiceView: View {
     // would read identically, or whose answer side has no distinct distractors are dropped. The
     // final question list is shuffled.
     private func buildQuestions(from items: [StudyItem], selection: DirectionSelection) -> [MultipleChoiceQuestion] {
-        // Per-field answer pools so distractor selection stays O(1) per question.
-        let fieldPools: [StudyField: Set<String>] = [
-            .kanji: Set(items.map { $0.value(for: .kanji) }),
-            .kana: Set(items.map { $0.value(for: .kana) }),
-            .meaning: Set(items.map { $0.value(for: .meaning) }),
+        // Per-field answer pools so distractor selection stays O(1) per question. Each candidate
+        // carries its owner's word class, which is what lets the selector keep an option set from
+        // being three nouns and the verb that must therefore be the answer.
+        let fieldPools: [StudyField: [DistractorCandidate]] = [
+            .kanji: candidates(from: items, field: .kanji),
+            .kana: candidates(from: items, field: .kana),
+            .meaning: candidates(from: items, field: .meaning),
         ]
 
         var result: [MultipleChoiceQuestion] = []
@@ -422,13 +424,19 @@ struct MultipleChoiceView: View {
             let collidingAnswers = Set(
                 items.filter { $0.value(for: fields.prompt) == prompt }.map { $0.value(for: fields.answer) }
             )
-            var distractorPool = (fieldPools[fields.answer] ?? []).subtracting(collidingAnswers)
-            distractorPool.remove(correct)
+            var distractorPool = (fieldPools[fields.answer] ?? [])
+                .filter { collidingAnswers.contains($0.text) == false && $0.text != correct }
             guard distractorPool.isEmpty == false else { continue }
 
-            var distractors = Array(distractorPool)
-            distractors.shuffle()
-            distractors = Array(distractors.prefix(optionCount - 1))
+            // Shuffled first so the selector's ties break randomly; it then reorders by how well
+            // each candidate imitates the answer's word class and okurigana.
+            distractorPool.shuffle()
+            let distractors = DistractorSelector.choose(
+                from: distractorPool,
+                answer: DistractorCandidate(text: correct, wordClass: item.wordClass),
+                prompt: prompt,
+                count: optionCount - 1
+            )
 
             var options = distractors + [correct]
             options.shuffle()
@@ -442,6 +450,20 @@ struct MultipleChoiceView: View {
             ))
         }
         result.shuffle()
+        return result
+    }
+
+    // The distinct answer-side strings available for one field, each tagged with the word class of
+    // the item it came from. Deduplicated by text: two items sharing a spelling would otherwise let
+    // the same string be offered twice in one question.
+    private func candidates(from items: [StudyItem], field: StudyField) -> [DistractorCandidate] {
+        var seen: Set<String> = []
+        var result: [DistractorCandidate] = []
+        for item in items {
+            let text = item.value(for: field)
+            guard seen.insert(text).inserted else { continue }
+            result.append(DistractorCandidate(text: text, wordClass: item.wordClass))
+        }
         return result
     }
 }
