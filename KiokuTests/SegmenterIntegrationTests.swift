@@ -599,6 +599,19 @@ final class SegmenterIntegrationTests: XCTestCase {
         )
     }
 
+    // Reduplicated adverbs (もっともっと, ずっとずっと) tempt the greedy walk into taking the longer
+    // dictionary word at the head (もっとも 尤も) and stranding a bare っ. The lone っ must never
+    // survive as its own segment, and the head must stay もっと.
+    func testReduplicatedAdverbDoesNotStrandSmallTsu() throws {
+        let segmenter = try sharedResources().segmenter
+        let surfaces = segmenter.longestMatchEdges(for: "もっともっと愛している").map(\.surface)
+        XCTAssertFalse(
+            surfaces.contains { $0 == "っ" || $0 == "ッ" },
+            "Lone small-tsu segment in もっともっと愛している: \(surfaces)"
+        )
+        XCTAssertEqual(surfaces.first, "もっと", "Expected もっと head, got \(surfaces)")
+    }
+
     // Small kana (ゃゅょ, ぁぃぅぇぉ, …) and the prolonged sound mark are categorically never
     // word-initial, so the selected segmentation must never start a segment with one — they are
     // absorbed into the preceding segment, exactly like a stranded small-tsu.

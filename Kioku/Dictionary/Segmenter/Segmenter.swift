@@ -370,15 +370,12 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     // Reject if the character immediately following this edge is a small-tsu (っ/ッ)
                     // that has no dictionary candidate starting at that position — it would be stranded.
                     guard nextChar == "っ" || nextChar == "ッ" else { return true }
-                    let afterSmallTsu = text.index(after: nextPos)
-                    let hasCandidateAfter = edgesByStart[nextPos]?.contains { e in
-                        e.end > nextPos && e.end <= afterSmallTsu
-                    } == false
-                    // If there are multi-char candidates starting at っ (e.g. った, って) it's fine.
-                    let hasMultiCharCandidate = edgesByStart[nextPos]?.contains { e in
+                    // A っ may only begin the next segment when a multi-char candidate starts there
+                    // (e.g. った, って). Anything else — a lone っ edge, or no edge at all — means this
+                    // edge over-consumed (e.g. もっとも out of もっともっと), so try the next candidate.
+                    return edgesByStart[nextPos]?.contains { e in
                         text.distance(from: e.start, to: e.end) > 1
                     } ?? false
-                    return hasMultiCharCandidate || !hasCandidateAfter
                 } ?? sorted[0]
                 selectedEdges.append(chosen)
                 index = chosen.end
