@@ -108,6 +108,8 @@ enum AppleIntelligenceDistractorClient {
 
     #else
 
+    // Stands in where Foundation Models isn't in the SDK at all: no refinement is possible, and
+    // every caller already treats nil as "keep the heuristic options".
     static func refine(
         request: DistractorRequest,
         isRealWord: @escaping (String) -> Bool

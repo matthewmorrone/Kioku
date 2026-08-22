@@ -93,6 +93,8 @@ nonisolated enum DistractorRefinementPolicy {
         normalized(lhs) == normalized(rhs)
     }
 
+    // Lowercases and drops a leading article or infinitive marker, so the two spellings of one
+    // answer collapse to the same string.
     private static func normalized(_ text: String) -> String {
         var value = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         for prefix in ["to ", "a ", "an ", "the "] where value.hasPrefix(prefix) {
