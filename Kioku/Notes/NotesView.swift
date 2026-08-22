@@ -9,6 +9,10 @@ import SwiftUI
 // note, switch to the Read tab, and arm edit mode (mirroring the previous Read-side
 // flow's end state).
 struct NotesView: View {
+    // Supplies JLPT levels for the difficulty sort. Optional so previews and any caller that
+    // doesn't have the dictionary loaded still work — without it, difficulty sorting simply has
+    // no levels to average and every note falls into the "no difficulty" bucket.
+    var dictionaryStore: DictionaryStore? = nil
     var onSelectNote: ((Note) -> Void)? = nil
     var onCreateNote: (() -> Void)? = nil
     var onUpdateSelectedNote: ((Note?) -> Void)? = nil
@@ -28,6 +32,9 @@ struct NotesView: View {
     @State private var isShowingBulkImportSheet = false
     @State private var subtitleEditorAttachmentID: UUID?
     @State private var subtitleEditorNoteTitle: String = ""
+    // Persisted list ordering. Stored as the raw string (not the enum) so an option removed in a
+    // later build decodes back to `.manual` instead of failing to load.
+    @AppStorage("notesSortOrder") private var notesSortOrderRaw: String = NotesSortOrder.manual.rawValue
 
     // OCR state owned by NotesView. Declared here (not in the extension) because Swift
     // extensions on structs cannot add stored properties — only the helpers and the
@@ -45,7 +52,7 @@ struct NotesView: View {
             // progress is shown by CorrectionProgressOverlay (mounted globally in
             // ContentView so it follows the user between tabs), not inline here.
             List(selection: $selectedNoteIDs) {
-                ForEach(store.notes) { note in
+                ForEach(displayedNotes) { note in
                     // Renders a single note row with title and content preview.
                     HStack(alignment: .center, spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -81,13 +88,16 @@ struct NotesView: View {
                     .tag(note.id)
                     .deleteDisabled(editMode == .active)
                 }
-                .onMove(perform: store.moveNotes)
+                // Drag-to-reorder only makes sense while the list shows the stored order; under a
+                // derived sort a drop would have nowhere meaningful to land.
+                .onMove(perform: moveAction)
                 .onDelete { offsets in
                     // Route swipe-to-delete through the same confirmation so the associated-word
                     // offer applies here too (it previously deleted immediately). Deferred
                     // assignment matches the context-menu path so swipe dismissal doesn't
                     // collide with the dialog presentation either.
-                    let notes = offsets.map { store.notes[$0] }
+                    let visible = displayedNotes
+                    let notes = offsets.compactMap { visible.indices.contains($0) ? visible[$0] : nil }
                     queuePendingDeletion(PendingNoteDeletion(
                         noteIDs: Set(notes.map(\.id)),
                         title: notes.count == 1 ? resolvedTitle(for: notes[0]) : nil
@@ -181,6 +191,8 @@ struct NotesView: View {
                     ocrImportToolbarButton
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    sortMenu
+
                     // Shows bulk-delete action while edit mode is active.
                     if editMode == .active {
                         Button {
@@ -259,6 +271,72 @@ struct NotesView: View {
             .environment(\.editMode, $editMode)
         }
         .toolbar(.visible, for: .tabBar)
+    }
+
+    // MARK: - Sorting
+
+    // The active sort, defaulting to manual order for an unknown/absent stored value.
+    private var sortOrder: NotesSortOrder {
+        NotesSortOrder(rawValue: notesSortOrderRaw) ?? .manual
+    }
+
+    // Drag-to-reorder handler, or nil under a derived sort (a drop would have nowhere
+    // meaningful to land when the displayed order isn't the stored one). Spelled out as a typed
+    // property rather than a ternary inline in `.onMove` so the optional-closure type is explicit.
+    private var moveAction: ((IndexSet, Int) -> Void)? {
+        sortOrder == .manual ? { source, destination in store.moveNotes(from: source, to: destination) } : nil
+    }
+
+    // The notes as the list renders them. Sorting is display-only: the store keeps its own
+    // order, so switching back to Manual restores the user's arrangement exactly.
+    private var displayedNotes: [Note] {
+        NotesSorting.sorted(store.notes, by: sortOrder, metrics: sortMetrics(for:))
+    }
+
+    // Derives the length / difficulty / words-left keys for one note from the word and
+    // dictionary stores. Only the sort actually in use reads a given field, but computing all
+    // three together keeps this a single pass over the note's saved words.
+    private func sortMetrics(for note: Note) -> NoteSortMetrics {
+        let words = wordsStore.words.filter { $0.sourceNoteIDs.contains(note.id) }
+        let levels = words.map { dictionaryStore?.jlptLevel(for: $0.canonicalEntryID) }
+        let left = words.filter { word in
+            let stage = wordsStore.masteryStage(for: word.canonicalEntryID)
+            return stage != .learned && stage != .mastered
+        }.count
+
+        return NoteSortMetrics(
+            length: note.content.count,
+            difficulty: NotesSorting.difficulty(forJLPTLevels: levels),
+            wordsLeftToLearn: left
+        )
+    }
+
+    // Sort picker. Grouped into sections (name / dates / length / learning) so the option list
+    // stays scannable, with a checkmark on the active choice.
+    private var sortMenu: some View {
+        Menu {
+            ForEach(Array(NotesSortOrder.menuGroups.enumerated()), id: \.offset) { group in
+                Section {
+                    ForEach(group.element) { option in
+                        Button {
+                            notesSortOrderRaw = option.rawValue
+                        } label: {
+                            if option == sortOrder {
+                                Label(option.title, systemImage: "checkmark")
+                            } else {
+                                Text(option.title)
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: sortOrder == .manual ? "arrow.up.arrow.down" : "arrow.up.arrow.down.circle.fill")
+                .font(.system(size: 16))
+                .frame(width: 32, height: 32)
+        }
+        .accessibilityLabel("Sort Notes")
+        .accessibilityValue(sortOrder.title)
     }
 
     // Shows whether a note currently has stored audio/subtitle files attached and/or a

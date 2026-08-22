@@ -102,6 +102,7 @@ struct ContentView: View {
             // small — SwiftUI's type-checker times out when a single constructor accumulates
             // too many inline closures.
             NotesView(
+                dictionaryStore: readResources.dictionaryStore,
                 onSelectNote: handleNoteSelected,
                 onCreateNote: handleNewNoteRequested,
                 onUpdateSelectedNote: handleNoteUpdated,
