@@ -387,7 +387,7 @@ struct FlashcardsView: View {
 }
 
 // Multiselect dropdown scoping the session to saved words from one or more notes.
-// An empty selection ("None") means no note filter — all saved words are eligible.
+// An empty selection ("Any") means no note filter — all saved words are eligible.
 // Only notes that contain at least one saved word are listed.
 // Internal (not private) so the multiple-choice study mode can reuse the same picker.
 struct FlashcardNotePicker: View {
@@ -406,9 +406,9 @@ struct FlashcardNotePicker: View {
                 Menu(summary(from: notes)) {
                     Button { selectedNoteIDs.removeAll() } label: {
                         if selectedNoteIDs.isEmpty {
-                            Label("None", systemImage: "checkmark")
+                            Label("Any", systemImage: "checkmark")
                         } else {
-                            Text("None")
+                            Text("Any")
                         }
                     }
                     Divider()
@@ -446,7 +446,7 @@ struct FlashcardNotePicker: View {
 
     // Short label describing the current selection for the menu's trigger text.
     private func summary(from notes: [Note]) -> String {
-        if selectedNoteIDs.isEmpty { return "None" }
+        if selectedNoteIDs.isEmpty { return "Any" }
         if selectedNoteIDs.count == 1,
            let id = selectedNoteIDs.first,
            let note = notes.first(where: { $0.id == id }) {
