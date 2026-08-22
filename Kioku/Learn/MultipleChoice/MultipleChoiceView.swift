@@ -152,14 +152,16 @@ struct MultipleChoiceView: View {
 
             // Every other activity offers a way past a question you can't answer; without this the
             // only exit here is a deliberate wrong guess, which reads as a worse answer than
-            // admitting you don't know.
-            if selected == nil {
-                Button { reveal(question: question) } label: {
-                    Label("Show Answer", systemImage: "eye")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
+            // admitting you don't know. Kept in the layout once answered — hidden rather than
+            // removed — so the prompt and options don't slide down into the space it vacated.
+            Button { reveal(question: question) } label: {
+                Label("Show Answer", systemImage: "eye")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.bordered)
+            .opacity(selected == nil ? 1 : 0)
+            .allowsHitTesting(selected == nil)
+            .accessibilityHidden(selected != nil)
         }
     }
 
