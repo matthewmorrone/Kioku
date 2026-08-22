@@ -53,45 +53,12 @@ struct NotesView: View {
             // ContentView so it follows the user between tabs), not inline here.
             List(selection: $selectedNoteIDs) {
                 ForEach(displayedNotes) { note in
-                    // Renders a single note row with title and content preview.
-                    HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(note.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : note.title)
-                                .font(.headline)
-                                .lineLimit(1)
-                            Text(note.content)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer(minLength: 0)
-
-                        noteAttachmentIndicators(for: note)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .contextMenu {
-                        noteContextMenu(for: note)
-                    }
-                    .onTapGesture {
-                        if editMode == .active {
-                            if selectedNoteIDs.contains(note.id) {
-                                selectedNoteIDs.remove(note.id)
-                            } else {
-                                selectedNoteIDs.insert(note.id)
-                            }
-                        } else {
-                            onSelectNote?(note)
-                        }
-                    }
-                    .tag(note.id)
-                    .deleteDisabled(editMode == .active)
+                    noteRow(for: note)
                 }
                 // Reordering is only meaningful against the stored order; under a derived sort
                 // there is no stable slot to drop into, so the handles are withheld instead of
                 // silently rewriting an order the sort would immediately override.
-                .onMove(perform: sortField == .manual ? store.moveNotes : nil)
+                .onMove(perform: moveHandler)
                 .onDelete { offsets in
                     // Route swipe-to-delete through the same confirmation so the associated-word
                     // offer applies here too (it previously deleted immediately). Deferred
@@ -281,6 +248,65 @@ struct NotesView: View {
 
     // The list as shown: the store's order under `manual`, otherwise a derived ordering. The
     // store array itself is never re-written by sorting, so the manual order always survives.
+    // Renders a single note row with title, content preview, and attachment indicators.
+    // Extracted from `body` to keep the list's expression small enough for the type checker.
+    @ViewBuilder
+    private func noteRow(for note: Note) -> some View {
+        let trimmedTitle = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(trimmedTitle.isEmpty ? "" : note.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(note.content)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            noteAttachmentIndicators(for: note)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .contextMenu {
+            noteContextMenu(for: note)
+        }
+        .onTapGesture {
+            if editMode == .active {
+                if selectedNoteIDs.contains(note.id) {
+                    selectedNoteIDs.remove(note.id)
+                } else {
+                    selectedNoteIDs.insert(note.id)
+                }
+            } else {
+                onSelectNote?(note)
+            }
+        }
+        .tag(note.id)
+        .deleteDisabled(editMode == .active)
+    }
+
+    // Explicitly typed so the ternary isn't inferred inside `body` — an optional-closure
+    // ternary there was enough to push the view's type-checking past the compiler's budget.
+    private var moveHandler: ((IndexSet, Int) -> Void)? {
+        sortField == .manual ? store.moveNotes : nil
+    }
+
+    // Same reason: the Picker's binding is built here rather than inline in `sortMenu`.
+    private var sortFieldBinding: Binding<NotesSortField> {
+        Binding(
+            get: { self.sortField },
+            set: { newField in
+                guard newField != self.sortField else { return }
+                self.sortFieldRaw = newField.rawValue
+                self.sortAscending = newField.defaultAscending
+            }
+        )
+    }
+
     private var displayedNotes: [Note] {
         // Snapshot the metrics once — the closure is called on every comparison, and
         // metricsByNoteID rebuilds the whole table each time it is read.
@@ -312,8 +338,8 @@ struct NotesView: View {
             for noteID in Set(word.sourceNoteIDs) {
                 if isUnlearned { unlearned[noteID, default: 0] += 1 }
                 if let difficulty {
-                    let running = levelTotals[noteID] ?? (0, 0)
-                    levelTotals[noteID] = (running.sum + difficulty, running.count + 1)
+                    let running: (sum: Int, count: Int) = levelTotals[noteID] ?? (sum: 0, count: 0)
+                    levelTotals[noteID] = (sum: running.sum + difficulty, count: running.count + 1)
                 }
             }
         }
@@ -334,14 +360,7 @@ struct NotesView: View {
     // (A→Z for names, newest/longest/hardest first for the rest).
     private var sortMenu: some View {
         Menu {
-            Picker("Sort By", selection: Binding(
-                get: { sortField },
-                set: { newField in
-                    guard newField != sortField else { return }
-                    sortFieldRaw = newField.rawValue
-                    sortAscending = newField.defaultAscending
-                }
-            )) {
+            Picker("Sort By", selection: sortFieldBinding) {
                 ForEach(NotesSortField.allCases) { field in
                     Text(field.title).tag(field)
                 }
