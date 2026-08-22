@@ -429,6 +429,8 @@ struct FlashcardNotePicker: View {
                         }
                     }
                 }
+                // Multiselect: each tap toggles one note, so the menu stays up until dismissed.
+                .menuActionDismissBehavior(.disabled)
             }
         }
     }
@@ -496,6 +498,8 @@ struct FlashcardJLPTPicker: View {
                         }
                     }
                 }
+                // Multiselect: each tap toggles one level, so the menu stays up until dismissed.
+                .menuActionDismissBehavior(.disabled)
             }
         }
     }

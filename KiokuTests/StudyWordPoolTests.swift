@@ -182,28 +182,6 @@ final class StudyWordPoolTests: XCTestCase {
         XCTAssertEqual(selection.words.count, 2)
     }
 
-    // The home screens explain a shrunken count only when the exclusion is what shrank it.
-    func testHintNamesHowManyLearnedWordsAreHidden() {
-        XCTAssertEqual(
-            StudyWordPool.learnedExclusionHint(hiddenLearnedCount: 3),
-            "3 learned words hidden. Turn off “Skip learned words” in Settings to review them anyway."
-        )
-    }
-
-    // Singular wording for exactly one hidden word.
-    func testHintUsesSingularForOneHiddenWord() {
-        XCTAssertEqual(
-            StudyWordPool.learnedExclusionHint(hiddenLearnedCount: 1),
-            "1 learned word hidden. Turn off “Skip learned words” in Settings to review them anyway."
-        )
-    }
-
-    // No hint when nothing was held back — the shortfall has some other cause, and the mode's own
-    // message already covers it.
-    func testNoHintWhenNothingHeldBack() {
-        XCTAssertNil(StudyWordPool.learnedExclusionHint(hiddenLearnedCount: 0))
-    }
-
     // MARK: - Stage predicate
 
     // The stage predicate the exclusion is built on, pinned directly so a future MasteryStage case

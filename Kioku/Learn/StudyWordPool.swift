@@ -90,17 +90,6 @@ nonisolated enum StudyWordPool {
         return StudyWordSelection(words: studiable, hiddenLearnedCount: inScope.count - studiable.count)
     }
 
-    // The one-line explanation a mode's home screen shows when the learned exclusion is why its
-    // selection came up short. Nil when nothing was held back — the shortfall then has some other
-    // cause (no saved words, too narrow a note/level/scope filter) and the mode's own message
-    // already covers it. Centralized so all three modes word it identically and point at the same
-    // escape hatch, which lives in Settings where nothing on their own screen hints at it.
-    static func learnedExclusionHint(hiddenLearnedCount: Int) -> String? {
-        guard hiddenLearnedCount > 0 else { return nil }
-        let noun = hiddenLearnedCount == 1 ? "word" : "words"
-        return "\(hiddenLearnedCount) learned \(noun) hidden. Turn off “Skip learned words” in Settings to review them anyway."
-    }
-
     // Whether a word at this stage still belongs in a study set. New and Learning do; Learned and
     // Mastered are what the user has told us (or the auto-learn policy has concluded) they're done
     // with, which is exactly what "exclude learned" means.
