@@ -39,6 +39,18 @@ enum NotesSortOrder: String, CaseIterable, Identifiable {
         }
     }
 
+    // Whether this order compares NoteSortMetrics at all. Title and date orders read the note
+    // itself, so the caller can skip deriving metrics (a scan of every saved word) entirely.
+    var usesMetrics: Bool {
+        switch self {
+        case .manual, .titleAToZ, .titleZToA, .recentlyModified, .leastRecentlyModified,
+             .newestCreated, .oldestCreated:
+            return false
+        case .longest, .shortest, .hardest, .easiest, .mostWordsLeft, .fewestWordsLeft:
+            return true
+        }
+    }
+
     // Grouping used by the sort menu so the thirteen options read as five short sections
     // rather than one long list.
     static let menuGroups: [[NotesSortOrder]] = [

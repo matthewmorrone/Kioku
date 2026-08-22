@@ -290,25 +290,54 @@ struct NotesView: View {
     // The notes as the list renders them. Sorting is display-only: the store keeps its own
     // order, so switching back to Manual restores the user's arrangement exactly.
     private var displayedNotes: [Note] {
-        NotesSorting.sorted(store.notes, by: sortOrder, metrics: sortMetrics(for:))
+        // Title/date orders never read the metrics, so they skip deriving them — otherwise every
+        // ordinary body update would scan the whole saved-word collection for nothing.
+        guard sortOrder.usesMetrics else {
+            return NotesSorting.sorted(store.notes, by: sortOrder)
+        }
+
+        let metricsByNoteID = sortMetricsByNoteID()
+        return NotesSorting.sorted(store.notes, by: sortOrder) { note in
+            metricsByNoteID[note.id] ?? NoteSortMetrics(length: note.content.count)
+        }
     }
 
-    // Derives the length / difficulty / words-left keys for one note from the word and
-    // dictionary stores. Only the sort actually in use reads a given field, but computing all
-    // three together keeps this a single pass over the note's saved words.
-    private func sortMetrics(for note: Note) -> NoteSortMetrics {
-        let words = wordsStore.words.filter { $0.sourceNoteIDs.contains(note.id) }
-        let levels = words.map { dictionaryStore?.jlptLevel(for: $0.canonicalEntryID) }
-        let left = words.filter { word in
-            let stage = wordsStore.masteryStage(for: word.canonicalEntryID)
-            return stage != .learned && stage != .mastered
-        }.count
+    // Derives the length / difficulty / words-left keys for every note in one pass over the
+    // saved words, rather than re-filtering the whole collection per note (which made ordering
+    // quadratic in notes × saved words). Each word's JLPT level and mastery stage is looked up
+    // once here even when it is attributed to several notes.
+    private func sortMetricsByNoteID() -> [UUID: NoteSortMetrics] {
+        // nil (no dictionary loaded) is NOT the same as "this word has no JLPT level": without
+        // the dictionary every note would average out to the unleveled weight and sort as if it
+        // had a real difficulty. Leaving levels unrecorded keeps them all unscored instead.
+        let hasLevels = dictionaryStore != nil
+        var levelsByNoteID: [UUID: [Int?]] = [:]
+        var leftByNoteID: [UUID: Int] = [:]
 
-        return NoteSortMetrics(
-            length: note.content.count,
-            difficulty: NotesSorting.difficulty(forJLPTLevels: levels),
-            wordsLeftToLearn: left
-        )
+        for word in wordsStore.words where word.sourceNoteIDs.isEmpty == false {
+            let level = dictionaryStore?.jlptLevel(for: word.canonicalEntryID)
+            let stage = wordsStore.masteryStage(for: word.canonicalEntryID)
+            let isLeftToLearn = stage != .learned && stage != .mastered
+
+            for noteID in Set(word.sourceNoteIDs) {
+                if hasLevels {
+                    levelsByNoteID[noteID, default: []].append(level)
+                }
+                if isLeftToLearn {
+                    leftByNoteID[noteID, default: 0] += 1
+                }
+            }
+        }
+
+        // uniquingKeysWith (rather than uniqueKeysWithValues) so a duplicated identifier in a
+        // corrupt on-disk collection degrades the sort instead of trapping the app.
+        return Dictionary(store.notes.map { note in
+            (note.id, NoteSortMetrics(
+                length: note.content.count,
+                difficulty: NotesSorting.difficulty(forJLPTLevels: levelsByNoteID[note.id] ?? []),
+                wordsLeftToLearn: leftByNoteID[note.id] ?? 0
+            ))
+        }, uniquingKeysWith: { first, _ in first })
     }
 
     // Sort picker. Grouped into sections (name / dates / length / learning) so the option list

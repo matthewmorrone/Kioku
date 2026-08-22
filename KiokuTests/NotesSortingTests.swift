@@ -82,6 +82,22 @@ final class NotesSortingTests: XCTestCase {
         XCTAssertEqual(NotesSorting.sorted([a, b, c], by: .longest) { _ in NoteSortMetrics(length: 2) }.map(\.id), [a.id, b.id, c.id])
     }
 
+    // Only the metric-backed orders need NoteSortMetrics; title/date orders read the note itself,
+    // which is what lets NotesView skip the saved-word scan for them entirely.
+    func testUsesMetricsCoversOnlyMetricBackedOrders() {
+        let metricBacked: Set<NotesSortOrder> = [.longest, .shortest, .hardest, .easiest, .mostWordsLeft, .fewestWordsLeft]
+        for order in NotesSortOrder.allCases {
+            XCTAssertEqual(order.usesMetrics, metricBacked.contains(order), "usesMetrics wrong for \(order.rawValue)")
+        }
+    }
+
+    // Every option is reachable from the menu, and nothing is listed twice.
+    func testMenuGroupsCoverEveryOptionExactlyOnce() {
+        let listed = NotesSortOrder.menuGroups.flatMap { $0 }
+        XCTAssertEqual(Set(listed), Set(NotesSortOrder.allCases))
+        XCTAssertEqual(listed.count, NotesSortOrder.allCases.count)
+    }
+
     // N5 is the easiest (weight 1) and an unleveled word the hardest (weight 6).
     func testDifficultyWeights() {
         XCTAssertEqual(NotesSorting.difficultyWeight(forJLPTLevel: 5), 1)
