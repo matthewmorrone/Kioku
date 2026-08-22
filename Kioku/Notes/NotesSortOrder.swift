@@ -81,6 +81,8 @@ enum NotesSorting {
         // (Swift's `sort` is not guaranteed stable on its own).
         let decorated = notes.enumerated().map { (index: $0.offset, note: $0.element) }
 
+        // Orders one pair for the active field, falling through to the original index whenever
+        // the field's own values tie.
         func compare(_ lhs: (index: Int, note: Note), _ rhs: (index: Int, note: Note)) -> Bool {
             switch field {
             case .manual:
