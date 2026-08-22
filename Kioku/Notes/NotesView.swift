@@ -39,13 +39,43 @@ struct NotesView: View {
     @State var ocrImportErrorMessage = ""
     @State var isShowingURLImportSheet = false
 
+    // Persisted display sort for the list. `.manual` (the stored order) is the default so the
+    // tab behaves exactly as before until the user picks something else.
+    @AppStorage("notesSortOrder") private var notesSortOrderRaw: String = NotesSortOrder.manual.rawValue
+
+    private var notesSortOrder: NotesSortOrder {
+        NotesSortOrder(rawValue: notesSortOrderRaw) ?? .manual
+    }
+
+    // The notes as rendered. Every list operation that maps an offset back to a note (delete,
+    // move) must index into this, not `store.notes`, or it hits the wrong note whenever a
+    // non-manual sort is active.
+    private var displayedNotes: [Note] {
+        NotesSortOrder.sorted(store.notes, by: notesSortOrder, wordsLeftToLearn: wordsLeftToLearn)
+    }
+
+    // Reorder handler for the list, or nil to disable dragging (see the .onMove comment).
+    private var moveHandler: ((IndexSet, Int) -> Void)? {
+        guard notesSortOrder == .manual else { return nil }
+        return { source, destination in store.moveNotes(from: source, to: destination) }
+    }
+
+    // Saved words attributed to this note that aren't marked learned yet — the key behind the
+    // "words left to learn" sorts.
+    private func wordsLeftToLearn(_ note: Note) -> Int {
+        wordsStore.words.reduce(into: 0) { count, word in
+            guard word.sourceNoteIDs.contains(note.id) else { return }
+            if wordsStore.isLearned(id: word.canonicalEntryID) == false { count += 1 }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             // Displays the selectable/reorderable list of notes. Correction-queue
             // progress is shown by CorrectionProgressOverlay (mounted globally in
             // ContentView so it follows the user between tabs), not inline here.
             List(selection: $selectedNoteIDs) {
-                ForEach(store.notes) { note in
+                ForEach(displayedNotes) { note in
                     // Renders a single note row with title and content preview.
                     HStack(alignment: .center, spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -81,13 +111,18 @@ struct NotesView: View {
                     .tag(note.id)
                     .deleteDisabled(editMode == .active)
                 }
-                .onMove(perform: store.moveNotes)
+                // Drag-reorder writes offsets straight into the stored order, so it only makes
+                // sense while the list *is* the stored order. Under any other sort the rows the
+                // user drags don't correspond to store indices, and the sort would immediately
+                // undo the move anyway — so reordering is disabled there.
+                .onMove(perform: moveHandler)
                 .onDelete { offsets in
                     // Route swipe-to-delete through the same confirmation so the associated-word
                     // offer applies here too (it previously deleted immediately). Deferred
                     // assignment matches the context-menu path so swipe dismissal doesn't
                     // collide with the dialog presentation either.
-                    let notes = offsets.map { store.notes[$0] }
+                    let visible = displayedNotes
+                    let notes = offsets.map { visible[$0] }
                     queuePendingDeletion(PendingNoteDeletion(
                         noteIDs: Set(notes.map(\.id)),
                         title: notes.count == 1 ? resolvedTitle(for: notes[0]) : nil
@@ -179,6 +214,8 @@ struct NotesView: View {
                     // on Notes and hands the recognized Note to ContentView via
                     // `onOCRImportedNote` for tab-switch + edit-mode activation.
                     ocrImportToolbarButton
+
+                    sortToolbarMenu
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     // Shows bulk-delete action while edit mode is active.
@@ -500,6 +537,27 @@ struct NotesView: View {
         }
 
         onUpdateSelectedNote?(store.note(withID: duplicatedNote.id))
+    }
+
+    // Sort picker for the list. A Menu rather than the Words tab's filter sheet because Notes has
+    // no other filters to host — sort is the only choice here — and the icon fills in when a
+    // non-default sort is active so the list order never looks unexplained.
+    @ViewBuilder
+    private var sortToolbarMenu: some View {
+        Menu {
+            Picker("Sort", selection: $notesSortOrderRaw) {
+                ForEach(NotesSortOrder.allCases) { order in
+                    Label(order.title, systemImage: order.systemImage).tag(order.rawValue)
+                }
+            }
+        } label: {
+            Image(systemName: notesSortOrder == .manual
+                ? "arrow.up.arrow.down.circle"
+                : "arrow.up.arrow.down.circle.fill")
+                .font(.system(size: 16))
+                .frame(width: 32, height: 32)
+        }
+        .accessibilityLabel("Sort Notes")
     }
 
     // Resolves a presentable note title for menu labels and shared text subjects.
