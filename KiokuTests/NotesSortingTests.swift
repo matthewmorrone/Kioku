@@ -3,6 +3,10 @@ import XCTest
 
 // Verifies the pure notes ordering: each sort key, its direction, stable tie-breaking on the
 // stored (manual) position, and where notes with no difficulty signal land.
+//
+// @MainActor because Note and the sorting helpers pick up the project's default main-actor
+// isolation, so a nonisolated test case cannot touch them.
+@MainActor
 final class NotesSortingTests: XCTestCase {
 
     private func date(_ offsetDays: Double) -> Date {
