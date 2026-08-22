@@ -51,7 +51,8 @@ struct NotesView: View {
     // move) must index into this, not `store.notes`, or it hits the wrong note whenever a
     // non-manual sort is active.
     private var displayedNotes: [Note] {
-        NotesSortOrder.sorted(store.notes, by: notesSortOrder, wordsLeftToLearn: wordsLeftToLearn)
+        let counts = notesSortOrder.usesWordsLeftToLearn ? wordsLeftToLearnByNote() : [:]
+        return NotesSortOrder.sorted(store.notes, by: notesSortOrder) { counts[$0.id] ?? 0 }
     }
 
     // Reorder handler for the list, or nil to disable dragging (see the .onMove comment).
@@ -60,13 +61,18 @@ struct NotesView: View {
         return { source, destination in store.moveNotes(from: source, to: destination) }
     }
 
-    // Saved words attributed to this note that aren't marked learned yet — the key behind the
-    // "words left to learn" sorts.
-    private func wordsLeftToLearn(_ note: Note) -> Int {
-        wordsStore.words.reduce(into: 0) { count, word in
-            guard word.sourceNoteIDs.contains(note.id) else { return }
-            if wordsStore.isLearned(id: word.canonicalEntryID) == false { count += 1 }
+    // Per-note count of saved words attributed to it that aren't marked learned yet — the key
+    // behind the "words left to learn" sorts. Built in a single pass over the words store (and
+    // only when such a sort is active) so the list stays O(words + notes) rather than scanning
+    // every saved word once per note on each view recomputation.
+    private func wordsLeftToLearnByNote() -> [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        for word in wordsStore.words where wordsStore.isLearned(id: word.canonicalEntryID) == false {
+            for noteID in word.sourceNoteIDs {
+                counts[noteID, default: 0] += 1
+            }
         }
+        return counts
     }
 
     var body: some View {

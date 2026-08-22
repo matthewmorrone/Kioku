@@ -49,6 +49,12 @@ enum NotesSortOrder: String, CaseIterable, Identifiable {
         }
     }
 
+    // True for the orders that actually consult the learn counts, so callers can skip building
+    // them (a full pass over the saved words) for every other sort.
+    var usesWordsLeftToLearn: Bool {
+        self == .mostWordsToLearn || self == .fewestWordsToLearn
+    }
+
     // A note's sortable title. Mirrors NotesView.resolvedTitle so untitled notes sort where the
     // user sees them ("Untitled Note") instead of collapsing to the front as empty strings.
     static func sortTitle(for note: Note) -> String {

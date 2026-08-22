@@ -1,6 +1,9 @@
 import XCTest
 @testable import Kioku
 
+// NotesSortOrder inherits the target's MainActor default isolation (SWIFT_DEFAULT_ACTOR_ISOLATION),
+// so the whole case is annotated rather than hopping per assertion.
+@MainActor
 final class NotesSortOrderTests: XCTestCase {
     private func note(
         _ title: String,
@@ -79,6 +82,13 @@ final class NotesSortOrderTests: XCTestCase {
             let sorted = NotesSortOrder.sorted(notes, by: order) { $0.title.count % 2 }
             XCTAssertEqual(Set(sorted.map(\.id)), Set(notes.map(\.id)), "\(order.rawValue)")
             XCTAssertEqual(sorted.count, notes.count, "\(order.rawValue)")
+        }
+    }
+
+    func testOnlyLearnCountOrdersNeedTheLearnCounts() {
+        for order in NotesSortOrder.allCases {
+            let expected = order == .mostWordsToLearn || order == .fewestWordsToLearn
+            XCTAssertEqual(order.usesWordsLeftToLearn, expected, order.rawValue)
         }
     }
 
