@@ -289,10 +289,14 @@ struct NotesView: View {
         .deleteDisabled(editMode == .active)
     }
 
-    // Explicitly typed so the ternary isn't inferred inside `body` — an optional-closure
-    // ternary there was enough to push the view's type-checking past the compiler's budget.
+    // Written as an early return rather than a `condition ? store.moveNotes : nil` ternary:
+    // mixing a method reference with nil in one ternary made the type checker give up
+    // ("failed to produce diagnostic for expression"), whether it sat here or in `body`.
     private var moveHandler: ((IndexSet, Int) -> Void)? {
-        sortField == .manual ? store.moveNotes : nil
+        guard sortField == .manual else { return nil }
+        return { source, destination in
+            store.moveNotes(from: source, to: destination)
+        }
     }
 
     // Same reason: the Picker's binding is built here rather than inline in `sortMenu`.
