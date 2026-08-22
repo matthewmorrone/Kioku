@@ -3,6 +3,7 @@ import XCTest
 
 // Verifies the pure notes-list ordering: each field's comparison, direction flipping, stability
 // on ties, and the unrated-notes-last rule for Difficulty.
+@MainActor
 final class NotesSortingTests: XCTestCase {
 
     private func note(
