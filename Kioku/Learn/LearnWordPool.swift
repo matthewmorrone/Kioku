@@ -18,6 +18,9 @@ struct StudyItem: Identifiable {
     // Whether the word has a kanji form at all — distinct from `kanji != nil`, which is also nil
     // when the headword merely equals the surface.
     let hasKanjiForm: Bool
+    // What kind of word this is, so Multiple Choice can offer distractors of the same kind rather
+    // than making the answer the only verb among nouns.
+    let wordClass: WordClass
 
     var id: Int64 { word.canonicalEntryID }
 
@@ -133,7 +136,8 @@ enum LearnWordPool {
                 glosses: fields.glosses.isEmpty ? [gloss] : fields.glosses,
                 // Kanji visible in the surface counts even if the dictionary reported no headword,
                 // so this can never wrongly claim a kanji-bearing word is kana-only.
-                hasKanjiForm: kanji?.isEmpty == false || ScriptClassifier.containsKanji(surface)
+                hasKanjiForm: kanji?.isEmpty == false || ScriptClassifier.containsKanji(surface),
+                wordClass: WordClass.from(posTags: fields.posTags)
             ))
         }
         return items
@@ -170,13 +174,28 @@ enum LearnWordPool {
         if glosses.isEmpty { glosses = data.entry.senses.first?.glosses ?? [] }
         guard let primary = glosses.first else { return nil }
 
+        // Pos codes from the senses the user actually selected, falling back to the whole entry
+        // when nothing was selected — the same rule the gloss set above follows, so a word saved
+        // for its noun sense isn't classed by a verb sense it was never studied for.
+        let posSenses = selectedSenseIDs.compactMap { sensesByID[$0] }
+        let classedSenses = posSenses.isEmpty ? data.entry.senses : posSenses
+        var posTags: [String] = []
+        for sense in classedSenses {
+            guard let pos = sense.pos else { continue }
+            for tag in pos.components(separatedBy: ",") {
+                let trimmed = tag.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty == false { posTags.append(trimmed) }
+            }
+        }
+
         let forms = WordFormResolver.kanjiAndKana(
             entry: data.entry, store: store, entryID: entryID,
             selectedSenseIDs: selectedSenseIDs, selectedGlosses: selectedGlosses,
             chosenReading: chosenReading
         )
         return ResolvedWordFields(
-            entryID: entryID, english: primary, kanji: forms.kanji, kana: forms.kana, glosses: glosses
+            entryID: entryID, english: primary, kanji: forms.kanji, kana: forms.kana,
+            glosses: glosses, posTags: posTags
         )
     }
 }

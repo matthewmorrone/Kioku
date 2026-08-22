@@ -12,6 +12,19 @@ struct MultipleChoiceQuestion: Identifiable {
     let direction: QuestionDirection
     // Carried from the source item so answering can tell ReviewStore which promotion bar applies.
     let hasKanjiForm: Bool
+    // Which side of the word the options are written on, and every answer that would have been
+    // accepted — both needed by the on-device refinement pass, which has to know what kind of
+    // option it's writing and must never offer a second correct one.
+    let answerField: StudyField
+    let acceptedAnswers: [String]
+    // The wider set of pool options this question's distractors were drawn from, kept so the
+    // model can re-pick from the same shortlist rather than being handed only the heuristic's
+    // three. Capped: the on-device context window is small and a long list degrades its answer.
+    let candidatePool: [String]
+
+    // The wrong answers currently on offer — what a refinement pass replaces, and what it falls
+    // back to when the model returns too few usable options.
+    var distractors: [String] { options.filter { $0 != correct } }
 }
 
 // Renders the multiple-choice study mode: home configuration, active quiz, and summary.
@@ -61,6 +74,16 @@ struct MultipleChoiceView: View {
 
     // Number of answer choices presented per question (correct + up to three distractors).
     private let optionCount = 4
+    // How many pool candidates the on-device refinement pass is shown per question. Enough to give
+    // it a real choice, short enough that the small context window doesn't blunt its judgement.
+    private static let refinementCandidateCount = 10
+
+    // Whether to let Apple Intelligence rewrite option sets in the background. Off means every
+    // question keeps the heuristic options it was built with.
+    @AppStorage(QuizAssistSettings.smarterOptionsKey) private var smarterOptions = QuizAssistSettings.defaultSmarterOptions
+    // The in-flight refinement pass, cancelled when the session ends so it can't outlive the quiz
+    // it was improving.
+    @State private var refinementTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -152,14 +175,16 @@ struct MultipleChoiceView: View {
 
             // Every other activity offers a way past a question you can't answer; without this the
             // only exit here is a deliberate wrong guess, which reads as a worse answer than
-            // admitting you don't know.
-            if selected == nil {
-                Button { reveal(question: question) } label: {
-                    Label("Show Answer", systemImage: "eye")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
+            // admitting you don't know. Kept in the layout once answered — hidden rather than
+            // removed — so the prompt and options don't slide down into the space it vacated.
+            Button { reveal(question: question) } label: {
+                Label("Show Answer", systemImage: "eye")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.bordered)
+            .opacity(selected == nil ? 1 : 0)
+            .allowsHitTesting(selected == nil)
+            .accessibilityHidden(selected != nil)
         }
     }
 
@@ -350,7 +375,78 @@ struct MultipleChoiceView: View {
             // A positive limit caps the quiz; 0 (or blank field) means quiz everything.
             questions = limit > 0 ? Array(built.prefix(limit)) : built
             isResolving = false
+            startRefinement()
         }
+    }
+
+    // Walks the question list in the background, asking the on-device model to improve each
+    // option set. Deliberately runs after the quiz has started rather than before: the model takes
+    // roughly a second per question, and a learner shouldn't wait on it to see question one. Each
+    // question is upgraded only while it's still ahead of the user — an option set is never
+    // rewritten under someone who is looking at it.
+    private func startRefinement() {
+        refinementTask?.cancel()
+        guard smarterOptions, AppleIntelligenceAvailability.isAvailable else { return }
+        guard let dictionaryStore else { return }
+        refinementTask = Task { @MainActor in
+            guard #available(iOS 26.0, *) else { return }
+            for position in questions.indices {
+                if Task.isCancelled { return }
+                // The list can be replaced out from under this loop (End, or a Restart building a
+                // new one), so its bounds are re-checked rather than trusted from `indices`.
+                guard position < questions.count else { return }
+                // Only questions the user hasn't reached. `index` moves while this runs, so the
+                // check has to happen here rather than being decided up front.
+                guard position > index else { continue }
+                let question = questions[position]
+                guard question.candidatePool.count > question.distractors.count else { continue }
+                let request = DistractorRequest(
+                    prompt: question.prompt,
+                    correct: question.correct,
+                    acceptedAnswers: question.acceptedAnswers,
+                    candidates: question.candidatePool,
+                    answerField: question.answerField
+                )
+                let refinement = await AppleIntelligenceDistractorClient.refine(
+                    request: request,
+                    isRealWord: { word in
+                        ((try? dictionaryStore.lookup(surface: word, mode: .kanjiAndKana)) ?? []).isEmpty == false
+                    }
+                )
+                guard let refinement, Task.isCancelled == false else { continue }
+                // Re-checked after the await: the user may have answered their way past this
+                // question while the model was thinking.
+                guard position > index, position < questions.count else { continue }
+                apply(refinement, to: position)
+            }
+        }
+    }
+
+    // Rebuilds one question's options from a refinement. The model's picks lead, its vetted
+    // inventions follow, and the heuristic's own distractors backfill whatever is still missing —
+    // so a thin or unusable answer never costs the question its four options.
+    private func apply(_ refinement: DistractorRefinement, to position: Int) {
+        let question = questions[position]
+        var wrong: [String] = []
+        for candidate in refinement.chosen + refinement.invented + question.distractors {
+            guard wrong.count < optionCount - 1 else { break }
+            guard candidate != question.correct, wrong.contains(candidate) == false else { continue }
+            wrong.append(candidate)
+        }
+        guard wrong.isEmpty == false, Set(wrong) != Set(question.distractors) else { return }
+        var options = wrong + [question.correct]
+        options.shuffle()
+        questions[position] = MultipleChoiceQuestion(
+            id: question.id,
+            prompt: question.prompt,
+            options: options,
+            correct: question.correct,
+            direction: question.direction,
+            hasKanjiForm: question.hasKanjiForm,
+            answerField: question.answerField,
+            acceptedAnswers: question.acceptedAnswers,
+            candidatePool: question.candidatePool
+        )
     }
 
     // Records the answer against ReviewStore (correct feeds SRS, wrong marks for relearn) and
@@ -379,6 +475,8 @@ struct MultipleChoiceView: View {
 
     // Clears all session state, returning to the home screen.
     private func endSession() {
+        refinementTask?.cancel()
+        refinementTask = nil
         sessionActive = false
         isResolving = false
         questions = []
@@ -394,11 +492,13 @@ struct MultipleChoiceView: View {
     // would read identically, or whose answer side has no distinct distractors are dropped. The
     // final question list is shuffled.
     private func buildQuestions(from items: [StudyItem], selection: DirectionSelection) -> [MultipleChoiceQuestion] {
-        // Per-field answer pools so distractor selection stays O(1) per question.
-        let fieldPools: [StudyField: Set<String>] = [
-            .kanji: Set(items.map { $0.value(for: .kanji) }),
-            .kana: Set(items.map { $0.value(for: .kana) }),
-            .meaning: Set(items.map { $0.value(for: .meaning) }),
+        // Per-field answer pools so distractor selection stays O(1) per question. Each candidate
+        // carries its owner's word class, which is what lets the selector keep an option set from
+        // being three nouns and the verb that must therefore be the answer.
+        let fieldPools: [StudyField: [DistractorCandidate]] = [
+            .kanji: candidates(from: items, field: .kanji),
+            .kana: candidates(from: items, field: .kana),
+            .meaning: candidates(from: items, field: .meaning),
         ]
 
         var result: [MultipleChoiceQuestion] = []
@@ -420,13 +520,19 @@ struct MultipleChoiceView: View {
             let collidingAnswers = Set(
                 items.filter { $0.value(for: fields.prompt) == prompt }.map { $0.value(for: fields.answer) }
             )
-            var distractorPool = (fieldPools[fields.answer] ?? []).subtracting(collidingAnswers)
-            distractorPool.remove(correct)
+            var distractorPool = (fieldPools[fields.answer] ?? [])
+                .filter { collidingAnswers.contains($0.text) == false && $0.text != correct }
             guard distractorPool.isEmpty == false else { continue }
 
-            var distractors = Array(distractorPool)
-            distractors.shuffle()
-            distractors = Array(distractors.prefix(optionCount - 1))
+            // Shuffled first so the selector's ties break randomly; it then reorders by how well
+            // each candidate imitates the answer's word class and okurigana.
+            distractorPool.shuffle()
+            let distractors = DistractorSelector.choose(
+                from: distractorPool,
+                answer: DistractorCandidate(text: correct, wordClass: item.wordClass),
+                prompt: prompt,
+                count: optionCount - 1
+            )
 
             var options = distractors + [correct]
             options.shuffle()
@@ -436,10 +542,27 @@ struct MultipleChoiceView: View {
                 options: options,
                 correct: correct,
                 direction: direction,
-                hasKanjiForm: item.hasKanjiForm
+                hasKanjiForm: item.hasKanjiForm,
+                answerField: fields.answer,
+                acceptedAnswers: fields.answer == .meaning ? item.glosses : [correct],
+                candidatePool: Array(distractorPool.prefix(Self.refinementCandidateCount)).map { $0.text }
             ))
         }
         result.shuffle()
+        return result
+    }
+
+    // The distinct answer-side strings available for one field, each tagged with the word class of
+    // the item it came from. Deduplicated by text: two items sharing a spelling would otherwise let
+    // the same string be offered twice in one question.
+    private func candidates(from items: [StudyItem], field: StudyField) -> [DistractorCandidate] {
+        var seen: Set<String> = []
+        var result: [DistractorCandidate] = []
+        for item in items {
+            let text = item.value(for: field)
+            guard seen.insert(text).inserted else { continue }
+            result.append(DistractorCandidate(text: text, wordClass: item.wordClass))
+        }
         return result
     }
 }

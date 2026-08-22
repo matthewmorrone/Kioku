@@ -54,13 +54,6 @@ struct LearnActivityHome: View {
                     .foregroundStyle(pool.words.count < activity.minimumPoolSize ? .red : .primary)
             }
             LearnCountPicker(label: activity.unitLabel, count: $options.count)
-        } footer: {
-            // Only explanation shown on this screen, and only when it applies: a pool cut short by
-            // the learned exclusion has its cause and its escape hatch in Settings, where nothing
-            // here would otherwise point.
-            if let hint = StudyWordPool.learnedExclusionHint(hiddenLearnedCount: pool.hiddenLearnedCount) {
-                Text(hint)
-            }
         }
     }
 }
@@ -84,6 +77,9 @@ struct LearnDirectionPicker: View {
                 Divider()
                 tierRows(QuestionDirection.tier2, title: "Production")
             }
+            // Multiselect: each tap toggles one direction (or a whole tier), so the menu stays up
+            // until dismissed rather than closing after a single choice.
+            .menuActionDismissBehavior(.disabled)
         }
     }
 

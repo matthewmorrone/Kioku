@@ -89,6 +89,7 @@ struct SettingsView: View {
     // Whether the Learn tab's study modes skip Learned/Mastered words. Read by each mode through
     // StudyWordPool; this is the single place it's set.
     @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearnedInStudy: Bool = LearnedSettings.defaultExcludeLearned
+    @AppStorage(QuizAssistSettings.smarterOptionsKey) private var smarterQuizOptions: Bool = QuizAssistSettings.defaultSmarterOptions
     @AppStorage(SegmenterSettings.backendKey) private var segmenterBackend: String = SegmenterSettings.defaultBackend
     @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
@@ -484,6 +485,15 @@ struct SettingsView: View {
                 // MARK: Learning — auto-mark words as learned past a chosen bar, and whether the
                 // Learn tab keeps drilling words that have got there.
                 Section {
+                    // On-device only, and only where the device can actually do it — hidden rather
+                    // than shown disabled, since there's nothing the user could do to enable it.
+                    if AppleIntelligenceAvailability.isAvailable {
+                        Toggle("Smarter quiz options", isOn: $smarterQuizOptions)
+                        Text("Apple Intelligence reviews Multiple Choice answer options in the background, replacing ones that give the answer away with closer near-misses.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Toggle("Skip learned words", isOn: $excludeLearnedInStudy)
                     Text("Flashcards, Multiple Choice, and Fill in the Blank leave out words marked learned or mastered. Coverage sessions launched from a specific stage are unaffected.")
                         .font(.footnote)

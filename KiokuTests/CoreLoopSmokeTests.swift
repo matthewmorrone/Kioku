@@ -55,12 +55,16 @@ final class CoreLoopSmokeTests: XCTestCase {
         XCTAssertEqual(words.words.first?.canonicalEntryID, entryID)
         XCTAssertEqual(words.words.first?.sourceNoteIDs, [note.id], "note attribution missing")
 
-        // 3. Study: record a correct review; the review stats should now track this entry.
-        let reviews = ReviewStore(userDefaults: defaults)
-        reviews.recordCorrect(for: entryID)
-        XCTAssertNotNil(reviews.stats[entryID], "review not recorded")
+        // 3. Study: record a correct review; the review stats should now track this entry. Since
+        // the ReviewStore merge this is the same store the word was saved in — review state is a
+        // field on the word row, so recording it anywhere else would have nowhere to land.
+        words.recordCorrect(for: entryID)
+        XCTAssertNotNil(words.stats[entryID], "review not recorded")
 
         // 4. Persistence (what backup/restore rests on): fresh store instances still see it all.
+        // Flushed first — word writes land on a background queue, so a reader built immediately
+        // after the review would read the pre-review snapshot.
+        WordsStore.flushPendingWritesForTesting()
         let notes2 = NotesStore(fileManager: notesFM)
         XCTAssertTrue(notes2.notes.contains { $0.id == note.id }, "note lost on reload")
 
@@ -68,8 +72,7 @@ final class CoreLoopSmokeTests: XCTestCase {
         XCTAssertEqual(words2.words.first?.canonicalEntryID, entryID, "saved word lost on reload")
         XCTAssertEqual(words2.words.first?.sourceNoteIDs, [note.id], "note attribution lost on reload")
 
-        let reviews2 = ReviewStore(userDefaults: defaults)
-        XCTAssertNotNil(reviews2.stats[entryID], "review stats lost on reload")
+        XCTAssertNotNil(words2.stats[entryID], "review stats lost on reload")
     }
 }
 
