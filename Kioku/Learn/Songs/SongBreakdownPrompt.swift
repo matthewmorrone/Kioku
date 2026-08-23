@@ -47,7 +47,7 @@ enum SongBreakdownPrompt {
 
         3. **Loanwords**: Identify the source language (usually French or English in J-pop) and original meaning. Do not over-defend their thematic importance — if a loanword is purely aesthetic and doesn't grammatically integrate, say so plainly.
 
-        4. **Repeated lines**: After the first full breakdown of a chorus line, on later occurrences just note "= line N" or "Parallel to line N with substitution: X → Y" and explain only what changed. Do not repeat full breakdowns of identical material.
+        4. **Repeated lines**: After the first full breakdown of a chorus line, on a later occurrence that is character-for-character identical, just note "= line N". On a later occurrence that differs by exactly one swapped word/phrase, note "Parallel to line N with substitution: X → Y" and explain only what changed. If more than one element differs (e.g. two lines share the same grammatical skeleton but swap out a color loanword, a noun, and a verb), it is not covered by this shorthand — give it a normal full breakdown; you may still call out the structural echo in the optional pattern-bank note. Never use "= line N" or "Parallel to line N" shorthand as the text of an individual vocabulary word's definition — every word bullet must contain a real definition, even when the word itself is a repeat.
 
         5. **Depth**: Assume basic grammar and kana fluency. Focus on the *interesting* stuff — etymology, register (literary vs colloquial vs classical), distinctions from near-synonyms (触れる vs 触る, 寒い vs 冷たい, 命 vs 人生 vs 生活, 羽 vs 翅, 雷 vs 稲妻, etc.), cultural/aesthetic context (mono no aware, specific seasonal/time imagery like 夕凪, 黄昏 = 誰そ彼). Do not pad with N5-level basics.
 
