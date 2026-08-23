@@ -348,7 +348,7 @@ struct SongLineCard: View {
     // Strips inline-emphasis markup so the user doesn't see literal asterisks in body
     // text. `**bold**` and `*italic*` markers are removed while the inner content stays.
     // Bold pass first so the italic pass doesn't try to chew up either half of a bold pair.
-    fileprivate static func stripInlineMarkdown(_ raw: String) -> String {
+    static func stripInlineMarkdown(_ raw: String) -> String {
         var s = raw.replacingOccurrences(
             of: #"\*\*([^*\n]+?)\*\*"#,
             with: "$1",
@@ -374,7 +374,7 @@ struct SongLineCard: View {
     //   \s*(?:\*{1,2})?                optional closing `*` or `**`
     //   \s*:\s*                        the colon
     //   (?:\*{1,2})?\s*                optional asterisks after the colon (e.g. `: **`)
-    fileprivate static func strippingPatternToBankPrefix(_ raw: String) -> String {
+    static func strippingPatternToBankPrefix(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let pattern = #"^(?:\*{1,2})?\s*Pattern[\s-]+to[\s-]+bank(?:\s+note)?\s*(?:\*{1,2})?\s*:\s*(?:\*{1,2})?\s*"#
         if let range = trimmed.range(
