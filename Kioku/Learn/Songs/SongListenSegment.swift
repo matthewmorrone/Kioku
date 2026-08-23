@@ -23,7 +23,7 @@ enum SongListenSegmentKind: Equatable, Sendable {
 
 // Which voice reads a segment. Kept as its own type (rather than reusing some existing
 // language enum) since the only thing that matters here is "Japanese voice or English voice."
-enum SongListenLanguage: Sendable {
+enum SongListenLanguage: Equatable, Sendable {
     case japanese
     case english
 }

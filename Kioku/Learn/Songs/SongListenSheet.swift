@@ -17,6 +17,10 @@ struct SongListenSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var playback = AudioPlaybackController()
     @State private var state: SongListenRenderState = .rendering(progress: 0)
+    // Handle to the in-flight render, so Retry or dismissal can cancel a still-running
+    // synthesis instead of letting it keep writing to the shared cache file underneath a
+    // second, concurrently-started render.
+    @State private var renderTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -41,8 +45,11 @@ struct SongListenSheet: View {
                 }
             }
         }
-        .task { await render() }
-        .onDisappear { playback.unload() }
+        .task { startRender() }
+        .onDisappear {
+            renderTask?.cancel()
+            playback.unload()
+        }
     }
 
     // In-flight render state: a progress bar plus a one-line reminder of what's about to
@@ -99,7 +106,7 @@ struct SongListenSheet: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button {
-                Task { await render() }
+                startRender()
             } label: {
                 Label("Retry", systemImage: "arrow.clockwise")
             }
@@ -107,19 +114,32 @@ struct SongListenSheet: View {
         }
     }
 
+    // Cancels any still-running render before starting a fresh one, so at most one
+    // synthesis is ever writing to the cache file at a time — a bare `Task { await render() }`
+    // on Retry could otherwise race a prior render that hadn't finished yet.
+    private func startRender() {
+        renderTask?.cancel()
+        renderTask = Task { await render() }
+    }
+
     // Drives one render pass: synthesize the whole track, load it into the scratch player,
     // and start playback immediately so the user doesn't have to tap play right after
-    // waiting for generation. Re-entrant — Retry calls this again from a clean `.rendering`
-    // state.
+    // waiting for generation. Re-entrant — startRender() calls this again from a clean
+    // `.rendering` state. Bails out quietly on cancellation (sheet dismissed, or superseded
+    // by a newer render) rather than surfacing it as a user-facing error.
     private func render() async {
         state = .rendering(progress: 0)
         do {
             let url = try await SongListenAudioService().renderAudio(for: breakdown) { fraction in
                 state = .rendering(progress: fraction)
             }
+            try Task.checkCancellation()
             try playback.load(audioURL: url, cues: [])
             state = .ready(url: url)
             playback.play()
+        } catch is CancellationError {
+            // Superseded or dismissed — leave state as-is for whichever render wins, or let
+            // the sheet disappear.
         } catch {
             state = .failed(error.localizedDescription)
         }
