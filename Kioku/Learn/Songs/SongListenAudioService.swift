@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 // Renders a SongBreakdown into a single linear, exportable audio file: for each line, the
 // Japanese sentence, then the English gist, then every word's Japanese surface followed by
@@ -9,10 +10,16 @@ import Foundation
 // ("code switching") instead of one voice mangling the other language's text.
 //
 // Runs entirely on-device via AVSpeechSynthesizer's buffer-based `write(_:toBufferCallback:)`
-// — no network call, no API key, no per-request cost. Buffers are appended into one
-// AVAudioFile with short silences between segments so the result is a normal, seekable,
-// shareable file rather than a live-only utterance queue tied to this process.
-final class SongListenAudioService {
+// — no network call, no API key, no per-request cost. Buffers are streamed into a
+// SongListenAudioSink with short silences between segments so the result is a normal,
+// seekable, shareable file rather than a live-only utterance queue tied to this process.
+//
+// Marked `nonisolated`: this is a pure background worker with no UI ties, and
+// AVSpeechSynthesizer's write callback fires off whatever thread AVFoundation chooses — opting
+// out of the module's default MainActor isolation keeps that callback (and the buffers it
+// hands over) from ever needing to cross onto the main actor, which is exactly the "sending"
+// data-race the compiler would otherwise (rightly) reject.
+nonisolated final class SongListenAudioService {
     // A fresh synthesizer per instance — AVSpeechSynthesizer.write callbacks interleave if
     // the same instance drives two concurrent renders, and a single instance can only run
     // one synthesis at a time in any case.
@@ -55,69 +62,56 @@ final class SongListenAudioService {
             .appendingPathExtension("partial.caf")
         try? FileManager.default.removeItem(at: workingDestination)
 
-        var audioFile: AVAudioFile?
+        let sink = SongListenAudioSink(destination: workingDestination)
         for (index, segment) in segments.enumerated() {
             try Task.checkCancellation()
             let voice = segment.language == .japanese ? japaneseVoice : englishVoice
-            let buffers = try await synthesizeBuffers(for: segment, voice: voice)
-            for buffer in buffers {
-                if audioFile == nil {
-                    audioFile = try AVAudioFile(forWriting: workingDestination, settings: buffer.format.settings)
-                }
-                try audioFile?.write(from: buffer)
-            }
-            if let silence = Self.silenceBuffer(matching: audioFile?.processingFormat, after: segment.kind) {
-                try audioFile?.write(from: silence)
-            }
+            try await synthesizeAndWrite(segment: segment, voice: voice, sink: sink)
+            try sink.writeSilence(after: segment.kind)
             await onProgress(Double(index + 1) / Double(segments.count))
         }
 
-        guard audioFile != nil else { throw SongListenRenderError.noAudioProduced }
-        audioFile = nil // close the file handle before moving it into place
+        guard sink.audioFile != nil else { throw SongListenRenderError.noAudioProduced }
+        sink.close()
         try FileManager.default.moveItem(at: workingDestination, to: destination)
         return destination
     }
 
-    // Synthesizes one segment's text into its raw PCM buffers via the given voice. `write`
-    // invokes its callback repeatedly on a background queue as synthesis proceeds and once
-    // more with a zero-length buffer to signal completion — that terminal call is what
-    // resumes the continuation.
-    private func synthesizeBuffers(for segment: SongListenSegment, voice: AVSpeechSynthesisVoice) async throws -> [AVAudioPCMBuffer] {
+    // Synthesizes one segment via the given voice and streams every PCM buffer straight into
+    // `sink` as it arrives, rather than collecting them into an array to hand back — that
+    // would require sending a batch of AVAudioPCMBuffers across the continuation's isolation
+    // boundary, which is exactly the data race the compiler flags. `write`'s callback fires
+    // repeatedly on a background queue and once more with a zero-length buffer to signal
+    // completion; an `OSAllocatedUnfairLock`-guarded flag makes sure exactly one of those
+    // calls resumes the continuation, since a write failure resuming early wouldn't stop the
+    // synthesizer from calling back again afterward.
+    private func synthesizeAndWrite(segment: SongListenSegment, voice: AVSpeechSynthesisVoice, sink: SongListenAudioSink) async throws {
         let utterance = AVSpeechUtterance(string: segment.text)
         utterance.voice = voice
+        let hasResumed = OSAllocatedUnfairLock(initialState: false)
 
-        return try await withCheckedThrowingContinuation { continuation in
-            var buffers: [AVAudioPCMBuffer] = []
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             synthesizer.write(utterance) { audioBuffer in
-                guard let pcmBuffer = audioBuffer as? AVAudioPCMBuffer else {
-                    continuation.resume(throwing: SongListenRenderError.noAudioProduced)
+                guard let pcmBuffer = audioBuffer as? AVAudioPCMBuffer else { return }
+                if pcmBuffer.frameLength == 0 {
+                    hasResumed.withLock { resumed in
+                        guard resumed == false else { return }
+                        resumed = true
+                        continuation.resume(returning: ())
+                    }
                     return
                 }
-                if pcmBuffer.frameLength == 0 {
-                    continuation.resume(returning: buffers)
-                } else {
-                    buffers.append(pcmBuffer)
+                do {
+                    try sink.write(pcmBuffer)
+                } catch {
+                    hasResumed.withLock { resumed in
+                        guard resumed == false else { return }
+                        resumed = true
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
         }
-    }
-
-    // Silence inserted after a segment. Longer after a full sentence/translation (a line
-    // boundary) than between a word and its definition, so the ear can tell "new line" apart
-    // from "next word in the same line's breakdown" without any spoken cue.
-    private static func silenceBuffer(matching format: AVAudioFormat?, after kind: SongListenSegmentKind) -> AVAudioPCMBuffer? {
-        guard let format else { return nil }
-        let seconds: Double
-        switch kind {
-        case .sentence: seconds = 0.5
-        case .translation: seconds = 0.7
-        case .wordSurface: seconds = 0.15
-        case .wordDefinition: seconds = 0.45
-        }
-        let frameCount = AVAudioFrameCount(format.sampleRate * seconds)
-        guard frameCount > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
-        buffer.frameLength = frameCount
-        return buffer
     }
 
     // Cache location: derived, regenerable content lives under Library/Caches so it's swept
