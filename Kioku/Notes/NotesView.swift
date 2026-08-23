@@ -26,6 +26,10 @@ struct NotesView: View {
     @State private var pendingDeletion: PendingNoteDeletion?
     @State private var renameDraft = ""
     @State private var isShowingBulkImportSheet = false
+    // Sort selection, persisted so the tab reopens the way the user left it. Stored as the raw
+    // field string (unknown values from a future build fall back to manual) plus a direction flag.
+    @AppStorage("notes.sortField") private var sortFieldRaw = NotesSortField.manual.rawValue
+    @AppStorage("notes.sortAscending") private var sortAscending = true
     @State private var subtitleEditorAttachmentID: UUID?
     @State private var subtitleEditorNoteTitle: String = ""
 
@@ -45,7 +49,7 @@ struct NotesView: View {
             // progress is shown by CorrectionProgressOverlay (mounted globally in
             // ContentView so it follows the user between tabs), not inline here.
             List(selection: $selectedNoteIDs) {
-                ForEach(store.notes) { note in
+                ForEach(displayedNotes) { note in
                     // Renders a single note row with title and content preview.
                     HStack(alignment: .center, spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -80,6 +84,9 @@ struct NotesView: View {
                     }
                     .tag(note.id)
                     .deleteDisabled(editMode == .active)
+                    // Drag-reordering only means something while the list *is* the manual order —
+                    // under any derived sort a move would be discarded on the next render.
+                    .moveDisabled(isManuallyOrdered == false)
                 }
                 .onMove(perform: store.moveNotes)
                 .onDelete { offsets in
@@ -87,7 +94,10 @@ struct NotesView: View {
                     // offer applies here too (it previously deleted immediately). Deferred
                     // assignment matches the context-menu path so swipe dismissal doesn't
                     // collide with the dialog presentation either.
-                    let notes = offsets.map { store.notes[$0] }
+                    // Offsets index the *displayed* list, which may be sorted — resolve through it
+                    // rather than through store.notes so a swipe never deletes the wrong note.
+                    let displayed = displayedNotes
+                    let notes = offsets.compactMap { displayed.indices.contains($0) ? displayed[$0] : nil }
                     queuePendingDeletion(PendingNoteDeletion(
                         noteIDs: Set(notes.map(\.id)),
                         title: notes.count == 1 ? resolvedTitle(for: notes[0]) : nil
@@ -181,6 +191,8 @@ struct NotesView: View {
                     ocrImportToolbarButton
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    sortMenu
+
                     // Shows bulk-delete action while edit mode is active.
                     if editMode == .active {
                         Button {
@@ -259,6 +271,88 @@ struct NotesView: View {
             .environment(\.editMode, $editMode)
         }
         .toolbar(.visible, for: .tabBar)
+    }
+
+    // MARK: - Sorting
+
+    // The active sort field; an unrecognized persisted value (older/newer build) falls back to
+    // the manual order the store already holds.
+    private var sortField: NotesSortField {
+        NotesSortField(rawValue: sortFieldRaw) ?? .manual
+    }
+
+    // True only when the list on screen is exactly the store's persisted order, which is what
+    // makes drag-to-reorder meaningful.
+    private var isManuallyOrdered: Bool {
+        sortField == .manual && sortAscending
+    }
+
+    // The notes as shown, with the active sort applied. Words-left-to-learn is resolved through a
+    // single pass over the saved words (built once per render) instead of re-filtering the whole
+    // word list for every comparison the sort performs.
+    private var displayedNotes: [Note] {
+        guard isManuallyOrdered == false else { return store.notes }
+
+        var remaining: [UUID: Int] = [:]
+        if sortField == .wordsToLearn {
+            for word in wordsStore.words {
+                // Reads the word's own mark and the store's mastered set rather than calling
+                // masteryStage(for:), which re-scans `words` linearly for each id — that would
+                // make this counting pass quadratic in the size of the saved-word collection on
+                // every render. Same rule as masteryStage's learned/mastered branches.
+                guard word.learnedMark != .learned,
+                      wordsStore.mastered.contains(word.canonicalEntryID) == false else { continue }
+                for noteID in Set(word.sourceNoteIDs) {
+                    remaining[noteID, default: 0] += 1
+                }
+            }
+        }
+
+        return NotesSorter.sorted(
+            store.notes,
+            field: sortField,
+            ascending: sortAscending,
+            metrics: NoteSortMetrics(wordsToLearn: { remaining[$0.id] ?? 0 })
+        )
+    }
+
+    // Sort picker. Tapping the field that's already active flips its direction (the Files-app
+    // idiom); picking a different field adopts that field's natural starting direction.
+    @ViewBuilder
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort By", selection: Binding(
+                get: { sortField },
+                set: { newValue in
+                    if newValue == sortField {
+                        sortAscending.toggle()
+                    } else {
+                        sortFieldRaw = newValue.rawValue
+                        sortAscending = newValue.defaultsToAscending
+                    }
+                }
+            )) {
+                ForEach(NotesSortField.allCases) { field in
+                    Label(field.title, systemImage: field.systemImage).tag(field)
+                }
+            }
+
+            Section {
+                Button {
+                    sortAscending.toggle()
+                } label: {
+                    Label(
+                        sortField.directionLabel(ascending: sortAscending),
+                        systemImage: sortAscending ? "arrow.up" : "arrow.down"
+                    )
+                }
+            }
+        } label: {
+            Image(systemName: sortField == .manual ? "arrow.up.arrow.down" : "arrow.up.arrow.down.circle.fill")
+                .font(.system(size: 16))
+                .frame(width: 32, height: 32)
+        }
+        .accessibilityLabel("Sort Notes")
     }
 
     // Shows whether a note currently has stored audio/subtitle files attached and/or a
