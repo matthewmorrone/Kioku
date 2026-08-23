@@ -348,7 +348,10 @@ struct SongLineCard: View {
     // Strips inline-emphasis markup so the user doesn't see literal asterisks in body
     // text. `**bold**` and `*italic*` markers are removed while the inner content stays.
     // Bold pass first so the italic pass doesn't try to chew up either half of a bold pair.
-    static func stripInlineMarkdown(_ raw: String) -> String {
+    // `nonisolated`: a pure string transform with no view state, also called from the
+    // `nonisolated` SongListenScript — without this, View's implicit MainActor isolation
+    // would make it callable only from the main actor.
+    nonisolated static func stripInlineMarkdown(_ raw: String) -> String {
         var s = raw.replacingOccurrences(
             of: #"\*\*([^*\n]+?)\*\*"#,
             with: "$1",

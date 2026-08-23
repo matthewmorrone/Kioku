@@ -2,8 +2,10 @@ import Foundation
 
 // Failure states SongListenAudioService.renderAudio can throw. Its own file (rather than
 // nested in the service) per the repo's no-nested-types rule, since it carries a computed
-// property.
-enum SongListenRenderError: Error, LocalizedError {
+// property. `nonisolated` since it's thrown from the `nonisolated` SongListenAudioService —
+// without it, the module's default MainActor isolation would make `errorDescription`
+// MainActor-isolated.
+nonisolated enum SongListenRenderError: Error, LocalizedError {
     case emptyScript
     case noAudioProduced
     case voiceUnavailable

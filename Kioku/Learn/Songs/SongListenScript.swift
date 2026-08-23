@@ -10,7 +10,11 @@ import Foundation
 // still speaks its own `original` text (it's literally different/identical lyrics being
 // sung), but borrows the referenced line's gist/words when its own are empty, exactly like
 // the card falls back for display.
-enum SongListenScript {
+//
+// `nonisolated`: called from the `nonisolated` SongListenAudioService (see that file's header
+// comment) — without this, the module's default MainActor isolation would make `build`
+// callable only from the main actor.
+nonisolated enum SongListenScript {
     // Builds the ordered segment list for a full breakdown. Pure function of its input so a
     // given breakdown always produces the same script (and therefore the same audio).
     static func build(from breakdown: SongBreakdown) -> [SongListenSegment] {

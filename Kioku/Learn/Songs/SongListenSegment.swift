@@ -4,7 +4,12 @@ import Foundation
 // SongListenScript.build produces and SongListenAudioService synthesizes in order. Kept as
 // plain data (no logic) so it can sit alongside its two companion enums in one file per the
 // "pure data types may be grouped" rule.
-struct SongListenSegment: Equatable, Sendable {
+//
+// All three types here are `nonisolated`: they're built and consumed entirely inside
+// SongListenAudioService, which is itself `nonisolated` (see that file's header comment) —
+// without this, the module's default MainActor isolation would make even their synthesized
+// `Equatable` conformances MainActor-isolated, unusable from that nonisolated context.
+nonisolated struct SongListenSegment: Equatable, Sendable {
     let lineIndex: Int
     let kind: SongListenSegmentKind
     let text: String
@@ -12,9 +17,9 @@ struct SongListenSegment: Equatable, Sendable {
 }
 
 // What role a segment plays within its line — drives the silence gap inserted after it
-// (SongListenAudioService.silenceBuffer) and lets the script builder self-document why the
+// (SongListenAudioSink.writeSilence) and lets the script builder self-document why the
 // segment exists.
-enum SongListenSegmentKind: Equatable, Sendable {
+nonisolated enum SongListenSegmentKind: Equatable, Sendable {
     case sentence
     case translation
     case wordSurface
@@ -23,7 +28,7 @@ enum SongListenSegmentKind: Equatable, Sendable {
 
 // Which voice reads a segment. Kept as its own type (rather than reusing some existing
 // language enum) since the only thing that matters here is "Japanese voice or English voice."
-enum SongListenLanguage: Equatable, Sendable {
+nonisolated enum SongListenLanguage: Equatable, Sendable {
     case japanese
     case english
 }
