@@ -48,6 +48,16 @@ final class NotesSortingTests: XCTestCase {
         )
     }
 
+    // The empty bucket is not part of the comparison, so reversing the direction must not float
+    // blank rows to the top of a Z→A list.
+    func testEmptyNotesStayLastInBothTitleDirections() {
+        let notes = [note("", content: ""), note("zebra"), note("", content: "alpha")]
+        XCTAssertEqual(
+            NotesSorter.sorted(notes, field: .title, ascending: false).map { "\($0.title)|\($0.content)" },
+            ["zebra|", "|alpha", "|"]
+        )
+    }
+
     func testDateSorts() {
         let notes = [
             note("old", created: 100, modified: 900),

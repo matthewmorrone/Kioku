@@ -97,6 +97,8 @@ enum NoteTextMetrics {
         return visible == 0 ? 0 : Double(kanji) / Double(visible)
     }
 
+    // True for CJK Unified Ideographs and the Extension A block — the ranges ordinary Japanese
+    // prose draws its kanji from.
     private static func isKanji(_ scalar: Unicode.Scalar) -> Bool {
         (0x4E00...0x9FFF).contains(scalar.value) || (0x3400...0x4DBF).contains(scalar.value)
     }
@@ -107,6 +109,8 @@ enum NoteTextMetrics {
 // notes the active field can't tell apart.
 enum NotesSorter {
 
+    // Orders `notes` by one field in the given direction, leaving the manual field untouched
+    // (or simply reversed).
     static func sorted(
         _ notes: [Note],
         field: NotesSortField,
@@ -121,6 +125,14 @@ enum NotesSorter {
         // `sorted(by:)` happens to produce — Swift's sort is not stable.
         let indexed = notes.enumerated().map { (offset: $0.offset, note: $0.element) }
         let ordered = indexed.sorted { lhs, rhs in
+            // A note with neither a title nor content stays at the bottom in *both* directions.
+            // Sorted into the comparison it would flip to the top under Z→A, putting a run of
+            // blank rows above every named note — the one thing the bucket exists to prevent.
+            if field == .title {
+                let lhsEmpty = sortableTitle(lhs.note).isEmpty
+                let rhsEmpty = sortableTitle(rhs.note).isEmpty
+                if lhsEmpty != rhsEmpty { return lhsEmpty == false }
+            }
             switch compare(lhs.note, rhs.note, field: field, metrics: metrics) {
             case .orderedAscending: return ascending
             case .orderedDescending: return ascending == false
@@ -142,10 +154,9 @@ enum NotesSorter {
         case .manual:
             return .orderedSame
         case .title:
-            // Untitled notes sort to the end of an A→Z list rather than to the top, where a run of
-            // blank rows would otherwise bury every named note below the fold.
+            // Fully-empty notes are already bucketed to the bottom by `sorted(_:field:…)` before
+            // this runs, so only two named notes ever reach the comparison.
             let l = sortableTitle(lhs), r = sortableTitle(rhs)
-            if l.isEmpty != r.isEmpty { return l.isEmpty ? .orderedDescending : .orderedAscending }
             // localizedStandardCompare gives case-insensitive, numeric-aware ("Lesson 2" before
             // "Lesson 10") ordering, matching how Files sorts names.
             let result = l.localizedStandardCompare(r)
@@ -174,6 +185,7 @@ enum NotesSorter {
         return note.content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // Three-way comparison for any Comparable field value.
     private static func compare<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
         if lhs < rhs { return .orderedAscending }
         if lhs > rhs { return .orderedDescending }

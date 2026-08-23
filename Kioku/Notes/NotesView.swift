@@ -296,8 +296,12 @@ struct NotesView: View {
         var remaining: [UUID: Int] = [:]
         if sortField == .wordsToLearn {
             for word in wordsStore.words {
-                let stage = wordsStore.masteryStage(for: word.canonicalEntryID)
-                guard stage != .learned, stage != .mastered else { continue }
+                // Reads the word's own mark and the store's mastered set rather than calling
+                // masteryStage(for:), which re-scans `words` linearly for each id — that would
+                // make this counting pass quadratic in the size of the saved-word collection on
+                // every render. Same rule as masteryStage's learned/mastered branches.
+                guard word.learnedMark != .learned,
+                      wordsStore.mastered.contains(word.canonicalEntryID) == false else { continue }
                 for noteID in Set(word.sourceNoteIDs) {
                     remaining[noteID, default: 0] += 1
                 }
