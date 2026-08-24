@@ -459,15 +459,36 @@ struct SongStepperView: View {
         }
         for line in breakdown.lines {
             for word in line.words where wordFuriganaBySurface[word.surface] == nil {
-                wordFuriganaBySurface[word.surface] = buildWordFuriganaRunReadings(for: word.surface)
+                wordFuriganaBySurface[word.surface] = buildWordFuriganaRunReadings(for: word, contextLine: line)
             }
         }
     }
 
-    // Resolves per-kanji-run readings for a single word-list headword. Same resolver as
-    // buildFuriganaCache below, just run against the word's own surface in isolation rather
-    // than the full line — the word list shows headwords out of their sentence context, so
-    // there's no surrounding text to segment against.
+    // Resolves per-kanji-run readings for a single word-list headword. Prefers slicing the
+    // already-resolved *line* cache (the word's readings as chosen with full sentence
+    // context — okurigana, verb-phrase segmentation, etc.) when the word's surface appears
+    // verbatim in that line; only isolated words (surface not found in the line, e.g. an
+    // LLM-normalized headword) fall back to segmenting the surface on its own, which can
+    // pick a different reading than the same characters would get in context.
+    private func buildWordFuriganaRunReadings(for word: SongWord, contextLine: SongLine) -> [Int: String] {
+        if let lineCache = furiganaCacheByLineIndex[contextLine.index],
+           let wordRange = contextLine.original.range(of: word.surface) {
+            let wordNSRange = NSRange(wordRange, in: contextLine.original)
+            let sliced = lineCache.furiganaBySegmentLocation.compactMap { location, reading -> (Int, String)? in
+                guard location >= wordNSRange.location,
+                      location < wordNSRange.location + wordNSRange.length else { return nil }
+                return (location - wordNSRange.location, reading)
+            }
+            if sliced.isEmpty == false {
+                return Dictionary(uniqueKeysWithValues: sliced)
+            }
+        }
+        return buildWordFuriganaRunReadings(for: word.surface)
+    }
+
+    // Resolves per-kanji-run readings for a word's surface in isolation, with no surrounding
+    // sentence to segment against. Used as a fallback when the surface can't be located
+    // within its source line (e.g. an LLM-normalized headword that doesn't appear verbatim).
     private func buildWordFuriganaRunReadings(for surface: String) -> [Int: String] {
         guard let segmenter, surface.isEmpty == false else { return [:] }
         let edges = segmenter.longestMatchEdges(for: surface)
