@@ -26,12 +26,6 @@ struct WordsFilterView: View {
     // replacing them. Off by default (pure-kana only).
     @Binding var showKanji: Bool
 
-    @State private var newListName = ""
-    @State private var renameText = ""
-    @State private var renamingListID: UUID?
-    @State private var isNewListAlertPresented = false
-    @State private var isRenameAlertPresented = false
-
     var body: some View {
         NavigationStack {
             List {
@@ -49,7 +43,15 @@ struct WordsFilterView: View {
                 if notesWithSavedWords.isEmpty == false {
                     Section { noteRow }
                 }
-                Section { listRow }
+                Section {
+                    listRow
+                    NavigationLink("Manage Lists…") {
+                        ManageWordListsView(
+                            activeFilterListIDs: $activeFilterListIDs,
+                            showSavedWords: $showSavedWords
+                        )
+                    }
+                }
 
                 Section {
                     Picker(selection: $sortOrder) {
@@ -68,16 +70,6 @@ struct WordsFilterView: View {
             }
             .navigationTitle("Show")
             .navigationBarTitleDisplayMode(.inline)
-            .alert("New List", isPresented: $isNewListAlertPresented) {
-                TextField("List name", text: $newListName)
-                Button("Create", action: commitNewList)
-                Button("Cancel", role: .cancel) { newListName = "" }
-            }
-            .alert("Rename List", isPresented: $isRenameAlertPresented) {
-                TextField("List name", text: $renameText)
-                Button("Save") { if let id = renamingListID { commitRename(id) } }
-                Button("Cancel", role: .cancel) { renamingListID = nil; renameText = "" }
-            }
         }
     }
 
@@ -133,42 +125,15 @@ struct WordsFilterView: View {
         }
     }
 
-    // Each list is a submenu carrying its own Show/Rename/Reorder/Delete actions, since a menu
-    // row can't be long-pressed.
+    // Pure filter menu, mirroring noteRow — list creation/rename/reorder/delete live in
+    // ManageWordListsView (reached via the "Manage Lists…" row alongside this one).
     private var listRow: some View {
         Menu {
-            ForEach(Array(wordListsStore.lists.enumerated()), id: \.element.id) { index, list in
-                Menu {
-                    Button { tapList(list.id) } label: {
-                        let active = activeFilterListIDs.contains(list.id)
-                        Label(active ? "Hide" : "Show", systemImage: active ? "eye.slash" : "eye")
-                    }
-                    Button { beginRename(list) } label: {
-                        Label("Rename…", systemImage: "pencil")
-                    }
-                    if index > 0 {
-                        Button { moveList(from: index, to: index - 1) } label: {
-                            Label("Move Up", systemImage: "arrow.up")
-                        }
-                    }
-                    if index < wordListsStore.lists.count - 1 {
-                        Button { moveList(from: index, to: index + 2) } label: {
-                            Label("Move Down", systemImage: "arrow.down")
-                        }
-                    }
-                    Button(role: .destructive) { deleteList(list.id) } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                } label: {
+            ForEach(wordListsStore.lists) { (list: WordList) in
+                Button { tapList(list.id) } label: {
                     Label("\(list.name)  (\(wordCount(for: list.id)))",
                           systemImage: activeFilterListIDs.contains(list.id) ? "checkmark" : "folder")
                 }
-            }
-
-            Divider()
-
-            Button { isNewListAlertPresented = true } label: {
-                Label("New List…", systemImage: "square.and.pencil")
             }
         } label: {
             filterRowLabel(title: "List", value: listLabel)
@@ -272,52 +237,6 @@ struct WordsFilterView: View {
     // picking one always switches the base view to Favorites.
     private func activateFavorites() {
         showSavedWords = true
-    }
-
-    // MARK: - List CRUD
-
-    // Reorders a list within the store; mirrors SwiftUI's onMove(from:to:) index convention.
-    private func moveList(from: Int, to: Int) {
-        wordListsStore.move(from: IndexSet(integer: from), to: to)
-    }
-
-    // Removes list membership from all saved words AND saved kanji, then deletes
-    // the list from the store. Both record types share the same WordList ids,
-    // so both stores need to be cleaned up — otherwise a kanji's wordListIDs
-    // could carry a dead UUID forever.
-    private func deleteList(_ listID: UUID) {
-        activeFilterListIDs.remove(listID)
-        wordListsStore.delete(id: listID)
-        wordsStore.removeListMembership(listID: listID)
-        savedKanjiStore.removeListMembership(listID: listID)
-    }
-
-    // Seeds the rename field and opens the rename alert for the given list.
-    private func beginRename(_ list: WordList) {
-        renamingListID = list.id
-        renameText = list.name
-        isRenameAlertPresented = true
-    }
-
-    // Persists the trimmed rename text and clears rename state.
-    private func commitRename(_ listID: UUID) {
-        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            wordListsStore.rename(id: listID, name: trimmed)
-        }
-        renamingListID = nil
-        renameText = ""
-    }
-
-    // Creates a new word list and immediately selects it as the active list filter.
-    private func commitNewList() {
-        let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            let newID = wordListsStore.create(name: trimmed)
-            activeFilterListIDs = [newID]
-            activateFavorites()
-        }
-        newListName = ""
     }
 
     // MARK: - Data helpers
