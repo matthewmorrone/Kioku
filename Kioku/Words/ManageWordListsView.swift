@@ -8,6 +8,12 @@ struct ManageWordListsView: View {
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var savedKanjiStore: SavedKanjiStore
 
+    // Mirrors WordsFilterView's active list filter so deleting the currently-filtered list
+    // clears it (rather than leaving a dead UUID selected) and creating a new list selects
+    // it as the active filter, same as the old inline-menu behavior.
+    @Binding var activeFilterListIDs: Set<UUID>
+    @Binding var showSavedWords: Bool
+
     @State private var newListName = ""
     @State private var isNewListAlertPresented = false
     @State private var renameText = ""
@@ -77,6 +83,7 @@ struct ManageWordListsView: View {
     // from the store. Both record types share the same WordList ids, so both stores need to
     // be cleaned up — otherwise a kanji's wordListIDs could carry a dead UUID forever.
     private func deleteList(_ listID: UUID) {
+        activeFilterListIDs.remove(listID)
         wordListsStore.delete(id: listID)
         wordsStore.removeListMembership(listID: listID)
         savedKanjiStore.removeListMembership(listID: listID)
@@ -99,11 +106,15 @@ struct ManageWordListsView: View {
         renameText = ""
     }
 
-    // Creates a new word list from the trimmed alert text field, if non-empty.
+    // Creates a new word list from the trimmed alert text field, if non-empty, and — matching
+    // the old inline-menu behavior — immediately selects it as the active list filter and
+    // switches the Words tab to Favorites (narrowing filters only apply to saved words).
     private func commitNewList() {
         let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
-            _ = wordListsStore.create(name: trimmed)
+            let newID = wordListsStore.create(name: trimmed)
+            activeFilterListIDs = [newID]
+            showSavedWords = true
         }
         newListName = ""
     }

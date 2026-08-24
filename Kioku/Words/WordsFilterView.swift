@@ -46,7 +46,10 @@ struct WordsFilterView: View {
                 Section {
                     listRow
                     NavigationLink("Manage Lists…") {
-                        ManageWordListsView()
+                        ManageWordListsView(
+                            activeFilterListIDs: $activeFilterListIDs,
+                            showSavedWords: $showSavedWords
+                        )
                     }
                 }
 
