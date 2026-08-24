@@ -82,12 +82,14 @@ struct ManageWordListsView: View {
         savedKanjiStore.removeListMembership(listID: listID)
     }
 
+    // Seeds the rename field and opens the rename alert for the given list.
     private func beginRename(_ list: WordList) {
         renamingListID = list.id
         renameText = list.name
         isRenameAlertPresented = true
     }
 
+    // Persists the trimmed rename text and clears rename state.
     private func commitRename(_ listID: UUID) {
         let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
@@ -97,6 +99,7 @@ struct ManageWordListsView: View {
         renameText = ""
     }
 
+    // Creates a new word list from the trimmed alert text field, if non-empty.
     private func commitNewList() {
         let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
