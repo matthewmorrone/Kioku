@@ -7,7 +7,7 @@ struct DictionarySearchResultRow: View {
     let onToggleSave: () -> Void
     let learnedState: LearnedState
     let onSetLearnedState: (LearnedState) -> Void
-    // Opt-in Japanese theme; renders the favorite star white when on.
+    // Opt-in Japanese theme; renders the save star white when on.
     @AppStorage(Theme.storageKey) private var japaneseTheme = false
 
     // Mirrors WordsView's learnedIcon/learnedIconColor so the mark reads identically here.

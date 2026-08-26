@@ -16,16 +16,16 @@ final class KnownWordFuriganaMemo {
     var lemmaBySurface: [String: String] = [:]
 }
 
-// Reference-type cache for the favorited-highlight computation. Same @State-held-class rationale
+// Reference-type cache for the saved-highlight computation. Same @State-held-class rationale
 // as KnownWordFuriganaMemo above. No per-segment lemma cache here — the computation resolves
 // through resolvedDictionaryEntry(forSurface:) (ReadView+Segmentation), which is a straight
 // dictionary/Lexicon lookup, not a segmenter-lemma sweep.
-final class FavoritedHighlightMemo {
+final class SavedHighlightMemo {
     var signature: Int?
     var locations: Set<Int> = []
     // Subsets by Learned-state category — each gets its own color; a word's category is global
     // (the same everywhere it's saved), so there is no per-note distinction here. See
-    // computeFavoritedSegmentLocations.
+    // computeSavedSegmentLocations.
     var learnedLocations: Set<Int> = []
     var notLearnedLocations: Set<Int> = []
 }
@@ -86,36 +86,36 @@ extension ReadView {
     // when nothing relevant changed. The cache lives in a reference type held by @State, so
     // updating it here does NOT trip SwiftUI's "modifying state during view update" (we mutate
     // the object's fields, not the @State wrapper).
-    var favoritedSegmentLocations: Set<Int> {
-        ensureFavoritedHighlightComputed()
-        return favoritedHighlightMemo.locations
+    var savedSegmentLocations: Set<Int> {
+        ensureSavedHighlightComputed()
+        return savedHighlightMemo.locations
     }
 
-    // Subset of favoritedSegmentLocations marked Learned — see FavoritedHighlightMemo.learnedLocations.
-    var favoritedLearnedSegmentLocations: Set<Int> {
-        ensureFavoritedHighlightComputed()
-        return favoritedHighlightMemo.learnedLocations
+    // Subset of savedSegmentLocations marked Learned — see SavedHighlightMemo.learnedLocations.
+    var savedLearnedSegmentLocations: Set<Int> {
+        ensureSavedHighlightComputed()
+        return savedHighlightMemo.learnedLocations
     }
 
-    // Subset of favoritedSegmentLocations marked Not Learned, same rationale as
-    // favoritedLearnedSegmentLocations above.
-    var favoritedNotLearnedSegmentLocations: Set<Int> {
-        ensureFavoritedHighlightComputed()
-        return favoritedHighlightMemo.notLearnedLocations
+    // Subset of savedSegmentLocations marked Not Learned, same rationale as
+    // savedLearnedSegmentLocations above.
+    var savedNotLearnedSegmentLocations: Set<Int> {
+        ensureSavedHighlightComputed()
+        return savedHighlightMemo.notLearnedLocations
     }
 
-    // Shared memo-check for the favorited-location computed vars above — recomputes at most
+    // Shared memo-check for the saved-location computed vars above — recomputes at most
     // once per signature change regardless of which (or both) properties are read this pass.
-    private func ensureFavoritedHighlightComputed() {
-        guard isFavoritedHighlightEnabled else {
-            favoritedHighlightMemo.signature = nil
-            favoritedHighlightMemo.locations = []
-            favoritedHighlightMemo.learnedLocations = []
-            favoritedHighlightMemo.notLearnedLocations = []
+    private func ensureSavedHighlightComputed() {
+        guard isSavedHighlightEnabled else {
+            savedHighlightMemo.signature = nil
+            savedHighlightMemo.locations = []
+            savedHighlightMemo.learnedLocations = []
+            savedHighlightMemo.notLearnedLocations = []
             return
         }
 
-        // Global by design (see computeFavoritedSegmentLocations): a word's status is the same
+        // Global by design (see computeSavedSegmentLocations): a word's status is the same
         // everywhere it appears, so the signature doesn't key on activeNoteID or any note
         // attribution — only on segmentation, the saved-word set, and the visibility toggles.
         var hasher = Hasher()
@@ -126,22 +126,22 @@ extension ReadView {
             hasher.combine(word.canonicalEntryID)
             hasher.combine(word.learnedMark)
         }
-        hasher.combine(isFavoritedHighlightShowingFavorite)
-        hasher.combine(isFavoritedHighlightShowingLearned)
-        hasher.combine(isFavoritedHighlightShowingNotLearned)
+        hasher.combine(isSavedHighlightShowingSaved)
+        hasher.combine(isSavedHighlightShowingLearned)
+        hasher.combine(isSavedHighlightShowingNotLearned)
         let signature = hasher.finalize()
-        if favoritedHighlightMemo.signature == signature {
+        if savedHighlightMemo.signature == signature {
             return
         }
 
-        let result = computeFavoritedSegmentLocations()
-        favoritedHighlightMemo.signature = signature
-        favoritedHighlightMemo.locations = result.locations
-        favoritedHighlightMemo.learnedLocations = result.learnedLocations
-        favoritedHighlightMemo.notLearnedLocations = result.notLearnedLocations
+        let result = computeSavedSegmentLocations()
+        savedHighlightMemo.signature = signature
+        savedHighlightMemo.locations = result.locations
+        savedHighlightMemo.learnedLocations = result.learnedLocations
+        savedHighlightMemo.notLearnedLocations = result.notLearnedLocations
     }
 
-    // The heavy computation behind the favorited-location properties, run only on a memo miss.
+    // The heavy computation behind the saved-location properties, run only on a memo miss.
     // For every distinct segment surface, resolves the ONE dictionary entry backing it (the same
     // resolvedDictionaryEntry(forSurface:) the lookup sheet's button uses) and looks up whether
     // any SavedWord's canonicalEntryID matches — no surface/lemma string-matching against
@@ -149,7 +149,7 @@ extension ReadView {
     // the button did for the identical on-screen text. A word's status is global — the same
     // color everywhere it appears, regardless of which note(s) it's attributed to — so there is
     // no per-note "saved elsewhere" distinction here.
-    private func computeFavoritedSegmentLocations() -> (locations: Set<Int>, learnedLocations: Set<Int>, notLearnedLocations: Set<Int>) {
+    private func computeSavedSegmentLocations() -> (locations: Set<Int>, learnedLocations: Set<Int>, notLearnedLocations: Set<Int>) {
         guard wordsStore.words.isEmpty == false else { return ([], [], []) }
 
         let ns = text as NSString
@@ -177,11 +177,11 @@ extension ReadView {
             // not mutually exclusive, so any combination can be showing at once.
             switch saved.learnedMark {
             case .learned:
-                if isFavoritedHighlightShowingLearned { learnedLocations.insert(nsRange.location) }
+                if isSavedHighlightShowingLearned { learnedLocations.insert(nsRange.location) }
             case .notLearned:
-                if isFavoritedHighlightShowingNotLearned { notLearnedLocations.insert(nsRange.location) }
+                if isSavedHighlightShowingNotLearned { notLearnedLocations.insert(nsRange.location) }
             case .unmarked:
-                if isFavoritedHighlightShowingFavorite { locations.insert(nsRange.location) }
+                if isSavedHighlightShowingSaved { locations.insert(nsRange.location) }
             }
         }
         return (locations, learnedLocations, notLearnedLocations)
@@ -199,7 +199,7 @@ extension ReadView {
     }
 
     // Shared memo-check for furiganaSuppressedForKnownWordsSegmentLocations — recomputes at
-    // most once per signature change, mirroring ensureFavoritedHighlightComputed above.
+    // most once per signature change, mirroring ensureSavedHighlightComputed above.
     private func ensureKnownWordFuriganaComputed() {
         guard isFuriganaHiddenForKnownWords else {
             knownWordFuriganaMemo.signature = nil
@@ -229,7 +229,7 @@ extension ReadView {
 
     // The heavy computation behind furiganaSuppressedForKnownWordsSegmentLocations, run only
     // on a memo miss. Resolves each segment's surface to a canonicalEntryID via the saved
-    // words' encountered-surface sets (lemma-bridged, same technique as the favorited-glow
+    // words' encountered-surface sets (lemma-bridged, same technique as the saved-glow
     // computation above), then checks that entry against ReviewStore's learned/mastered sets.
     // Words that were never saved have no canonicalEntryID to check and are left alone.
     private func computeFuriganaSuppressedForKnownWordsSegmentLocations() -> Set<Int> {
@@ -349,13 +349,13 @@ extension ReadView {
                         changedSegmentLocations: pendingLLMChangedLocations,
                         changedReadingLocations: pendingLLMChangedReadingLocations,
                         inFlightSegmentLocations: inFlightLineSegmentLocations,
-                        isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
-                        favoritedSegmentLocations: favoritedSegmentLocations,
-                        favoritedHighlightColor: UIColor(hexString: favoritedFavoriteHex) ?? .systemYellow,
-                        favoritedLearnedSegmentLocations: favoritedLearnedSegmentLocations,
-                        favoritedLearnedHighlightColor: UIColor(hexString: favoritedLearnedHex) ?? .systemGreen,
-                        favoritedNotLearnedSegmentLocations: favoritedNotLearnedSegmentLocations,
-                        favoritedNotLearnedHighlightColor: UIColor(hexString: favoritedNotLearnedHex) ?? .systemPurple,
+                        isSavedHighlightEnabled: isSavedHighlightEnabled,
+                        savedSegmentLocations: savedSegmentLocations,
+                        savedHighlightColor: UIColor(hexString: savedHex) ?? .systemYellow,
+                        savedLearnedSegmentLocations: savedLearnedSegmentLocations,
+                        savedLearnedHighlightColor: UIColor(hexString: savedLearnedHex) ?? .systemGreen,
+                        savedNotLearnedSegmentLocations: savedNotLearnedSegmentLocations,
+                        savedNotLearnedHighlightColor: UIColor(hexString: savedNotLearnedHex) ?? .systemPurple,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,

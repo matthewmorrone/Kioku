@@ -108,7 +108,7 @@ struct ManageWordListsView: View {
 
     // Creates a new word list from the trimmed alert text field, if non-empty, and — matching
     // the old inline-menu behavior — immediately selects it as the active list filter and
-    // switches the Words tab to Favorites (narrowing filters only apply to saved words).
+    // switches the Words tab to Saved (narrowing filters only apply to saved words).
     private func commitNewList() {
         let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {

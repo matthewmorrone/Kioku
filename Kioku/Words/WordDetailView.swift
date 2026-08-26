@@ -336,8 +336,8 @@ struct WordDetailView: View {
                         )
                     } label: {
                         // Checkmark when learned, question mark when explicitly not-learned, star
-                        // otherwise — the mark sits on top of saved status, so the word stays in
-                        // favorites either way. Filled+primary / hollow+primary / hollow+secondary
+                        // otherwise — the mark sits on top of saved status, so the word stays
+                        // saved either way. Filled+primary / hollow+primary / hollow+secondary
                         // mirrors the segment list row star: saved here-or-standalone, saved only
                         // under another note, or never saved — see isSavedForCurrentNoteOrStandalone.
                         Image(systemName: detailLearnedIcon(state: learnedState, saved: isSaved))

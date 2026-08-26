@@ -90,40 +90,40 @@ extension SettingsView {
         }
     }
 
-    // Learned/Not-Learned colors for the Favorited Highlight display option. Unlike
+    // Learned/Not-Learned colors for the Saved Highlight display option. Unlike
     // customTokenColorRows above, these aren't gated behind a "Custom Token Colors" toggle —
-    // Favorited Highlight is switched on/off from the Read toolbar itself, so its colors are
+    // Saved Highlight is switched on/off from the Read toolbar itself, so its colors are
     // always available to customize here.
     @ViewBuilder
-    var favoritedHighlightColorRows: some View {
-        ColorPicker("Favorite", selection: favoritedFavoriteHighlightBinding, supportsOpacity: false)
-        ColorPicker("Learned", selection: favoritedLearnedHighlightBinding, supportsOpacity: false)
-        ColorPicker("Not Learned", selection: favoritedNotLearnedHighlightBinding, supportsOpacity: false)
-        ColorPicker("Elsewhere", selection: favoritedElsewhereHighlightBinding, supportsOpacity: false)
+    var savedHighlightColorRows: some View {
+        ColorPicker("Save", selection: savedHighlightBinding, supportsOpacity: false)
+        ColorPicker("Learned", selection: savedLearnedHighlightBinding, supportsOpacity: false)
+        ColorPicker("Not Learned", selection: savedNotLearnedHighlightBinding, supportsOpacity: false)
+        ColorPicker("Elsewhere", selection: savedElsewhereHighlightBinding, supportsOpacity: false)
     }
 
-    var favoritedFavoriteHighlightBinding: Binding<Color> {
+    var savedHighlightBinding: Binding<Color> {
         Binding(
-            get: { Color(UIColor(hexString: favoritedFavoriteHex) ?? UIColor(hexString: TokenColorSettings.defaultFavoritedFavoriteHex)!) },
-            set: { if let hex = UIColor($0).hexString { favoritedFavoriteHex = hex } }
+            get: { Color(UIColor(hexString: savedHex) ?? UIColor(hexString: TokenColorSettings.defaultSavedHex)!) },
+            set: { if let hex = UIColor($0).hexString { savedHex = hex } }
         )
     }
-    var favoritedLearnedHighlightBinding: Binding<Color> {
+    var savedLearnedHighlightBinding: Binding<Color> {
         Binding(
-            get: { Color(UIColor(hexString: favoritedLearnedHex) ?? UIColor(hexString: TokenColorSettings.defaultFavoritedLearnedHex)!) },
-            set: { if let hex = UIColor($0).hexString { favoritedLearnedHex = hex } }
+            get: { Color(UIColor(hexString: savedLearnedHex) ?? UIColor(hexString: TokenColorSettings.defaultSavedLearnedHex)!) },
+            set: { if let hex = UIColor($0).hexString { savedLearnedHex = hex } }
         )
     }
-    var favoritedNotLearnedHighlightBinding: Binding<Color> {
+    var savedNotLearnedHighlightBinding: Binding<Color> {
         Binding(
-            get: { Color(UIColor(hexString: favoritedNotLearnedHex) ?? UIColor(hexString: TokenColorSettings.defaultFavoritedNotLearnedHex)!) },
-            set: { if let hex = UIColor($0).hexString { favoritedNotLearnedHex = hex } }
+            get: { Color(UIColor(hexString: savedNotLearnedHex) ?? UIColor(hexString: TokenColorSettings.defaultSavedNotLearnedHex)!) },
+            set: { if let hex = UIColor($0).hexString { savedNotLearnedHex = hex } }
         )
     }
-    var favoritedElsewhereHighlightBinding: Binding<Color> {
+    var savedElsewhereHighlightBinding: Binding<Color> {
         Binding(
-            get: { Color(UIColor(hexString: favoritedElsewhereHex) ?? UIColor(hexString: TokenColorSettings.defaultFavoritedElsewhereHex)!) },
-            set: { if let hex = UIColor($0).hexString { favoritedElsewhereHex = hex } }
+            get: { Color(UIColor(hexString: savedElsewhereHex) ?? UIColor(hexString: TokenColorSettings.defaultSavedElsewhereHex)!) },
+            set: { if let hex = UIColor($0).hexString { savedElsewhereHex = hex } }
         )
     }
 

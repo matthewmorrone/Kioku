@@ -85,7 +85,7 @@ extension WordsView {
     }
 
     // The word ids the user can select on the current tab — the universe for "Select All"
-    // and the cap for "all selected". Saved tab → the visible favorites; History tab → the
+    // and the cap for "all selected". Saved tab → the visible saved words; History tab → the
     // `.entry` rows (query rows aren't words). Search/parse modes force edit mode off, so
     // they never reach the selection menu and default to empty here.
     var selectableWordIDs: [Int64] {
@@ -175,20 +175,20 @@ extension WordsView {
         wordsStore.words.contains { $0.canonicalEntryID == id }
     }
 
-    // Saves or unfavorites an entry from the Words tab star.
+    // Saves or unsaves an entry from the Words tab star.
     //
     // Unsave is a HARD remove rather than a `wordsStore.toggle(...)` call: that toggle
     // only clears the encountered surface but leaves any note attribution in place,
     // which means tapping the star on a song-saved word would no-op (encounteredSet
     // would empty but noteIDs would still contain the song, so the SavedWord survives).
     // The Words tab star has no song context, so the user's intent is unambiguous —
-    // "make this not a favorite anymore" — and full removal is the only state change
+    // "make this not saved anymore" — and full removal is the only state change
     // that delivers that.
     func toggleSave(_ entry: DictionaryEntry) {
         toggleSaveWord(entryID: entry.entryId, surface: entry.primarySearchSurface, materialized: entry)
     }
 
-    // The one save/unsave used by every word row. Unsave is a full remove (favorite ==
+    // The one save/unsave used by every word row. Unsave is a full remove (save ==
     // saved == present in WordsStore). On save we seed smart-default senses from the
     // materialized entry when we have it, else resolve once from the dictionary store — so
     // a row whose DictionaryEntry hasn't been fetched yet (pending history/saved row) still

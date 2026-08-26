@@ -183,7 +183,7 @@ final class KiokuCoreTextView: UIView {
     // Paints highlight bands first (in UIKit coords), then flips the context and draws each
     // CTLine. Clipping to dirty rect skips off-screen lines on partial redraws.
 
-    // Renders highlight bands, base glyphs (favorited words already tinted via .foregroundColor
+    // Renders highlight bands, base glyphs (saved words already tinted via .foregroundColor
     // by the attributed-string builder), and ruby in one pass.
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }

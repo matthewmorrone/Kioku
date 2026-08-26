@@ -1,13 +1,13 @@
 import SwiftUI
 
-// Filter sheet for the Words screen. History/Favorites is the one mutually-exclusive "base
+// Filter sheet for the Words screen. History/Saved is the one mutually-exclusive "base
 // view" choice (a 2-way segmented control, since exactly one is always showing) — History
 // includes both word lookups and typed free-text searches together, newest first. Everything
 // else — Review Status, JLPT Level, Note, List, plus Sort and Kanji below — is an independent,
 // composable narrowing filter with its own row/menu, mirroring how Sort and Kanji already
 // worked: picking a Review Status AND a Note AND a List all combine (see
 // WordsView+Actions.visibleWords, which already ANDs them together). Picking any of these
-// narrowing filters switches the base view to Favorites, since they only apply to saved words.
+// narrowing filters switches the base view to Saved, since they only apply to saved words.
 struct WordsFilterView: View {
     @EnvironmentObject private var wordListsStore: WordListsStore
     @EnvironmentObject private var wordsStore: WordsStore
@@ -19,7 +19,7 @@ struct WordsFilterView: View {
     @Binding var statScope: WordsStatScope
     // Active JLPT-level scope (N-number 5…1) or nil. Single-value like the other narrowing filters.
     @Binding var jlptLevel: Int?
-    // True when the screen shows the saved/favorites list rather than the lookup history.
+    // True when the screen shows the saved list rather than the lookup history.
     @Binding var showSavedWords: Bool
     @Binding var sortOrder: WordsSortOrder
     // Orthogonal kanji-content refinement; composes with every other filter rather than
@@ -32,7 +32,7 @@ struct WordsFilterView: View {
                 Section {
                     Picker("Base view", selection: $showSavedWords) {
                         Text("History").tag(false)
-                        Text("Favorites").tag(true)
+                        Text("Saved").tag(true)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
@@ -212,30 +212,30 @@ struct WordsFilterView: View {
 
     private func tapStatScope(_ scope: WordsStatScope) {
         statScope = statScope == scope ? .none : scope
-        activateFavorites()
+        activateSaved()
     }
 
     // Toggles a JLPT-level filter; re-tapping the active level clears it.
     private func tapJLPT(_ level: Int) {
         jlptLevel = jlptLevel == level ? nil : level
-        activateFavorites()
+        activateSaved()
     }
 
     // Toggles a note filter; re-tapping the active note clears it.
     private func tapNote(_ noteID: UUID) {
         activeFilterNoteIDs = activeFilterNoteIDs.contains(noteID) ? [] : [noteID]
-        activateFavorites()
+        activateSaved()
     }
 
     // Toggles a list filter; re-tapping the active list clears it.
     private func tapList(_ listID: UUID) {
         activeFilterListIDs = activeFilterListIDs.contains(listID) ? [] : [listID]
-        activateFavorites()
+        activateSaved()
     }
 
     // Narrowing filters only apply to saved words (see WordsView+Actions.visibleWords), so
-    // picking one always switches the base view to Favorites.
-    private func activateFavorites() {
+    // picking one always switches the base view to Saved.
+    private func activateSaved() {
         showSavedWords = true
     }
 

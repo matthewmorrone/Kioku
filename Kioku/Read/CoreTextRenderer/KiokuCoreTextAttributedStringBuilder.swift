@@ -102,18 +102,18 @@ enum KiokuCoreTextAttributedStringBuilder {
         // When set, replaces the implicit `textSize * 0.5` furigana font size used for
         // the ruby-overhang kern math. Default nil preserves legacy behavior.
         var furiganaSizeOverride: CGFloat? = nil
-        // Favorited Highlight: segments whose resolved dictionary entry matches a saved
-        // word are tinted by Learned-state category — Favorite/Learned/Not Learned each
+        // Saved Highlight: segments whose resolved dictionary entry matches a saved
+        // word are tinted by Learned-state category — Save/Learned/Not Learned each
         // get their own fixed color. A word's category is global (the same everywhere it's
         // saved), so there's no note-scoped variant. Applied after alternation/unknown/
         // changed/in-flight so it always wins on overlap (see build()).
-        var isFavoritedHighlightEnabled: Bool = false
-        var favoritedSegmentLocations: Set<Int> = []
-        var favoritedHighlightColor: UIColor = .systemYellow
-        var favoritedLearnedSegmentLocations: Set<Int> = []
-        var favoritedLearnedHighlightColor: UIColor = .systemGreen
-        var favoritedNotLearnedSegmentLocations: Set<Int> = []
-        var favoritedNotLearnedHighlightColor: UIColor = .systemPurple
+        var isSavedHighlightEnabled: Bool = false
+        var savedSegmentLocations: Set<Int> = []
+        var savedHighlightColor: UIColor = .systemYellow
+        var savedLearnedSegmentLocations: Set<Int> = []
+        var savedLearnedHighlightColor: UIColor = .systemGreen
+        var savedNotLearnedSegmentLocations: Set<Int> = []
+        var savedNotLearnedHighlightColor: UIColor = .systemPurple
     }
 
     // Composes the renderer-ready NSAttributedString: base font + paragraph style,
@@ -205,19 +205,19 @@ enum KiokuCoreTextAttributedStringBuilder {
             }
         }
 
-        // Favorited Highlight. Applied last of the foreground-color passes so it always wins
+        // Saved Highlight. Applied last of the foreground-color passes so it always wins
         // on overlap — matches the TextKit path's ordering (ReadTextStyleResolver) and the
         // pre-existing behavior of this pass before its temporary removal.
-        if inputs.isFavoritedHighlightEnabled {
+        if inputs.isSavedHighlightEnabled {
             for segmentRange in inputs.segmentationRanges {
                 let nsRange = NSRange(segmentRange, in: inputs.text)
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
-                if inputs.favoritedLearnedSegmentLocations.contains(nsRange.location) {
-                    result.addAttribute(.foregroundColor, value: inputs.favoritedLearnedHighlightColor, range: nsRange)
-                } else if inputs.favoritedNotLearnedSegmentLocations.contains(nsRange.location) {
-                    result.addAttribute(.foregroundColor, value: inputs.favoritedNotLearnedHighlightColor, range: nsRange)
-                } else if inputs.favoritedSegmentLocations.contains(nsRange.location) {
-                    result.addAttribute(.foregroundColor, value: inputs.favoritedHighlightColor, range: nsRange)
+                if inputs.savedLearnedSegmentLocations.contains(nsRange.location) {
+                    result.addAttribute(.foregroundColor, value: inputs.savedLearnedHighlightColor, range: nsRange)
+                } else if inputs.savedNotLearnedSegmentLocations.contains(nsRange.location) {
+                    result.addAttribute(.foregroundColor, value: inputs.savedNotLearnedHighlightColor, range: nsRange)
+                } else if inputs.savedSegmentLocations.contains(nsRange.location) {
+                    result.addAttribute(.foregroundColor, value: inputs.savedHighlightColor, range: nsRange)
                 }
             }
         }

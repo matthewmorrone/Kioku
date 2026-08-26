@@ -62,10 +62,10 @@ struct SettingsView: View {
     @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
     @AppStorage(TokenColorSettings.highlightColorKey) var highlightHex: String = TokenColorSettings.defaultHighlightHex
-    @AppStorage(TokenColorSettings.favoritedFavoriteColorKey) var favoritedFavoriteHex: String = TokenColorSettings.defaultFavoritedFavoriteHex
-    @AppStorage(TokenColorSettings.favoritedLearnedColorKey) var favoritedLearnedHex: String = TokenColorSettings.defaultFavoritedLearnedHex
-    @AppStorage(TokenColorSettings.favoritedNotLearnedColorKey) var favoritedNotLearnedHex: String = TokenColorSettings.defaultFavoritedNotLearnedHex
-    @AppStorage(TokenColorSettings.favoritedElsewhereColorKey) var favoritedElsewhereHex: String = TokenColorSettings.defaultFavoritedElsewhereHex
+    @AppStorage(TokenColorSettings.savedColorKey) var savedHex: String = TokenColorSettings.defaultSavedHex
+    @AppStorage(TokenColorSettings.savedLearnedColorKey) var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
+    @AppStorage(TokenColorSettings.savedNotLearnedColorKey) var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
+    @AppStorage(TokenColorSettings.savedElsewhereColorKey) var savedElsewhereHex: String = TokenColorSettings.defaultSavedElsewhereHex
     // Custom Theme: when on, the four hexes below override the active theme's chrome colors
     // (background / surface / ink / accent). Other palette slots keep the theme's values so a
     // half-customized palette stays coherent. The Read view's toolbar still owns the on/off
@@ -346,14 +346,14 @@ struct SettingsView: View {
                     Text("Theme")
                 }
 
-                // Per-state colors for the Read tab's "Favorited Highlight" display option
-                // (Favorite/unmarked reuses the Highlight Color above). Its own section since
-                // it's independent of Custom Token Colors — Favorited Highlight has its own
+                // Per-state colors for the Read tab's "Saved Highlight" display option
+                // (Save/unmarked reuses the Highlight Color above). Its own section since
+                // it's independent of Custom Token Colors — Saved Highlight has its own
                 // on/off toggle in the Read toolbar.
                 Section {
-                    favoritedHighlightColorRows
+                    savedHighlightColorRows
                 } header: {
-                    Text("Favorited Highlight")
+                    Text("Saved Highlight")
                 }
 
                 // MARK: Audio
@@ -792,7 +792,7 @@ struct SettingsView: View {
         )
     }
 
-    // Highlight color — shared by the favorited glow and the selection box (hex AppStorage) <-> Color.
+    // Highlight color — shared by the saved glow and the selection box (hex AppStorage) <-> Color.
     var tokenHighlightBinding: Binding<Color> {
         Binding(
             get: { Color(UIColor(hexString: highlightHex) ?? UIColor(hexString: TokenColorSettings.defaultHighlightHex)!) },

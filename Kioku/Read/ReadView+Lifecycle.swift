@@ -370,10 +370,10 @@ extension ReadView {
                     noteID: activeNoteID,
                     playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : playbackHighlightRangeOverride,
                     granularity: lyricsHighlightGranularity,
-                    isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
-                    favoritedSegmentLocations: favoritedSegmentLocations,
-                    favoritedLearnedSegmentLocations: favoritedLearnedSegmentLocations,
-                    favoritedNotLearnedSegmentLocations: favoritedNotLearnedSegmentLocations,
+                    isSavedHighlightEnabled: isSavedHighlightEnabled,
+                    savedSegmentLocations: savedSegmentLocations,
+                    savedLearnedSegmentLocations: savedLearnedSegmentLocations,
+                    savedNotLearnedSegmentLocations: savedNotLearnedSegmentLocations,
                     onSegmentTapped: { location, rect, sourceView in
                         handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: sourceView)
                     },

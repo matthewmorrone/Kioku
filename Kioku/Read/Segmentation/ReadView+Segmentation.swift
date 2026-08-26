@@ -753,7 +753,7 @@ extension ReadView {
     // needs to answer "which saved word (if any) does this piece of text refer to" — the lookup
     // sheet's star/learned-state button (via currentSegmentDictionaryEntry, isSegmentSaved,
     // isSegmentSavedElsewhere below) and the Read-tab/LyricsView in-text coloring
-    // (ReadView+Editor.favoritedEntry) all resolve through this single function, so they can
+    // (ReadView+Editor.computeSavedSegmentLocations) all resolve through this single function, so they can
     // never disagree about which entry a given piece of text belongs to.
     func resolvedDictionaryEntry(forSurface surface: String) -> DictionaryEntry? {
         guard let store = dictionaryStore else { return nil }

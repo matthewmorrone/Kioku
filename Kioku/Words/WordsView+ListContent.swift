@@ -19,7 +19,7 @@ private struct SwipeActionsWhenNotEditing<Actions: View>: ViewModifier {
 }
 
 // List content for the Words screen. ONE word-row builder (`wordRow`) renders every
-// dictionary word the app shows — live search results, saved favorites, and history
+// dictionary word the app shows — live search results, saved words, and history
 // `.entry` rows — with identical body, gestures, swipe action, and context menu. The only
 // thing that varies by where the row is shown is which "Remove from …" action the menu and
 // swipe offer (list / note / history), driven by the current view context. Free-text
@@ -143,7 +143,7 @@ extension WordsView {
         // above: List(selection:)'s native row-selection gesture machinery makes .contextMenu
         // unreliable on its rows (same root cause as the Lines row's star menu — see
         // SegmentListView's comment on that), so this is the belt to that menu's suspenders
-        // rather than a replacement for it. Remove/Unfavorite stays first so a full swipe keeps
+        // rather than a replacement for it. Remove/Unsave stays first so a full swipe keeps
         // doing what it always did.
         .modifier(SwipeActionsWhenNotEditing(isEditing: editMode == .active) {
             wordRowSwipeAction(entryID: entryID, surface: surface, entry: entry)
@@ -209,7 +209,7 @@ extension WordsView {
 
     // The single trailing-swipe "remove" action, contextual to whichever scope the row is
     // being viewed in — same priority order as wordRowMenu's "remove from …" section (list →
-    // note → history), falling back to Unfavorite everywhere else (the Saved Words list, plain
+    // note → history), falling back to Unsave everywhere else (the Saved Words list, plain
     // search results). One action per row keeps the swipe gesture a predictable single-purpose
     // "take this out of what I'm looking at" rather than a menu of choices.
     @ViewBuilder
@@ -241,7 +241,7 @@ extension WordsView {
             Button(role: .destructive) {
                 toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
             } label: {
-                Label("Unfavorite", systemImage: "star.slash")
+                Label("Unsave", systemImage: "star.slash")
             }
             .tint(.red)
         }
@@ -283,8 +283,8 @@ extension WordsView {
     }
 
     // The single context menu for every word row. Shared items first; then the global
-    // Favorite/Unfavorite (favorite == saved); then exactly the contextual "Remove from …"
-    // actions that make sense where the row is being viewed. Unfavorite and "remove from a
+    // Save/Unsave (save == saved); then exactly the contextual "Remove from …"
+    // actions that make sense where the row is being viewed. Unsave and "remove from a
     // container" are deliberately separate: leaving a list/note doesn't unsave the word.
     @ViewBuilder
     func wordRowMenu(
@@ -318,7 +318,7 @@ extension WordsView {
         // a checkmark when the word is already in that list. Tapping a non-member
         // list saves the word first if needed (toggleListMembership is a no-op on
         // unsaved words), so users can add a search-result row to a list in one
-        // gesture without first having to favorite it.
+        // gesture without first having to save it.
         if wordListsStore.lists.isEmpty == false {
             let memberLists: Set<UUID> = Set(wordsStore.words.first { $0.canonicalEntryID == entryID }?.wordListIDs ?? [])
             Menu {
@@ -343,10 +343,10 @@ extension WordsView {
         Button(role: saved ? .destructive : nil) {
             toggleSaveWord(entryID: entryID, surface: surface, materialized: entry)
         } label: {
-            Label(saved ? "Unfavorite" : "Favorite", systemImage: saved ? "star.slash" : "star")
+            Label(saved ? "Unsave" : "Save", systemImage: saved ? "star.slash" : "star")
         }
 
-        // Contextual "remove from the thing you're viewing", independent of unfavorite.
+        // Contextual "remove from the thing you're viewing", independent of unsave.
         if let listID = singleActiveListID {
             Button(role: .destructive) {
                 wordsStore.removeFromList(wordIDs: [entryID], listID: listID)
@@ -391,7 +391,7 @@ extension WordsView {
     }
 
     // One saved-kanji row. Out of edit mode it's a button that opens the kanji detail and
-    // carries the reorganize/Unfavorite context menu. In edit mode it becomes a manually
+    // carries the reorganize/Unsave context menu. In edit mode it becomes a manually
     // selectable row that toggles membership in selectedKanjiLiterals — the parallel selection
     // set that lets the batch "Remove from Saved" delete kanji alongside words. Kanji can't use
     // the List's native selection because that's keyed to Int64 word ids, not String literals.
@@ -453,7 +453,7 @@ extension WordsView {
     }
 
     // Long-press context menu for a saved-kanji row. Mirrors the word-row menu's
-    // shape — Open / Add to List / Remove from current list / Unfavorite —
+    // shape — Open / Add to List / Remove from current list / Unsave —
     // routed through SavedKanjiStore. Without this, kanji were saveable but
     // couldn't be reorganized or removed from the Saved view.
     @ViewBuilder
@@ -492,7 +492,7 @@ extension WordsView {
         Button(role: .destructive) {
             savedKanjiStore.remove(literal: saved.literal)
         } label: {
-            Label("Unfavorite", systemImage: "star.slash")
+            Label("Unsave", systemImage: "star.slash")
         }
 
         if let listID = singleActiveListID {

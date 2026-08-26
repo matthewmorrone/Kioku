@@ -56,9 +56,9 @@ struct ReadView: View {
     @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
     @AppStorage(TokenColorSettings.highlightColorKey) var highlightHex: String = TokenColorSettings.defaultHighlightHex
-    @AppStorage(TokenColorSettings.favoritedFavoriteColorKey) var favoritedFavoriteHex: String = TokenColorSettings.defaultFavoritedFavoriteHex
-    @AppStorage(TokenColorSettings.favoritedLearnedColorKey) var favoritedLearnedHex: String = TokenColorSettings.defaultFavoritedLearnedHex
-    @AppStorage(TokenColorSettings.favoritedNotLearnedColorKey) var favoritedNotLearnedHex: String = TokenColorSettings.defaultFavoritedNotLearnedHex
+    @AppStorage(TokenColorSettings.savedColorKey) var savedHex: String = TokenColorSettings.defaultSavedHex
+    @AppStorage(TokenColorSettings.savedLearnedColorKey) var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
+    @AppStorage(TokenColorSettings.savedNotLearnedColorKey) var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
     @AppStorage("kioku.settings.showFurigana") var isFuriganaVisible = true
     // When on, furigana is suppressed for any segment whose word is marked learned or
     // mastered (see ReviewStore). Independent of isFuriganaVisible, which is the master
@@ -69,17 +69,15 @@ struct ReadView: View {
     @AppStorage("kioku.settings.applyGlobally") var shouldApplyChangesGlobally = true
     @AppStorage("kioku.settings.lineWrapping") var isLineWrappingEnabled = true
     @AppStorage("kioku.settings.rubySpacing") var isRubySpacingEnabled = true
-    // Key kept as "favoritedGlow" so existing users don't lose their saved preference —
-    // only the visual effect changed (blurred glow → plain foreground color), not the setting.
-    @AppStorage("kioku.settings.favoritedGlow") var isFavoritedHighlightEnabled = false
-    // Independent per-category visibility toggles for Favorited Highlight, set from its submenu.
+    @AppStorage("kioku.settings.savedGlow") var isSavedHighlightEnabled = false
+    // Independent per-category visibility toggles for Saved Highlight, set from its submenu.
     // Each category always renders in its own fixed color (see SettingsView+ThemeSection's
-    // Favorited Highlight color pickers) when its toggle is on — they aren't mutually exclusive,
+    // Saved Highlight color pickers) when its toggle is on — they aren't mutually exclusive,
     // so any combination (or all three) can show at once. A word's status is global (the same
     // everywhere it's saved), so there is no per-note "elsewhere" category.
-    @AppStorage("kioku.settings.favoritedHighlight.showFavorite") var isFavoritedHighlightShowingFavorite = true
-    @AppStorage("kioku.settings.favoritedHighlight.showLearned") var isFavoritedHighlightShowingLearned = true
-    @AppStorage("kioku.settings.favoritedHighlight.showNotLearned") var isFavoritedHighlightShowingNotLearned = true
+    @AppStorage("kioku.settings.savedHighlight.showSaved") var isSavedHighlightShowingSaved = true
+    @AppStorage("kioku.settings.savedHighlight.showLearned") var isSavedHighlightShowingLearned = true
+    @AppStorage("kioku.settings.savedHighlight.showNotLearned") var isSavedHighlightShowingNotLearned = true
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) var debugFuriganaRects: Bool = false
     @AppStorage(DebugSettings.headwordRectsKey) var debugHeadwordRects: Bool = false
@@ -103,11 +101,11 @@ struct ReadView: View {
     @State var segmentLatticeEdges: [LatticeEdge] = []
     @State var segmentEdges: [LatticeEdge] = []
     @State var segmentRanges: [Range<String.Index>] = []
-    // Cache for the favorited-highlight set so it isn't recomputed (dictionary-lookup sweep) on
+    // Cache for the saved-highlight set so it isn't recomputed (dictionary-lookup sweep) on
     // every body eval.
-    @State var favoritedHighlightMemo = FavoritedHighlightMemo()
+    @State var savedHighlightMemo = SavedHighlightMemo()
     // Cache for the "hide furigana for known words" segment set — same memoization rationale
-    // as favoritedHighlightMemo above.
+    // as savedHighlightMemo above.
     @State var knownWordFuriganaMemo = KnownWordFuriganaMemo()
     @State var unknownSegmentLocations: Set<Int> = []
     @State var selectedSegmentLocation: Int?
@@ -156,10 +154,10 @@ struct ReadView: View {
     @State var appliedSheetBottomInset: CGFloat = 0
     @State var isShowingSegmentList = false
     @State var isShowingDisplayOptions = false
-    // Drives the Favorited Highlight category submenu as its own popover rather than a SwiftUI
+    // Drives the Saved Highlight category submenu as its own popover rather than a SwiftUI
     // `Menu` — a Menu auto-dismisses after every tap (including a Toggle tap), which defeats
     // flipping more than one category per visit. A popover of real Toggle rows doesn't.
-    @State var isShowingFavoritedHighlightCategories = false
+    @State var isShowingSavedHighlightCategories = false
     @State var isShowingFileImporter = false
     @State var isShowingSubtitlePopup = false
     @State var isShowingBreakdownSheet = false

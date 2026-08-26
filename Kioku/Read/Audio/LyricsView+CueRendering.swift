@@ -170,7 +170,7 @@ extension LyricsView {
         )
     }
 
-    // Rebases a set of noteText-coord UTF-16 segment-start locations (e.g. Favorited Highlight)
+    // Rebases a set of noteText-coord UTF-16 segment-start locations (e.g. Saved Highlight)
     // into cue-local coords, same filter-and-shift rule as activeCueRenderInput's furigana
     // rebasing above: keep only locations inside [cueOriginInNote, cueOriginInNote + cueLength).
     func rebaseIntoCue(_ locations: Set<Int>, cueOriginInNote: Int, cueLength: Int) -> Set<Int> {

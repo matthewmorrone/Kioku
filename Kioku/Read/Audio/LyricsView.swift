@@ -26,15 +26,15 @@ struct LyricsView: View {
     // Current granularity setting, surfaced for the HUD. Per-cue checkpoints now ride on each cue
     // (cue.checkpoints) rather than a separate dictionary.
     let granularity: LyricsHighlightGranularity
-    // Favorited Highlight, in noteText UTF-16 coords — same signal as ReadView+Editor's
+    // Saved Highlight, in noteText UTF-16 coords — same signal as ReadView+Editor's
     // properties of the same name (resolved via resolvedDictionaryEntry(forSurface:), the
     // single canonical entry-ID resolution shared with the lookup sheet's button). Rebased to
     // cue-local coords at the render call site below, same as furiganaBySegmentLocation.
     // Defaulted so other call sites (previews) stay valid.
-    var isFavoritedHighlightEnabled: Bool = false
-    var favoritedSegmentLocations: Set<Int> = []
-    var favoritedLearnedSegmentLocations: Set<Int> = []
-    var favoritedNotLearnedSegmentLocations: Set<Int> = []
+    var isSavedHighlightEnabled: Bool = false
+    var savedSegmentLocations: Set<Int> = []
+    var savedLearnedSegmentLocations: Set<Int> = []
+    var savedNotLearnedSegmentLocations: Set<Int> = []
     let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
     let onDismiss: () -> Void
     // Switches to Settings and scrolls to/highlights the named row (see SettingsView's
@@ -110,16 +110,16 @@ struct LyricsView: View {
             : (UIColor(hexString: Theme.activePalette.defaultTokenColorBHex) ?? .secondaryLabel)
     }
 
-    private var resolvedFavoritedHighlightColor: UIColor {
-        UIColor(hexString: favoritedFavoriteHex) ?? .systemYellow
+    private var resolvedSavedHighlightColor: UIColor {
+        UIColor(hexString: savedHex) ?? .systemYellow
     }
 
-    private var resolvedFavoritedLearnedHighlightColor: UIColor {
-        UIColor(hexString: favoritedLearnedHex) ?? .systemGreen
+    private var resolvedSavedLearnedHighlightColor: UIColor {
+        UIColor(hexString: savedLearnedHex) ?? .systemGreen
     }
 
-    private var resolvedFavoritedNotLearnedHighlightColor: UIColor {
-        UIColor(hexString: favoritedNotLearnedHex) ?? .systemPurple
+    private var resolvedSavedNotLearnedHighlightColor: UIColor {
+        UIColor(hexString: savedNotLearnedHex) ?? .systemPurple
     }
 
     // Number of cues where the subtitle text differs from the corresponding note text.
@@ -228,11 +228,11 @@ struct LyricsView: View {
     @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
     @AppStorage(TokenColorSettings.highlightColorKey) private var highlightHex: String = TokenColorSettings.defaultHighlightHex
-    // Mirrors ReadView's Favorited Highlight color pickers so the active-cue card tints
-    // Favorite/Learned/Not Learned identically to the Read tab.
-    @AppStorage(TokenColorSettings.favoritedFavoriteColorKey) private var favoritedFavoriteHex: String = TokenColorSettings.defaultFavoritedFavoriteHex
-    @AppStorage(TokenColorSettings.favoritedLearnedColorKey) private var favoritedLearnedHex: String = TokenColorSettings.defaultFavoritedLearnedHex
-    @AppStorage(TokenColorSettings.favoritedNotLearnedColorKey) private var favoritedNotLearnedHex: String = TokenColorSettings.defaultFavoritedNotLearnedHex
+    // Mirrors ReadView's Saved Highlight color pickers so the active-cue card tints
+    // Save/Learned/Not Learned identically to the Read tab.
+    @AppStorage(TokenColorSettings.savedColorKey) private var savedHex: String = TokenColorSettings.defaultSavedHex
+    @AppStorage(TokenColorSettings.savedLearnedColorKey) private var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
+    @AppStorage(TokenColorSettings.savedNotLearnedColorKey) private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
     // Settings → Debug → "Karaoke HUD" controls whether the diagnostic strip
     // overlays the active-cue card. Default off so the lyrics card reads clean;
     // the binding is read-only here since the toggle lives in SettingsView.
@@ -420,13 +420,13 @@ struct LyricsView: View {
                         unknownSegmentLocations: untimedLocations,
                         isHighlightUnknownEnabled: false,
                         unknownSegmentColor: .tertiaryLabel,
-                        isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
-                        favoritedSegmentLocations: rebaseIntoCue(favoritedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                        favoritedHighlightColor: resolvedFavoritedHighlightColor,
-                        favoritedLearnedSegmentLocations: rebaseIntoCue(favoritedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                        favoritedLearnedHighlightColor: resolvedFavoritedLearnedHighlightColor,
-                        favoritedNotLearnedSegmentLocations: rebaseIntoCue(favoritedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                        favoritedNotLearnedHighlightColor: resolvedFavoritedNotLearnedHighlightColor,
+                        isSavedHighlightEnabled: isSavedHighlightEnabled,
+                        savedSegmentLocations: rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        savedHighlightColor: resolvedSavedHighlightColor,
+                        savedLearnedSegmentLocations: rebaseIntoCue(savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        savedLearnedHighlightColor: resolvedSavedLearnedHighlightColor,
+                        savedNotLearnedSegmentLocations: rebaseIntoCue(savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        savedNotLearnedHighlightColor: resolvedSavedNotLearnedHighlightColor,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
                         onSegmentTapped: { localLocation, rect, _ in
