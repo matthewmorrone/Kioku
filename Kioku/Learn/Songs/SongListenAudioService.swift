@@ -3,16 +3,19 @@ import Foundation
 import os
 
 // Renders a SongBreakdown into a single linear, exportable audio file: for each line, the
+// sung clip from the song's own audio (when a matched time range is available), then the
 // Japanese sentence, then the English gist, then every word's Japanese surface followed by
 // its English definition — one line after another (see SongListenScript for the exact
 // ordering). Synthesis alternates between a Japanese and an English AVSpeechSynthesisVoice
-// per segment, so the listener always hears each language spoken by a voice built for it
+// per segment — the best-quality (premium, else enhanced, else default) voice installed for
+// each language — so the listener always hears each language spoken by a voice built for it
 // ("code switching") instead of one voice mangling the other language's text.
 //
 // Runs entirely on-device via AVSpeechSynthesizer's buffer-based `write(_:toBufferCallback:)`
-// — no network call, no API key, no per-request cost. Buffers are streamed into a
-// SongListenAudioSink with short silences between segments so the result is a normal,
-// seekable, shareable file rather than a live-only utterance queue tied to this process.
+// — no network call, no API key, no per-request cost. Buffers (speech and song-clip alike)
+// are streamed into a SongListenAudioSink with short silences between segments so the result
+// is a normal, seekable, shareable file rather than a live-only utterance queue tied to this
+// process.
 //
 // Marked `nonisolated`: this is a pure background worker with no UI ties, and
 // AVSpeechSynthesizer's write callback fires off whatever thread AVFoundation chooses — opting
@@ -25,17 +28,36 @@ nonisolated final class SongListenAudioService {
     // one synthesis at a time in any case.
     private let synthesizer = AVSpeechSynthesizer()
 
+    // Fixed output format for the whole track — see SongListenAudioSink's header comment for
+    // why this can't just be inferred from whichever buffer happens to arrive first once song
+    // clips are in the mix. Mono/44.1kHz matches what AVSpeechSynthesizer and most song audio
+    // sources both convert into cleanly.
+    private static let targetFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
+
     // Synthesizes the full listen-along track for a breakdown and writes it to a cache file,
-    // returning the file URL. The cache key includes `sourceTextHash`, so re-opening Listen
-    // for an unchanged breakdown reuses the existing file instead of re-synthesizing, while a
-    // regenerated breakdown (different hash) renders fresh — any stale file(s) for this note
-    // under an old hash are cleaned up so cache growth stays bounded to one track per note.
-    // `onProgress` reports a 0...1 fraction after each segment for a progress bar.
+    // returning the file URL. The cache key includes `sourceTextHash` plus a signature of the
+    // clip inputs, so re-opening Listen for an unchanged breakdown AND unchanged audio/cues
+    // reuses the existing file instead of re-rendering, while either changing (regenerated
+    // breakdown, swapped audio attachment, re-aligned cues) renders fresh — any stale file(s)
+    // for this note under an old key are cleaned up so cache growth stays bounded to one track
+    // per note. `onProgress` reports a 0...1 fraction after each step for a progress bar.
+    //
+    // `sourceAudioURL`/`lineRanges` are optional: pass both to splice in the sung clip before
+    // each line's breakdown (mirrors the per-line ▶︎ button's own SongLineCueMatcher-derived
+    // ranges, so the listener hears exactly what tapping that button would play). Omit either
+    // (the defaults) to render narration-only, e.g. for a note with no audio attachment.
     func renderAudio(
         for breakdown: SongBreakdown,
+        sourceAudioURL: URL? = nil,
+        lineRanges: [Int: (startMs: Int, endMs: Int)] = [:],
         onProgress: @escaping @MainActor (Double) -> Void = { _ in }
     ) async throws -> URL {
-        let destination = Self.destinationURL(forNoteID: breakdown.noteID, sourceTextHash: breakdown.sourceTextHash)
+        let effectiveRanges = sourceAudioURL != nil ? lineRanges : [:]
+        let destination = Self.destinationURL(
+            forNoteID: breakdown.noteID,
+            sourceTextHash: breakdown.sourceTextHash,
+            clipsSignature: Self.clipsSignature(sourceAudioURL: sourceAudioURL, lineRanges: effectiveRanges)
+        )
         if FileManager.default.fileExists(atPath: destination.path) {
             await onProgress(1)
             return destination
@@ -45,13 +67,13 @@ nonisolated final class SongListenAudioService {
         // Resolved once up front: a device missing either installed voice would otherwise
         // have AVSpeechSynthesizer silently substitute its default voice per-utterance,
         // defeating the whole point of switching languages — fail loudly instead.
-        guard let japaneseVoice = AVSpeechSynthesisVoice(language: "ja-JP"),
-              let englishVoice = AVSpeechSynthesisVoice(language: "en-US") else {
+        guard let japaneseVoice = Self.preferredVoice(languageCode: "ja-JP"),
+              let englishVoice = Self.preferredVoice(languageCode: "en-US") else {
             throw SongListenRenderError.voiceUnavailable
         }
 
-        let segments = SongListenScript.build(from: breakdown)
-        guard segments.isEmpty == false else { throw SongListenRenderError.emptyScript }
+        let steps = SongListenScript.build(from: breakdown, lineRanges: effectiveRanges)
+        guard steps.isEmpty == false else { throw SongListenRenderError.emptyScript }
 
         // Written under a distinct name (kept as ".caf" so AVAudioFile still infers the right
         // container) and moved into place only once complete, so a cancelled or interrupted
@@ -62,13 +84,21 @@ nonisolated final class SongListenAudioService {
             .appendingPathExtension("partial.caf")
         try? FileManager.default.removeItem(at: workingDestination)
 
-        let sink = SongListenAudioSink(destination: workingDestination)
-        for (index, segment) in segments.enumerated() {
+        let sink = SongListenAudioSink(destination: workingDestination, targetFormat: Self.targetFormat)
+        for (index, step) in steps.enumerated() {
             try Task.checkCancellation()
-            let voice = segment.language == .japanese ? japaneseVoice : englishVoice
-            try await synthesizeAndWrite(segment: segment, voice: voice, sink: sink)
-            try sink.writeSilence(after: segment.kind)
-            await onProgress(Double(index + 1) / Double(segments.count))
+            switch step {
+            case .speech(let segment):
+                let voice = segment.language == .japanese ? japaneseVoice : englishVoice
+                try await synthesizeAndWrite(segment: segment, voice: voice, sink: sink)
+                try sink.writeSilence(after: segment.kind)
+            case .clip(_, let startMs, let endMs):
+                guard let sourceAudioURL else { continue }
+                let buffer = try readClip(from: sourceAudioURL, startMs: startMs, endMs: endMs)
+                try sink.write(buffer)
+                try sink.writeSilenceAfterClip()
+            }
+            await onProgress(Double(index + 1) / Double(steps.count))
         }
 
         guard sink.audioFile != nil else { throw SongListenRenderError.noAudioProduced }
@@ -114,15 +144,74 @@ nonisolated final class SongListenAudioService {
         }
     }
 
+    // Reads the [startMs, endMs) slice of the song's own audio file as one PCM buffer, in
+    // that file's native format (SongListenAudioSink converts it into the track's target
+    // format). Clamped to the file's actual length in case a cue's endMs slightly overruns
+    // the source (SRT timing drift) rather than throwing on an out-of-range read.
+    private func readClip(from url: URL, startMs: Int, endMs: Int) throws -> AVAudioPCMBuffer {
+        let file = try AVAudioFile(forReading: url)
+        let sampleRate = file.processingFormat.sampleRate
+        let startFrame = max(0, AVAudioFramePosition((Double(startMs) / 1000) * sampleRate))
+        let endFrame = min(file.length, AVAudioFramePosition((Double(endMs) / 1000) * sampleRate))
+        let frameCount = AVAudioFrameCount(max(0, endFrame - startFrame))
+        guard frameCount > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount) else {
+            throw SongListenRenderError.clipReadFailed
+        }
+        file.framePosition = startFrame
+        try file.read(into: buffer, frameCount: frameCount)
+        return buffer
+    }
+
+    // Picks the best-quality installed voice for a language: premium, else enhanced, else
+    // whatever `AVSpeechSynthesisVoice(language:)` resolves to (the plain system default also
+    // used everywhere else word audio plays in this app). Premium/enhanced voices sound
+    // distinctly more natural and, being a deliberate download rather than always-present,
+    // read as a different voice than the app's other TTS call sites — appropriate for a
+    // longer narrated track where voice quality matters more than for a one-word tap-to-hear.
+    private static func preferredVoice(languageCode: String) -> AVSpeechSynthesisVoice? {
+        let candidates = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == languageCode }
+        if let best = candidates.max(by: { qualityRank($0.quality) < qualityRank($1.quality) }) {
+            return best
+        }
+        return AVSpeechSynthesisVoice(language: languageCode)
+    }
+
+    // Orders voice quality tiers so `max(by:)` above picks premium over enhanced over default.
+    private static func qualityRank(_ quality: AVSpeechSynthesisVoiceQuality) -> Int {
+        switch quality {
+        case .premium: return 2
+        case .enhanced: return 1
+        case .default: return 0
+        @unknown default: return 0
+        }
+    }
+
     // Cache location: derived, regenerable content lives under Library/Caches so it's swept
     // by the existing "Clear Caches" action (CachesCleaner) and never backed up to iCloud.
-    // Keying on `sourceTextHash` (mirroring SongBreakdownStore's own cache key) means a
-    // regenerated breakdown gets a fresh filename rather than silently reusing stale audio.
-    static func destinationURL(forNoteID noteID: UUID, sourceTextHash: String) -> URL {
+    // Keying on `sourceTextHash` plus `clipsSignature` (mirroring SongBreakdownStore's own
+    // cache-key approach) means a regenerated breakdown, a swapped audio attachment, or a
+    // re-aligned cue set each get a fresh filename rather than silently reusing a stale track.
+    static func destinationURL(forNoteID noteID: UUID, sourceTextHash: String, clipsSignature: String) -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         let dir = caches.appendingPathComponent("listen", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("\(noteID.uuidString)-\(sourceTextHash).caf")
+        return dir.appendingPathComponent("\(noteID.uuidString)-\(sourceTextHash)-\(clipsSignature).caf")
+    }
+
+    // Folds the clip inputs (which audio file, and every line's matched range within it) into
+    // one short signature for the cache key. "noaudio" when there's no attachment, so a note
+    // that never had audio doesn't churn cache entries as this string's shape changes.
+    private static func clipsSignature(sourceAudioURL: URL?, lineRanges: [Int: (startMs: Int, endMs: Int)]) -> String {
+        guard let sourceAudioURL else { return "noaudio" }
+        var hasher = Hasher()
+        hasher.combine(sourceAudioURL.path)
+        for (lineIndex, range) in lineRanges.sorted(by: { $0.key < $1.key }) {
+            hasher.combine(lineIndex)
+            hasher.combine(range.startMs)
+            hasher.combine(range.endMs)
+        }
+        return String(UInt(bitPattern: hasher.finalize()))
     }
 
     // Removes any previously-cached listen tracks for this note other than `keeping` — e.g.

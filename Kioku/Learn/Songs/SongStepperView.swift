@@ -165,7 +165,11 @@ struct SongStepperView: View {
         }
         .sheet(isPresented: $isListenSheetPresented) {
             if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id) {
-                SongListenSheet(breakdown: breakdown)
+                SongListenSheet(
+                    breakdown: breakdown,
+                    sourceAudioURL: note.audioAttachmentID.flatMap { NotesAudioStore.shared.audioURL(for: $0) },
+                    lineRanges: lineRangesByIndex
+                )
             }
         }
         .confirmationDialog(
@@ -580,8 +584,8 @@ struct SongStepperView: View {
 }
 
 // Pre-resolved per-line furigana payload. The three fields together are exactly the data
-// shape `FuriganaTextRenderer` consumes, so the card hands them straight through with no
-// further conversion. Built lazily on first toggle and held in the stepper's @State so
+// shape `KiokuCoreTextRendererView` consumes, so the card hands them straight through with
+// no further conversion. Built lazily on first toggle and held in the stepper's @State so
 // re-enabling furigana for the same line is instant.
 struct LineFuriganaCache: Equatable {
     let segmentationRanges: [Range<String.Index>]

@@ -14,6 +14,12 @@ enum SongListenRenderState {
 // (AirDrop, Files, Messages, ...) rather than staying trapped in-app.
 struct SongListenSheet: View {
     let breakdown: SongBreakdown
+    // The note's own audio file and each line's matched time range within it (mirrors the
+    // per-line ▶︎ button's SongLineCueMatcher ranges) — when both are present, the render
+    // splices the sung clip in before each line's breakdown. Defaulted so a note with no
+    // audio attachment renders narration-only.
+    var sourceAudioURL: URL? = nil
+    var lineRanges: [Int: (startMs: Int, endMs: Int)] = [:]
     @Environment(\.dismiss) private var dismiss
     @StateObject private var playback = AudioPlaybackController()
     @State private var state: SongListenRenderState = .rendering(progress: 0)
@@ -60,11 +66,19 @@ struct SongListenSheet: View {
             Text("Generating listen-along audio…")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            Text("Japanese sentence, English gist, then each word — line by line.")
+            Text(hasClips
+                ? "The sung line, then its Japanese sentence, English gist, and each word — line by line."
+                : "Japanese sentence, English gist, then each word — line by line.")
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.tertiary)
         }
+    }
+
+    // Whether this render will actually splice in any sung clips — the source needs an audio
+    // file AND at least one line to have matched a cue range within it.
+    private var hasClips: Bool {
+        sourceAudioURL != nil && lineRanges.isEmpty == false
     }
 
     // Playback controls once the track exists: a big play/pause button, an elapsed/total
@@ -130,7 +144,11 @@ struct SongListenSheet: View {
     private func render() async {
         state = .rendering(progress: 0)
         do {
-            let url = try await SongListenAudioService().renderAudio(for: breakdown) { fraction in
+            let url = try await SongListenAudioService().renderAudio(
+                for: breakdown,
+                sourceAudioURL: sourceAudioURL,
+                lineRanges: lineRanges
+            ) { fraction in
                 state = .rendering(progress: fraction)
             }
             try Task.checkCancellation()
