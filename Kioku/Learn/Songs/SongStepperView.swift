@@ -33,6 +33,7 @@ struct SongStepperView: View {
     // regenerate / breakdown rebuilds.
     @State private var expandedByLineIndex: Set<Int> = []
     @State private var isRegenerateConfirmationPresented: Bool = false
+    @State private var isListenSheetPresented: Bool = false
     @State private var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
     // Per-kanji-run readings for word-list headwords, keyed by word surface. Built alongside
     // furiganaCacheByLineIndex (see ensureFuriganaCaches) and handed to each SongLineCard so
@@ -137,6 +138,14 @@ struct SongStepperView: View {
                breakdown.lines.isEmpty == false {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        isListenSheetPresented = true
+                    } label: {
+                        Image(systemName: "headphones")
+                    }
+                    .accessibilityLabel("Listen to breakdown")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         toggleAllExpansion(in: breakdown)
                     } label: {
                         Image(systemName: areAllLinesExpanded(in: breakdown) ? "eye.slash" : "eye")
@@ -152,6 +161,11 @@ struct SongStepperView: View {
                     .disabled(songBreakdownStore.isGenerating(forNoteID: note.id))
                     .accessibilityLabel("Regenerate breakdown")
                 }
+            }
+        }
+        .sheet(isPresented: $isListenSheetPresented) {
+            if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id) {
+                SongListenSheet(breakdown: breakdown)
             }
         }
         .confirmationDialog(
