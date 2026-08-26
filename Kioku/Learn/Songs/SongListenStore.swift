@@ -35,18 +35,26 @@ final class SongListenStore: ObservableObject {
     // cleanup clobber the replacement's fresher state.
     private var renderGenerationByNoteID: [UUID: Int] = [:]
 
+    // Current render/playback state for a note's Listen sheet. Defaults to "just started
+    // rendering" for a note that's never been requested yet, so a first-time sheet appearance
+    // (before `ensureRendered` has published anything) doesn't need a separate nil case.
     func renderState(forNoteID id: UUID) -> SongListenRenderState {
         renderStateByNoteID[id] ?? .rendering(progress: 0)
     }
 
+    // Transcript cues for a note's most recent render. Empty until a render completes.
     func cues(forNoteID id: UUID) -> [SubtitleCue] {
         cuesByNoteID[id] ?? []
     }
 
+    // Playhead position to resume from, in milliseconds. 0 (start of track) for a note that's
+    // never been played or has never had its position recorded.
     func lastPositionMs(forNoteID id: UUID) -> Int {
         lastPositionMsByNoteID[id] ?? 0
     }
 
+    // Called on sheet dismissal to remember where playback left off, so the next open resumes
+    // instead of restarting at 0.
     func recordPosition(_ ms: Int, forNoteID id: UUID) {
         lastPositionMsByNoteID[id] = ms
     }
@@ -68,6 +76,9 @@ final class SongListenStore: ObservableObject {
         startRender(for: breakdown)
     }
 
+    // Shared implementation behind `ensureRendered`/`retry`: bumps the generation counter,
+    // publishes the "rendering" state immediately (so the sheet never shows stale state from a
+    // prior note/version while the task spins up), and launches the render task.
     private func startRender(for breakdown: SongBreakdown) {
         let noteID = breakdown.noteID
         let generation = (renderGenerationByNoteID[noteID] ?? 0) + 1

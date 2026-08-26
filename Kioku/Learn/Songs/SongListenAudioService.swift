@@ -161,11 +161,16 @@ nonisolated final class SongListenAudioService {
         return audioURL.deletingLastPathComponent().appendingPathComponent("\(base).cues.json")
     }
 
+    // Reads a cues sidecar back, if present and decodable. `nil` (rather than throwing) on
+    // any failure — a missing/corrupt sidecar just means "not a cache hit", handled by the
+    // caller falling back to a fresh render.
     private static func loadCues(from url: URL) -> [SubtitleCue]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode([SubtitleCue].self, from: data)
     }
 
+    // Writes the freshly-rendered cues alongside the audio file, atomically so a reader never
+    // observes a half-written sidecar.
     private static func saveCues(_ cues: [SubtitleCue], to url: URL) throws {
         let data = try JSONEncoder().encode(cues)
         try data.write(to: url, options: .atomic)

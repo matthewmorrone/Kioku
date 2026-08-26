@@ -101,6 +101,9 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
         audioFile = nil
     }
 
+    // Writes out whatever buffer is currently held back, if any. Called before queuing a new
+    // buffer, before inserting silence, and on close — every point where a not-yet-final
+    // pending buffer must actually reach disk.
     private func flushPending() throws {
         guard let buffer = pendingBuffer else { return }
         pendingBuffer = nil
@@ -147,6 +150,8 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
         let fadeLength = min(frames, frameCount)
         guard fadeLength > 0 else { return }
         let channelCount = Int(buffer.format.channelCount)
+        // Linear ramp value for sample offset `i` within the fade window: 0 at the silent
+        // edge, approaching 1 at the edge bordering full-volume audio.
         func gain(at i: Int) -> Float {
             switch direction {
             case .in: return Float(i) / Float(fadeLength)
