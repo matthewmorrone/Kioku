@@ -1,14 +1,11 @@
 import SwiftUI
 import UIKit
 
-// SwiftUI bridge for the experimental CoreText Read renderer. Mounted in place of
-// `FuriganaTextRenderer` when DebugSettings.useCoreTextRenderer is on.
-//
-// Scope of this first integration step: render plain text (no segment overlays, no
-// per-segment ruby attributes — CTRubyAnnotation drawn directly via CT) inside a
-// UIScrollView so the renderer can be A/B'd against the TK2 path for layout, scroll
-// physics, and contentSize parity. Ruby/segment overlays will be wired in subsequent
-// passes once the geometry adapter is in place.
+// SwiftUI bridge for the CoreText Read renderer — the app's one furigana rendering
+// pipeline, used by the Read tab, Lyrics, Song Breakdown, and dictionary example
+// sentences. Ruby is emitted as data (RubyEntry list) rather than baked into the
+// attributed string via CTRubyAnnotation, restoring per-pixel control of the
+// kanji↔ruby gap; see KiokuCoreTextAttributedStringBuilder's file header for why.
 // Pure helper: maps a UTF-16 character index to the first segment range that contains it.
 // Extracted from the view so it can be unit-tested without a UIView under test.
 enum KiokuCoreTextSegmentResolver {
@@ -90,6 +87,12 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     var savedLearnedHighlightColor: UIColor = .systemGreen
     var savedNotLearnedSegmentLocations: Set<Int> = []
     var savedNotLearnedHighlightColor: UIColor = .systemPurple
+    // Optional accent range: paints one specific NSRange in `accentTextColor`, always
+    // winning over every other foreground-color pass. Used by ExampleSentenceView to
+    // highlight the entry's headword inside a dictionary example sentence. Defaulted so
+    // the read/lyrics/song call sites that don't need it need not pass it.
+    var accentTextRange: NSRange? = nil
+    var accentTextColor: UIColor = .label
     // Dev-only debug overlay toggles. The overlay view stays mounted always but only
     // draws when a flag is on, so this is zero-cost for normal users.
     let debugFlags: KiokuDebugOverlayView.Flags
@@ -314,6 +317,9 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         typographyHasher.combine(savedLearnedHighlightColor.description)
         for location in savedNotLearnedSegmentLocations.sorted() { typographyHasher.combine(location) }
         typographyHasher.combine(savedNotLearnedHighlightColor.description)
+        typographyHasher.combine(accentTextRange?.location ?? -1)
+        typographyHasher.combine(accentTextRange?.length ?? -1)
+        typographyHasher.combine(accentTextColor.description)
         typographyHasher.combine(unplayedDimmingLocation ?? -1)
         typographyHasher.combine(unplayedAlpha)
         typographyHasher.combine(furiganaGap)
@@ -353,7 +359,9 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     savedLearnedSegmentLocations: savedLearnedSegmentLocations,
                     savedLearnedHighlightColor: savedLearnedHighlightColor,
                     savedNotLearnedSegmentLocations: savedNotLearnedSegmentLocations,
-                    savedNotLearnedHighlightColor: savedNotLearnedHighlightColor
+                    savedNotLearnedHighlightColor: savedNotLearnedHighlightColor,
+                    accentTextRange: accentTextRange,
+                    accentTextColor: accentTextColor
                 )
             )
             uiView.contentView.setAttributedString(output.attributedString)

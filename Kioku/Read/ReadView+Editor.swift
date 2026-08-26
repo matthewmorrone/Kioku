@@ -52,8 +52,7 @@ extension ReadView {
         segmentRanges.isEmpty == false
     }
 
-    // Mirrors FuriganaTextRenderer+Geometry.selectedSegmentNSRange for the CoreText path:
-    // prefers the explicit override (set during merge/split previews) over the simple
+    // Prefers the explicit override (set during merge/split previews) over the simple
     // location-based lookup so behavior matches between renderers when an override is active.
     func resolveSelectedHighlightRange() -> NSRange? {
         let ns = text as NSString
@@ -283,9 +282,9 @@ extension ReadView {
 
     // Furigana maps actually handed to the renderers: gated by the master Furigana toggle,
     // and with entries dropped for segments whose word is suppressed by the "hide furigana
-    // for known words" setting. Computed once per body pass and reused at all three renderer
-    // call sites below (CoreText, FuriganaTextRenderer, RichTextEditor) so the read and edit
-    // surfaces never disagree about which readings are showing.
+    // for known words" setting. Computed once per body pass and reused at both renderer
+    // call sites below (CoreText, RichTextEditor) so the read and edit surfaces never
+    // disagree about which readings are showing.
     var displayedFuriganaBySegmentLocation: [Int: String] {
         guard (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible else { return [:] }
         return furiganaExcludingKnownWordSuppressions(furiganaBySegmentLocation)
@@ -308,8 +307,7 @@ extension ReadView {
     var editorView: some View {
         VStack(spacing: 8) {
             ZStack {
-                if true /* useCoreTextRenderer — toggle disabled; CT is the only path */ {
-                    KiokuCoreTextRendererView(
+                KiokuCoreTextRendererView(
                         text: text,
                         segmentationRanges: segmentRanges,
                         furiganaBySegmentLocation: displayedFuriganaBySegmentLocation,
@@ -398,59 +396,6 @@ extension ReadView {
                     .opacity(isEditMode ? 0 : 1)
                     .allowsHitTesting(isEditMode == false)
                     .animation(.default, value: isEditMode)
-                } else {
-                FuriganaTextRenderer(
-                    isActive: isEditMode == false,
-                    isOverlayFrozen: isSheetSwipeTransitionActive,
-                    text: text,
-                    isLineWrappingEnabled: isLineWrappingEnabled,
-                    segmentationRanges: segmentRanges,
-                    selectedSegmentLocation: selectedSegmentLocation,
-                    blankSelectedSegmentLocation: transientBlankReadingSegmentLocation,
-                    selectedHighlightRangeOverride: selectedHighlightRangeOverride,
-                    playbackHighlightRangeOverride: playbackHighlightRangeOverride,
-                    activePlaybackCueIndex: activePlaybackCueIndex,
-                    illegalMergeBoundaryLocation: illegalMergeBoundaryLocation,
-                    furiganaBySegmentLocation: displayedFuriganaBySegmentLocation,
-                    furiganaLengthBySegmentLocation: displayedFuriganaLengthBySegmentLocation,
-                    isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
-                    isRubySpacingEnabled: isRubySpacingEnabled,
-                    isColorAlternationEnabled: isColorAlternationEnabled,
-                    isHighlightUnknownEnabled: isHighlightUnknownEnabled,
-                    unknownSegmentLocations: unknownSegmentLocations,
-                    changedSegmentLocations: pendingLLMChangedLocations,
-                    changedReadingLocations: pendingLLMChangedReadingLocations,
-                    inFlightSegmentLocations: inFlightLineSegmentLocations,
-                    customEvenSegmentColorHex: customTokenColorsEnabled ? tokenColorAHex : "",
-                    customOddSegmentColorHex: customTokenColorsEnabled ? tokenColorBHex : "",
-                    debugFuriganaRects: debugFuriganaRects,
-                    debugHeadwordRects: debugHeadwordRects,
-                    debugHeadwordLineBands: debugHeadwordLineBands,
-                    debugFuriganaLineBands: debugFuriganaLineBands,
-                    debugBisectorHeadword: debugBisectorHeadword,
-                    debugBisectorFurigana: debugBisectorFurigana,
-                    debugEnvelopeRects: debugEnvelopeRects,
-                    debugLeftInsetGuide: debugLeftInsetGuide,
-                    externalContentOffsetY: sharedScrollOffsetY,
-                    onScrollOffsetYChanged: { newOffsetY in
-                        sharedScrollOffsetY = newOffsetY
-                    },
-                    onSegmentTapped: { tappedSegmentLocation, tappedSegmentRect, sourceView in
-                        handleReadModeSegmentTap(
-                            tappedSegmentLocation,
-                            tappedSegmentRect: tappedSegmentRect,
-                            sourceView: sourceView
-                        )
-                    },
-                    textSize: $textSize,
-                    lineSpacing: lineSpacing,
-                    kerning: kerning,
-                    furiganaGap: furiganaGap
-                )
-                .opacity(isEditMode ? 0 : 1)
-                .allowsHitTesting(isEditMode == false)
-                .animation(.default, value: isEditMode)
-                }
 
                 RichTextEditor(
                     text: $text,

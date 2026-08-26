@@ -1,9 +1,8 @@
 import UIKit
 import CoreText
 
-// CoreText-backed UIView that renders the Read view's base text without TextKit 2. Designed
-// to be a drop-in replacement for the UITextView currently used by FuriganaTextRenderer for
-// the read-mode body, plus the overlay subview that draws ruby and selection envelopes.
+// CoreText-backed UIView that renders the Read view's base text without TextKit 2, plus the
+// overlay subview that draws ruby and selection envelopes.
 //
 // Scope of this layer:
 //   - Owns a KiokuTextLayoutEngine.
