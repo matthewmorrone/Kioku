@@ -43,10 +43,13 @@ struct SongStepperView: View {
     // override (keyed by note.content coordinates) can be rebased into a line's local
     // coordinates. See lineStartOffsets.
     @State private var lineStartOffsetsByIndex: [Int: Int] = [:]
-    // Per-kanji-run readings for word-list headwords, keyed by word surface. Built alongside
-    // furiganaCacheByLineIndex (see ensureFuriganaCaches) and handed to each SongLineCard so
-    // its "Show explanations" word list can render furigana too.
-    @State private var wordFuriganaBySurface: [String: [Int: String]] = [:]
+    // Per-kanji-run readings for word-list headwords, keyed by (line, surface) — not surface
+    // alone, since the same word can appear on multiple lines with a different resolved
+    // reading (e.g. a Read-tab correction pinned on one occurrence but not another) and a
+    // surface-only key would let the first occurrence's reading leak into every later one.
+    // Built alongside furiganaCacheByLineIndex (see ensureFuriganaCaches) and handed to each
+    // SongLineCard so its "Show explanations" word list can render furigana too.
+    @State private var wordFuriganaByKey: [WordFuriganaKey: [Int: String]] = [:]
     // Owns audio playback for "play this line" affordances. Stays nil-loaded when the
     // note has no audio attachment or no SRT — the matcher returns an empty map and the
     // cards omit play buttons.
@@ -192,7 +195,7 @@ struct SongStepperView: View {
             guard let newBreakdown else { return }
             expandedByLineIndex = []
             furiganaCacheByLineIndex = [:]
-            wordFuriganaBySurface = [:]
+            wordFuriganaByKey = [:]
             noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
             lineStartOffsetsByIndex = Self.lineStartOffsets(for: newBreakdown.lines, in: note.content)
             ensureFuriganaCaches(for: newBreakdown)
@@ -407,7 +410,7 @@ struct SongStepperView: View {
                         referencedLine: referencedLine(for: line, in: breakdown),
                         isExpanded: expandedByLineIndex.contains(line.index),
                         furiganaCache: furiganaCacheByLineIndex[line.index],
-                        wordFurigana: wordFuriganaBySurface,
+                        wordFurigana: wordFuriganaByKey,
                         playbackRange: lineRangesByIndex[line.index],
                         onToggleExpansion: { toggleExpansion(for: line) },
                         onPlayLine: {
@@ -471,8 +474,10 @@ struct SongStepperView: View {
             furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line)
         }
         for line in breakdown.lines {
-            for word in line.words where wordFuriganaBySurface[word.surface] == nil {
-                wordFuriganaBySurface[word.surface] = buildWordFuriganaRunReadings(for: word, contextLine: line)
+            for word in line.words {
+                let key = WordFuriganaKey(lineIndex: line.index, surface: word.surface)
+                guard wordFuriganaByKey[key] == nil else { continue }
+                wordFuriganaByKey[key] = buildWordFuriganaRunReadings(for: word, contextLine: line)
             }
         }
     }
