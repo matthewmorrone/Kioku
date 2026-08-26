@@ -78,9 +78,16 @@ final class SongListenStore: ObservableObject {
 
     // Shared implementation behind `ensureRendered`/`retry`: bumps the generation counter,
     // publishes the "rendering" state immediately (so the sheet never shows stale state from a
-    // prior note/version while the task spins up), and launches the render task.
+    // prior note/version while the task spins up), and launches the render task. Also drops
+    // any saved playback position if this is a genuinely new breakdown version (not just a
+    // same-version retry) — a position saved against the old track's timing is meaningless
+    // (and can seek past the end, or into unrelated text) once the track it was measured
+    // against no longer exists.
     private func startRender(for breakdown: SongBreakdown) {
         let noteID = breakdown.noteID
+        if renderedHashByNoteID[noteID] != breakdown.sourceTextHash {
+            lastPositionMsByNoteID[noteID] = nil
+        }
         let generation = (renderGenerationByNoteID[noteID] ?? 0) + 1
         renderGenerationByNoteID[noteID] = generation
         renderedHashByNoteID[noteID] = breakdown.sourceTextHash

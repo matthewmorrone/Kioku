@@ -62,14 +62,19 @@ nonisolated final class SongListenAudioService {
         let segments = SongListenScript.build(from: breakdown)
         guard segments.isEmpty == false else { throw SongListenRenderError.emptyScript }
 
-        // Written under a distinct name (kept as ".caf" so AVAudioFile still infers the right
-        // container) and moved into place only once complete, so a cancelled or interrupted
-        // render never leaves a corrupt file at the real cache key for `renderAudio` to
-        // wrongly treat as a valid cached track next time.
+        // Written under a distinct, per-attempt name (kept as ".caf" so AVAudioFile still
+        // infers the right container) and moved into place only once complete, so a
+        // cancelled or interrupted render never leaves a corrupt file at the real cache key
+        // for `renderAudio` to wrongly treat as a valid cached track next time. The name is
+        // unique per call (not just per note+hash) because Task cancellation is cooperative:
+        // a caller that cancels one render and immediately starts a replacement (e.g.
+        // SongListenStore.retry) can leave the cancelled render still writing for a while —
+        // sharing one working path would let the two concurrently append to the same open
+        // file. A losing attempt's stale move onto `destination` at the end simply throws
+        // (the winner already moved its own file there first) and is dropped by the caller.
         let workingDestination = destination
             .deletingPathExtension()
-            .appendingPathExtension("partial.caf")
-        try? FileManager.default.removeItem(at: workingDestination)
+            .appendingPathExtension("\(UUID().uuidString).partial.caf")
 
         let sink = SongListenAudioSink(destination: workingDestination)
         var cues: [SubtitleCue] = []
