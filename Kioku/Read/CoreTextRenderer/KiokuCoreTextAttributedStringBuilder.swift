@@ -14,14 +14,12 @@ import CoreText
 // the kanji↔ruby gap. The vertical room reserved for ruby above each line is set on the
 // engine via `topRubyReserve`.
 //
-// Inputs mirror the subset of ReadTextStyleResolver inputs that affect either the base
-// glyphs or the ruby entries. Selection envelopes, debug overlays, and playback highlights
-// stay on the overlay layer.
+// Inputs cover everything that affects either the base glyphs or the ruby entries.
+// Selection envelopes, debug overlays, and playback highlights stay on the overlay layer.
 enum KiokuCoreTextAttributedStringBuilder {
 
-    // Foreground color for segments changed by a pending LLM correction. Matches
-    // ReadTextStyleResolver.changedSegmentColor so the CoreText and TextKit paths agree.
-    // Mint/green is distinct from the alternation palette (orange/cyan/red/indigo) and the
+    // Foreground color for segments changed by a pending LLM correction. Mint/green is
+    // distinct from the alternation palette (orange/cyan/red/indigo) and the
     // yellow selection rect, so a changed segment stays legible against every other state.
     static let changedSegmentColor: UIColor = .systemGreen
     // Distinct from changedSegmentColor (green) and the blue playback band so the
@@ -78,13 +76,13 @@ enum KiokuCoreTextAttributedStringBuilder {
         // before confirming. `changedReadingLocations` is the subset where only the reading
         // changed (surface untouched) — see the apply block in build(). This is functional
         // UI state (awaiting confirm/reject), not a visual preference, so it always wins over
-        // the alternation/unknown palette. Mirrors ReadTextStyleResolver's changed-segment pass.
+        // the alternation/unknown palette.
         var changedSegmentLocations: Set<Int> = []
         var changedReadingLocations: Set<Int> = []
         // UTF-16 segment start locations for the line the LLM is processing right now.
         // Tinted indigo (distinct from the green changed tint and the blue playback band)
         // so the user can see which line is "active" without conflating it with finished
-        // changes. Mirrors ReadTextStyleResolver's in-flight pass.
+        // changes.
         var inFlightSegmentLocations: Set<Int> = []
         // When true, the renderer is in segment-packed mode and handles inter-segment
         // spacing via per-segment X placement. The builder must NOT inject its
@@ -114,6 +112,12 @@ enum KiokuCoreTextAttributedStringBuilder {
         var savedLearnedHighlightColor: UIColor = .systemGreen
         var savedNotLearnedSegmentLocations: Set<Int> = []
         var savedNotLearnedHighlightColor: UIColor = .systemPurple
+        // Optional accent range: paints one specific NSRange in `accentTextColor`, applied
+        // last so it always wins on overlap. For call sites emphasizing a single word within
+        // otherwise plain text (e.g. ExampleSentenceView highlighting the entry's headword
+        // inside a dictionary example sentence) — independent of the read-mode passes above.
+        var accentTextRange: NSRange? = nil
+        var accentTextColor: UIColor = .label
     }
 
     // Composes the renderer-ready NSAttributedString: base font + paragraph style,
@@ -181,11 +185,10 @@ enum KiokuCoreTextAttributedStringBuilder {
         // wins over the alternation/unknown colors. CTLineDraw honors .foregroundColor, and
         // the ruby draw pass reads each kanji run's .foregroundColor (see KiokuCoreTextView
         // rubyForegroundColor), so tinting the base range green carries the furigana along
-        // with it automatically. Unlike the TextKit path (ReadTextStyleResolver) we color the
-        // whole segment for reading-only changes too: CoreText derives ruby color from the
-        // base glyph color, so furigana-only tinting isn't expressible without per-run ruby
-        // overrides — and a green segment still reads clearly as "this changed". The glow
-        // shadow from the TextKit path is omitted because CTLineDraw ignores NSShadow.
+        // with it automatically. We color the whole segment for reading-only changes too:
+        // CoreText derives ruby color from the base glyph color, so furigana-only tinting
+        // isn't expressible without per-run ruby overrides — and a green segment still reads
+        // clearly as "this changed". CTLineDraw ignores NSShadow, so there's no glow effect.
         // In-flight tint goes BEFORE the changed pass so green wins on overlap.
         if inputs.inFlightSegmentLocations.isEmpty == false {
             for segmentRange in inputs.segmentationRanges {
@@ -206,8 +209,7 @@ enum KiokuCoreTextAttributedStringBuilder {
         }
 
         // Saved Highlight. Applied last of the foreground-color passes so it always wins
-        // on overlap — matches the TextKit path's ordering (ReadTextStyleResolver) and the
-        // pre-existing behavior of this pass before its temporary removal.
+        // on overlap.
         if inputs.isSavedHighlightEnabled {
             for segmentRange in inputs.segmentationRanges {
                 let nsRange = NSRange(segmentRange, in: inputs.text)
@@ -220,6 +222,15 @@ enum KiokuCoreTextAttributedStringBuilder {
                     result.addAttribute(.foregroundColor, value: inputs.savedHighlightColor, range: nsRange)
                 }
             }
+        }
+
+        // Accent range. Applied after every other foreground-color pass so a caller's
+        // explicit emphasis always wins, even over Saved Highlight.
+        if let accentTextRange = inputs.accentTextRange,
+           accentTextRange.location != NSNotFound,
+           accentTextRange.length > 0,
+           accentTextRange.upperBound <= result.length {
+            result.addAttribute(.foregroundColor, value: inputs.accentTextColor, range: accentTextRange)
         }
 
         // Ruby application. The furiganaBySegmentLocation dictionary is keyed by each

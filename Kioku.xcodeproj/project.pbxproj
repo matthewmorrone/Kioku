@@ -7,21 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C0FFEE00000000000000000E /* KiokuWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
+		C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
 		E32B0CE32F57BC070020F5C2 /* data_manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDE2F57BC070020F5C2 /* data_manifest.json */; };
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
 		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
+		E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */ = {isa = PBXBuildFile; productRef = DA6ADE0022FC000040000002 /* SwiftDagre */; };
 		E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = E4E800022F90000100FFF001 /* SwiftWhisper */; };
 		E4WKA00012FA0000200000001 /* SwiftWhisperAlign in Frameworks */ = {isa = PBXBuildFile; productRef = E4WKA00022FA0000200000002 /* SwiftWhisperAlign */; };
 		F5MECAB012FA0000100000001 /* mecab in Frameworks */ = {isa = PBXBuildFile; productRef = F5MECAB022FA0000100000001 /* mecab */; };
 		F5MECAB032FA0000100000002 /* MeCab in Resources */ = {isa = PBXBuildFile; fileRef = F5MECAB042FA0000100000002 /* MeCab */; };
 		Z1NN1A0012FB0000200000001 /* Zinnia-Swift in Frameworks */ = {isa = PBXBuildFile; productRef = Z1NN1A0022FB0000200000002 /* Zinnia-Swift */; };
 		Z1NN1A1012FB0000200000001 /* handwriting-ja.model in Resources */ = {isa = PBXBuildFile; fileRef = Z1NN1A1022FB0000200000002 /* handwriting-ja.model */; };
-		C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
-		C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
-		C0FFEE00000000000000000E /* KiokuWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		C0FFEE00000000000000000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E3070AE02F4DFDB6005FD323 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C0FFEE000000000000000001;
+			remoteInfo = KiokuWidgetExtension;
+		};
 		E3070AF62F4DFDB8005FD323 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E3070AE02F4DFDB6005FD323 /* Project object */;
@@ -36,16 +44,25 @@
 			remoteGlobalIDString = E3070AE72F4DFDB6005FD323;
 			remoteInfo = Kioku;
 		};
-		C0FFEE00000000000000000C /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = E3070AE02F4DFDB6005FD323 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = C0FFEE000000000000000001;
-			remoteInfo = KiokuWidgetExtension;
-		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		C0FFEE00000000000000000D /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C0FFEE00000000000000000E /* KiokuWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KiokuWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordOfTheDayMirror.swift; sourceTree = "<group>"; };
 		E3070AE82F4DFDB6005FD323 /* Kioku Reader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kioku Reader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AF52F4DFDB8005FD323 /* KiokuTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AFF2F4DFDB8005FD323 /* KiokuUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -57,11 +74,27 @@
 		E32D0BBB2F668D7400788CAE /* Kioku.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Kioku.xcodeproj; sourceTree = "<group>"; };
 		F5MECAB042FA0000100000002 /* MeCab */ = {isa = PBXFileReference; lastKnownFileType = folder; path = MeCab; sourceTree = "<group>"; };
 		Z1NN1A1022FB0000200000002 /* handwriting-ja.model */ = {isa = PBXFileReference; lastKnownFileType = file; path = "handwriting-ja.model"; sourceTree = "<group>"; };
-		C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KiokuWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordOfTheDayMirror.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C0FFEE000000000000000013 /* Exceptions for "KiokuWidget" folder in "KiokuWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C0FFEE000000000000000001 /* KiokuWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		C0FFEE000000000000000003 /* KiokuWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C0FFEE000000000000000013 /* Exceptions for "KiokuWidget" folder in "KiokuWidgetExtension" target */,
+			);
+			path = KiokuWidget;
+			sourceTree = "<group>";
+		};
 		E3070AEA2F4DFDB6005FD323 /* Kioku */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Kioku;
@@ -72,32 +105,21 @@
 			path = KiokuTests;
 			sourceTree = "<group>";
 		};
-		C0FFEE000000000000000003 /* KiokuWidget */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				C0FFEE000000000000000013 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
-			);
-			path = KiokuWidget;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		C0FFEE000000000000000013 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-				KiokuWidget.entitlements,
-			);
-			target = C0FFEE000000000000000001 /* KiokuWidgetExtension */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFrameworksBuildPhase section */
+		C0FFEE000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E3070AE52F4DFDB6005FD323 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */,
 				E4E800012F90000100FFF001 /* SwiftWhisper in Frameworks */,
 				E4WKA00012FA0000200000001 /* SwiftWhisperAlign in Frameworks */,
 				Z1NN1A0012FB0000200000001 /* Zinnia-Swift in Frameworks */,
@@ -119,16 +141,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C0FFEE000000000000000005 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C0FFEE00000000000000000F /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		E3070ADF2F4DFDB6005FD323 = {
 			isa = PBXGroup;
 			children = (
@@ -138,15 +161,8 @@
 				C0FFEE000000000000000003 /* KiokuWidget */,
 				E3070AF82F4DFDB8005FD323 /* KiokuTests */,
 				E3070AE92F4DFDB6005FD323 /* Products */,
+				E3FBBF9C303F516D009664F4 /* Recovered References */,
 			);
-			sourceTree = "<group>";
-		};
-		C0FFEE00000000000000000F /* Shared */ = {
-			isa = PBXGroup;
-			children = (
-				C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */,
-			);
-			path = Shared;
 			sourceTree = "<group>";
 		};
 		E3070AE92F4DFDB6005FD323 /* Products */ = {
@@ -187,9 +203,40 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		E3FBBF9C303F516D009664F4 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				E32D0BBB2F668D7400788CAE /* Kioku.xcodeproj */,
+				E32D09B42F638C1600788CAE /* Kioku.xcodeproj */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C0FFEE000000000000000001 /* KiokuWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0FFEE000000000000000007 /* Build configuration list for PBXNativeTarget "KiokuWidgetExtension" */;
+			buildPhases = (
+				C0FFEE000000000000000004 /* Sources */,
+				C0FFEE000000000000000005 /* Frameworks */,
+				C0FFEE000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C0FFEE000000000000000003 /* KiokuWidget */,
+			);
+			name = KiokuWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = KiokuWidgetExtension;
+			productReference = C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		E3070AE72F4DFDB6005FD323 /* Kioku */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E3070B092F4DFDB8005FD323 /* Build configuration list for PBXNativeTarget "Kioku" */;
@@ -264,28 +311,6 @@
 			productReference = E3070AFF2F4DFDB8005FD323 /* KiokuUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
-		C0FFEE000000000000000001 /* KiokuWidgetExtension */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = C0FFEE000000000000000007 /* Build configuration list for PBXNativeTarget "KiokuWidgetExtension" */;
-			buildPhases = (
-				C0FFEE000000000000000004 /* Sources */,
-				C0FFEE000000000000000005 /* Frameworks */,
-				C0FFEE000000000000000006 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				C0FFEE000000000000000003 /* KiokuWidget */,
-			);
-			name = KiokuWidgetExtension;
-			packageProductDependencies = (
-			);
-			productName = KiokuWidgetExtension;
-			productReference = C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -296,6 +321,9 @@
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
+					C0FFEE000000000000000001 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					E3070AE72F4DFDB6005FD323 = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -306,9 +334,6 @@
 					E3070AFE2F4DFDB8005FD323 = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = E3070AE72F4DFDB6005FD323;
-					};
-					C0FFEE000000000000000001 = {
-						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
@@ -352,6 +377,13 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		C0FFEE000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E3070AE62F4DFDB6005FD323 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -378,28 +410,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C0FFEE000000000000000006 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		C0FFEE00000000000000000D /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				C0FFEE00000000000000000E /* KiokuWidgetExtension.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		F5A9C1D92F90000100ABCDEF /* Validate Invariants */ = {
@@ -449,19 +460,19 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		E3070AE42F4DFDB6005FD323 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		C0FFEE000000000000000004 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E3070AE42F4DFDB6005FD323 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -482,6 +493,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		C0FFEE00000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C0FFEE000000000000000001 /* KiokuWidgetExtension */;
+			targetProxy = C0FFEE00000000000000000C /* PBXContainerItemProxy */;
+		};
 		E3070AF72F4DFDB8005FD323 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E3070AE72F4DFDB6005FD323 /* Kioku */;
@@ -492,14 +508,64 @@
 			target = E3070AE72F4DFDB6005FD323 /* Kioku */;
 			targetProxy = E3070B002F4DFDB8005FD323 /* PBXContainerItemProxy */;
 		};
-		C0FFEE00000000000000000B /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = C0FFEE000000000000000001 /* KiokuWidgetExtension */;
-			targetProxy = C0FFEE00000000000000000C /* PBXContainerItemProxy */;
-		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		C0FFEE000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KiokuWidget/KiokuWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = PZ69YU2D7L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KiokuWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = matthewmorrone.Kioku.Widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		C0FFEE000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KiokuWidget/KiokuWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = PZ69YU2D7L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KiokuWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = matthewmorrone.Kioku.Widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		E3070B072F4DFDB8005FD323 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -627,9 +693,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = KiokuGlyph;
-				CODE_SIGN_ENTITLEMENTS = Kioku/Kioku.entitlements;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = Kioku/Kioku.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = PZ69YU2D7L;
@@ -676,9 +742,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = KiokuGlyph;
-				CODE_SIGN_ENTITLEMENTS = Kioku/Kioku.entitlements;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = Kioku/Kioku.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = PZ69YU2D7L;
@@ -803,64 +869,18 @@
 			};
 			name = Release;
 		};
-		C0FFEE000000000000000008 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = KiokuWidget/KiokuWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
-				DEVELOPMENT_TEAM = PZ69YU2D7L;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = KiokuWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = matthewmorrone.Kioku.Widget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Debug;
-		};
-		C0FFEE000000000000000009 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = KiokuWidget/KiokuWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
-				DEVELOPMENT_TEAM = PZ69YU2D7L;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = KiokuWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = matthewmorrone.Kioku.Widget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		C0FFEE000000000000000007 /* Build configuration list for PBXNativeTarget "KiokuWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0FFEE000000000000000008 /* Debug */,
+				C0FFEE000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		E3070AE32F4DFDB6005FD323 /* Build configuration list for PBXProject "Kioku" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -897,15 +917,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C0FFEE000000000000000007 /* Build configuration list for PBXNativeTarget "KiokuWidgetExtension" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				C0FFEE000000000000000008 /* Debug */,
-				C0FFEE000000000000000009 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -924,14 +935,6 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/matthewmorrone/mecab.git";
-			requirement = {
-				branch = master;
-				kind = branch;
-			};
-		};
 		DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/lukilabs/dagre-swift";
@@ -940,9 +943,22 @@
 				minimumVersion = 0.1.0;
 			};
 		};
+		F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/matthewmorrone/mecab.git";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		DA6ADE0022FC000040000002 /* SwiftDagre */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */;
+			productName = SwiftDagre;
+		};
 		E4E800022F90000100FFF001 /* SwiftWhisper */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E4E800032F90000100FFF001 /* XCLocalSwiftPackageReference "Packages/SwiftWhisper" */;
@@ -957,11 +973,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */;
 			productName = mecab;
-		};
-		DA6ADE0022FC000040000002 /* SwiftDagre */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */;
-			productName = SwiftDagre;
 		};
 		Z1NN1A0022FB0000200000002 /* Zinnia-Swift */ = {
 			isa = XCSwiftPackageProductDependency;

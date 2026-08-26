@@ -3,9 +3,9 @@ import UIKit
 import CoreText
 @testable import Kioku
 
-// Guards the geometry contract that FuriganaTextRenderer (and the experimental CoreText
-// path) rely on. Every public method here is a load-bearing primitive — if any of these
-// tests fail, ruby placement, segment hit-testing, or scroll-to-cue will regress.
+// Guards the geometry contract the CoreText renderer relies on. Every public method here
+// is a load-bearing primitive — if any of these tests fail, ruby placement, segment
+// hit-testing, or scroll-to-cue will regress.
 @MainActor
 final class KiokuTextLayoutEngineTests: XCTestCase {
 

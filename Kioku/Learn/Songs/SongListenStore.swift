@@ -21,11 +21,13 @@ final class SongListenStore: ObservableObject {
     // playback controller itself is what drives UI updates while a sheet is open.
     private var lastPositionMsByNoteID: [UUID: Int] = [:]
 
-    // Which breakdown version `renderStateByNoteID[noteID]` currently reflects. A regenerated
-    // breakdown gets a new `sourceTextHash`; comparing against it is what tells
-    // `ensureRendered` to start a fresh render instead of reusing stale state left over from
-    // the previous version.
-    private var renderedHashByNoteID: [UUID: String] = [:]
+    // Which breakdown version (and clip inputs) `renderStateByNoteID[noteID]` currently
+    // reflects: `sourceTextHash` plus SongListenAudioService's own clip signature, so this
+    // matches exactly what the service's cache key is keyed on. A regenerated breakdown, a
+    // swapped audio attachment, or a re-aligned cue set each change this key; comparing
+    // against it is what tells `ensureRendered` to start a fresh render instead of reusing
+    // stale state left over from a previous version/attachment.
+    private var renderedKeyByNoteID: [UUID: String] = [:]
 
     private var renderTasksByNoteID: [UUID: Task<Void, Never>] = [:]
 
@@ -59,51 +61,90 @@ final class SongListenStore: ObservableObject {
         lastPositionMsByNoteID[id] = ms
     }
 
-    // Starts a render for `breakdown` unless one is already running or done for this exact
-    // breakdown version. Safe to call every time the sheet appears.
-    func ensureRendered(for breakdown: SongBreakdown) {
+    // Starts a render for `breakdown` (optionally splicing in the sung clips at
+    // `sourceAudioURL`/`lineRanges` — see SongListenAudioService.renderAudio) unless one is
+    // already running or done for this exact breakdown version and clip inputs. Safe to call
+    // every time the sheet appears.
+    func ensureRendered(
+        for breakdown: SongBreakdown,
+        sourceAudioURL: URL? = nil,
+        lineRanges: [Int: (startMs: Int, endMs: Int)] = [:]
+    ) {
         let noteID = breakdown.noteID
-        if renderedHashByNoteID[noteID] == breakdown.sourceTextHash, renderStateByNoteID[noteID] != nil {
+        let key = Self.renderKey(breakdown: breakdown, sourceAudioURL: sourceAudioURL, lineRanges: lineRanges)
+        if renderedKeyByNoteID[noteID] == key, renderStateByNoteID[noteID] != nil {
             return
         }
-        startRender(for: breakdown)
+        startRender(for: breakdown, sourceAudioURL: sourceAudioURL, lineRanges: lineRanges, key: key)
     }
 
-    // User-initiated retry after a failure. Always restarts, even if (unusually) the hash
+    // User-initiated retry after a failure. Always restarts, even if (unusually) the key
     // hasn't changed since the failed attempt.
-    func retry(for breakdown: SongBreakdown) {
+    func retry(
+        for breakdown: SongBreakdown,
+        sourceAudioURL: URL? = nil,
+        lineRanges: [Int: (startMs: Int, endMs: Int)] = [:]
+    ) {
         renderTasksByNoteID[breakdown.noteID]?.cancel()
-        startRender(for: breakdown)
+        let key = Self.renderKey(breakdown: breakdown, sourceAudioURL: sourceAudioURL, lineRanges: lineRanges)
+        startRender(for: breakdown, sourceAudioURL: sourceAudioURL, lineRanges: lineRanges, key: key)
     }
 
     // Shared implementation behind `ensureRendered`/`retry`: bumps the generation counter,
     // publishes the "rendering" state immediately (so the sheet never shows stale state from a
     // prior note/version while the task spins up), and launches the render task. Also drops
-    // any saved playback position if this is a genuinely new breakdown version (not just a
-    // same-version retry) — a position saved against the old track's timing is meaningless
+    // any saved playback position if this is a genuinely new breakdown version/clip set (not
+    // just a same-key retry) — a position saved against the old track's timing is meaningless
     // (and can seek past the end, or into unrelated text) once the track it was measured
     // against no longer exists.
-    private func startRender(for breakdown: SongBreakdown) {
+    private func startRender(
+        for breakdown: SongBreakdown,
+        sourceAudioURL: URL?,
+        lineRanges: [Int: (startMs: Int, endMs: Int)],
+        key: String
+    ) {
         let noteID = breakdown.noteID
-        if renderedHashByNoteID[noteID] != breakdown.sourceTextHash {
+        if renderedKeyByNoteID[noteID] != key {
             lastPositionMsByNoteID[noteID] = nil
         }
         let generation = (renderGenerationByNoteID[noteID] ?? 0) + 1
         renderGenerationByNoteID[noteID] = generation
-        renderedHashByNoteID[noteID] = breakdown.sourceTextHash
+        renderedKeyByNoteID[noteID] = key
         renderStateByNoteID[noteID] = .rendering(progress: 0)
         renderTasksByNoteID[noteID] = Task { [weak self] in
-            await self?.render(breakdown, generation: generation)
+            await self?.render(breakdown, sourceAudioURL: sourceAudioURL, lineRanges: lineRanges, generation: generation)
         }
+    }
+
+    // Combines a breakdown's text version with its clip inputs into the same key
+    // SongListenAudioService's cache is keyed on, so this store's "already rendered" check
+    // never diverges from what the service considers a cache hit.
+    private static func renderKey(
+        breakdown: SongBreakdown,
+        sourceAudioURL: URL?,
+        lineRanges: [Int: (startMs: Int, endMs: Int)]
+    ) -> String {
+        let effectiveRanges = sourceAudioURL != nil ? lineRanges : [:]
+        let clipsSignature = SongListenAudioService.clipsSignature(sourceAudioURL: sourceAudioURL, lineRanges: effectiveRanges)
+        return "\(breakdown.sourceTextHash)-\(clipsSignature)"
     }
 
     // Drives one render pass to completion (or failure/cancellation) and records the result.
     // A fresh SongListenAudioService per call — its AVSpeechSynthesizer can only drive one
     // render at a time, and two notes' renders can genuinely run concurrently here.
-    private func render(_ breakdown: SongBreakdown, generation: Int) async {
+    private func render(
+        _ breakdown: SongBreakdown,
+        sourceAudioURL: URL?,
+        lineRanges: [Int: (startMs: Int, endMs: Int)],
+        generation: Int
+    ) async {
         let noteID = breakdown.noteID
         do {
-            let result = try await SongListenAudioService().renderAudio(for: breakdown) { [weak self] fraction in
+            let result = try await SongListenAudioService().renderAudio(
+                for: breakdown,
+                sourceAudioURL: sourceAudioURL,
+                lineRanges: lineRanges
+            ) { [weak self] fraction in
                 guard let self, self.renderGenerationByNoteID[noteID] == generation else { return }
                 self.renderStateByNoteID[noteID] = .rendering(progress: fraction)
             }

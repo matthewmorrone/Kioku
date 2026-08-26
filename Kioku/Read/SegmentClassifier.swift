@@ -2,9 +2,8 @@ import Foundation
 
 // Shared classifier for segmentation output: tells callers which segments are pure
 // punctuation / whitespace / symbols and therefore shouldn't pick up segment styling
-// (color alternation, ruby, unknown-segment highlights). Used by both the TextKit 2
-// renderer (ReadTextStyleResolver) and the CoreText renderer
-// (KiokuCoreTextAttributedStringBuilder) so the two paths classify identically.
+// (color alternation, ruby, unknown-segment highlights). Used by the CoreText renderer
+// (KiokuCoreTextAttributedStringBuilder).
 enum SegmentClassifier {
 
     // True when the segment contains only non-lexical characters and should therefore

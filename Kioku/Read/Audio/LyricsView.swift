@@ -4,7 +4,7 @@ import Translation
 import UIKit
 
 // Floating karaoke-style lyrics popup rendered as an overlay on ReadView.
-// Active cue is a persistent FuriganaTextRenderer fixed at center; inactive cues scroll past it.
+// Active cue is a persistent KiokuCoreTextRendererView fixed at center; inactive cues scroll past it.
 // Tapping an inactive cue seeks to it. Playback auto-scrolls when user is idle.
 // Bottom controls: play/pause, scrubber, repeat-cue toggle.
 struct LyricsView: View {

@@ -56,9 +56,7 @@ final class KiokuTextLayoutEngine {
     // baseline-to-baseline grid every time a kanji-run with ruby moved between lines, which
     // would cascade through highlight rects and tap geometry. Uniform = predictable.
     //
-    // Concretely this is `furiganaFont.lineHeight + furiganaGap` from the caller — the same
-    // value FuriganaTextRenderer used as its top inset. Mirrored here so manual ruby has
-    // exactly the same vertical envelope as the TK2 path.
+    // Concretely this is `furiganaFont.lineHeight + furiganaGap` from the caller.
     private(set) var topRubyReserve: CGFloat = 0
 
     // Per-line horizontal origin shift, indexed by line. Used by the wide-ruby line-start

@@ -195,7 +195,7 @@ struct RichTextEditor: UIViewRepresentable {
             .foregroundColor: UIColor.label,
         ]
 
-        // Keeps the hidden editor lightweight because read-mode enhancements render in FuriganaTextRenderer.
+        // Keeps the hidden editor lightweight because read-mode enhancements render in KiokuCoreTextRendererView.
         textView.attributedText = NSAttributedString(string: text, attributes: baseAttributes)
         textView.typingAttributes = baseAttributes
     }

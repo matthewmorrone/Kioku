@@ -1,26 +1,35 @@
 import AVFoundation
 import Foundation
 
-// Accumulates synthesized speech into a single audio file, one PCM buffer at a time.
-// AVSpeechSynthesizer's write callback can fire from any thread, so this stays `nonisolated`
-// and `@unchecked Sendable` rather than picking up the module's default MainActor isolation —
-// every call into it happens serially from that one callback (SongListenAudioService never
-// touches it from anywhere else), so there's no real concurrent access to guard against; the
-// compiler just can't see that from the callback's type alone.
+// Accumulates the listen-along track — synthesized speech AND spliced-in song-audio clips —
+// into a single audio file, one PCM buffer at a time. AVSpeechSynthesizer's write callback
+// can fire from any thread, so this stays `nonisolated` and `@unchecked Sendable` rather than
+// picking up the module's default MainActor isolation — every call into it happens serially
+// (SongListenAudioService never touches it from two places at once), so there's no real
+// concurrent access to guard against; the compiler just can't see that from the callback's
+// type alone.
 //
 // Every accepted buffer is held back by one: `write(_:)` only ever flushes the *previous*
 // buffer to disk, so that the true last buffer of a segment — identified by the caller via
 // `finishSegment()` — can be tail-faded before it's written. Without this, the cut from live
-// speech straight into the inserted silence gap is an abrupt waveform discontinuity: an
-// audible click at every one of a song's segment boundaries, which is what reads as constant
-// static/crackle across a whole track. The first buffer of each segment is head-faded the
-// same way, for the same reason at the opposite edge.
+// speech (or a song clip) straight into the inserted silence gap is an abrupt waveform
+// discontinuity: an audible click at every one of a song's segment boundaries, which is what
+// reads as constant static/crackle across a whole track. The first buffer of each segment is
+// head-faded the same way, for the same reason at the opposite edge.
 nonisolated final class SongListenAudioSink: @unchecked Sendable {
     private(set) var audioFile: AVAudioFile?
     private let destination: URL
     private var pendingBuffer: AVAudioPCMBuffer?
     private var isSegmentStart = true
     private var converter: AVAudioConverter?
+
+    // Fixed up front rather than inferred from the first buffer written (the old behavior):
+    // once clips from the song's own audio file entered the mix, "whichever format shows up
+    // first" would make the output format depend on step ordering — a line with no matched
+    // clip would open the file in the synthesizer's format, while one with a clip would open
+    // it in the song's format. A stable target format means every buffer (speech or clip)
+    // goes through the same conversion path, so the output is deterministic either way.
+    private let targetFormat: AVAudioFormat
 
     // Total frames committed to the logical track so far, including whatever's still held in
     // `pendingBuffer` — this is what SongListenAudioService reads (via `elapsedMs`) to stamp
@@ -29,7 +38,7 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
     private(set) var totalFrameCount: AVAudioFramePosition = 0
 
     var elapsedMs: Int {
-        let sampleRate = audioFile?.processingFormat.sampleRate ?? 0
+        let sampleRate = targetFormat.sampleRate
         guard sampleRate > 0 else { return 0 }
         return Int((Double(totalFrameCount) / sampleRate * 1000).rounded())
     }
@@ -40,20 +49,20 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
 
     // `destination` is the working (not-yet-final) file path the caller will move into place
     // once every segment has been written.
-    init(destination: URL) {
+    init(destination: URL, targetFormat: AVAudioFormat) {
         self.destination = destination
+        self.targetFormat = targetFormat
     }
 
-    // Accepts one synthesized buffer. Lazily opens the file using the first buffer's own
-    // format — that's the synthesizer's native PCM format, so no conversion is needed for
-    // same-voice buffers — then converts any later buffer whose format doesn't match (e.g. a
-    // different voice's native sample rate) before it's queued for writing.
+    // Accepts one buffer (speech or song clip), converting it into `targetFormat` first if it
+    // doesn't already match — true for song-audio clips (their own file's sample rate/channel
+    // count) and, incidentally, for TTS buffers too if a given voice's native format ever
+    // differs from `targetFormat`.
     func write(_ buffer: AVAudioPCMBuffer) throws {
         if audioFile == nil {
-            audioFile = try AVAudioFile(forWriting: destination, settings: buffer.format.settings)
+            audioFile = try AVAudioFile(forWriting: destination, settings: targetFormat.settings)
         }
-        guard let processingFormat = audioFile?.processingFormat else { return }
-        let matched = try convertIfNeeded(buffer, to: processingFormat)
+        let matched = try convertIfNeeded(buffer, to: targetFormat)
         if isSegmentStart {
             applyFade(to: matched, frames: Self.fadeFrameCount, direction: .in)
             isSegmentStart = false
@@ -63,10 +72,11 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
         totalFrameCount += AVAudioFramePosition(matched.frameLength)
     }
 
-    // Called once a segment's speech is fully written (all of AVSpeechSynthesizer's callbacks
-    // for that utterance have fired). Fades the segment's true last buffer — still held in
-    // `pendingBuffer` — before flushing it, and arms the next `write(_:)` call to head-fade,
-    // so every segment starts and ends at (near-)silence instead of cutting abruptly.
+    // Called once a segment/clip is fully written (all of AVSpeechSynthesizer's callbacks for
+    // a segment have fired, or the clip's single buffer has been queued). Fades the true last
+    // buffer — still held in `pendingBuffer` — before flushing it, and arms the next
+    // `write(_:)` call to head-fade, so every segment/clip starts and ends at (near-)silence
+    // instead of cutting abruptly.
     func finishSegment() throws {
         if let buffer = pendingBuffer {
             applyFade(to: buffer, frames: Self.fadeFrameCount, direction: .out)
@@ -79,8 +89,6 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
     // boundary) than between a word and its definition, so the ear can tell "new line" apart
     // from "next word in the same line's breakdown" without any spoken cue.
     func writeSilence(after kind: SongListenSegmentKind) throws {
-        try flushPending()
-        guard let format = audioFile?.processingFormat else { return }
         let seconds: Double
         switch kind {
         case .sentence: seconds = 0.5
@@ -88,8 +96,22 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
         case .wordSurface: seconds = 0.15
         case .wordDefinition: seconds = 0.45
         }
-        let frameCount = AVAudioFrameCount(format.sampleRate * seconds)
-        guard frameCount > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
+        try writeSilence(seconds: seconds)
+    }
+
+    // Silence inserted after a song-audio clip, before its line's spoken breakdown begins — a
+    // beat longer than the post-sentence gap so the sung line and its explanation don't run
+    // together.
+    func writeSilenceAfterClip() throws {
+        try writeSilence(seconds: 0.6)
+    }
+
+    // Shared implementation behind writeSilence(after:)/writeSilenceAfterClip() — writes a
+    // zeroed buffer of the given duration in the track's target format.
+    private func writeSilence(seconds: Double) throws {
+        try flushPending()
+        let frameCount = AVAudioFrameCount(targetFormat.sampleRate * seconds)
+        guard frameCount > 0, let buffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount) else { return }
         buffer.frameLength = frameCount
         try audioFile?.write(from: buffer)
         totalFrameCount += AVAudioFramePosition(frameCount)
@@ -110,12 +132,11 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
         try audioFile?.write(from: buffer)
     }
 
-    // Converts `buffer` into `format` when its own format differs from the file's fixed
-    // format (established from the very first buffer written). The two voices driving this
-    // sink can have different native sample rates, and AVAudioFile.write(from:) requires an
-    // exact format match — without this, a device where the two don't happen to agree would
-    // either throw mid-render or (depending on the mismatch) write technically-valid frames
-    // that decode back out sounding warped, which reads as "staticky" just the same.
+    // Converts `buffer` into `format` when its own format differs from the sink's fixed
+    // target format. Speech buffers from different voices, and song-audio clips read straight
+    // from the note's own attachment, can each arrive in a different native format —
+    // AVAudioFile.write(from:) requires an exact match, so every buffer not already in
+    // `targetFormat` is converted before it's queued.
     private func convertIfNeeded(_ buffer: AVAudioPCMBuffer, to format: AVAudioFormat) throws -> AVAudioPCMBuffer {
         guard buffer.format != format else { return buffer }
         if converter == nil || converter?.inputFormat != buffer.format {

@@ -19,6 +19,12 @@ enum SongListenRenderState: Equatable {
 // ...) rather than staying trapped in-app.
 struct SongListenSheet: View {
     let breakdown: SongBreakdown
+    // The note's own audio file and each line's matched time range within it (mirrors the
+    // per-line ▶︎ button's SongLineCueMatcher ranges) — when both are present, the render
+    // splices the sung clip in before each line's breakdown. Defaulted so a note with no
+    // audio attachment renders narration-only.
+    var sourceAudioURL: URL? = nil
+    var lineRanges: [Int: (startMs: Int, endMs: Int)] = [:]
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var listenStore: SongListenStore
     @StateObject private var playback = AudioPlaybackController()
@@ -28,6 +34,12 @@ struct SongListenSheet: View {
 
     private var state: SongListenRenderState {
         listenStore.renderState(forNoteID: breakdown.noteID)
+    }
+
+    // Whether this render will actually splice in any sung clips — the source needs an audio
+    // file AND at least one line to have matched a cue range within it.
+    private var hasClips: Bool {
+        sourceAudioURL != nil && lineRanges.isEmpty == false
     }
 
     var body: some View {
@@ -54,7 +66,7 @@ struct SongListenSheet: View {
             }
         }
         .task {
-            listenStore.ensureRendered(for: breakdown)
+            listenStore.ensureRendered(for: breakdown, sourceAudioURL: sourceAudioURL, lineRanges: lineRanges)
             loadIfReady()
         }
         .onChange(of: listenStore.renderStateByNoteID[breakdown.noteID]) { _, _ in
@@ -74,7 +86,9 @@ struct SongListenSheet: View {
             Text("Generating listen-along audio…")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            Text("Japanese sentence, English gist, then each word — line by line.")
+            Text(hasClips
+                ? "The sung line, then its Japanese sentence, English gist, and each word — line by line."
+                : "Japanese sentence, English gist, then each word — line by line.")
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.tertiary)
@@ -161,7 +175,7 @@ struct SongListenSheet: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button {
-                listenStore.retry(for: breakdown)
+                listenStore.retry(for: breakdown, sourceAudioURL: sourceAudioURL, lineRanges: lineRanges)
             } label: {
                 Label("Retry", systemImage: "arrow.clockwise")
             }

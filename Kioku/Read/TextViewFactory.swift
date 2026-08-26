@@ -6,12 +6,6 @@ enum TextViewFactory {
         configure(UITextView(usingTextLayoutManager: true))
     }
 
-    // Creates the render-specific UITextView subclass so FuriganaTextRenderer can observe the
-    // first-layout transition and rerun its geometry pipeline after SwiftUI resolves bounds.
-    static func makeFuriganaRendererTextView() -> FuriganaRendererTextView {
-        configure(FuriganaRendererTextView(usingTextLayoutManager: true))
-    }
-
     // Applies the shared read/edit TextKit 2 configuration to the given instance.
     private static func configure<T: UITextView>(_ textView: T) -> T {
         precondition(textView.textLayoutManager != nil, "TextKit 2 invariant violated: read editor must use UITextView with a textLayoutManager")

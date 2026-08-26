@@ -1,10 +1,12 @@
 import Foundation
 
-// Turns a SongBreakdown into a flat, ordered list of things to say out loud: for each line,
-// the Japanese original, then the English gist, then each word's Japanese surface followed
-// by its English definition — before moving to the next line. This is the "script" that
-// SongListenAudioService reads from; the language tag on each SongListenSegment is what
-// drives the Japanese/English voice switching ("code switching") during synthesis.
+// Turns a SongBreakdown into a flat, ordered list of things to play/say: for each line, the
+// sung audio clip (when a matched time range is available), then the Japanese original, then
+// the English gist, then each word's Japanese surface followed by its English definition —
+// before moving to the next line. This is the "script" that SongListenAudioService reads
+// from; the language tag on each SongListenSegment is what drives the Japanese/English voice
+// switching ("code switching") during synthesis, and the leading `.clip` step (when present)
+// is what lets the listener hear the line sung before its breakdown explains it.
 //
 // Mirrors SongLineCard's `.sameAsLine` / `.parallelTo` fall-through: a chorus repeat line
 // still speaks its own `original` text (it's literally different/identical lyrics being
@@ -15,35 +17,45 @@ import Foundation
 // comment) — without this, the module's default MainActor isolation would make `build`
 // callable only from the main actor.
 nonisolated enum SongListenScript {
-    // Builds the ordered segment list for a full breakdown. Pure function of its input so a
-    // given breakdown always produces the same script (and therefore the same audio).
-    static func build(from breakdown: SongBreakdown) -> [SongListenSegment] {
-        var segments: [SongListenSegment] = []
+    // Builds the ordered step list for a full breakdown. Pure function of its inputs so a
+    // given breakdown + line-range map always produces the same script (and therefore the
+    // same audio). `lineRanges` mirrors the per-line play button's own range lookup
+    // (SongLineCueMatcher.computeRanges) — pass an empty map (the default) to render
+    // narration-only, e.g. when the note has no audio attachment.
+    static func build(
+        from breakdown: SongBreakdown,
+        lineRanges: [Int: (startMs: Int, endMs: Int)] = [:]
+    ) -> [SongListenStep] {
+        var steps: [SongListenStep] = []
         let linesByIndex = Dictionary(uniqueKeysWithValues: breakdown.lines.map { ($0.index, $0) })
 
         for line in breakdown.lines {
             let original = line.original.trimmingCharacters(in: .whitespacesAndNewlines)
             guard original.isEmpty == false else { continue }
 
-            segments.append(SongListenSegment(lineIndex: line.index, kind: .sentence, text: original, language: .japanese))
+            if let range = lineRanges[line.index] {
+                steps.append(.clip(lineIndex: line.index, startMs: range.startMs, endMs: range.endMs))
+            }
+
+            steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .sentence, text: original, language: .japanese)))
 
             if let gist = effectiveGist(for: line, linesByIndex: linesByIndex), gist.isEmpty == false {
-                segments.append(SongListenSegment(lineIndex: line.index, kind: .translation, text: gist, language: .english))
+                steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .translation, text: gist, language: .english)))
             }
 
             for word in effectiveWords(for: line, linesByIndex: linesByIndex) {
                 let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard surface.isEmpty == false else { continue }
-                segments.append(SongListenSegment(lineIndex: line.index, kind: .wordSurface, text: surface, language: .japanese))
+                steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .wordSurface, text: surface, language: .japanese)))
 
                 let definition = SongLineCard.stripInlineMarkdown(word.definition)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if definition.isEmpty == false {
-                    segments.append(SongListenSegment(lineIndex: line.index, kind: .wordDefinition, text: definition, language: .english))
+                    steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .wordDefinition, text: definition, language: .english)))
                 }
             }
         }
-        return segments
+        return steps
     }
 
     // Same "own value, else the referenced line's value" rule as SongLineCard.effectiveGist.

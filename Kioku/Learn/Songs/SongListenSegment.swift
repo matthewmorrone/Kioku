@@ -32,3 +32,12 @@ nonisolated enum SongListenLanguage: Equatable, Sendable {
     case japanese
     case english
 }
+
+// One step in the render pipeline: either a spoken segment, or a slice of the song's own
+// source audio (the sung line itself) copied in verbatim. Kept distinct from
+// SongListenSegment rather than adding a `.clip` case there — a clip has no `text` or TTS
+// `language`, just a time range into a different file.
+nonisolated enum SongListenStep: Equatable, Sendable {
+    case speech(SongListenSegment)
+    case clip(lineIndex: Int, startMs: Int, endMs: Int)
+}

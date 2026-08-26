@@ -215,7 +215,7 @@ struct SongLineCard: View {
                 .font(.system(size: 28, weight: .medium))
                 .lineSpacing(4)
                 .multilineTextAlignment(.leading)
-                // Matches FuriganaTextRenderer's textContainerInset (top/bottom 8, left/right 4)
+                // Matches the CoreText renderer's content inset (top/bottom 8, left/right 4)
                 // so this fallback lines up with the furigana-renderer branch above — otherwise
                 // lines alternate between the two branches depending on whether furiganaCache
                 // resolved any kanji, and the fallback sits ~4pt further left/higher than lines
@@ -234,50 +234,38 @@ struct SongLineCard: View {
         return isExpanded ? "Tap to hide explanations" : "Tap to show explanations"
     }
 
-    // Renders the line via FuriganaTextRenderer at the same 28pt size as the plain Text
-    // branch. `isScrollEnabled` is false so the renderer's `sizeThatFits` reports a real
-    // multi-line height to SwiftUI. Color alternation, highlights, and debug overlays are
-    // all off — this is a passive reveal, not interactive read mode.
+    // Renders the line via the same CoreText renderer the Read tab uses, at the same 28pt
+    // size as the plain Text branch. `isScrollEnabled` is false so the renderer's
+    // `sizeThatFits` reports a real multi-line height to SwiftUI. Color alternation,
+    // highlights, and debug overlays are all off — this is a passive reveal, not
+    // interactive read mode.
     private func furiganaRow(cache: LineFuriganaCache) -> some View {
-        FuriganaTextRenderer(
-            isActive: true,
-            isOverlayFrozen: false,
+        KiokuCoreTextRendererView(
             text: line.original,
-            isLineWrappingEnabled: true,
             segmentationRanges: cache.segmentationRanges,
-            selectedSegmentLocation: nil,
-            blankSelectedSegmentLocation: nil,
-            selectedHighlightRangeOverride: nil,
-            playbackHighlightRangeOverride: nil,
-            activePlaybackCueIndex: nil,
-            illegalMergeBoundaryLocation: nil,
             furiganaBySegmentLocation: cache.furiganaBySegmentLocation,
             furiganaLengthBySegmentLocation: cache.furiganaLengthBySegmentLocation,
+            isFuriganaVisible: true,
             isVisualEnhancementsEnabled: true,
-            isRubySpacingEnabled: true,
             isColorAlternationEnabled: false,
-            isHighlightUnknownEnabled: false,
-            unknownSegmentLocations: [],
-            changedSegmentLocations: [],
-            changedReadingLocations: [],
-            customEvenSegmentColorHex: "",
-            customOddSegmentColorHex: "",
-            debugFuriganaRects: false,
-            debugHeadwordRects: false,
-            debugHeadwordLineBands: false,
-            debugFuriganaLineBands: false,
-            debugBisectorHeadword: false,
-            debugBisectorFurigana: false,
-            debugEnvelopeRects: false,
-            debugLeftInsetGuide: false,
-            externalContentOffsetY: 0,
-            onScrollOffsetYChanged: { _ in },
-            onSegmentTapped: { _, _, _ in onToggleExpansion() },
             textSize: .constant(28),
             lineSpacing: 4,
             kerning: 0,
             furiganaGap: furiganaGap,
-            textAlignment: .natural,
+            evenSegmentColor: .label,
+            oddSegmentColor: .label,
+            isLineWrappingEnabled: true,
+            isRubySpacingEnabled: true,
+            selectedHighlightRange: nil,
+            playbackHighlightRange: nil,
+            selectionHighlightColor: .clear,
+            playbackHighlightColor: .clear,
+            unknownSegmentLocations: [],
+            isHighlightUnknownEnabled: false,
+            unknownSegmentColor: .label,
+            debugFlags: KiokuDebugOverlayView.Flags(),
+            illegalMergeLocation: nil,
+            onSegmentTapped: { _, _, _ in onToggleExpansion() },
             isScrollEnabled: false
         )
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -444,6 +432,12 @@ struct SongLineCard: View {
     @ViewBuilder
     private func wordHeadword(_ word: SongWord) -> some View {
         let key = WordFuriganaKey(lineIndex: effectiveWordsLineIndex, surface: word.surface)
+        // `.fixedSize` forces SwiftUI to propose an unconstrained width, which routes
+        // FuriganaLabel.sizeThatFits to its natural-width branch instead of the full row
+        // width. Without it, the label reports the entire row as its size and its internal
+        // .center paragraph alignment draws the headword centered in the row — inconsistent
+        // with the plain-Text branch below, which already hugs its own natural width and sits
+        // flush left.
         if let runReadings = wordFurigana[key], runReadings.isEmpty == false {
             FuriganaLabel(
                 surface: word.surface,
@@ -452,6 +446,7 @@ struct SongLineCard: View {
                 gap: CGFloat(furiganaGap),
                 explicitRunReadings: runReadings
             )
+            .fixedSize(horizontal: true, vertical: false)
         } else {
             Text(word.surface)
                 .font(.title3.weight(.semibold))
