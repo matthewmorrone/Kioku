@@ -30,3 +30,13 @@ struct SongLine: Codable, Equatable, Identifiable, Sendable {
         return cap
     }
 }
+
+// Lookup key for a word-list headword's per-kanji-run furigana (SongStepperView's
+// wordFuriganaByKey / SongLineCard's wordFurigana). Keying by surface alone would collide
+// when the same word appears on more than one line with a different resolved reading — e.g.
+// a Read-tab correction pinned on one occurrence but not another — so line identity is part
+// of the key, not just the surface text.
+struct WordFuriganaKey: Hashable {
+    let lineIndex: Int
+    let surface: String
+}

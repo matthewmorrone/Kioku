@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 // Per-note breakdown view: every line of the song stacked in one vertical scroll.
@@ -35,10 +36,21 @@ struct SongStepperView: View {
     @State private var isRegenerateConfirmationPresented: Bool = false
     @State private var isListenSheetPresented: Bool = false
     @State private var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
-    // Per-kanji-run readings for word-list headwords, keyed by word surface. Built alongside
-    // furiganaCacheByLineIndex (see ensureFuriganaCaches) and handed to each SongLineCard so
-    // its "Show explanations" word list can render furigana too.
-    @State private var wordFuriganaBySurface: [String: [Int: String]] = [:]
+    // The note's persisted per-note reading overrides (Note.segments), restored once per
+    // breakdown load — see buildFuriganaCache / applyNoteFuriganaOverrides. Nil when the note
+    // has no persisted segments or they no longer validate against its current content.
+    @State private var noteFuriganaRestoration: (byLocation: [Int: String], lengthByLocation: [Int: Int])?
+    // Each breakdown line's starting UTF-16 offset within note.content, so a note-level reading
+    // override (keyed by note.content coordinates) can be rebased into a line's local
+    // coordinates. See lineStartOffsets.
+    @State private var lineStartOffsetsByIndex: [Int: Int] = [:]
+    // Per-kanji-run readings for word-list headwords, keyed by (line, surface) — not surface
+    // alone, since the same word can appear on multiple lines with a different resolved
+    // reading (e.g. a Read-tab correction pinned on one occurrence but not another) and a
+    // surface-only key would let the first occurrence's reading leak into every later one.
+    // Built alongside furiganaCacheByLineIndex (see ensureFuriganaCaches) and handed to each
+    // SongLineCard so its "Show explanations" word list can render furigana too.
+    @State private var wordFuriganaByKey: [WordFuriganaKey: [Int: String]] = [:]
     // Owns audio playback for "play this line" affordances. Stays nil-loaded when the
     // note has no audio attachment or no SRT — the matcher returns an empty map and the
     // cards omit play buttons.
@@ -197,7 +209,9 @@ struct SongStepperView: View {
             guard let newBreakdown else { return }
             expandedByLineIndex = []
             furiganaCacheByLineIndex = [:]
-            wordFuriganaBySurface = [:]
+            wordFuriganaByKey = [:]
+            noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
+            lineStartOffsetsByIndex = Self.lineStartOffsets(for: newBreakdown.lines, in: note.content)
             ensureFuriganaCaches(for: newBreakdown)
         }
         // Covers the case this view appears with an already-cached breakdown on disk — the
@@ -205,7 +219,9 @@ struct SongStepperView: View {
         // this a breakdown opened straight from cache would show no furigana until some
         // unrelated store write happened to fire the onChange.
         .onAppear {
+            noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
             if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id) {
+                lineStartOffsetsByIndex = Self.lineStartOffsets(for: breakdown.lines, in: note.content)
                 ensureFuriganaCaches(for: breakdown)
             }
         }
@@ -408,7 +424,7 @@ struct SongStepperView: View {
                         referencedLine: referencedLine(for: line, in: breakdown),
                         isExpanded: expandedByLineIndex.contains(line.index),
                         furiganaCache: furiganaCacheByLineIndex[line.index],
-                        wordFurigana: wordFuriganaBySurface,
+                        wordFurigana: wordFuriganaByKey,
                         playbackRange: lineRangesByIndex[line.index],
                         onToggleExpansion: { toggleExpansion(for: line) },
                         onPlayLine: {
@@ -435,7 +451,7 @@ struct SongStepperView: View {
             return
         }
         if furiganaCacheByLineIndex[line.index] == nil {
-            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line.original)
+            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line)
         }
         expandedByLineIndex.insert(line.index)
     }
@@ -457,7 +473,7 @@ struct SongStepperView: View {
             return
         }
         for line in breakdown.lines where furiganaCacheByLineIndex[line.index] == nil {
-            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line.original)
+            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line)
         }
         expandedByLineIndex = Set(breakdown.lines.map { $0.index })
     }
@@ -469,11 +485,13 @@ struct SongStepperView: View {
     // already cached, so calling this again after a partial build (or "Show all") is cheap.
     private func ensureFuriganaCaches(for breakdown: SongBreakdown) {
         for line in breakdown.lines where furiganaCacheByLineIndex[line.index] == nil {
-            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line.original)
+            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line)
         }
         for line in breakdown.lines {
-            for word in line.words where wordFuriganaBySurface[word.surface] == nil {
-                wordFuriganaBySurface[word.surface] = buildWordFuriganaRunReadings(for: word, contextLine: line)
+            for word in line.words {
+                let key = WordFuriganaKey(lineIndex: line.index, surface: word.surface)
+                guard wordFuriganaByKey[key] == nil else { continue }
+                wordFuriganaByKey[key] = buildWordFuriganaRunReadings(for: word, contextLine: line)
             }
         }
     }
@@ -520,7 +538,12 @@ struct SongStepperView: View {
     // selection (okurigana cropping, lemma fallback, projection) as ReadView. When the
     // segmenter is unavailable the cache resolves to "no readings" and the toggle becomes
     // a visual no-op — which matches the "degrade gracefully on pure-kana lines" criterion.
-    private func buildFuriganaCache(for text: String) -> LineFuriganaCache {
+    //
+    // The resolver's output is a fresh recompute — it doesn't know about readings the user
+    // pinned or corrected on the Read tab (Note.segments). applyNoteFuriganaOverrides overlays
+    // those on top so the breakdown always shows the same reading as the underlying page.
+    private func buildFuriganaCache(for line: SongLine) -> LineFuriganaCache {
+        let text = line.original
         guard let segmenter, text.isEmpty == false else {
             return LineFuriganaCache(segmentationRanges: [], furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:])
         }
@@ -534,11 +557,62 @@ struct SongStepperView: View {
             edges: edges,
             surfaceReadingData: surfaceReadingData
         )
+        var byLocation = resolved.byLocation
+        var lengthByLocation = resolved.lengthByLocation
+        applyNoteFuriganaOverrides(to: &byLocation, lengthByLocation: &lengthByLocation, forLineIndex: line.index)
         return LineFuriganaCache(
             segmentationRanges: segmentationRanges,
-            furiganaBySegmentLocation: resolved.byLocation,
-            furiganaLengthBySegmentLocation: resolved.lengthByLocation
+            furiganaBySegmentLocation: byLocation,
+            furiganaLengthBySegmentLocation: lengthByLocation
         )
+    }
+
+    // Overlays any reading the user pinned or corrected on the Read tab (persisted in
+    // `note.segments`, restored into `noteFuriganaRestoration`) onto this line's freshly
+    // resolved furigana. Only swaps the reading text at a location the fresh segmentation
+    // already produced a same-length entry for — a location/length mismatch (e.g. the user
+    // manually merged or split segments on the Read tab, shifting boundaries) just falls back
+    // to the freshly-resolved default rather than trying to reconcile differing boundaries.
+    // Regenerating the breakdown always picks up the correct reading regardless.
+    private func applyNoteFuriganaOverrides(
+        to byLocation: inout [Int: String],
+        lengthByLocation: inout [Int: Int],
+        forLineIndex lineIndex: Int
+    ) {
+        guard let restoration = noteFuriganaRestoration,
+              let lineStart = lineStartOffsetsByIndex[lineIndex] else { return }
+        for (location, length) in lengthByLocation {
+            let globalLocation = lineStart + location
+            guard restoration.lengthByLocation[globalLocation] == length,
+                  let reading = restoration.byLocation[globalLocation] else { continue }
+            byLocation[location] = reading
+        }
+    }
+
+    // Restores the note's persisted per-note reading overrides (Note.segments), keyed by
+    // UTF-16 offset within note.content. Nil when the note has no persisted segments or they
+    // no longer validate against its current content (e.g. edited outside the segment-aware
+    // editor) — callers degrade to the freshly-resolved default in that case.
+    private static func restoreNoteFurigana(from note: Note) -> (byLocation: [Int: String], lengthByLocation: [Int: Int])? {
+        guard let normalized = SegmentRangeRestoration.normalizedSegmentRanges(note.segments, for: note.content) else { return nil }
+        return SegmentRangeRestoration.furiganaFromSegmentRanges(normalized)
+    }
+
+    // Finds each breakdown line's starting UTF-16 offset within note.content, so a note-level
+    // reading override can be rebased into that line's local coordinates. Searches in line
+    // order, advancing the cursor past each match, so a repeated chorus line resolves to its
+    // own occurrence rather than always the first. A line whose text isn't found verbatim
+    // (e.g. the LLM normalized it slightly) is simply omitted — its furigana falls back to the
+    // freshly-resolved default.
+    private static func lineStartOffsets(for lines: [SongLine], in noteContent: String) -> [Int: Int] {
+        var offsets: [Int: Int] = [:]
+        var searchStart = noteContent.startIndex
+        for line in lines where line.original.isEmpty == false {
+            guard let range = noteContent.range(of: line.original, range: searchStart..<noteContent.endIndex) else { continue }
+            offsets[line.index] = NSRange(range, in: noteContent).location
+            searchStart = range.upperBound
+        }
+        return offsets
     }
 
     // Resolves the line referenced by `= line N` or `Parallel to line N` so the card can

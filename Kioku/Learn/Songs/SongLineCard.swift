@@ -28,10 +28,12 @@ struct SongLineCard: View {
     // Lazily-populated cache; nil before the first expansion for this line. Owned by the
     // parent stepper so cache compute happens once per line per session.
     let furiganaCache: LineFuriganaCache?
-    // Per-kanji-run readings for word-list headwords, keyed by word surface. Owned by the
-    // parent stepper (it has the segmenter/surfaceReadingData in scope) and built eagerly
-    // alongside furiganaCache so every word in the explanations list can show furigana.
-    let wordFurigana: [String: [Int: String]]
+    // Per-kanji-run readings for word-list headwords, keyed by (line, surface) — not surface
+    // alone, since the same word can resolve to a different reading on different lines (see
+    // WordFuriganaKey). Owned by the parent stepper (it has the segmenter/surfaceReadingData
+    // in scope) and built eagerly alongside furiganaCache so every word in the explanations
+    // list can show furigana.
+    let wordFurigana: [WordFuriganaKey: [Int: String]]
     // The audio time-range matched to this line via the cue text-keyed lookup, or nil
     // when there's no audio attached, no SRT, or no cue matched this line's text. Nil
     // hides the play button entirely — "if available" semantics on the play affordance.
@@ -61,6 +63,14 @@ struct SongLineCard: View {
         if line.words.isEmpty == false { return line.words }
         if line.reference != nil { return referencedLine?.words ?? [] }
         return []
+    }
+    // The line index whose words `effectiveWords` is actually drawing from — this line's own,
+    // or (for a "= line N" chorus fall-through) the referenced line's. Mirrors effectiveWords'
+    // own fallback so wordFurigana lookups use the same line identity the cache was built with.
+    private var effectiveWordsLineIndex: Int {
+        if line.words.isEmpty == false { return line.index }
+        if line.reference != nil, let referencedLine { return referencedLine.index }
+        return line.index
     }
 
     var body: some View {
@@ -433,7 +443,8 @@ struct SongLineCard: View {
     // is a UIKit view and doesn't take a SwiftUI Font.
     @ViewBuilder
     private func wordHeadword(_ word: SongWord) -> some View {
-        if let runReadings = wordFurigana[word.surface], runReadings.isEmpty == false {
+        let key = WordFuriganaKey(lineIndex: effectiveWordsLineIndex, surface: word.surface)
+        if let runReadings = wordFurigana[key], runReadings.isEmpty == false {
             FuriganaLabel(
                 surface: word.surface,
                 reading: "",
