@@ -106,6 +106,8 @@ struct SongLineCard: View {
             Text("Line \(line.index)")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
             if let reference = line.reference {
                 inlineReferenceLabel(reference)
             }
@@ -150,6 +152,9 @@ struct SongLineCard: View {
             }
         }
         .foregroundStyle(Color.accentColor)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .allowsTightening(true)
     }
 
     // Surfaces a note when the line has no gist, no grammar note, no words, and no reference
