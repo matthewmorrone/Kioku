@@ -25,6 +25,7 @@ struct ContentView: View {
     @StateObject private var wordListsStore = WordListsStore()
     @StateObject private var historyStore = HistoryStore()
     @StateObject private var songBreakdownStore = SongBreakdownStore()
+    @StateObject private var songListenStore = SongListenStore()
     // Background queue that runs LLM correction on notes the bulk-import sheet
     // hands over. Attached to notesStore in onAppear for the same
     // @StateObject-can't-see-other-@StateObject reason as the bridge server.
@@ -159,6 +160,7 @@ struct ContentView: View {
         .environmentObject(wordListsStore)
         .environmentObject(historyStore)
         .environmentObject(songBreakdownStore)
+        .environmentObject(songListenStore)
         .environmentObject(llmCorrectionQueue)
         .environmentObject(wotdNavigation)
         .environmentObject(readNoteNavigation)

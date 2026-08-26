@@ -1,26 +1,34 @@
 import SwiftUI
 
-// Where SongListenSheet's render pass currently stands. Own top-level enum (rather than
-// nested in the view) per the repo's no-nested-types rule.
-enum SongListenRenderState {
+// Where a breakdown's listen-along render currently stands. Own top-level enum (rather than
+// nested in the view) per the repo's no-nested-types rule. Equatable so SongListenSheet can
+// key an `.onChange` off it (via SongListenStore's published dictionary) to know when to load
+// a freshly-ready track into the playback controller.
+enum SongListenRenderState: Equatable {
     case rendering(progress: Double)
     case ready(url: URL)
     case failed(String)
 }
 
-// Sheet presented from the breakdown's "Listen" toolbar button. Renders the breakdown to
-// audio on-device via SongListenAudioService, plays it back through a scratch
-// AudioPlaybackController, and offers a ShareLink so the generated track can be exported
-// (AirDrop, Files, Messages, ...) rather than staying trapped in-app.
+// Sheet presented from the breakdown's "Listen" toolbar button. Displays the render/playback
+// state owned by SongListenStore (so dismissing this sheet mid-render or mid-playback never
+// loses progress — see that store's header comment), plays the track back through a scratch
+// AudioPlaybackController, shows the full transcript with the currently-playing segment
+// highlighted (the exact text and its timing are already known, since we generated the audio
+// ourselves), and offers a ShareLink so the track can be exported (AirDrop, Files, Messages,
+// ...) rather than staying trapped in-app.
 struct SongListenSheet: View {
     let breakdown: SongBreakdown
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var listenStore: SongListenStore
     @StateObject private var playback = AudioPlaybackController()
-    @State private var state: SongListenRenderState = .rendering(progress: 0)
-    // Handle to the in-flight render, so Retry or dismissal can cancel a still-running
-    // synthesis instead of letting it keep writing to the shared cache file underneath a
-    // second, concurrently-started render.
-    @State private var renderTask: Task<Void, Never>?
+    // The URL playback was last loaded for, so a body re-evaluation (e.g. a progress tick
+    // from an unrelated note's render) doesn't reload/reseek/replay an already-loaded track.
+    @State private var loadedURL: URL?
+
+    private var state: SongListenRenderState {
+        listenStore.renderState(forNoteID: breakdown.noteID)
+    }
 
     var body: some View {
         NavigationStack {
@@ -45,9 +53,15 @@ struct SongListenSheet: View {
                 }
             }
         }
-        .task { startRender() }
+        .task {
+            listenStore.ensureRendered(for: breakdown)
+            loadIfReady()
+        }
+        .onChange(of: listenStore.renderStateByNoteID[breakdown.noteID]) { _, _ in
+            loadIfReady()
+        }
         .onDisappear {
-            renderTask?.cancel()
+            listenStore.recordPosition(playback.currentTimeMs, forNoteID: breakdown.noteID)
             playback.unload()
         }
     }
@@ -67,10 +81,14 @@ struct SongListenSheet: View {
         }
     }
 
-    // Playback controls once the track exists: a big play/pause button, an elapsed/total
-    // readout, and the export affordance — the only way to get the file out of this sheet.
+    // Playback controls plus the highlighted transcript once the track exists: a scrolling,
+    // auto-following list of every segment (sentence, gist, word, definition) with whichever
+    // one is currently playing picked out, a play/pause button, an elapsed/total readout, and
+    // the export affordance — the only way to get the file out of this sheet.
     private func readyView(url: URL) -> some View {
         VStack(spacing: 20) {
+            transcriptView
+
             Button {
                 playback.isPlaying ? playback.pause() : playback.play()
             } label: {
@@ -94,6 +112,43 @@ struct SongListenSheet: View {
         }
     }
 
+    // Scrolling transcript of every synthesized segment, highlighting whichever one is
+    // currently playing and auto-scrolling to keep it in view. Reuses
+    // AudioPlaybackController.activeCueIndex — the same mechanism the karaoke Read view
+    // drives its highlighting from — against the cues SongListenAudioService stamped with
+    // real timing during synthesis.
+    private var transcriptView: some View {
+        let cues = listenStore.cues(forNoteID: breakdown.noteID)
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(cues.enumerated()), id: \.offset) { index, cue in
+                        Text(cue.text)
+                            .font(.body)
+                            .foregroundStyle(index == playback.activeCueIndex ? Color.primary : Color.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background {
+                                if index == playback.activeCueIndex {
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(Color.accentColor.opacity(0.16))
+                                }
+                            }
+                            .id(index)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            .frame(maxHeight: 320)
+            .onChange(of: playback.activeCueIndex) { _, newValue in
+                guard let newValue else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    proxy.scrollTo(newValue, anchor: .center)
+                }
+            }
+        }
+    }
+
     // Render failure state (e.g. synthesis threw). Shows the error verbatim and offers a
     // one-tap retry rather than leaving the user stuck on a blank sheet.
     private func failedView(_ message: String) -> some View {
@@ -106,7 +161,7 @@ struct SongListenSheet: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button {
-                startRender()
+                listenStore.retry(for: breakdown)
             } label: {
                 Label("Retry", systemImage: "arrow.clockwise")
             }
@@ -114,34 +169,25 @@ struct SongListenSheet: View {
         }
     }
 
-    // Cancels any still-running render before starting a fresh one, so at most one
-    // synthesis is ever writing to the cache file at a time — a bare `Task { await render() }`
-    // on Retry could otherwise race a prior render that hadn't finished yet.
-    private func startRender() {
-        renderTask?.cancel()
-        renderTask = Task { await render() }
-    }
-
-    // Drives one render pass: synthesize the whole track, load it into the scratch player,
-    // and start playback immediately so the user doesn't have to tap play right after
-    // waiting for generation. Re-entrant — startRender() calls this again from a clean
-    // `.rendering` state. Bails out quietly on cancellation (sheet dismissed, or superseded
-    // by a newer render) rather than surfacing it as a user-facing error.
-    private func render() async {
-        state = .rendering(progress: 0)
+    // Loads a newly (or already) ready track into the scratch player and resumes from
+    // wherever playback last left off, then starts playing — so the user doesn't have to tap
+    // play right after waiting for generation, and doesn't land back at 0:00 after leaving and
+    // returning mid-song. No-op if this URL is already loaded (guards against redundant
+    // reloads from unrelated body re-evaluations).
+    private func loadIfReady() {
+        guard case .ready(let url) = state, loadedURL != url else { return }
+        loadedURL = url
         do {
-            let url = try await SongListenAudioService().renderAudio(for: breakdown) { fraction in
-                state = .rendering(progress: fraction)
+            try playback.load(audioURL: url, cues: listenStore.cues(forNoteID: breakdown.noteID))
+            let resumeMs = listenStore.lastPositionMs(forNoteID: breakdown.noteID)
+            if resumeMs > 0 {
+                playback.seek(toMs: resumeMs)
             }
-            try Task.checkCancellation()
-            try playback.load(audioURL: url, cues: [])
-            state = .ready(url: url)
             playback.play()
-        } catch is CancellationError {
-            // Superseded or dismissed — leave state as-is for whichever render wins, or let
-            // the sheet disappear.
         } catch {
-            state = .failed(error.localizedDescription)
+            // Loaded-but-unplayable is rare (e.g. the cached file was removed mid-session);
+            // the transcript still renders from the cached cues, playback controls just won't
+            // do anything until the user retries generation.
         }
     }
 
