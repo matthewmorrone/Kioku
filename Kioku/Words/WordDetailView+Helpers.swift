@@ -1,22 +1,5 @@
 import SwiftUI
-
-// One upward-arcing curve from a frame's bottom-left to bottom-right corner, peaking at the
-// frame's top-center — the sublattice diagram's visual "edge" connecting two lattice nodes.
-// Kept at file scope (not nested in the WordDetailView extension below) so it doesn't inherit
-// that type's MainActor isolation — Shape.path(in:) is a nonisolated protocol requirement, and
-// a nested conformance would need explicit `nonisolated` annotations to satisfy it instead.
-nonisolated struct LatticeArcShape: Shape {
-    // Draws the quadratic arc from the frame's bottom-left to bottom-right, peaking at top-center.
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addQuadCurve(
-            to: CGPoint(x: rect.maxX, y: rect.maxY),
-            control: CGPoint(x: rect.midX, y: rect.minY)
-        )
-        return path
-    }
-}
+import SwiftDagre
 
 // Data-loading and presentation helpers for WordDetailView: the live saved-word lookup,
 // the async display-data/related-words/conjugation loader, reading inflection, and the
@@ -94,124 +77,35 @@ extension WordDetailView {
 
     // Visual lattice diagram for the "Paths" section, sitting above the flat text list (not
     // replacing it). An actual node-and-edge graph: every distinct character-offset boundary any
-    // candidate path crosses is one NODE (a dot) sitting on a shared baseline; every distinct
-    // (position, text) segment is one EDGE — a curved arc connecting its start and end node,
-    // labeled with the segment text. Segments two or more paths agree on collapse into a single
-    // shared edge instead of drawing once per path; only where candidates genuinely diverge do the
-    // competing arcs get separate lanes (greedy interval packing, sublatticeEdgeLanes), fanning out
-    // above the baseline. Edges are ordered by sublatticeUniqueEdgesBiased — ranked by the FEWEST
-    // divisions among any path that uses an edge — so an edge exclusive to a more-divided path gets
-    // a higher lane than one belonging to a less-divided path, putting "most divisions" visually on
-    // top as originally asked for.
+    // candidate path crosses is one NODE (a dot); every distinct (position, text) segment is one
+    // EDGE, labeled with the segment text. Segments two or more paths agree on collapse into a
+    // single shared edge instead of drawing once per path. Layout (node/edge positions, and
+    // routing edges that span multiple boundaries around the nodes between them) is handed to
+    // SwiftDagre — the same ranked-DAG algorithm family behind Mermaid's flowcharts — rather than
+    // computed by hand: a hand-rolled greedy lane packer kept producing visual artifacts (arcs in
+    // the wrong place, dangling stems where several edges shared an endpoint) that were hard to
+    // get right by eye.
     var sublatticeDiagram: some View {
-        sublatticeArcDiagram(edges: sublatticeUniqueEdgesBiased(for: sublatticePaths))
+        // Excludes the trivial single-segment "path" (the whole surface taken as one unsplit
+        // token) — it contributes one giant edge spanning the entire diagram start to end, which
+        // isn't internal structure and just overlaps every real edge rather than adding to them.
+        sublatticeArcDiagram(edges: sublatticeUniqueEdges(for: sublatticePaths.filter { $0.count > 1 }))
     }
 
-    // Shared rendering behind sublatticeDiagram: lays out a given edge list into lanes and draws
-    // each as a dome-and-stems arc (sublatticeArc) above the shared baseline nodes.
-    @ViewBuilder
-    private func sublatticeArcDiagram(edges: [SublatticeEdge]) -> some View {
-        let charWidth: CGFloat = 22
-        let laneHeight: CGFloat = 22
-        let nodeRadius: CGFloat = 3
-        let labelHeadroom: CGFloat = 14
-
-        let laneByEdge = sublatticeEdgeLanes(for: edges)
-        let laneCount = max((laneByEdge.values.max() ?? 0) + 1, 1)
-        let allBoundaries = Set(edges.flatMap { [$0.start, $0.end] }).sorted()
-        let totalWidth = CGFloat(allBoundaries.max() ?? 0) * charWidth
-        // Arcs live above this y; nodes sit right on it, which is what visually ties every arc's
-        // endpoints together into one connected graph instead of floating independent curves.
-        let baselineY = CGFloat(laneCount) * laneHeight
-        let totalHeight = baselineY + nodeRadius * 2 + labelHeadroom
-
-        ZStack(alignment: .topLeading) {
-            ForEach(edges) { edge in
-                let lane = laneByEdge[edge] ?? 0
-                let laneTotalHeight = CGFloat(lane + 1) * laneHeight
-                let arcWidth = max(CGFloat(edge.end - edge.start) * charWidth, 1)
-                let tint = lane.isMultiple(of: 2) ? Color.accentColor : Color.secondary
-                sublatticeArc(text: edge.text, width: arcWidth, laneTotalHeight: laneTotalHeight, laneHeight: laneHeight, tint: tint)
-                    .offset(x: CGFloat(edge.start) * charWidth, y: baselineY - laneTotalHeight)
-            }
-
-            // The shared nodes: one dot per boundary position, sitting on the baseline every
-            // arc's endpoints land on.
-            ForEach(allBoundaries, id: \.self) { boundary in
-                Circle()
-                    .fill(Color.secondary)
-                    .frame(width: nodeRadius * 2, height: nodeRadius * 2)
-                    .offset(
-                        x: CGFloat(boundary) * charWidth - nodeRadius,
-                        y: baselineY - nodeRadius
-                    )
-            }
-        }
-        .frame(width: totalWidth, height: totalHeight, alignment: .topLeading)
-        .padding(.vertical, 4)
-        .accessibilityHidden(true) // The Text rows below already speak each path in full.
-    }
-
-    // One edge's visual: a properly-proportioned dome (bowHeight is capped at one laneHeight and
-    // scales with the edge's own width, so it never gets taller than it is wide) sitting atop
-    // straight stems that bridge the remaining distance down to the shared baseline. A single
-    // curve stretched the entire lane depth used to render as a near-vertical spike for narrow
-    // edges deep in the stack; decoupling "how much this arc bows" (proportional to its own
-    // width, always dome-shaped) from "how far up its lane sits" (the stems) fixes that.
-    @ViewBuilder
-    private func sublatticeArc(text: String, width: CGFloat, laneTotalHeight: CGFloat, laneHeight: CGFloat, tint: Color) -> some View {
-        let bowHeight = min(width * 0.6, laneHeight)
-        let stemHeight = max(laneTotalHeight - bowHeight, 0)
-        let stemWidth: CGFloat = 1.5
-        ZStack(alignment: .top) {
-            if stemHeight > 0 {
-                Rectangle()
-                    .fill(tint.opacity(0.6))
-                    .frame(width: stemWidth, height: stemHeight)
-                    .offset(x: 0, y: bowHeight)
-                Rectangle()
-                    .fill(tint.opacity(0.6))
-                    .frame(width: stemWidth, height: stemHeight)
-                    .offset(x: width - stemWidth, y: bowHeight)
-            }
-            LatticeArcShape()
-                .stroke(tint.opacity(0.6), lineWidth: 1.5)
-                .frame(width: width, height: bowHeight)
-                .overlay(alignment: .top) {
-                    // Sits right at the dome's peak, with an opaque background so it reads as
-                    // breaking the line, not crossing it.
-                    Text(text)
-                        .font(.caption2)
-                        .foregroundStyle(tint)
-                        .padding(.horizontal, 3)
-                        .background(Color(.systemBackground))
-                        .fixedSize()
-                }
-        }
-        .frame(width: width, height: laneTotalHeight, alignment: .top)
-    }
-
-    // Edge sort backing sublatticeDiagram. Each edge is ranked by the FEWEST divisions among any
-    // path that uses it (an edge shared by a 3-division and a 2-division path ranks as 2), and
-    // edges are processed lowest-rank-first so greedy packing (sublatticeEdgeLanes) hands
-    // least-divided paths' edges the lower lanes and leaves higher lanes for edges exclusive to
-    // more-divided paths.
-    func sublatticeUniqueEdgesBiased(for paths: [[String]]) -> [SublatticeEdge] {
-        var minDivisionsByEdge: [SublatticeEdge: Int] = [:]
+    // Every distinct (position, text) segment across all candidate paths, deduped so a segment
+    // two or more paths agree on is drawn once rather than once per path.
+    func sublatticeUniqueEdges(for paths: [[String]]) -> [SublatticeEdge] {
+        var edges: Set<SublatticeEdge> = []
         for path in paths {
             var offset = 0
             for segment in path {
-                let edge = SublatticeEdge(start: offset, end: offset + segment.count, text: segment)
-                minDivisionsByEdge[edge] = min(minDivisionsByEdge[edge] ?? path.count, path.count)
+                edges.insert(SublatticeEdge(start: offset, end: offset + segment.count, text: segment))
                 offset += segment.count
             }
         }
-        return minDivisionsByEdge.keys.sorted { lhs, rhs in
-            let lhsRank = minDivisionsByEdge[lhs] ?? 0
-            let rhsRank = minDivisionsByEdge[rhs] ?? 0
-            if lhsRank != rhsRank { return lhsRank < rhsRank }
+        return edges.sorted { lhs, rhs in
             if lhs.start != rhs.start { return lhs.start < rhs.start }
-            if lhs.end != rhs.end { return lhs.end > rhs.end }
+            if lhs.end != rhs.end { return lhs.end < rhs.end }
             return lhs.text < rhs.text
         }
     }
@@ -226,23 +120,112 @@ extension WordDetailView {
         var id: Self { self }
     }
 
-    // Greedy interval-graph lane assignment: edges are placed in the first lane whose last-placed
-    // edge ends at or before this edge's start (no horizontal overlap), else a new lane opens.
-    // Shared segments (agreed on by every path) need only ever occupy one lane; extra lanes only
-    // appear where candidate paths genuinely diverge into overlapping alternative segmentations.
-    func sublatticeEdgeLanes(for sortedEdges: [SublatticeEdge]) -> [SublatticeEdge: Int] {
-        var laneEnds: [Int] = []
-        var laneByEdge: [SublatticeEdge: Int] = [:]
-        for edge in sortedEdges {
-            if let lane = laneEnds.firstIndex(where: { $0 <= edge.start }) {
-                laneByEdge[edge] = lane
-                laneEnds[lane] = edge.end
-            } else {
-                laneByEdge[edge] = laneEnds.count
-                laneEnds.append(edge.end)
+    // Shared rendering behind sublatticeDiagram: hands the edge list to SwiftDagre for node/edge
+    // positioning, then draws the result — a dot per boundary node, a routed path per edge (bent
+    // around whatever else shares its span, for edges crossing more than one boundary), and the
+    // segment text at the position SwiftDagre itself chose for the edge's label.
+    @ViewBuilder
+    private func sublatticeArcDiagram(edges: [SublatticeEdge]) -> some View {
+        if let layout = sublatticeLayout(for: edges) {
+            ZStack(alignment: .topLeading) {
+                ForEach(edges) { edge in
+                    if let path = layout.edgePaths[edge] {
+                        path
+                            .stroke(Color.secondary.opacity(0.6), lineWidth: 1.5)
+                        if let labelPosition = layout.edgeLabelPositions[edge] {
+                            Text(edge.text)
+                                .font(.caption2)
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.horizontal, 3)
+                                .background(Color(.systemBackground))
+                                .fixedSize()
+                                .position(labelPosition)
+                        }
+                    }
+                }
+                ForEach(Array(layout.nodePositions.keys).sorted(), id: \.self) { boundary in
+                    if let position = layout.nodePositions[boundary] {
+                        Circle()
+                            .fill(Color.secondary)
+                            .frame(width: 6, height: 6)
+                            .position(position)
+                    }
+                }
             }
+            .frame(width: layout.width, height: layout.height, alignment: .topLeading)
+            .padding(.vertical, 4)
+            .accessibilityHidden(true) // The Text rows below already speak each path in full.
         }
-        return laneByEdge
+    }
+
+    // One SwiftDagre layout pass's results, translated into what the view needs to draw: a
+    // position per boundary node, and a stroke path plus label position per edge.
+    private struct SublatticeLayout {
+        var nodePositions: [Int: CGPoint]
+        var edgePaths: [SublatticeEdge: Path]
+        var edgeLabelPositions: [SublatticeEdge: CGPoint]
+        var width: CGFloat
+        var height: CGFloat
+    }
+
+    // Builds a left-to-right DAG (one node per boundary, one edge per segment, edge length in
+    // ranks set to the segment's own character count) and lays it out with SwiftDagre. Every
+    // path between the same two boundaries spans the identical number of characters no matter how
+    // it's divided, so this graph's rank constraints are always mutually consistent — SwiftDagre
+    // settles on exactly one rank per boundary, equal to its character offset, which is what keeps
+    // the diagram in reading order.
+    private func sublatticeLayout(for edges: [SublatticeEdge]) -> SublatticeLayout? {
+        guard edges.isEmpty == false else { return nil }
+        let boundaries = Set(edges.flatMap { [$0.start, $0.end] })
+        let graph = DagreGraph(options: GraphOptions(directed: true))
+        for boundary in boundaries {
+            graph.setNode("\(boundary)", label: DagreNodeLabel(width: 6, height: 6))
+        }
+        for edge in edges {
+            let label = DagreEdgeLabel(minlen: max(edge.end - edge.start, 1), weight: 1)
+            // Reserves room for the label along the edge's own path so SwiftDagre doesn't route
+            // a neighboring edge directly through where the text will sit.
+            label.width = CGFloat(edge.text.count) * 12
+            label.height = 14
+            guard (try? graph.setEdge("\(edge.start)", "\(edge.end)", label: label)) != nil else { return nil }
+        }
+
+        let options = LayoutOptions()
+        options.rankdir = .leftRight
+        options.ranksep = 22
+        options.nodesep = 20
+        options.edgesep = 10
+        guard (try? SwiftDagreLayout.layout(graph, options: options)) != nil else { return nil }
+
+        var nodePositions: [Int: CGPoint] = [:]
+        for boundary in boundaries {
+            guard let label = graph.node("\(boundary)") else { continue }
+            nodePositions[boundary] = CGPoint(x: label.x, y: label.y)
+        }
+
+        var edgePaths: [SublatticeEdge: Path] = [:]
+        var edgeLabelPositions: [SublatticeEdge: CGPoint] = [:]
+        for edge in edges {
+            guard let edgeLabel = graph.edge("\(edge.start)", "\(edge.end)") else { continue }
+            var path = Path()
+            let points = edgeLabel.points
+            if let first = points.first {
+                path.move(to: CGPoint(x: first.x, y: first.y))
+                for point in points.dropFirst() {
+                    path.addLine(to: CGPoint(x: point.x, y: point.y))
+                }
+            }
+            edgePaths[edge] = path
+            edgeLabelPositions[edge] = CGPoint(x: edgeLabel.x, y: edgeLabel.y)
+        }
+
+        return SublatticeLayout(
+            nodePositions: nodePositions,
+            edgePaths: edgePaths,
+            edgeLabelPositions: edgeLabelPositions,
+            width: CGFloat(options.width),
+            height: CGFloat(options.height)
+        )
     }
 
     // SF Symbol for the header's save/learned toggle: a plain checkmark when learned, a plain

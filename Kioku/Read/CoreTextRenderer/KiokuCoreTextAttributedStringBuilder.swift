@@ -86,26 +86,6 @@ enum KiokuCoreTextAttributedStringBuilder {
         // so the user can see which line is "active" without conflating it with finished
         // changes. Mirrors ReadTextStyleResolver's in-flight pass.
         var inFlightSegmentLocations: Set<Int> = []
-        // Favorited (saved) segment highlight. When enabled, segments whose location appears in
-        // favoritedSegmentLocations are tinted favoritedHighlightColor via .foregroundColor —
-        // the ruby draw pass reads a kanji run's .foregroundColor too, so furigana picks up the
-        // same color automatically (see KiokuCoreTextView.rubyForegroundColor).
-        var favoritedSegmentLocations: Set<Int> = []
-        var isFavoritedHighlightEnabled: Bool = false
-        var favoritedHighlightColor: UIColor = .systemYellow
-        // Subset of favorited (this-note) segments marked Learned — recolored separately when
-        // the "Favorited Highlight" submenu is set to "Different Colors". Disjoint from
-        // favoritedSegmentLocations by construction upstream.
-        var favoritedLearnedSegmentLocations: Set<Int> = []
-        var favoritedLearnedHighlightColor: UIColor = .systemGreen
-        // Subset of favorited (this-note) segments marked Not Learned, same disjointness
-        // rationale as favoritedLearnedSegmentLocations above.
-        var favoritedNotLearnedSegmentLocations: Set<Int> = []
-        var favoritedNotLearnedHighlightColor: UIColor = .systemPurple
-        // Saved-but-only-under-a-different-note segments — the hollow-yellow "saved elsewhere"
-        // star's in-text counterpart. Disjoint from favoritedSegmentLocations by construction.
-        var favoritedElsewhereSegmentLocations: Set<Int> = []
-        var favoritedElsewhereHighlightColor: UIColor = .systemOrange
         // When true, the renderer is in segment-packed mode and handles inter-segment
         // spacing via per-segment X placement. The builder must NOT inject its
         // ruby-overhang kerning compensation in that case — the kern bump would inflate
@@ -122,6 +102,18 @@ enum KiokuCoreTextAttributedStringBuilder {
         // When set, replaces the implicit `textSize * 0.5` furigana font size used for
         // the ruby-overhang kern math. Default nil preserves legacy behavior.
         var furiganaSizeOverride: CGFloat? = nil
+        // Favorited Highlight: segments whose resolved dictionary entry matches a saved
+        // word are tinted by Learned-state category — Favorite/Learned/Not Learned each
+        // get their own fixed color. A word's category is global (the same everywhere it's
+        // saved), so there's no note-scoped variant. Applied after alternation/unknown/
+        // changed/in-flight so it always wins on overlap (see build()).
+        var isFavoritedHighlightEnabled: Bool = false
+        var favoritedSegmentLocations: Set<Int> = []
+        var favoritedHighlightColor: UIColor = .systemYellow
+        var favoritedLearnedSegmentLocations: Set<Int> = []
+        var favoritedLearnedHighlightColor: UIColor = .systemGreen
+        var favoritedNotLearnedSegmentLocations: Set<Int> = []
+        var favoritedNotLearnedHighlightColor: UIColor = .systemPurple
     }
 
     // Composes the renderer-ready NSAttributedString: base font + paragraph style,
@@ -213,50 +205,20 @@ enum KiokuCoreTextAttributedStringBuilder {
             }
         }
 
-        // Favorited (saved) highlight. Applied last (after alternation/unknown/changed/in-flight)
-        // so a favorited word's color always wins on overlap — plain .foregroundColor, so
-        // CTLineDraw and the ruby pass (which reads a kanji run's .foregroundColor) both pick it
-        // up with no special-casing needed in the view's draw pass.
-        if inputs.isFavoritedHighlightEnabled && inputs.favoritedSegmentLocations.isEmpty == false {
+        // Favorited Highlight. Applied last of the foreground-color passes so it always wins
+        // on overlap — matches the TextKit path's ordering (ReadTextStyleResolver) and the
+        // pre-existing behavior of this pass before its temporary removal.
+        if inputs.isFavoritedHighlightEnabled {
             for segmentRange in inputs.segmentationRanges {
                 let nsRange = NSRange(segmentRange, in: inputs.text)
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
-                guard inputs.favoritedSegmentLocations.contains(nsRange.location) else { continue }
-                result.addAttribute(.foregroundColor, value: inputs.favoritedHighlightColor, range: nsRange)
-            }
-        }
-
-        // Learned-word subset of the favorited highlight — same precedence as the favorited pass
-        // above, disjoint from favoritedSegmentLocations by construction upstream.
-        if inputs.isFavoritedHighlightEnabled && inputs.favoritedLearnedSegmentLocations.isEmpty == false {
-            for segmentRange in inputs.segmentationRanges {
-                let nsRange = NSRange(segmentRange, in: inputs.text)
-                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
-                guard inputs.favoritedLearnedSegmentLocations.contains(nsRange.location) else { continue }
-                result.addAttribute(.foregroundColor, value: inputs.favoritedLearnedHighlightColor, range: nsRange)
-            }
-        }
-
-        // Not-Learned-word subset of the favorited highlight — same precedence/disjointness as
-        // the Learned pass above.
-        if inputs.isFavoritedHighlightEnabled && inputs.favoritedNotLearnedSegmentLocations.isEmpty == false {
-            for segmentRange in inputs.segmentationRanges {
-                let nsRange = NSRange(segmentRange, in: inputs.text)
-                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
-                guard inputs.favoritedNotLearnedSegmentLocations.contains(nsRange.location) else { continue }
-                result.addAttribute(.foregroundColor, value: inputs.favoritedNotLearnedHighlightColor, range: nsRange)
-            }
-        }
-
-        // "Saved elsewhere" highlight — same precedence as the favorited pass above (applied
-        // right after it; the two location sets are disjoint by construction upstream, so order
-        // between them doesn't matter).
-        if inputs.isFavoritedHighlightEnabled && inputs.favoritedElsewhereSegmentLocations.isEmpty == false {
-            for segmentRange in inputs.segmentationRanges {
-                let nsRange = NSRange(segmentRange, in: inputs.text)
-                guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
-                guard inputs.favoritedElsewhereSegmentLocations.contains(nsRange.location) else { continue }
-                result.addAttribute(.foregroundColor, value: inputs.favoritedElsewhereHighlightColor, range: nsRange)
+                if inputs.favoritedLearnedSegmentLocations.contains(nsRange.location) {
+                    result.addAttribute(.foregroundColor, value: inputs.favoritedLearnedHighlightColor, range: nsRange)
+                } else if inputs.favoritedNotLearnedSegmentLocations.contains(nsRange.location) {
+                    result.addAttribute(.foregroundColor, value: inputs.favoritedNotLearnedHighlightColor, range: nsRange)
+                } else if inputs.favoritedSegmentLocations.contains(nsRange.location) {
+                    result.addAttribute(.foregroundColor, value: inputs.favoritedHighlightColor, range: nsRange)
+                }
             }
         }
 

@@ -146,8 +146,13 @@ final class SurfaceSheetViewController: UIViewController {
         rebuildHeaderRow(reading: displayedReading())
     }
 
-    // Rebuilds the header row with the given reading (or nil for a blank reading).
+    // Rebuilds the header row with the given reading (or nil for a blank reading). Callers include
+    // an async supplemental-data-refresh completion that can still be in flight after this
+    // controller's view has been dismissed/torn down (e.g. the user tapped through to another
+    // word before it finished) — headerRow is an IUO populated at view-load time, so guard rather
+    // than force-unwrap a nil outlet into a crash for what's just a stale, ignorable completion.
     func rebuildHeaderRow(reading: String?) {
+        guard let headerRow else { return }
         sheet?.rebuildSheetHeaderRow(headerRow, surface: currentSurface, reading: reading)
     }
 

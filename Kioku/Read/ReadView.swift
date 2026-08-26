@@ -59,7 +59,6 @@ struct ReadView: View {
     @AppStorage(TokenColorSettings.favoritedFavoriteColorKey) var favoritedFavoriteHex: String = TokenColorSettings.defaultFavoritedFavoriteHex
     @AppStorage(TokenColorSettings.favoritedLearnedColorKey) var favoritedLearnedHex: String = TokenColorSettings.defaultFavoritedLearnedHex
     @AppStorage(TokenColorSettings.favoritedNotLearnedColorKey) var favoritedNotLearnedHex: String = TokenColorSettings.defaultFavoritedNotLearnedHex
-    @AppStorage(TokenColorSettings.favoritedElsewhereColorKey) var favoritedElsewhereHex: String = TokenColorSettings.defaultFavoritedElsewhereHex
     @AppStorage("kioku.settings.showFurigana") var isFuriganaVisible = true
     // When on, furigana is suppressed for any segment whose word is marked learned or
     // mastered (see ReviewStore). Independent of isFuriganaVisible, which is the master
@@ -76,13 +75,11 @@ struct ReadView: View {
     // Independent per-category visibility toggles for Favorited Highlight, set from its submenu.
     // Each category always renders in its own fixed color (see SettingsView+ThemeSection's
     // Favorited Highlight color pickers) when its toggle is on — they aren't mutually exclusive,
-    // so any combination (or all four) can show at once.
+    // so any combination (or all three) can show at once. A word's status is global (the same
+    // everywhere it's saved), so there is no per-note "elsewhere" category.
     @AppStorage("kioku.settings.favoritedHighlight.showFavorite") var isFavoritedHighlightShowingFavorite = true
     @AppStorage("kioku.settings.favoritedHighlight.showLearned") var isFavoritedHighlightShowingLearned = true
     @AppStorage("kioku.settings.favoritedHighlight.showNotLearned") var isFavoritedHighlightShowingNotLearned = true
-    // "Saved under a different note" — orthogonal to Learned state (see
-    // favoritedElsewhereSegmentLocations); its own toggle alongside the three above.
-    @AppStorage("kioku.settings.favoritedHighlight.showElsewhere") var isFavoritedHighlightShowingElsewhere = true
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) var debugFuriganaRects: Bool = false
     @AppStorage(DebugSettings.headwordRectsKey) var debugHeadwordRects: Bool = false
@@ -106,7 +103,8 @@ struct ReadView: View {
     @State var segmentLatticeEdges: [LatticeEdge] = []
     @State var segmentEdges: [LatticeEdge] = []
     @State var segmentRanges: [Range<String.Index>] = []
-    // Cache for the favorited-highlight set so it isn't recomputed (deinflection sweep) on every body eval.
+    // Cache for the favorited-highlight set so it isn't recomputed (dictionary-lookup sweep) on
+    // every body eval.
     @State var favoritedHighlightMemo = FavoritedHighlightMemo()
     // Cache for the "hide furigana for known words" segment set — same memoization rationale
     // as favoritedHighlightMemo above.

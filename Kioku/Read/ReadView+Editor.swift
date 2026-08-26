@@ -1,37 +1,14 @@
 import SwiftUI
 import UIKit
 
-// Reference-type cache for the favorited-highlight computation. Held by @State so it persists
-// across `body` re-evaluations; because it's a class, ReadView mutates its fields without writing
-// the @State wrapper (which would be illegal during a view update). `signature` is the hash of
-// the highlight's inputs at the time `locations` was computed; `lemmaBySurface` memoizes
-// per-segment lemma resolution for one text (keyed by `lemmaTextKey`).
-//
-// `lemmaBySurface` stores only SUCCESSFUL (non-nil) resolutions. Caching a nil here was a bug: the
-// first highlight pass can run before the segmenter's deinflection resources are loaded, so a
-// conjugated surface (消えて) resolves to nil; with the cache keyed by the unchanging note text,
-// that nil stuck for the session and the form never bridged to its saved lemma (消える) — base
-// forms highlighted, conjugations never did. Not caching misses means each recompute retries
-// until resources are ready.
-final class FavoritedHighlightMemo {
-    var signature: Int?
-    var locations: Set<Int> = []
-    // Saved, but only under a note OTHER than the active one — mirrors the extract-list star's
-    // hollow-yellow "saved elsewhere" state. Disjoint from `locations` by construction (see
-    // computeFavoritedSegmentLocations).
-    var elsewhereLocations: Set<Int> = []
-    // Subsets of `locations` (this note) whose word is marked Learned / Not Learned (ReviewStore) —
-    // each Learned-state category gets its own color; see computeFavoritedSegmentLocations.
-    var learnedLocations: Set<Int> = []
-    var notLearnedLocations: Set<Int> = []
-    var lemmaTextKey: Int = 0
-    var lemmaBySurface: [String: String] = [:]
-}
-
-// Reference-type cache for the "hide furigana for known words" computation. Same shape and
-// rationale as FavoritedHighlightMemo above: held by @State so it survives body re-evals, and
-// the lemma cache is keyed per-text so repeated recomputes (e.g. a review answer changing
-// wordsStore.learned) don't re-deinflect the whole note.
+// Reference-type cache for the "hide furigana for known words" computation. Held by @State so it
+// persists across `body` re-evaluations; because it's a class, ReadView mutates its fields
+// without writing the @State wrapper (which would be illegal during a view update). `signature`
+// is the hash of the computation's inputs at the time `locations` was computed; `lemmaBySurface`
+// memoizes per-segment lemma resolution for one text (keyed by `lemmaTextKey`), storing only
+// SUCCESSFUL (non-nil) resolutions — the first pass can run before the segmenter's deinflection
+// resources are loaded, so caching a nil would freeze a conjugated surface as "no lemma" for
+// the session.
 final class KnownWordFuriganaMemo {
     var signature: Int?
     var locations: Set<Int> = []
@@ -39,12 +16,26 @@ final class KnownWordFuriganaMemo {
     var lemmaBySurface: [String: String] = [:]
 }
 
+// Reference-type cache for the favorited-highlight computation. Same @State-held-class rationale
+// as KnownWordFuriganaMemo above. No per-segment lemma cache here — the computation resolves
+// through resolvedDictionaryEntry(forSurface:) (ReadView+Segmentation), which is a straight
+// dictionary/Lexicon lookup, not a segmenter-lemma sweep.
+final class FavoritedHighlightMemo {
+    var signature: Int?
+    var locations: Set<Int> = []
+    // Subsets by Learned-state category — each gets its own color; a word's category is global
+    // (the same everywhere it's saved), so there is no per-note distinction here. See
+    // computeFavoritedSegmentLocations.
+    var learnedLocations: Set<Int> = []
+    var notLearnedLocations: Set<Int> = []
+}
+
 // Reference-type mirror of the CoreText read view's live scroll offset. The CT renderer reports
 // every offset change here instead of into @State, so view-mode scrolling costs no SwiftUI body
 // re-eval per frame (each eval re-hashes the whole note for the typography fingerprint). The
 // value is snapshotted into `sharedScrollOffsetY` exactly when edit mode is entered — the only
 // moment the editor needs it. Held by @State so it survives body re-evaluations (same pattern
-// as FavoritedHighlightMemo above).
+// as KnownWordFuriganaMemo above).
 final class ReadScrollOffsetMemo {
     var value: CGFloat = 0
 }
@@ -82,36 +73,22 @@ extension ReadView {
         return nil
     }
 
-    // Keeps both read and edit renderers mounted so mode toggles are instant.
     // UTF-16 locations of segments the extract-words list shows a FILLED star for — saved for
-    // the active note, or saved with no note attribution at all (a global save). Mirrors the
-    // extract-list star's filled/hollow split (see favoritedElsewhereSegmentLocations for the
-    // hollow-yellow "saved elsewhere" counterpart) via the same shared predicate
-    // (ComputedSavedWordState.isStarFilled) over the same WordsStore snapshot, grounded in
-    // encountered surfaces (+ lemma bridging). So inflected forms light up (消える saved →
-    // 消えて / 消えてゆく glow) and unfavoriting clears the glow immediately.
+    // the active note, or saved with no note attribution at all. Resolved through the exact same
+    // dictionary-entry lookup (resolvedDictionaryEntry(forSurface:), ReadView+Segmentation) that
+    // the lookup sheet's star/learned-state button uses (isSegmentSaved, currentSegmentLearnedState),
+    // so the in-text color and the button can never disagree about which saved word a piece of
+    // text refers to.
     //
-    // MEMOIZED: `body` re-evaluates constantly (scroll, playback highlight, selection) but the glow
-    // only depends on wordsStore.words, the segmentation, the active note, and the toggle. We hash
-    // those into a cheap signature and skip the (expensive) deinflection sweep when nothing relevant
-    // changed. The cache lives in a reference type held by @State, so updating it here does NOT trip
-    // SwiftUI's "modifying state during view update" (we mutate the object's fields, not the @State
-    // wrapper). The per-segment lemma cache persists across recomputes (keyed by text), so even a
-    // favorite toggle stays cheap — it re-runs set lookups, not a fresh deinflection pass.
+    // MEMOIZED: `body` re-evaluates constantly (scroll, playback highlight, selection) but the
+    // color only depends on wordsStore.words, the segmentation, the active note, and the
+    // visibility toggles. A cheap signature check skips the (dictionary-lookup-per-segment) sweep
+    // when nothing relevant changed. The cache lives in a reference type held by @State, so
+    // updating it here does NOT trip SwiftUI's "modifying state during view update" (we mutate
+    // the object's fields, not the @State wrapper).
     var favoritedSegmentLocations: Set<Int> {
         ensureFavoritedHighlightComputed()
         return favoritedHighlightMemo.locations
-    }
-
-    // UTF-16 locations of segments saved under a note OTHER than the active one — the hollow-
-    // yellow "saved elsewhere" star, rendered in-text with its own distinct color
-    // (favoritedElsewhereHighlightColor) so a word favorited only in a different note reads as
-    // "known, but not part of this note" rather than blending into this note's favorites.
-    // Disjoint from favoritedSegmentLocations by construction (isStarFilled and
-    // isSavedForOtherNotes can't both be true for the same surface).
-    var favoritedElsewhereSegmentLocations: Set<Int> {
-        ensureFavoritedHighlightComputed()
-        return favoritedHighlightMemo.elsewhereLocations
     }
 
     // Subset of favoritedSegmentLocations marked Learned — see FavoritedHighlightMemo.learnedLocations.
@@ -133,28 +110,25 @@ extension ReadView {
         guard isFavoritedHighlightEnabled else {
             favoritedHighlightMemo.signature = nil
             favoritedHighlightMemo.locations = []
-            favoritedHighlightMemo.elsewhereLocations = []
             favoritedHighlightMemo.learnedLocations = []
             favoritedHighlightMemo.notLearnedLocations = []
             return
         }
 
+        // Global by design (see computeFavoritedSegmentLocations): a word's status is the same
+        // everywhere it appears, so the signature doesn't key on activeNoteID or any note
+        // attribution — only on segmentation, the saved-word set, and the visibility toggles.
         var hasher = Hasher()
-        hasher.combine(activeNoteID)
         hasher.combine(segmentRanges.count)
         if let first = segmentRanges.first { hasher.combine(NSRange(first, in: text).location) }
         if let last = segmentRanges.last { hasher.combine(NSRange(last, in: text).location) }
         for word in wordsStore.words {
             hasher.combine(word.canonicalEntryID)
-            for surface in word.encounteredSurfaces.sorted() { hasher.combine(surface) }
-            for noteID in word.sourceNoteIDs { hasher.combine(noteID) }
+            hasher.combine(word.learnedMark)
         }
         hasher.combine(isFavoritedHighlightShowingFavorite)
         hasher.combine(isFavoritedHighlightShowingLearned)
         hasher.combine(isFavoritedHighlightShowingNotLearned)
-        hasher.combine(isFavoritedHighlightShowingElsewhere)
-        for id in wordsStore.learned.sorted() { hasher.combine(id) }
-        for id in wordsStore.notLearned.sorted() { hasher.combine(id) }
         let signature = hasher.finalize()
         if favoritedHighlightMemo.signature == signature {
             return
@@ -165,111 +139,60 @@ extension ReadView {
         favoritedHighlightMemo.locations = result.locations
         favoritedHighlightMemo.learnedLocations = result.learnedLocations
         favoritedHighlightMemo.notLearnedLocations = result.notLearnedLocations
-        favoritedHighlightMemo.elsewhereLocations = result.elsewhereLocations
     }
 
     // The heavy computation behind the favorited-location properties, run only on a memo miss.
-    private func computeFavoritedSegmentLocations() -> (locations: Set<Int>, learnedLocations: Set<Int>, notLearnedLocations: Set<Int>, elsewhereLocations: Set<Int>) {
-        // Per-segment lemma resolution is the dominant cost; reuse it across recomputes for the same
-        // text so toggling a favorite doesn't re-deinflect the whole note.
-        let textKey = text.hashValue
-        if favoritedHighlightMemo.lemmaTextKey != textKey {
-            favoritedHighlightMemo.lemmaTextKey = textKey
-            favoritedHighlightMemo.lemmaBySurface = [:]
-        }
-        let resolver: (String) -> String? = { [segmenter, favoritedHighlightMemo] surface in
-            if let cached = favoritedHighlightMemo.lemmaBySurface[surface] { return cached }
-            let value = segmenter.preferredLemma(for: surface)
-            // Cache only successful resolutions — a nil here usually means resources weren't ready
-            // yet, and caching it would freeze a conjugated surface as "no lemma" for the session.
-            if let value { favoritedHighlightMemo.lemmaBySurface[surface] = value }
-            return value
-        }
-
-        let (state, _) = SegmentListView.computeSavedWordState(
-            entries: wordsStore.words,
-            lemmaResolver: resolver,
-            lemmaCache: [:]
-        )
-        guard state.savedWordSurfaces.isEmpty == false else { return ([], [], [], []) }
+    // For every distinct segment surface, resolves the ONE dictionary entry backing it (the same
+    // resolvedDictionaryEntry(forSurface:) the lookup sheet's button uses) and looks up whether
+    // any SavedWord's canonicalEntryID matches — no surface/lemma string-matching against
+    // wordsStore's own encountered-surfaces at all, so this can't land on a different word than
+    // the button did for the identical on-screen text. A word's status is global — the same
+    // color everywhere it appears, regardless of which note(s) it's attributed to — so there is
+    // no per-note "saved elsewhere" distinction here.
+    private func computeFavoritedSegmentLocations() -> (locations: Set<Int>, learnedLocations: Set<Int>, notLearnedLocations: Set<Int>) {
+        guard wordsStore.words.isEmpty == false else { return ([], [], []) }
 
         let ns = text as NSString
         var locations = Set<Int>()
         var learnedLocations = Set<Int>()
         var notLearnedLocations = Set<Int>()
-        var elsewhereLocations = Set<Int>()
-        var verdictBySurface: [String: (filled: Bool, elsewhere: Bool)] = [:]
-        var learnedStateBySurface: [String: LearnedState] = [:]
+        var savedWordBySurface: [String: SavedWord?] = [:]
         for range in segmentRanges {
             let nsRange = NSRange(range, in: text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
             let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
-            let verdict = verdictBySurface[surface] ?? {
-                let filled = state.isStarFilled(surface, noteID: activeNoteID, lemmaResolver: resolver)
-                let elsewhere = filled ? false : state.isSavedForOtherNotes(surface, noteID: activeNoteID, lemmaResolver: resolver)
-                let v = (filled: filled, elsewhere: elsewhere)
-                verdictBySurface[surface] = v
-                return v
-            }()
-            guard verdict.filled || verdict.elsewhere else { continue }
+            guard surface.isEmpty == false else { continue }
 
-            let learnedState = learnedStateBySurface[surface] ?? {
-                let entryID = canonicalEntryIDForFavoritedSurface(surface, lemmaResolver: resolver)
-                let value = entryID.map { wordsStore.learnedState(for: $0) } ?? .unmarked
-                learnedStateBySurface[surface] = value
+            let saved: SavedWord? = {
+                if let cached = savedWordBySurface[surface] { return cached }
+                let value = resolvedDictionaryEntry(forSurface: surface).flatMap { entry in
+                    wordsStore.words.first { $0.canonicalEntryID == entry.entryId }
+                }
+                savedWordBySurface[surface] = value
                 return value
             }()
+            guard let saved else { continue }
 
             // Each category has its own independent visibility toggle and its own fixed color —
-            // not mutually exclusive, so any combination can be showing at once. "Elsewhere" is
-            // an optional recolor on top of that, not a fourth gate on the other three: an
-            // out-of-note word tints orange only while Elsewhere is on; turn it off and it falls
-            // through to its own Favorite/Learned/Not-Learned color like any other favorited word
-            // instead of disappearing.
-            if verdict.elsewhere && isFavoritedHighlightShowingElsewhere {
-                elsewhereLocations.insert(nsRange.location)
-            } else {
-                switch learnedState {
-                case .learned:
-                    if isFavoritedHighlightShowingLearned { learnedLocations.insert(nsRange.location) }
-                case .notLearned:
-                    if isFavoritedHighlightShowingNotLearned { notLearnedLocations.insert(nsRange.location) }
-                case .unmarked:
-                    if isFavoritedHighlightShowingFavorite { locations.insert(nsRange.location) }
-                }
+            // not mutually exclusive, so any combination can be showing at once.
+            switch saved.learnedMark {
+            case .learned:
+                if isFavoritedHighlightShowingLearned { learnedLocations.insert(nsRange.location) }
+            case .notLearned:
+                if isFavoritedHighlightShowingNotLearned { notLearnedLocations.insert(nsRange.location) }
+            case .unmarked:
+                if isFavoritedHighlightShowingFavorite { locations.insert(nsRange.location) }
             }
         }
-        return (locations, learnedLocations, notLearnedLocations, elsewhereLocations)
-    }
-
-    // Resolves the canonicalEntryID backing a favorited surface by scanning wordsStore.words
-    // directly — each entry's OWN (encounteredSurfaces ∪ storedSurface, lemma-bridged) set, not
-    // a flattened cross-entry union. A flat surface→id dictionary lets two different saved words
-    // that happen to share a surface silently collide (whichever entry populated the dictionary
-    // last wins for every surface it touches), which was exactly the earlier bug where every
-    // favorited word in a note inherited one unrelated entry's Learned mark. Entries attributed
-    // to the active note win ties, matching isStarFilled's own note preference.
-    private func canonicalEntryIDForFavoritedSurface(_ surface: String, lemmaResolver: (String) -> String?) -> Int64? {
-        let lemma = lemmaResolver(surface)
-        var fallback: Int64?
-        for word in wordsStore.words {
-            let matches = word.surface == surface || word.encounteredSurfaces.contains(surface)
-                || (lemma.map { word.surface == $0 || word.encounteredSurfaces.contains($0) } ?? false)
-            guard matches else { continue }
-            if let activeNoteID, word.sourceNoteIDs.contains(activeNoteID) {
-                return word.canonicalEntryID
-            }
-            if fallback == nil { fallback = word.canonicalEntryID }
-        }
-        return fallback
+        return (locations, learnedLocations, notLearnedLocations)
     }
 
     // UTF-16 locations of segments whose word is marked learned or mastered (ReviewStore),
     // when the "hide furigana for known words" toggle is on — the Read-tab display option
-    // that lets a reader stop seeing readings for words they already know. Memoized the same
-    // way as favoritedSegmentLocations above: `body` re-evaluates far more often than the
-    // inputs (wordsStore.words, wordsStore's learned/mastered sets, segmentation) actually
-    // change, so a signature check skips the per-segment lemma-bridging sweep on a memo hit.
+    // that lets a reader stop seeing readings for words they already know. Memoized: `body`
+    // re-evaluates far more often than the inputs (wordsStore.words, wordsStore's
+    // learned/mastered sets, segmentation) actually change, so a signature check skips the
+    // per-segment lemma-bridging sweep on a memo hit.
     var furiganaSuppressedForKnownWordsSegmentLocations: Set<Int> {
         ensureKnownWordFuriganaComputed()
         return knownWordFuriganaMemo.locations
@@ -381,6 +304,7 @@ extension ReadView {
         return map.filter { suppressed.contains($0.key) == false }
     }
 
+    // Keeps both read and edit renderers mounted so mode toggles are instant.
     var editorView: some View {
         VStack(spacing: 8) {
             ZStack {
@@ -425,15 +349,13 @@ extension ReadView {
                         changedSegmentLocations: pendingLLMChangedLocations,
                         changedReadingLocations: pendingLLMChangedReadingLocations,
                         inFlightSegmentLocations: inFlightLineSegmentLocations,
-                        favoritedSegmentLocations: favoritedSegmentLocations,
                         isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
+                        favoritedSegmentLocations: favoritedSegmentLocations,
                         favoritedHighlightColor: UIColor(hexString: favoritedFavoriteHex) ?? .systemYellow,
                         favoritedLearnedSegmentLocations: favoritedLearnedSegmentLocations,
                         favoritedLearnedHighlightColor: UIColor(hexString: favoritedLearnedHex) ?? .systemGreen,
                         favoritedNotLearnedSegmentLocations: favoritedNotLearnedSegmentLocations,
                         favoritedNotLearnedHighlightColor: UIColor(hexString: favoritedNotLearnedHex) ?? .systemPurple,
-                        favoritedElsewhereSegmentLocations: favoritedElsewhereSegmentLocations,
-                        favoritedElsewhereHighlightColor: UIColor(hexString: favoritedElsewhereHex) ?? .systemOrange,
                         debugFlags: KiokuDebugOverlayView.Flags(
                             headwordRects: debugHeadwordRects,
                             furiganaRects: debugFuriganaRects,

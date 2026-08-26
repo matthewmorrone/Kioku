@@ -287,7 +287,6 @@ extension ReadView {
                 isFavoritedHighlightShowingFavorite = isFavoritedHighlightEnabled
                 isFavoritedHighlightShowingLearned = isFavoritedHighlightEnabled
                 isFavoritedHighlightShowingNotLearned = isFavoritedHighlightEnabled
-                isFavoritedHighlightShowingElsewhere = isFavoritedHighlightEnabled
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: isFavoritedHighlightEnabled ? "star.fill" : "star")
@@ -330,14 +329,13 @@ extension ReadView {
         )
     }
 
-    // Four real Toggle rows (not Menu items) so flipping several categories in a row doesn't
+    // Three real Toggle rows (not Menu items) so flipping several categories in a row doesn't
     // dismiss the popover between taps — see isShowingFavoritedHighlightCategories's doc comment.
     private var favoritedHighlightCategoriesPopover: some View {
         VStack(alignment: .leading, spacing: 14) {
             Toggle("Favorite", isOn: $isFavoritedHighlightShowingFavorite)
             Toggle("Learned", isOn: $isFavoritedHighlightShowingLearned)
             Toggle("Not Learned", isOn: $isFavoritedHighlightShowingNotLearned)
-            Toggle("Elsewhere", isOn: $isFavoritedHighlightShowingElsewhere)
         }
         .padding(16)
         .frame(width: 200)

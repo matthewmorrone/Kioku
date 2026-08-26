@@ -58,28 +58,32 @@ struct LearnActivityHome: View {
     }
 }
 
-// Multiselect dropdown choosing which of the 6 directions a session draws from — the same Menu
-// idiom as the note and JLPT pickers it sits beside, rather than a row of toggles. Flat, not
-// nested: Recognition and Production (exactly the Learned and Mastered bars) are themselves the
-// tier-select controls — tapping either toggles that whole tier and checkmarks when it's fully
-// selected — with their directions listed directly beneath, so there's no separate "All
-// Recognition"/"All Production" row repeating a title that's already right there.
+// Multiselect popover choosing which of the 6 directions a session draws from. The trigger is a
+// plain row; the popover holds every tier and direction row flat and always visible — no folding —
+// sized tall enough up front that all 8 rows fit without scrolling. Recognition and Production
+// (exactly the Learned and Mastered bars) are themselves the tier-select controls — tapping either
+// toggles that whole tier and checkmarks when it's fully selected — with their directions listed
+// directly beneath, so there's no separate "All Recognition"/"All Production" row repeating a title
+// that's already right there.
 struct LearnDirectionPicker: View {
     let supported: [QuestionDirection]
     @Binding var selection: DirectionSelection
+    @State private var isPresented = false
 
     var body: some View {
         HStack {
             Text("Directions")
             Spacer()
-            Menu(summary) {
+            Button(summary) { isPresented = true }
+        }
+        .popover(isPresented: $isPresented) {
+            List {
                 tierRows(QuestionDirection.tier1, title: "Recognition")
-                Divider()
                 tierRows(QuestionDirection.tier2, title: "Production")
             }
-            // Multiselect: each tap toggles one direction (or a whole tier), so the menu stays up
-            // until dismissed rather than closing after a single choice.
-            .menuActionDismissBehavior(.disabled)
+            .listStyle(.plain)
+            .frame(minWidth: 220, idealHeight: 420)
+            .presentationCompactAdaptation(.popover)
         }
     }
 
@@ -90,20 +94,28 @@ struct LearnDirectionPicker: View {
         let directions = tier.filter(supported.contains)
         let tierFullySelected = directions.isEmpty == false && directions.allSatisfy(selection.directions.contains)
         Button { toggleTier(directions) } label: {
-            if tierFullySelected {
-                Label(title, systemImage: "checkmark")
-            } else {
+            HStack {
                 Text(title)
-            }
-        }
-        ForEach(directions) { direction in
-            Button { toggle(direction) } label: {
-                if selection.directions.contains(direction) {
-                    Label(direction.label, systemImage: "checkmark")
-                } else {
-                    Text(direction.label)
+                Spacer()
+                if tierFullySelected {
+                    Image(systemName: "checkmark")
                 }
             }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        ForEach(directions) { direction in
+            Button { toggle(direction) } label: {
+                HStack {
+                    Text(direction.label).padding(.leading, 16)
+                    Spacer()
+                    if selection.directions.contains(direction) {
+                        Image(systemName: "checkmark")
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 

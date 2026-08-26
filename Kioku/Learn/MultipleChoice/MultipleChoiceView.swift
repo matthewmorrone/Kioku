@@ -374,20 +374,53 @@ struct MultipleChoiceView: View {
             let built = buildQuestions(from: items, selection: selection)
             // A positive limit caps the quiz; 0 (or blank field) means quiz everything.
             questions = limit > 0 ? Array(built.prefix(limit)) : built
+            // Question 1 is refined here, before the quiz is shown, rather than by the background
+            // loop below (which never touches whichever question is currently on screen) — without
+            // this the very first question of every quiz would always ship with the plain
+            // heuristic distractors. Awaited under the same resolving spinner already covering the
+            // dictionary lookup above, so the cost is one brief, expected wait rather than an
+            // in-session rewrite.
+            if smarterOptions, AppleIntelligenceAvailability.isAvailable, #available(iOS 26.0, *),
+               let refinement = await fetchRefinement(for: 0) {
+                apply(refinement, to: 0)
+            }
             isResolving = false
             startRefinement()
         }
     }
 
-    // Walks the question list in the background, asking the on-device model to improve each
-    // option set. Deliberately runs after the quiz has started rather than before: the model takes
-    // roughly a second per question, and a learner shouldn't wait on it to see question one. Each
-    // question is upgraded only while it's still ahead of the user — an option set is never
-    // rewritten under someone who is looking at it.
+    // Asks the model to judge/upgrade one question's options; does not apply the result. Callers
+    // each have their own rule for whether it's still safe to rewrite that question by the time the
+    // model answers, so the apply step is theirs, not this one's.
+    @available(iOS 26.0, *)
+    private func fetchRefinement(for position: Int) async -> DistractorRefinement? {
+        guard position < questions.count, let dictionaryStore else { return nil }
+        let question = questions[position]
+        guard question.candidatePool.count > question.distractors.count else { return nil }
+        let request = DistractorRequest(
+            prompt: question.prompt,
+            correct: question.correct,
+            acceptedAnswers: question.acceptedAnswers,
+            candidates: question.candidatePool,
+            answerField: question.answerField
+        )
+        return await AppleIntelligenceDistractorClient.refine(
+            request: request,
+            isRealWord: { word in
+                ((try? dictionaryStore.lookup(surface: word, mode: .kanjiAndKana)) ?? []).isEmpty == false
+            }
+        )
+    }
+
+    // Walks the rest of the question list in the background, asking the on-device model to improve
+    // each option set. Deliberately runs after the quiz has started rather than before: the model
+    // takes roughly a second per question, and a learner shouldn't wait on the whole quiz to see
+    // question one (which `startSession(with:)` above already refined on its own). Each question is
+    // upgraded only while it's still ahead of the user — an option set is never rewritten under
+    // someone who is looking at it.
     private func startRefinement() {
         refinementTask?.cancel()
         guard smarterOptions, AppleIntelligenceAvailability.isAvailable else { return }
-        guard let dictionaryStore else { return }
         refinementTask = Task { @MainActor in
             guard #available(iOS 26.0, *) else { return }
             for position in questions.indices {
@@ -398,25 +431,10 @@ struct MultipleChoiceView: View {
                 // Only questions the user hasn't reached. `index` moves while this runs, so the
                 // check has to happen here rather than being decided up front.
                 guard position > index else { continue }
-                let question = questions[position]
-                guard question.candidatePool.count > question.distractors.count else { continue }
-                let request = DistractorRequest(
-                    prompt: question.prompt,
-                    correct: question.correct,
-                    acceptedAnswers: question.acceptedAnswers,
-                    candidates: question.candidatePool,
-                    answerField: question.answerField
-                )
-                let refinement = await AppleIntelligenceDistractorClient.refine(
-                    request: request,
-                    isRealWord: { word in
-                        ((try? dictionaryStore.lookup(surface: word, mode: .kanjiAndKana)) ?? []).isEmpty == false
-                    }
-                )
-                guard let refinement, Task.isCancelled == false else { continue }
+                guard let refinement = await fetchRefinement(for: position) else { continue }
                 // Re-checked after the await: the user may have answered their way past this
-                // question while the model was thinking.
-                guard position > index, position < questions.count else { continue }
+                // question while the model was thinking, and it must not be rewritten if so.
+                guard Task.isCancelled == false, position > index, position < questions.count else { continue }
                 apply(refinement, to: position)
             }
         }
