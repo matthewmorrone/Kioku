@@ -26,27 +26,36 @@ nonisolated final class SongListenAudioService {
     private let synthesizer = AVSpeechSynthesizer()
 
     // Synthesizes the full listen-along track for a breakdown and writes it to a cache file,
-    // returning the file URL. The cache key includes `sourceTextHash`, so re-opening Listen
-    // for an unchanged breakdown reuses the existing file instead of re-synthesizing, while a
-    // regenerated breakdown (different hash) renders fresh — any stale file(s) for this note
-    // under an old hash are cleaned up so cache growth stays bounded to one track per note.
+    // returning the file plus its transcript cues. The cache key includes `sourceTextHash`,
+    // so re-opening Listen for an unchanged breakdown reuses the existing file instead of
+    // re-synthesizing, while a regenerated breakdown (different hash) renders fresh — any
+    // stale file(s) for this note under an old hash are cleaned up so cache growth stays
+    // bounded to one track per note. A cache hit requires both the audio file AND its cues
+    // sidecar to be present and readable — timing can only be recovered by re-synthesizing,
+    // so a partial/older cache (e.g. from before cues were tracked at all) is treated as a
+    // miss rather than silently returning a track with no transcript.
     // `onProgress` reports a 0...1 fraction after each segment for a progress bar.
     func renderAudio(
         for breakdown: SongBreakdown,
         onProgress: @escaping @MainActor (Double) -> Void = { _ in }
-    ) async throws -> URL {
+    ) async throws -> SongListenRenderResult {
         let destination = Self.destinationURL(forNoteID: breakdown.noteID, sourceTextHash: breakdown.sourceTextHash)
-        if FileManager.default.fileExists(atPath: destination.path) {
+        let cuesDestination = Self.cuesURL(for: destination)
+        if FileManager.default.fileExists(atPath: destination.path),
+           let cachedCues = Self.loadCues(from: cuesDestination) {
             await onProgress(1)
-            return destination
+            return SongListenRenderResult(url: destination, cues: cachedCues)
         }
         Self.removeStaleCachedFiles(forNoteID: breakdown.noteID, keeping: destination)
 
-        // Resolved once up front: a device missing either installed voice would otherwise
+        // Resolved once up front: a device missing either language entirely would otherwise
         // have AVSpeechSynthesizer silently substitute its default voice per-utterance,
-        // defeating the whole point of switching languages — fail loudly instead.
-        guard let japaneseVoice = AVSpeechSynthesisVoice(language: "ja-JP"),
-              let englishVoice = AVSpeechSynthesisVoice(language: "en-US") else {
+        // defeating the whole point of switching languages — fail loudly instead. Within a
+        // language, `bestVoice` prefers an installed Enhanced/Premium voice over the default
+        // Compact one — Compact voices are the ones that read as thin/robotic/"staticky";
+        // Enhanced and Premium use a materially better vocoder for the same text.
+        guard let japaneseVoice = Self.bestVoice(forLanguage: "ja-JP"),
+              let englishVoice = Self.bestVoice(forLanguage: "en-US") else {
             throw SongListenRenderError.voiceUnavailable
         }
 
@@ -63,10 +72,15 @@ nonisolated final class SongListenAudioService {
         try? FileManager.default.removeItem(at: workingDestination)
 
         let sink = SongListenAudioSink(destination: workingDestination)
+        var cues: [SubtitleCue] = []
+        cues.reserveCapacity(segments.count)
         for (index, segment) in segments.enumerated() {
             try Task.checkCancellation()
             let voice = segment.language == .japanese ? japaneseVoice : englishVoice
+            let startMs = sink.elapsedMs
             try await synthesizeAndWrite(segment: segment, voice: voice, sink: sink)
+            try sink.finishSegment()
+            cues.append(SubtitleCue(index: index, startMs: startMs, endMs: sink.elapsedMs, text: segment.text))
             try sink.writeSilence(after: segment.kind)
             await onProgress(Double(index + 1) / Double(segments.count))
         }
@@ -74,7 +88,8 @@ nonisolated final class SongListenAudioService {
         guard sink.audioFile != nil else { throw SongListenRenderError.noAudioProduced }
         sink.close()
         try FileManager.default.moveItem(at: workingDestination, to: destination)
-        return destination
+        try Self.saveCues(cues, to: cuesDestination)
+        return SongListenRenderResult(url: destination, cues: cues)
     }
 
     // Synthesizes one segment via the given voice and streams every PCM buffer straight into
@@ -114,6 +129,19 @@ nonisolated final class SongListenAudioService {
         }
     }
 
+    // Picks the best-quality voice installed for `language`: Premium over Enhanced over
+    // whatever `AVSpeechSynthesisVoice(language:)` falls back to (typically the always-present
+    // Compact voice). Premium/Enhanced voices must be downloaded by the user (Settings ▸
+    // Accessibility ▸ Spoken Content ▸ Voices) — when neither is installed this quietly keeps
+    // today's behavior rather than failing, so a device with only the Compact voice still gets
+    // a track, just not the improved one.
+    private static func bestVoice(forLanguage language: String) -> AVSpeechSynthesisVoice? {
+        let candidates = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == language }
+        if let premium = candidates.first(where: { $0.quality == .premium }) { return premium }
+        if let enhanced = candidates.first(where: { $0.quality == .enhanced }) { return enhanced }
+        return AVSpeechSynthesisVoice(language: language)
+    }
+
     // Cache location: derived, regenerable content lives under Library/Caches so it's swept
     // by the existing "Clear Caches" action (CachesCleaner) and never backed up to iCloud.
     // Keying on `sourceTextHash` (mirroring SongBreakdownStore's own cache key) means a
@@ -125,9 +153,28 @@ nonisolated final class SongListenAudioService {
         return dir.appendingPathComponent("\(noteID.uuidString)-\(sourceTextHash).caf")
     }
 
-    // Removes any previously-cached listen tracks for this note other than `keeping` — e.g.
-    // ones left behind by an earlier breakdown hash — so a note that's regenerated
-    // repeatedly doesn't accumulate one audio file per past breakdown version.
+    // Sidecar JSON holding the transcript cues for `audioURL`, alongside it under the same
+    // note-and-hash-derived name so `removeStaleCachedFiles`'s prefix sweep already cleans it
+    // up along with the audio file it describes.
+    private static func cuesURL(for audioURL: URL) -> URL {
+        let base = audioURL.deletingPathExtension().lastPathComponent
+        return audioURL.deletingLastPathComponent().appendingPathComponent("\(base).cues.json")
+    }
+
+    private static func loadCues(from url: URL) -> [SubtitleCue]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode([SubtitleCue].self, from: data)
+    }
+
+    private static func saveCues(_ cues: [SubtitleCue], to url: URL) throws {
+        let data = try JSONEncoder().encode(cues)
+        try data.write(to: url, options: .atomic)
+    }
+
+    // Removes any previously-cached listen tracks (and their cues sidecars) for this note
+    // other than `keeping` — e.g. ones left behind by an earlier breakdown hash — so a note
+    // that's regenerated repeatedly doesn't accumulate one audio file per past breakdown
+    // version.
     private static func removeStaleCachedFiles(forNoteID noteID: UUID, keeping: URL) {
         let dir = keeping.deletingLastPathComponent()
         guard let entries = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
