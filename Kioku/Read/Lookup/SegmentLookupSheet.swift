@@ -143,7 +143,7 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
     }
 
     // Presents the current definition in a UIKit popover anchored to the tapped segment rectangle.
-    // Row layout: star (favorite toggle) — word (tap to speak) — definition — chevron (escalate
+    // Row layout: star (save toggle) — word (tap to speak) — definition — chevron (escalate
     // to the full sheet). isSavedProvider/isSavedElsewhereProvider/onSaveToggle mirror the same
     // three-state star contract presentSheet's action-bar save button uses, so the popover and the
     // full sheet can never disagree about a word's saved state.

@@ -266,42 +266,41 @@ extension ReadView {
                 isRubySpacingEnabled.toggle()
             }
 
-            favoritedHighlightRow
+            savedHighlightRow
         }
         .padding(12)
         .frame(width: 270)
         .background(Color(.systemBackground))
     }
 
-    // "Favorited Highlight" row: tapping the row toggles the highlight on/off AND bulk-sets all
+    // "Saved Highlight" row: tapping the row toggles the highlight on/off AND bulk-sets all
     // three submenu categories to match, so turning it off from here hides everything and
     // turning it on shows everything — a shortcut for the common case. The chevron submenu still
     // holds three INDEPENDENT toggles, one per Learned-state category, for narrowing after that;
     // each is its own on/off, not a single-select mode, so any combination can be showing at
-    // once. Each category always renders in its own fixed color (Favorite/Learned/Not Learned)
-    // when its toggle is on — see ReadView+Editor.computeFavoritedSegmentLocations.
-    private var favoritedHighlightRow: some View {
+    // once. Each category always renders in its own fixed color (Save/Learned/Not Learned)
+    // when its toggle is on — see ReadView+Editor.computeSavedSegmentLocations.
+    private var savedHighlightRow: some View {
         HStack(spacing: 4) {
             Button {
-                isFavoritedHighlightEnabled.toggle()
-                isFavoritedHighlightShowingFavorite = isFavoritedHighlightEnabled
-                isFavoritedHighlightShowingLearned = isFavoritedHighlightEnabled
-                isFavoritedHighlightShowingNotLearned = isFavoritedHighlightEnabled
-                isFavoritedHighlightShowingElsewhere = isFavoritedHighlightEnabled
+                isSavedHighlightEnabled.toggle()
+                isSavedHighlightShowingSaved = isSavedHighlightEnabled
+                isSavedHighlightShowingLearned = isSavedHighlightEnabled
+                isSavedHighlightShowingNotLearned = isSavedHighlightEnabled
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: isFavoritedHighlightEnabled ? "star.fill" : "star")
+                    Image(systemName: isSavedHighlightEnabled ? "star.fill" : "star")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(ReadToggleAppearance.foreground(isOn: isFavoritedHighlightEnabled))
+                        .foregroundStyle(ReadToggleAppearance.foreground(isOn: isSavedHighlightEnabled))
                         .frame(width: 20)
-                    Text("Favorited Highlight")
+                    Text("Saved Highlight")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(ReadToggleAppearance.foreground(isOn: isFavoritedHighlightEnabled))
+                        .foregroundStyle(ReadToggleAppearance.foreground(isOn: isSavedHighlightEnabled))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                         .allowsTightening(true)
                     Spacer(minLength: 0)
-                    if isFavoritedHighlightEnabled {
+                    if isSavedHighlightEnabled {
                         Image(systemName: "checkmark")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(Color.accentColor)
@@ -311,15 +310,15 @@ extension ReadView {
             .buttonStyle(.plain)
 
             Button {
-                isShowingFavoritedHighlightCategories = true
+                isShowingSavedHighlightCategories = true
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
             }
-            .popover(isPresented: $isShowingFavoritedHighlightCategories, arrowEdge: .trailing) {
-                favoritedHighlightCategoriesPopover
+            .popover(isPresented: $isShowingSavedHighlightCategories, arrowEdge: .trailing) {
+                savedHighlightCategoriesPopover
             }
         }
         .padding(.horizontal, 12)
@@ -330,14 +329,13 @@ extension ReadView {
         )
     }
 
-    // Four real Toggle rows (not Menu items) so flipping several categories in a row doesn't
-    // dismiss the popover between taps — see isShowingFavoritedHighlightCategories's doc comment.
-    private var favoritedHighlightCategoriesPopover: some View {
+    // Three real Toggle rows (not Menu items) so flipping several categories in a row doesn't
+    // dismiss the popover between taps — see isShowingSavedHighlightCategories's doc comment.
+    private var savedHighlightCategoriesPopover: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Toggle("Favorite", isOn: $isFavoritedHighlightShowingFavorite)
-            Toggle("Learned", isOn: $isFavoritedHighlightShowingLearned)
-            Toggle("Not Learned", isOn: $isFavoritedHighlightShowingNotLearned)
-            Toggle("Elsewhere", isOn: $isFavoritedHighlightShowingElsewhere)
+            Toggle("Save", isOn: $isSavedHighlightShowingSaved)
+            Toggle("Learned", isOn: $isSavedHighlightShowingLearned)
+            Toggle("Not Learned", isOn: $isSavedHighlightShowingNotLearned)
         }
         .padding(16)
         .frame(width: 200)

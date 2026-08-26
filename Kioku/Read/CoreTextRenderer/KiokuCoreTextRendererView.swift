@@ -78,26 +78,18 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     // stream in. Empty when no AI request is in flight or for non-LLM call sites
     // (lyrics, song breakdown) that never surface this state.
     var inFlightSegmentLocations: Set<Int> = []
-    // Favorited (saved) word highlight: locations whose surface is a saved word are tinted
-    // favoritedHighlightColor. Defaulted so the lyrics/song call sites that don't surface it need not pass it.
-    var favoritedSegmentLocations: Set<Int> = []
-    var isFavoritedHighlightEnabled: Bool = false
-    var favoritedHighlightColor: UIColor = .systemYellow
-    // Subset of favorited (this-note) locations whose word is marked Learned, recolored
-    // separately when the "Favorited Highlight" submenu is set to "Different Colors". Disjoint
-    // from favoritedSegmentLocations by construction upstream. Defaulted empty/yellow so call
-    // sites that don't surface the scope submenu (lyrics/song) need not pass it.
-    var favoritedLearnedSegmentLocations: Set<Int> = []
-    var favoritedLearnedHighlightColor: UIColor = .systemGreen
-    // Subset of favorited (this-note) locations whose word is marked Not Learned, same
-    // rationale/disjointness as favoritedLearnedSegmentLocations above.
-    var favoritedNotLearnedSegmentLocations: Set<Int> = []
-    var favoritedNotLearnedHighlightColor: UIColor = .systemPurple
-    // Saved, but only under a note OTHER than the active one — the hollow-yellow "saved
-    // elsewhere" star's in-text counterpart, tinted a distinct color so it doesn't read as a
-    // favorite of THIS note. Disjoint from favoritedSegmentLocations by construction upstream.
-    var favoritedElsewhereSegmentLocations: Set<Int> = []
-    var favoritedElsewhereHighlightColor: UIColor = .systemOrange
+    // Saved Highlight: segments whose resolved dictionary entry matches a saved word,
+    // colored by Learned-state category (Save/Learned/Not Learned each have their own
+    // fixed color). A word's category is global — the same everywhere it's saved — so there's
+    // no note-scoped variant. Empty sets / disabled = feature off, matching the other optional
+    // highlight passes above.
+    var isSavedHighlightEnabled: Bool = false
+    var savedSegmentLocations: Set<Int> = []
+    var savedHighlightColor: UIColor = .systemYellow
+    var savedLearnedSegmentLocations: Set<Int> = []
+    var savedLearnedHighlightColor: UIColor = .systemGreen
+    var savedNotLearnedSegmentLocations: Set<Int> = []
+    var savedNotLearnedHighlightColor: UIColor = .systemPurple
     // Dev-only debug overlay toggles. The overlay view stays mounted always but only
     // draws when a flag is on, so this is zero-cost for normal users.
     let debugFlags: KiokuDebugOverlayView.Flags
@@ -315,15 +307,13 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         for location in changedSegmentLocations.sorted() { typographyHasher.combine(location) }
         for location in changedReadingLocations.sorted() { typographyHasher.combine(location) }
         for location in inFlightSegmentLocations.sorted() { typographyHasher.combine(location) }
-        for location in favoritedSegmentLocations.sorted() { typographyHasher.combine(location) }
-        for location in favoritedLearnedSegmentLocations.sorted() { typographyHasher.combine(location) }
-        for location in favoritedNotLearnedSegmentLocations.sorted() { typographyHasher.combine(location) }
-        for location in favoritedElsewhereSegmentLocations.sorted() { typographyHasher.combine(location) }
-        typographyHasher.combine(isFavoritedHighlightEnabled)
-        typographyHasher.combine(favoritedHighlightColor.description)
-        typographyHasher.combine(favoritedLearnedHighlightColor.description)
-        typographyHasher.combine(favoritedNotLearnedHighlightColor.description)
-        typographyHasher.combine(favoritedElsewhereHighlightColor.description)
+        typographyHasher.combine(isSavedHighlightEnabled)
+        for location in savedSegmentLocations.sorted() { typographyHasher.combine(location) }
+        typographyHasher.combine(savedHighlightColor.description)
+        for location in savedLearnedSegmentLocations.sorted() { typographyHasher.combine(location) }
+        typographyHasher.combine(savedLearnedHighlightColor.description)
+        for location in savedNotLearnedSegmentLocations.sorted() { typographyHasher.combine(location) }
+        typographyHasher.combine(savedNotLearnedHighlightColor.description)
         typographyHasher.combine(unplayedDimmingLocation ?? -1)
         typographyHasher.combine(unplayedAlpha)
         typographyHasher.combine(furiganaGap)
@@ -353,19 +343,17 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     changedSegmentLocations: changedSegmentLocations,
                     changedReadingLocations: changedReadingLocations,
                     inFlightSegmentLocations: inFlightSegmentLocations,
-                    favoritedSegmentLocations: favoritedSegmentLocations,
-                    isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
-                    favoritedHighlightColor: favoritedHighlightColor,
-                    favoritedLearnedSegmentLocations: favoritedLearnedSegmentLocations,
-                    favoritedLearnedHighlightColor: favoritedLearnedHighlightColor,
-                    favoritedNotLearnedSegmentLocations: favoritedNotLearnedSegmentLocations,
-                    favoritedNotLearnedHighlightColor: favoritedNotLearnedHighlightColor,
-                    favoritedElsewhereSegmentLocations: favoritedElsewhereSegmentLocations,
-                    favoritedElsewhereHighlightColor: favoritedElsewhereHighlightColor,
                     isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
                     unplayedDimmingLocation: unplayedDimmingLocation,
                     unplayedAlpha: unplayedAlpha,
-                    furiganaSizeOverride: furiganaSizeOverride
+                    furiganaSizeOverride: furiganaSizeOverride,
+                    isSavedHighlightEnabled: isSavedHighlightEnabled,
+                    savedSegmentLocations: savedSegmentLocations,
+                    savedHighlightColor: savedHighlightColor,
+                    savedLearnedSegmentLocations: savedLearnedSegmentLocations,
+                    savedLearnedHighlightColor: savedLearnedHighlightColor,
+                    savedNotLearnedSegmentLocations: savedNotLearnedSegmentLocations,
+                    savedNotLearnedHighlightColor: savedNotLearnedHighlightColor
                 )
             )
             uiView.contentView.setAttributedString(output.attributedString)

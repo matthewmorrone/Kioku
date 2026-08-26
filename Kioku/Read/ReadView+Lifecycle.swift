@@ -370,6 +370,10 @@ extension ReadView {
                     noteID: activeNoteID,
                     playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : playbackHighlightRangeOverride,
                     granularity: lyricsHighlightGranularity,
+                    isSavedHighlightEnabled: isSavedHighlightEnabled,
+                    savedSegmentLocations: savedSegmentLocations,
+                    savedLearnedSegmentLocations: savedLearnedSegmentLocations,
+                    savedNotLearnedSegmentLocations: savedNotLearnedSegmentLocations,
                     onSegmentTapped: { location, rect, sourceView in
                         handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: sourceView)
                     },
@@ -384,12 +388,7 @@ extension ReadView {
                     isReAligning: isReAligningWholeNote,
                     reAlignMessage: reAlignProgressMessage,
                     stemAvailable: stemAvailableForActiveAudio,
-                    isListeningToStem: $isListeningToStem,
-                    favoritedSegmentLocations: favoritedSegmentLocations,
-                    isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
-                    favoritedLearnedSegmentLocations: favoritedLearnedSegmentLocations,
-                    favoritedNotLearnedSegmentLocations: favoritedNotLearnedSegmentLocations,
-                    favoritedElsewhereSegmentLocations: favoritedElsewhereSegmentLocations
+                    isListeningToStem: $isListeningToStem
                 )
                 .opacity(isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(isShowingLyricsView)

@@ -15,17 +15,21 @@ enum LearnPage: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
 }
 
-// Preference key used by FlashcardsView to hide page dots during a session.
+// Preference key an activity page sets to hide page dots during a session. `reduce` only matters
+// within one page's own subtree (an activity page plus whatever it presents) — `LearnPagerView`
+// reads each page's value separately at that page's mount site rather than off the merged bubble
+// reaching its own body, so an active session on one page can't hide dots for another.
 struct CardsPageDotsHiddenPreferenceKey: PreferenceKey {
     static var defaultValue: Bool = false
-    // Bubbles any true value up the view tree so that the pager hides dots when any child requests it.
+    // Bubbles any true value up within the setting page's own subtree.
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
-// Preference key used by FlashcardsView to disable swipe during an active session.
+// Preference key an activity page sets to disable swipe during an active session. Read the same
+// per-page way as CardsPageDotsHiddenPreferenceKey above — see that key's comment.
 struct CardsStudySessionActivePreferenceKey: PreferenceKey {
     static var defaultValue: Bool = false
-    // Merges preference values so a session active flag from any child locks the pager's swipe gesture.
+    // Bubbles any true value up within the setting page's own subtree.
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
@@ -52,8 +56,17 @@ struct LearnPagerView: View {
     @State private var pageIndex: Int = 0
 
     @State private var dragOffset: CGFloat = 0
-    @State private var dotsHidden: Bool = false
-    @State private var sessionActive: Bool = false
+    // Keyed per page rather than a single flattened Bool: all 5 pages stay mounted simultaneously
+    // for the swipe animation, so a plain `.onPreferenceChange` at this view's own level would OR
+    // every page's flag together — an active Flashcards session left running in the background
+    // would then hide dots and lock swipe while looking at, say, Multiple Choice's untouched home
+    // screen. Each page's value is instead captured where that page is mounted below (see the
+    // per-child `.onPreferenceChange` calls in `body`), so only the page actually on screen can
+    // hide dots or lock the gesture.
+    @State private var dotsHiddenByPage: [LearnPage: Bool] = [:]
+    @State private var sessionActiveByPage: [LearnPage: Bool] = [:]
+    private var dotsHidden: Bool { dotsHiddenByPage[currentPage] ?? false }
+    private var sessionActive: Bool { sessionActiveByPage[currentPage] ?? false }
 
     // The axis a drag committed to, decided once on its first movement and held for the rest of the
     // gesture. Without this lock a mostly-vertical scroll that wobbles horizontally (or ends with a
@@ -93,10 +106,16 @@ struct LearnPagerView: View {
             HStack(spacing: 0) {
                 FlashcardsView(dictionaryStore: dictionaryStore, segmenter: segmenter, surfaceReadingData: surfaceReadingData, kanjiReadingFallback: kanjiReadingFallback)
                     .frame(width: width)
+                    .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHiddenByPage[.flashcards] = $0 }
+                    .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActiveByPage[.flashcards] = $0 }
                 MultipleChoiceView(dictionaryStore: dictionaryStore, segmenter: segmenter)
                     .frame(width: width)
+                    .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHiddenByPage[.multipleChoice] = $0 }
+                    .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActiveByPage[.multipleChoice] = $0 }
                 FillInBlankView(dictionaryStore: dictionaryStore)
                     .frame(width: width)
+                    .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHiddenByPage[.fillInBlank] = $0 }
+                    .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActiveByPage[.fillInBlank] = $0 }
                 ClozeStudyHomeView()
                     .frame(width: width)
                 KanaChartView()
@@ -156,12 +175,9 @@ struct LearnPagerView: View {
         // the swipe glide smoothly.
         .onAppear { pageIndex = clampedIndex(storedPageIndex) }
         .onChange(of: pageIndex) { _, newValue in storedPageIndex = newValue }
-        .onPreferenceChange(CardsPageDotsHiddenPreferenceKey.self) { dotsHidden = $0 }
-        .onPreferenceChange(CardsStudySessionActivePreferenceKey.self) { sessionActive = $0 }
         .overlay(alignment: .bottom) {
-            // Any active session (flashcard, song stepper) bubbles up dotsHidden so the
-            // overlay disappears during study. Page-specific suppression isn't needed:
-            // the active session also locks the swipe gesture via sessionActive.
+            // dotsHidden/sessionActive above are keyed to `currentPage`, so a session left active
+            // on a page the user has since swiped away from can't hide dots or lock swipe here.
             if dotsHidden == false {
                 LearnPageDotsOverlay(selectedPage: currentPage)
                     .allowsHitTesting(false)

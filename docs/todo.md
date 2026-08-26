@@ -107,7 +107,8 @@ own sections.)
       the whole session, so any conjugated surface (なびかせて, 消えて…) never bridged to its saved
       lemma — base forms glowed (direct match), conjugations never did. Fix: cache only successful
       resolutions so each recompute retries until resources are ready. Pinned by
-      `FavoritedGlowLemmaBridgeTests.swift` (real-segmenter lemma-bridge predicate). The
+      `SavedGlowLemmaBridgeTests.swift` (real-segmenter lemma-bridge predicate, renamed from
+      `FavoritedGlowLemmaBridgeTests.swift`). The
       multi-candidate `resolvedSavedKey` rework theorized below was unnecessary and was not done.
       (Original 2026-06-04 investigation notes kept for history:)
       - The 2026-06-04 trace found every scenario worked *statically* and suspected

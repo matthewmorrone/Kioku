@@ -1,5 +1,5 @@
 {
-  "originHash" : "746a69083e82c8b1f6b7cc97bca099dd377b6af0f0c3016e42a4588a3c076799",
+  "originHash" : "307fa5a18c3987b45755ff768de0d30882fd3f9d30a07e83c83929759d9a7f01",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "e1caa19077dda4b00441142ef57da3db02acd466",
         "version" : "1.4.2"
+      }
+    },
+    {
+      "identity" : "dagre-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/lukilabs/dagre-swift",
+      "state" : {
+        "revision" : "92efb78b73a8b665ee74bacfb0f1f5b17bbe1b38",
+        "version" : "0.1.0"
       }
     },
     {

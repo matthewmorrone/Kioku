@@ -114,9 +114,9 @@ struct WordsView: View {
     @AppStorage("savedWordsSortOrder") var savedSortOrder: String = WordsSortOrder.newestFirst.rawValue
     @AppStorage("historySortOrder") var historySortOrderRaw: String = WordsSortOrder.newestFirst.rawValue
     // Whether kanji-containing words show in the saved list at all — off by default (pure-kana
-    // only). Composes with whatever "Show" scope is active (e.g. Favorites + hide kanji).
+    // only). Composes with whatever "Show" scope is active (e.g. Saved + hide kanji).
     @AppStorage("savedWordsShowKanji") var showKanjiInSavedWords = false
-    // Opt-in Japanese theme; when on, the row's audio + favorite icons render white (see wordRow).
+    // Opt-in Japanese theme; when on, the row's audio + save icons render white (see wordRow).
     @AppStorage(Theme.storageKey) var japaneseTheme = false
     @State var searchText = ""
     // convertedKana removed — only the deleted startSearchTask duplicate read it;
@@ -507,7 +507,7 @@ struct WordsView: View {
         // selectable — which is correct, you can't add a search phrase to a list.
         List(selection: $selectedWordIDs) {
             if searchText.isEmpty && activeTab == .saved {
-                // Saved tab: kanji rows (their own Section at the top), then favorites.
+                // Saved tab: kanji rows (their own Section at the top), then saved words.
                 // Both are filtered by the active note/list scope via visibleSavedKanji /
                 // visibleWords, so a list filter narrows BOTH lists in lockstep.
                 savedKanjiContent

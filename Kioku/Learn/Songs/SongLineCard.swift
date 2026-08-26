@@ -205,6 +205,12 @@ struct SongLineCard: View {
                 .font(.system(size: 28, weight: .medium))
                 .lineSpacing(4)
                 .multilineTextAlignment(.leading)
+                // Matches FuriganaTextRenderer's textContainerInset (top/bottom 8, left/right 4)
+                // so this fallback lines up with the furigana-renderer branch above — otherwise
+                // lines alternate between the two branches depending on whether furiganaCache
+                // resolved any kanji, and the fallback sits ~4pt further left/higher than lines
+                // rendered via the renderer.
+                .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 4))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture { onToggleExpansion() }

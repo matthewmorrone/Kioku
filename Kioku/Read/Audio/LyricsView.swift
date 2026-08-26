@@ -26,6 +26,15 @@ struct LyricsView: View {
     // Current granularity setting, surfaced for the HUD. Per-cue checkpoints now ride on each cue
     // (cue.checkpoints) rather than a separate dictionary.
     let granularity: LyricsHighlightGranularity
+    // Saved Highlight, in noteText UTF-16 coords — same signal as ReadView+Editor's
+    // properties of the same name (resolved via resolvedDictionaryEntry(forSurface:), the
+    // single canonical entry-ID resolution shared with the lookup sheet's button). Rebased to
+    // cue-local coords at the render call site below, same as furiganaBySegmentLocation.
+    // Defaulted so other call sites (previews) stay valid.
+    var isSavedHighlightEnabled: Bool = false
+    var savedSegmentLocations: Set<Int> = []
+    var savedLearnedSegmentLocations: Set<Int> = []
+    var savedNotLearnedSegmentLocations: Set<Int> = []
     let onSegmentTapped: (Int?, CGRect?, UITextView?) -> Void
     let onDismiss: () -> Void
     // Switches to Settings and scrolls to/highlights the named row (see SettingsView's
@@ -49,19 +58,6 @@ struct LyricsView: View {
     // shows the control and flips the binding. Defaulted off/unavailable for other call sites.
     var stemAvailable: Bool = false
     var isListeningToStem: Binding<Bool> = .constant(false)
-    // ReadView's already-memoized favorited-word locations, in FULL-NOTE UTF-16 coordinates — reused
-    // here (not recomputed) by filtering + offsetting into each cue's local coordinate space, since
-    // ReadView already pays the (expensive) per-segment lemma-resolution cost for this same note.
-    // Defaulted so previews/other call sites stay valid.
-    var favoritedSegmentLocations: Set<Int> = []
-    var isFavoritedHighlightEnabled: Bool = false
-    // Learned/Not-Learned subsets of favoritedSegmentLocations, same full-note coordinates/reuse
-    // rationale as favoritedSegmentLocations above.
-    var favoritedLearnedSegmentLocations: Set<Int> = []
-    var favoritedNotLearnedSegmentLocations: Set<Int> = []
-    // Saved-but-only-under-a-different-note locations, same full-note coordinates/reuse
-    // rationale as favoritedSegmentLocations above.
-    var favoritedElsewhereSegmentLocations: Set<Int> = []
 
     // Horizontal fine-scrub sensitivity. 5 ms per point means a full ~300 pt swipe across the
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.
@@ -114,21 +110,16 @@ struct LyricsView: View {
             : (UIColor(hexString: Theme.activePalette.defaultTokenColorBHex) ?? .secondaryLabel)
     }
 
-    // Favorite/Learned/Not-Learned colors aren't gated behind Custom Token Colors or theme (see
-    // SettingsView+ThemeSection.favoritedHighlightColorRows) — always read straight from their
-    // own hex settings, so a saved word reads the same color in the karaoke card as on the Read
-    // page regardless of theme/Custom Token Colors state.
-    private var resolvedFavoritedHighlightColor: UIColor {
-        UIColor(hexString: favoritedFavoriteHex) ?? .systemYellow
+    private var resolvedSavedHighlightColor: UIColor {
+        UIColor(hexString: savedHex) ?? .systemYellow
     }
-    private var resolvedFavoritedLearnedHighlightColor: UIColor {
-        UIColor(hexString: favoritedLearnedHex) ?? .systemGreen
+
+    private var resolvedSavedLearnedHighlightColor: UIColor {
+        UIColor(hexString: savedLearnedHex) ?? .systemGreen
     }
-    private var resolvedFavoritedNotLearnedHighlightColor: UIColor {
-        UIColor(hexString: favoritedNotLearnedHex) ?? .systemPurple
-    }
-    private var resolvedFavoritedElsewhereHighlightColor: UIColor {
-        UIColor(hexString: favoritedElsewhereHex) ?? .systemOrange
+
+    private var resolvedSavedNotLearnedHighlightColor: UIColor {
+        UIColor(hexString: savedNotLearnedHex) ?? .systemPurple
     }
 
     // Number of cues where the subtitle text differs from the corresponding note text.
@@ -237,10 +228,11 @@ struct LyricsView: View {
     @AppStorage(TokenColorSettings.colorAKey) private var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
     @AppStorage(TokenColorSettings.colorBKey) private var tokenColorBHex: String = TokenColorSettings.defaultColorBHex
     @AppStorage(TokenColorSettings.highlightColorKey) private var highlightHex: String = TokenColorSettings.defaultHighlightHex
-    @AppStorage(TokenColorSettings.favoritedFavoriteColorKey) private var favoritedFavoriteHex: String = TokenColorSettings.defaultFavoritedFavoriteHex
-    @AppStorage(TokenColorSettings.favoritedLearnedColorKey) private var favoritedLearnedHex: String = TokenColorSettings.defaultFavoritedLearnedHex
-    @AppStorage(TokenColorSettings.favoritedNotLearnedColorKey) private var favoritedNotLearnedHex: String = TokenColorSettings.defaultFavoritedNotLearnedHex
-    @AppStorage(TokenColorSettings.favoritedElsewhereColorKey) private var favoritedElsewhereHex: String = TokenColorSettings.defaultFavoritedElsewhereHex
+    // Mirrors ReadView's Saved Highlight color pickers so the active-cue card tints
+    // Save/Learned/Not Learned identically to the Read tab.
+    @AppStorage(TokenColorSettings.savedColorKey) private var savedHex: String = TokenColorSettings.defaultSavedHex
+    @AppStorage(TokenColorSettings.savedLearnedColorKey) private var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
+    @AppStorage(TokenColorSettings.savedNotLearnedColorKey) private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
     // Settings → Debug → "Karaoke HUD" controls whether the diagnostic strip
     // overlays the active-cue card. Default off so the lyrics card reads clean;
     // the binding is read-only here since the toggle lives in SettingsView.
@@ -383,23 +375,6 @@ struct LyricsView: View {
                 let activeCueScale = activeCueFontScale(text: cueInput.text, availableWidth: activeCueAvailableWidth)
                 let scaledTextSize = TypographySettings.defaultTextSize * Double(activeCueScale)
                 let untimedLocations: Set<Int> = []
-                // Rebase ReadView's full-note favorited locations into this cue's local coordinate
-                // space — cheap set filtering, not a recompute (see the property's doc comment).
-                // Local closures, not a nested func: a func declaration's `return` statements
-                // inside a ViewBuilder closure body confuse the result-builder type-checker
-                // ("generic parameter 'Content' could not be inferred").
-                let rebaseIntoCue: (Set<Int>) -> Set<Int> = { locations in
-                    guard isFavoritedHighlightEnabled else { return [] }
-                    let cueLength = cueInput.text.utf16.count
-                    return Set(locations.compactMap { location -> Int? in
-                        guard location >= cueOriginInNote, location < cueOriginInNote + cueLength else { return nil }
-                        return location - cueOriginInNote
-                    })
-                }
-                let cueFavoritedLocations = rebaseIntoCue(favoritedSegmentLocations)
-                let cueFavoritedLearnedLocations = rebaseIntoCue(favoritedLearnedSegmentLocations)
-                let cueFavoritedNotLearnedLocations = rebaseIntoCue(favoritedNotLearnedSegmentLocations)
-                let cueFavoritedElsewhereLocations = rebaseIntoCue(favoritedElsewhereSegmentLocations)
                 VStack(spacing: 0) {
                     // Pulsing ♪ during instrumental gaps was removed at user request.
                     // The active card now always shows the cue at `displayIndex` — during
@@ -445,15 +420,13 @@ struct LyricsView: View {
                         unknownSegmentLocations: untimedLocations,
                         isHighlightUnknownEnabled: false,
                         unknownSegmentColor: .tertiaryLabel,
-                        favoritedSegmentLocations: cueFavoritedLocations,
-                        isFavoritedHighlightEnabled: isFavoritedHighlightEnabled,
-                        favoritedHighlightColor: resolvedFavoritedHighlightColor,
-                        favoritedLearnedSegmentLocations: cueFavoritedLearnedLocations,
-                        favoritedLearnedHighlightColor: resolvedFavoritedLearnedHighlightColor,
-                        favoritedNotLearnedSegmentLocations: cueFavoritedNotLearnedLocations,
-                        favoritedNotLearnedHighlightColor: resolvedFavoritedNotLearnedHighlightColor,
-                        favoritedElsewhereSegmentLocations: cueFavoritedElsewhereLocations,
-                        favoritedElsewhereHighlightColor: resolvedFavoritedElsewhereHighlightColor,
+                        isSavedHighlightEnabled: isSavedHighlightEnabled,
+                        savedSegmentLocations: rebaseIntoCue(savedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        savedHighlightColor: resolvedSavedHighlightColor,
+                        savedLearnedSegmentLocations: rebaseIntoCue(savedLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        savedLearnedHighlightColor: resolvedSavedLearnedHighlightColor,
+                        savedNotLearnedSegmentLocations: rebaseIntoCue(savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        savedNotLearnedHighlightColor: resolvedSavedNotLearnedHighlightColor,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
                         onSegmentTapped: { localLocation, rect, _ in

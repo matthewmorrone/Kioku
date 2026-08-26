@@ -745,8 +745,18 @@ extension ReadView {
     // Returns the first dictionary entry resolved from the current segment using the same candidate ordering
     // as the Words-tab route so the sheet button state matches the actual open behavior.
     private func resolvedDictionaryEntryForCurrentSelectedSegment() -> DictionaryEntry? {
-        guard let store = dictionaryStore else { return nil }
         guard let surface = currentSelectedSurface() else { return nil }
+        return resolvedDictionaryEntry(forSurface: surface)
+    }
+
+    // The ONE dictionary-entry resolution for an arbitrary surface, shared by every caller that
+    // needs to answer "which saved word (if any) does this piece of text refer to" — the lookup
+    // sheet's star/learned-state button (via currentSegmentDictionaryEntry, isSegmentSaved,
+    // isSegmentSavedElsewhere below) and the Read-tab/LyricsView in-text coloring
+    // (ReadView+Editor.computeSavedSegmentLocations) all resolve through this single function, so they can
+    // never disagree about which entry a given piece of text belongs to.
+    func resolvedDictionaryEntry(forSurface surface: String) -> DictionaryEntry? {
+        guard let store = dictionaryStore else { return nil }
         let lookupMode: LookupMode = ScriptClassifier.containsKanji(surface) ? .kanjiAndKana : .kanaOnly
         // Try the tapped surface directly — typically one logical lookup.
         if let entry = try? store.lookup(surface: surface, mode: lookupMode).first {
@@ -766,40 +776,25 @@ extension ReadView {
         return (try? store.lookup(surface: lemma, mode: lemmaMode))?.first
     }
 
-    // Same shared "filled star" predicate the extract-words list and the glow use, so all three
-    // agree 1:1. Keyed on the lemma (the form the extract list stars) so an inflected segment
-    // reflects the favorite state of its dictionary word. Shared by both the full sheet and the
-    // lightweight popover so their star state can't drift apart.
+    // Whether the current segment is saved — resolved by the SAME dictionary entry
+    // (currentSegmentDictionaryEntry) the learned-state button reads, so the star's fill state
+    // and the Learned/Not-Learned marker can never disagree about which word they're each
+    // describing. Previously resolved separately via surface/lemma string-matching against
+    // wordsStore's own encountered-surface sets — a different mechanism that could (and did)
+    // land on a different SavedWord than the dictionary-entry lookup for the same on-screen text.
     func isSegmentSaved() -> Bool {
-        guard let surface = currentSelectedSurface() else { return false }
-        let resolver: (String) -> String? = { segmenter.preferredLemma(for: $0) }
-        let (state, _) = SegmentListView.computeSavedWordState(
-            entries: wordsStore.words,
-            lemmaResolver: resolver,
-            lemmaCache: [:]
-        )
-        return state.isStarFilled(
-            surface.trimmingCharacters(in: .whitespacesAndNewlines),
-            noteID: activeNoteID,
-            lemmaResolver: resolver
-        )
+        guard let entry = currentSegmentDictionaryEntry() else { return false }
+        return wordsStore.words.contains { $0.canonicalEntryID == entry.entryId }
     }
 
-    // Hollow-yellow star: saved, but attributed only to other notes. Same shared predicate the
-    // extract-words list uses for its yellow outline star.
+    // Hollow-yellow star: saved, but attributed only to other notes. Same entry-ID resolution as
+    // isSegmentSaved above.
     func isSegmentSavedElsewhere() -> Bool {
-        guard let surface = currentSelectedSurface() else { return false }
-        let resolver: (String) -> String? = { segmenter.preferredLemma(for: $0) }
-        let (state, _) = SegmentListView.computeSavedWordState(
-            entries: wordsStore.words,
-            lemmaResolver: resolver,
-            lemmaCache: [:]
-        )
-        return state.isSavedForOtherNotes(
-            surface.trimmingCharacters(in: .whitespacesAndNewlines),
-            noteID: activeNoteID,
-            lemmaResolver: resolver
-        )
+        guard let entry = currentSegmentDictionaryEntry(),
+              let saved = wordsStore.words.first(where: { $0.canonicalEntryID == entry.entryId })
+        else { return false }
+        guard let activeNoteID else { return false }
+        return saved.sourceNoteIDs.isEmpty == false && saved.sourceNoteIDs.contains(activeNoteID) == false
     }
 
     // Toggles the saved state for the current segment's resolved lemma. Prefers the

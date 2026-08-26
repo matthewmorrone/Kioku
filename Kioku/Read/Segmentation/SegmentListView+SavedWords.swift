@@ -230,8 +230,8 @@ extension SegmentListView {
 
     // Applies saved-word state used by star rendering from one canonical storage snapshot.
     //
-    // (Shared favorited-state predicate lives on ComputedSavedWordState below so the extract-words
-    // stars, the in-text glow, and the lookup-sheet star all answer "is this favorited?" identically.)
+    // (Shared saved-state predicate lives on ComputedSavedWordState below so the extract-words
+    // stars, the in-text glow, and the lookup-sheet star all answer "is this saved?" identically.)
     //
     // Per-surface star state: yellow only if the queried surface is in some
     // card's encountered set. Legacy expansion runs in-memory here — for any
@@ -304,8 +304,8 @@ extension SegmentListView {
     }
 }
 
-// Shared favorited-state predicate. This is THE single source of truth for "is this surface
-// favorited (and how)", used by the extract-words list stars, the in-text favorited glow, and the
+// Shared saved-state predicate. This is THE single source of truth for "is this surface
+// saved (and how)", used by the extract-words list stars, the in-text saved glow, and the
 // lookup-sheet star — so all three stay 1:1 by construction. Operates purely on the snapshot value
 // type, so any caller that can build a ComputedSavedWordState (from WordsStore.words) gets the same
 // answers without depending on SegmentListView's @State.

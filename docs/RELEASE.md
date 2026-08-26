@@ -26,7 +26,7 @@ Run on a device (or simulator) before archiving. Until the automated UI smoke
 tests land (todo: "UI smoke tests for core user loop"), this is done by hand.
 - [ ] **Notes**: create a note, paste Japanese text, segmentation renders with furigana.
 - [ ] **Lookup/save**: tap a word → lookup sheet shows reading/lemma/inflected-form label;
-      star it → appears in Words ▸ Favorites with the glow in Read view.
+      star it → appears in Words ▸ Saved with the glow in Read view.
 - [ ] **Dictionary search**: query resolves; filters work (JLPT, POS, Common Only,
       frequency tier); kanji-content filter (All / Kanji Only / No Kanji).
 - [ ] **Kanji detail**: readings (on'yomi in hiragana), components section, common words,

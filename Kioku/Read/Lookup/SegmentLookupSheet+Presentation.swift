@@ -30,7 +30,7 @@ extension SegmentLookupSheet {
         let capturedSheetIsSavedProvider = self.sheetIsSavedProvider
         let capturedSheetIsSavedElsewhereProvider = self.sheetIsSavedElsewhereProvider
         let capturedSheetSaveToggle = self.sheetSaveToggle
-        // Without these two the save button's long-press Favorite/Learned/Not Learned menu would
+        // Without these two the save button's long-press Save/Learned/Not Learned menu would
         // never appear on the fresh-present path: resetSheetPresentationState nils them during the
         // dismissPopover below, so updateSaveButtonAppearance would read .unmarked and skip the menu.
         let capturedSheetLearnedStateProvider = self.sheetLearnedStateProvider

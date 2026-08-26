@@ -170,6 +170,18 @@ extension LyricsView {
         )
     }
 
+    // Rebases a set of noteText-coord UTF-16 segment-start locations (e.g. Saved Highlight)
+    // into cue-local coords, same filter-and-shift rule as activeCueRenderInput's furigana
+    // rebasing above: keep only locations inside [cueOriginInNote, cueOriginInNote + cueLength).
+    func rebaseIntoCue(_ locations: Set<Int>, cueOriginInNote: Int, cueLength: Int) -> Set<Int> {
+        let cueEnd = cueOriginInNote + cueLength
+        var rebased = Set<Int>()
+        for location in locations where location >= cueOriginInNote && location < cueEnd {
+            rebased.insert(location - cueOriginInNote)
+        }
+        return rebased
+    }
+
     // Decides whether the forced-alignment checkpoints for the cue at `displayIndex`
     // cover the line densely enough that dimming the unplayed tail can be done
     // reliably. Returns false (= suppress dim, show whole line at full alpha) when

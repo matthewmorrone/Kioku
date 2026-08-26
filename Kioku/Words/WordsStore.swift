@@ -136,7 +136,7 @@ final class WordsStore: ObservableObject {
         words.first(where: { $0.canonicalEntryID == id })?.learnedMark ?? .unmarked
     }
 
-    // Sets the tri-state mark. Learned/Not-Learned (and Favorite, i.e. cleared back to
+    // Sets the tri-state mark. Learned/Not-Learned (and Save, i.e. cleared back to
     // .unmarked) mean saved by definition — there's no "marked but not saved" state — so on an
     // unsaved entry this creates the card first, matching toggle()'s brand-new-card shape.
     // `ensureSavedWithSurface` is nil for the auto-learn promotion in recordCorrect, which only

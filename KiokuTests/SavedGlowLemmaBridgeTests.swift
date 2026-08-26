@@ -1,12 +1,12 @@
 import XCTest
 @testable import Kioku
 
-// Reproduction for: conjugated favorited words don't get the in-text golden glow, while their
+// Reproduction for: conjugated saved words don't get the in-text golden glow, while their
 // base forms do. The glow predicate is ComputedSavedWordState.isSavedSurface, which is supposed to
 // bridge a conjugated segment (消えて) to its saved lemma (消える) via the segmenter's preferredLemma.
 // These tests instrument that bridge with the real production segmenter to show WHERE it breaks.
 @MainActor
-final class FavoritedGlowLemmaBridgeTests: XCTestCase {
+final class SavedGlowLemmaBridgeTests: XCTestCase {
 
     private func resolver(_ segmenter: any TextSegmenting) -> (String) -> String? {
         { segmenter.preferredLemma(for: $0) }
@@ -17,7 +17,7 @@ final class FavoritedGlowLemmaBridgeTests: XCTestCase {
         let segmenter = resources.segmenter
         let resolve = resolver(segmenter)
 
-        // Simulate favoriting the base form (lemma-normalized save — what the lookup-sheet star does).
+        // Simulate saving the base form (lemma-normalized save — what the lookup-sheet star does).
         let saved = SavedWord(canonicalEntryID: 1, surface: "消える")
         let (state, _) = SegmentListView.computeSavedWordState(
             entries: [saved], lemmaResolver: resolve, lemmaCache: [:])
@@ -33,7 +33,7 @@ final class FavoritedGlowLemmaBridgeTests: XCTestCase {
         let segmenter = resources.segmenter
         let resolve = resolver(segmenter)
 
-        // Simulate favoriting the conjugated form directly (surface stored as 消えて).
+        // Simulate saving the conjugated form directly (surface stored as 消えて).
         let saved = SavedWord(canonicalEntryID: 1, surface: "消えて")
         let (state, _) = SegmentListView.computeSavedWordState(
             entries: [saved], lemmaResolver: resolve, lemmaCache: [:])

@@ -215,6 +215,7 @@
 				E4WKA00022FA0000200000002 /* SwiftWhisperAlign */,
 				Z1NN1A0022FB0000200000002 /* Zinnia-Swift */,
 				F5MECAB022FA0000100000001 /* mecab */,
+				DA6ADE0022FC000040000002 /* SwiftDagre */,
 			);
 			productName = Kioku;
 			productReference = E3070AE82F4DFDB6005FD323 /* Kioku Reader.app */;
@@ -325,6 +326,7 @@
 				E4WKA00052FA0000200000005 /* XCLocalSwiftPackageReference "SwiftWhisperAlign" */,
 				Z1NN1A0052FB0000200000005 /* XCLocalSwiftPackageReference "Packages/zinnia-swift" */,
 				F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */,
+				DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E3070AE92F4DFDB6005FD323 /* Products */;
@@ -930,6 +932,14 @@
 				kind = branch;
 			};
 		};
+		DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/lukilabs/dagre-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -947,6 +957,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F5MECAB052FA0000100000003 /* XCRemoteSwiftPackageReference "mecab" */;
 			productName = mecab;
+		};
+		DA6ADE0022FC000040000002 /* SwiftDagre */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DA6ADE0052FC000040000001 /* XCRemoteSwiftPackageReference "dagre-swift" */;
+			productName = SwiftDagre;
 		};
 		Z1NN1A0022FB0000200000002 /* Zinnia-Swift */ = {
 			isa = XCSwiftPackageProductDependency;
