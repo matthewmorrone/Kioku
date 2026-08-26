@@ -1600,25 +1600,29 @@ def materialize_surface_readings(conn):
                MIN(jpdb_rank) AS jpdb_rank,
                MAX(wordfreq_zipf) AS wordfreq_zipf
         FROM (
-            -- Kanji form as surface, kana form as reading. Prefers the exact (kanji,kana) pair rank,
-            -- then falls back to the entry's best rank so the headword still sorts/scores when the
-            -- specific pair is unranked. That fallback is deliberately entry-wide (same value for
-            -- EVERY reading of a multi-reading entry, e.g. 二人's ににん and ふたり both inherit
-            -- 474) — it exists so the surface still sorts/scores when NEITHER reading has its own
-            -- pair-level rank, not to imply the readings are equally common. wordfreq_zipf is
-            -- sourced per-READING (kf.wordfreq_zipf), not per-surface (kj.wordfreq_zipf) — this is
-            -- the tiebreaker that actually distinguishes ににん (no real usage, NULL) from ふたり
-            -- (real usage, ~4.27) when best_rank ties; see the ORDER BY below. Getting this from
-            -- kj instead of kf was the root cause of 二人 defaulting to ににん and 一人 to
-            -- いちにん — both readings shared one borrowed rank, so the tie broke alphabetically
-            -- by reading (に before ふ, い before ひ) instead of by actual frequency.
+            -- Kanji form as surface, kana form as reading. Joins through kanji_kana_links (built
+            -- from each reading's re_restr/appliesToKanji, see build_entry()) rather than raw
+            -- entry_id, so a reading restricted to one kanji spelling in a multi-spelling entry
+            -- can't leak onto a sibling spelling it was never valid for — entry_id alone doesn't
+            -- imply validity once an entry has more than one kanji form. Prefers the exact
+            -- (kanji,kana) pair rank, then falls back to the entry's best rank so the headword
+            -- still sorts/scores when the specific pair is unranked. That fallback is deliberately
+            -- entry-wide (same value for EVERY reading of a multi-reading entry, e.g. 二人's ににん
+            -- and ふたり both inherit 474) — it exists so the surface still sorts/scores when
+            -- NEITHER reading has its own pair-level rank, not to imply the readings are equally
+            -- common. wordfreq_zipf is sourced per-READING (kf.wordfreq_zipf), not per-surface
+            -- (kj.wordfreq_zipf) — this is the tiebreaker that actually distinguishes ににん (no
+            -- real usage, NULL) from ふたり (real usage, ~4.27) when best_rank ties; see the ORDER
+            -- BY below. Getting this from kj instead of kf was the root cause of 二人 defaulting to
+            -- ににん and 一人 to いちにん — both readings shared one borrowed rank, so the tie broke
+            -- alphabetically by reading (に before ふ, い before ひ) instead of by actual frequency.
             SELECT kj.text AS surface, kf.text AS reading,
                    COALESCE(kkl.jpdb_rank, er.rank, {UNRANKED_RANK_SENTINEL}) AS best_rank,
                    COALESCE(kkl.jpdb_rank, er.rank) AS jpdb_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf
             FROM kanji kj
-            JOIN kana_forms kf ON kf.entry_id = kj.entry_id
-            LEFT JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id AND kkl.kana_id = kf.id
+            JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id
+            JOIN kana_forms kf ON kf.id = kkl.kana_id
             LEFT JOIN entry_rank er ON er.entry_id = kj.entry_id
             UNION ALL
             -- Every kana form as its own surface. Without this branch the segmenter
