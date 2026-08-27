@@ -116,7 +116,7 @@ struct WordsFilterView: View {
         Menu {
             ForEach(notesWithSavedWords) { (note: Note) in
                 Button { tapNote(note.id) } label: {
-                    Label(resolvedTitle(for: note),
+                    Label(note.resolvedTitle,
                           systemImage: activeFilterNoteIDs.contains(note.id) ? "checkmark" : "doc.text")
                 }
             }
@@ -172,7 +172,7 @@ struct WordsFilterView: View {
 
     private var noteLabel: String {
         guard let noteID = activeFilterNoteIDs.first, let note = notesStore.note(withID: noteID) else { return "Any" }
-        return resolvedTitle(for: note)
+        return note.resolvedTitle
     }
 
     private var listLabel: String {
@@ -255,11 +255,5 @@ struct WordsFilterView: View {
     private var notesWithSavedWords: [Note] {
         let noteIDsWithWords = Set(wordsStore.words.flatMap(\.sourceNoteIDs))
         return notesStore.notes.filter { noteIDsWithWords.contains($0.id) }
-    }
-
-    // Falls back to "Untitled Note" when the note title is blank.
-    private func resolvedTitle(for note: Note) -> String {
-        let trimmed = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Untitled Note" : trimmed
     }
 }

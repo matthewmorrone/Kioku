@@ -27,6 +27,13 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         segmentsAreUserEdited ?? false
     }
 
+    // Presentable title for menu labels, shared text subjects, and list rows — falls back to
+    // "Untitled Note" when the title is blank.
+    var resolvedTitle: String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Untitled Note" : trimmed
+    }
+
     // Creates a note value with optional defaults for new-note workflows.
     init(
         id: UUID = UUID(),

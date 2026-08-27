@@ -100,7 +100,7 @@ struct NotesView: View {
                     let notes = offsets.compactMap { displayed.indices.contains($0) ? displayed[$0] : nil }
                     queuePendingDeletion(PendingNoteDeletion(
                         noteIDs: Set(notes.map(\.id)),
-                        title: notes.count == 1 ? resolvedTitle(for: notes[0]) : nil
+                        title: notes.count == 1 ? notes[0].resolvedTitle : nil
                     ))
                 }
             }
@@ -494,7 +494,7 @@ struct NotesView: View {
     private func noteContextMenu(for note: Note) -> some View {
         Button {
             notePendingRename = note
-            renameDraft = resolvedTitle(for: note)
+            renameDraft = note.resolvedTitle
         } label: {
             Label("Rename", systemImage: "pencil")
         }
@@ -507,7 +507,7 @@ struct NotesView: View {
 
         ShareLink(
             item: shareText(for: note),
-            subject: Text(resolvedTitle(for: note)),
+            subject: Text(note.resolvedTitle),
             message: Text("Shared from Kioku")
         ) {
             Label("Share", systemImage: "square.and.arrow.up")
@@ -536,7 +536,7 @@ struct NotesView: View {
         }
 
         Button(role: .destructive) {
-            queuePendingDeletion(PendingNoteDeletion(noteIDs: [note.id], title: resolvedTitle(for: note)))
+            queuePendingDeletion(PendingNoteDeletion(noteIDs: [note.id], title: note.resolvedTitle))
         } label: {
             Label("Delete", systemImage: "trash")
         }
@@ -596,15 +596,9 @@ struct NotesView: View {
         onUpdateSelectedNote?(store.note(withID: duplicatedNote.id))
     }
 
-    // Resolves a presentable note title for menu labels and shared text subjects.
-    private func resolvedTitle(for note: Note) -> String {
-        let trimmedTitle = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedTitle.isEmpty ? "Untitled Note" : trimmedTitle
-    }
-
     // Builds the shared plain-text representation for a single note export.
     private func shareText(for note: Note) -> String {
-        let title = resolvedTitle(for: note)
+        let title = note.resolvedTitle
         let trimmedContent = note.content.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedContent.isEmpty {
             return title
