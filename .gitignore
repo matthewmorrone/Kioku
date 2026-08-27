@@ -7,7 +7,7 @@ Resources/dictionary.sqlite
 Resources/dictionary.sqlite.zst
 Resources/dictionary.sqlite.zst.part-*
 Resources/jmdict-eng-3.6.2.json
-Resources/JPDB_v2.2_Frequency_Kana.json
+Resources/jpdb-frequency-kana-2.2.json
 Resources/ggml-tiny.bin
 Resources/handwriting-ja.model
 Resources/kanjidic2-all.json
@@ -23,10 +23,10 @@ Resources/MeCab/ipadic/*
 # default trie segmenter's Viterbi scorer needs (IPADicMatrix.swift), and small enough (3.5MB)
 # to check in directly so a fresh clone's default configuration isn't silently degraded. The
 # rest of ipadic (sys.dic/unk.dic/char.bin, ~49.5MB) is only needed for the opt-in .mecab
-# backend — see Resources/data_manifest.json for download instructions.
+# backend — see Resources/data-manifest.json for download instructions.
 !Resources/MeCab/ipadic/matrix.bin
 # UniDic (196MB) moved to Resources/MeCab-unidic-optional/ so it's never bundled into the app —
-# see Resources/data_manifest.json. Not shipped by default: the .mecab backend's default
+# see Resources/data-manifest.json. Not shipped by default: the .mecab backend's default
 # dictionary is ipadic, and UniDic requires two separate manual Settings changes to reach.
 Resources/MeCab-unidic-optional/
 # Local working copy of the Zinnia Swift package used by the feat/handwriting

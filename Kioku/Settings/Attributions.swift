@@ -1,7 +1,7 @@
 import Foundation
 
 // Source-of-truth for what bundled datasets and third-party libraries appear in
-// the About screen. Data is hand-curated to mirror Resources/data_manifest.json
+// the About screen. Data is hand-curated to mirror Resources/data-manifest.json
 // and Packages/, with human-readable descriptions and license / URL strings the
 // view can render flat.
 //

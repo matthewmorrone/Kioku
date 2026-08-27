@@ -111,7 +111,7 @@ nonisolated public final class DictionaryTrie {
     }
 
     // Returns the IPADic (left_id, right_id) tagged onto this surface at dictionary-build time
-    // via Resources/migrate_add_context_ids.py, or nil when the surface isn't tagged.
+    // via Resources/generate_db.py's import_mecab_context_ids(), or nil when the surface isn't tagged.
     // Used by Segmenter.buildLattice to populate lattice edges so Viterbi can index matrix.bin
     // directly instead of going through POS-class buckets.
     public func ipadicContextIDs(for surface: String) -> (left: Int32, right: Int32)? {

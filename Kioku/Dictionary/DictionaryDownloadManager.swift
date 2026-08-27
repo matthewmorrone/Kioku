@@ -33,13 +33,16 @@ final class DictionaryDownloadManager {
     // pinnedRevision reasoning in WhisperModelManager.swift: a moving tag means a future edit to
     // the release silently changes the bytes every install receives. Bump both of these
     // deliberately (new tag + freshly computed hash) whenever dictionary.sqlite is rebuilt by
-    // Resources/generate_db.py — see docs/superpowers/plans/2026-07-15-dictionary-offload.md
-    // Task 6. Publishing the matching GitHub Release is then automatic (not a manual follow-up
-    // step to remember): .github/workflows/publish-dictionary-release.yml runs on every push to
-    // main that touches this pin and publishes it if it isn't live yet — see docs/todo.md's
-    // 2026-08-05 entry for why a manual step here kept getting skipped.
-    nonisolated static let releaseTag = "dictionary-v3"
-    nonisolated static let expectedSHA256 = "e07fc95aff31cdfdea36211bcd4d2570734c1a06ebe7bccfefd2f5305ca302dc"
+    // Resources/generate_db.py, THEN run scripts/publish_dictionary_release.sh by hand to
+    // publish the matching GitHub Release — there is no CI automation for this step (no
+    // publish-dictionary-release workflow exists; generate_db.py's upstream inputs are
+    // gitignored, so only the machine that actually ran the generator has the right bytes).
+    // Also: scripts/ensure_dictionary.sh runs on every local build and re-downloads from
+    // whatever tag is pinned here if the local Resources/dictionary.sqlite doesn't hash-match
+    // it — so editing dictionary.sqlite locally without bumping this pin first gets silently
+    // reverted on the very next build.
+    nonisolated static let releaseTag = "dictionary-v4"
+    nonisolated static let expectedSHA256 = "f8b5b5098821aa5401971fcb08fdb9f9b725d60ff9a3416ae817c81247c5217d"
 
     // Public GitHub Release asset URL — matthewmorrone/Kioku is a public repo, so this needs no
     // authentication to fetch, same as the pinned huggingface.co URL WhisperModelManager uses.

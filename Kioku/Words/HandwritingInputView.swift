@@ -196,7 +196,7 @@ struct HandwritingInputView: View {
     // missing — typically because the dev didn't drop handwriting-ja.model into Resources/.
     private func loadRecognizer() {
         guard let url = Bundle.main.url(forResource: "handwriting-ja", withExtension: "model") else {
-            initError = "Handwriting model not found in app bundle. See data_manifest.json for the Tegaki download command."
+            initError = "Handwriting model not found in app bundle. See data-manifest.json for the Tegaki download command."
             return
         }
         do {

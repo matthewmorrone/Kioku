@@ -39,7 +39,7 @@ final class DictionaryDownloadManagerTests: XCTestCase {
     // file without bumping those two constants and publishing a new release leaves every
     // install — old and fresh — silently stuck on stale data forever. This exact gap shipped
     // in 065090a. If this test fails, publish a new GitHub Release and bump
-    // DictionaryDownloadManager.releaseTag/expectedSHA256 (and Resources/data_manifest.json's
+    // DictionaryDownloadManager.releaseTag/expectedSHA256 (and Resources/data-manifest.json's
     // dictionary entry) to match — see docs/superpowers/plans/2026-07-15-dictionary-offload.md Task 6.
     func testLocalDictionarySQLiteMatchesPinnedRelease() throws {
         let digest = try DictionaryDownloadManager.sha256(ofFileAt: TestReadResources.dictionaryDatabaseURL())

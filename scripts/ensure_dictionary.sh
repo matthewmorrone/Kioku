@@ -5,7 +5,7 @@
 # clones and from the CI workflow.
 #
 # The sqlite is derived from generate_db.py + upstream data files that aren't
-# committed to this repo (see data_manifest.json for where to get them), so
+# committed to this repo (see data-manifest.json for where to get them), so
 # this script can't regenerate it — only a developer with those raw inputs
 # locally can. Previously the compressed sqlite was committed directly to git
 # (split into <100MB parts) and reassembled here; every rebuild added a new

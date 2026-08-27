@@ -7,9 +7,10 @@
 # It provisions the gitignored build resources the app bundles, by delegating to
 # the very same ensure_* scripts GitHub Actions and scripts/setup.sh use — so all
 # three CI/setup paths stay in lockstep instead of duplicating (and drifting from)
-# the decompression logic:
-#   - Resources/dictionary.sqlite     (reassembled from committed .zst.part-* chunks)
-#   - Resources/handwriting-ja.model  (from committed handwriting-ja.model.zst)
+# the provisioning logic:
+#   - Resources/dictionary.sqlite     (downloaded from the pinned GitHub Release —
+#                                      see DictionaryDownloadManager.releaseTag)
+#   - Resources/handwriting-ja.model  (decompressed from committed handwriting-ja.model.zst)
 # Both raw files are .gitignored; without this step the build fails with
 # "The file '…' couldn't be opened because there is no such file" once Xcode tries
 # to bundle Resources/.
@@ -17,8 +18,7 @@
 set -eu
 
 # Xcode Cloud sets CI_PRIMARY_REPOSITORY_PATH to the cloned repo root.
-# Fall back to a relative resolution for the case where the script runs locally
-# for testing (scripts/run-ci-post-clone-locally, etc).
+# Fall back to a relative resolution for local testing: bash ci_scripts/ci_post_clone.sh.
 REPO_ROOT="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 echo "→ ci_post_clone: REPO_ROOT=$REPO_ROOT"

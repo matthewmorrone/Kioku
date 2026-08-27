@@ -25,7 +25,7 @@ nonisolated public struct FrequencyData: Sendable {
     // Human-readable frequency tier derived from the normalized score.
     //
     // Thresholds are calibrated against the ACTUAL score distribution across the dictionary
-    // (~204k scored entries, after wordfreq_zipf is populated — see repopulate_frequency.py),
+    // (~204k scored entries, after wordfreq_zipf is populated — see generate_db.py's import_wordfreq()),
     // not picked off intuition. The earlier 6/5/4/3 cutoffs put the median word (score ~3.7)
     // in "Rare" and labeled only ~6% of entries Common-or-better, so everyday words like
     // 日 (6.38) read "Uncommon". The bands below sit roughly at distribution breakpoints so

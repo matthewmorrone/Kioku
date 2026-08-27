@@ -1,66 +1,76 @@
-[
-	{
-		"kanji": "愛人",
-		"kana": "あいひと",
-		"sense": [
-			{
-				"partOfSpeech": ["noun (common) (futsuumeishi)"],
-				"misc": ["poetical term"],
-				"gloss": ["lover; beloved (poetic reading of 愛人)"]
-			}
-		]
-	},
-	{
-		"kanji": "夕映",
-		"kana": "ゆうばえ",
-		"sense": [
-			{
-				"partOfSpeech": ["noun (common) (futsuumeishi)"],
-				"gloss": ["evening glow; afterglow of sunset"]
-			}
-		]
-	},
-	{
-		"kana": "スターズ",
-		"gloss": "stars"
-	},
-	{
-		"kana": "プレイヤーズ",
-		"gloss": "prayers"
-	},
-	{
-		"kana": "ティアーズ",
-		"gloss": "tears"
-	},
-	{
-		"kana": "シャイニー",
-		"gloss": "shiny"
-	},
-	{
-		"kana": [
-			"ピッ"
-		],
-		"tags": [
-			"custom"
-		],
-		"sense": [
-			{
-				"partOfSpeech": [
-					"adverb (fukushi)"
-				],
-				"misc": [
-					"onomatopoeic or mimetic word"
-				],
-				"gloss": [
-					{
-						"text": "quickly; with a short sharp motion or sound"
-					}
-				]
-			}
-		]
-	},
-	{
-		"kana": "オーロール",
-		"gloss": "aurora; dawn (from French 'aurore')"
-	}
-]
+{
+	"entries": [
+		{
+			"kanji": "愛人",
+			"kana": "あいひと",
+			"sense": [
+				{
+					"partOfSpeech": ["noun (common) (futsuumeishi)"],
+					"misc": ["poetical term"],
+					"gloss": ["lover; beloved (poetic reading of 愛人)"]
+				}
+			]
+		},
+		{
+			"kanji": "夕映",
+			"kana": "ゆうばえ",
+			"sense": [
+				{
+					"partOfSpeech": ["noun (common) (futsuumeishi)"],
+					"gloss": ["evening glow; afterglow of sunset"]
+				}
+			]
+		},
+		{
+			"kana": "スターズ",
+			"gloss": "stars"
+		},
+		{
+			"kana": "プレイヤーズ",
+			"gloss": "prayers"
+		},
+		{
+			"kana": "ティアーズ",
+			"gloss": "tears"
+		},
+		{
+			"kana": "シャイニー",
+			"gloss": "shiny"
+		},
+		{
+			"kana": [
+				"ピッ"
+			],
+			"tags": [
+				"custom"
+			],
+			"sense": [
+				{
+					"partOfSpeech": [
+						"adverb (fukushi)"
+					],
+					"misc": [
+						"onomatopoeic or mimetic word"
+					],
+					"gloss": [
+						{
+							"text": "quickly; with a short sharp motion or sound"
+						}
+					]
+				}
+			]
+		},
+		{
+			"kana": "オーロール",
+			"gloss": "aurora; dawn (from French 'aurore')"
+		}
+	],
+	"frequencyOverrides": [
+		{
+			"kanji": "黄昏",
+			"kana": "こうこん",
+			"wordfreqZipf": null,
+			"reason": "wordfreq's ja corpus scores こうこん (5.01) above たそがれ (2.73), but たそがれ is the reading actually used; こうこん is a rare on'yomi. Clearing its zipf lets たそがれ win the tie-break."
+		}
+	]
+}

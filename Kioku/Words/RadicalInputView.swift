@@ -85,7 +85,7 @@ struct RadicalInputView: View {
             ContentUnavailableView(
                 "Radical data unavailable",
                 systemImage: "square.grid.3x3",
-                description: Text("Add RADKFILE2 and KRADFILE2 to Resources/ and rebuild the dictionary. See data_manifest.json for download instructions.")
+                description: Text("Add RADKFILE2 and KRADFILE2 to Resources/ and rebuild the dictionary. See data-manifest.json for download instructions.")
             )
         } else {
             VStack(spacing: 0) {

@@ -214,8 +214,9 @@ nonisolated struct SegmenterScoring {
     }
 
     // Primary transition-cost entry point used by Viterbi. When BOTH adjacent edges have
-    // IPADic context IDs (populated at dict-build time, see Resources/migrate_add_context_ids.py),
-    // we look up the bigram cost directly in IPADic's matrix.bin — same fidelity as MeCab.
+    // IPADic context IDs (populated at dict-build time, see generate_db.py's
+    // import_mecab_context_ids()), we look up the bigram cost directly in IPADic's matrix.bin —
+    // same fidelity as MeCab.
     // Otherwise we fall through to the POS-class bucket dispatch below, which uses the empirical
     // medians produced by Scripts/calibration/calibrate_viterbi_costs.py. The matrix path
     // divides by 100 to land in the same scale as the bucketed values + the existing node
@@ -233,7 +234,7 @@ nonisolated struct SegmenterScoring {
 
     // POS-class bucket fallback. Used when one or both adjacent edges lack IPADic context IDs
     // (deinflected surfaces that weren't tagged, fallback edges for unknown text, or older
-    // dictionaries built before migrate_add_context_ids.py ran). Rules dispatch in priority
+    // dictionaries built before generate_db.py's import_mecab_context_ids() ran). Rules dispatch in priority
     // order; the first matching rule wins so the most distinctive bigrams (numeric+counter,
     // aux chains) get checked before the broader ones (any-noun, any-particle).
     static func transitionCost(prev: UInt64, next: UInt64) -> Int {

@@ -13,7 +13,7 @@ SCRIPT_CLASSIFIER_SWIFT_PATH = PROJECT_ROOT / "Kioku" / "Dictionary" / "ScriptCl
 RESOURCES_DIR = PROJECT_ROOT / "Resources"
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
-JPDB_PATH = RESOURCES_DIR / "JPDB_v2.2_Frequency_Kana.json"
+JPDB_PATH = RESOURCES_DIR / "jpdb-frequency-kana-2.2.json"
 KANJIDIC2_PATH = RESOURCES_DIR / "kanjidic2-all.json"
 PITCH_ACCENT_PATH = RESOURCES_DIR / "pitch-accent.tsv"
 SENTENCE_PAIRS_PATH = RESOURCES_DIR / "sentence-pairs.tsv"
@@ -350,6 +350,28 @@ def load_jmdict_entries():
     raise ValueError("Unexpected JMdict JSON structure")
 
 
+def load_extras_json():
+    # Top level is either the legacy bare list of entries (back-compat), or:
+    # {
+    #   entries?: [ ...same entry shape as the legacy list... ],
+    #   frequencyOverrides?: [
+    #     { kanji: string, kana: string, wordfreqZipf: number | null, reason?: string }
+    #   ]
+    # }
+    if not EXTRAS_PATH.exists():
+        return [], []
+
+    with open(EXTRAS_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if isinstance(data, list):
+        return data, []
+    if isinstance(data, dict):
+        return data.get("entries", []), data.get("frequencyOverrides", [])
+
+    raise ValueError("Unexpected extras JSON structure")
+
+
 def load_extra_entries():
     # [
     #   {
@@ -370,16 +392,13 @@ def load_extra_entries():
     #       # normalizes to sense: [{ gloss: [...] }]
     #   }
     # ]
-    if not EXTRAS_PATH.exists():
-        return []
+    entries, _ = load_extras_json()
+    return [normalize_extra_entry(entry, i) for i, entry in enumerate(entries)]
 
-    with open(EXTRAS_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
 
-    if isinstance(data, list):
-        return [normalize_extra_entry(entry, i) for i, entry in enumerate(data)]
-
-    raise ValueError("Unexpected extras JSON structure")
+def load_frequency_overrides():
+    _, overrides = load_extras_json()
+    return overrides
 
 
 def normalize_extra_entry(entry, entry_index):
@@ -620,6 +639,47 @@ def import_wordfreq(conn):
     print(f"  Done: {len(kanji_rows)} kanji, {len(kana_rows)} kana forms scored")
 
 
+def apply_frequency_overrides(conn, overrides):
+    # Manually corrects wordfreq_zipf for specific (kanji, reading) pairs where the wordfreq
+    # package's corpus-based Zipf score is misleading — e.g. 黄昏's rare on'yomi reading こうこん
+    # scores HIGHER (5.01) than the reading actually used, たそがれ (2.73), which flips the
+    # surface_readings tie-break (see materialize_surface_readings) and makes the rare reading
+    # the default furigana/lookup reading. Runs right after import_wordfreq() so it wins over
+    # the package's own value. `wordfreqZipf: null` suppresses the wordfreq signal for that one
+    # reading entirely, letting jpdb_rank and the other reading's own zipf settle the ordering.
+    # Scoped by (kanji, kana) pair via kanji_kana_links, not by kana text alone, so an override
+    # can't accidentally touch an unrelated entry that happens to share the same reading string.
+    if not overrides:
+        return
+
+    print(f"  Applying {len(overrides)} frequency override(s) from extras.json...")
+    for i, override in enumerate(overrides):
+        kanji_text = override.get("kanji")
+        kana_text = override.get("kana")
+        if not kanji_text or not kana_text:
+            raise ValueError(f"extras.json frequencyOverrides[{i}] requires both 'kanji' and 'kana'")
+
+        cur = conn.execute(
+            """
+            UPDATE kana_forms
+            SET wordfreq_zipf = ?
+            WHERE text = ?
+              AND id IN (
+                  SELECT kkl.kana_id
+                  FROM kanji_kana_links kkl
+                  JOIN kanji k ON k.id = kkl.kanji_id
+                  WHERE k.text = ?
+              )
+            """,
+            (override.get("wordfreqZipf"), kana_text, kanji_text),
+        )
+        if cur.rowcount == 0:
+            raise ValueError(
+                f"extras.json frequencyOverrides[{i}] ({kanji_text}/{kana_text}) matched no kana_forms row "
+                "— the (kanji, kana) pair may no longer exist in this JMdict revision."
+            )
+
+
 def import_mecab_context_ids(conn):
     # Tags every kanji + kana surface with its IPADic (left_id, right_id) so the trie
     # segmenter's Viterbi path can look up real bigram costs in matrix.bin at runtime
@@ -752,7 +812,7 @@ def import_mecab_context_ids(conn):
 
 def import_jpdb(conn):
     # Populates jpdb_rank on kanji_kana_links using the JPDB v2.2 Frequency Kana dictionary.
-    # File must be downloaded separately (not checked in); see data_manifest.json.
+    # File must be downloaded separately (not checked in); see data-manifest.json.
     # Only Shape B entries without the ㋕ marker are used (kanji expression + kana reading).
     if not JPDB_PATH.exists():
         print(f"  JPDB frequency file not found at {JPDB_PATH} — skipping")
@@ -816,7 +876,7 @@ def import_jpdb(conn):
 def import_kanjidic2(conn):
     # Populates kanji_characters and kanji_readings from the scriptin/jmdict-simplified
     # kanjidic2-all JSON. Readings are nested under readingMeaning.groups[].readings[].
-    # File must be downloaded separately; see data_manifest.json.
+    # File must be downloaded separately; see data-manifest.json.
     if not KANJIDIC2_PATH.exists():
         print(f"  KANJIDIC2 file not found at {KANJIDIC2_PATH} — skipping")
         return
@@ -961,9 +1021,8 @@ def import_jlpt_levels(conn):
     # kana-only words. A surface shared by multiple entries (homographs) tags all of them — we can't
     # know the intended sense, and over-tagging is the safe direction for a study filter.
     #
-    # Owns its table + index (like materialize_word_frequency owns word_frequency) so the full build
-    # and the standalone migrate_add_jlpt_levels.py share one code path. Idempotent: re-running
-    # rebuilds the table from scratch.
+    # Owns its table + index (like materialize_word_frequency owns word_frequency). Idempotent:
+    # re-running rebuilds the table from scratch.
     #
     # Source data: Jonathan Waller's JLPT lists (https://www.tanos.co.uk/jlpt/), CC BY. These are
     # unofficial estimates — no official JLPT vocab lists exist post-2010.
@@ -1511,6 +1570,7 @@ def build_database():
     with phase("Importing frequency data..."):
         import_wordfreq(conn)
         import_jpdb(conn)
+        apply_frequency_overrides(conn, load_frequency_overrides())
 
     with phase("Tagging surfaces with IPADic context IDs..."):
         import_mecab_context_ids(conn)
@@ -1564,10 +1624,9 @@ def build_database():
         conn.close()
 
 
-# The two materialization passes below are split into standalone functions so both the full
-# build (main) and the frequency-only refresh (repopulate_frequency.py) drive them from one
-# source of truth — re-running after import_wordfreq must rebuild these exactly the same way.
-# DROP ... IF EXISTS makes them safe to re-run against an already-built database.
+# The two materialization passes below are split into standalone functions as a single source
+# of truth for both consumers of wordfreq/jpdb data. DROP ... IF EXISTS makes them safe to
+# re-run against an already-built database.
 def materialize_surface_readings(conn):
     print("Materializing surface_readings lookup table...")
     conn.executescript(

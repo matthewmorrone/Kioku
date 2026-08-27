@@ -4,7 +4,8 @@ nonisolated public struct SurfaceRecord {
     public let surface: String
     public let entryIDs: [Int]
     public let partOfSpeech: UInt64
-    // IPADic context IDs harvested at dictionary-build time (see Resources/migrate_add_context_ids.py).
+    // IPADic context IDs harvested at dictionary-build time (see Resources/generate_db.py's
+    // import_mecab_context_ids()).
     // The trie-Viterbi path uses these to index directly into matrix.bin instead of going through
     // POS-class buckets. nil when the surface wasn't tagged (missing from IPADic, or build skipped).
     public let ipadicLeftID: Int32?
