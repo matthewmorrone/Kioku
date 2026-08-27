@@ -30,8 +30,4 @@ enum DebugSettings {
     // cleanly; flip in Settings → Debug when investigating dim/band alignment.
     static let karaokeDebugHUDKey = "debug.karaokeDebugHUD"
     static let startupSegmentationDiffsKey = "debug.startupSegmentationDiffs"
-    // Toggles the experimental CoreText-backed Read renderer (`KiokuCoreTextView`) in place
-    // of the TextKit 2 UITextView path. Off by default while the new renderer is being
-    // brought up; flip in Settings to A/B against the production renderer.
-    static let useCoreTextRendererKey = "debug.useCoreTextRenderer"
 }

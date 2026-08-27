@@ -117,7 +117,16 @@ extension ReadView {
         // Global by design (see computeSavedSegmentLocations): a word's status is the same
         // everywhere it appears, so the signature doesn't key on activeNoteID or any note
         // attribution — only on segmentation, the saved-word set, and the visibility toggles.
+        // Also keys on dictionaryStore's readiness: computeSavedSegmentLocations resolves
+        // through resolvedDictionaryEntry(forSurface:), which needs dictionaryStore loaded to
+        // return anything (readResourcesReady is the wrong, slower signal here — it only flips
+        // once the full trie/lexicon/prewarm build finishes, but dictionaryStore itself is
+        // published much earlier on ContentView's fast path). Without keying on SOMETHING here,
+        // a computation that runs before dictionaryStore loads caches an empty result under a
+        // signature that never changes once it's ready, so the highlight silently never appears
+        // until some unrelated toggle resets the memo.
         var hasher = Hasher()
+        hasher.combine(dictionaryStore != nil)
         hasher.combine(segmentRanges.count)
         if let first = segmentRanges.first { hasher.combine(NSRange(first, in: text).location) }
         if let last = segmentRanges.last { hasher.combine(NSRange(last, in: text).location) }

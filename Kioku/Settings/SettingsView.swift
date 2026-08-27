@@ -112,8 +112,6 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
     @AppStorage(DebugSettings.leftInsetGuideKey) private var debugLeftInsetGuide: Bool = false
     @AppStorage(DebugSettings.karaokeDebugHUDKey) private var debugKaraokeHUD: Bool = false
-    // CoreText renderer is now the only path; toggle hidden, key kept for migration.
-    // @AppStorage(DebugSettings.useCoreTextRendererKey) private var useCoreTextRenderer: Bool = true
 
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
     @State private var wotdPendingCount: Int = 0

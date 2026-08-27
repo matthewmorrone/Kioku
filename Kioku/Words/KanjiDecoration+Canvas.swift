@@ -404,66 +404,6 @@ struct WindDecoration: View {
     }
 }
 
-// Owned by KanjiDecoration.view(for:) — registered for the literal 風 (legacy
-// curved-streaks design preserved here in case we want to A/B it). Currently
-// unused; the active 風 is WindDecoration above.
-struct WindCurvedStreaksDecoration: View {
-    private let streakCount = 38
-    private let dustCount = 36
-
-    var body: some View {
-        TimelineView(.animation) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            Canvas { ctx, size in
-                // Streaks.
-                for i in 0..<streakCount {
-                    let ySeed = kanjiSeedFraction(i, 17)
-                    let phase = kanjiSeedFraction(i, 29)
-                    let dirSeed = kanjiSeedFraction(i, 37)
-                    let lengthSeed = kanjiSeedFraction(i, 43)
-                    let speedSeed = kanjiSeedFraction(i, 49)
-                    let cycle = 1.0 + speedSeed * 1.6
-                    let prog = ((t / cycle) + phase).truncatingRemainder(dividingBy: 1.0)
-
-                    let streakLen: CGFloat = size.width * CGFloat(0.18 + lengthSeed * 0.55)
-                    let startX = -streakLen + (size.width + 2 * streakLen) * CGFloat(prog)
-                    let endX = startX + streakLen
-                    let baseY = CGFloat(ySeed) * size.height
-                    let curveSign: CGFloat = dirSeed > 0.5 ? 1 : -1
-                    let controlY = baseY + curveSign * CGFloat(10 + lengthSeed * 22)
-
-                    var path = Path()
-                    path.move(to: CGPoint(x: startX, y: baseY))
-                    path.addQuadCurve(to: CGPoint(x: endX, y: baseY - 4),
-                                      control: CGPoint(x: (startX + endX) / 2, y: controlY))
-
-                    let edgeFade = sin(prog * .pi)
-                    let alpha = (0.40 + 0.25 * (1.0 - speedSeed)) * edgeFade
-                    let lineWidth: CGFloat = 1.0 + CGFloat(lengthSeed) * 1.8
-                    ctx.stroke(path,
-                               with: .color(Color(white: 0.95).opacity(alpha)),
-                               style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                }
-
-                // Dust particles — small dots scrolling fast across the air.
-                for i in 0..<dustCount {
-                    let ySeed = kanjiSeedFraction(i, 61)
-                    let phase = kanjiSeedFraction(i, 67)
-                    let speedSeed = kanjiSeedFraction(i, 73)
-                    let cycle = 1.0 + speedSeed * 0.8
-                    let prog = ((t / cycle) + phase).truncatingRemainder(dividingBy: 1.0)
-                    let x = -20 + (size.width + 40) * CGFloat(prog)
-                    let y = CGFloat(ySeed) * size.height + CGFloat(sin(t * 2.0 + phase * 6.28)) * 5
-                    let r: CGFloat = 1.0 + CGFloat(kanjiSeedFraction(i, 71)) * 1.0
-                    let alpha = 0.55 * sin(prog * .pi)
-                    ctx.fill(Path(ellipseIn: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r)),
-                             with: .color(Color(white: 0.92).opacity(alpha)))
-                }
-            }
-        }
-    }
-}
-
 // MARK: - 木 Tree
 
 // Owned by KanjiDecoration.view(for:) — registered for the literal 木.

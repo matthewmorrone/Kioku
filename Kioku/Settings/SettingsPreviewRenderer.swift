@@ -40,16 +40,16 @@ struct SettingsPreviewRenderer: View {
     // so flipping it in Settings or in the toolbar both reach the preview here. Previously
     // hardcoded to `true` below, which made the preview lie about what the Read view would
     // actually render when alternation was disabled.
-    @AppStorage("kioku.settings.colorAlternation") private var isColorAlternationEnabled: Bool = true
+    @AppStorage(TypographySettings.colorAlternationKey) private var isColorAlternationEnabled: Bool = true
     // Same story for line wrapping and ruby spacing — toolbar-toggleable in the Read view but
     // previously hardcoded to `true` in the preview, so the preview would show wrapping/ruby
     // spacing even when the user had turned them off. Bound to the same keys as the toolbar.
-    @AppStorage("kioku.settings.lineWrapping") private var isLineWrappingEnabled: Bool = true
-    @AppStorage("kioku.settings.rubySpacing") private var isRubySpacingEnabled: Bool = true
+    @AppStorage(TypographySettings.lineWrappingKey) private var isLineWrappingEnabled: Bool = true
+    @AppStorage(TypographySettings.rubySpacingKey) private var isRubySpacingEnabled: Bool = true
     // Furigana visibility — same key the Read view's toolbar 振 button toggles. The preview
     // also empties the per-segment furigana dictionaries when off, matching ReadView+Editor,
     // so the headwords render flush instead of leaving an empty ruby band above them.
-    @AppStorage("kioku.settings.showFurigana") private var isFuriganaVisible: Bool = true
+    @AppStorage(TypographySettings.showFuriganaKey) private var isFuriganaVisible: Bool = true
     @AppStorage(TypographySettings.customFuriganaSizeEnabledKey) private var customFuriganaSizeEnabled: Bool = false
     @AppStorage(TypographySettings.furiganaSizeKey) private var furiganaSize: Double = TypographySettings.defaultFuriganaSize
     let debugFuriganaRects: Bool

@@ -220,7 +220,7 @@ struct LyricsView: View {
     // Reads the same Read-view setting so toggling ruby spacing in Read also affects the
     // karaoke popup. AppStorage subscribes to the persisted key directly — no observation
     // plumbing needed for cross-view reactivity.
-    @AppStorage("kioku.settings.rubySpacing") private var isRubySpacingEnabled = true
+    @AppStorage(TypographySettings.rubySpacingKey) private var isRubySpacingEnabled = true
     // Mirror the Read-view custom segment-color settings so the active-cue card uses the same
     // palette the rest of Read does. Without these the card hardcoded the system defaults and
     // ignored the user's picks. AppStorage subscribes to the persisted keys directly.

@@ -207,6 +207,14 @@ extension ReadView {
     var displayOptionsPopover: some View {
         VStack(spacing: 10) {
             displayOptionRow(
+                title: "Apply Changes Globally",
+                systemImage: "arrow.triangle.branch",
+                isEnabled: shouldApplyChangesGlobally
+            ) {
+                shouldApplyChangesGlobally.toggle()
+            }
+
+            displayOptionRow(
                 title: "Furigana",
                 image: Image(isFuriganaVisible ? "furigana.on" : "furigana.off")
                     .renderingMode(.template),
@@ -216,35 +224,11 @@ extension ReadView {
             }
 
             displayOptionRow(
-                title: "Hide Furigana for Known Words",
+                title: "Hide Known Furigana",
                 systemImage: isFuriganaHiddenForKnownWords ? "eye.slash.circle.fill" : "eye.slash.circle",
                 isEnabled: isFuriganaHiddenForKnownWords
             ) {
                 isFuriganaHiddenForKnownWords.toggle()
-            }
-
-            displayOptionRow(
-                title: "Apply Changes Globally",
-                systemImage: "arrow.triangle.branch",
-                isEnabled: shouldApplyChangesGlobally
-            ) {
-                shouldApplyChangesGlobally.toggle()
-            }
-
-            displayOptionRow(
-                title: "Highlight Unknown",
-                systemImage: isHighlightUnknownEnabled ? "questionmark.circle.fill" : "questionmark.circle",
-                isEnabled: isHighlightUnknownEnabled
-            ) {
-                isHighlightUnknownEnabled.toggle()
-            }
-
-            displayOptionRow(
-                title: "Segment Colors",
-                systemImage: isColorAlternationEnabled ? "paintpalette.fill" : "paintpalette",
-                isEnabled: isColorAlternationEnabled
-            ) {
-                isColorAlternationEnabled.toggle()
             }
 
             // The indicator mirrors the stored flag directly: `isLineWrappingEnabled == true`
@@ -266,11 +250,26 @@ extension ReadView {
                 isRubySpacingEnabled.toggle()
             }
 
+            displayOptionRow(
+                title: "Highlight Unknown",
+                systemImage: isHighlightUnknownEnabled ? "questionmark.circle.fill" : "questionmark.circle",
+                isEnabled: isHighlightUnknownEnabled
+            ) {
+                isHighlightUnknownEnabled.toggle()
+            }
+
+            displayOptionRow(
+                title: "Segment Colors",
+                systemImage: isColorAlternationEnabled ? "paintpalette.fill" : "paintpalette",
+                isEnabled: isColorAlternationEnabled
+            ) {
+                isColorAlternationEnabled.toggle()
+            }
+
             savedHighlightRow
         }
         .padding(12)
         .frame(width: 270)
-        .background(Color(.systemBackground))
     }
 
     // "Saved Highlight" row: tapping the row toggles the highlight on/off AND bulk-sets all
@@ -340,6 +339,7 @@ extension ReadView {
         .padding(16)
         .frame(width: 200)
         .presentationCompactAdaptation(.popover)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // Renders one display-option row with a highlighted background while its toggle is enabled.
@@ -428,6 +428,8 @@ extension ReadView {
             .popover(isPresented: $isShowingDisplayOptions, arrowEdge: .bottom) {
                 displayOptionsPopover
                     .presentationCompactAdaptation(.popover)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .presentationBackground(Color(.systemBackground))
             }
     }
 

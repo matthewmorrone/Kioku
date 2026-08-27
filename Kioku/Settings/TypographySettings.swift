@@ -15,6 +15,14 @@ nonisolated enum TypographySettings {
     static let customFuriganaSizeEnabledKey = "kioku.settings.customFuriganaSizeEnabled"
     static let furiganaSizeKey = "kioku.settings.furiganaSize"
 
+    // Read-mode display toggles, shared by ReadView, LyricsView, and SettingsPreviewRenderer —
+    // centralized here (rather than each @AppStorage repeating the literal) so the three can't
+    // drift out of sync with each other.
+    static let rubySpacingKey = "kioku.settings.rubySpacing"
+    static let showFuriganaKey = "kioku.settings.showFurigana"
+    static let lineWrappingKey = "kioku.settings.lineWrapping"
+    static let colorAlternationKey = "kioku.settings.colorAlternation"
+
     // The implicit ruby-to-base size ratio: furigana defaults to half the headword font size.
     // Single source for the `textSize * 0.5` derivation that the renderers apply (and that
     // defaultFuriganaSize = defaultTextSize * this factor mirrors).

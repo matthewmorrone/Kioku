@@ -59,16 +59,16 @@ struct ReadView: View {
     @AppStorage(TokenColorSettings.savedColorKey) var savedHex: String = TokenColorSettings.defaultSavedHex
     @AppStorage(TokenColorSettings.savedLearnedColorKey) var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
     @AppStorage(TokenColorSettings.savedNotLearnedColorKey) var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
-    @AppStorage("kioku.settings.showFurigana") var isFuriganaVisible = true
+    @AppStorage(TypographySettings.showFuriganaKey) var isFuriganaVisible = true
     // When on, furigana is suppressed for any segment whose word is marked learned or
     // mastered (see ReviewStore). Independent of isFuriganaVisible, which is the master
     // on/off switch — this only narrows what shows while furigana is otherwise on.
     @AppStorage("kioku.settings.hideFuriganaForKnownWords") var isFuriganaHiddenForKnownWords = false
-    @AppStorage("kioku.settings.colorAlternation") var isColorAlternationEnabled = true
+    @AppStorage(TypographySettings.colorAlternationKey) var isColorAlternationEnabled = true
     @AppStorage("kioku.settings.highlightUnknown") var isHighlightUnknownEnabled = false
     @AppStorage("kioku.settings.applyGlobally") var shouldApplyChangesGlobally = true
-    @AppStorage("kioku.settings.lineWrapping") var isLineWrappingEnabled = true
-    @AppStorage("kioku.settings.rubySpacing") var isRubySpacingEnabled = true
+    @AppStorage(TypographySettings.lineWrappingKey) var isLineWrappingEnabled = true
+    @AppStorage(TypographySettings.rubySpacingKey) var isRubySpacingEnabled = true
     @AppStorage("kioku.settings.savedGlow") var isSavedHighlightEnabled = false
     // Independent per-category visibility toggles for Saved Highlight, set from its submenu.
     // Each category always renders in its own fixed color (see SettingsView+ThemeSection's
@@ -89,8 +89,6 @@ struct ReadView: View {
     @AppStorage(DebugSettings.bisectorFuriganaKey) var debugBisectorFurigana: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) var debugEnvelopeRects: Bool = false
     @AppStorage(DebugSettings.leftInsetGuideKey) var debugLeftInsetGuide: Bool = false
-    // CoreText renderer is now the only path; gate hard-wired below.
-    // @AppStorage(DebugSettings.useCoreTextRendererKey) private var useCoreTextRenderer: Bool = true
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) var debugStartupSegmentationDiffs: Bool = false
 
     @State var customTitle = ""
