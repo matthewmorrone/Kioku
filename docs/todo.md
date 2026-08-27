@@ -14,10 +14,6 @@ Substantial net-new capabilities, pulled out of the per-area sections below so t
 builds are visible at a glance. (Bug-fixes, polish, correctness, and infra stay in their
 own sections.)
 
-- [ ] **In-place context menu on the Read tab** — offer a lightweight context menu anchored
-      at the tapped word for quick actions, instead of always presenting the full lookup
-      sheet. Build it first; decide replace-vs-additional (tap→menu vs long-press→menu +
-      tap→sheet) after evaluating how it looks and feels.
 - [ ] Quiz on next and previous words/lines
 - [ ] Add manual/custom word creation and editing
 - [ ] **Real-time kanji-choice game mode** — pick the correct kanji as fast as possible; score
@@ -32,19 +28,21 @@ own sections.)
       (mix−vocals subtraction, cache both stems); per-section (♪/gap boundaries); post-hoc
       scoring; kana/mora word matching; content-words-only; a "Sing" mode inside `LyricsView`;
       transient recording; generate stem on demand; missed words → save/study, no SRS
-      auto-mutation. **Full implementation plan (4 phases, TDD):**
-      `docs/superpowers/plans/2026-07-02-karaoke-vocab-probe.md`. Large multi-part build —
-      pick up in a dedicated session.
-- [ ] **Note learning-coverage screen** — a per-note view that organizes all words in a note
-      first by **level** (JLPT N5…N1, plus an unknown/no-level bucket), then within each level by
-      **how well studied** (study mastery, e.g. New / Learning / Due / Learned from the SRS state
-      in `ReviewStore`/`ReviewWordStats`). Goal: a visible progress surface to work toward full
-      learning coverage of a note (e.g. per-level "12/18 learned" bars, a note-wide coverage %).
-      Data is already available — words-in-note via `sourceNoteIDs`, JLPT via
-      `dictionaryStore.jlptLevel(for:)`, mastery via `reviewStore` (`isLearned`/`isDue`/`stats`).
-      Open design Qs: where it lives (Read-tab note action vs Words-tab note scope vs Learn tab),
-      what the mastery buckets are exactly, and whether tapping a bucket starts a study session
-      scoped to it. Brainstorm before building.
+      auto-mutation. Large multi-part build — pick up in a dedicated session. (A detailed
+      4-phase TDD implementation plan existed at `docs/superpowers/plans/` and is recoverable
+      from git history if wanted, but that workflow is retired — re-derive fresh instead.)
+- [ ] **Lyric-alignment: repeated-lyric disambiguation** — planned 2026-07-06. `tsukiiro-chainon`
+      shows a repeated line (悲しみの嘘を忘れない, at 0:59 and 3:29) landing at the wrong
+      occurrence because the anchor-and-fill aligner can't tell two acoustically-identical
+      repeats apart; two occurrences need **global monotonic full-sequence** alignment, not just
+      better phonemes. Measured by `KiokuTests/AlignmentQualityTests.testQuality_TsukiiroChainon()`
+      against `KiokuTests/Fixtures/alignment/tsukiiro-chainon.*` — record a baseline before
+      touching the aligner. Try the cheap fix first: make `extractAnchors`
+      (`SwiftWhisperAlign/.../CTCForcedAligner.swift`) occurrence-aware (keep N time-ordered
+      anchors for an N-times-repeated lyric instead of collapsing to one). Only reach for a
+      global forced-aligner (MMS ported to MLX) if that's insufficient, and only adopt it if it
+      beats the current aligner across ≥3 fixtures — a prior aligner edit regressed a different
+      song and had to be reverted (`revert(align): back out the ambiguity-gated anchor change`).
 
 ## Regression watch
 
@@ -170,7 +168,7 @@ own sections.)
       `surface_canonical_entry` (all correct, both by inspection and by direct query) →
       discovering the download pin was stale. Fixed: published `dictionary-v2` (verified
       `d2d8e4e4…` matches both the release asset and the pinned hash), bumped
-      `DictionaryDownloadManager.releaseTag`/`expectedSHA256` and `data_manifest.json`'s
+      `DictionaryDownloadManager.releaseTag`/`expectedSHA256` and `data-manifest.json`'s
       `dictionary` entry to match (`1f9a9fd`). A **stale saved word doesn't self-heal** —
       `WordDetailView` reads `SavedWord.canonicalEntryID` directly, never re-resolving by surface
       — so any card saved under the old pin needs a manual delete+re-save.
@@ -246,7 +244,7 @@ own sections.)
            `materialize_canonical_entry_ids` needed to re-run — no JMdict/wordfreq/JPDB source
            re-import required) and re-split the committed `dictionary.sqlite.zst.part-*` chunks;
            bumped `DictionaryDownloadManager.releaseTag`/`expectedSHA256` and
-           `data_manifest.json`'s `dictionary` entry to `dictionary-v3` /
+           `data-manifest.json`'s `dictionary` entry to `dictionary-v3` /
            `e07fc95aff31cdfdea36211bcd4d2570734c1a06ebe7bccfefd2f5305ca302dc`.
            Publishing the `dictionary-v3` GitHub Release itself was initially left as a manual
            step (the session that made this fix had no tool capable of uploading a ~365MB
