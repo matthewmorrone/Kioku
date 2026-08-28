@@ -417,15 +417,6 @@ struct SettingsView: View {
                         .disabled(wordsStore.words.isEmpty)
                         .sensoryFeedback(.success, trigger: wotdTestTapCount)
 
-                        // Hint surfaces *why* Send Test is disabled when the saved-words store
-                        // is empty — without it the grayed-out button looks like a permission
-                        // problem even after permission has been granted.
-                        if wordsStore.words.isEmpty {
-                            Text("Save some words in the Words tab first — Word of the Day picks from your saved list.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-
                         if let wotdTestStatus {
                             Text(wotdTestStatus)
                                 .font(.footnote)
@@ -487,15 +478,9 @@ struct SettingsView: View {
                     // than shown disabled, since there's nothing the user could do to enable it.
                     if AppleIntelligenceAvailability.isAvailable {
                         Toggle("Smarter quiz options", isOn: $smarterQuizOptions)
-                        Text("Apple Intelligence reviews Multiple Choice answer options in the background, replacing ones that give the answer away with closer near-misses.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
                     }
 
                     Toggle("Skip learned words", isOn: $excludeLearnedInStudy)
-                    Text("Flashcards, Multiple Choice, and Fill in the Blank leave out words marked learned or mastered. Coverage sessions launched from a specific stage are unaffected.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
 
                     Toggle("Auto-mark as learned", isOn: $autoLearnEnabled)
                     if autoLearnEnabled {

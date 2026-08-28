@@ -49,14 +49,7 @@ extension SettingsView {
                 // gets the server-side web_search tool; OpenAI swaps to
                 // gpt-4o-search-preview. Cost increases per call.
                 if (LLMProvider(rawValue: llmProviderRaw) ?? .none) != .appleIntelligence {
-                    Toggle(isOn: $useWebSearch) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Web Search Grounding")
-                            Text("Lets the model look up canonical lyrics for songs — useful for gikun/ateji readings JMdict doesn't carry. Adds per-call cost.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    Toggle("Web Search Grounding", isOn: $useWebSearch)
                 }
             }
 

@@ -49,8 +49,6 @@ struct JimakuSettingsView: View {
                 .disabled(hasUnsavedChange == false)
             } header: {
                 Text("Jimaku")
-            } footer: {
-                Text("Create a free account at jimaku.cc, then copy your API key from Account → API. This single key is all that's needed to search and download.")
             }
         }
         .navigationTitle("Jimaku")

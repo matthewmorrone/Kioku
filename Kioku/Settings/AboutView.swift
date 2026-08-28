@@ -10,9 +10,7 @@ struct AboutView: View {
         Form {
             Section("Kioku") {
                 LabeledContent("Version", value: Attributions.versionString())
-                Text("A Japanese reading and vocabulary companion. Built with the open datasets and libraries listed below — without them this app wouldn't exist.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                LabeledContent("Dictionary", value: dictionaryVersionString)
             }
 
             Section("Dictionary Data") {
@@ -39,6 +37,19 @@ struct AboutView: View {
         }
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    // Reports the dictionary release actually on disk, distinguishing "never downloaded" from
+    // "downloaded but a newer release is pinned" from the normal up-to-date case, so a stuck or
+    // pending download is visible here instead of only inferable from app behavior.
+    private var dictionaryVersionString: String {
+        guard let installedTag = DictionaryDownloadManager.installedReleaseTag else {
+            return "Not downloaded"
+        }
+        if installedTag == DictionaryDownloadManager.releaseTag {
+            return installedTag
+        }
+        return "\(installedTag) (update pending)"
     }
 }
 
