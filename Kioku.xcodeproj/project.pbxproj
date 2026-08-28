@@ -10,7 +10,7 @@
 		C0FFEE00000000000000000E /* KiokuWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000002 /* KiokuWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C0FFEE000000000000000011 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
 		C0FFEE000000000000000012 /* WordOfTheDayMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000010 /* WordOfTheDayMirror.swift */; };
-		E32B0CE32F57BC070020F5C2 /* data_manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDE2F57BC070020F5C2 /* data_manifest.json */; };
+		E32B0CE32F57BC070020F5C2 /* data-manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDE2F57BC070020F5C2 /* data-manifest.json */; };
 		E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CE82F57BC070020F5C2 /* deinflection.json */; };
 		E3D1C7002F4DFDB8005FDA11 /* dictionary.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */; };
 		E3FBBF9B303F516D009664F4 /* SwiftDagre in Frameworks */ = {isa = PBXBuildFile; productRef = DA6ADE0022FC000040000002 /* SwiftDagre */; };
@@ -66,7 +66,7 @@
 		E3070AE82F4DFDB6005FD323 /* Kioku Reader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kioku Reader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AF52F4DFDB8005FD323 /* KiokuTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3070AFF2F4DFDB8005FD323 /* KiokuUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiokuUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		E32B0CDE2F57BC070020F5C2 /* data_manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = data_manifest.json; sourceTree = "<group>"; };
+		E32B0CDE2F57BC070020F5C2 /* data-manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = data-manifest.json; sourceTree = "<group>"; };
 		E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dictionary.sqlite; sourceTree = "<group>"; };
 		E32B0CE02F57BC070020F5C2 /* generate_db.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = generate_db.py; sourceTree = "<group>"; };
 		E32B0CE82F57BC070020F5C2 /* deinflection.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = deinflection.json; sourceTree = "<group>"; };
@@ -179,7 +179,7 @@
 		E32B0CE22F57BC070020F5C2 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				E32B0CDE2F57BC070020F5C2 /* data_manifest.json */,
+				E32B0CDE2F57BC070020F5C2 /* data-manifest.json */,
 				E32B0CE82F57BC070020F5C2 /* deinflection.json */,
 				E32B0CDF2F57BC070020F5C2 /* dictionary.sqlite */,
 				E32B0CE02F57BC070020F5C2 /* generate_db.py */,
@@ -388,7 +388,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E32B0CE32F57BC070020F5C2 /* data_manifest.json in Resources */,
+				E32B0CE32F57BC070020F5C2 /* data-manifest.json in Resources */,
 				E32B0CE72F57BC070020F5C2 /* deinflection.json in Resources */,
 				Z1NN1A1012FB0000200000001 /* handwriting-ja.model in Resources */,
 				F5MECAB032FA0000100000002 /* MeCab in Resources */,
