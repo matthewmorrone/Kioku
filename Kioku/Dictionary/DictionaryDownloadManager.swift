@@ -41,8 +41,8 @@ final class DictionaryDownloadManager {
     // whatever tag is pinned here if the local Resources/dictionary.sqlite doesn't hash-match
     // it — so editing dictionary.sqlite locally without bumping this pin first gets silently
     // reverted on the very next build.
-    nonisolated static let releaseTag = "dictionary-v4"
-    nonisolated static let expectedSHA256 = "f8b5b5098821aa5401971fcb08fdb9f9b725d60ff9a3416ae817c81247c5217d"
+    nonisolated static let releaseTag = "dictionary-v5"
+    nonisolated static let expectedSHA256 = "7488ef69e6c04d5741323d8bd3128e2c3e34c0b3564dc7820561f109facf5ea2"
 
     // Public GitHub Release asset URL — matthewmorrone/Kioku is a public repo, so this needs no
     // authentication to fetch, same as the pinned huggingface.co URL WhisperModelManager uses.
@@ -71,6 +71,15 @@ final class DictionaryDownloadManager {
     // forever, since the app would never re-check them once installed once.
     nonisolated static var installedReleaseMarkerURL: URL {
         directory.appendingPathComponent("dictionary.sqlite.release")
+    }
+
+    // The release tag actually on disk right now, regardless of whether it matches the app's
+    // current `releaseTag` pin — nil when nothing has ever been installed. Distinct from
+    // `isInstalled` (which requires an exact match to the current pin): this is for surfacing
+    // "what version do I actually have" in the About screen, including the stale-but-present
+    // case where a device is mid-way through updating to a newer pinned release.
+    nonisolated static var installedReleaseTag: String? {
+        try? String(contentsOf: installedReleaseMarkerURL, encoding: .utf8)
     }
 
     // Static existence check for call sites without a DictionaryDownloadManager instance

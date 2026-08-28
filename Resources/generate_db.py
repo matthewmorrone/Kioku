@@ -28,6 +28,23 @@ OUTPUT_DB = RESOURCES_DIR / "dictionary.sqlite"
 # same "no rank" sentinel and ranking disagrees if they drift apart.
 UNRANKED_RANK_SENTINEL = 9999999
 
+# Added to a reading's best_rank (the surface_readings ORDER BY sort key ONLY — never the
+# jpdb_rank column that's actually displayed) when JMdict's own re_inf tags mark it as not the
+# reading to show by default: "ok" (outdated/obsolete kana usage), "ik" (irregular kana usage),
+# "sk" (search-only kana form — explicitly meant to never surface as a real reading). Without
+# this, a reading wordfreq scores highly for corpus-noise reasons (short strings are prone to
+# false substring/tokenization matches) can still win over the actual standard reading even
+# though JMdict is directly telling us it's obsolete — e.g. 涙's obsolete なだ/なみた/なんだ
+# (all "ok") outranking standard なみだ, or お母さん defaulting to the "sk" variant おかーさん
+# instead of おかあさん. Large enough to always lose to every non-deprioritized reading,
+# including totally unranked ones (UNRANKED_RANK_SENTINEL) — a JMdict-flagged-obsolete reading
+# should never win a tie against a normal unranked reading of the same surface. Deliberately
+# excludes "gikun" (a special kanji/reading association, not an obsolescence marker — many
+# standard readings, like 一日→ついたち, are gikun) and "uK" (about kanji-vs-kana orthography
+# preference, not the reading's own validity).
+DEPRIORITIZED_READING_TAGS = ("ok", "ik", "sk")
+DEPRIORITIZED_READING_RANK_PENALTY = 50_000_000
+
 
 def sha256_of_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -1629,6 +1646,12 @@ def build_database():
 # re-run against an already-built database.
 def materialize_surface_readings(conn):
     print("Materializing surface_readings lookup table...")
+    # Exact-tag membership test against a comma-joined kana_forms.info string, wrapped in
+    # delimiters so e.g. "ok" can't spuriously match inside a longer tag name.
+    deprioritized_predicate = " OR ".join(
+        f"(',' || COALESCE(kf.info, '') || ',') LIKE '%,{tag},%'"
+        for tag in DEPRIORITIZED_READING_TAGS
+    )
     conn.executescript(
         f"""
         DROP TABLE IF EXISTS surface_readings;
@@ -1676,7 +1699,9 @@ def materialize_surface_readings(conn):
             -- ににん and 一人 to いちにん — both readings shared one borrowed rank, so the tie broke
             -- alphabetically by reading (に before ふ, い before ひ) instead of by actual frequency.
             SELECT kj.text AS surface, kf.text AS reading,
-                   COALESCE(kkl.jpdb_rank, er.rank, {UNRANKED_RANK_SENTINEL}) AS best_rank,
+                   COALESCE(kkl.jpdb_rank, er.rank, {UNRANKED_RANK_SENTINEL})
+                       + CASE WHEN {deprioritized_predicate} THEN {DEPRIORITIZED_READING_RANK_PENALTY} ELSE 0 END
+                       AS best_rank,
                    COALESCE(kkl.jpdb_rank, er.rank) AS jpdb_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf
             FROM kanji kj
@@ -1695,7 +1720,9 @@ def materialize_surface_readings(conn):
             -- so common kana spellings carry frequency instead of rendering "–" in the lookup/split
             -- editor; wordfreq_zipf is still carried from the kana form itself.
             SELECT kf.text AS surface, kf.text AS reading,
-                   COALESCE(er.rank, {UNRANKED_RANK_SENTINEL}) AS best_rank,
+                   COALESCE(er.rank, {UNRANKED_RANK_SENTINEL})
+                       + CASE WHEN {deprioritized_predicate} THEN {DEPRIORITIZED_READING_RANK_PENALTY} ELSE 0 END
+                       AS best_rank,
                    er.rank AS jpdb_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf
             FROM kana_forms kf
