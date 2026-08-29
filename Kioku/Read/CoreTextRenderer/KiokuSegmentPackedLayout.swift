@@ -153,7 +153,14 @@ enum KiokuSegmentPackedLayout {
             // would overlap by that amount.
             let segAttr = inputs.attributedString.attributedSubstring(from: segRange)
             let segLine = CTLineCreateWithAttributedString(segAttr as CFAttributedString)
-            let headwordWidth = ceil(CGFloat(CTLineGetTypographicBounds(segLine, nil, nil, nil)))
+            // Kept unrounded: ceiling this per-segment (as every prior version did) rounds
+            // up to a whole point on EVERY segment in the line, and those roundups stack
+            // as cursorX advances — a 4-segment line could drift ~4pt wider than the
+            // single-CTLine (ruby-spacing-off) rendering of the same text with zero actual
+            // overhang anywhere. Exact widths sum correctly; rounding (if ever needed for
+            // pixel snapping) happens once, on the final line/content width below, not once
+            // per segment.
+            let headwordWidth = CGFloat(CTLineGetTypographicBounds(segLine, nil, nil, nil))
             // Compute per-kanji-run ruby overhang on each side of the segment. For a
             // segment like 美しい with ruby うつく on just 美 (the first kanji), ruby
             // extends to the LEFT past 美's center by (rubyWidth − kanjiWidth)/2 — and
@@ -209,10 +216,13 @@ enum KiokuSegmentPackedLayout {
         let totalHeight = lines.last.map { $0.originY + $0.height } ?? lineOriginY
         // contentSize.width is the right edge of the widest line — which we haven't
         // tracked per-line. For the packer, the right edge of any placement's footprint
-        // is the relevant bound.
-        let maxRight = placements.reduce(inputs.leftInset) { acc, p in
+        // is the relevant bound. Placements themselves stay exact (unrounded) all the way
+        // through — see headwordWidth/rubyOverhang above — so this is the ONE place the
+        // packer rounds at all, and it only affects the reported content size, not any
+        // placement's originX/footprintWidth.
+        let maxRight = ceil(placements.reduce(inputs.leftInset) { acc, p in
             max(acc, p.originX + p.footprintWidth)
-        }
+        })
         return Result(
             placements: placements,
             lines: lines,
@@ -259,7 +269,10 @@ enum KiokuSegmentPackedLayout {
             let xStart = CGFloat(CTLineGetOffsetForStringIndex(segLine, localStart, nil))
             let xEnd = CGFloat(CTLineGetOffsetForStringIndex(segLine, localEnd, nil))
             let kanjiCenter = (xStart + xEnd) / 2
-            let rubyW = ceil(measureWidth(of: reading, font: furiganaFont))
+            // Unrounded, same reasoning as headwordWidth above — ceiling per ruby-run
+            // would compound across every kanji-run in the segment (and every segment in
+            // the line) even when no run actually overhangs.
+            let rubyW = measureWidth(of: reading, font: furiganaFont)
             widestRuby = max(widestRuby, rubyW)
             let rubyLeftInSegment = kanjiCenter - rubyW / 2
             let rubyRightInSegment = kanjiCenter + rubyW / 2
@@ -268,6 +281,6 @@ enum KiokuSegmentPackedLayout {
             leftMax = max(leftMax, max(0, -rubyLeftInSegment))
             rightMax = max(rightMax, max(0, rubyRightInSegment - headwordWidth))
         }
-        return (left: ceil(leftMax), right: ceil(rightMax), widestRubyWidth: widestRuby)
+        return (left: leftMax, right: rightMax, widestRubyWidth: widestRuby)
     }
 }
