@@ -47,6 +47,9 @@ final class SongBreakdownStore: ObservableObject {
     // long-timeout session per generate call. Injectable for tests.
     private let service: SongBreakdownService
 
+    // Backs startMergedGeneration(forNote:notesStore:providerLabel:) — see that method.
+    private let mergedService = MergedCorrectionBreakdownService()
+
     private let directoryURL: URL
     private let fileManager: FileManager
     private var knownNoteIDsOnDisk: Set<UUID> = []
@@ -204,6 +207,67 @@ final class SongBreakdownStore: ObservableObject {
                 let breakdown = try await self.service.generate(noteID: id, lyrics: lyrics)
                 try Task.checkCancellation()
                 self.setBreakdown(breakdown)
+                self.generationStateByNoteID.removeValue(forKey: id)
+            } catch is CancellationError {
+                self.generationStateByNoteID.removeValue(forKey: id)
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                self.generationStateByNoteID[id] = .failed(message: message)
+            }
+            self.generationTasksByNoteID.removeValue(forKey: id)
+        }
+        generationTasksByNoteID[id] = task
+    }
+
+    // Opt-in alternative to startGeneration: runs ONE merged LLM call (see
+    // MergedCorrectionBreakdownService) that returns both a breakdown and a corrected
+    // segmentation, then lands each in its existing home — setBreakdown() here for the
+    // breakdown, and NotesStore.scheduleReadEditorPersist for the segmentation (the same
+    // headless apply LLMCorrectionQueue uses for notes with no open ReadView). Reuses the
+    // same generationStateByNoteID / generationTasksByNoteID bookkeeping as startGeneration
+    // so the existing loading/error UI works unchanged for this path. `notesStore` is passed
+    // in per-call rather than injected at init since the store already exists app-wide and
+    // this is the only method that needs it — keeping it out of the initializer avoids
+    // touching every other call site (tests included) that constructs a SongBreakdownStore.
+    func startMergedGeneration(forNote note: Note, notesStore: NotesStore, providerLabel: String) {
+        let id = note.id
+        if generationTasksByNoteID[id] != nil { return }
+        generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel)
+        let task = Task { @MainActor [weak self, weak notesStore] in
+            guard let self else { return }
+            do {
+                let result = try await self.mergedService.generate(noteContent: note.content)
+                try Task.checkCancellation()
+
+                let breakdown = SongBreakdown(
+                    noteID: id,
+                    sourceTextHash: SongBreakdownService.sha256(note.content),
+                    generatedAt: Date(),
+                    provider: result.provider,
+                    lines: result.breakdownLines
+                )
+                self.setBreakdown(breakdown)
+
+                if let notesStore {
+                    if let ranges = LLMCorrectionApplier.segmentRanges(
+                        from: result.correction,
+                        originalText: note.content
+                    ) {
+                        _ = notesStore.scheduleReadEditorPersist(
+                            id: id,
+                            title: note.title,
+                            content: note.content,
+                            segments: ranges,
+                            segmentsAreUserEdited: false
+                        )
+                    } else {
+                        // The breakdown still succeeded and is already saved above — only the
+                        // segmentation half is dropped, matching LLMCorrectionQueue's handling
+                        // of an unreconcilable response for a single-purpose correction.
+                        AppLog.error(.llmCorrection, "mergedGeneration: segmentation could not be reconciled with note \(id) content — breakdown saved, segmentation skipped")
+                    }
+                }
                 self.generationStateByNoteID.removeValue(forKey: id)
             } catch is CancellationError {
                 self.generationStateByNoteID.removeValue(forKey: id)

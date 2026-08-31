@@ -27,6 +27,10 @@ struct SongStepperView: View {
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     // Drives the lookup sheet's save star for tapped words (globally injected at the app root).
     @EnvironmentObject private var wordsStore: WordsStore
+    // Only needed for the merged generate+correct path (see startMergedGeneration), which
+    // persists the corrected segmentation directly to the note. The plain breakdown path never
+    // touches notesStore.
+    @EnvironmentObject private var notesStore: NotesStore
     // Powers the lookup sheet's save button long-press learned-state menu.
     // Per-line expansion state: whether a line's word/grammar explanations are visible.
     // Furigana on the Japanese row is independent of this (see ensureFuriganaCaches / the
@@ -34,6 +38,11 @@ struct SongStepperView: View {
     // regenerate / breakdown rebuilds.
     @State private var expandedByLineIndex: Set<Int> = []
     @State private var isRegenerateConfirmationPresented: Bool = false
+    // Drives the confirmation for the merged generate+correct path (see
+    // startMergedGeneration) — kept separate from isRegenerateConfirmationPresented so the two
+    // dialogs' distinct messages (and destinations: startGeneration vs startMergedGeneration)
+    // can't cross-wire.
+    @State private var isMergedRegenerateConfirmationPresented: Bool = false
     @State private var isListenSheetPresented: Bool = false
     @State private var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
     // The note's persisted per-note reading overrides (Note.segments), restored once per
@@ -165,8 +174,13 @@ struct SongStepperView: View {
                     .accessibilityLabel(areAllLinesExpanded(in: breakdown) ? "Hide all explanations" : "Show all explanations")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isRegenerateConfirmationPresented = true
+                    Menu {
+                        Button("Regenerate") {
+                            isRegenerateConfirmationPresented = true
+                        }
+                        Button("Regenerate + Fix Segmentation (Merged)") {
+                            isMergedRegenerateConfirmationPresented = true
+                        }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
@@ -200,6 +214,18 @@ struct SongStepperView: View {
         } message: {
             // Honest framing: full-song breakdowns are minutes-long and bill per token.
             Text("Sends the full lyrics to the configured LLM provider. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
+        }
+        .confirmationDialog(
+            "Regenerate with merged segmentation correction?",
+            isPresented: $isMergedRegenerateConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Regenerate + Fix Segmentation", role: .destructive) {
+                regenerateMerged()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Sends the full lyrics to the configured LLM provider in one combined call that both fixes this note's segmentation/readings and regenerates the breakdown. Not supported on Apple Intelligence. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
         }
         .preference(key: CardsStudySessionActivePreferenceKey.self, value: true)
         .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: true)
@@ -337,6 +363,14 @@ struct SongStepperView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            Button {
+                startMergedGeneration()
+            } label: {
+                Label("Generate breakdown + Fix Segmentation", systemImage: "wand.and.stars.inverse")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
             .controlSize(.large)
         }
         .padding(.horizontal, 32)
@@ -649,6 +683,25 @@ struct SongStepperView: View {
     private func regenerate() {
         songBreakdownStore.clearBreakdown(forNoteID: note.id)
         startGeneration()
+    }
+
+    // Merged alternative to startGeneration(): one LLM call returns both the breakdown and a
+    // corrected segmentation, applied via SongBreakdownStore.startMergedGeneration. Shares the
+    // same store-owned running/failed state as the plain path, so the existing loadingView /
+    // errorView render unchanged regardless of which path is in flight.
+    private func startMergedGeneration() {
+        songBreakdownStore.clearGenerationError(forNoteID: note.id)
+        songBreakdownStore.startMergedGeneration(
+            forNote: note,
+            notesStore: notesStore,
+            providerLabel: SongBreakdownStore.loadingProviderLabel()
+        )
+    }
+
+    // Clears the cached breakdown and triggers a fresh merged generation.
+    private func regenerateMerged() {
+        songBreakdownStore.clearBreakdown(forNoteID: note.id)
+        startMergedGeneration()
     }
 
     // Compares the cached breakdown's hash against the current note text hash.
