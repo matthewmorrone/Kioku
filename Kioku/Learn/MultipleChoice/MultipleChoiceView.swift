@@ -172,19 +172,6 @@ struct MultipleChoiceView: View {
                     optionButton(option, correct: question.correct)
                 }
             }
-
-            // Every other activity offers a way past a question you can't answer; without this the
-            // only exit here is a deliberate wrong guess, which reads as a worse answer than
-            // admitting you don't know. Kept in the layout once answered — hidden rather than
-            // removed — so the prompt and options don't slide down into the space it vacated.
-            Button { reveal(question: question) } label: {
-                Label("Show Answer", systemImage: "eye")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .opacity(selected == nil ? 1 : 0)
-            .allowsHitTesting(selected == nil)
-            .accessibilityHidden(selected != nil)
         }
     }
 
@@ -251,7 +238,9 @@ struct MultipleChoiceView: View {
         return nil
     }
 
-    // Next button (after answering) advances to the following question or the summary.
+    // The one bottom action button: "Show Answer" before answering, "Next"/"Finish" after — the
+    // same slot in both states (not two separately-positioned views) so nothing on screen shifts
+    // the moment the question is answered.
     @ViewBuilder
     private var nextControl: some View {
         if selected != nil {
@@ -262,8 +251,14 @@ struct MultipleChoiceView: View {
             }
             .buttonStyle(.borderedProminent)
         } else {
-            // Reserve the space so options don't jump when the Next button appears.
-            Color.clear.frame(height: 44)
+            // Every other activity offers a way past a question you can't answer; without this the
+            // only exit here is a deliberate wrong guess, which reads as a worse answer than
+            // admitting you don't know.
+            Button { reveal(question: questions[index]) } label: {
+                Label("Show Answer", systemImage: "eye")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
         }
     }
 
