@@ -24,10 +24,10 @@ nonisolated enum WordFormResolver {
         chosenReading: String? = nil
     ) -> (kanji: String?, kana: String?) {
         // Only ever quiz a kanji form a learner would actually encounter (see
-        // DictionaryEntry.firstEverydayKanji) — never the raw headword, which can be a rare/
-        // outdated/irregular/search-only spelling (e.g. 揺蕩う for たゆたう, usually written in
-        // kana). When every kanji form is non-everyday this resolves to nil, same as a word with
-        // no kanji form at all, rather than falling back to the spelling that caused the problem.
+        // DictionaryEntry.firstEverydayKanji) — never the raw headword, which can be tagged
+        // rare/outdated/irregular/search-only (rK/oK/iK/sK). When every kanji form is non-everyday
+        // this resolves to nil, same as a word with no kanji form at all, rather than falling back
+        // to a spelling the learner could never plausibly have seen.
         let kanji = entry.firstEverydayKanji?.text
         // A reading the user pinned with the detail view's switcher is an explicit choice, so it
         // outranks the sense-derived preferred kana — a card studied for 涙/なだ should be quizzed

@@ -22,11 +22,24 @@ final class DictionaryStoreDistractorPoolTests: XCTestCase {
         }
     }
 
-    // たゆたう's only kanji form (揺蕩う) is tagged rK — the exact word this whole fix started
-    // from (see WordFormResolverTests). It must never surface as a distractor pool's kanji form,
-    // even with a generous limit, since a learner could never plausibly recognize it.
+    // No row's kanji form is tagged rare/outdated/irregular/search-only (rK/oK/iK/sK) — verified
+    // against the real dictionary by re-looking up each surfaced kanji spelling and checking its
+    // own JMdict info tag with the same rule `DictionaryEntry.firstEverydayKanji` uses, rather than
+    // asserting against one hardcoded example: JMdict's rK/oK/iK/sK tagging is sparse enough that a
+    // word which merely *reads* as rare isn't reliably tagged as such in the data.
     func testDistractorPoolNeverSurfacesNonEverydayKanji() throws {
-        let rows = try store.fetchDistractorPool(limit: 3000)
-        XCTAssertFalse(rows.contains { $0.kanji == "揺蕩う" })
+        let rows = try store.fetchDistractorPool(limit: 300)
+        XCTAssertFalse(rows.isEmpty)
+
+        for row in rows {
+            guard let kanjiText = row.kanji else { continue }
+            let entries = try store.lookup(surface: kanjiText, mode: .kanjiAndKana)
+            let matchingForm = entries.compactMap { $0.kanjiForms.first { $0.text == kanjiText } }.first
+            let info = matchingForm?.info
+            XCTAssertFalse(
+                DictionaryEntry.kanjiFormIsNonEveryday(info: info),
+                "\(kanjiText) is tagged non-everyday (\(info ?? "nil")) but still surfaced in the distractor pool"
+            )
+        }
     }
 }
