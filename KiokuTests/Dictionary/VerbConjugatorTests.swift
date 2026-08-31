@@ -125,6 +125,90 @@ final class VerbConjugatorTests: XCTestCase {
         XCTAssertEqual(VerbConjugator.detectVerbClass(fromJMDictPosTags: ["vk"]), .kuru)
     }
 
+    // MARK: Irregulars
+
+    func test_kureru_imperative() {
+        // くれる's imperative is the bare stem くれ, not the regular ichidan くれろ
+        let groups = VerbConjugator.conjugationGroups(for: "くれる", verbClass: .ichidan)
+        let imperative = groups.first(where: { $0.name == "Imperative" })!
+        XCTAssertEqual(imperative.rows[0].surface, "くれ")
+    }
+
+    func test_zuru_usesJiStem() {
+        // -ずる verbs (vz) conjugate like their -じる twin everywhere except the dictionary form
+        let groups = VerbConjugator.conjugationGroups(for: "論ずる", verbClass: .ichidan)
+        let plain = groups.first(where: { $0.name == "Plain" })!
+        XCTAssertEqual(plain.rows[0].surface, "論ずる")
+        XCTAssertEqual(plain.rows[1].surface, "論じない")
+        XCTAssertEqual(plain.rows[2].surface, "論じた")
+        let te = groups.first(where: { $0.name == "Te-form" })!
+        XCTAssertEqual(te.rows[0].surface, "論じて")
+    }
+
+    func test_aru_suppletiveNegative() {
+        // ある has no negative conjugation of its own — plain negative is ない, not あらない
+        let groups = VerbConjugator.conjugationGroups(for: "ある", verbClass: .godan)
+        let plain = groups.first(where: { $0.name == "Plain" })!
+        XCTAssertEqual(plain.rows[1].surface, "ない")
+        XCTAssertEqual(plain.rows[3].surface, "なかった")
+        let conditional = groups.first(where: { $0.name == "Conditional" })!
+        XCTAssertEqual(conditional.rows[1].surface, "なければ")
+        // Past and polite forms stay regular
+        XCTAssertEqual(plain.rows[2].surface, "あった")
+        let polite = groups.first(where: { $0.name == "Polite" })!
+        XCTAssertEqual(polite.rows[1].surface, "ありません")
+    }
+
+    func test_honorificGodanAru_kudasaru() {
+        // くださる takes an い-stem for ます/imperative, not the regular り/れ columns
+        let groups = VerbConjugator.conjugationGroups(for: "くださる", verbClass: .godan)
+        let polite = groups.first(where: { $0.name == "Polite" })!
+        XCTAssertEqual(polite.rows[0].surface, "くださいます")
+        let imperative = groups.first(where: { $0.name == "Imperative" })!
+        XCTAssertEqual(imperative.rows[0].surface, "ください")
+        // Negative and te-form stay regular
+        let plain = groups.first(where: { $0.name == "Plain" })!
+        XCTAssertEqual(plain.rows[1].surface, "くださらない")
+        let te = groups.first(where: { $0.name == "Te-form" })!
+        XCTAssertEqual(te.rows[0].surface, "くださって")
+    }
+
+    func test_honorificGodanAru_irassharu() {
+        let groups = VerbConjugator.conjugationGroups(for: "いらっしゃる", verbClass: .godan)
+        let polite = groups.first(where: { $0.name == "Polite" })!
+        XCTAssertEqual(polite.rows[0].surface, "いらっしゃいます")
+        let imperative = groups.first(where: { $0.name == "Imperative" })!
+        XCTAssertEqual(imperative.rows[0].surface, "いらっしゃい")
+    }
+
+    func test_godan_yuku_teForm() {
+        // ゆく/逝く share 行く's irregularity even though they don't end in the kanji 行
+        let groups = VerbConjugator.conjugationGroups(for: "逝く", verbClass: .godan)
+        let te = groups.first(where: { $0.name == "Te-form" })!
+        XCTAssertEqual(te.rows[0].surface, "逝って")
+    }
+
+    func test_godan_tou_teForm() {
+        // 問う keeps the pre-onbin うて／うた instead of って／った
+        let groups = VerbConjugator.conjugationGroups(for: "問う", verbClass: .godan)
+        let te = groups.first(where: { $0.name == "Te-form" })!
+        XCTAssertEqual(te.rows[0].surface, "問うて")
+        let plain = groups.first(where: { $0.name == "Plain" })!
+        XCTAssertEqual(plain.rows[2].surface, "問うた")
+    }
+
+    func test_detectVerbClass_kureruSpecialClass() {
+        XCTAssertEqual(VerbConjugator.detectVerbClass(fromJMDictPosTags: ["v1-s"]), .ichidan)
+    }
+
+    func test_detectVerbClass_zuru() {
+        XCTAssertEqual(VerbConjugator.detectVerbClass(fromJMDictPosTags: ["vz"]), .ichidan)
+    }
+
+    func test_detectVerbClass_godanAru() {
+        XCTAssertEqual(VerbConjugator.detectVerbClass(fromJMDictPosTags: ["v5aru"]), .godan)
+    }
+
     // MARK: Key forms
 
     func test_keyForms_ichidan() {

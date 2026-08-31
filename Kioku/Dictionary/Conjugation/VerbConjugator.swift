@@ -18,12 +18,16 @@ enum GodanRow { case a, i, e, o }
 struct VerbConjugator {
 
     // Detects verb class from JMdict POS tag strings (e.g. "v1", "v5s", "vk", "vs-i").
+    // "v1-s" (くれる class) is matched by prefix, not exact match, so it lands in .ichidan
+    // alongside plain "v1" — the imperative irregularity is handled inside ichidanGroups.
+    // "vz" (-ずる verbs, e.g. 論ずる) also maps to .ichidan since they conjugate like the
+    // corresponding -じる verb everywhere except the dictionary form.
     // Returns nil when no verb POS tag is found.
     static func detectVerbClass(fromJMDictPosTags tags: [String]) -> VerbClass? {
         let normalized = tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
         if normalized.contains("vk") { return .kuru }
         if normalized.contains(where: { $0.hasPrefix("vs") }) { return .suru }
-        if normalized.contains("v1") { return .ichidan }
+        if normalized.contains(where: { $0.hasPrefix("v1") }) || normalized.contains("vz") { return .ichidan }
         if normalized.contains(where: { $0.hasPrefix("v5") }) { return .godan }
         return nil
     }
@@ -131,9 +135,13 @@ private extension VerbConjugator {
     // MARK: Ichidan
 
     // Produces the full paradigm for ichidan (Group II / ru-verb) verbs.
+    // -ずる verbs (論ずる, 命ずる, ...) inflect exactly like their -じる twin everywhere except
+    // the dictionary form itself, so their stem is built off "じ" rather than dropping just る.
+    // くれる (and 呉れる/てくれる compounds) take an irregular imperative — see isKureruClass.
     static func ichidanGroups(_ base: String) -> [ConjugationGroup] {
         guard base.hasSuffix("る"), base.count >= 2 else { return [] }
-        let stem = String(base.dropLast())
+        let stem = base.hasSuffix("ずる") ? String(base.dropLast(2)) + "じ" : String(base.dropLast())
+        let imperative = isKureruClass(base) ? stem : stem + "ろ"
 
         return [
             fullGroup(
@@ -215,7 +223,7 @@ private extension VerbConjugator {
                 ConjugationRow(label: "Classical",     surface: stem + "ぬ／ん"),
             ]),
             ConjugationGroup(name: "Imperative", rows: [
-                ConjugationRow(label: "Imperative", surface: stem + "ろ"),
+                ConjugationRow(label: "Imperative", surface: imperative),
                 ConjugationRow(label: "Negative",   surface: base + "な"),
             ]),
             ConjugationGroup(name: "Noun form", rows: [
@@ -224,9 +232,22 @@ private extension VerbConjugator {
         ]
     }
 
+    // くれる's imperative is the bare stem くれ, not the regular ichidan くれろ — also covers
+    // 呉れる and auxiliary use (Vて + くれる).
+    static func isKureruClass(_ base: String) -> Bool {
+        base.hasSuffix("くれる") || base.hasSuffix("呉れる")
+    }
+
     // MARK: Godan
 
     // Produces the full paradigm for godan (Group I / u-verb) verbs.
+    // Two irregularities are folded in here rather than as separate VerbClass cases, matching
+    // the existing 行く-in-godanTeTa style:
+    //  - ある/在る/有る is suppletive in the negative: あらない isn't a word, so its plain
+    //    negative-family forms use the separate lexeme ない instead (see isAruIrregular /
+    //    negBase below).
+    //  - いらっしゃる・おっしゃる・くださる・なさる・ござる (JMdict "v5aru") take an い-stem for
+    //    ます/たい/noun-form and an い imperative, not the regular り/れ columns.
     static func godanGroups(_ base: String) -> [ConjugationGroup] {
         guard let last = base.last else { return [] }
         let lastKana = String(last)
@@ -243,20 +264,29 @@ private extension VerbConjugator {
         let te = teTa.te
         let ta = teTa.ta
 
+        // ある's short-form negative is suppletive (ない, not あらない); negBase is the prefix
+        // those forms build on, so it collapses to "" instead of stem+aStem for ある alone.
+        let negBase = isAruIrregular(base) ? "" : stem + aStem
+
+        // い-stem/imperative override for the honorific -aru verbs (v5aru); regular godan verbs
+        // keep their normal り/れ columns.
+        let honorificStem = isHonorificGodanAru(base) ? "い" : iStem
+        let imperative = isHonorificGodanAru(base) ? stem + "い" : stem + eStem
+
         return [
             fullGroup(
                 name: "Plain",
                 form: base,
-                negative: stem + aStem + "ない",
+                negative: negBase + "ない",
                 past: ta,
-                negativePast: stem + aStem + "なかった"
+                negativePast: negBase + "なかった"
             ),
             fullGroup(
                 name: "Polite",
-                form: stem + iStem + "ます",
-                negative: stem + iStem + "ません",
-                past: stem + iStem + "ました",
-                negativePast: stem + iStem + "ませんでした"
+                form: stem + honorificStem + "ます",
+                negative: stem + honorificStem + "ません",
+                past: stem + honorificStem + "ました",
+                negativePast: stem + honorificStem + "ませんでした"
             ),
             fullGroup(
                 name: "Progressive",
@@ -267,17 +297,17 @@ private extension VerbConjugator {
             ),
             fullGroup(
                 name: "Desire",
-                form: stem + iStem + "たい",
-                negative: stem + iStem + "たくない",
-                past: stem + iStem + "たかった",
-                negativePast: stem + iStem + "たくなかった"
+                form: stem + honorificStem + "たい",
+                negative: stem + honorificStem + "たくない",
+                past: stem + honorificStem + "たかった",
+                negativePast: stem + honorificStem + "たくなかった"
             ),
             fullGroup(
                 name: "Volitional",
                 form: stem + oStem + "う",
                 negative: base + "まい",
                 past: ta + "ろう",
-                negativePast: stem + aStem + "なかったろう"
+                negativePast: negBase + "なかったろう"
             ),
             fullGroup(
                 name: "Potential",
@@ -309,27 +339,40 @@ private extension VerbConjugator {
             ),
             ConjugationGroup(name: "Conditional", rows: [
                 ConjugationRow(label: "Conditional",   surface: stem + eStem + "ば"),
-                ConjugationRow(label: "Negative",      surface: stem + aStem + "なければ"),
+                ConjugationRow(label: "Negative",      surface: negBase + "なければ"),
                 ConjugationRow(label: "Past",          surface: ta + "ら"),
-                ConjugationRow(label: "Negative past", surface: stem + aStem + "なかったら"),
+                ConjugationRow(label: "Negative past", surface: negBase + "なかったら"),
             ]),
             ConjugationGroup(name: "Te-form", rows: [
                 ConjugationRow(label: "Te-form",   surface: te),
                 ConjugationRow(label: "Tari-form", surface: ta + "り"),
             ]),
             ConjugationGroup(name: "Without doing", rows: [
-                ConjugationRow(label: "Without doing", surface: stem + aStem + "ないで"),
-                ConjugationRow(label: "Formal",        surface: stem + aStem + "ずに"),
-                ConjugationRow(label: "Classical",     surface: stem + aStem + "ぬ／ん"),
+                ConjugationRow(label: "Without doing", surface: negBase + "ないで"),
+                ConjugationRow(label: "Formal",        surface: negBase + "ずに"),
+                ConjugationRow(label: "Classical",     surface: negBase + "ぬ／ん"),
             ]),
             ConjugationGroup(name: "Imperative", rows: [
-                ConjugationRow(label: "Imperative", surface: stem + eStem),
+                ConjugationRow(label: "Imperative", surface: imperative),
                 ConjugationRow(label: "Negative",   surface: base + "な"),
             ]),
             ConjugationGroup(name: "Noun form", rows: [
-                ConjugationRow(label: "Noun form", surface: stem + iStem),
+                ConjugationRow(label: "Noun form", surface: stem + honorificStem),
             ]),
         ]
+    }
+
+    // ある/在る/有る is suppletive in the negative: あらない is not a word, so plain negation
+    // is expressed by the separate lexeme ない instead of a form derived from ある's own stem
+    // (JMdict tags this verb "v5r-i", "irregular ru-verb").
+    static func isAruIrregular(_ base: String) -> Bool {
+        base == "ある" || base == "在る" || base == "有る"
+    }
+
+    // The honorific/humble "v5aru" verbs use an い-row renyou stem and い imperative instead of
+    // the regular godan り/れ columns (いらっしゃいます, ください, not いらっしゃります/いらっしゃれ).
+    static func isHonorificGodanAru(_ base: String) -> Bool {
+        ["いらっしゃる", "おっしゃる", "くださる", "なさる", "ござる"].contains(where: { base.hasSuffix($0) })
     }
 
     // MARK: Suru
@@ -537,11 +580,19 @@ private extension VerbConjugator {
         }
     }
 
-    // Computes the te-form and ta-form for a godan verb, including the 行く irregularity.
+    // Computes the te-form and ta-form for a godan verb, including the 行く (v5k-s) and
+    // 問う (v5u-s) irregularities.
     static func godanTeTa(base: String, lastKana: String, stem: String) -> (te: String, ta: String) {
-        // 行く is irregular: te-form is って not いて
-        if base.hasSuffix("行く") || base.hasSuffix("いく") {
+        // 行く/いく/ゆく/逝く/往く (JMdict "v5k-s") are irregular: te-form is って not いて
+        let ikuSuffixes = ["行く", "いく", "ゆく", "逝く", "往く"]
+        if ikuSuffixes.contains(where: { base.hasSuffix($0) }) {
             return (stem + "って", stem + "った")
+        }
+        // 問う/請う/乞う/恋う (JMdict "v5u-s") keep the pre-onbin うて／うた instead of the
+        // regular って／った sound change that other う-ending godan verbs take.
+        let uSpecialSuffixes = ["問う", "請う", "乞う", "恋う"]
+        if uSpecialSuffixes.contains(where: { base.hasSuffix($0) }) {
+            return (stem + "うて", stem + "うた")
         }
         switch lastKana {
         case "う", "つ", "る": return (stem + "って", stem + "った")
