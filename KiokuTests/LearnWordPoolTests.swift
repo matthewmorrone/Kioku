@@ -38,4 +38,19 @@ final class LearnWordPoolTests: XCTestCase {
 
         XCTAssertTrue(item.hasKanjiForm)
     }
+
+    // The dictionary-wide distractor supplement (used to widen Multiple Choice's pool beyond the
+    // learner's own saved words) returns a non-empty, word-class-tagged pool for every field.
+    func testFetchDictionaryDistractorPoolReturnsCandidatesForEveryField() async throws {
+        let pool = await LearnWordPool.fetchDictionaryDistractorPool(dictionaryStore: store)
+
+        XCTAssertFalse(pool[.kanji]?.isEmpty ?? true)
+        XCTAssertFalse(pool[.kana]?.isEmpty ?? true)
+        XCTAssertFalse(pool[.meaning]?.isEmpty ?? true)
+    }
+
+    func testFetchDictionaryDistractorPoolReturnsEmptyWithoutAStore() async {
+        let pool = await LearnWordPool.fetchDictionaryDistractorPool(dictionaryStore: nil)
+        XCTAssertTrue(pool.isEmpty)
+    }
 }

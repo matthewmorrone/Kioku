@@ -99,9 +99,13 @@ nonisolated enum DistractorSelector {
         var score = candidate.wordClass == answer.wordClass ? 1 : 0
         guard exposedOkurigana > 0 else { return score }
         let shared = sharedTrailingKanaLength(candidate.text, answer.text)
-        if shared >= exposedOkurigana {
+        // A single shared trailing kana (す, る, う, …) is common to whole verb/adjective
+        // conjugation classes and tells you nothing about the specific word — scoring it as a
+        // near-match made the one candidate that happened to share the answer's last kana read as
+        // an obvious pick. Only two or more shared trailing kana counts as a real form match.
+        if shared >= max(exposedOkurigana, 2) {
             score += 4      // fully matches the form the prompt already reveals
-        } else if shared > 0 {
+        } else if shared >= 2 {
             score += 2      // partly matches — still better than an ending the prompt rules out
         }
         return score

@@ -108,6 +108,42 @@ final class DistractorSelectorTests: XCTestCase {
         XCTAssertEqual(chosen, ["to run"])
     }
 
+    // Regression: 話す exposes only its trailing す (single kana) as the prompt's kanji breaks the
+    // match one character earlier. A candidate sharing only that one kana must not outrank a
+    // same-class candidate sharing nothing — before this, any す-ending verb scored a near-match
+    // and stood out as the obvious pick without the learner knowing either word.
+    func testSingleSharedTrailingKanaTiesRatherThanWinning() {
+        let candidates = [
+            DistractorCandidate(text: "のむ", wordClass: .verb),   // listed first, shares nothing
+            DistractorCandidate(text: "だす", wordClass: .verb),   // listed second, shares only す
+        ]
+        let chosen = DistractorSelector.choose(
+            from: candidates,
+            answer: DistractorCandidate(text: "はなす", wordClass: .verb),
+            prompt: "話す",
+            count: 1
+        )
+        XCTAssertEqual(chosen, ["のむ"], "a single shared trailing kana no longer outranks a same-class candidate sharing none")
+    }
+
+    // A candidate sharing two or more trailing kana is still a real near-miss and should still
+    // lead — the fix only withdraws credit for a lone coincidental kana, not for genuine matches.
+    func testTwoOrMoreSharedTrailingKanaStillOutranksOne() {
+        let candidates = [
+            DistractorCandidate(text: "だす", wordClass: .verb),    // shares only trailing す
+            DistractorCandidate(text: "のむ", wordClass: .verb),    // shares nothing
+            DistractorCandidate(text: "みなす", wordClass: .verb),  // shares trailing なす (two kana)
+        ]
+        let chosen = DistractorSelector.choose(
+            from: candidates,
+            answer: DistractorCandidate(text: "はなす", wordClass: .verb),
+            prompt: "話す",
+            count: 3
+        )
+        XCTAssertEqual(chosen.first, "みなす", "the only candidate sharing two or more trailing kana leads")
+        XCTAssertEqual(Set(chosen), ["だす", "のむ", "みなす"], "all three still fill the option set")
+    }
+
     func testAsksForNoDistractorsReturnsNone() {
         let chosen = DistractorSelector.choose(
             from: [DistractorCandidate(text: "book", wordClass: .noun)],

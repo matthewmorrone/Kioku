@@ -366,8 +366,11 @@ struct MultipleChoiceView: View {
         let selection = options.directions
         let limit = options.count
         Task {
-            let items = await LearnWordPool.resolveItems(for: words, dictionaryStore: dictionaryStore)
-            let built = buildQuestions(from: items, selection: selection)
+            async let itemsTask = LearnWordPool.resolveItems(for: words, dictionaryStore: dictionaryStore)
+            async let dictionaryPoolTask = LearnWordPool.fetchDictionaryDistractorPool(dictionaryStore: dictionaryStore)
+            let items = await itemsTask
+            let dictionaryDistractorPool = await dictionaryPoolTask
+            let built = buildQuestions(from: items, selection: selection, dictionaryDistractorPool: dictionaryDistractorPool)
             // A positive limit caps the quiz; 0 (or blank field) means quiz everything.
             questions = limit > 0 ? Array(built.prefix(limit)) : built
             // Question 1 is refined here, before the quiz is shown, rather than by the background
@@ -502,17 +505,23 @@ struct MultipleChoiceView: View {
     }
 
     // Builds one question per item, drawing up to three distinct distractors from the other
-    // items' answer-side strings. Items the selection can't ask at all, whose prompt and answer
-    // would read identically, or whose answer side has no distinct distractors are dropped. The
-    // final question list is shuffled.
-    private func buildQuestions(from items: [StudyItem], selection: DirectionSelection) -> [MultipleChoiceQuestion] {
+    // items' answer-side strings plus the dictionary-wide supplement. Items the selection can't
+    // ask at all, whose prompt and answer would read identically, or whose answer side has no
+    // distinct distractors are dropped. The final question list is shuffled.
+    private func buildQuestions(
+        from items: [StudyItem],
+        selection: DirectionSelection,
+        dictionaryDistractorPool: [StudyField: [DistractorCandidate]]
+    ) -> [MultipleChoiceQuestion] {
         // Per-field answer pools so distractor selection stays O(1) per question. Each candidate
         // carries its owner's word class, which is what lets the selector keep an option set from
-        // being three nouns and the verb that must therefore be the answer.
+        // being three nouns and the verb that must therefore be the answer. The learner's own
+        // saved words lead; the dictionary-wide pool only fills in behind them (and never
+        // reintroduces a spelling already offered by a saved word).
         let fieldPools: [StudyField: [DistractorCandidate]] = [
-            .kanji: candidates(from: items, field: .kanji),
-            .kana: candidates(from: items, field: .kana),
-            .meaning: candidates(from: items, field: .meaning),
+            .kanji: merged(candidates(from: items, field: .kanji), dictionaryDistractorPool[.kanji] ?? []),
+            .kana: merged(candidates(from: items, field: .kana), dictionaryDistractorPool[.kana] ?? []),
+            .meaning: merged(candidates(from: items, field: .meaning), dictionaryDistractorPool[.meaning] ?? []),
         ]
 
         var result: [MultipleChoiceQuestion] = []
@@ -539,14 +548,19 @@ struct MultipleChoiceView: View {
             guard distractorPool.isEmpty == false else { continue }
 
             // Shuffled first so the selector's ties break randomly; it then reorders by how well
-            // each candidate imitates the answer's word class and okurigana.
+            // each candidate imitates the answer's word class and okurigana. Ranked once for up to
+            // `refinementCandidateCount` candidates — the on-screen options take the top
+            // `optionCount - 1` of that ranking, and the AI refinement pass gets the same ranked
+            // shortlist (rather than an unranked random slice, which could hand the model options
+            // no better than what the heuristic already picked).
             distractorPool.shuffle()
-            let distractors = DistractorSelector.choose(
+            let ranked = DistractorSelector.choose(
                 from: distractorPool,
                 answer: DistractorCandidate(text: correct, wordClass: item.wordClass),
                 prompt: prompt,
-                count: optionCount - 1
+                count: Self.refinementCandidateCount
             )
+            let distractors = Array(ranked.prefix(optionCount - 1))
 
             var options = distractors + [correct]
             options.shuffle()
@@ -559,7 +573,7 @@ struct MultipleChoiceView: View {
                 hasKanjiForm: item.hasKanjiForm,
                 answerField: fields.answer,
                 acceptedAnswers: fields.answer == .meaning ? item.glosses : [correct],
-                candidatePool: Array(distractorPool.prefix(Self.refinementCandidateCount)).map { $0.text }
+                candidatePool: ranked
             ))
         }
         result.shuffle()
@@ -576,6 +590,19 @@ struct MultipleChoiceView: View {
             let text = item.value(for: field)
             guard seen.insert(text).inserted else { continue }
             result.append(DistractorCandidate(text: text, wordClass: item.wordClass))
+        }
+        return result
+    }
+
+    // Combines two candidate lists, keeping `primary`'s entries over `supplement`'s wherever both
+    // offer the same text — a saved word's own word-class read is more precise than the bulk
+    // dictionary pool's (computed from every sense rather than the ones actually studied).
+    private func merged(_ primary: [DistractorCandidate], _ supplement: [DistractorCandidate]) -> [DistractorCandidate] {
+        var seen: Set<String> = []
+        var result: [DistractorCandidate] = []
+        for candidate in primary + supplement {
+            guard seen.insert(candidate.text).inserted else { continue }
+            result.append(candidate)
         }
         return result
     }
