@@ -360,13 +360,13 @@ struct FlashcardsView: View {
         showBack = false
     }
 
-    // What the saved surface alone can prove about the word having a kanji form. Kanji in the
-    // surface is conclusive; its absence is not (a word saved as ありがとう may still have the
-    // headword 有難う), so that case reports nil — unknown — rather than claiming kana-only and
-    // wrongly relaxing the word's promotion bar. The typed-answer control, which does fetch the
-    // headword, passes the authoritative answer instead.
-    private func surfaceKanjiEvidence(for word: SavedWord) -> Bool? {
-        ScriptClassifier.containsKanji(word.surface) ? true : nil
+    // Whether the word has a kanji form to quiz on, decided by the surface the learner actually
+    // saved — not by whether the dictionary happens to have a kanji headword on file. A word saved
+    // as ありがとう stays kana-only for quizzing even though the entry's headword is 有難う, since
+    // the learner never saw it written that way. Matches `LearnWordPool`'s `StudyItem.hasKanjiForm`,
+    // which Multiple Choice and Fill in the Blank use for the same word.
+    private func surfaceKanjiEvidence(for word: SavedWord) -> Bool {
+        ScriptClassifier.containsKanji(word.surface)
     }
 
     // Builds the session queue from the current scope selection and kicks off the session.

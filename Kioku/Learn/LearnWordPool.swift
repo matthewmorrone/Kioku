@@ -127,20 +127,56 @@ enum LearnWordPool {
             // back to the surface.
             let kanji = fields.kanji?.trimmingCharacters(in: .whitespacesAndNewlines)
             let kana = fields.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
+            // A word is only "has kanji form" when the surface the learner actually saved
+            // contains kanji — never because the dictionary happens to have one on file. A word
+            // saved in kana (たゆたう) stays kana-only for quizzing even when its entry's kanji
+            // form is common, since the learner never saw it written that way.
+            let surfaceHasKanji = ScriptClassifier.containsKanji(surface)
             items.append(StudyItem(
                 word: word,
                 surface: surface,
-                kanji: (kanji?.isEmpty == false && kanji != surface) ? kanji : nil,
+                kanji: (surfaceHasKanji && kanji?.isEmpty == false && kanji != surface) ? kanji : nil,
                 kana: (kana?.isEmpty == false && kana != surface) ? kana : nil,
                 english: gloss,
                 glosses: fields.glosses.isEmpty ? [gloss] : fields.glosses,
-                // Kanji visible in the surface counts even if the dictionary reported no headword,
-                // so this can never wrongly claim a kanji-bearing word is kana-only.
-                hasKanjiForm: kanji?.isEmpty == false || ScriptClassifier.containsKanji(surface),
+                hasKanjiForm: surfaceHasKanji,
                 wordClass: WordClass.from(posTags: fields.posTags)
             ))
         }
         return items
+    }
+
+    // A broad, dictionary-wide supplement to `resolveItems`'s saved-word candidates — Multiple
+    // Choice's own distractor pool is limited to words the learner has actually saved, which is
+    // often too thin (or too grammatically homogeneous) to rank a genuinely convincing wrong
+    // answer against. This is independent of any particular session's word selection, so it's
+    // fetched once per session start and merged into the local pool rather than replacing it.
+    // Returns an empty pool (never throws) on any failure — a shallower distractor pool degrades
+    // a question, unlike a failed word lookup, which would drop it entirely.
+    static func fetchDictionaryDistractorPool(dictionaryStore: DictionaryStore?) async -> [StudyField: [DistractorCandidate]] {
+        guard let store = dictionaryStore else { return [:] }
+        return await Task.detached(priority: .utility) {
+            guard let rows = try? store.fetchDistractorPool() else { return [:] }
+            var kanji: [DistractorCandidate] = []
+            var kana: [DistractorCandidate] = []
+            var meaning: [DistractorCandidate] = []
+            var seenKanji: Set<String> = []
+            var seenKana: Set<String> = []
+            var seenMeaning: Set<String> = []
+            for row in rows {
+                let wordClass = WordClass.from(posTags: row.posTags)
+                if let text = row.kanji, text.isEmpty == false, seenKanji.insert(text).inserted {
+                    kanji.append(DistractorCandidate(text: text, wordClass: wordClass))
+                }
+                if let text = row.kana, text.isEmpty == false, seenKana.insert(text).inserted {
+                    kana.append(DistractorCandidate(text: text, wordClass: wordClass))
+                }
+                if let text = row.gloss, text.isEmpty == false, seenMeaning.insert(text).inserted {
+                    meaning.append(DistractorCandidate(text: text, wordClass: wordClass))
+                }
+            }
+            return [.kanji: kanji, .kana: kana, .meaning: meaning]
+        }.value
     }
 
     // Resolves one word's kanji/kana/gloss set from the dictionary. `nonisolated`, and takes only

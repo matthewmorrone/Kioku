@@ -21,8 +21,32 @@ final class WordFormResolverTests: XCTestCase {
             entry: entry, store: store, entryID: entry.entryId, selectedSenseIDs: [], selectedGlosses: []
         )
 
-        XCTAssertEqual(forms.kanji, entry.kanjiForms.first?.text)
+        XCTAssertEqual(forms.kanji, entry.firstEverydayKanji?.text)
         XCTAssertEqual(forms.kana, entry.kanaForms.first?.text)
+    }
+
+    // A word whose only kanji form is tagged rare/outdated/irregular/search-only (rK/oK/iK/sK)
+    // must not be quizzed on that spelling — kanji resolves to nil, same as a word with no kanji
+    // form at all, rather than falling back to the tagged headword. Built from a synthetic entry
+    // (see DictionaryEntry+SearchMetadata's own kanjiFormIsNonEveryday tests) rather than a real
+    // dictionary lookup, since JMdict's rK/oK/iK/sK tagging is sparse and inconsistently applied —
+    // a word that reads as "rare" in practice isn't reliably tagged as such in the data.
+    func testKanjiAndKanaOmitsNonEverydayKanji() throws {
+        let entry = DictionaryEntry(
+            entryId: -1,
+            jpdbRank: nil,
+            wordfreqZipf: nil,
+            matchedSurface: "たゆたう",
+            kanjiForms: [KanjiForm(text: "揺蕩う", priority: nil, info: "rK")],
+            kanaForms: [KanaForm(text: "たゆたう", priority: nil, info: nil, nokanji: false)],
+            senses: []
+        )
+
+        let forms = WordFormResolver.kanjiAndKana(
+            entry: entry, store: store, entryID: entry.entryId, selectedSenseIDs: [], selectedGlosses: []
+        )
+
+        XCTAssertNil(forms.kanji)
     }
 
     // A sense-restricted reading (黄昏's dusk/twilight sense → たそがれ, not the alphabetically
