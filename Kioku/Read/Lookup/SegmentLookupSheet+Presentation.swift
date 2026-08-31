@@ -194,4 +194,217 @@ extension SegmentLookupSheet {
             }
         }
     }
+
+    // Clears all sheet-specific provider closures and cached data so a new segment can be configured cleanly.
+    private func resetSheetPresentationState() {
+        isPreparingSheetDismissal = false
+        onWillDismiss = nil
+        onSheetSelectPrevious = nil
+        onSheetSelectNext = nil
+        onReadingSelected = nil
+        onReadingReset = nil
+        sheetReadingsProvider = nil
+        sheetSublatticeProvider = nil
+        segmentRangeProvider = nil
+        sheetLexiconDebugProvider = nil
+        sheetFrequencyProvider = nil
+        sheetLemmaInfoProvider = nil
+        sheetLemmaInfoByReadingProvider = nil
+        activeReadingOverrideProvider = nil
+        pathSegmentFrequencyProvider = nil
+        sheetDictionaryEntryProvider = nil
+        sheetIsSavedProvider = nil
+        sheetIsSavedElsewhereProvider = nil
+        sheetSaveToggle = nil
+        sheetLearnedStateProvider = nil
+        sheetSetLearnedState = nil
+        sheetOpenWordDetail = nil
+        sheetWordComponentsProvider = nil
+        sheetCompoundComponentsProvider = nil
+        currentSheetCompoundComponents = []
+        // Note: onCompoundComponentTapped is intentionally NOT reset — it's installed once by
+        // ReadView and represents how the app drills into a compound component, regardless of
+        // which segment is currently presented.
+        currentSheetUniqueReadings = []
+        currentSheetSublatticeEdges = []
+        currentSheetLexiconDebugInfo = ""
+        currentSheetFrequencyByReading = nil
+        currentSheetLemmaInfo = nil
+        currentSheetLemmaInfoByReading = [:]
+        currentSheetDictionaryEntry = nil
+        currentSheetWordComponents = []
+        currentSheetCompoundComponents = []
+        updatePresentedSheetSelection = nil
+    }
+
+    // Dismisses the currently presented action sheet if one is active.
+    // Not private: also called (trailing-closure syntax) from dismissPopover in
+    // SegmentLookupSheet.swift.
+    func dismissSheet(completion: (() -> Void)? = nil) {
+        guard let presentedSheetController, hasActivePresentedSheetController else {
+            TapDiagnostics.mark("dismissSheet: fast bail (no active presentedSheetController)")
+            self.presentedSheetController = nil
+            resetSheetPresentationState()
+            completion?()
+            return
+        }
+
+        if isPreparingSheetDismissal == false, let onWillDismiss {
+            TapDiagnostics.mark("dismissSheet: SLOW PATH — deferring to onWillDismiss")
+            isPreparingSheetDismissal = true
+            onWillDismiss { [weak self] in
+                self?.dismissSheet(completion: completion)
+            }
+            return
+        }
+
+        TapDiagnostics.mark("dismissSheet: SLOW PATH — calling presentedSheetController.dismiss(animated: true)")
+        presentedSheetController.dismiss(animated: true) { [weak self] in
+            guard let self else {
+                completion?()
+                return
+            }
+
+            self.presentedSheetController = nil
+            self.resetSheetPresentationState()
+            completion?()
+        }
+    }
+
+    // Intercepts system-initiated sheet dismissal so the onWillDismiss hook runs before the sheet disappears.
+    func presentationControllerShouldDismiss(_ presentationController: UIPresentationController) -> Bool {
+        guard presentedSheetController === presentationController.presentedViewController else {
+            return true
+        }
+
+        guard isPreparingSheetDismissal == false, let onWillDismiss else {
+            return true
+        }
+
+        isPreparingSheetDismissal = true
+        onWillDismiss { [weak self] in
+            self?.presentedSheetController?.dismiss(animated: true)
+        }
+        return false
+    }
+
+    // Clears tracked presentation references when users dismiss controllers interactively.
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        if presentedController === presentationController.presentedViewController {
+            presentedController = nil
+            fireOnDismissIfNeeded()
+        }
+
+        if presentedSheetController === presentationController.presentedViewController {
+            presentedSheetController = nil
+            resetSheetPresentationState()
+            fireOnDismissIfNeeded()
+        } else if updatePresentedSheetSelection != nil {
+            presentedSheetController = nil
+            resetSheetPresentationState()
+            fireOnDismissIfNeeded()
+        }
+    }
+
+    // Keeps popover style in compact environments so segment-anchored callouts retain the pointer arrow.
+    func adaptivePresentationStyle(
+        for controller: UIPresentationController,
+        traitCollection: UITraitCollection
+    ) -> UIModalPresentationStyle {
+        return .none
+    }
+
+    // Computes a bounded content size for the star/word/definition/arrow row. Content-hugging:
+    // a short word + short definition doesn't leave dead space, while a long definition wraps
+    // to multiple lines once the row hits maxContentWidth rather than growing unbounded.
+    // Not private: called from reallyPresentPopover / updatePresentedPopoverContent in
+    // SegmentLookupSheet.swift.
+    func preferredPopoverSize(
+        for definition: String,
+        word: String,
+        horizontalInset: CGFloat,
+        topInset: CGFloat,
+        bottomInset: CGFloat,
+        interItemSpacing: CGFloat,
+        actionButtonWidth: CGFloat,
+        actionButtonHeight: CGFloat,
+        minWordTapWidth: CGFloat
+    ) -> CGSize {
+        let minContentWidth: CGFloat = 120
+        let maxContentWidth: CGFloat = 320
+        let definitionFont = UIFont.systemFont(ofSize: 16)
+        let wordFont = UIFont.systemFont(ofSize: 17, weight: .semibold)
+
+        let wordMeasurementLabel = UILabel()
+        wordMeasurementLabel.font = wordFont
+        wordMeasurementLabel.text = word
+        // Must match wordButton's own greaterThanOrEqualToConstant(minWordTapWidth) constraint —
+        // otherwise a short word (single kanji) is measured narrower than the button actually
+        // renders, under-sizing the popover the same way the missing font attribute once did.
+        let wordWidth = max(ceil(wordMeasurementLabel.sizeThatFits(
+            CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        ).width), minWordTapWidth)
+
+        // Fixed-width elements: left/right insets, star, word, arrow, and the two inter-item
+        // gaps between (star, word) and (word, definition) — definition's own leading gap to
+        // the arrow is accounted for separately below.
+        let fixedWidth = (horizontalInset * 2) + actionButtonWidth + interItemSpacing
+            + wordWidth + interItemSpacing + interItemSpacing + actionButtonWidth
+
+        let definitionMeasurementLabel = UILabel()
+        definitionMeasurementLabel.numberOfLines = 0
+        definitionMeasurementLabel.font = definitionFont
+        definitionMeasurementLabel.text = definition
+
+        let unconstrainedDefinitionSize = definitionMeasurementLabel.sizeThatFits(
+            CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        )
+
+        let desiredContentWidth = ceil(unconstrainedDefinitionSize.width) + fixedWidth
+        let constrainedContentWidth = min(max(desiredContentWidth, minContentWidth), maxContentWidth)
+        let constrainedDefinitionWidth = constrainedContentWidth - fixedWidth
+        let constrainedDefinitionSize = definitionMeasurementLabel.sizeThatFits(
+            CGSize(width: max(constrainedDefinitionWidth, 1), height: CGFloat.greatestFiniteMagnitude)
+        )
+
+        let contentTextHeight = max(ceil(constrainedDefinitionSize.height), ceil(wordMeasurementLabel.sizeThatFits(
+            CGSize(width: wordWidth, height: CGFloat.greatestFiniteMagnitude)
+        ).height))
+        let contentHeight = max(contentTextHeight, actionButtonHeight) + topInset + bottomInset
+        return CGSize(width: constrainedContentWidth, height: max(56, min(contentHeight, 260)))
+    }
+
+    // Resolves the active screen bounds without relying on deprecated global UIScreen access.
+    func activeScreenBounds() -> CGRect {
+        guard let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else {
+            return CGRect(x: 0, y: 0, width: 390, height: 844)
+        }
+
+        return windowScene.screen.bounds
+    }
+
+    // Resolves the top-most view controller so popovers present from the active screen context.
+    func topPresentingController() -> UIViewController? {
+        guard
+            let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+            let rootViewController = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
+        else {
+            return nil
+        }
+
+        var topController = rootViewController
+        while let presentedController = topController.presentedViewController {
+            topController = presentedController
+        }
+
+        return topController
+    }
+
+    // Formats one dictionary sense as "pos — gloss1; gloss2" for compact inline display.
+    func formatSense(_ sense: DictionaryEntrySense) -> String {
+        var parts: [String] = []
+        if let pos = sense.pos, pos.isEmpty == false { parts.append(JMdictTagExpander.expand(pos)) }
+        parts.append(sense.glosses.joined(separator: "; "))
+        return parts.joined(separator: " — ")
+    }
 }

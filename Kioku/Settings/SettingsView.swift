@@ -38,8 +38,8 @@ struct SettingsView: View {
     @AppStorage(DictionarySettings.includeArchaicReadingsKey) private var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
     @AppStorage(DictionarySettings.showJapaneseInPopoverKey) private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
     @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey) private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
-    @AppStorage(ParticleSettings.storageKey) private var particlesRaw: String = ParticleSettings.defaultRawValue
-    @AppStorage(SegmentationDemotions.storageKey) private var demotionsRaw: String = SegmentationDemotions.defaultRawValue
+    @AppStorage(ParticleSettings.storageKey) var particlesRaw: String = ParticleSettings.defaultRawValue
+    @AppStorage(SegmentationDemotions.storageKey) var demotionsRaw: String = SegmentationDemotions.defaultRawValue
 
     // No `private` modifiers below: the AI Correction section's UI lives in
     // SettingsView+AICorrectionSection.swift and needs to read these as
@@ -90,9 +90,9 @@ struct SettingsView: View {
     // StudyWordPool; this is the single place it's set.
     @AppStorage(LearnedSettings.excludeLearnedKey) private var excludeLearnedInStudy: Bool = LearnedSettings.defaultExcludeLearned
     @AppStorage(QuizAssistSettings.smarterOptionsKey) private var smarterQuizOptions: Bool = QuizAssistSettings.defaultSmarterOptions
-    @AppStorage(SegmenterSettings.backendKey) private var segmenterBackend: String = SegmenterSettings.defaultBackend
-    @AppStorage(SegmenterSettings.mecabDictionaryKey) private var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
-    @AppStorage(SegmenterSettings.strategyKey) private var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
+    @AppStorage(SegmenterSettings.backendKey) var segmenterBackend: String = SegmenterSettings.defaultBackend
+    @AppStorage(SegmenterSettings.mecabDictionaryKey) var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
+    @AppStorage(SegmenterSettings.strategyKey) var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
 
     @AppStorage(TranscriptionEngine.storageKey) private var transcriptionEngine: String = TranscriptionEngine.appleSpeech.rawValue
     // Backs the "Manage Whisper Models…" row below — lets a user download a model straight
@@ -100,18 +100,18 @@ struct SettingsView: View {
     @State private var whisperModelManager = WhisperModelManager()
     @State private var isWhisperDownloadSheetPresented = false
 
-    @AppStorage(DebugSettings.pixelRulerKey) private var debugPixelRuler: Bool = false
-    @AppStorage(DebugSettings.furiganaRectsKey) private var debugFuriganaRects: Bool = false
-    @AppStorage(DebugSettings.headwordRectsKey) private var debugHeadwordRects: Bool = false
-    @AppStorage(DebugSettings.headwordLineBandsKey) private var debugHeadwordLineBands: Bool = false
-    @AppStorage(DebugSettings.furiganaLineBandsKey) private var debugFuriganaLineBands: Bool = false
-    @AppStorage(DebugSettings.headwordLineNumbersKey) private var debugHeadwordLineNumbers: Bool = false
-    @AppStorage(DebugSettings.rubyLineNumbersKey) private var debugRubyLineNumbers: Bool = false
-    @AppStorage(DebugSettings.bisectorHeadwordKey) private var debugBisectorHeadword: Bool = false
-    @AppStorage(DebugSettings.bisectorFuriganaKey) private var debugBisectorFurigana: Bool = false
-    @AppStorage(DebugSettings.envelopeRectsKey) private var debugEnvelopeRects: Bool = false
-    @AppStorage(DebugSettings.leftInsetGuideKey) private var debugLeftInsetGuide: Bool = false
-    @AppStorage(DebugSettings.karaokeDebugHUDKey) private var debugKaraokeHUD: Bool = false
+    @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
+    @AppStorage(DebugSettings.furiganaRectsKey) var debugFuriganaRects: Bool = false
+    @AppStorage(DebugSettings.headwordRectsKey) var debugHeadwordRects: Bool = false
+    @AppStorage(DebugSettings.headwordLineBandsKey) var debugHeadwordLineBands: Bool = false
+    @AppStorage(DebugSettings.furiganaLineBandsKey) var debugFuriganaLineBands: Bool = false
+    @AppStorage(DebugSettings.headwordLineNumbersKey) var debugHeadwordLineNumbers: Bool = false
+    @AppStorage(DebugSettings.rubyLineNumbersKey) var debugRubyLineNumbers: Bool = false
+    @AppStorage(DebugSettings.bisectorHeadwordKey) var debugBisectorHeadword: Bool = false
+    @AppStorage(DebugSettings.bisectorFuriganaKey) var debugBisectorFurigana: Bool = false
+    @AppStorage(DebugSettings.envelopeRectsKey) var debugEnvelopeRects: Bool = false
+    @AppStorage(DebugSettings.leftInsetGuideKey) var debugLeftInsetGuide: Bool = false
+    @AppStorage(DebugSettings.karaokeDebugHUDKey) var debugKaraokeHUD: Bool = false
 
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
     @State private var wotdPendingCount: Int = 0
@@ -149,90 +149,10 @@ struct SettingsView: View {
     @State private var isClearingCaches = false
     @State private var isShowingClearCachesConfirmation = false
 
-    // Advanced settings — segmentation engine/tuning, debug overlays, and the dev bridge — pushed
-    // off the main Settings screen via the "Advanced" link. Same struct, so it shares every
-    // @State/@AppStorage; the sections are unchanged from their former inline position.
-    @ViewBuilder
-    private var advancedSettings: some View {
-        // MARK: Segmentation — engine, then the two tuning chip-editors.
-        Section {
-            Picker("Engine", selection: $segmenterBackend) {
-                ForEach(SegmenterBackend.allCases, id: \.rawValue) { backend in
-                    Text(backend.displayName).tag(backend.rawValue)
-                }
-            }
-
-            if segmenterBackend == SegmenterBackend.mecab.rawValue {
-                Picker("Dictionary", selection: $mecabDictionary) {
-                    ForEach(MeCabDictionary.allCases, id: \.rawValue) { dict in
-                        Text(dict.displayName).tag(dict.rawValue)
-                    }
-                }
-            }
-
-            if segmenterBackend == SegmenterBackend.trie.rawValue {
-                Toggle("Global longest-match (experimental)", isOn: Binding(
-                    get: { segmentationStrategy == .globalLongestMatch },
-                    set: { segmentationStrategy = $0 ? .globalLongestMatch : .localLongestMatch }
-                ))
-            }
-        } header: {
-            Text("Segmentation")
-        }
-
-        Section {
-            ParticleTagEditor(tags: particlesBinding)
-            HStack {
-                Spacer()
-                Button("Reset to Defaults") {
-                    ParticleSettings.reset()
-                    particlesRaw = ParticleSettings.defaultRawValue
-                }
-                .buttonStyle(.bordered)
-                .font(.footnote)
-            }
-        } header: {
-            Text("Allowed Particles")
-        }
-
-        Section {
-            ParticleTagEditor(tags: demotionsBinding)
-            HStack {
-                Spacer()
-                Button("Reset to Defaults") {
-                    SegmentationDemotions.reset()
-                    demotionsRaw = SegmentationDemotions.defaultRawValue
-                }
-                .buttonStyle(.bordered)
-                .font(.footnote)
-            }
-        } header: {
-            Text("Segmentation Demotions")
-        }
-
-        #if DEBUG
-        // MARK: Debug overlays — hidden in release builds.
-        Section {
-            Toggle("Pixel Ruler", isOn: $debugPixelRuler)
-            Toggle("Furigana Rects", isOn: $debugFuriganaRects)
-            Toggle("Headword Rects", isOn: $debugHeadwordRects)
-            Toggle("Envelope Rects", isOn: $debugEnvelopeRects)
-            Toggle("Headword Line Bands", isOn: $debugHeadwordLineBands)
-            Toggle("Furigana Line Bands", isOn: $debugFuriganaLineBands)
-            Toggle("Headword Line Numbers (L#)", isOn: $debugHeadwordLineNumbers)
-            Toggle("Ruby Line Numbers (R#)", isOn: $debugRubyLineNumbers)
-            Toggle("Headword Bisectors", isOn: $debugBisectorHeadword)
-            Toggle("Furigana Bisectors", isOn: $debugBisectorFurigana)
-            Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)
-            Toggle("Karaoke HUD", isOn: $debugKaraokeHUD)
-        } header: {
-            Text("Debug Overlays")
-        }
-        #endif
-
-        // Foreground-only bridge isn't useful enough yet to surface in Settings.
-        // BridgeSettingsSection(bridgeServer: bridgeServer)
-    }
+    // advancedSettings (the "Advanced" screen's sections) and particlesBinding / demotionsBinding
+    // live in SettingsView+AdvancedSection.swift to keep this file under the line-count guardrail.
+    // ParticleTagEditor moved to its own file (ParticleTagEditor.swift) — it was already a
+    // standalone struct, not an extension of SettingsView.
 
     // Row id currently flashed via listRowBackground when a "bring into focus" scroll lands —
     // set alongside the scroll-to and cleared a moment later. Purely visual; scrollTarget is
@@ -801,104 +721,7 @@ struct SettingsView: View {
             }
         )
     }
-
-    // Bridges AppStorage raw string to the sorted particle list expected by ParticleTagEditor.
-    private var particlesBinding: Binding<[String]> {
-        Binding(
-            get: { ParticleSettings.decodeList(from: particlesRaw) },
-            set: { particlesRaw = ParticleSettings.encodeList($0) }
-        )
-    }
-
-    // Bridges AppStorage raw string to the demotion list expected by ParticleTagEditor.
-    private var demotionsBinding: Binding<[String]> {
-        Binding(
-            get: { SegmentationDemotions.decodeList(from: demotionsRaw) },
-            set: { demotionsRaw = SegmentationDemotions.encodeList($0) }
-        )
-    }
 }
-
-// Chip grid for adding and removing individual kana from the particle allowlist.
-struct ParticleTagEditor: View {
-    @Binding var tags: [String]
-    @State private var draft: String = ""
-    // Plain @State (not @FocusState): JapaneseKeyboardField drives focus through a Bool binding.
-    @State private var draftFocused: Bool = false
-
-    var body: some View {
-        // FlowLayout (not LazyVGrid) so each chip takes its natural width and wraps — no fixed
-        // columns. Multi-character demotions (その物, か弱い) size to their content.
-        FlowLayout(spacing: 8) {
-            ForEach(tags, id: \.self) { tag in
-                tagChip(for: tag)
-            }
-            addChip
-        }
-        .padding(.vertical, 4)
-        .padding(.leading, 8)
-    }
-
-    // Inline text-field chip for entering a new particle without a separate row.
-    // A hidden reference HStack drives the size; the real TextField sits on top.
-    private var addChip: some View {
-        HStack(spacing: 0) {
-            // Hidden reference matches a real chip's content structure for identical sizing.
-            Text(draft.isEmpty ? "か" : draft)
-                .font(.subheadline)
-                .hidden()
-            Image(systemName: "xmark")
-                .font(.caption2)
-                .hidden()
-        }
-        .padding(8)
-        .background(Capsule().fill(Color(.secondarySystemBackground)))
-        .overlay(Capsule().stroke(draftFocused ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.3), lineWidth: 1))
-        .overlay {
-            // Particles are Japanese kana, so default to the Japanese keyboard.
-            JapaneseKeyboardField(text: $draft, isEditing: $draftFocused,
-                                  placeholder: "＋", onSubmit: { commitDraft() })
-                .padding(.horizontal, 8)
-        }
-        .contentShape(Capsule())
-        .onTapGesture { draftFocused = true }
-    }
-
-    // Renders a single tag pill with a destructive remove button.
-    private func tagChip(for tag: String) -> some View {
-        HStack(spacing: 0) {
-            Text(tag)
-                .font(.subheadline)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            Button(role: .destructive) {
-                tags.removeAll { $0 == tag }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.caption2)
-                    .foregroundColor(Color.gray)
-            }
-            .buttonStyle(.plain)
-            .padding(.leading, 4)
-        }
-        .padding(8)
-        .background(Capsule().fill(Color(.secondarySystemBackground)))
-        .overlay(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: 1))
-    }
-
-    // Trims and appends the draft tag to the list, then clears the draft field.
-    private func commitDraft() {
-        let normalized = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalized.isEmpty == false else { return }
-        if tags.contains(normalized) == false {
-            tags.append(normalized)
-            tags.sort()
-        }
-        draft = ""
-    }
-}
-
-// FlowLayout lives in Kioku/FlowLayout.swift (shared with SubtitleImportView's vocab tag picker).
 
 #Preview {
     ContentView(selectedTab: .settings)
