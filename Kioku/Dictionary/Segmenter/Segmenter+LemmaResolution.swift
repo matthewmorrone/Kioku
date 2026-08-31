@@ -309,7 +309,12 @@ extension Segmenter {
 
     // Tunable structural weights for preferredLemmaScore. Grouped like SegmenterScoring's
     // transition costs so empirical calibration lives in one place instead of bare literals.
-    private enum LemmaScoring {
+    // `nonisolated`: a nested type doesn't inherit the enclosing `Segmenter` class's own
+    // `nonisolated` (that annotation applies to Segmenter itself, not to types nested inside its
+    // extensions), so under this module's default-MainActor isolation this would otherwise be
+    // MainActor-isolated — unreachable from preferredLemmaScore, itself nonisolated because
+    // Segmenter is.
+    private nonisolated enum LemmaScoring {
         static let surfaceEqualityBonus = 100   // lemma identical to the surface form
         static let kanjiPreservedBonus = 40     // kanji surface → kanji lemma (script preserved)
         static let kanjiToKanaPenalty = -20     // kanji surface → kana-only lemma (script lost)
