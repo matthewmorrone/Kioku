@@ -102,7 +102,6 @@ struct MultipleChoiceView: View {
                         Spacer(minLength: 8)
                         questionCard
                         Spacer(minLength: 8)
-                        nextControl
                     }
                     .padding()
                 }
@@ -172,6 +171,8 @@ struct MultipleChoiceView: View {
                     optionButton(option, correct: question.correct)
                 }
             }
+
+            nextControl
         }
     }
 
@@ -238,9 +239,9 @@ struct MultipleChoiceView: View {
         return nil
     }
 
-    // The one bottom action button: "Show Answer" before answering, "Next"/"Finish" after — the
-    // same slot in both states (not two separately-positioned views) so nothing on screen shifts
-    // the moment the question is answered.
+    // The one action button directly below the options: "Show Answer" before answering,
+    // "Next"/"Finish" after — the same slot in both states (not two separately-positioned views)
+    // so nothing on screen shifts the moment the question is answered.
     @ViewBuilder
     private var nextControl: some View {
         if selected != nil {
