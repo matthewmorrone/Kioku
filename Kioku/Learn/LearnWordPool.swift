@@ -127,16 +127,19 @@ enum LearnWordPool {
             // back to the surface.
             let kanji = fields.kanji?.trimmingCharacters(in: .whitespacesAndNewlines)
             let kana = fields.kana?.trimmingCharacters(in: .whitespacesAndNewlines)
+            // A word is only "has kanji form" when the surface the learner actually saved
+            // contains kanji — never because the dictionary happens to have one on file. A word
+            // saved in kana (たゆたう) stays kana-only for quizzing even when its entry's kanji
+            // form is common, since the learner never saw it written that way.
+            let surfaceHasKanji = ScriptClassifier.containsKanji(surface)
             items.append(StudyItem(
                 word: word,
                 surface: surface,
-                kanji: (kanji?.isEmpty == false && kanji != surface) ? kanji : nil,
+                kanji: (surfaceHasKanji && kanji?.isEmpty == false && kanji != surface) ? kanji : nil,
                 kana: (kana?.isEmpty == false && kana != surface) ? kana : nil,
                 english: gloss,
                 glosses: fields.glosses.isEmpty ? [gloss] : fields.glosses,
-                // Kanji visible in the surface counts even if the dictionary reported no headword,
-                // so this can never wrongly claim a kanji-bearing word is kana-only.
-                hasKanjiForm: kanji?.isEmpty == false || ScriptClassifier.containsKanji(surface),
+                hasKanjiForm: surfaceHasKanji,
                 wordClass: WordClass.from(posTags: fields.posTags)
             ))
         }
