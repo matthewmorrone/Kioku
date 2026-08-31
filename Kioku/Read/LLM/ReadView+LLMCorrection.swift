@@ -510,7 +510,12 @@ extension ReadView {
             }
         }
 
-        persistCurrentNoteIfNeeded()
+        // Rebuild `segments` from segmentEdges + the furigana maps as they stand now (after the
+        // per-run loop above), then persist. applySegmentEdges already persisted once above, but
+        // that snapshot predates this loop's furigana writes — persistCurrentNoteIfNeeded() alone
+        // would re-save that stale `segments` value and silently drop every reading the LLM
+        // corrected, since furiganaBySegmentLocation isn't part of what gets persisted directly.
+        rebuildAndPersistSegments()
         return .applied(diff: diffLines, changedLocations: changedLocations, changedReadingLocations: changedReadingLocations, changesByLocation: changesByLocation)
     }
 
