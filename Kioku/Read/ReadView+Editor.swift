@@ -114,19 +114,32 @@ extension ReadView {
             return
         }
 
+        // Wait for BOTH dictionaryStore and lexicon before computing anything, rather than
+        // painting incrementally as each becomes ready. computeSavedSegmentLocations resolves
+        // through resolvedDictionaryEntry(forSurface:), which needs dictionaryStore for a direct
+        // surface hit and lexicon for the inflected-form fallback — and lexicon loads later than
+        // dictionaryStore (Stage 2's slow trie/lexicon/prewarm build vs. dictionaryStore's fast
+        // path). Computing as soon as dictionaryStore alone was ready lit up dictionary-form
+        // saved words immediately and left conjugated ones to light up moments later in a
+        // visible second wave. Gating the computation itself on both means every eligible word
+        // appears together in one pass, even though the very first paint is delayed a little.
+        guard dictionaryStore != nil, lexicon != nil else {
+            savedHighlightMemo.signature = nil
+            savedHighlightMemo.locations = []
+            savedHighlightMemo.learnedLocations = []
+            savedHighlightMemo.notLearnedLocations = []
+            return
+        }
+
         // Global by design (see computeSavedSegmentLocations): a word's status is the same
         // everywhere it appears, so the signature doesn't key on activeNoteID or any note
         // attribution — only on segmentation, the saved-word set, and the visibility toggles.
-        // Also keys on dictionaryStore's readiness: computeSavedSegmentLocations resolves
-        // through resolvedDictionaryEntry(forSurface:), which needs dictionaryStore loaded to
-        // return anything (readResourcesReady is the wrong, slower signal here — it only flips
-        // once the full trie/lexicon/prewarm build finishes, but dictionaryStore itself is
-        // published much earlier on ContentView's fast path). Without keying on SOMETHING here,
-        // a computation that runs before dictionaryStore loads caches an empty result under a
-        // signature that never changes once it's ready, so the highlight silently never appears
-        // until some unrelated toggle resets the memo.
+        // dictionaryStore/lexicon readiness isn't part of the signature — the guard above
+        // already means we never reach here until both are ready, so recomputing on some
+        // OTHER change (e.g. wordsStore) can't regress back to a conjugation-blind result the
+        // way the older FavoritedGlowMemo bug did (see docs/todo.md, "glow conjugated favorites
+        // by not caching nil lemmas").
         var hasher = Hasher()
-        hasher.combine(dictionaryStore != nil)
         hasher.combine(segmentRanges.count)
         if let first = segmentRanges.first { hasher.combine(NSRange(first, in: text).location) }
         if let last = segmentRanges.last { hasher.combine(NSRange(last, in: text).location) }
