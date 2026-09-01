@@ -172,9 +172,10 @@ final class MergedCorrectionBreakdownService {
     }
 
     // Calls OpenAI chat completions with a system/user split, mirroring
-    // LLMCorrectionService.callOpenAIRaw's request shape but with the combined prompt and
-    // SongBreakdownService's larger max_tokens (the response now carries a full breakdown
-    // plus a segmentation, not just one or the other).
+    // LLMCorrectionService.callOpenAIRaw's request shape but with the combined prompt. Uses
+    // gpt-4o's full 16384-token output cap rather than SongBreakdownService's 8192: this
+    // response carries a full breakdown *and* a segmentation, and 8192 was observed to
+    // truncate before the model ever reached the ===SEGMENTATION=== delimiter.
     private func callOpenAI(apiKey: String, system: String, user: String) async throws -> String {
         let url = URL(string: "https://api.openai.com/v1/chat/completions")!
         var request = URLRequest(url: url)
@@ -191,7 +192,7 @@ final class MergedCorrectionBreakdownService {
                 ["role": "system", "content": system],
                 ["role": "user", "content": user]
             ],
-            "max_tokens": 8192,
+            "max_tokens": 16384,
             "temperature": temperature
         ]
 
@@ -216,7 +217,11 @@ final class MergedCorrectionBreakdownService {
     }
 
     // Calls the Anthropic Messages API, mirroring SongBreakdownService.callClaude's request
-    // shape (cached system block, larger max_tokens) with the combined system prompt.
+    // shape (cached system block) with the combined system prompt. Uses a larger max_tokens
+    // than SongBreakdownService's 8192: Claude's synchronous output cap is far above that, and
+    // this response has to carry a full breakdown *and* a segmentation in one completion, so
+    // 8192 was observed to truncate before the model ever reached the ===SEGMENTATION===
+    // delimiter.
     private func callClaude(apiKey: String, system: String, user: String) async throws -> String {
         let url = URL(string: "https://api.anthropic.com/v1/messages")!
         var request = URLRequest(url: url)
@@ -229,7 +234,7 @@ final class MergedCorrectionBreakdownService {
             ?? LLMSettings.defaultTemperature
         let body: [String: Any] = [
             "model": LLMSettings.claudeModel(),
-            "max_tokens": 8192,
+            "max_tokens": 16384,
             "temperature": temperature,
             "system": [
                 [
