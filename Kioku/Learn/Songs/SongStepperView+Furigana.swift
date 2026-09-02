@@ -8,9 +8,9 @@ import SwiftUI
 extension SongStepperView {
 
     // Eagerly resolves furigana for every displayed line and every word-list headword, so
-    // readings are available as soon as a row renders — including placeholder rows and
+    // readings are available as soon as a row renders — including bare note lines and
     // lines that are still streaming. Idempotent per (index, text): a cache whose
-    // `sourceText` matches is reused; one whose text differs (a placeholder index later
+    // `sourceText` matches is reused; one whose text differs (a note line's index later
     // taken by a streamed line with other text) is rebuilt.
     func ensureFuriganaCaches(for lines: [SongLine]) {
         for line in lines where furiganaCacheByLineIndex[line.index]?.sourceText != line.original {

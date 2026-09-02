@@ -39,8 +39,8 @@ struct SongLineCard: View {
     // hides the play button entirely — "if available" semantics on the play affordance.
     let playbackRange: (startMs: Int, endMs: Int)?
     // Streaming state for this row (see SongLineCardPhase). `.streaming` adds an accent border
-    // and a spinner in the header; `.pending` draws a dashed border and suppresses the
-    // recovery notice, since a placeholder has no content by design.
+    // and a spinner in the header; `.noteText` and `.ready` render identically except that the
+    // recovery notice only applies to a real breakdown line.
     let phase: SongLineCardPhase
     let onToggleExpansion: () -> Void
     let onPlayLine: () -> Void
@@ -105,23 +105,14 @@ struct SongLineCard: View {
         .accessibilityElement(children: .contain)
     }
 
-    // Border per phase: the streaming card gets a 2pt accent ring so the eye lands on the line
-    // the model is writing; placeholders get a dashed hairline so they read as "not yet";
-    // finished lines keep the plain separator stroke.
-    @ViewBuilder
+    // The streaming card gets a 2pt accent ring so the eye lands on the line the model is
+    // writing; every other card keeps the plain separator stroke.
     private var cardBorder: some View {
-        switch phase {
-        case .streaming:
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.accentColor, lineWidth: 2)
-        case .pending:
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-                .foregroundStyle(Color(.separator))
-        case .ready:
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color(.separator), lineWidth: 1)
-        }
+        RoundedRectangle(cornerRadius: 18)
+            .stroke(
+                phase == .streaming ? Color.accentColor : Color(.separator),
+                lineWidth: phase == .streaming ? 2 : 1
+            )
     }
 
     // Position indicator + (when this is a chorus repeat) an inline reference annotation.

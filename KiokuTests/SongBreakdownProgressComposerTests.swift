@@ -3,9 +3,9 @@ import XCTest
 @testable import Kioku
 
 // Verifies the row composition SongStepperView scrolls through while a breakdown streams:
-// placeholders before anything arrives, streamed lines replacing them from the top with the
-// newest highlighted, resync on text match when the model's numbering drifts, and no
-// placeholder tail once generation has finished.
+// bare note lines before anything arrives, streamed lines replacing them from the top with
+// the newest highlighted, resync on text match when the model's numbering drifts, and no
+// note-line tail once generation has finished.
 @MainActor
 final class SongBreakdownProgressComposerTests: XCTestCase {
 
@@ -21,35 +21,35 @@ final class SongBreakdownProgressComposerTests: XCTestCase {
     }
 
     // Blank lines are dropped and the rest numbered contiguously from 1.
-    func testPendingLinesSkipBlankLinesAndNumberContiguously() {
-        let lines = SongBreakdownProgressComposer.pendingLines(fromNoteContent: content)
+    func testNoteLinesSkipBlankLinesAndNumberContiguously() {
+        let lines = SongBreakdownProgressComposer.noteLines(fromNoteContent: content)
         XCTAssertEqual(lines.map(\.index), [1, 2, 3])
         XCTAssertEqual(lines.map(\.original), ["君の名前を呼んだ", "夜の風が吹く", "I said 愛してる to her"])
     }
 
-    // Nothing streamed yet: every note line is a pending placeholder, running or not.
-    func testNoStreamedLinesYieldsAllPlaceholders() {
+    // Nothing streamed yet: every note line is a bare card, running or not.
+    func testNoStreamedLinesYieldsBareNoteLines() {
         let items = SongBreakdownProgressComposer.items(noteContent: content, streamedLines: [], isRunning: true)
-        XCTAssertEqual(items.map(\.phase), [.pending, .pending, .pending])
-        XCTAssertEqual(items.map(\.id), ["pending-0", "pending-1", "pending-2"])
+        XCTAssertEqual(items.map(\.phase), [.noteText, .noteText, .noteText])
+        XCTAssertEqual(items.map(\.id), ["note-0", "note-1", "note-2"])
     }
 
-    // While running, the last streamed line is the streaming one and unreached lines follow
-    // as placeholders numbered after it.
-    func testStreamingMarksLastLineAndAppendsRemainingPlaceholders() {
+    // While running, the last streamed line is the streaming one and unreached note lines
+    // follow, numbered after it.
+    func testStreamingMarksLastLineAndAppendsRemainingNoteLines() {
         let items = SongBreakdownProgressComposer.items(
             noteContent: content,
             streamedLines: [streamed(1, "君の名前を呼んだ"), streamed(2, "夜の風が吹く")],
             isRunning: true
         )
-        XCTAssertEqual(items.map(\.phase), [.ready, .streaming, .pending])
+        XCTAssertEqual(items.map(\.phase), [.ready, .streaming, .noteText])
         XCTAssertEqual(items[2].line.original, "I said 愛してる to her")
         XCTAssertEqual(items[2].line.index, 3)
     }
 
-    // When the model skips a line, the next streamed line resyncs to its matching placeholder
-    // so the skipped placeholder is consumed rather than dragging the tail out of step.
-    func testStreamedLineResyncsToMatchingPlaceholderWithinWindow() {
+    // When the model skips a line, the next streamed line resyncs to its matching note line
+    // so the skipped one is consumed rather than dragging the tail out of step.
+    func testStreamedLineResyncsToMatchingNoteLineWithinWindow() {
         let items = SongBreakdownProgressComposer.items(
             noteContent: content,
             streamedLines: [streamed(1, "君の名前を呼んだ"), streamed(2, "I said 愛してる to her")],
@@ -58,8 +58,8 @@ final class SongBreakdownProgressComposerTests: XCTestCase {
         XCTAssertEqual(items.map(\.phase), [.ready, .streaming])
     }
 
-    // A finished breakdown is shown as parsed — no placeholder tail, nothing highlighted.
-    func testFinishedBreakdownHasNoPlaceholdersOrHighlight() {
+    // A finished breakdown is shown as parsed — no note-line tail, nothing highlighted.
+    func testFinishedBreakdownHasNoNoteLineTailOrHighlight() {
         let items = SongBreakdownProgressComposer.items(
             noteContent: content,
             streamedLines: [streamed(1, "君の名前を呼んだ")],

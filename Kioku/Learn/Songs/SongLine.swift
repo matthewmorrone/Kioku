@@ -45,14 +45,16 @@ nonisolated struct WordFuriganaKey: Hashable {
     let surface: String
 }
 
-// How a line card renders while a breakdown streams in (see SongBreakdownProgressComposer):
-//   .ready     — the line's breakdown is complete (or came from a cached breakdown)
+// Where a line card's content stands (see SongBreakdownProgressComposer):
+//   .noteText  — just the note's own line; the model hasn't produced anything for it (yet)
 //   .streaming — the model is currently writing this line's section; highlighted
-//   .pending   — a placeholder built from the note text, not reached by the model yet
+//   .ready     — the line's breakdown is complete (or came from a cached breakdown)
+// Cards look the same in .noteText and .ready — the phase only drives the streaming
+// highlight and gates the "recovered from older data" notice to real breakdown lines.
 nonisolated enum SongLineCardPhase: Equatable {
-    case ready
+    case noteText
     case streaming
-    case pending
+    case ready
 }
 
 // One row of the breakdown scroll: the line to render plus its phase. `id` is assigned by

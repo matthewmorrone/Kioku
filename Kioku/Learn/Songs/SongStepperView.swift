@@ -6,10 +6,10 @@ import SwiftUI
 // list is collapsed by default and toggled by the user. The view drives the generation
 // flow itself so the parent home stays a pure list.
 //
-// There is no separate loading screen. Before generation the scroll shows one placeholder
-// card per note line; while the model streams, cards fill in from the top (the one being
-// written is highlighted and auto-expanded, the rest stay dashed placeholders) and the
-// toolbar wand becomes a spinner; failures surface as a banner above the list.
+// There is no separate loading screen. The scroll always shows one card per note line;
+// while the model streams, cards fill in from the top (the one being written is highlighted
+// and auto-expanded, the rest still show the note text) and the toolbar wand becomes a
+// spinner; failures surface as a banner above the list.
 //
 // Major sections:
 //   1. Toolbar: listen / expand-all / generate-or-cancel control
@@ -107,7 +107,7 @@ struct SongStepperView: View {
         return cachedBreakdown?.lines ?? []
     }
 
-    // Rows for the scroll: streamed/cached lines merged over note-text placeholders.
+    // Rows for the scroll: streamed/cached lines merged over the note's own lines.
     private var displayItems: [SongLineDisplayItem] {
         SongBreakdownProgressComposer.items(
             noteContent: note.content,
@@ -217,12 +217,12 @@ struct SongStepperView: View {
             if running { expandedByLineIndex = [] }
         }
         // Every change to the rows — a streamed line landing, a breakdown finishing, a cached
-        // breakdown replacing placeholders — refreshes furigana and offsets for the new rows and
-        // auto-expands the line the model is currently writing.
+        // breakdown replacing the bare note lines — refreshes furigana and offsets for the new
+        // rows and auto-expands the line the model is currently writing.
         .onChange(of: displayItems) { _, items in
             refreshLineDerivedState(for: items)
         }
-        // Covers first appearance with an already-cached breakdown (or placeholders) — onChange
+        // Covers first appearance with an already-cached breakdown (or bare note lines) — onChange
         // above only fires on a *transition*, not on the initial value.
         .onAppear {
             noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
@@ -311,8 +311,8 @@ struct SongStepperView: View {
         .background(Color.orange.opacity(0.12))
     }
 
-    // First-visit bar above the placeholder cards. Generation is a paid, deliberate action,
-    // so it never auto-fires on entry; the merged variant lives in the toolbar menu.
+    // First-visit bar above the cards. Generation is a paid, deliberate action, so it never
+    // auto-fires on entry; the merged variant lives in the toolbar menu.
     private var generateBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "wand.and.stars")
@@ -595,7 +595,7 @@ struct SongStepperView: View {
 // Pre-resolved per-line furigana payload. The three renderer fields together are exactly
 // the data shape `KiokuCoreTextRendererView` consumes, so the card hands them straight
 // through with no further conversion. `sourceText` records which line text the cache was
-// built from: rows are keyed by line index, and a placeholder's index can later be taken
+// built from: rows are keyed by line index, and a bare note line's index can later be taken
 // by a streamed line with different text, so the cache must be re-validated, not trusted.
 struct LineFuriganaCache: Equatable {
     let sourceText: String
