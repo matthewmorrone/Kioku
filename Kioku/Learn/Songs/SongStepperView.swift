@@ -64,9 +64,6 @@ struct SongStepperView: View {
     // The note's SRT cues, for matching each line to its sung time range (see
     // lineRangesByIndex). Empty when the note has no audio attachment or no cues.
     @State private var noteCues: [SubtitleCue] = []
-    // Set once the cue lookup has run (found or not), so the narration render — whose cache
-    // key includes the clip ranges — isn't started before its inputs are final.
-    @State var didLoadNoteCues: Bool = false
     // Furigana state shared with SongStepperView+Furigana (internal, not private, for that reason).
     @State var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
     // The note's persisted per-note reading overrides (Note.segments), restored once on appear
@@ -278,12 +275,9 @@ struct SongStepperView: View {
         // range for the listen-along render. No attachment, no file, or no cues are all the
         // normal "narration only" case, not errors.
         .task {
-            if let attachmentID = note.audioAttachmentID,
-               NotesAudioStore.shared.audioURL(for: attachmentID) != nil {
-                noteCues = NotesAudioStore.shared.loadCues(for: attachmentID)
-            }
-            didLoadNoteCues = true
-            prepareListenTrack()
+            guard let attachmentID = note.audioAttachmentID,
+                  NotesAudioStore.shared.audioURL(for: attachmentID) != nil else { return }
+            noteCues = NotesAudioStore.shared.loadCues(for: attachmentID)
         }
         .onDisappear {
             // Release the audio file + deactivate the session when the sheet/screen leaves.
@@ -513,7 +507,6 @@ struct SongStepperView: View {
         if let streaming = items.first(where: { $0.phase == .streaming }) {
             expandedByLineIndex.insert(streaming.line.index)
         }
-        prepareListenTrack()
     }
 
     // MARK: - Expansion
