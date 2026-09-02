@@ -463,10 +463,11 @@ struct SongStepperView: View {
                             listenHighlight: activeListenSegment?.lineIndex == item.line.index ? activeListenSegment : nil,
                             onToggleExpansion: { toggleExpansion(for: item.line) },
                             onPlayLine: {
-                                if cardPlayState(for: item.line) == .playing {
-                                    pauseListen()
-                                } else {
-                                    playListen(line: item.line)
+                                switch cardPlayState(for: item.line) {
+                                case .available: generateListenTrack()
+                                case .idle: playListen(line: item.line)
+                                case .playing: pauseListen()
+                                case .loading, nil: break
                                 }
                             },
                             onWordTapped: { presentWordLookup($0) }

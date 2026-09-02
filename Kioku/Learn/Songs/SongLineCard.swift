@@ -172,24 +172,42 @@ struct SongLineCard: View {
         }
     }
 
-    // Small accent-coloured ▶︎ / ❚❚ that triggers `onPlayLine` (the parent decides whether
-    // that means play or pause from the state), or a spinner while the narration track this
-    // line needs is still being rendered.
+    // Small accent-coloured ⬇︎ / ▶︎ / ❚❚ that triggers `onPlayLine` (the parent decides
+    // whether that means generate, play, or pause from the state), or a spinner while the
+    // narration track is actively being generated.
     @ViewBuilder
     private func playButton(_ state: SongLineCardPlayState) -> some View {
         switch state {
         case .loading:
             ProgressView()
                 .controlSize(.small)
-                .accessibilityLabel("Preparing audio for line \(line.index)")
-        case .idle, .playing:
+                .accessibilityLabel("Generating audio for line \(line.index)")
+        case .available, .idle, .playing:
             Button(action: onPlayLine) {
-                Image(systemName: state == .playing ? "pause.circle.fill" : "play.circle.fill")
+                Image(systemName: playButtonSymbol(state))
                     .font(.system(size: 22))
                     .foregroundStyle(Color.accentColor)
-                    .accessibilityLabel(state == .playing ? "Pause line \(line.index)" : "Play line \(line.index)")
+                    .accessibilityLabel(playButtonLabel(state))
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    // Icon per state for the audio button.
+    private func playButtonSymbol(_ state: SongLineCardPlayState) -> String {
+        switch state {
+        case .available: return "arrow.down.circle"
+        case .playing: return "pause.circle.fill"
+        case .idle, .loading: return "play.circle.fill"
+        }
+    }
+
+    // Accessibility label per state for the audio button.
+    private func playButtonLabel(_ state: SongLineCardPlayState) -> String {
+        switch state {
+        case .available: return "Generate audio for line \(line.index)"
+        case .playing: return "Pause line \(line.index)"
+        case .idle, .loading: return "Play line \(line.index)"
         }
     }
 

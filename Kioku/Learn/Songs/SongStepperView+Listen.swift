@@ -25,18 +25,30 @@ extension SongStepperView {
         }
     }
 
-    // What a card's play button shows: a spinner only while the narration track is actively
-    // being generated (the toolbar headphones button starts that), play once it exists,
-    // pause while this line is the one speaking. Nil (hidden) before a render has been
-    // started, after one fails, or while there's no breakdown to narrate.
+    // What a card's audio button shows: a down arrow until the narration track has been
+    // generated (or after a failed attempt — tapping generates), a spinner only while it is
+    // actively generating, play once it exists, pause while this line is the one speaking.
+    // Nil (hidden) while there's no breakdown to narrate.
     func cardPlayState(for line: SongLine) -> SongLineCardPlayState? {
         guard hasBreakdown, isStreamingCards == false else { return nil }
         if listenPlayback.isPlaying, activeListenSegment?.lineIndex == line.index { return .playing }
         switch listenRenderState {
         case .rendering: return .loading
         case .ready: return .idle
-        case .failed, nil: return nil
+        case .failed, nil: return .available
         }
+    }
+
+    // A card's down arrow: generate the narration track (for the whole breakdown — it's one
+    // file) without playing anything. The card's spinner then turns into a play button when
+    // the render finishes. Retries after a failure.
+    func generateListenTrack() {
+        guard let breakdown = cachedBreakdown else { return }
+        if case .failed = listenRenderState {
+            listenStore.retry(for: breakdown, sourceAudioURL: listenSourceAudioURL, lineRanges: lineRangesByIndex)
+            return
+        }
+        ensureListenRendered()
     }
 
 
