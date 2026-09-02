@@ -8,12 +8,13 @@ import SwiftUI
 //
 // There is no separate loading screen. The scroll always shows one card per note line;
 // while the model streams, cards fill in from the top (the one being written is highlighted
-// and auto-expanded, the rest still show the note text) and the toolbar wand becomes a
-// spinner; failures surface as a banner above the list.
+// and auto-expanded, the rest still show the note text). The Generate button itself becomes
+// a spinner while it runs (or the toolbar regenerate icon, when regenerating); failures
+// surface as a banner above the list.
 //
 // Major sections:
-//   1. Toolbar: listen / expand-all / generate-or-cancel control
-//   2. Banners: generation error, stale breakdown, or "not generated yet" prompt
+//   1. Toolbar: listen / expand-all / regenerate menu (spinner while regenerating)
+//   2. Header: generate buttons (no breakdown yet), stale banner, or generation error
 //   3. Vertical scroll of per-line cards (SongBreakdownProgressComposer decides the rows)
 // Furigana cache building lives in SongStepperView+Furigana.
 struct SongStepperView: View {
@@ -137,8 +138,8 @@ struct SongStepperView: View {
                 errorBanner(message)
             } else if isRunning == false, let breakdown = cachedBreakdown, isStale(breakdown) {
                 staleBanner
-            } else if isRunning == false, hasBreakdown == false {
-                generateBar
+            } else if hasBreakdown == false {
+                generateButtons
             }
             scrollList(items: displayItems)
         }
@@ -169,8 +170,10 @@ struct SongStepperView: View {
                     .accessibilityLabel(areAllLinesExpanded ? "Hide all explanations" : "Show all explanations")
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                generationControl
+            if hasBreakdown {
+                ToolbarItem(placement: .topBarTrailing) {
+                    regenerateControl
+                }
             }
         }
         .sheet(isPresented: $isListenSheetPresented) {
@@ -252,33 +255,33 @@ struct SongStepperView: View {
 
     // MARK: - Toolbar
 
-    // The single generate affordance. While running it is a spinner whose menu offers
-    // Cancel; otherwise a wand whose menu offers the plain and merged paths (labelled
-    // Generate or Regenerate depending on whether a breakdown already exists).
+    // Regenerate menu for a note that already has a breakdown. Both entries go through a
+    // confirmation since they replace a paid-for result. While a regeneration runs the icon
+    // becomes a spinner whose only menu entry is Cancel.
     @ViewBuilder
-    private var generationControl: some View {
+    private var regenerateControl: some View {
         if isRunning {
             Menu {
-                Button("Cancel generation", role: .destructive) {
+                Button("Cancel", role: .destructive) {
                     songBreakdownStore.cancelGeneration(forNoteID: note.id)
                 }
             } label: {
                 ProgressView()
                     .controlSize(.small)
             }
-            .accessibilityLabel("Generating breakdown")
+            .accessibilityLabel("Regenerating breakdown")
         } else {
             Menu {
-                Button(hasBreakdown ? "Regenerate" : "Generate") {
-                    requestGeneration(merged: false)
+                Button("Regenerate") {
+                    isRegenerateConfirmationPresented = true
                 }
-                Button(hasBreakdown ? "Regenerate + Fix Segmentation" : "Generate + Fix Segmentation") {
-                    requestGeneration(merged: true)
+                Button("Regenerate + Fix Segmentation (Merged)") {
+                    isMergedRegenerateConfirmationPresented = true
                 }
             } label: {
-                Image(systemName: "wand.and.stars")
+                Image(systemName: "arrow.clockwise")
             }
-            .accessibilityLabel(hasBreakdown ? "Regenerate breakdown" : "Generate breakdown")
+            .accessibilityLabel("Regenerate breakdown")
         }
     }
 
@@ -311,25 +314,46 @@ struct SongStepperView: View {
         .background(Color.orange.opacity(0.12))
     }
 
-    // First-visit bar above the cards. Generation is a paid, deliberate action, so it never
-    // auto-fires on entry; the merged variant lives in the toolbar menu.
-    private var generateBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "wand.and.stars")
-                .foregroundStyle(Color.accentColor)
-            Text("No breakdown yet")
-                .font(.footnote.weight(.semibold))
-            Spacer(minLength: 8)
-            Button("Generate") {
+    // First-visit controls above the cards: the plain and merged generate buttons. Generation
+    // is a paid, deliberate action, so it never auto-fires on entry. While the call runs the
+    // primary button shows a spinner in place of its label and the secondary becomes Cancel.
+    private var generateButtons: some View {
+        VStack(spacing: 10) {
+            Button {
                 startGeneration()
+            } label: {
+                if isRunning {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Label("Generate breakdown", systemImage: "wand.and.stars")
+                        .frame(maxWidth: .infinity)
+                }
             }
-            .font(.footnote.weight(.semibold))
             .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .controlSize(.large)
+            .disabled(isRunning)
+            .accessibilityLabel(isRunning ? "Generating breakdown" : "Generate breakdown")
+            if isRunning {
+                Button("Cancel") {
+                    songBreakdownStore.cancelGeneration(forNoteID: note.id)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+            } else {
+                Button {
+                    startMergedGeneration()
+                } label: {
+                    Label("Generate breakdown + Fix Segmentation", systemImage: "wand.and.stars.inverse")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color.accentColor.opacity(0.08))
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
     }
 
     // Generation failed. Shows the underlying message verbatim so the user can distinguish
@@ -475,22 +499,6 @@ struct SongStepperView: View {
     }
 
     // MARK: - Generation
-
-    // Routes a menu tap: a first generation fires immediately, a regenerate (which will
-    // replace a paid-for breakdown) goes through the matching confirmation dialog first.
-    private func requestGeneration(merged: Bool) {
-        if hasBreakdown {
-            if merged {
-                isMergedRegenerateConfirmationPresented = true
-            } else {
-                isRegenerateConfirmationPresented = true
-            }
-        } else if merged {
-            startMergedGeneration()
-        } else {
-            startGeneration()
-        }
-    }
 
     // Triggers a generation call via the store. The store owns the Task, so dismissing
     // this sheet does NOT cancel the work — the user can leave, come back, and find the
