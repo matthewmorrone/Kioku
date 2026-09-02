@@ -82,7 +82,12 @@ struct FlashcardCard: View {
             .overlay(actionOverlays)
             .zIndex(isTop ? 10 : 0)
             .allowsHitTesting(isTop)
-            .gesture(dragGesture)
+            // simultaneousGesture, not gesture: an exclusive DragGesture here can hold an
+            // ambiguous touch in .possible long enough to swallow taps on FlashcardsView's
+            // Again/Detail/Know buttons below, which sit in the same NavigationStack content —
+            // those buttons stopped responding to taps entirely (only the swipe still worked)
+            // until this was made non-exclusive.
+            .simultaneousGesture(dragGesture)
             .onAppear {
                 if isTop { flipAngleDegrees = showBack ? 180 : 0 }
             }
