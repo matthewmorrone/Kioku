@@ -39,8 +39,8 @@ struct SongLineCard: View {
     // hides the play button entirely — "if available" semantics on the play affordance.
     let playbackRange: (startMs: Int, endMs: Int)?
     // Streaming state for this row (see SongLineCardPhase). `.streaming` adds an accent border
-    // and a spinner in the header; `.noteText` and `.ready` render identically except that the
-    // recovery notice only applies to a real breakdown line.
+    // and a spinner in the header and suppresses the recovery notice (an in-progress line
+    // legitimately has no content yet).
     let phase: SongLineCardPhase
     let onToggleExpansion: () -> Void
     let onPlayLine: () -> Void

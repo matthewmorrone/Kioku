@@ -6,16 +6,15 @@ import SwiftUI
 // list is collapsed by default and toggled by the user. The view drives the generation
 // flow itself so the parent home stays a pure list.
 //
-// There is no separate loading screen. The scroll always shows one card per note line;
-// while the model streams, cards fill in from the top (the one being written is highlighted
-// and auto-expanded, the rest still show the note text). The Generate button itself becomes
-// a spinner while it runs (or the toolbar regenerate icon, when regenerating); failures
-// surface as a banner above the list.
+// There is no separate loading screen. The Generate button (or, on a regenerate, the toolbar
+// icon) spins while the call runs, and as the model streams each line's card appears in the
+// scroll with the one being written highlighted and auto-expanded.
 //
 // Major sections:
-//   1. Toolbar: listen / expand-all / regenerate menu (spinner while regenerating)
-//   2. Header: generate buttons (no breakdown yet), stale banner, or generation error
-//   3. Vertical scroll of per-line cards (SongBreakdownProgressComposer decides the rows)
+//   1. Toolbar with listen / expand-all / regenerate actions (spinner while running)
+//   2. Stale banner when source text drifted since generation
+//   3. Body state machine: not-generated → streaming cards → ready (scroll) → error
+//   4. Vertical scroll of per-line cards
 // Furigana cache building lives in SongStepperView+Furigana.
 struct SongStepperView: View {
     let note: Note
@@ -44,8 +43,6 @@ struct SongStepperView: View {
     // destinations: startGeneration vs startMergedGeneration) can't cross-wire.
     @State private var isMergedRegenerateConfirmationPresented: Bool = false
     @State private var isListenSheetPresented: Bool = false
-    // Remembers which path the user last chose so the error banner's Retry re-runs the same one.
-    @State private var lastGenerationWasMerged: Bool = false
     // Furigana state shared with SongStepperView+Furigana (internal, not private, for that reason).
     @State var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
     // The note's persisted per-note reading overrides (Note.segments), restored once on appear
@@ -100,21 +97,22 @@ struct SongStepperView: View {
         (cachedBreakdown?.lines.isEmpty == false)
     }
 
-    // Lines currently on screen: the streamed partial parse while running (a running
-    // generation always wins, even over a cached breakdown, so the user watches the new one
-    // arrive), otherwise the cached breakdown.
+    // True once a running generation has produced at least one line — from then on the
+    // streamed cards replace whatever was on screen (prompt or old breakdown).
+    private var isStreamingCards: Bool {
+        isRunning && songBreakdownStore.partialLines(forNoteID: note.id).isEmpty == false
+    }
+
+    // Lines currently on screen: the streamed partial parse once it has content, otherwise
+    // the cached breakdown (kept visible while a regenerate waits for its first line).
     private var currentLines: [SongLine] {
-        if isRunning { return songBreakdownStore.partialLines(forNoteID: note.id) }
+        if isStreamingCards { return songBreakdownStore.partialLines(forNoteID: note.id) }
         return cachedBreakdown?.lines ?? []
     }
 
-    // Rows for the scroll: streamed/cached lines merged over the note's own lines.
+    // Rows for the scroll, with the line being written marked while streaming.
     private var displayItems: [SongLineDisplayItem] {
-        SongBreakdownProgressComposer.items(
-            noteContent: note.content,
-            streamedLines: currentLines,
-            isRunning: isRunning
-        )
+        SongBreakdownProgressComposer.items(lines: currentLines, isStreaming: isStreamingCards)
     }
 
     // Identity of the card the model is currently writing, for auto-scroll + auto-expand.
@@ -134,14 +132,7 @@ struct SongStepperView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if case .failed(let message) = generationState {
-                errorBanner(message)
-            } else if isRunning == false, let breakdown = cachedBreakdown, isStale(breakdown) {
-                staleBanner
-            } else if hasBreakdown == false {
-                generateButtons
-            }
-            scrollList(items: displayItems)
+            bodyContent
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -150,7 +141,21 @@ struct SongStepperView: View {
                     .font(.headline)
                     .accessibilityLabel("Breakdown")
             }
-            if isRunning == false, hasBreakdown {
+            if isRunning {
+                // The regenerate icon's slot becomes a spinner while a call runs; its only
+                // menu entry is Cancel.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Cancel", role: .destructive) {
+                            songBreakdownStore.cancelGeneration(forNoteID: note.id)
+                        }
+                    } label: {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    .accessibilityLabel("Generating breakdown")
+                }
+            } else if hasBreakdown {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isListenSheetPresented = true
@@ -159,8 +164,6 @@ struct SongStepperView: View {
                     }
                     .accessibilityLabel("Listen to breakdown")
                 }
-            }
-            if displayItems.isEmpty == false {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         toggleAllExpansion()
@@ -169,10 +172,18 @@ struct SongStepperView: View {
                     }
                     .accessibilityLabel(areAllLinesExpanded ? "Hide all explanations" : "Show all explanations")
                 }
-            }
-            if hasBreakdown {
                 ToolbarItem(placement: .topBarTrailing) {
-                    regenerateControl
+                    Menu {
+                        Button("Regenerate") {
+                            isRegenerateConfirmationPresented = true
+                        }
+                        Button("Regenerate + Fix Segmentation (Merged)") {
+                            isMergedRegenerateConfirmationPresented = true
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Regenerate breakdown")
                 }
             }
         }
@@ -195,9 +206,9 @@ struct SongStepperView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            // Honest framing: full-song breakdowns bill per token. The old breakdown stays
-            // until the new one finishes, so a failed call costs nothing but the tokens.
-            Text("Sends the full lyrics to the configured LLM provider and uses paid tokens. The existing breakdown is replaced when the new one finishes.")
+            // Honest framing: full-song breakdowns are minutes-long and bill per token. The old
+            // breakdown stays until the new one finishes, so a failed call costs only the tokens.
+            Text("Sends the full lyrics to the configured LLM provider. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
         }
         .confirmationDialog(
             "Regenerate with merged segmentation correction?",
@@ -209,7 +220,7 @@ struct SongStepperView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("One combined call that both fixes this note's segmentation/readings and regenerates the breakdown. Not supported on Apple Intelligence. Uses paid tokens; the existing breakdown is replaced when the new one finishes.")
+            Text("Sends the full lyrics to the configured LLM provider in one combined call that both fixes this note's segmentation/readings and regenerates the breakdown. Not supported on Apple Intelligence. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
         }
         .preference(key: CardsStudySessionActivePreferenceKey.self, value: true)
         .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: true)
@@ -219,14 +230,14 @@ struct SongStepperView: View {
         .onChange(of: isRunning) { _, running in
             if running { expandedByLineIndex = [] }
         }
-        // Every change to the rows — a streamed line landing, a breakdown finishing, a cached
-        // breakdown replacing the bare note lines — refreshes furigana and offsets for the new
-        // rows and auto-expands the line the model is currently writing.
+        // Every change to the rows — a streamed line landing, a breakdown finishing, a
+        // regenerate replacing the old lines — refreshes furigana and offsets for the new rows
+        // and auto-expands the line the model is currently writing.
         .onChange(of: displayItems) { _, items in
             refreshLineDerivedState(for: items)
         }
-        // Covers first appearance with an already-cached breakdown (or bare note lines) — onChange
-        // above only fires on a *transition*, not on the initial value.
+        // Covers first appearance with an already-cached breakdown — onChange above only fires
+        // on a *transition*, not on the initial value.
         .onAppear {
             noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
             refreshLineDerivedState(for: displayItems)
@@ -253,41 +264,28 @@ struct SongStepperView: View {
         }
     }
 
-    // MARK: - Toolbar
-
-    // Regenerate menu for a note that already has a breakdown. Both entries go through a
-    // confirmation since they replace a paid-for result. While a regeneration runs the icon
-    // becomes a spinner whose only menu entry is Cancel.
+    // State machine, same shape as before streaming existed except that "loading" is no
+    // longer a screen of its own: a failed generation shows the error verbatim; streamed
+    // cards show as soon as the first line lands; until then a first generation keeps the
+    // generate prompt (with its button spinning) and a regenerate keeps the old cards (with
+    // the toolbar icon spinning); otherwise the cached breakdown or the first-visit prompt.
     @ViewBuilder
-    private var regenerateControl: some View {
-        if isRunning {
-            Menu {
-                Button("Cancel", role: .destructive) {
-                    songBreakdownStore.cancelGeneration(forNoteID: note.id)
-                }
-            } label: {
-                ProgressView()
-                    .controlSize(.small)
+    private var bodyContent: some View {
+        if case .failed(let message) = generationState {
+            errorView(message)
+        } else if isStreamingCards {
+            scrollList(items: displayItems)
+        } else if hasBreakdown, let breakdown = cachedBreakdown {
+            if isStale(breakdown) {
+                staleBanner
             }
-            .accessibilityLabel("Regenerating breakdown")
+            scrollList(items: displayItems)
         } else {
-            Menu {
-                Button("Regenerate") {
-                    isRegenerateConfirmationPresented = true
-                }
-                Button("Regenerate + Fix Segmentation (Merged)") {
-                    isMergedRegenerateConfirmationPresented = true
-                }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .accessibilityLabel("Regenerate breakdown")
+            generatePrompt
         }
     }
 
-    // MARK: - Banners
-
-    // Shown when the cached breakdown's hash disagrees with the current note hash.
+    // Banner shown when the cached breakdown's hash disagrees with the current note hash.
     // We never auto-invalidate — the breakdown remains usable so a typo fix doesn't
     // throw away an expensive LLM run — but the user is told and offered Regenerate.
     private var staleBanner: some View {
@@ -308,17 +306,30 @@ struct SongStepperView: View {
             .font(.footnote.weight(.semibold))
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .disabled(isRunning)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color.orange.opacity(0.12))
     }
 
-    // First-visit controls above the cards: the plain and merged generate buttons. Generation
-    // is a paid, deliberate action, so it never auto-fires on entry. While the call runs the
-    // primary button shows a spinner in place of its label and the secondary becomes Cancel.
-    private var generateButtons: some View {
-        VStack(spacing: 10) {
+    // First-visit state: explain what's about to happen and let the user kick off the call.
+    // Costs are LLM-provider-dependent so we let the user make the deliberate choice rather
+    // than auto-firing on entry. While the call runs (and before its first line arrives) the
+    // primary button shows a spinner in place of its label.
+    private var generatePrompt: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "music.note.list")
+                .font(.system(size: 56))
+                .foregroundStyle(.secondary)
+            Text("Ready to break this song down line by line.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Text("Sends the lyrics to the LLM configured in Settings.")
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.tertiary)
             Button {
                 startGeneration()
             } label: {
@@ -334,67 +345,42 @@ struct SongStepperView: View {
             .controlSize(.large)
             .disabled(isRunning)
             .accessibilityLabel(isRunning ? "Generating breakdown" : "Generate breakdown")
-            if isRunning {
-                Button("Cancel") {
-                    songBreakdownStore.cancelGeneration(forNoteID: note.id)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .frame(maxWidth: .infinity)
-            } else {
-                Button {
-                    startMergedGeneration()
-                } label: {
-                    Label("Generate breakdown + Fix Segmentation", systemImage: "wand.and.stars.inverse")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
+            Button {
+                startMergedGeneration()
+            } label: {
+                Label("Generate breakdown + Fix Segmentation", systemImage: "wand.and.stars.inverse")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .disabled(isRunning)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 14)
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // Generation failed. Shows the underlying message verbatim so the user can distinguish
-    // missing-key from network errors from parse failures; Retry re-runs the same path
-    // (plain or merged) that failed, and the close button just clears the error.
-    private func errorBanner(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
+    // missing-key from network errors from parse failures.
+    private func errorView(_ message: String) -> some View {
+        VStack(spacing: 18) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 48))
                 .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Couldn't generate breakdown")
-                    .font(.footnote.weight(.semibold))
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(4)
-            }
-            Spacer(minLength: 8)
-            Button("Retry") {
-                if lastGenerationWasMerged {
-                    startMergedGeneration()
-                } else {
-                    startGeneration()
-                }
-            }
-            .font(.footnote.weight(.semibold))
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            Text("Couldn't generate breakdown")
+                .font(.headline)
+            Text(message)
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 32)
             Button {
-                songBreakdownStore.clearGenerationError(forNoteID: note.id)
+                startGeneration()
             } label: {
-                Image(systemName: "xmark")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                Label("Retry", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss error")
+            .buttonStyle(.borderedProminent)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color.orange.opacity(0.12))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Scroll
@@ -505,7 +491,6 @@ struct SongStepperView: View {
     // cards still filling in or the result already cached. The existing breakdown is left
     // in place until the new one lands, so a cancelled or failed run loses nothing.
     private func startGeneration() {
-        lastGenerationWasMerged = false
         songBreakdownStore.clearGenerationError(forNoteID: note.id)
         songBreakdownStore.startGeneration(
             forNoteID: note.id,
@@ -517,9 +502,8 @@ struct SongStepperView: View {
     // Merged alternative to startGeneration(): one LLM call returns both the breakdown and a
     // corrected segmentation, applied via SongBreakdownStore.startMergedGeneration. Shares the
     // same store-owned running/failed state as the plain path, so the streaming cards and
-    // error banner render unchanged regardless of which path is in flight.
+    // error view render unchanged regardless of which path is in flight.
     private func startMergedGeneration() {
-        lastGenerationWasMerged = true
         songBreakdownStore.clearGenerationError(forNoteID: note.id)
         songBreakdownStore.startMergedGeneration(
             forNote: note,
