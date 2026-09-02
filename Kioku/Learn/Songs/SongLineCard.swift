@@ -40,8 +40,11 @@ struct SongLineCard: View {
     let playbackRange: (startMs: Int, endMs: Int)?
     // Streaming state for this row (see SongLineCardPhase). `.streaming` adds an accent border
     // and a spinner in the header and suppresses the recovery notice (an in-progress line
-    // legitimately has no content yet).
+    // legitimately has no content yet); `.playing` adds the border alone.
     let phase: SongLineCardPhase
+    // The listen-along segment currently being spoken, when it belongs to this line: tints
+    // the matching row (sentence / gist / word) so the card doubles as the transcript.
+    let listenHighlight: SongListenSegment?
     let onToggleExpansion: () -> Void
     let onPlayLine: () -> Void
     // Opens the shared lookup sheet for a tapped vocabulary row. The parent owns the dictionary
@@ -105,14 +108,40 @@ struct SongLineCard: View {
         .accessibilityElement(children: .contain)
     }
 
-    // The streaming card gets a 2pt accent ring so the eye lands on the line the model is
-    // writing; every other card keeps the plain separator stroke.
+    // The streaming or playing card gets a 2pt accent ring so the eye lands on the line the
+    // model is writing / the narrator is speaking; every other card keeps the plain stroke.
     private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: 18)
-            .stroke(
-                phase == .streaming ? Color.accentColor : Color(.separator),
-                lineWidth: phase == .streaming ? 2 : 1
-            )
+        let isRinged = phase == .streaming || phase == .playing
+        return RoundedRectangle(cornerRadius: 18)
+            .stroke(isRinged ? Color.accentColor : Color(.separator), lineWidth: isRinged ? 2 : 1)
+    }
+
+    // Whether listen-along is speaking the given kind of row on this line right now.
+    private func isSpeaking(_ kind: SongListenSegmentKind) -> Bool {
+        listenHighlight?.kind == kind
+    }
+
+    // Whether listen-along is speaking this word's surface or definition right now. Matched
+    // by text, since the segment carries no word identity — the same text the script was
+    // built from (SongListenScript), so a repeated word tints on each occurrence.
+    private func isSpeaking(_ word: SongWord) -> Bool {
+        guard let listenHighlight else { return false }
+        switch listenHighlight.kind {
+        case .wordSurface:
+            return listenHighlight.text == word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .wordDefinition:
+            return listenHighlight.text == SongLineCard.stripInlineMarkdown(word.definition)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        case .sentence, .translation:
+            return false
+        }
+    }
+
+    // Row tint for whatever listen-along is speaking. Applied behind the sentence, gist, or
+    // word row; clear otherwise so the layout never shifts when the highlight moves.
+    private func speakingBackground(_ isActive: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isActive ? Color.accentColor.opacity(0.16) : Color.clear)
     }
 
     // Position indicator + (when this is a chorus repeat) an inline reference annotation.
@@ -233,6 +262,7 @@ struct SongLineCard: View {
            cache.sourceText == line.original,
            cache.furiganaBySegmentLocation.isEmpty == false {
             furiganaRow(cache: cache)
+                .background(speakingBackground(isSpeaking(.sentence)))
                 .accessibilityLabel(line.original)
                 .accessibilityHint(explanationsAccessibilityHint)
         } else {
@@ -247,6 +277,7 @@ struct SongLineCard: View {
                 // rendered via the renderer.
                 .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 4))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background(speakingBackground(isSpeaking(.sentence)))
                 .contentShape(Rectangle())
                 .onTapGesture { onToggleExpansion() }
                 .accessibilityLabel(line.original)
@@ -307,6 +338,8 @@ struct SongLineCard: View {
                 .font(.callout.italic())
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+                .background(speakingBackground(isSpeaking(.translation)))
         }
     }
 
@@ -444,6 +477,8 @@ struct SongLineCard: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 4)
+            .background(speakingBackground(isSpeaking(word)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

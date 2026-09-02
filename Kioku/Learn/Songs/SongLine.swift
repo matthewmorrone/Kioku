@@ -45,11 +45,13 @@ nonisolated struct WordFuriganaKey: Hashable {
     let surface: String
 }
 
-// Whether a line card is still being written (see SongBreakdownProgressComposer):
-//   .streaming — the model is currently writing this line's section; highlighted
-//   .ready     — the line's breakdown is complete (or came from a cached breakdown)
+// What a line card is doing right now (see SongBreakdownProgressComposer):
+//   .streaming — the model is currently writing this line's section; ringed, with a spinner
+//   .playing   — listen-along is currently speaking this line; ringed
+//   .ready     — nothing in progress
 nonisolated enum SongLineCardPhase: Equatable {
     case streaming
+    case playing
     case ready
 }
 

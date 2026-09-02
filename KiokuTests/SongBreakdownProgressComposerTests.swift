@@ -40,4 +40,14 @@ final class SongBreakdownProgressComposerTests: XCTestCase {
     func testEmptyLinesYieldNoRows() {
         XCTAssertTrue(SongBreakdownProgressComposer.items(lines: [], isStreaming: true).isEmpty)
     }
+
+    // The line listen-along is speaking is marked playing; streaming wins if both apply.
+    func testPlayingLineIsMarked() {
+        let items = SongBreakdownProgressComposer.items(
+            lines: [line(1, "君の名前を呼んだ"), line(2, "夜の風が吹く")],
+            isStreaming: false,
+            playingLineIndex: 2
+        )
+        XCTAssertEqual(items.map(\.phase), [.ready, .playing])
+    }
 }

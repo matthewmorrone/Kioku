@@ -8,14 +8,17 @@ import SwiftUI
 //
 // There is no separate loading screen. The Generate button (or, on a regenerate, the toolbar
 // icon) spins while the call runs, and as the model streams each line's card appears in the
-// scroll with the one being written highlighted and auto-expanded.
+// scroll with the one being written highlighted and auto-expanded. Listen-along is not a
+// separate screen either: the headphones toggle renders the narrated track and plays it
+// from a bar under the cards, with the line and row being spoken highlighted in place.
 //
 // Major sections:
 //   1. Toolbar with listen / expand-all / regenerate actions (spinner while running)
 //   2. Stale banner when source text drifted since generation
 //   3. Body state machine: not-generated → streaming cards → ready (scroll) → error
-//   4. Vertical scroll of per-line cards
-// Furigana cache building lives in SongStepperView+Furigana.
+//   4. Vertical scroll of per-line cards, with the listen bar beneath while listening
+// Furigana cache building lives in SongStepperView+Furigana; listen-along in
+// SongStepperView+Listen.
 struct SongStepperView: View {
     let note: Note
     // Optional deps for per-line furigana. Nil segmenter degrades to "no readings" (cache
@@ -33,6 +36,8 @@ struct SongStepperView: View {
     // persists the corrected segmentation directly to the note. The plain breakdown path never
     // touches notesStore.
     @EnvironmentObject private var notesStore: NotesStore
+    // Owns listen-along renders and resume positions across sheet dismissals.
+    @EnvironmentObject var listenStore: SongListenStore
     // Per-line expansion state: whether a line's word/grammar explanations are visible.
     // Keyed by `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
     // Lines are auto-expanded as they stream in; reset when a new generation starts.
@@ -42,7 +47,17 @@ struct SongStepperView: View {
     // isRegenerateConfirmationPresented so the two dialogs' distinct messages (and
     // destinations: startGeneration vs startMergedGeneration) can't cross-wire.
     @State private var isMergedRegenerateConfirmationPresented: Bool = false
-    @State private var isListenSheetPresented: Bool = false
+    // Listen-along state shared with SongStepperView+Listen (internal for that reason).
+    @State var isListening: Bool = false
+    // The URL the listen player was last loaded for, so a body re-evaluation doesn't
+    // reload/reseek/replay an already-loaded track.
+    @State var loadedListenURL: URL?
+    // Speech segments in track order, paired with the player's cues by index so the playhead
+    // maps back to a line and row (see activeListenSegment).
+    @State var listenSpeechSegments: [SongListenSegment] = []
+    // Plays the rendered listen-along track. Separate from audioController, which plays the
+    // note's own audio for the per-line ▶︎ buttons.
+    @StateObject var listenPlayback = AudioPlaybackController()
     // Furigana state shared with SongStepperView+Furigana (internal, not private, for that reason).
     @State var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
     // The note's persisted per-note reading overrides (Note.segments), restored once on appear
@@ -89,7 +104,8 @@ struct SongStepperView: View {
         songBreakdownStore.isGenerating(forNoteID: note.id)
     }
 
-    private var cachedBreakdown: SongBreakdown? {
+    // Internal (not private): read by SongStepperView+Listen.
+    var cachedBreakdown: SongBreakdown? {
         songBreakdownStore.breakdown(forNoteID: note.id)
     }
 
@@ -110,9 +126,19 @@ struct SongStepperView: View {
         return cachedBreakdown?.lines ?? []
     }
 
-    // Rows for the scroll, with the line being written marked while streaming.
+    // Rows for the scroll, with the line being written marked while streaming and the line
+    // being spoken marked while listening.
     private var displayItems: [SongLineDisplayItem] {
-        SongBreakdownProgressComposer.items(lines: currentLines, isStreaming: isStreamingCards)
+        SongBreakdownProgressComposer.items(
+            lines: currentLines,
+            isStreaming: isStreamingCards,
+            playingLineIndex: activeListenSegment?.lineIndex
+        )
+    }
+
+    // Identity of the card listen-along is speaking, for auto-scroll + auto-expand.
+    private var playingItemID: String? {
+        displayItems.first(where: { $0.phase == .playing })?.id
     }
 
     // Identity of the card the model is currently writing, for auto-scroll + auto-expand.
@@ -123,7 +149,7 @@ struct SongStepperView: View {
     // Maps each displayed line.index → its matched audio time range. Empty when the note
     // has no audio or the SRT doesn't line up with the lines. Computed on each body pass;
     // both inputs are tiny (~30 lines × ~30 cues) so the O(N·M) walk is cheap.
-    private var lineRangesByIndex: [Int: (startMs: Int, endMs: Int)] {
+    var lineRangesByIndex: [Int: (startMs: Int, endMs: Int)] {
         guard audioController.cues.isEmpty == false else { return [:] }
         return SongLineCueMatcher.computeRanges(lines: displayItems.map(\.line), cues: audioController.cues)
     }
@@ -133,6 +159,14 @@ struct SongStepperView: View {
     var body: some View {
         VStack(spacing: 0) {
             bodyContent
+            if isListening {
+                SongListenBar(
+                    state: listenStore.renderState(forNoteID: note.id),
+                    playback: listenPlayback,
+                    onRetry: { retryListenRender() },
+                    onClose: { stopListening() }
+                )
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -158,11 +192,11 @@ struct SongStepperView: View {
             } else if hasBreakdown {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        isListenSheetPresented = true
+                        isListening ? stopListening() : startListening()
                     } label: {
-                        Image(systemName: "headphones")
+                        Image(systemName: isListening ? "headphones.circle.fill" : "headphones")
                     }
-                    .accessibilityLabel("Listen to breakdown")
+                    .accessibilityLabel(isListening ? "Stop listening" : "Listen to breakdown")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -187,14 +221,15 @@ struct SongStepperView: View {
                 }
             }
         }
-        .sheet(isPresented: $isListenSheetPresented) {
-            if let breakdown = cachedBreakdown {
-                SongListenSheet(
-                    breakdown: breakdown,
-                    sourceAudioURL: note.audioAttachmentID.flatMap { NotesAudioStore.shared.audioURL(for: $0) },
-                    lineRanges: lineRangesByIndex
-                )
-            }
+        // A freshly-ready render (or a regenerated breakdown's fresh render) loads into the
+        // player as soon as the store publishes it.
+        .onChange(of: listenStore.renderStateByNoteID[note.id]) { _, _ in
+            loadListenTrackIfReady()
+        }
+        // A regenerate replaces the lines the track was narrating; stop rather than keep
+        // highlighting rows that no longer exist.
+        .onChange(of: isRunning) { _, running in
+            if running, isListening { stopListening() }
         }
         .confirmationDialog(
             "Regenerate this breakdown?",
@@ -257,9 +292,11 @@ struct SongStepperView: View {
             }
         }
         .onDisappear {
-            // Release the audio file + deactivate the session when the sheet/screen leaves.
-            // Without this, the controller would hold its `AVAudioPlayer` (and the audio
-            // session) until SwiftUI deallocates the @StateObject, which is non-deterministic.
+            // Release the audio files + deactivate the session when the sheet/screen leaves.
+            // Without this, the controllers would hold their `AVAudioPlayer` (and the audio
+            // session) until SwiftUI deallocates the @StateObjects, which is non-deterministic.
+            // Listen-along records its playhead first so reopening resumes where it left off.
+            if isListening { stopListening() }
             audioController.unload()
         }
     }
@@ -401,6 +438,7 @@ struct SongStepperView: View {
                             wordFurigana: wordFuriganaByKey,
                             playbackRange: lineRangesByIndex[item.line.index],
                             phase: item.phase,
+                            listenHighlight: activeListenSegment?.lineIndex == item.line.index ? activeListenSegment : nil,
                             onToggleExpansion: { toggleExpansion(for: item.line) },
                             onPlayLine: {
                                 if let range = lineRangesByIndex[item.line.index] {
@@ -417,6 +455,15 @@ struct SongStepperView: View {
             }
             .onChange(of: streamingItemID) { _, newID in
                 guard let newID else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(newID, anchor: .center)
+                }
+            }
+            // Listen-along follows the spoken line the same way, expanding it so the word
+            // rows it's about to read are visible.
+            .onChange(of: playingItemID) { _, newID in
+                guard let newID, let item = items.first(where: { $0.id == newID }) else { return }
+                expandedByLineIndex.insert(item.line.index)
                 withAnimation(.easeInOut(duration: 0.3)) {
                     proxy.scrollTo(newID, anchor: .center)
                 }
