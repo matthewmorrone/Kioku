@@ -113,6 +113,13 @@ own sections.)
         `preferredLemma` returning a different member of an ambiguous lemma pair (靡かす vs 靡かせる)
         than the one saved. That couldn't be confirmed by static reading — and the nil-caching race
         above turned out to be the real cause.
+- [ ] **Furigana clipped in the Breakdown detail cards** — reported 2026-09-02 via screenshot:
+      the ふりがな reading ("いのち") over 命 in a Read-tab Breakdown vocab card is visibly cut off
+      at the top, unlike the already-resolved main-text ruby overhang cases above (which cover the
+      primary reading view, not these per-word breakdown cards). Not yet diagnosed — likely a
+      line-height/top-inset gap specific to whatever view renders the Breakdown card's headword +
+      ruby (distinct component from `KiokuCoreTextRendererView`). Repro: open Breakdown on any note
+      with a card whose headword carries a full-width furigana reading.
 
 ## Segmentation & Lookup
 
@@ -706,6 +713,62 @@ own sections.)
       timeline (or just check `startMs >= endMs` + coverage/overlap) and surface cues never
       chosen as active; this auto-catches the interlude-ordering bug above and any mis-timed /
       orphan line. Ship as an editor/QA check (not necessarily user-facing).
+- [ ] **TTS narration skips/mangles text** — reported 2026-09-02: the read-aloud/narration audio
+      never voices "pattern to bank" (exact source string/screen not yet pinned down — needs a
+      repro to find where that text lives), and any literal "/" in generated text is read aloud
+      awkwardly (e.g. spoken as "slash" or garbled) instead of sounding natural. Probably two
+      fixes: (a) TTS-input preprocessing to strip/expand "/" before synthesis, and (b) stop
+      generating "/"-separated text in the first place — see the listening-friendly prompt item
+      below, likely the same root cause for the "/" case specifically.
+- [ ] **Generate breakdown/narration text in a listening-friendly style** — reported 2026-09-02.
+      LLM-generated explanation text (`SongBreakdownPrompt`/`SongBreakdownService`) is written for
+      silent reading, not read-aloud: slash-separated alternatives ("spinning/weaving"),
+      parentheticals, etc. read awkwardly through TTS. Update the prompt so the generated prose
+      favors natural spoken phrasing — spell out alternatives with "or" instead of "/", minimize
+      nested parentheticals, prefer short declarative sentences. Directly related to the TTS
+      mangling bug above (the "/" half of it, at least); doesn't obviously explain "pattern to
+      bank" without a repro.
+- [ ] **Derive TTS word boundaries from the Read tab's existing segmentation** — reported
+      2026-09-02. Idea: reuse the tokenizer/segmenter output already computed for lookup
+      (`segmentEdges`) as word-boundary markers for narration, instead of whatever ad hoc
+      splitting TTS uses today, so narration pacing/highlighting can track the same boundaries the
+      rest of the app already agrees on. Feeds into the two items above.
+- [ ] **Keep audio playing when the screen locks/turns off** — reported 2026-09-02: narration/
+      karaoke playback currently doesn't continue in the background once the device screen turns
+      off. Needs the standard iOS background-audio setup: `AVAudioSession` category `.playback`
+      (not `.ambient`/`.soloAmbient`), the "Audio, AirPlay, and Picture in Picture" background mode
+      capability enabled, and a populated `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` for
+      lock-screen transport controls. Check `AudioPlaybackController`'s current session category
+      and whether the background-mode capability is enabled in the target.
+- [ ] **"Find correct timestamp" repair tool for a mismatched lyric cue** — reported 2026-09-02:
+      when a user flags a `SubtitleCue` whose audio doesn't match its text, offer a "search the
+      song for where this line actually is" fix. A full re-song alignment pass is the wrong tool —
+      see "Lyric-alignment: repeated-lyric disambiguation" under Major Feature Additions above;
+      running the full aligner over an entire song reliably OOMs and degrades badly (the old
+      full-song DTW path measured ~101s median error, `CTCForcedAligner.swift:2-6`). This is a
+      narrower problem though: a single *known* short text (the mismatched cue's own line)
+      searched against one already-encoded song — closer to keyword/phrase spotting than full
+      alignment:
+      1. Run the acoustic-model encoder over the full song once (chunked, same pattern as the
+         existing HTDemucs chunked separation — avoids the OOM path, which came from a full
+         *decode*, not just an encoder pass).
+      2. Slide the mismatched cue's known text as a CTC-scored window across those frame outputs;
+         take the top-N score peaks, where N = how many times that exact line occurs in the song's
+         known lyrics (repeats are the normal case for song lyrics, not an edge case).
+      3. **Repeated-line disambiguation**: pair the N peaks to the N known occurrences of the line
+         by time order — peaks sorted by position, occurrences sorted by their position in the
+         lyric sequence, paired off — deterministic, no fuzzy tie-break needed for the common case.
+         Fall back to bounding candidates by the neighboring (already-correct) cues' timestamps if
+         the peak count doesn't match the expected occurrence count (e.g. a backing-vocal echo
+         producing an extra false peak).
+      Considered and rejected: predicting a spectrogram from the target text (TTS-style
+      text→mel-spectrogram) and cross-correlating it against the real song's spectrogram — sung
+      audio's pitch/rhythm/timbre diverges too far from a synthesized (likely spoken-register)
+      reference for raw spectral cross-correlation to be reliable. CTC's phoneme-probability
+      scoring is acoustic-identity-invariant in a way raw spectrogram matching isn't, so it should
+      generalize better here. Should reuse `CTCForcedAligner`/`SwiftWhisperAlign` infra rather than
+      new signal-processing code. Ties into the repeated-lyric item above — the N-peak/
+      occurrence-pairing idea may also improve `extractAnchors`'s occurrence-aware anchoring there.
 
 ## Settings
 
