@@ -222,9 +222,16 @@ struct SongLineCard: View {
     // carries its own SwiftUI tap gesture; the renderer branch routes taps through
     // `onSegmentTapped` because a UIViewRepresentable wrapping UITextView intercepts
     // touches before SwiftUI sees them.
+    //
+    // The cache is only used when it was built from exactly this text: its segmentation
+    // ranges are String.Index values into `sourceText`, and applying them to a different
+    // string traps inside the CoreText renderer. A stale cache (the parent rebuilds it on the
+    // next update) falls through to the plain branch for one frame instead.
     @ViewBuilder
     private var originalLine: some View {
-        if let cache = furiganaCache, cache.furiganaBySegmentLocation.isEmpty == false {
+        if let cache = furiganaCache,
+           cache.sourceText == line.original,
+           cache.furiganaBySegmentLocation.isEmpty == false {
             furiganaRow(cache: cache)
                 .accessibilityLabel(line.original)
                 .accessibilityHint(explanationsAccessibilityHint)
