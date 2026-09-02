@@ -25,12 +25,26 @@ extension SongStepperView {
         }
     }
 
-    // What a card's play button shows, or nil (hidden) while there's no breakdown to narrate.
+    // What a card's play button shows: a spinner while the narration track is being
+    // generated, play once it exists, pause while this line is the one speaking. Nil
+    // (hidden) while there's no breakdown to narrate or the render hasn't started / failed.
     func cardPlayState(for line: SongLine) -> SongLineCardPlayState? {
         guard hasBreakdown, isStreamingCards == false else { return nil }
         if listenPlayback.isPlaying, activeListenSegment?.lineIndex == line.index { return .playing }
-        if pendingPlayLineIndex == line.index, case .rendering = listenRenderState { return .loading }
-        return .idle
+        switch listenRenderState {
+        case .rendering: return .loading
+        case .ready: return .idle
+        case .failed, nil: return nil
+        }
+    }
+
+    // Starts generating the narration track as soon as a breakdown is on screen (and the
+    // note's cues have been looked up, so the clip inputs are final), without playing it —
+    // that's what turns the cards' spinners into play buttons. Idempotent per breakdown
+    // version + clip inputs, so calling it on every row refresh is free once it's done.
+    func prepareListenTrack() {
+        guard didLoadNoteCues, hasBreakdown, isStreamingCards == false else { return }
+        ensureListenRendered()
     }
 
     // The segment the track is currently speaking, or nil when not playing. Cues carry only
