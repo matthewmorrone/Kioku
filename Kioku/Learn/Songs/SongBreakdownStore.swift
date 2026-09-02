@@ -200,11 +200,15 @@ final class SongBreakdownStore: ObservableObject {
     // a UI-only label and has no effect on dispatch.
     func startGeneration(forNoteID id: UUID, lyrics: String, providerLabel: String) {
         if generationTasksByNoteID[id] != nil { return }
-        generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel)
+        generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel, partialLines: [])
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let breakdown = try await self.service.generate(noteID: id, lyrics: lyrics)
+                let breakdown = try await self.service.generate(
+                    noteID: id,
+                    lyrics: lyrics,
+                    onPartialLines: self.makePartialLinesHandler(forNoteID: id)
+                )
                 try Task.checkCancellation()
                 self.setBreakdown(breakdown)
                 self.generationStateByNoteID.removeValue(forKey: id)
@@ -233,11 +237,14 @@ final class SongBreakdownStore: ObservableObject {
     func startMergedGeneration(forNote note: Note, notesStore: NotesStore, providerLabel: String) {
         let id = note.id
         if generationTasksByNoteID[id] != nil { return }
-        generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel)
+        generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel, partialLines: [])
         let task = Task { @MainActor [weak self, weak notesStore] in
             guard let self else { return }
             do {
-                let result = try await self.mergedService.generate(noteContent: note.content)
+                let result = try await self.mergedService.generate(
+                    noteContent: note.content,
+                    onPartialLines: self.makePartialLinesHandler(forNoteID: id)
+                )
                 try Task.checkCancellation()
 
                 let breakdown = SongBreakdown(
@@ -279,6 +286,33 @@ final class SongBreakdownStore: ObservableObject {
             self.generationTasksByNoteID.removeValue(forKey: id)
         }
         generationTasksByNoteID[id] = task
+    }
+
+    // Lines parsed so far from an in-flight stream, or empty when the note isn't generating.
+    // SongStepperView renders these as progressively-filled cards while the call runs.
+    func partialLines(forNoteID id: UUID) -> [SongLine] {
+        if case .running(_, _, let partialLines) = generationStateByNoteID[id] {
+            return partialLines
+        }
+        return []
+    }
+
+    // Builds the callback a service invokes (off the main actor) with each partial parse.
+    // Hops to the main actor and only writes while the note is still `.running` — a late
+    // fragment after cancel/complete must not resurrect a running state. `startedAt` and the
+    // provider label are preserved so the running state's identity doesn't change per update.
+    private func makePartialLinesHandler(forNoteID id: UUID) -> @Sendable ([SongLine]) -> Void {
+        return { [weak self] lines in
+            Task { @MainActor in
+                guard let self,
+                      case .running(let startedAt, let providerLabel, _) = self.generationStateByNoteID[id] else { return }
+                self.generationStateByNoteID[id] = .running(
+                    startedAt: startedAt,
+                    providerLabel: providerLabel,
+                    partialLines: lines
+                )
+            }
+        }
     }
 
     // Cancels the in-flight Task for the note (no-op if there isn't one) and clears any
@@ -380,7 +414,10 @@ final class SongBreakdownStore: ObservableObject {
 // Pure UI state for the breakdown generation pipeline. Owned by SongBreakdownStore so the
 // task lifetime decouples from any one screen; the stepper / future surfaces simply read
 // the current state for the note and render accordingly. Absence (no entry) = idle.
+// `.running` carries the lines parsed so far from the streamed response (see
+// SongBreakdownService.generate(onPartialLines:)) so the stepper can fill cards in as the
+// model writes them; it is empty until the first header arrives.
 enum SongBreakdownGenerationState: Equatable {
-    case running(startedAt: Date, providerLabel: String)
+    case running(startedAt: Date, providerLabel: String, partialLines: [SongLine])
     case failed(message: String)
 }

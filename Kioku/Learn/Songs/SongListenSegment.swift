@@ -41,3 +41,11 @@ nonisolated enum SongListenStep: Equatable, Sendable {
     case speech(SongListenSegment)
     case clip(lineIndex: Int, startMs: Int, endMs: Int)
 }
+
+// One same-language stretch of a segment's text, produced by SongListenLanguageRuns. A gist
+// like "contracted 愛している" becomes an English run and a Japanese run so each is read by
+// the voice built for it, instead of the English voice skipping the kanji.
+nonisolated struct SongListenSegmentRun: Equatable, Sendable {
+    let text: String
+    let language: SongListenLanguage
+}

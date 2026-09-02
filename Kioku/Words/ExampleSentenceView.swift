@@ -136,7 +136,7 @@ struct ExampleSentenceView: View {
     private func computeCacheIfNeeded() {
         guard cache == nil else { return }
         guard let segmenter, japanese.isEmpty == false else {
-            cache = LineFuriganaCache(segmentationRanges: [], furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:])
+            cache = LineFuriganaCache(sourceText: japanese, segmentationRanges: [], furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:])
             return
         }
         let edges = segmenter.longestMatchEdges(for: japanese)
@@ -149,6 +149,7 @@ struct ExampleSentenceView: View {
             surfaceReadingData: surfaceReadingData
         )
         cache = LineFuriganaCache(
+            sourceText: japanese,
             segmentationRanges: edges.map { $0.start..<$0.end },
             furiganaBySegmentLocation: resolved.byLocation,
             furiganaLengthBySegmentLocation: resolved.lengthByLocation

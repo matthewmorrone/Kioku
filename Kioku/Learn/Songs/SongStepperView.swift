@@ -6,18 +6,24 @@ import SwiftUI
 // list is collapsed by default and toggled by the user. The view drives the generation
 // flow itself so the parent home stays a pure list.
 //
+// There is no separate loading screen. The Generate button (or, on a regenerate, the toolbar
+// icon) spins while the call runs, and as the model streams each line's card appears in the
+// scroll with the one being written highlighted and auto-expanded. Listen-along is not a
+// separate screen either: the toolbar headphones button plays every line's narration in
+// sequence (spinning while the track renders), each card's play button plays just that
+// line, and the line and row being spoken are highlighted in place.
+//
 // Major sections:
-//   1. Toolbar with regenerate action
+//   1. Toolbar with listen / expand-all / regenerate actions (spinners while running)
 //   2. Stale banner when source text drifted since generation
-//   3. Body state machine: not-generated → loading → ready (scroll) → error
+//   3. Body state machine: not-generated → streaming cards → ready (scroll) → error
 //   4. Vertical scroll of per-line cards
+// Furigana cache building lives in SongStepperView+Furigana; listen-along in
+// SongStepperView+Listen.
 struct SongStepperView: View {
     let note: Note
-    // Optional deps for per-line tap-to-toggle furigana. Nil segmenter degrades the toggle
-    // to a no-op (cache resolves empty); `surfaceReadingData` defaults to an empty map. The
-    // dictionary store was previously plumbed here too — it was carried over from an earlier
-    // direct-lookup design and is no longer needed now that `FuriganaResolver` reads through
-    // `surfaceReadingData`, so it's been removed to avoid dead state.
+    // Optional deps for per-line furigana. Nil segmenter degrades to "no readings" (cache
+    // resolves empty); `surfaceReadingData` defaults to an empty map.
     let segmenter: (any TextSegmenting)?
     let surfaceReadingData: SurfaceReadingDataMap
     let kanjiReadingFallback: KanjiReadingFallbackMap
@@ -31,42 +37,49 @@ struct SongStepperView: View {
     // persists the corrected segmentation directly to the note. The plain breakdown path never
     // touches notesStore.
     @EnvironmentObject private var notesStore: NotesStore
-    // Powers the lookup sheet's save button long-press learned-state menu.
+    // Owns listen-along renders and resume positions across sheet dismissals.
+    @EnvironmentObject var listenStore: SongListenStore
     // Per-line expansion state: whether a line's word/grammar explanations are visible.
-    // Furigana on the Japanese row is independent of this (see ensureFuriganaCaches / the
-    // eager cache build). Keyed by `line.index` (not array offset) so it survives
-    // regenerate / breakdown rebuilds.
+    // Keyed by `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
+    // Lines are auto-expanded as they stream in; reset when a new generation starts.
     @State private var expandedByLineIndex: Set<Int> = []
     @State private var isRegenerateConfirmationPresented: Bool = false
-    // Drives the confirmation for the merged generate+correct path (see
-    // startMergedGeneration) — kept separate from isRegenerateConfirmationPresented so the two
-    // dialogs' distinct messages (and destinations: startGeneration vs startMergedGeneration)
-    // can't cross-wire.
+    // Drives the confirmation for the merged generate+correct path — kept separate from
+    // isRegenerateConfirmationPresented so the two dialogs' distinct messages (and
+    // destinations: startGeneration vs startMergedGeneration) can't cross-wire.
     @State private var isMergedRegenerateConfirmationPresented: Bool = false
-    @State private var isListenSheetPresented: Bool = false
-    @State private var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
-    // The note's persisted per-note reading overrides (Note.segments), restored once per
-    // breakdown load — see buildFuriganaCache / applyNoteFuriganaOverrides. Nil when the note
-    // has no persisted segments or they no longer validate against its current content.
-    @State private var noteFuriganaRestoration: (byLocation: [Int: String], lengthByLocation: [Int: Int])?
-    // Each breakdown line's starting UTF-16 offset within note.content, so a note-level reading
+    // Listen-along state shared with SongStepperView+Listen (internal for that reason).
+    // True once this view has engaged the track (played anything); drives teardown.
+    @State var isListening: Bool = false
+    // The URL the listen player was last loaded for, so a body re-evaluation doesn't
+    // reload/reseek/replay an already-loaded track.
+    @State var loadedListenURL: URL?
+    // One segment per track cue, in order, so the playhead maps back to a line and row
+    // (see activeListenSegment).
+    @State var listenSegments: [SongListenSegment] = []
+    // The line a card's play button asked for before the track existed; played on load.
+    @State var pendingPlayLineIndex: Int?
+    // Plays the rendered listen-along track (sung clips included).
+    @StateObject var listenPlayback = AudioPlaybackController()
+    // The note's SRT cues, for matching each line to its sung time range (see
+    // lineRangesByIndex). Empty when the note has no audio attachment or no cues.
+    @State private var noteCues: [SubtitleCue] = []
+    // Furigana state shared with SongStepperView+Furigana (internal, not private, for that reason).
+    @State var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
+    // The note's persisted per-note reading overrides (Note.segments), restored once on appear
+    // — see buildFuriganaCache / applyNoteFuriganaOverrides. Nil when the note has no persisted
+    // segments or they no longer validate against its current content.
+    @State var noteFuriganaRestoration: (byLocation: [Int: String], lengthByLocation: [Int: Int])?
+    // Each displayed line's starting UTF-16 offset within note.content, so a note-level reading
     // override (keyed by note.content coordinates) can be rebased into a line's local
     // coordinates. See lineStartOffsets.
-    @State private var lineStartOffsetsByIndex: [Int: Int] = [:]
+    @State var lineStartOffsetsByIndex: [Int: Int] = [:]
     // Per-kanji-run readings for word-list headwords, keyed by (line, surface) — not surface
     // alone, since the same word can appear on multiple lines with a different resolved
-    // reading (e.g. a Read-tab correction pinned on one occurrence but not another) and a
-    // surface-only key would let the first occurrence's reading leak into every later one.
-    // Built alongside furiganaCacheByLineIndex (see ensureFuriganaCaches) and handed to each
-    // SongLineCard so its "Show explanations" word list can render furigana too.
-    @State private var wordFuriganaByKey: [WordFuriganaKey: [Int: String]] = [:]
-    // Owns audio playback for "play this line" affordances. Stays nil-loaded when the
-    // note has no audio attachment or no SRT — the matcher returns an empty map and the
-    // cards omit play buttons.
-    @StateObject private var audioController = AudioPlaybackController()
-
+    // reading. Built alongside furiganaCacheByLineIndex (see ensureFuriganaCaches).
+    @State var wordFuriganaByKey: [WordFuriganaKey: [Int: String]] = [:]
     // Convenience init for callers that don't (yet) supply the resolver deps — e.g. previews
-    // or any future surface that doesn't have the segmenter in scope. The toggle becomes a
+    // or any future surface that doesn't have the segmenter in scope. Furigana becomes a
     // visual no-op in that mode.
     init(note: Note,
          segmenter: (any TextSegmenting)? = nil,
@@ -79,6 +92,504 @@ struct SongStepperView: View {
         self.kanjiReadingFallback = kanjiReadingFallback
         self.dictionaryStore = dictionaryStore
     }
+
+    // MARK: - Derived state
+
+    // The store-owned generation state for this note, read (not copied to local @State) so the
+    // spinner and streamed cards survive sheet dismissal and re-bind to the same in-flight Task.
+    private var generationState: SongBreakdownGenerationState? {
+        songBreakdownStore.generationStateByNoteID[note.id]
+    }
+
+    private var isRunning: Bool {
+        songBreakdownStore.isGenerating(forNoteID: note.id)
+    }
+
+    // Internal (not private): read by SongStepperView+Listen.
+    var cachedBreakdown: SongBreakdown? {
+        songBreakdownStore.breakdown(forNoteID: note.id)
+    }
+
+    var hasBreakdown: Bool {
+        (cachedBreakdown?.lines.isEmpty == false)
+    }
+
+    // True once a running generation has produced at least one line — from then on the
+    // streamed cards replace whatever was on screen (prompt or old breakdown).
+    var isStreamingCards: Bool {
+        isRunning && songBreakdownStore.partialLines(forNoteID: note.id).isEmpty == false
+    }
+
+    // Lines currently on screen: the streamed partial parse once it has content, otherwise
+    // the cached breakdown (kept visible while a regenerate waits for its first line).
+    private var currentLines: [SongLine] {
+        if isStreamingCards { return songBreakdownStore.partialLines(forNoteID: note.id) }
+        return cachedBreakdown?.lines ?? []
+    }
+
+    // Rows for the scroll, with the line being written marked while streaming and the line
+    // being spoken marked while listening.
+    private var displayItems: [SongLineDisplayItem] {
+        SongBreakdownProgressComposer.items(
+            lines: currentLines,
+            isStreaming: isStreamingCards,
+            playingLineIndex: activeListenSegment?.lineIndex
+        )
+    }
+
+    // Identity of the card listen-along is speaking, for auto-scroll + auto-expand.
+    private var playingItemID: String? {
+        displayItems.first(where: { $0.phase == .playing })?.id
+    }
+
+    // Identity of the card the model is currently writing, for auto-scroll + auto-expand.
+    private var streamingItemID: String? {
+        displayItems.first(where: { $0.phase == .streaming })?.id
+    }
+
+    // Maps each displayed line.index → its sung time range in the note's own audio, for the
+    // listen-along render to splice in. Empty when the note has no audio or the SRT doesn't
+    // line up with the lines. Computed on each body pass; both inputs are tiny (~30 lines ×
+    // ~30 cues) so the O(N·M) walk is cheap.
+    var lineRangesByIndex: [Int: (startMs: Int, endMs: Int)] {
+        guard noteCues.isEmpty == false else { return [:] }
+        return SongLineCueMatcher.computeRanges(lines: displayItems.map(\.line), cues: noteCues)
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack(spacing: 0) {
+            bodyContent
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Breakdown")
+                    .font(.headline)
+                    .accessibilityLabel("Breakdown")
+            }
+            if isRunning {
+                // The regenerate icon's slot becomes a spinner while a call runs; its only
+                // menu entry is Cancel.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Cancel", role: .destructive) {
+                            songBreakdownStore.cancelGeneration(forNoteID: note.id)
+                        }
+                    } label: {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    .accessibilityLabel("Generating breakdown")
+                }
+            } else if hasBreakdown {
+                ToolbarItem(placement: .topBarTrailing) {
+                    listenControl
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        toggleAllExpansion()
+                    } label: {
+                        Image(systemName: areAllLinesExpanded ? "eye.slash" : "eye")
+                    }
+                    .accessibilityLabel(areAllLinesExpanded ? "Hide all explanations" : "Show all explanations")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Regenerate") {
+                            isRegenerateConfirmationPresented = true
+                        }
+                        Button("Regenerate + Fix Segmentation (Merged)") {
+                            isMergedRegenerateConfirmationPresented = true
+                        }
+                        if case .ready(let url) = listenStore.renderStateByNoteID[note.id] {
+                            ShareLink(item: url) {
+                                Label("Export Audio", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Regenerate breakdown")
+                }
+            }
+        }
+        // A freshly-ready render (or a regenerated breakdown's fresh render) loads into the
+        // player as soon as the store publishes it.
+        .onChange(of: listenStore.renderStateByNoteID[note.id]) { _, _ in
+            loadListenTrackIfReady()
+        }
+        // A regenerate replaces the lines the track was narrating; stop rather than keep
+        // highlighting rows that no longer exist.
+        .onChange(of: isRunning) { _, running in
+            if running, isListening { stopListening() }
+        }
+        .confirmationDialog(
+            "Regenerate this breakdown?",
+            isPresented: $isRegenerateConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Regenerate", role: .destructive) {
+                startGeneration()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            // Honest framing: full-song breakdowns are minutes-long and bill per token. The old
+            // breakdown stays until the new one finishes, so a failed call costs only the tokens.
+            Text("Sends the full lyrics to the configured LLM provider. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
+        }
+        .confirmationDialog(
+            "Regenerate with merged segmentation correction?",
+            isPresented: $isMergedRegenerateConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Regenerate + Fix Segmentation", role: .destructive) {
+                startMergedGeneration()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Sends the full lyrics to the configured LLM provider in one combined call that both fixes this note's segmentation/readings and regenerates the breakdown. Not supported on Apple Intelligence. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
+        }
+        .preference(key: CardsStudySessionActivePreferenceKey.self, value: true)
+        .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: true)
+        // A new generation starting collapses everything so the previous run's expansion
+        // doesn't leak into the cards about to stream in. Furigana caches are kept: they're
+        // keyed by index and validated against the line text (see ensureFuriganaCaches).
+        .onChange(of: isRunning) { _, running in
+            if running { expandedByLineIndex = [] }
+        }
+        // Every change to the rows — a streamed line landing, a breakdown finishing, a
+        // regenerate replacing the old lines — refreshes furigana and offsets for the new rows
+        // and auto-expands the line the model is currently writing.
+        .onChange(of: displayItems) { _, items in
+            refreshLineDerivedState(for: items)
+        }
+        // Covers first appearance with an already-cached breakdown — onChange above only fires
+        // on a *transition*, not on the initial value.
+        .onAppear {
+            noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
+            refreshLineDerivedState(for: displayItems)
+        }
+        // Loads the note's SRT cues (if it has audio) so each line can be matched to its sung
+        // range for the listen-along render. No attachment, no file, or no cues are all the
+        // normal "narration only" case, not errors.
+        .task {
+            guard let attachmentID = note.audioAttachmentID,
+                  NotesAudioStore.shared.audioURL(for: attachmentID) != nil else { return }
+            noteCues = NotesAudioStore.shared.loadCues(for: attachmentID)
+        }
+        .onDisappear {
+            // Release the audio file + deactivate the session when the sheet/screen leaves.
+            // Without this, the controller would hold its `AVAudioPlayer` (and the audio
+            // session) until SwiftUI deallocates the @StateObject, which is non-deterministic.
+            // Records the playhead first so reopening resumes where it left off.
+            if isListening { stopListening() }
+        }
+    }
+
+    // State machine, same shape as before streaming existed except that "loading" is no
+    // longer a screen of its own: a failed generation shows the error verbatim; streamed
+    // cards show as soon as the first line lands; until then a first generation keeps the
+    // generate prompt (with its button spinning) and a regenerate keeps the old cards (with
+    // the toolbar icon spinning); otherwise the cached breakdown or the first-visit prompt.
+    @ViewBuilder
+    private var bodyContent: some View {
+        if case .failed(let message) = generationState {
+            errorView(message)
+        } else if isStreamingCards {
+            scrollList(items: displayItems)
+        } else if hasBreakdown, let breakdown = cachedBreakdown {
+            if isStale(breakdown) {
+                staleBanner
+            }
+            scrollList(items: displayItems)
+        } else {
+            generatePrompt
+        }
+    }
+
+    // Banner shown when the cached breakdown's hash disagrees with the current note hash.
+    // We never auto-invalidate — the breakdown remains usable so a typo fix doesn't
+    // throw away an expensive LLM run — but the user is told and offered Regenerate.
+    private var staleBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Lyrics changed")
+                    .font(.footnote.weight(.semibold))
+                Text("This breakdown was generated from earlier lyrics.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("Regenerate") {
+                isRegenerateConfirmationPresented = true
+            }
+            .font(.footnote.weight(.semibold))
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(isRunning)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.12))
+    }
+
+    // First-visit state: explain what's about to happen and let the user kick off the call.
+    // Costs are LLM-provider-dependent so we let the user make the deliberate choice rather
+    // than auto-firing on entry. While the call runs (and before its first line arrives) the
+    // primary button shows a spinner in place of its label.
+    private var generatePrompt: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "music.note.list")
+                .font(.system(size: 56))
+                .foregroundStyle(.secondary)
+            Text("Ready to break this song down line by line.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Text("Sends the lyrics to the LLM configured in Settings.")
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.tertiary)
+            Button {
+                startGeneration()
+            } label: {
+                if isRunning {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Label("Generate breakdown", systemImage: "wand.and.stars")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(isRunning)
+            .accessibilityLabel(isRunning ? "Generating breakdown" : "Generate breakdown")
+            Button {
+                startMergedGeneration()
+            } label: {
+                Label("Generate breakdown + Fix Segmentation", systemImage: "wand.and.stars.inverse")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .disabled(isRunning)
+        }
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // Generation failed. Shows the underlying message verbatim so the user can distinguish
+    // missing-key from network errors from parse failures.
+    private func errorView(_ message: String) -> some View {
+        VStack(spacing: 18) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 48))
+                .foregroundStyle(.orange)
+            Text("Couldn't generate breakdown")
+                .font(.headline)
+            Text(message)
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 32)
+            Button {
+                startGeneration()
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Listen control
+
+    // The listen button: headphones plays every line in sequence, a spinner while the
+    // track renders, pause while anything is playing, a warning that retries a failed render.
+    @ViewBuilder
+    private var listenControl: some View {
+        switch listenControlState {
+        case .rendering:
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Preparing listen-along audio")
+        case .playing:
+            Button {
+                pauseListen()
+            } label: {
+                Image(systemName: "pause.circle")
+            }
+            .accessibilityLabel("Pause")
+        case .failed:
+            Button {
+                retryListenRender()
+            } label: {
+                Image(systemName: "exclamationmark.triangle")
+            }
+            .accessibilityLabel("Listen-along audio failed, retry")
+        case .idle:
+            Button {
+                playAllListen()
+            } label: {
+                Image(systemName: "headphones")
+            }
+            .accessibilityLabel("Listen to breakdown")
+        }
+    }
+
+    // MARK: - Scroll
+
+    // Vertical scroll over every row. Each card is independent; expanding/collapsing one
+    // line's word list doesn't disturb the others. The reader follows the streaming card so
+    // the user sees the model work its way down the song without scrolling by hand.
+    private func scrollList(items: [SongLineDisplayItem]) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(spacing: 14) {
+                    ForEach(items) { item in
+                        SongLineCard(
+                            line: item.line,
+                            referencedLine: referencedLine(for: item.line),
+                            isExpanded: expandedByLineIndex.contains(item.line.index),
+                            furiganaCache: furiganaCacheByLineIndex[item.line.index],
+                            wordFurigana: wordFuriganaByKey,
+                            playState: cardPlayState(for: item.line),
+                            phase: item.phase,
+                            listenHighlight: activeListenSegment?.lineIndex == item.line.index ? activeListenSegment : nil,
+                            onToggleExpansion: { toggleExpansion(for: item.line) },
+                            onPlayLine: {
+                                switch cardPlayState(for: item.line) {
+                                case .available: generateListenTrack()
+                                case .idle: playListen(line: item.line)
+                                case .playing: pauseListen()
+                                case .loading, nil: break
+                                }
+                            },
+                            onWordTapped: { presentWordLookup($0) }
+                        )
+                        .id(item.id)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+            }
+            .onChange(of: streamingItemID) { _, newID in
+                guard let newID else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(newID, anchor: .center)
+                }
+            }
+            // Listen-along follows the spoken line the same way, expanding it so the word
+            // rows it's about to read are visible.
+            .onChange(of: playingItemID) { _, newID in
+                guard let newID, let item = items.first(where: { $0.id == newID }) else { return }
+                expandedByLineIndex.insert(item.line.index)
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(newID, anchor: .center)
+                }
+            }
+        }
+    }
+
+    // MARK: - Row-derived state
+
+    // Rebuilds everything keyed off the current rows: line offsets for note-level reading
+    // overrides, furigana caches for lines and headwords, and — while streaming — expansion
+    // of the line being written so its words appear as they arrive.
+    private func refreshLineDerivedState(for items: [SongLineDisplayItem]) {
+        let lines = items.map(\.line)
+        lineStartOffsetsByIndex = Self.lineStartOffsets(for: lines, in: note.content)
+        ensureFuriganaCaches(for: lines)
+        if let streaming = items.first(where: { $0.phase == .streaming }) {
+            expandedByLineIndex.insert(streaming.line.index)
+        }
+    }
+
+    // MARK: - Expansion
+
+    // Flips the per-line "expanded" state, which controls only the word/grammar
+    // explanations — furigana is resolved eagerly for every line (see ensureFuriganaCaches).
+    // The defensive rebuild is a safety net for the (normally unreachable) case a line's
+    // cache wasn't populated by the eager pass.
+    private func toggleExpansion(for line: SongLine) {
+        if expandedByLineIndex.contains(line.index) {
+            expandedByLineIndex.remove(line.index)
+            return
+        }
+        if furiganaCacheByLineIndex[line.index] == nil {
+            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line)
+        }
+        expandedByLineIndex.insert(line.index)
+    }
+
+    // True when every displayed line is currently expanded. Drives the toolbar
+    // eye / eye.slash icon and the "Show all" vs "Hide all" semantics.
+    private var areAllLinesExpanded: Bool {
+        let indices = displayItems.map { $0.line.index }
+        return indices.isEmpty == false && indices.allSatisfy { expandedByLineIndex.contains($0) }
+    }
+
+    // Global toolbar action: if any line is collapsed, expand them all; otherwise collapse
+    // everything. Caches are already built eagerly, so this is just a set write.
+    private func toggleAllExpansion() {
+        if areAllLinesExpanded {
+            expandedByLineIndex.removeAll()
+            return
+        }
+        expandedByLineIndex = Set(displayItems.map { $0.line.index })
+    }
+
+    // Resolves the line referenced by `= line N` or `Parallel to line N` so the card can
+    // peek the original content without the consumer needing to scan the full breakdown.
+    private func referencedLine(for line: SongLine) -> SongLine? {
+        guard let reference = line.reference else { return nil }
+        let target: Int
+        switch reference {
+        case .sameAsLine(let n): target = n
+        case .parallelTo(line: let n, substitution: _): target = n
+        }
+        return currentLines.first(where: { $0.index == target })
+    }
+
+    // MARK: - Generation
+
+    // Triggers a generation call via the store. The store owns the Task, so dismissing
+    // this sheet does NOT cancel the work — the user can leave, come back, and find the
+    // cards still filling in or the result already cached. The existing breakdown is left
+    // in place until the new one lands, so a cancelled or failed run loses nothing.
+    private func startGeneration() {
+        songBreakdownStore.clearGenerationError(forNoteID: note.id)
+        songBreakdownStore.startGeneration(
+            forNoteID: note.id,
+            lyrics: note.content,
+            providerLabel: SongBreakdownStore.loadingProviderLabel()
+        )
+    }
+
+    // Merged alternative to startGeneration(): one LLM call returns both the breakdown and a
+    // corrected segmentation, applied via SongBreakdownStore.startMergedGeneration. Shares the
+    // same store-owned running/failed state as the plain path, so the streaming cards and
+    // error view render unchanged regardless of which path is in flight.
+    private func startMergedGeneration() {
+        songBreakdownStore.clearGenerationError(forNoteID: note.id)
+        songBreakdownStore.startMergedGeneration(
+            forNote: note,
+            notesStore: notesStore,
+            providerLabel: SongBreakdownStore.loadingProviderLabel()
+        )
+    }
+
+    // Compares the cached breakdown's hash against the current note text hash.
+    private func isStale(_ breakdown: SongBreakdown) -> Bool {
+        breakdown.sourceTextHash != SongBreakdownService.sha256(note.content)
+    }
+
+    // MARK: - Word lookup
 
     // Resolves a tapped breakdown word to a dictionary entry and opens the shared lookup sheet.
     // Tries the sung surface first, then the segmenter's lemma for conjugated forms (歌った → 歌う)
@@ -143,578 +654,15 @@ struct SongStepperView: View {
             defaultSenseIDs: senseIDs
         )
     }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            bodyContent
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("Breakdown")
-                    .font(.headline)
-                    .accessibilityLabel("Breakdown")
-            }
-            if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id),
-               breakdown.lines.isEmpty == false {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isListenSheetPresented = true
-                    } label: {
-                        Image(systemName: "headphones")
-                    }
-                    .accessibilityLabel("Listen to breakdown")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        toggleAllExpansion(in: breakdown)
-                    } label: {
-                        Image(systemName: areAllLinesExpanded(in: breakdown) ? "eye.slash" : "eye")
-                    }
-                    .accessibilityLabel(areAllLinesExpanded(in: breakdown) ? "Hide all explanations" : "Show all explanations")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("Regenerate") {
-                            isRegenerateConfirmationPresented = true
-                        }
-                        Button("Regenerate + Fix Segmentation (Merged)") {
-                            isMergedRegenerateConfirmationPresented = true
-                        }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .disabled(songBreakdownStore.isGenerating(forNoteID: note.id))
-                    .accessibilityLabel("Regenerate breakdown")
-                }
-            }
-        }
-        .sheet(isPresented: $isListenSheetPresented) {
-            if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id) {
-                SongListenSheet(
-                    breakdown: breakdown,
-                    sourceAudioURL: note.audioAttachmentID.flatMap { NotesAudioStore.shared.audioURL(for: $0) },
-                    lineRanges: lineRangesByIndex
-                )
-            }
-        }
-        .confirmationDialog(
-            "Regenerate this breakdown?",
-            isPresented: $isRegenerateConfirmationPresented,
-            titleVisibility: .visible
-        ) {
-            // Destructive role on regenerate reflects what happens: the existing breakdown
-            // is cleared from cache before the new request fires. A network/cost error
-            // mid-call leaves the user with nothing until the call retries — worth a
-            // deliberate tap, not a stray bar-button.
-            Button("Regenerate", role: .destructive) {
-                regenerate()
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            // Honest framing: full-song breakdowns are minutes-long and bill per token.
-            Text("Sends the full lyrics to the configured LLM provider. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
-        }
-        .confirmationDialog(
-            "Regenerate with merged segmentation correction?",
-            isPresented: $isMergedRegenerateConfirmationPresented,
-            titleVisibility: .visible
-        ) {
-            Button("Regenerate + Fix Segmentation", role: .destructive) {
-                regenerateMerged()
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Sends the full lyrics to the configured LLM provider in one combined call that both fixes this note's segmentation/readings and regenerates the breakdown. Not supported on Apple Intelligence. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
-        }
-        .preference(key: CardsStudySessionActivePreferenceKey.self, value: true)
-        .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: true)
-        // Reset per-line expansion / furigana caches when a fresh breakdown lands so a
-        // regenerate doesn't leave the previous lines visually mid-toggle, then eagerly
-        // resolve furigana for the new breakdown (see ensureFuriganaCaches) so lines and
-        // word lists show readings immediately rather than only after the user expands them.
-        // Fires only for explicit setBreakdown writes — disk-fault reads go through the
-        // non-published memo and don't touch `breakdownsByNoteID`.
-        .onChange(of: songBreakdownStore.breakdownsByNoteID[note.id]) { _, newBreakdown in
-            guard let newBreakdown else { return }
-            expandedByLineIndex = []
-            furiganaCacheByLineIndex = [:]
-            wordFuriganaByKey = [:]
-            noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
-            lineStartOffsetsByIndex = Self.lineStartOffsets(for: newBreakdown.lines, in: note.content)
-            ensureFuriganaCaches(for: newBreakdown)
-        }
-        // Covers the case this view appears with an already-cached breakdown on disk — the
-        // onChange above only fires on a *transition*, not on the initial value, so without
-        // this a breakdown opened straight from cache would show no furigana until some
-        // unrelated store write happened to fire the onChange.
-        .onAppear {
-            noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
-            if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id) {
-                lineStartOffsetsByIndex = Self.lineStartOffsets(for: breakdown.lines, in: note.content)
-                ensureFuriganaCaches(for: breakdown)
-            }
-        }
-        // Lazily loads the audio + cues for this note (if it has any) so the per-line
-        // play buttons have something to seek into. Early-returns when there's no audio
-        // attachment, no resolvable file, or empty cue list — all three are normal "no
-        // playback available" cases, not errors.
-        .task {
-            guard let attachmentID = note.audioAttachmentID else { return }
-            guard let url = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
-            let cues = NotesAudioStore.shared.loadCues(for: attachmentID)
-            do {
-                try audioController.load(audioURL: url, cues: cues)
-            } catch {
-                print("[SongStepperView] audio load failed for \(url.lastPathComponent): \(error.localizedDescription)")
-            }
-        }
-        .onDisappear {
-            // Release the audio file + deactivate the session when the sheet/screen leaves.
-            // Without this, the controller would hold its `AVAudioPlayer` (and the audio
-            // session) until SwiftUI deallocates the @StateObject, which is non-deterministic.
-            audioController.unload()
-        }
-    }
-
-    // Maps each breakdown line.index → its matched audio time range. Empty when the note
-    // has no audio or the SRT doesn't line up with the breakdown. Computed on each body
-    // pass; both inputs are tiny (~30 lines × ~30 cues) so the O(N·M) walk is cheap.
-    private var lineRangesByIndex: [Int: (startMs: Int, endMs: Int)] {
-        guard let breakdown = songBreakdownStore.breakdown(forNoteID: note.id),
-              audioController.cues.isEmpty == false else { return [:] }
-        return SongLineCueMatcher.computeRanges(lines: breakdown.lines, cues: audioController.cues)
-    }
-
-    // Three-way state: a running/failed generation in the store always wins (the user
-    // wants to see the spinner or the error verbatim, even if a previous breakdown is on
-    // disk); otherwise a cached breakdown renders the scroll list; otherwise the prompt.
-    // Reading the generation state from the store — not local @State — is what makes the
-    // task survive sheet dismissal: the spinner re-binds to the same in-flight Task on
-    // re-entry, with the original `startedAt` so the elapsed clock keeps counting.
-    @ViewBuilder
-    private var bodyContent: some View {
-        if let generationState = songBreakdownStore.generationStateByNoteID[note.id] {
-            switch generationState {
-            case .running(let startedAt, let providerLabel):
-                loadingView(startedAt: startedAt, providerLabel: providerLabel)
-            case .failed(let message):
-                errorView(message)
-            }
-        } else if let breakdown = songBreakdownStore.breakdown(forNoteID: note.id),
-                  breakdown.lines.isEmpty == false {
-            if isStale(breakdown) {
-                staleBanner
-            }
-            scrollList(breakdown: breakdown)
-        } else {
-            generatePrompt
-        }
-    }
-
-    // Banner shown when the cached breakdown's hash disagrees with the current note hash.
-    // We never auto-invalidate — the breakdown remains usable so a typo fix doesn't
-    // throw away an expensive LLM run — but the user is told and offered Regenerate.
-    private var staleBanner: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Lyrics changed")
-                    .font(.footnote.weight(.semibold))
-                Text("This breakdown was generated from earlier lyrics.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            Button("Regenerate") {
-                isRegenerateConfirmationPresented = true
-            }
-            .font(.footnote.weight(.semibold))
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(songBreakdownStore.isGenerating(forNoteID: note.id))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color.orange.opacity(0.12))
-    }
-
-    // First-visit state: explain what's about to happen and let the user kick off the call.
-    // Costs are LLM-provider-dependent so we let the user make the deliberate choice rather
-    // than auto-firing on entry.
-    private var generatePrompt: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 56))
-                .foregroundStyle(.secondary)
-            Text("Ready to break this song down line by line.")
-                .font(.body)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Text("Sends the lyrics to the LLM configured in Settings.")
-                .font(.footnote)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.tertiary)
-            Button {
-                startGeneration()
-            } label: {
-                Label("Generate breakdown", systemImage: "wand.and.stars")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            Button {
-                startMergedGeneration()
-            } label: {
-                Label("Generate breakdown + Fix Segmentation", systemImage: "wand.and.stars.inverse")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-        }
-        .padding(.horizontal, 32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // Generation in flight. Shows elapsed time so the user knows the call is alive — a full
-    // song breakdown commonly takes 60-180s; without a running counter the screen feels
-    // frozen and people assume it's wedged. Cancellable mid-flight.
-    //
-    // `startedAt` is sourced from the store, not local @State, so re-entering the sheet
-    // mid-generation shows the *same* elapsed clock that was running before dismissal — not
-    // a counter that resets to zero each time the sheet remounts.
-    private func loadingView(startedAt: Date, providerLabel: String) -> some View {
-        TimelineView(.periodic(from: .now, by: 0.5)) { context in
-            let elapsed = context.date.timeIntervalSince(startedAt)
-            VStack(spacing: 16) {
-                ProgressView()
-                    .scaleEffect(1.4)
-                VStack(spacing: 4) {
-                    Text("Generating breakdown…")
-                        .font(.headline)
-                    if providerLabel.isEmpty == false {
-                        Text("via \(providerLabel)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(elapsedLabel(elapsed))
-                        .font(.footnote.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                Text("Full songs typically take 30–180 seconds. You can close this sheet — generation will continue in the background.")
-                    .font(.caption)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 32)
-                Button("Cancel") {
-                    songBreakdownStore.cancelGeneration(forNoteID: note.id)
-                }
-                .padding(.top, 4)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    // Formats the elapsed-time counter shown under the spinner.
-    private func elapsedLabel(_ elapsed: TimeInterval) -> String {
-        let total = Int(elapsed.rounded())
-        let minutes = total / 60
-        let seconds = total % 60
-        if minutes > 0 {
-            return String(format: "%d:%02d elapsed", minutes, seconds)
-        }
-        return "\(seconds)s elapsed"
-    }
-
-    // Generation failed. Shows the underlying message verbatim so the user can distinguish
-    // missing-key from network errors from parse failures.
-    private func errorView(_ message: String) -> some View {
-        VStack(spacing: 18) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
-                .foregroundStyle(.orange)
-            Text("Couldn't generate breakdown")
-                .font(.headline)
-            Text(message)
-                .font(.footnote)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 32)
-            Button {
-                startGeneration()
-            } label: {
-                Label("Retry", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // Vertical scroll over every line in the breakdown. Each card is independent;
-    // expanding/collapsing one line's word list doesn't disturb the others.
-    private func scrollList(breakdown: SongBreakdown) -> some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(spacing: 14) {
-                ForEach(Array(breakdown.lines.enumerated()), id: \.offset) { _, line in
-                    SongLineCard(
-                        line: line,
-                        referencedLine: referencedLine(for: line, in: breakdown),
-                        isExpanded: expandedByLineIndex.contains(line.index),
-                        furiganaCache: furiganaCacheByLineIndex[line.index],
-                        wordFurigana: wordFuriganaByKey,
-                        playbackRange: lineRangesByIndex[line.index],
-                        onToggleExpansion: { toggleExpansion(for: line) },
-                        onPlayLine: {
-                            if let range = lineRangesByIndex[line.index] {
-                                audioController.playRange(startMs: range.startMs, endMs: range.endMs)
-                            }
-                        },
-                        onWordTapped: { presentWordLookup($0) }
-                    )
-                }
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-        }
-    }
-
-    // Flips the per-line "expanded" state, which now controls only the word/grammar
-    // explanations — furigana is resolved eagerly for every line (see ensureFuriganaCaches)
-    // and no longer depends on this flag. The defensive rebuild below is a safety net for
-    // the (normally unreachable) case a line's cache wasn't populated by the eager pass.
-    private func toggleExpansion(for line: SongLine) {
-        if expandedByLineIndex.contains(line.index) {
-            expandedByLineIndex.remove(line.index)
-            return
-        }
-        if furiganaCacheByLineIndex[line.index] == nil {
-            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line)
-        }
-        expandedByLineIndex.insert(line.index)
-    }
-
-    // True when every line in the breakdown is currently expanded. Drives the toolbar
-    // eye / eye.slash icon and the "Show all" vs "Hide all" semantics — comparing counts
-    // is enough because `expandedByLineIndex` only ever holds valid line indices.
-    private func areAllLinesExpanded(in breakdown: SongBreakdown) -> Bool {
-        breakdown.lines.isEmpty == false && expandedByLineIndex.count >= breakdown.lines.count
-    }
-
-    // Global toolbar action: if any line is collapsed, expand them all (building any
-    // missing furigana caches on the fly); otherwise collapse everything. Building caches
-    // synchronously is fine here — songs are typically <60 lines and `buildFuriganaCache`
-    // is the same work a per-line tap would do, just batched.
-    private func toggleAllExpansion(in breakdown: SongBreakdown) {
-        if areAllLinesExpanded(in: breakdown) {
-            expandedByLineIndex.removeAll()
-            return
-        }
-        for line in breakdown.lines where furiganaCacheByLineIndex[line.index] == nil {
-            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line)
-        }
-        expandedByLineIndex = Set(breakdown.lines.map { $0.index })
-    }
-
-    // Eagerly resolves furigana for every line and every word-list headword in the
-    // breakdown, so readings are available as soon as a line or word list renders rather
-    // than only after the user taps to expand it (see SongLineCard.originalLine — furigana
-    // there no longer waits on the expansion toggle). Idempotent: skips any line/surface
-    // already cached, so calling this again after a partial build (or "Show all") is cheap.
-    private func ensureFuriganaCaches(for breakdown: SongBreakdown) {
-        for line in breakdown.lines where furiganaCacheByLineIndex[line.index] == nil {
-            furiganaCacheByLineIndex[line.index] = buildFuriganaCache(for: line)
-        }
-        for line in breakdown.lines {
-            for word in line.words {
-                let key = WordFuriganaKey(lineIndex: line.index, surface: word.surface)
-                guard wordFuriganaByKey[key] == nil else { continue }
-                wordFuriganaByKey[key] = buildWordFuriganaRunReadings(for: word, contextLine: line)
-            }
-        }
-    }
-
-    // Resolves per-kanji-run readings for a single word-list headword. Prefers slicing the
-    // already-resolved *line* cache (the word's readings as chosen with full sentence
-    // context — okurigana, verb-phrase segmentation, etc.) when the word's surface appears
-    // verbatim in that line; only isolated words (surface not found in the line, e.g. an
-    // LLM-normalized headword) fall back to segmenting the surface on its own, which can
-    // pick a different reading than the same characters would get in context.
-    private func buildWordFuriganaRunReadings(for word: SongWord, contextLine: SongLine) -> [Int: String] {
-        if let lineCache = furiganaCacheByLineIndex[contextLine.index],
-           let wordRange = contextLine.original.range(of: word.surface) {
-            let wordNSRange = NSRange(wordRange, in: contextLine.original)
-            let sliced = lineCache.furiganaBySegmentLocation.compactMap { location, reading -> (Int, String)? in
-                guard location >= wordNSRange.location,
-                      location < wordNSRange.location + wordNSRange.length else { return nil }
-                return (location - wordNSRange.location, reading)
-            }
-            if sliced.isEmpty == false {
-                return Dictionary(uniqueKeysWithValues: sliced)
-            }
-        }
-        return buildWordFuriganaRunReadings(for: word.surface)
-    }
-
-    // Resolves per-kanji-run readings for a word's surface in isolation, with no surrounding
-    // sentence to segment against. Used as a fallback when the surface can't be located
-    // within its source line (e.g. an LLM-normalized headword that doesn't appear verbatim).
-    private func buildWordFuriganaRunReadings(for surface: String) -> [Int: String] {
-        guard let segmenter, surface.isEmpty == false else { return [:] }
-        let edges = segmenter.longestMatchEdges(for: surface)
-        return FuriganaResolver(
-            segmenter: segmenter,
-            kanjiReadingFallback: kanjiReadingFallback
-        ).build(
-            for: surface,
-            edges: edges,
-            surfaceReadingData: surfaceReadingData
-        ).byLocation
-    }
-
-    // Reuses the Read tab's resolver so the breakdown gets the exact same reading
-    // selection (okurigana cropping, lemma fallback, projection) as ReadView. When the
-    // segmenter is unavailable the cache resolves to "no readings" and the toggle becomes
-    // a visual no-op — which matches the "degrade gracefully on pure-kana lines" criterion.
-    //
-    // The resolver's output is a fresh recompute — it doesn't know about readings the user
-    // pinned or corrected on the Read tab (Note.segments). applyNoteFuriganaOverrides overlays
-    // those on top so the breakdown always shows the same reading as the underlying page.
-    private func buildFuriganaCache(for line: SongLine) -> LineFuriganaCache {
-        let text = line.original
-        guard let segmenter, text.isEmpty == false else {
-            return LineFuriganaCache(segmentationRanges: [], furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:])
-        }
-        let edges = segmenter.longestMatchEdges(for: text)
-        let segmentationRanges = edges.map { $0.start..<$0.end }
-        let resolved = FuriganaResolver(
-            segmenter: segmenter,
-            kanjiReadingFallback: kanjiReadingFallback
-        ).build(
-            for: text,
-            edges: edges,
-            surfaceReadingData: surfaceReadingData
-        )
-        var byLocation = resolved.byLocation
-        var lengthByLocation = resolved.lengthByLocation
-        applyNoteFuriganaOverrides(to: &byLocation, lengthByLocation: &lengthByLocation, forLineIndex: line.index)
-        return LineFuriganaCache(
-            segmentationRanges: segmentationRanges,
-            furiganaBySegmentLocation: byLocation,
-            furiganaLengthBySegmentLocation: lengthByLocation
-        )
-    }
-
-    // Overlays any reading the user pinned or corrected on the Read tab (persisted in
-    // `note.segments`, restored into `noteFuriganaRestoration`) onto this line's freshly
-    // resolved furigana. Only swaps the reading text at a location the fresh segmentation
-    // already produced a same-length entry for — a location/length mismatch (e.g. the user
-    // manually merged or split segments on the Read tab, shifting boundaries) just falls back
-    // to the freshly-resolved default rather than trying to reconcile differing boundaries.
-    // Regenerating the breakdown always picks up the correct reading regardless.
-    private func applyNoteFuriganaOverrides(
-        to byLocation: inout [Int: String],
-        lengthByLocation: inout [Int: Int],
-        forLineIndex lineIndex: Int
-    ) {
-        guard let restoration = noteFuriganaRestoration,
-              let lineStart = lineStartOffsetsByIndex[lineIndex] else { return }
-        for (location, length) in lengthByLocation {
-            let globalLocation = lineStart + location
-            guard restoration.lengthByLocation[globalLocation] == length,
-                  let reading = restoration.byLocation[globalLocation] else { continue }
-            byLocation[location] = reading
-        }
-    }
-
-    // Restores the note's persisted per-note reading overrides (Note.segments), keyed by
-    // UTF-16 offset within note.content. Nil when the note has no persisted segments or they
-    // no longer validate against its current content (e.g. edited outside the segment-aware
-    // editor) — callers degrade to the freshly-resolved default in that case.
-    private static func restoreNoteFurigana(from note: Note) -> (byLocation: [Int: String], lengthByLocation: [Int: Int])? {
-        guard let normalized = SegmentRangeRestoration.normalizedSegmentRanges(note.segments, for: note.content) else { return nil }
-        return SegmentRangeRestoration.furiganaFromSegmentRanges(normalized)
-    }
-
-    // Finds each breakdown line's starting UTF-16 offset within note.content, so a note-level
-    // reading override can be rebased into that line's local coordinates. Searches in line
-    // order, advancing the cursor past each match, so a repeated chorus line resolves to its
-    // own occurrence rather than always the first. A line whose text isn't found verbatim
-    // (e.g. the LLM normalized it slightly) is simply omitted — its furigana falls back to the
-    // freshly-resolved default.
-    private static func lineStartOffsets(for lines: [SongLine], in noteContent: String) -> [Int: Int] {
-        var offsets: [Int: Int] = [:]
-        var searchStart = noteContent.startIndex
-        for line in lines where line.original.isEmpty == false {
-            guard let range = noteContent.range(of: line.original, range: searchStart..<noteContent.endIndex) else { continue }
-            offsets[line.index] = NSRange(range, in: noteContent).location
-            searchStart = range.upperBound
-        }
-        return offsets
-    }
-
-    // Resolves the line referenced by `= line N` or `Parallel to line N` so the card can
-    // peek the original content without the consumer needing to scan the full breakdown.
-    private func referencedLine(for line: SongLine, in breakdown: SongBreakdown) -> SongLine? {
-        guard let reference = line.reference else { return nil }
-        let target: Int
-        switch reference {
-        case .sameAsLine(let n): target = n
-        case .parallelTo(line: let n, substitution: _): target = n
-        }
-        return breakdown.lines.first(where: { $0.index == target })
-    }
-
-    // Triggers a generation call via the store. The store owns the Task, so dismissing
-    // this sheet does NOT cancel the work — the user can leave, come back, and find the
-    // spinner still ticking or the result already cached. Clearing any prior `.failed`
-    // entry transitions the view back to the loading state cleanly on Retry.
-    private func startGeneration() {
-        songBreakdownStore.clearGenerationError(forNoteID: note.id)
-        songBreakdownStore.startGeneration(
-            forNoteID: note.id,
-            lyrics: note.content,
-            providerLabel: SongBreakdownStore.loadingProviderLabel()
-        )
-    }
-
-    // Clears the cached breakdown and triggers a fresh generation. Used by the stale banner
-    // and the toolbar action; clearing first means the UI shows the loading state cleanly.
-    private func regenerate() {
-        songBreakdownStore.clearBreakdown(forNoteID: note.id)
-        startGeneration()
-    }
-
-    // Merged alternative to startGeneration(): one LLM call returns both the breakdown and a
-    // corrected segmentation, applied via SongBreakdownStore.startMergedGeneration. Shares the
-    // same store-owned running/failed state as the plain path, so the existing loadingView /
-    // errorView render unchanged regardless of which path is in flight.
-    private func startMergedGeneration() {
-        songBreakdownStore.clearGenerationError(forNoteID: note.id)
-        songBreakdownStore.startMergedGeneration(
-            forNote: note,
-            notesStore: notesStore,
-            providerLabel: SongBreakdownStore.loadingProviderLabel()
-        )
-    }
-
-    // Clears the cached breakdown and triggers a fresh merged generation.
-    private func regenerateMerged() {
-        songBreakdownStore.clearBreakdown(forNoteID: note.id)
-        startMergedGeneration()
-    }
-
-    // Compares the cached breakdown's hash against the current note text hash.
-    private func isStale(_ breakdown: SongBreakdown) -> Bool {
-        breakdown.sourceTextHash != SongBreakdownService.sha256(note.content)
-    }
 }
 
-// Pre-resolved per-line furigana payload. The three fields together are exactly the data
-// shape `KiokuCoreTextRendererView` consumes, so the card hands them straight through with
-// no further conversion. Built lazily on first toggle and held in the stepper's @State so
-// re-enabling furigana for the same line is instant.
+// Pre-resolved per-line furigana payload. The three renderer fields together are exactly
+// the data shape `KiokuCoreTextRendererView` consumes, so the card hands them straight
+// through with no further conversion. `sourceText` records which line text the cache was
+// built from: rows are keyed by line index, and a bare note line's index can later be taken
+// by a streamed line with different text, so the cache must be re-validated, not trusted.
 struct LineFuriganaCache: Equatable {
+    let sourceText: String
     let segmentationRanges: [Range<String.Index>]
     let furiganaBySegmentLocation: [Int: String]
     let furiganaLengthBySegmentLocation: [Int: Int]

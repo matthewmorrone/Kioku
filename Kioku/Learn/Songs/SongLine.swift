@@ -7,7 +7,11 @@ import Foundation
 // The reveal-stage cap is a property of the line itself, not the view that renders it: a line
 // with no romaji has one fewer reveal stage than a line that does. Centralizing on the model
 // keeps the stepper and the card from drifting if the reveal pipeline ever gains a new layer.
-struct SongLine: Codable, Equatable, Identifiable, Sendable {
+// `nonisolated`: pure data consumed off the main actor by the streaming parse path
+// (StreamedTextAccumulator compares parses; SongListenScript reads lines) — under the
+// module's default MainActor isolation the synthesized Equatable would otherwise be
+// main-actor-only.
+nonisolated struct SongLine: Codable, Equatable, Identifiable, Sendable {
     let index: Int
     let original: String
     let romaji: String?
@@ -36,7 +40,37 @@ struct SongLine: Codable, Equatable, Identifiable, Sendable {
 // when the same word appears on more than one line with a different resolved reading — e.g.
 // a Read-tab correction pinned on one occurrence but not another — so line identity is part
 // of the key, not just the surface text.
-struct WordFuriganaKey: Hashable {
+nonisolated struct WordFuriganaKey: Hashable {
     let lineIndex: Int
     let surface: String
+}
+
+// What a line card is doing right now (see SongBreakdownProgressComposer):
+//   .streaming — the model is currently writing this line's section; ringed, with a spinner
+//   .playing   — listen-along is currently speaking this line; ringed
+//   .ready     — nothing in progress
+nonisolated enum SongLineCardPhase: Equatable {
+    case streaming
+    case playing
+    case ready
+}
+
+// What a line card's audio button shows, in the order a line goes through them: a down
+// arrow (tap to generate the narration), a spinner while it's actively generating, play
+// (tap to hear this line's clip + narration), pause while this line is the one being
+// spoken. Nil at the call site hides the button (no breakdown yet).
+nonisolated enum SongLineCardPlayState: Equatable {
+    case available
+    case loading
+    case idle
+    case playing
+}
+
+// One row of the breakdown scroll: the line to render plus its phase. `id` is assigned by
+// the composer and is unique per row even when the model repeats a line number, so
+// SwiftUI's ForEach / scrollTo never see duplicate identities.
+nonisolated struct SongLineDisplayItem: Identifiable, Equatable {
+    let id: String
+    let line: SongLine
+    let phase: SongLineCardPhase
 }

@@ -41,7 +41,7 @@ struct SongBreakdown: Codable, Equatable, Sendable {
 // (chorus refrains, repeated particles), so any identity derived from the value alone
 // collides and breaks SwiftUI ForEach. Consumers iterate with positional identity instead
 // (e.g. ForEach over enumerated() with id: \.offset).
-struct SongWord: Codable, Equatable, Sendable {
+nonisolated struct SongWord: Codable, Equatable, Sendable {
     let surface: String
     let sungRomaji: String
     let definition: String
@@ -51,7 +51,7 @@ struct SongWord: Codable, Equatable, Sendable {
 // without duplicating the full breakdown. The prompt emits two forms:
 //   1. "= line N"   →  .sameAsLine(N)
 //   2. "Parallel to line N with substitution: X → Y"  →  .parallelTo(line: N, substitution: "X → Y")
-enum LineReference: Codable, Equatable, Sendable {
+nonisolated enum LineReference: Codable, Equatable, Sendable {
     case sameAsLine(Int)
     case parallelTo(line: Int, substitution: String)
 }

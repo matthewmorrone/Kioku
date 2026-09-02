@@ -34,10 +34,16 @@ struct SongLineCard: View {
     // in scope) and built eagerly alongside furiganaCache so every word in the explanations
     // list can show furigana.
     let wordFurigana: [WordFuriganaKey: [Int: String]]
-    // The audio time-range matched to this line via the cue text-keyed lookup, or nil
-    // when there's no audio attached, no SRT, or no cue matched this line's text. Nil
-    // hides the play button entirely — "if available" semantics on the play affordance.
-    let playbackRange: (startMs: Int, endMs: Int)?
+    // Play-button state for this line's narration (sung clip when available, then the
+    // sentence, gist, and words — see SongListenScript). Nil hides the button entirely.
+    let playState: SongLineCardPlayState?
+    // Streaming state for this row (see SongLineCardPhase). `.streaming` adds an accent border
+    // and a spinner in the header and suppresses the recovery notice (an in-progress line
+    // legitimately has no content yet); `.playing` adds the border alone.
+    let phase: SongLineCardPhase
+    // The listen-along segment currently being spoken, when it belongs to this line: tints
+    // the matching row (sentence / gist / word) so the card doubles as the transcript.
+    let listenHighlight: SongListenSegment?
     let onToggleExpansion: () -> Void
     let onPlayLine: () -> Void
     // Opens the shared lookup sheet for a tapped vocabulary row. The parent owns the dictionary
@@ -95,12 +101,46 @@ struct SongLineCard: View {
             RoundedRectangle(cornerRadius: 18)
                 .fill(Color(.secondarySystemBackground))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color(.separator), lineWidth: 1)
-        )
+        .overlay(cardBorder)
         .clipShape(RoundedRectangle(cornerRadius: 18))
+        .animation(.easeInOut(duration: 0.25), value: phase)
         .accessibilityElement(children: .contain)
+    }
+
+    // The streaming or playing card gets a 2pt accent ring so the eye lands on the line the
+    // model is writing / the narrator is speaking; every other card keeps the plain stroke.
+    private var cardBorder: some View {
+        let isRinged = phase == .streaming || phase == .playing
+        return RoundedRectangle(cornerRadius: 18)
+            .stroke(isRinged ? Color.accentColor : Color(.separator), lineWidth: isRinged ? 2 : 1)
+    }
+
+    // Whether listen-along is speaking the given kind of row on this line right now.
+    private func isSpeaking(_ kind: SongListenSegmentKind) -> Bool {
+        listenHighlight?.kind == kind
+    }
+
+    // Whether listen-along is speaking this word's surface or definition right now. Matched
+    // by text, since the segment carries no word identity — the same text the script was
+    // built from (SongListenScript), so a repeated word tints on each occurrence.
+    private func isSpeaking(_ word: SongWord) -> Bool {
+        guard let listenHighlight else { return false }
+        switch listenHighlight.kind {
+        case .wordSurface:
+            return listenHighlight.text == word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .wordDefinition:
+            return listenHighlight.text == SongLineCard.stripInlineMarkdown(word.definition)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        case .sentence, .translation:
+            return false
+        }
+    }
+
+    // Row tint for whatever listen-along is speaking. Applied behind the sentence, gist, or
+    // word row; clear otherwise so the layout never shifts when the highlight moves.
+    private func speakingBackground(_ isActive: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isActive ? Color.accentColor.opacity(0.16) : Color.clear)
     }
 
     // Position indicator + (when this is a chorus repeat) an inline reference annotation.
@@ -108,9 +148,8 @@ struct SongLineCard: View {
     // the relationship is metadata about the line, not its own content block. The user
     // sees "Same as line 1" and immediately reads this line's Japanese underneath.
     //
-    // The trailing play button appears only when a cue range matched this line. Tapping
-    // it seeks the audio to the line's start and auto-stops at its end via the
-    // controller's `stopAtMs` watchdog.
+    // The trailing play button plays this line's stretch of the listen-along track (or
+    // pauses it while this line is the one speaking); it spins while that track renders.
     private var header: some View {
         HStack(spacing: 8) {
             Text("Line \(line.index)")
@@ -122,23 +161,54 @@ struct SongLineCard: View {
                 inlineReferenceLabel(reference)
             }
             Spacer(minLength: 0)
-            if playbackRange != nil {
-                playButton
+            if phase == .streaming {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Generating line \(line.index)")
+            }
+            if let playState {
+                playButton(playState)
             }
         }
     }
 
-    // Small accent-coloured ▶︎ that triggers `onPlayLine`. Hidden entirely when there's no
-    // matched range — no "disabled" greyed-out state, since the typical case is "no audio
-    // at all for this note" and a row of disabled buttons would just be visual noise.
-    private var playButton: some View {
-        Button(action: onPlayLine) {
-            Image(systemName: "play.circle.fill")
-                .font(.system(size: 22))
-                .foregroundStyle(Color.accentColor)
-                .accessibilityLabel("Play line \(line.index)")
+    // Small accent-coloured ⬇︎ / ▶︎ / ❚❚ that triggers `onPlayLine` (the parent decides
+    // whether that means generate, play, or pause from the state), or a spinner while the
+    // narration track is actively being generated.
+    @ViewBuilder
+    private func playButton(_ state: SongLineCardPlayState) -> some View {
+        switch state {
+        case .loading:
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Generating audio for line \(line.index)")
+        case .available, .idle, .playing:
+            Button(action: onPlayLine) {
+                Image(systemName: playButtonSymbol(state))
+                    .font(.system(size: 22))
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityLabel(playButtonLabel(state))
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+    }
+
+    // Icon per state for the audio button.
+    private func playButtonSymbol(_ state: SongLineCardPlayState) -> String {
+        switch state {
+        case .available: return "arrow.down.circle"
+        case .playing: return "pause.circle.fill"
+        case .idle, .loading: return "play.circle.fill"
+        }
+    }
+
+    // Accessibility label per state for the audio button.
+    private func playButtonLabel(_ state: SongLineCardPlayState) -> String {
+        switch state {
+        case .available: return "Generate audio for line \(line.index)"
+        case .playing: return "Pause line \(line.index)"
+        case .idle, .loading: return "Play line \(line.index)"
+        }
     }
 
     // Compact reference label: small arrow icon + "Same as line N" or "Parallel to line N · X → Y".
@@ -185,6 +255,7 @@ struct SongLineCard: View {
     }
 
     private var isRecoveryStub: Bool {
+        guard phase == .ready else { return false }
         let hasGist = (line.gist?.isEmpty == false)
         let hasGrammar = (line.grammarNote?.isEmpty == false)
         return hasGist == false
@@ -204,10 +275,18 @@ struct SongLineCard: View {
     // carries its own SwiftUI tap gesture; the renderer branch routes taps through
     // `onSegmentTapped` because a UIViewRepresentable wrapping UITextView intercepts
     // touches before SwiftUI sees them.
+    //
+    // The cache is only used when it was built from exactly this text: its segmentation
+    // ranges are String.Index values into `sourceText`, and applying them to a different
+    // string traps inside the CoreText renderer. A stale cache (the parent rebuilds it on the
+    // next update) falls through to the plain branch for one frame instead.
     @ViewBuilder
     private var originalLine: some View {
-        if let cache = furiganaCache, cache.furiganaBySegmentLocation.isEmpty == false {
+        if let cache = furiganaCache,
+           cache.sourceText == line.original,
+           cache.furiganaBySegmentLocation.isEmpty == false {
             furiganaRow(cache: cache)
+                .background(speakingBackground(isSpeaking(.sentence)))
                 .accessibilityLabel(line.original)
                 .accessibilityHint(explanationsAccessibilityHint)
         } else {
@@ -222,6 +301,7 @@ struct SongLineCard: View {
                 // rendered via the renderer.
                 .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 4))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background(speakingBackground(isSpeaking(.sentence)))
                 .contentShape(Rectangle())
                 .onTapGesture { onToggleExpansion() }
                 .accessibilityLabel(line.original)
@@ -282,6 +362,8 @@ struct SongLineCard: View {
                 .font(.callout.italic())
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+                .background(speakingBackground(isSpeaking(.translation)))
         }
     }
 
@@ -419,6 +501,8 @@ struct SongLineCard: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 4)
+            .background(speakingBackground(isSpeaking(word)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

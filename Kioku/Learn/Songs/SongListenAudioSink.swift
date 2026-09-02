@@ -106,6 +106,13 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
         try writeSilence(seconds: 0.6)
     }
 
+    // Silence between two voices inside one segment (an English gist quoting a Japanese word,
+    // see SongListenLanguageRuns) — just enough of a beat that the switch doesn't sound like
+    // one voice tripping over the other, shorter than any between-segment gap.
+    func writeSilenceBetweenVoices() throws {
+        try writeSilence(seconds: 0.12)
+    }
+
     // Shared implementation behind writeSilence(after:)/writeSilenceAfterClip() — writes a
     // zeroed buffer of the given duration in the track's target format.
     private func writeSilence(seconds: Double) throws {

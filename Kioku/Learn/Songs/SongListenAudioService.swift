@@ -7,9 +7,10 @@ import os
 // Japanese sentence, then the English gist, then every word's Japanese surface followed by
 // its English definition — one line after another (see SongListenScript for the exact
 // ordering). Synthesis alternates between a Japanese and an English AVSpeechSynthesisVoice
-// per segment — the best-quality (premium, else enhanced, else default) voice installed for
-// each language — so the listener always hears each language spoken by a voice built for it
-// ("code switching") instead of one voice mangling the other language's text.
+// — the best-quality (premium, else enhanced, else default) voice installed for each
+// language — per same-language run *within* each segment (SongListenLanguageRuns), so the
+// listener always hears each language spoken by a voice built for it ("code switching")
+// instead of one voice skipping or mangling the other language's text.
 //
 // Runs entirely on-device via AVSpeechSynthesizer's buffer-based `write(_:toBufferCallback:)`
 // — no network call, no API key, no per-request cost. Buffers (speech and song-clip alike)
@@ -35,7 +36,8 @@ nonisolated final class SongListenAudioService {
     private static let targetFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
 
     // Synthesizes the full listen-along track for a breakdown and writes it to a cache file,
-    // returning the file plus its transcript cues. The cache key includes `sourceTextHash`
+    // returning the file plus one cue per step (speech and sung clip alike, in script order,
+    // so callers can pair them with SongListenScript's steps by index). The cache key includes `sourceTextHash`
     // plus a signature of the clip inputs, so re-opening Listen for an unchanged breakdown AND
     // unchanged audio/cues reuses the existing file instead of re-rendering, while either
     // changing (regenerated breakdown, swapped audio attachment, re-aligned cues) renders
@@ -96,22 +98,31 @@ nonisolated final class SongListenAudioService {
             .appendingPathExtension("\(UUID().uuidString).partial.caf")
 
         let sink = SongListenAudioSink(destination: workingDestination, targetFormat: Self.targetFormat)
+        // Clip cues carry the sung line's text, so a clip step gets a cue like every speech
+        // step does and the caller can pair cues with script steps one-to-one.
+        let originalByLineIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
         var cues: [SubtitleCue] = []
         for (index, step) in steps.enumerated() {
             try Task.checkCancellation()
             switch step {
             case .speech(let segment):
-                let voice = segment.language == .japanese ? japaneseVoice : englishVoice
                 let startMs = sink.elapsedMs
-                try await synthesizeAndWrite(segment: segment, voice: voice, sink: sink)
-                try sink.finishSegment()
+                let runs = SongListenLanguageRuns.split(segment.text, defaultLanguage: segment.language)
+                for (runIndex, run) in runs.enumerated() {
+                    if runIndex > 0 { try sink.writeSilenceBetweenVoices() }
+                    let voice = run.language == .japanese ? japaneseVoice : englishVoice
+                    try await synthesizeAndWrite(text: run.text, voice: voice, sink: sink)
+                    try sink.finishSegment()
+                }
                 cues.append(SubtitleCue(index: cues.count, startMs: startMs, endMs: sink.elapsedMs, text: segment.text))
                 try sink.writeSilence(after: segment.kind)
-            case .clip(_, let startMs, let endMs):
+            case .clip(let lineIndex, let startMs, let endMs):
                 guard let sourceAudioURL else { continue }
+                let clipStartMs = sink.elapsedMs
                 let buffer = try readClip(from: sourceAudioURL, startMs: startMs, endMs: endMs)
                 try sink.write(buffer)
                 try sink.finishSegment()
+                cues.append(SubtitleCue(index: cues.count, startMs: clipStartMs, endMs: sink.elapsedMs, text: originalByLineIndex[lineIndex] ?? ""))
                 try sink.writeSilenceAfterClip()
             }
             await onProgress(Double(index + 1) / Double(steps.count))
@@ -124,7 +135,7 @@ nonisolated final class SongListenAudioService {
         return SongListenRenderResult(url: destination, cues: cues)
     }
 
-    // Synthesizes one segment via the given voice and streams every PCM buffer straight into
+    // Synthesizes one run of text via the given voice and streams every PCM buffer straight into
     // `sink` as it arrives, rather than collecting them into an array to hand back — that
     // would require sending a batch of AVAudioPCMBuffers across the continuation's isolation
     // boundary, which is exactly the data race the compiler flags. `write`'s callback fires
@@ -132,8 +143,8 @@ nonisolated final class SongListenAudioService {
     // completion; an `OSAllocatedUnfairLock`-guarded flag makes sure exactly one of those
     // calls resumes the continuation, since a write failure resuming early wouldn't stop the
     // synthesizer from calling back again afterward.
-    private func synthesizeAndWrite(segment: SongListenSegment, voice: AVSpeechSynthesisVoice, sink: SongListenAudioSink) async throws {
-        let utterance = AVSpeechUtterance(string: segment.text)
+    private func synthesizeAndWrite(text: String, voice: AVSpeechSynthesisVoice, sink: SongListenAudioSink) async throws {
+        let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
         let hasResumed = OSAllocatedUnfairLock(initialState: false)
 
@@ -209,12 +220,18 @@ nonisolated final class SongListenAudioService {
     // Keying on `sourceTextHash` plus `clipsSignature` (mirroring SongBreakdownStore's own
     // cache-key approach) means a regenerated breakdown, a swapped audio attachment, or a
     // re-aligned cue set each get a fresh filename rather than silently reusing a stale track.
+    // `renderVersion` is part of the name so a change to how the track is synthesized
+    // (e.g. per-run voice switching) invalidates tracks rendered the old way instead of
+    // replaying them from cache.
     static func destinationURL(forNoteID noteID: UUID, sourceTextHash: String, clipsSignature: String) -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         let dir = caches.appendingPathComponent("listen", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("\(noteID.uuidString)-\(sourceTextHash)-\(clipsSignature).caf")
+        return dir.appendingPathComponent("\(noteID.uuidString)-\(sourceTextHash)-\(clipsSignature)-\(renderVersion).caf")
     }
+
+    // Bump when synthesis output changes shape for the same inputs (see destinationURL).
+    private static let renderVersion = "r3"
 
     // Folds the clip inputs (which audio file, and every line's matched range within it) into
     // one short signature for the cache key. "noaudio" when there's no attachment, so a note
