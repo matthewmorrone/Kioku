@@ -38,6 +38,10 @@ struct SongLineCard: View {
     // when there's no audio attached, no SRT, or no cue matched this line's text. Nil
     // hides the play button entirely — "if available" semantics on the play affordance.
     let playbackRange: (startMs: Int, endMs: Int)?
+    // Streaming state for this row (see SongLineCardPhase). `.streaming` adds an accent border
+    // and a spinner in the header; `.pending` draws a dashed border and suppresses the
+    // recovery notice, since a placeholder has no content by design.
+    let phase: SongLineCardPhase
     let onToggleExpansion: () -> Void
     let onPlayLine: () -> Void
     // Opens the shared lookup sheet for a tapped vocabulary row. The parent owns the dictionary
@@ -95,12 +99,29 @@ struct SongLineCard: View {
             RoundedRectangle(cornerRadius: 18)
                 .fill(Color(.secondarySystemBackground))
         )
-        .overlay(
+        .overlay(cardBorder)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .animation(.easeInOut(duration: 0.25), value: phase)
+        .accessibilityElement(children: .contain)
+    }
+
+    // Border per phase: the streaming card gets a 2pt accent ring so the eye lands on the line
+    // the model is writing; placeholders get a dashed hairline so they read as "not yet";
+    // finished lines keep the plain separator stroke.
+    @ViewBuilder
+    private var cardBorder: some View {
+        switch phase {
+        case .streaming:
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.accentColor, lineWidth: 2)
+        case .pending:
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                .foregroundStyle(Color(.separator))
+        case .ready:
             RoundedRectangle(cornerRadius: 18)
                 .stroke(Color(.separator), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .accessibilityElement(children: .contain)
+        }
     }
 
     // Position indicator + (when this is a chorus repeat) an inline reference annotation.
@@ -122,6 +143,11 @@ struct SongLineCard: View {
                 inlineReferenceLabel(reference)
             }
             Spacer(minLength: 0)
+            if phase == .streaming {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Generating line \(line.index)")
+            }
             if playbackRange != nil {
                 playButton
             }
@@ -185,6 +211,7 @@ struct SongLineCard: View {
     }
 
     private var isRecoveryStub: Bool {
+        guard phase == .ready else { return false }
         let hasGist = (line.gist?.isEmpty == false)
         let hasGrammar = (line.grammarNote?.isEmpty == false)
         return hasGist == false

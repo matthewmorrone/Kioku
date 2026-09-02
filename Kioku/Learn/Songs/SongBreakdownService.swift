@@ -6,6 +6,11 @@ import CryptoKit
 // with LLMCorrectionService so there's a single user-config surface for both features.
 // Stub mode short-circuits the network call with a UserDefaults-stored markdown blob — same
 // pattern as LLMCorrectionService — so parser iteration doesn't require an API key.
+//
+// Responses stream (LLMStreamingClient): every time a newline lands in the accumulated text
+// the partial markdown is re-parsed and handed to `onPartialLines`, so the caller can render
+// each line card as the model writes it. The final return value is parsed from the complete
+// text exactly as a non-streaming request would have been.
 final class SongBreakdownService {
 
     // UserDefaults key for the song-breakdown stub response. Distinct from the segmentation stub
@@ -35,9 +40,15 @@ final class SongBreakdownService {
     // Returns a SongBreakdown for the given note text. Stub mode parses the in-app stub field;
     // real mode dispatches to the active provider and parses the response markdown. Throws
     // .noKeyConfigured when the user has not finished LLM setup.
+    // `onPartialLines` receives the lines parsed so far each time the streamed text grows by a
+    // line — the last entry is usually still incomplete. Invoked on the network task.
     // Emits NSLog messages at every milestone so the user can watch progress in Console.app /
     // device logs when the call is slow (the LLM round-trip is opaque otherwise).
-    func generate(noteID: UUID, lyrics: String) async throws -> SongBreakdown {
+    func generate(
+        noteID: UUID,
+        lyrics: String,
+        onPartialLines: (@Sendable ([SongLine]) -> Void)? = nil
+    ) async throws -> SongBreakdown {
         // Keep the (often multi-minute) song-breakdown LLM call alive across app backgrounding.
         let bg = BackgroundTaskHolder.begin("kioku.llm.songBreakdown")
         defer { bg.endDetached() }
@@ -54,6 +65,7 @@ final class SongBreakdownService {
                 throw SongBreakdownError.noKeyConfigured
             }
             NSLog("[SongBreakdown] stub mode parsing stubLength=%d", stub.count)
+            try await replayStubProgressively(stub, onPartialLines: onPartialLines)
             let lines = try parser.parse(markdown: stub)
             NSLog("[SongBreakdown] stub parsed lines=%d duration=%.2fs",
                   lines.count, Date().timeIntervalSince(startedAt))
@@ -83,9 +95,11 @@ final class SongBreakdownService {
             throw SongBreakdownError.noKeyConfigured
         }
 
-        let prompt = SongBreakdownPrompt.instantiated(withLyrics: lyrics)
-        NSLog("[SongBreakdown] dispatching to %@ promptLength=%d",
-              provider.rawValue, prompt.count)
+        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
+            ?? LLMSettings.defaultTemperature
+        let onDelta = makeDeltaHandler(onPartialLines: onPartialLines)
+        NSLog("[SongBreakdown] dispatching to %@ temperature=%.2f", provider.rawValue, temperature)
+        let httpStart = Date()
         let raw: String
         let producedBy: SongBreakdownProvider
         switch provider {
@@ -95,14 +109,41 @@ final class SongBreakdownService {
             // LLMProvider case fails to compile here instead of silently mis-dispatching.
             throw SongBreakdownError.noKeyConfigured
         case .openAI:
-            raw = try await callOpenAI(apiKey: apiKey, prompt: prompt)
+            // A single user-role message containing the whole prompt: the prompt is a
+            // self-contained instruction + data and doesn't benefit from a system/user split.
+            raw = try await LLMStreamingClient.streamOpenAI(
+                apiKey: apiKey,
+                model: LLMSettings.openAIModel(),
+                messages: [["role": "user", "content": SongBreakdownPrompt.instantiated(withLyrics: lyrics)]],
+                maxTokens: 8192,
+                temperature: temperature,
+                urlSession: urlSession,
+                onDelta: onDelta
+            )
             producedBy = .openAI
         case .claude:
-            raw = try await callClaude(apiKey: apiKey, lyrics: lyrics)
+            // The large static instruction prompt goes as a cached system block
+            // (cache_control: ephemeral) so it bills at ~0.1x on repeat calls; the per-song
+            // lyrics travel uncached in the user turn. The song instructions (~2400 tokens)
+            // clear Sonnet 4.6's ~2048-token minimum cacheable prefix, so the marker takes effect.
+            raw = try await LLMStreamingClient.streamClaude(
+                apiKey: apiKey,
+                model: LLMSettings.claudeModel(),
+                system: [[
+                    "type": "text",
+                    "text": SongBreakdownPrompt.staticInstructions(),
+                    "cache_control": ["type": "ephemeral"]
+                ]],
+                userContent: lyrics,
+                maxTokens: 8192,
+                temperature: temperature,
+                urlSession: urlSession,
+                onDelta: onDelta
+            )
             producedBy = .claude
         }
-        NSLog("[SongBreakdown] %@ response received bytes=%d duration=%.2fs — parsing",
-              provider.rawValue, raw.count, Date().timeIntervalSince(startedAt))
+        NSLog("[SongBreakdown] %@ stream completed chars=%d duration=%.2fs — parsing",
+              provider.rawValue, raw.count, Date().timeIntervalSince(httpStart))
 
         let lines = try parser.parse(markdown: raw)
         NSLog("[SongBreakdown] parsed lines=%d totalDuration=%.2fs",
@@ -116,133 +157,48 @@ final class SongBreakdownService {
         )
     }
 
+    // Builds the per-fragment handler for a streamed response: accumulates text and, whenever
+    // a fragment completes a line, re-parses the whole buffer and reports the lines if they
+    // changed. Parsing per newline (not per token) keeps the work proportional to the number
+    // of output lines, and the Equatable compare suppresses no-op callbacks for blank lines.
+    // State lives in a lock-guarded box because URLSession delivers fragments off the main actor.
+    private func makeDeltaHandler(
+        onPartialLines: (@Sendable ([SongLine]) -> Void)?
+    ) -> @Sendable (String) -> Void {
+        guard let onPartialLines else { return { _ in } }
+        let accumulator = StreamedTextAccumulator()
+        let parser = self.parser
+        return { fragment in
+            guard let snapshot = accumulator.append(fragment) else { return }
+            let lines = parser.parsePartial(markdown: snapshot)
+            if accumulator.recordEmitted(lines) {
+                onPartialLines(lines)
+            }
+        }
+    }
+
+    // Stub mode has no network stream, so it replays the stub one line at a time with a short
+    // pause between lines. This exercises the exact same progressive-card path the real
+    // providers drive, which is the point of stub mode: iterate on the UI without an API key.
+    // Skipped entirely when nobody is listening for partial lines.
+    private func replayStubProgressively(
+        _ stub: String,
+        onPartialLines: (@Sendable ([SongLine]) -> Void)?
+    ) async throws {
+        guard let onPartialLines else { return }
+        let onDelta = makeDeltaHandler(onPartialLines: onPartialLines)
+        for line in stub.components(separatedBy: "\n") {
+            try Task.checkCancellation()
+            onDelta(line + "\n")
+            try await Task.sleep(nanoseconds: 60_000_000)
+        }
+    }
+
     // Hashes the raw note text so that cache invalidation tracks only the raw input the LLM
     // saw — segmentation, override, and reading edits never change the hash, never invalidate.
     static func sha256(_ text: String) -> String {
         let digest = SHA256.hash(data: Data(text.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
-    }
-
-    // Calls OpenAI chat completions. Uses a single user-role message containing the whole
-    // prompt because the prompt is self-contained instruction + data and doesn't benefit from
-    // a system/user split. max_tokens is generous to accommodate full song breakdowns.
-    private func callOpenAI(apiKey: String, prompt: String) async throws -> String {
-        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-            ?? LLMSettings.defaultTemperature
-        let model = LLMSettings.openAIModel()
-        let body: [String: Any] = [
-            "model": model,
-            "messages": [
-                ["role": "user", "content": prompt]
-            ],
-            "max_tokens": 8192,
-            "temperature": temperature
-        ]
-
-        let bodyData = try JSONSerialization.data(withJSONObject: body)
-        request.httpBody = bodyData
-        NSLog("[SongBreakdown] POST openai bodyBytes=%d temperature=%.2f model=%@",
-              bodyData.count, temperature, model)
-
-        let httpStart = Date()
-        let (data, response) = try await urlSession.data(for: request)
-        NSLog("[SongBreakdown] openai HTTP completed bytes=%d duration=%.2fs",
-              data.count, Date().timeIntervalSince(httpStart))
-        try validate(response: response, data: data, providerName: "OpenAI")
-
-        guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let choices = json["choices"] as? [[String: Any]],
-            let firstChoice = choices.first,
-            let message = firstChoice["message"] as? [String: Any],
-            let content = message["content"] as? String
-        else {
-            throw SongBreakdownError.unexpectedResponseShape(
-                "OpenAI response missing choices[0].message.content"
-            )
-        }
-        return content
-    }
-
-    // Calls the Anthropic Messages API using the configured Claude model (Sonnet 4.6 by default),
-    // chosen for the depth the prompt asks for (etymology, register, cultural context).
-    // The large static instruction prompt is sent as a cached system block (cache_control:
-    // ephemeral) so it bills at ~0.1x on repeat calls; the per-song lyrics travel uncached in
-    // the user turn. Prompt caching is GA — no beta header; the anthropic-version header above
-    // suffices. The song instructions (~2400 tokens) clear Sonnet 4.6's ~2048-token minimum
-    // cacheable prefix, so the cache marker takes effect here.
-    private func callClaude(apiKey: String, lyrics: String) async throws -> String {
-        let url = URL(string: "https://api.anthropic.com/v1/messages")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-            ?? LLMSettings.defaultTemperature
-        let model = LLMSettings.claudeModel()
-        let body: [String: Any] = [
-            "model": model,
-            "max_tokens": 8192,
-            "temperature": temperature,
-            "system": [
-                [
-                    "type": "text",
-                    "text": SongBreakdownPrompt.staticInstructions(),
-                    "cache_control": ["type": "ephemeral"]
-                ]
-            ],
-            "messages": [
-                ["role": "user", "content": lyrics]
-            ]
-        ]
-
-        let bodyData = try JSONSerialization.data(withJSONObject: body)
-        request.httpBody = bodyData
-        NSLog("[SongBreakdown] POST claude bodyBytes=%d temperature=%.2f model=%@",
-              bodyData.count, temperature, model)
-
-        let httpStart = Date()
-        let (data, response) = try await urlSession.data(for: request)
-        NSLog("[SongBreakdown] claude HTTP completed bytes=%d duration=%.2fs",
-              data.count, Date().timeIntervalSince(httpStart))
-        try validate(response: response, data: data, providerName: "Claude")
-
-        guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let content = json["content"] as? [[String: Any]],
-            let firstBlock = content.first,
-            let text = firstBlock["text"] as? String
-        else {
-            throw SongBreakdownError.unexpectedResponseShape(
-                "Claude response missing content[0].text"
-            )
-        }
-        return text
-    }
-
-    // Validates the HTTP status and surfaces the error body so the UI can show a meaningful
-    // failure (quota exceeded, model unavailable, etc.) instead of an opaque "network error".
-    private func validate(response: URLResponse, data: Data, providerName: String) throws {
-        guard let http = response as? HTTPURLResponse else {
-            NSLog("[SongBreakdown] %@ non-HTTP response", providerName)
-            throw SongBreakdownError.networkError("\(providerName): non-HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "(unreadable)"
-            let bodyPreview = String(body.prefix(400))
-            NSLog("%@", "[SongBreakdown] \(providerName) HTTP \(http.statusCode) body=\(bodyPreview)")
-            throw SongBreakdownError.networkError(
-                "\(providerName) HTTP \(http.statusCode): \(body)"
-            )
-        }
     }
 }
 

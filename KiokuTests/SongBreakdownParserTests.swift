@@ -274,5 +274,48 @@ final class SongBreakdownParserTests: XCTestCase {
         // The bug we're guarding against: subsequent line headers leaking into Line 1.
         XCTAssertNil(lines[0].grammarNote)
     }
-}
 
+    // A streamed buffer cut mid-section still yields every complete header, plus the partial
+    // last line with whatever bullets have arrived — and never throws, even when empty.
+    func testParsePartialReturnsIncompleteTrailingSectionWithoutThrowing() {
+        XCTAssertTrue(parser().parsePartial(markdown: "Some preamble with no header yet").isEmpty)
+
+        let partial = """
+        **Line 1: 君の名前を呼んだ**
+        *kimi no namae wo yonda*
+
+        - **君** (kimi) — you
+
+        **Gist:** Called your name.
+
+        ---
+
+        **Line 2: 夜の風が吹く**
+        *yoru no kaze ga fuku*
+
+        - **夜** (yoru) — nig
+        """
+        let lines = parser().parsePartial(markdown: partial)
+        XCTAssertEqual(lines.map(\.index), [1, 2])
+        XCTAssertEqual(lines[0].gist, "Called your name.")
+        XCTAssertEqual(lines[1].words.count, 1)
+        XCTAssertNil(lines[1].gist)
+    }
+
+    // A mixed-language header keeps its non-Japanese text verbatim in `original`, so an
+    // English line with an embedded Japanese phrase round-trips as one line.
+    func testParsesMixedLanguageHeaderVerbatim() throws {
+        let markdown = """
+        **Line 4: I said 愛してる to her**
+        *I said aishiteru to her*
+
+        - **愛してる** (aishiteru) — "I love you", contracted 愛している
+
+        **Gist:** I told her I loved her.
+        """
+        let lines = try parser().parse(markdown: markdown)
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertEqual(lines[0].original, "I said 愛してる to her")
+        XCTAssertEqual(lines[0].words.first?.surface, "愛してる")
+    }
+}

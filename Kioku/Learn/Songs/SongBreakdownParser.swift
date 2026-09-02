@@ -5,7 +5,10 @@ import Foundation
 // Splits on markdown horizontal rules (---, ***, ___) and parses each section independently;
 // sections without a recognizable "**Line N:**" header are skipped (covers title blocks,
 // model preambles, trailing notes, etc.).
-final class SongBreakdownParser {
+//
+// `nonisolated` + Sendable: the streaming services re-parse from URLSession's delivery
+// context, off the main actor. The parser holds no state, so this is safe by construction.
+nonisolated final class SongBreakdownParser: Sendable {
 
     // Returns the parsed lines or throws when no section yielded a recognizable header.
     // Caller wraps these in a SongBreakdown with hash/date/provider metadata.
@@ -21,6 +24,14 @@ final class SongBreakdownParser {
             throw SongBreakdownParseError.noLinesParsed
         }
         return parsed
+    }
+
+    // Non-throwing variant for a response that is still streaming in. The last section is
+    // usually incomplete (a header with no bullets yet, or a bullet cut mid-word); it is
+    // returned as-is so the UI can fill the card progressively, and the next call with more
+    // text simply replaces it. Empty when no header has arrived yet.
+    func parsePartial(markdown: String) -> [SongLine] {
+        splitSections(markdown).compactMap { parseSection($0) }
     }
 
     // Splits the input into one section per line-header so each section can be parsed

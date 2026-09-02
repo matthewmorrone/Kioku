@@ -14,6 +14,9 @@ import Foundation
 // existing parser — no new wire format, no new caching model, nothing for either original path
 // to migrate. Reverting this feature means removing this file and its (also additive) call
 // site in SongBreakdownStore; neither existing service's behavior changes either way.
+//
+// The response streams (LLMStreamingClient) so the breakdown half — which the model writes
+// first — feeds SongStepperView's progressive cards line by line, same as the plain path.
 final class MergedCorrectionBreakdownService {
 
     // UserDefaults key for the merged-mode stub response, distinct from both existing stub
@@ -46,7 +49,12 @@ final class MergedCorrectionBreakdownService {
     // standalone services would have produced. `noteContent` is the raw note text — the
     // segmentation half is instructed to re-segment from scratch, so no pre-existing
     // segmentation input is needed (same assumption LLMCorrectionQueue makes for unseen notes).
-    func generate(noteContent: String) async throws -> MergedCorrectionBreakdownResult {
+    // `onPartialLines` receives the breakdown lines parsed so far as the stream progresses;
+    // once the delimiter has arrived the breakdown half is complete and updates stop.
+    func generate(
+        noteContent: String,
+        onPartialLines: (@Sendable ([SongLine]) -> Void)? = nil
+    ) async throws -> MergedCorrectionBreakdownResult {
         let bg = BackgroundTaskHolder.begin("kioku.llm.mergedCorrectionBreakdown")
         defer { bg.endDetached() }
 
@@ -75,21 +83,80 @@ final class MergedCorrectionBreakdownService {
 
         let system = Self.systemPrompt
         let user = Self.userMessage(noteContent: noteContent, compactInput: compactInput)
+        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
+            ?? LLMSettings.defaultTemperature
+        let onDelta = Self.makeDeltaHandler(onPartialLines: onPartialLines)
 
+        // Larger max_tokens than SongBreakdownService's 8192: this response has to carry a
+        // full breakdown *and* a segmentation in one completion, and 8192 was observed to
+        // truncate before the model ever reached the ===SEGMENTATION=== delimiter. 16384 is
+        // gpt-4o's full output cap; Claude's synchronous cap is far above it.
         let raw: String
         let producedBy: SongBreakdownProvider
         switch provider {
         case .none, .appleIntelligence:
             throw SongBreakdownError.noKeyConfigured
         case .openAI:
-            raw = try await callOpenAI(apiKey: apiKey, system: system, user: user)
+            raw = try await LLMStreamingClient.streamOpenAI(
+                apiKey: apiKey,
+                model: LLMSettings.openAIModel(),
+                messages: [
+                    ["role": "system", "content": system],
+                    ["role": "user", "content": user]
+                ],
+                maxTokens: 16384,
+                temperature: temperature,
+                urlSession: urlSession,
+                onDelta: onDelta
+            )
             producedBy = .openAI
         case .claude:
-            raw = try await callClaude(apiKey: apiKey, system: system, user: user)
+            // Cached system block, mirroring SongBreakdownService's request shape.
+            raw = try await LLMStreamingClient.streamClaude(
+                apiKey: apiKey,
+                model: LLMSettings.claudeModel(),
+                system: [[
+                    "type": "text",
+                    "text": system,
+                    "cache_control": ["type": "ephemeral"]
+                ]],
+                userContent: user,
+                maxTokens: 16384,
+                temperature: temperature,
+                urlSession: urlSession,
+                onDelta: onDelta
+            )
             producedBy = .claude
         }
 
         return try Self.parseCombined(raw, provider: producedBy)
+    }
+
+    // Per-fragment stream handler: re-parses the breakdown half (everything before the
+    // delimiter, or the whole buffer while the delimiter hasn't arrived) whenever a line
+    // completes. Once the delimiter is in the buffer the breakdown text stops changing, so
+    // StreamedTextAccumulator's equality check naturally suppresses further callbacks while
+    // the segmentation half streams in.
+    private static func makeDeltaHandler(
+        onPartialLines: (@Sendable ([SongLine]) -> Void)?
+    ) -> @Sendable (String) -> Void {
+        guard let onPartialLines else { return { _ in } }
+        let accumulator = StreamedTextAccumulator()
+        let parser = SongBreakdownParser()
+        let delimiter = responseDelimiter
+        return { fragment in
+            guard let snapshot = accumulator.append(fragment) else { return }
+            let breakdownText: String
+            if let delimiterRange = snapshot.range(of: delimiter) {
+                breakdownText = String(snapshot[..<delimiterRange.lowerBound])
+            } else {
+                breakdownText = snapshot
+            }
+            let lines = parser.parsePartial(markdown: breakdownText)
+            if accumulator.recordEmitted(lines) {
+                onPartialLines(lines)
+            }
+        }
     }
 
     // Splits a raw combined response on responseDelimiter and parses each half with the
@@ -169,116 +236,6 @@ final class MergedCorrectionBreakdownService {
             out.append(line.isEmpty ? "\(n)|" : "\(n)|\(line)|")
         }
         return out.joined(separator: "\n")
-    }
-
-    // Calls OpenAI chat completions with a system/user split, mirroring
-    // LLMCorrectionService.callOpenAIRaw's request shape but with the combined prompt. Uses
-    // gpt-4o's full 16384-token output cap rather than SongBreakdownService's 8192: this
-    // response carries a full breakdown *and* a segmentation, and 8192 was observed to
-    // truncate before the model ever reached the ===SEGMENTATION=== delimiter.
-    private func callOpenAI(apiKey: String, system: String, user: String) async throws -> String {
-        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-            ?? LLMSettings.defaultTemperature
-        let model = LLMSettings.openAIModel()
-        let body: [String: Any] = [
-            "model": model,
-            "messages": [
-                ["role": "system", "content": system],
-                ["role": "user", "content": user]
-            ],
-            "max_tokens": 16384,
-            "temperature": temperature
-        ]
-
-        let bodyData = try JSONSerialization.data(withJSONObject: body)
-        request.httpBody = bodyData
-
-        let (data, response) = try await urlSession.data(for: request)
-        try validate(response: response, data: data, providerName: "OpenAI")
-
-        guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let choices = json["choices"] as? [[String: Any]],
-            let firstChoice = choices.first,
-            let message = firstChoice["message"] as? [String: Any],
-            let content = message["content"] as? String
-        else {
-            throw SongBreakdownError.unexpectedResponseShape(
-                "OpenAI response missing choices[0].message.content"
-            )
-        }
-        return content
-    }
-
-    // Calls the Anthropic Messages API, mirroring SongBreakdownService.callClaude's request
-    // shape (cached system block) with the combined system prompt. Uses a larger max_tokens
-    // than SongBreakdownService's 8192: Claude's synchronous output cap is far above that, and
-    // this response has to carry a full breakdown *and* a segmentation in one completion, so
-    // 8192 was observed to truncate before the model ever reached the ===SEGMENTATION===
-    // delimiter.
-    private func callClaude(apiKey: String, system: String, user: String) async throws -> String {
-        let url = URL(string: "https://api.anthropic.com/v1/messages")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-            ?? LLMSettings.defaultTemperature
-        let body: [String: Any] = [
-            "model": LLMSettings.claudeModel(),
-            "max_tokens": 16384,
-            "temperature": temperature,
-            "system": [
-                [
-                    "type": "text",
-                    "text": system,
-                    "cache_control": ["type": "ephemeral"]
-                ]
-            ],
-            "messages": [
-                ["role": "user", "content": user]
-            ]
-        ]
-
-        let bodyData = try JSONSerialization.data(withJSONObject: body)
-        request.httpBody = bodyData
-
-        let (data, response) = try await urlSession.data(for: request)
-        try validate(response: response, data: data, providerName: "Claude")
-
-        guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let content = json["content"] as? [[String: Any]],
-            let firstBlock = content.first,
-            let text = firstBlock["text"] as? String
-        else {
-            throw SongBreakdownError.unexpectedResponseShape(
-                "Claude response missing content[0].text"
-            )
-        }
-        return text
-    }
-
-    // Throws a descriptive SongBreakdownError when the HTTP response isn't a 2xx, mirroring
-    // SongBreakdownService's own validate(response:data:providerName:).
-    private func validate(response: URLResponse, data: Data, providerName: String) throws {
-        guard let http = response as? HTTPURLResponse else {
-            throw SongBreakdownError.networkError("\(providerName): non-HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "(unreadable)"
-            throw SongBreakdownError.networkError(
-                "\(providerName) HTTP \(http.statusCode): \(body)"
-            )
-        }
     }
 }
 
