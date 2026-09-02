@@ -36,7 +36,8 @@ nonisolated final class SongListenAudioService {
     private static let targetFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
 
     // Synthesizes the full listen-along track for a breakdown and writes it to a cache file,
-    // returning the file plus its transcript cues. The cache key includes `sourceTextHash`
+    // returning the file plus one cue per step (speech and sung clip alike, in script order,
+    // so callers can pair them with SongListenScript's steps by index). The cache key includes `sourceTextHash`
     // plus a signature of the clip inputs, so re-opening Listen for an unchanged breakdown AND
     // unchanged audio/cues reuses the existing file instead of re-rendering, while either
     // changing (regenerated breakdown, swapped audio attachment, re-aligned cues) renders
@@ -97,6 +98,9 @@ nonisolated final class SongListenAudioService {
             .appendingPathExtension("\(UUID().uuidString).partial.caf")
 
         let sink = SongListenAudioSink(destination: workingDestination, targetFormat: Self.targetFormat)
+        // Clip cues carry the sung line's text, so a clip step gets a cue like every speech
+        // step does and the caller can pair cues with script steps one-to-one.
+        let originalByLineIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
         var cues: [SubtitleCue] = []
         for (index, step) in steps.enumerated() {
             try Task.checkCancellation()
@@ -112,11 +116,13 @@ nonisolated final class SongListenAudioService {
                 }
                 cues.append(SubtitleCue(index: cues.count, startMs: startMs, endMs: sink.elapsedMs, text: segment.text))
                 try sink.writeSilence(after: segment.kind)
-            case .clip(_, let startMs, let endMs):
+            case .clip(let lineIndex, let startMs, let endMs):
                 guard let sourceAudioURL else { continue }
+                let clipStartMs = sink.elapsedMs
                 let buffer = try readClip(from: sourceAudioURL, startMs: startMs, endMs: endMs)
                 try sink.write(buffer)
                 try sink.finishSegment()
+                cues.append(SubtitleCue(index: cues.count, startMs: clipStartMs, endMs: sink.elapsedMs, text: originalByLineIndex[lineIndex] ?? ""))
                 try sink.writeSilenceAfterClip()
             }
             await onProgress(Double(index + 1) / Double(steps.count))
@@ -225,7 +231,7 @@ nonisolated final class SongListenAudioService {
     }
 
     // Bump when synthesis output changes shape for the same inputs (see destinationURL).
-    private static let renderVersion = "r2"
+    private static let renderVersion = "r3"
 
     // Folds the clip inputs (which audio file, and every line's matched range within it) into
     // one short signature for the cache key. "noaudio" when there's no attachment, so a note

@@ -3,75 +3,169 @@ import SwiftUI
 
 // Listen-along for SongStepperView: rendering the narrated track through SongListenStore,
 // playing it back through the view's own scratch controller, and mapping the playhead back
-// onto the cards so the line — and the exact sentence / gist / word row — being spoken is
-// highlighted in place. Split out of SongStepperView to keep the view file within bounds;
-// the state it drives lives on the view (internal for that reason).
+// onto the cards so the line — and the exact clip / sentence / gist / word row — being
+// spoken is highlighted in place. The toolbar headphones button plays every line in
+// sequence; each card's play button plays just that line's stretch of the same track. Split
+// out of SongStepperView to keep the view file within bounds; the state it drives lives on
+// the view (internal for that reason).
 extension SongStepperView {
+
+    // Render state for this note, nil when no render was ever requested.
+    private var listenRenderState: SongListenRenderState? {
+        listenStore.renderStateByNoteID[note.id]
+    }
+
+    // What the toolbar button shows — see SongListenControlState.
+    var listenControlState: SongListenControlState {
+        if listenPlayback.isPlaying { return .playing }
+        switch listenRenderState {
+        case .rendering: return .rendering
+        case .failed: return .failed
+        case .ready, nil: return .idle
+        }
+    }
+
+    // What a card's play button shows, or nil (hidden) while there's no breakdown to narrate.
+    func cardPlayState(for line: SongLine) -> SongLineCardPlayState? {
+        guard hasBreakdown, isStreamingCards == false else { return nil }
+        if listenPlayback.isPlaying, activeListenSegment?.lineIndex == line.index { return .playing }
+        if pendingPlayLineIndex == line.index, case .rendering = listenRenderState { return .loading }
+        return .idle
+    }
 
     // The segment the track is currently speaking, or nil when not playing. Cues carry only
     // text and timing, so this rebuilds the script the render was made from (a pure function
-    // of the breakdown + clip ranges) and pairs cues with speech steps by order; a count
-    // mismatch (e.g. a cues sidecar from a different render) disables the row highlight
-    // rather than lighting up the wrong text.
+    // of the breakdown + clip ranges) and pairs cues with steps by order; a count mismatch
+    // (e.g. a cues sidecar from a different render) disables the row highlight rather than
+    // lighting up the wrong text.
     var activeListenSegment: SongListenSegment? {
-        guard isListening, let cueIndex = listenPlayback.activeCueIndex,
-              listenSpeechSegments.count == listenPlayback.cues.count,
-              listenSpeechSegments.indices.contains(cueIndex) else { return nil }
-        return listenSpeechSegments[cueIndex]
+        guard isListening, listenPlayback.isPlaying, let cueIndex = listenPlayback.activeCueIndex,
+              listenSegments.count == listenPlayback.cues.count,
+              listenSegments.indices.contains(cueIndex) else { return nil }
+        return listenSegments[cueIndex]
     }
 
-    // Turns listen-along on: kicks off (or reuses) the render and loads it if it's already
-    // done. Safe to call again while rendering.
-    func startListening() {
-        guard let breakdown = cachedBreakdown else { return }
+    // Toolbar headphones: play the whole track in sequence. Resumes from wherever the
+    // playhead is (a line played from its card leaves it at that line's end, so this
+    // continues into the next line) and renders first if the track doesn't exist yet.
+    func playAllListen() {
         isListening = true
-        listenStore.ensureRendered(for: breakdown, sourceAudioURL: listenSourceAudioURL, lineRanges: lineRangesByIndex)
+        pendingPlayLineIndex = nil
+        if loadedListenURL != nil {
+            listenPlayback.play()
+            return
+        }
+        ensureListenRendered()
         loadListenTrackIfReady()
     }
 
-    // Turns listen-along off: remembers the playhead so the next start resumes, releases the
-    // player, and drops the row highlight.
-    func stopListening() {
-        listenStore.recordPosition(listenPlayback.currentTimeMs, forNoteID: note.id)
-        listenPlayback.unload()
-        loadedListenURL = nil
-        listenSpeechSegments = []
-        isListening = false
+    // A card's play button: play just this line's clip + narration. Renders first if
+    // needed, remembering the line so it plays as soon as the track is ready.
+    func playListen(line: SongLine) {
+        isListening = true
+        if loadedListenURL != nil {
+            pendingPlayLineIndex = nil
+            playListenRange(forLineIndex: line.index)
+            return
+        }
+        pendingPlayLineIndex = line.index
+        ensureListenRendered()
+        loadListenTrackIfReady()
     }
 
-    // Re-runs a failed render from the bar's Retry.
+    // Card tap while its line is speaking, or the toolbar pause.
+    func pauseListen() {
+        listenPlayback.pause()
+    }
+
+    // Re-runs a failed render from the toolbar's warning button.
     func retryListenRender() {
         guard let breakdown = cachedBreakdown else { return }
         listenStore.retry(for: breakdown, sourceAudioURL: listenSourceAudioURL, lineRanges: lineRangesByIndex)
     }
 
+    // Tears listen-along down (view disappearing, or a regenerate replacing the lines the
+    // track narrates): remembers the playhead so the next play resumes, releases the player,
+    // and drops the row highlight.
+    func stopListening() {
+        listenStore.recordPosition(listenPlayback.currentTimeMs, forNoteID: note.id)
+        listenPlayback.unload()
+        loadedListenURL = nil
+        listenSegments = []
+        pendingPlayLineIndex = nil
+        isListening = false
+    }
+
     // Loads a newly (or already) ready track into the scratch player, rebuilds the cue →
-    // segment map, resumes from wherever playback last left off, and starts playing. No-op
-    // if this URL is already loaded (guards against redundant reloads from unrelated body
-    // re-evaluations while the render state dictionary publishes).
+    // segment map, then plays: the pending line if a card asked for one, otherwise the
+    // whole track from wherever it last left off. No-op if this URL is already loaded.
     func loadListenTrackIfReady() {
         guard isListening, let breakdown = cachedBreakdown,
-              case .ready(let url) = listenStore.renderState(forNoteID: note.id),
+              case .ready(let url) = listenRenderState,
               loadedListenURL != url else { return }
         loadedListenURL = url
         let cues = listenStore.cues(forNoteID: note.id)
-        listenSpeechSegments = SongListenScript.build(from: breakdown, lineRanges: lineRangesByIndex)
-            .compactMap { step in
-                if case .speech(let segment) = step { return segment }
-                return nil
-            }
+        listenSegments = Self.listenSegments(for: breakdown, lineRanges: effectiveListenLineRanges)
         do {
             try listenPlayback.load(audioURL: url, cues: cues)
-            let resumeMs = listenStore.lastPositionMs(forNoteID: note.id)
-            if resumeMs > 0 {
-                listenPlayback.seek(toMs: resumeMs)
-            }
-            listenPlayback.play()
         } catch {
             // Loaded-but-unplayable is rare (e.g. the cached file was removed mid-session);
-            // the bar keeps its controls and the user can retry the render.
+            // the toolbar's retry re-renders it.
             print("[SongStepperView] listen track load failed for \(url.lastPathComponent): \(error.localizedDescription)")
+            return
         }
+        if let pending = pendingPlayLineIndex {
+            pendingPlayLineIndex = nil
+            playListenRange(forLineIndex: pending)
+            return
+        }
+        let resumeMs = listenStore.lastPositionMs(forNoteID: note.id)
+        if resumeMs > 0 {
+            listenPlayback.seek(toMs: resumeMs)
+        }
+        listenPlayback.play()
+    }
+
+    // Plays the span of the track covering every cue that belongs to the line — the sung
+    // clip (when spliced in), the sentence, the gist, and each word — stopping at its end.
+    private func playListenRange(forLineIndex index: Int) {
+        let cues = listenPlayback.cues
+        guard listenSegments.count == cues.count else { return }
+        var startMs: Int? = nil
+        var endMs: Int? = nil
+        for (i, segment) in listenSegments.enumerated() where segment.lineIndex == index {
+            startMs = min(startMs ?? cues[i].startMs, cues[i].startMs)
+            endMs = max(endMs ?? cues[i].endMs, cues[i].endMs)
+        }
+        guard let startMs, let endMs else { return }
+        listenPlayback.playRange(startMs: startMs, endMs: endMs)
+    }
+
+    // Kicks off (or reuses) the render for the current breakdown and clip inputs.
+    private func ensureListenRendered() {
+        guard let breakdown = cachedBreakdown else { return }
+        listenStore.ensureRendered(for: breakdown, sourceAudioURL: listenSourceAudioURL, lineRanges: lineRangesByIndex)
+    }
+
+    // One segment per cue the render produced, in track order: speech steps as-is, and each
+    // sung clip as a sentence-kind segment carrying the line's text so the clip highlights
+    // the Japanese row while it plays. Mirrors SongListenAudioService's cue emission exactly.
+    private static func listenSegments(for breakdown: SongBreakdown, lineRanges: [Int: (startMs: Int, endMs: Int)]) -> [SongListenSegment] {
+        let originalByIndex = Dictionary(breakdown.lines.map { ($0.index, $0.original) }, uniquingKeysWith: { first, _ in first })
+        return SongListenScript.build(from: breakdown, lineRanges: lineRanges).map { step in
+            switch step {
+            case .speech(let segment):
+                return segment
+            case .clip(let lineIndex, _, _):
+                return SongListenSegment(lineIndex: lineIndex, kind: .sentence, text: originalByIndex[lineIndex] ?? "", language: .japanese)
+            }
+        }
+    }
+
+    // The clip ranges the render actually used — none without an audio file, matching
+    // SongListenAudioService's own `effectiveRanges`.
+    private var effectiveListenLineRanges: [Int: (startMs: Int, endMs: Int)] {
+        listenSourceAudioURL != nil ? lineRangesByIndex : [:]
     }
 
     // The note's own audio file, spliced in before each line when its cue range is known.

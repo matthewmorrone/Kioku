@@ -34,10 +34,9 @@ struct SongLineCard: View {
     // in scope) and built eagerly alongside furiganaCache so every word in the explanations
     // list can show furigana.
     let wordFurigana: [WordFuriganaKey: [Int: String]]
-    // The audio time-range matched to this line via the cue text-keyed lookup, or nil
-    // when there's no audio attached, no SRT, or no cue matched this line's text. Nil
-    // hides the play button entirely — "if available" semantics on the play affordance.
-    let playbackRange: (startMs: Int, endMs: Int)?
+    // Play-button state for this line's narration (sung clip when available, then the
+    // sentence, gist, and words — see SongListenScript). Nil hides the button entirely.
+    let playState: SongLineCardPlayState?
     // Streaming state for this row (see SongLineCardPhase). `.streaming` adds an accent border
     // and a spinner in the header and suppresses the recovery notice (an in-progress line
     // legitimately has no content yet); `.playing` adds the border alone.
@@ -149,9 +148,8 @@ struct SongLineCard: View {
     // the relationship is metadata about the line, not its own content block. The user
     // sees "Same as line 1" and immediately reads this line's Japanese underneath.
     //
-    // The trailing play button appears only when a cue range matched this line. Tapping
-    // it seeks the audio to the line's start and auto-stops at its end via the
-    // controller's `stopAtMs` watchdog.
+    // The trailing play button plays this line's stretch of the listen-along track (or
+    // pauses it while this line is the one speaking); it spins while that track renders.
     private var header: some View {
         HStack(spacing: 8) {
             Text("Line \(line.index)")
@@ -168,23 +166,31 @@ struct SongLineCard: View {
                     .controlSize(.small)
                     .accessibilityLabel("Generating line \(line.index)")
             }
-            if playbackRange != nil {
-                playButton
+            if let playState {
+                playButton(playState)
             }
         }
     }
 
-    // Small accent-coloured ▶︎ that triggers `onPlayLine`. Hidden entirely when there's no
-    // matched range — no "disabled" greyed-out state, since the typical case is "no audio
-    // at all for this note" and a row of disabled buttons would just be visual noise.
-    private var playButton: some View {
-        Button(action: onPlayLine) {
-            Image(systemName: "play.circle.fill")
-                .font(.system(size: 22))
-                .foregroundStyle(Color.accentColor)
-                .accessibilityLabel("Play line \(line.index)")
+    // Small accent-coloured ▶︎ / ❚❚ that triggers `onPlayLine` (the parent decides whether
+    // that means play or pause from the state), or a spinner while the narration track this
+    // line needs is still being rendered.
+    @ViewBuilder
+    private func playButton(_ state: SongLineCardPlayState) -> some View {
+        switch state {
+        case .loading:
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Preparing audio for line \(line.index)")
+        case .idle, .playing:
+            Button(action: onPlayLine) {
+                Image(systemName: state == .playing ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityLabel(state == .playing ? "Pause line \(line.index)" : "Play line \(line.index)")
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 
     // Compact reference label: small arrow icon + "Same as line N" or "Parallel to line N · X → Y".

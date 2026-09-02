@@ -8,3 +8,13 @@ enum SongListenRenderState: Equatable {
     case ready(url: URL)
     case failed(String)
 }
+
+// What the breakdown toolbar's listen button shows: headphones (tap to play everything in
+// sequence), a spinner while the track renders, pause while anything is playing, or a
+// warning that retries a failed render. Derived per body pass by SongStepperView+Listen.
+enum SongListenControlState: Equatable {
+    case idle
+    case rendering
+    case playing
+    case failed
+}

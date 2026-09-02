@@ -55,6 +55,15 @@ nonisolated enum SongLineCardPhase: Equatable {
     case ready
 }
 
+// What a line card's play button shows: play (tap to hear this line's clip + narration),
+// a spinner while the track it needs is still rendering, or pause while this line is the
+// one being spoken. Nil at the call site hides the button (no breakdown yet).
+nonisolated enum SongLineCardPlayState: Equatable {
+    case idle
+    case loading
+    case playing
+}
+
 // One row of the breakdown scroll: the line to render plus its phase. `id` is assigned by
 // the composer and is unique per row even when the model repeats a line number, so
 // SwiftUI's ForEach / scrollTo never see duplicate identities.

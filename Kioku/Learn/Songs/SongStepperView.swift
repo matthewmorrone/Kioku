@@ -9,14 +9,15 @@ import SwiftUI
 // There is no separate loading screen. The Generate button (or, on a regenerate, the toolbar
 // icon) spins while the call runs, and as the model streams each line's card appears in the
 // scroll with the one being written highlighted and auto-expanded. Listen-along is not a
-// separate screen either: the headphones toggle renders the narrated track and plays it
-// from a bar under the cards, with the line and row being spoken highlighted in place.
+// separate screen either: the toolbar headphones button plays every line's narration in
+// sequence (spinning while the track renders), each card's play button plays just that
+// line, and the line and row being spoken are highlighted in place.
 //
 // Major sections:
-//   1. Toolbar with listen / expand-all / regenerate actions (spinner while running)
+//   1. Toolbar with listen / expand-all / regenerate actions (spinners while running)
 //   2. Stale banner when source text drifted since generation
 //   3. Body state machine: not-generated → streaming cards → ready (scroll) → error
-//   4. Vertical scroll of per-line cards, with the listen bar beneath while listening
+//   4. Vertical scroll of per-line cards
 // Furigana cache building lives in SongStepperView+Furigana; listen-along in
 // SongStepperView+Listen.
 struct SongStepperView: View {
@@ -48,16 +49,21 @@ struct SongStepperView: View {
     // destinations: startGeneration vs startMergedGeneration) can't cross-wire.
     @State private var isMergedRegenerateConfirmationPresented: Bool = false
     // Listen-along state shared with SongStepperView+Listen (internal for that reason).
+    // True once this view has engaged the track (played anything); drives teardown.
     @State var isListening: Bool = false
     // The URL the listen player was last loaded for, so a body re-evaluation doesn't
     // reload/reseek/replay an already-loaded track.
     @State var loadedListenURL: URL?
-    // Speech segments in track order, paired with the player's cues by index so the playhead
-    // maps back to a line and row (see activeListenSegment).
-    @State var listenSpeechSegments: [SongListenSegment] = []
-    // Plays the rendered listen-along track. Separate from audioController, which plays the
-    // note's own audio for the per-line ▶︎ buttons.
+    // One segment per track cue, in order, so the playhead maps back to a line and row
+    // (see activeListenSegment).
+    @State var listenSegments: [SongListenSegment] = []
+    // The line a card's play button asked for before the track existed; played on load.
+    @State var pendingPlayLineIndex: Int?
+    // Plays the rendered listen-along track (sung clips included).
     @StateObject var listenPlayback = AudioPlaybackController()
+    // The note's SRT cues, for matching each line to its sung time range (see
+    // lineRangesByIndex). Empty when the note has no audio attachment or no cues.
+    @State private var noteCues: [SubtitleCue] = []
     // Furigana state shared with SongStepperView+Furigana (internal, not private, for that reason).
     @State var furiganaCacheByLineIndex: [Int: LineFuriganaCache] = [:]
     // The note's persisted per-note reading overrides (Note.segments), restored once on appear
@@ -72,11 +78,6 @@ struct SongStepperView: View {
     // alone, since the same word can appear on multiple lines with a different resolved
     // reading. Built alongside furiganaCacheByLineIndex (see ensureFuriganaCaches).
     @State var wordFuriganaByKey: [WordFuriganaKey: [Int: String]] = [:]
-    // Owns audio playback for "play this line" affordances. Stays nil-loaded when the
-    // note has no audio attachment or no SRT — the matcher returns an empty map and the
-    // cards omit play buttons.
-    @StateObject private var audioController = AudioPlaybackController()
-
     // Convenience init for callers that don't (yet) supply the resolver deps — e.g. previews
     // or any future surface that doesn't have the segmenter in scope. Furigana becomes a
     // visual no-op in that mode.
@@ -109,13 +110,13 @@ struct SongStepperView: View {
         songBreakdownStore.breakdown(forNoteID: note.id)
     }
 
-    private var hasBreakdown: Bool {
+    var hasBreakdown: Bool {
         (cachedBreakdown?.lines.isEmpty == false)
     }
 
     // True once a running generation has produced at least one line — from then on the
     // streamed cards replace whatever was on screen (prompt or old breakdown).
-    private var isStreamingCards: Bool {
+    var isStreamingCards: Bool {
         isRunning && songBreakdownStore.partialLines(forNoteID: note.id).isEmpty == false
     }
 
@@ -146,12 +147,13 @@ struct SongStepperView: View {
         displayItems.first(where: { $0.phase == .streaming })?.id
     }
 
-    // Maps each displayed line.index → its matched audio time range. Empty when the note
-    // has no audio or the SRT doesn't line up with the lines. Computed on each body pass;
-    // both inputs are tiny (~30 lines × ~30 cues) so the O(N·M) walk is cheap.
+    // Maps each displayed line.index → its sung time range in the note's own audio, for the
+    // listen-along render to splice in. Empty when the note has no audio or the SRT doesn't
+    // line up with the lines. Computed on each body pass; both inputs are tiny (~30 lines ×
+    // ~30 cues) so the O(N·M) walk is cheap.
     var lineRangesByIndex: [Int: (startMs: Int, endMs: Int)] {
-        guard audioController.cues.isEmpty == false else { return [:] }
-        return SongLineCueMatcher.computeRanges(lines: displayItems.map(\.line), cues: audioController.cues)
+        guard noteCues.isEmpty == false else { return [:] }
+        return SongLineCueMatcher.computeRanges(lines: displayItems.map(\.line), cues: noteCues)
     }
 
     // MARK: - Body
@@ -159,14 +161,6 @@ struct SongStepperView: View {
     var body: some View {
         VStack(spacing: 0) {
             bodyContent
-            if isListening {
-                SongListenBar(
-                    state: listenStore.renderState(forNoteID: note.id),
-                    playback: listenPlayback,
-                    onRetry: { retryListenRender() },
-                    onClose: { stopListening() }
-                )
-            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -191,12 +185,7 @@ struct SongStepperView: View {
                 }
             } else if hasBreakdown {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isListening ? stopListening() : startListening()
-                    } label: {
-                        Image(systemName: isListening ? "headphones.circle.fill" : "headphones")
-                    }
-                    .accessibilityLabel(isListening ? "Stop listening" : "Listen to breakdown")
+                    listenControl
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -213,6 +202,11 @@ struct SongStepperView: View {
                         }
                         Button("Regenerate + Fix Segmentation (Merged)") {
                             isMergedRegenerateConfirmationPresented = true
+                        }
+                        if case .ready(let url) = listenStore.renderStateByNoteID[note.id] {
+                            ShareLink(item: url) {
+                                Label("Export Audio", systemImage: "square.and.arrow.up")
+                            }
                         }
                     } label: {
                         Image(systemName: "arrow.clockwise")
@@ -277,27 +271,20 @@ struct SongStepperView: View {
             noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
             refreshLineDerivedState(for: displayItems)
         }
-        // Lazily loads the audio + cues for this note (if it has any) so the per-line
-        // play buttons have something to seek into. Early-returns when there's no audio
-        // attachment, no resolvable file, or empty cue list — all three are normal "no
-        // playback available" cases, not errors.
+        // Loads the note's SRT cues (if it has audio) so each line can be matched to its sung
+        // range for the listen-along render. No attachment, no file, or no cues are all the
+        // normal "narration only" case, not errors.
         .task {
-            guard let attachmentID = note.audioAttachmentID else { return }
-            guard let url = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
-            let cues = NotesAudioStore.shared.loadCues(for: attachmentID)
-            do {
-                try audioController.load(audioURL: url, cues: cues)
-            } catch {
-                print("[SongStepperView] audio load failed for \(url.lastPathComponent): \(error.localizedDescription)")
-            }
+            guard let attachmentID = note.audioAttachmentID,
+                  NotesAudioStore.shared.audioURL(for: attachmentID) != nil else { return }
+            noteCues = NotesAudioStore.shared.loadCues(for: attachmentID)
         }
         .onDisappear {
-            // Release the audio files + deactivate the session when the sheet/screen leaves.
-            // Without this, the controllers would hold their `AVAudioPlayer` (and the audio
-            // session) until SwiftUI deallocates the @StateObjects, which is non-deterministic.
-            // Listen-along records its playhead first so reopening resumes where it left off.
+            // Release the audio file + deactivate the session when the sheet/screen leaves.
+            // Without this, the controller would hold its `AVAudioPlayer` (and the audio
+            // session) until SwiftUI deallocates the @StateObject, which is non-deterministic.
+            // Records the playhead first so reopening resumes where it left off.
             if isListening { stopListening() }
-            audioController.unload()
         }
     }
 
@@ -420,6 +407,41 @@ struct SongStepperView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    // MARK: - Listen control
+
+    // The listen button: headphones plays every line in sequence, a spinner while the
+    // track renders, pause while anything is playing, a warning that retries a failed render.
+    @ViewBuilder
+    private var listenControl: some View {
+        switch listenControlState {
+        case .rendering:
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Preparing listen-along audio")
+        case .playing:
+            Button {
+                pauseListen()
+            } label: {
+                Image(systemName: "pause.circle")
+            }
+            .accessibilityLabel("Pause")
+        case .failed:
+            Button {
+                retryListenRender()
+            } label: {
+                Image(systemName: "exclamationmark.triangle")
+            }
+            .accessibilityLabel("Listen-along audio failed, retry")
+        case .idle:
+            Button {
+                playAllListen()
+            } label: {
+                Image(systemName: "headphones")
+            }
+            .accessibilityLabel("Listen to breakdown")
+        }
+    }
+
     // MARK: - Scroll
 
     // Vertical scroll over every row. Each card is independent; expanding/collapsing one
@@ -436,13 +458,15 @@ struct SongStepperView: View {
                             isExpanded: expandedByLineIndex.contains(item.line.index),
                             furiganaCache: furiganaCacheByLineIndex[item.line.index],
                             wordFurigana: wordFuriganaByKey,
-                            playbackRange: lineRangesByIndex[item.line.index],
+                            playState: cardPlayState(for: item.line),
                             phase: item.phase,
                             listenHighlight: activeListenSegment?.lineIndex == item.line.index ? activeListenSegment : nil,
                             onToggleExpansion: { toggleExpansion(for: item.line) },
                             onPlayLine: {
-                                if let range = lineRangesByIndex[item.line.index] {
-                                    audioController.playRange(startMs: range.startMs, endMs: range.endMs)
+                                if cardPlayState(for: item.line) == .playing {
+                                    pauseListen()
+                                } else {
+                                    playListen(line: item.line)
                                 }
                             },
                             onWordTapped: { presentWordLookup($0) }
