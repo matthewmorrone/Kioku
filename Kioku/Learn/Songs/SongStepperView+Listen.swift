@@ -52,25 +52,37 @@ extension SongStepperView {
     }
 
 
-    // The segment the track is currently speaking, or nil when not playing. Cues carry only
-    // text and timing, so this rebuilds the script the render was made from (a pure function
-    // of the breakdown + clip ranges) and pairs cues with steps by order; a count mismatch
-    // (e.g. a cues sidecar from a different render) disables the row highlight rather than
-    // lighting up the wrong text.
+    // The segment the track is speaking — or, while paused, the one it stopped on. That
+    // highlight is how the place is kept: resuming restarts from the start of this segment
+    // (re-saying a word is fine) rather than mid-utterance. Cues carry only text and timing,
+    // so this rebuilds the script the render was made from (a pure function of the breakdown
+    // + clip ranges) and pairs cues with steps by order; a count mismatch (e.g. a cues
+    // sidecar from a different render) disables the highlight rather than lighting up the
+    // wrong text.
     var activeListenSegment: SongListenSegment? {
-        guard isListening, listenPlayback.isPlaying, let cueIndex = listenPlayback.activeCueIndex,
-              listenSegments.count == listenPlayback.cues.count,
-              listenSegments.indices.contains(cueIndex) else { return nil }
+        guard let cueIndex = activeListenCueIndex else { return nil }
         return listenSegments[cueIndex]
     }
 
-    // Toolbar headphones: play the whole track in sequence. Resumes from wherever the
-    // playhead is (a line played from its card leaves it at that line's end, so this
-    // continues into the next line) and renders first if the track doesn't exist yet.
+    // Index of the highlighted cue, validated against the segment map.
+    private var activeListenCueIndex: Int? {
+        guard isListening, let cueIndex = listenPlayback.activeCueIndex,
+              listenSegments.count == listenPlayback.cues.count,
+              listenSegments.indices.contains(cueIndex) else { return nil }
+        return cueIndex
+    }
+
+    // Toolbar headphones: play the whole track in sequence. Resumes from the start of the
+    // highlighted segment (a line played from its card leaves the highlight on that line's
+    // last word, so this continues into the next line) and renders first if the track
+    // doesn't exist yet.
     func playAllListen() {
         isListening = true
         pendingPlayLineIndex = nil
         if loadedListenURL != nil {
+            if let cueIndex = activeListenCueIndex {
+                listenPlayback.seek(toMs: listenPlayback.cues[cueIndex].startMs)
+            }
             listenPlayback.play()
             return
         }
@@ -78,13 +90,16 @@ extension SongStepperView {
         loadListenTrackIfReady()
     }
 
-    // A card's play button: play just this line's clip + narration. Renders first if
-    // needed, remembering the line so it plays as soon as the track is ready.
+    // A card's play button: play just this line's clip + narration. On the line the
+    // highlight is parked on, that means resuming from the highlighted segment to the line's
+    // end; on any other line, the whole line from its start. Renders first if needed,
+    // remembering the line so it plays as soon as the track is ready.
     func playListen(line: SongLine) {
         isListening = true
         if loadedListenURL != nil {
             pendingPlayLineIndex = nil
-            playListenRange(forLineIndex: line.index)
+            let resumeCue = activeListenSegment?.lineIndex == line.index ? activeListenCueIndex : nil
+            playListenRange(forLineIndex: line.index, fromCueIndex: resumeCue)
             return
         }
         pendingPlayLineIndex = line.index
@@ -104,10 +119,11 @@ extension SongStepperView {
     }
 
     // Tears listen-along down (view disappearing, or a regenerate replacing the lines the
-    // track narrates): remembers the playhead so the next play resumes, releases the player,
-    // and drops the row highlight.
+    // track narrates): remembers the highlighted segment's start so the next play resumes
+    // there, releases the player, and drops the row highlight.
     func stopListening() {
-        listenStore.recordPosition(listenPlayback.currentTimeMs, forNoteID: note.id)
+        let resumeMs = activeListenCueIndex.map { listenPlayback.cues[$0].startMs } ?? listenPlayback.currentTimeMs
+        listenStore.recordPosition(resumeMs, forNoteID: note.id)
         listenPlayback.unload()
         loadedListenURL = nil
         listenSegments = []
@@ -147,7 +163,8 @@ extension SongStepperView {
 
     // Plays the span of the track covering every cue that belongs to the line — the sung
     // clip (when spliced in), the sentence, the gist, and each word — stopping at its end.
-    private func playListenRange(forLineIndex index: Int) {
+    // `fromCueIndex` starts partway through instead (resuming from the highlighted segment).
+    private func playListenRange(forLineIndex index: Int, fromCueIndex: Int? = nil) {
         let cues = listenPlayback.cues
         guard listenSegments.count == cues.count else { return }
         var startMs: Int? = nil
@@ -156,7 +173,10 @@ extension SongStepperView {
             startMs = min(startMs ?? cues[i].startMs, cues[i].startMs)
             endMs = max(endMs ?? cues[i].endMs, cues[i].endMs)
         }
-        guard let startMs, let endMs else { return }
+        guard var startMs, let endMs else { return }
+        if let fromCueIndex, cues.indices.contains(fromCueIndex) {
+            startMs = max(startMs, cues[fromCueIndex].startMs)
+        }
         listenPlayback.playRange(startMs: startMs, endMs: endMs)
     }
 
