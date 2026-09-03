@@ -718,26 +718,45 @@ own sections.)
       timeline (or just check `startMs >= endMs` + coverage/overlap) and surface cues never
       chosen as active; this auto-catches the interlude-ordering bug above and any mis-timed /
       orphan line. Ship as an editor/QA check (not necessarily user-facing).
-- [ ] **TTS narration skips/mangles text** — reported 2026-09-02: the read-aloud/narration audio
-      never voices "pattern to bank" (exact source string/screen not yet pinned down — needs a
-      repro to find where that text lives), and any literal "/" in generated text is read aloud
-      awkwardly (e.g. spoken as "slash" or garbled) instead of sounding natural. Probably two
-      fixes: (a) TTS-input preprocessing to strip/expand "/" before synthesis, and (b) stop
-      generating "/"-separated text in the first place — see the listening-friendly prompt item
-      below, likely the same root cause for the "/" case specifically.
-- [ ] **Generate breakdown/narration text in a listening-friendly style** — reported 2026-09-02.
-      LLM-generated explanation text (`SongBreakdownPrompt`/`SongBreakdownService`) is written for
-      silent reading, not read-aloud: slash-separated alternatives ("spinning/weaving"),
-      parentheticals, etc. read awkwardly through TTS. Update the prompt so the generated prose
-      favors natural spoken phrasing — spell out alternatives with "or" instead of "/", minimize
-      nested parentheticals, prefer short declarative sentences. Directly related to the TTS
-      mangling bug above (the "/" half of it, at least); doesn't obviously explain "pattern to
-      bank" without a repro.
+- [x] **TTS narration skips/mangles text** — Root-caused and fixed 2026-09-02. Both halves
+      pinned down (the "repro not found" note below is now moot): (1) "pattern to bank" was never
+      voiced because `SongListenScript.build` had no step for the pattern-bank note at all — it's
+      the one piece of `SongLineCard`'s displayed content (`effectiveGrammarNote`) that the
+      narration script builder never read, not a mangling of something that was spoken. Added a
+      `.patternNote` speech step (see the listening-friendly item below for the text-cleanup
+      applied to it) after the line's words, so listen-along now says "Pattern to bank: …" when a
+      line has one. (2) literal "/" read as "slash": added `SongListenScript.ttsFriendlyText`,
+      applied to gists, word definitions, and the pattern note before they reach
+      `AVSpeechSynthesizer` — rewrites a "/" directly between two word characters
+      ("spinning/weaving") to " or " ("spinning or weaving"); a "/" with whitespace already on
+      both sides is left alone. Only the spoken script is rewritten — `SongLineCard`'s on-screen
+      text keeps the literal "/". Pinned by `SongListenScriptTests.swift`.
+- [x] **Generate breakdown/narration text in a listening-friendly style** — Done 2026-09-02,
+      alongside the TTS mangling fix above (the runtime `ttsFriendlyText` rewrite covers existing
+      cached breakdowns; this covers newly-generated ones at the source). Added rule 10 to
+      `SongBreakdownPrompt.template` (appended rather than inserted, since rules 0–9 are
+      cross-referenced by number elsewhere in the same template): word definitions, the gist, and
+      the pattern-bank note are read aloud, so favor "or" over "/", avoid stacked parentheticals,
+      and prefer short declarative sentences — explicitly scoped as a phrasing change, not a
+      relaxation of rule 5's depth requirement. `MergedCorrectionBreakdownService` picks this up
+      automatically since it reuses `SongBreakdownPrompt.staticInstructions()` verbatim rather than
+      forking the prompt.
 - [ ] **Derive TTS word boundaries from the Read tab's existing segmentation** — reported
-      2026-09-02. Idea: reuse the tokenizer/segmenter output already computed for lookup
-      (`segmentEdges`) as word-boundary markers for narration, instead of whatever ad hoc
-      splitting TTS uses today, so narration pacing/highlighting can track the same boundaries the
-      rest of the app already agrees on. Feeds into the two items above.
+      2026-09-02, investigated 2026-09-02 but left open: this needed a concrete target before it
+      could be built, and doesn't have one yet. What's actually true today: narration's Japanese
+      vocabulary steps (`.wordSurface`) are already one-step-per-word by construction (each of
+      `SongLine.words` — the LLM's own word list — gets its own `SongListenSegment`, so each
+      already has an unambiguous boundary and its own cue; nothing "ad hoc" splits it further).
+      The one place with no word-level boundaries at all is the `.sentence` step — the full sung
+      line is spoken (and cued) as a single unit, with no intra-line word timing, so there's
+      nothing today for the Read tab's `segmentEdges` to line up against unless that's built first
+      (word-by-word highlighting *during* the line recitation, analogous to the karaoke band).
+      Alternatively, this could mean replacing the LLM's own word list (`SongLine.words`) with
+      `segmentEdges`-derived boundaries as the source of narration's vocabulary steps, so
+      narration's word set matches dictionary lookup's exactly — a data-source decision that
+      overlaps the "Unify the two LLM call paths" item under Major Feature Additions. Needs a
+      decision on which of these (or something else) is actually wanted before implementation;
+      not attempted blind.
 - [x] **Keep audio playing when the screen locks/turns off** — Investigated and completed
       2026-09-02. Two of the three pieces the todo called for were already in place and not the
       cause of any reported gap: `AVAudioSession` category `.playback` (gated on the existing

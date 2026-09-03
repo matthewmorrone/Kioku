@@ -40,7 +40,7 @@ nonisolated enum SongListenScript {
             steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .sentence, text: original, language: .japanese)))
 
             if let gist = effectiveGist(for: line, linesByIndex: linesByIndex), gist.isEmpty == false {
-                steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .translation, text: gist, language: .english)))
+                steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .translation, text: ttsFriendlyText(gist), language: .english)))
             }
 
             for word in effectiveWords(for: line, linesByIndex: linesByIndex) {
@@ -51,11 +51,40 @@ nonisolated enum SongListenScript {
                 let definition = SongLineCard.stripInlineMarkdown(word.definition)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if definition.isEmpty == false {
-                    steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .wordDefinition, text: definition, language: .english)))
+                    steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .wordDefinition, text: ttsFriendlyText(definition), language: .english)))
+                }
+            }
+
+            // Previously omitted entirely — the pattern-bank note (displayed by
+            // SongLineCard.patternNote) never had a corresponding script step, so listen-along
+            // silently skipped it no matter how "listenable" its prose was.
+            if let pattern = effectivePatternNote(for: line, linesByIndex: linesByIndex), pattern.isEmpty == false {
+                let cleaned = SongLineCard.stripInlineMarkdown(SongLineCard.strippingPatternToBankPrefix(pattern))
+                if cleaned.isEmpty == false {
+                    steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .patternNote, text: "Pattern to bank: \(ttsFriendlyText(cleaned))", language: .english)))
                 }
             }
         }
         return steps
+    }
+
+    // Rewrites a "/"-separated alternative like "spinning/weaving" as "spinning or weaving" —
+    // AVSpeechSynthesizer reads a bare "/" as the literal word "slash" (or mangles it
+    // depending on context), which never sounds like natural speech. Only a "/" directly
+    // between two word characters is rewritten; one with whitespace already on either side is
+    // left alone (not the alternatives-list shape this targets). Applied only to text that
+    // reaches the narration script — the visually-displayed card keeps "/" as written.
+    private static func ttsFriendlyText(_ text: String) -> String {
+        text.replacingOccurrences(of: #"(\w)/(\w)"#, with: "$1 or $2", options: .regularExpression)
+    }
+
+    // Same "own value, else the referenced line's value" rule as SongLineCard.effectiveGrammarNote.
+    private static func effectivePatternNote(for line: SongLine, linesByIndex: [Int: SongLine]) -> String? {
+        if let g = line.grammarNote, g.isEmpty == false { return g }
+        if let reference = line.reference {
+            return referencedLine(for: reference, linesByIndex: linesByIndex)?.grammarNote
+        }
+        return nil
     }
 
     // Same "own value, else the referenced line's value" rule as SongLineCard.effectiveGist.

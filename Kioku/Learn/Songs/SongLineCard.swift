@@ -131,7 +131,7 @@ struct SongLineCard: View {
         case .wordDefinition:
             return listenHighlight.text == SongLineCard.stripInlineMarkdown(word.definition)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-        case .sentence, .translation:
+        case .sentence, .translation, .patternNote:
             return false
         }
     }
@@ -434,6 +434,8 @@ struct SongLineCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.horizontal, 4)
+        .background(speakingBackground(isSpeaking(.patternNote)))
     }
 
     // Strips inline-emphasis markup so the user doesn't see literal asterisks in body

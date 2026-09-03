@@ -95,6 +95,9 @@ nonisolated final class SongListenAudioSink: @unchecked Sendable {
         case .translation: seconds = 0.7
         case .wordSurface: seconds = 0.15
         case .wordDefinition: seconds = 0.45
+        // A line boundary, like .translation — the pattern note is the last thing spoken
+        // before the script moves on to the next line.
+        case .patternNote: seconds = 0.7
         }
         try writeSilence(seconds: seconds)
     }

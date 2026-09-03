@@ -24,6 +24,7 @@ nonisolated enum SongListenSegmentKind: Equatable, Sendable {
     case translation
     case wordSurface
     case wordDefinition
+    case patternNote
 }
 
 // Which voice reads a segment. Kept as its own type (rather than reusing some existing
