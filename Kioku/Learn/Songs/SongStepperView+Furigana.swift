@@ -50,15 +50,34 @@ extension SongStepperView {
     // Resolves per-kanji-run readings for a word's surface in isolation, with no surrounding
     // sentence to segment against. Used as a fallback when the surface can't be located
     // within its source line (e.g. an LLM-normalized headword that doesn't appear verbatim).
+    //
+    // Treats `surface` as a single, already-known word — a `SongWord` bullet is one atomic
+    // vocabulary item by construction — rather than asking the segmenter to rediscover word
+    // boundaries inside it via `longestMatchEdges`. That distinction matters: with no
+    // surrounding sentence to weigh frequency against, the segmenter's cost model can favor
+    // splitting a real compound into its individual kanji over the compound itself when the
+    // compound's own frequency rank is worse than its parts' (e.g. 王子様 "prince" — a real,
+    // correctly-read dictionary entry — used to come back split as 王/子/様, each kanji read
+    // in isolation, purely because segmenting three bare characters with zero context picked
+    // that path). A single synthetic edge spanning the whole surface skips that risk entirely:
+    // FuriganaResolver.build still uses its full lemma/projection/fallback pipeline (including
+    // the last-resort per-kanji reading for a surface that genuinely isn't a dictionary word),
+    // it's just never given the option to sub-divide a string this function already knows is
+    // one word.
     private func buildWordFuriganaRunReadings(for surface: String) -> [Int: String] {
         guard let segmenter, surface.isEmpty == false else { return [:] }
-        let edges = segmenter.longestMatchEdges(for: surface)
+        let wholeWordEdge = LatticeEdge(
+            start: surface.startIndex,
+            end: surface.endIndex,
+            surface: surface,
+            lemma: segmenter.preferredLemma(for: surface) ?? surface
+        )
         return FuriganaResolver(
             segmenter: segmenter,
             kanjiReadingFallback: kanjiReadingFallback
         ).build(
             for: surface,
-            edges: edges,
+            edges: [wholeWordEdge],
             surfaceReadingData: surfaceReadingData
         ).byLocation
     }

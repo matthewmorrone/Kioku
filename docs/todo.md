@@ -849,6 +849,26 @@ own sections.)
       now drops a header whose original is blank (after trimming) before it ever becomes a
       `SongLine`, so no card, cue-matcher, or narration step ever sees one. Pinned by
       `testSkipsHeaderWithBlankOriginal` in `SongBreakdownParserTests.swift`.
+- [x] **Breakdown word-list headword furigana split a real compound into individual kanji** —
+      reported 2026-09-03 (王子様 "prince" shown as 王/子/様, each read in isolation as
+      お/こ/さま instead of the correct おうじさま), fixed same day. The Breakdown *does* reuse
+      the Read tab's real `FuriganaResolver`/`Segmenter` pipeline (they're literally the same
+      code, extracted into `FuriganaResolver.swift` specifically so callers outside ReadView
+      "produce the same shape data") — the bug wasn't a divergent implementation, it was in
+      `SongStepperView+Furigana.buildWordFuriganaRunReadings(for surface:)`: the fallback used
+      when a word bullet's surface doesn't appear verbatim in its line (an "LLM-normalized
+      headword") called `segmenter.longestMatchEdges(for: surface)` on the bare 3-character
+      word alone, with zero sentence context. Confirmed via the shipped `dictionary.sqlite`
+      that this is exactly why: 王子様 has jpdb_rank ~9999999 (effectively unranked) while its
+      part 王子 ranks 3035 — with no surrounding text for the Viterbi cost model to weigh
+      against, splitting into individually-common kanji can score lower than the compound's own
+      (near-zero) frequency reward. Fixed by treating the surface as a single synthetic
+      `LatticeEdge` spanning the whole word instead of asking the segmenter to rediscover word
+      boundaries inside a string already known to be one atomic vocabulary item — `surface_readings`
+      already has a direct おうじさま entry for 王子様, so `FuriganaResolver.build` resolves it
+      correctly once it's not handed three edges instead of one. Pinned by
+      `SongWordFuriganaIsolationTests.swift` (real dictionary/segmenter, matching
+      `SavedGlowLemmaBridgeTests`'s pattern).
 
 ## Settings
 
