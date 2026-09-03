@@ -230,10 +230,21 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
             nil
         )
         let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
-        // Also account for the furigana text width, which may be wider than the kanji surface.
-        let furiganaWidth = (reading as NSString).size(
-            withAttributes: [.font: furiganaFont]
-        ).width
+        // Also account for the furigana text width, which may be wider than the kanji surface
+        // (e.g. ちから over 力: a 2-mora reading over a single narrow kanji). When
+        // explicitRunReadings is set, `reading` is passed as "" by callers (see FuriganaLabel)
+        // — measuring it here would silently report zero width and under-report the box a wide
+        // run's furigana needs, letting `draw(_:)` center it partly outside `bounds`, where
+        // UIKit discards it (the same class of clipping `measuredLineHeight` fixes vertically).
+        // Falls back to `reading` for the non-explicit-run call shape, unchanged from before.
+        let furiganaWidth: CGFloat
+        if explicitRunReadings.isEmpty == false {
+            furiganaWidth = explicitRunReadings.values
+                .map { ($0 as NSString).size(withAttributes: [.font: furiganaFont]).width }
+                .max() ?? 0
+        } else {
+            furiganaWidth = (reading as NSString).size(withAttributes: [.font: furiganaFont]).width
+        }
         let naturalWidth = ceil(max(size.width, furiganaWidth))
         let naturalHeight = ceil(size.height) + Self.measuredLineHeight(font: furiganaFont) + gap
         return CGSize(width: naturalWidth, height: naturalHeight)
