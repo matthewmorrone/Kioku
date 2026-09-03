@@ -803,6 +803,39 @@ own sections.)
       generalize better here. Should reuse `CTCForcedAligner`/`SwiftWhisperAlign` infra rather than
       new signal-processing code. Ties into the repeated-lyric item above — the N-peak/
       occurrence-pairing idea may also improve `extractAnchors`'s occurrence-aware anchoring there.
+- [ ] **Toggle for continuing to the next song after playing a specific track** — reported
+      2026-09-03. When a specific song is played directly (not via a queue/playlist flow), add a
+      toggle for whether playback continues on to the next song afterward or stops.
+- [x] **Fix TTS mispronunciation via a hidden-romaji channel** — Done 2026-09-03, adapted from
+      the proposal: the LLM already emits romaji alongside every line (`SongLine.romaji`) and
+      every word (`SongWord.sungRomaji`) — no prompt change needed to "start" emitting it. Feeding
+      *romaji itself* to the synthesizer isn't viable as proposed, though: `SongListenLanguageRuns`
+      classifies Latin script as English, so raw romaji would route to the English voice and be
+      read as English words, not spoken Japanese. Used **kana** as the hidden channel instead —
+      same goal (a pronunciation-resolved substitute the synthesizer never has to guess at), but
+      kana still classifies as Japanese so it flows through the existing per-run voice-switching
+      unchanged. `SongListenSegment` gained an optional `spokenText` field: `text` stays the
+      display/cue form (`SongLineCard`'s listen-along highlight matches against it), `spokenText`
+      is what `SongListenAudioService` actually synthesizes when present. `SongListenScript.
+      spokenReading(original:romaji:)` converts `romaji` via the existing `RomajiToKana`
+      converter (already used by the dictionary search field) and wires it into the `.sentence`
+      and `.wordSurface` steps, falling back to `original` — a pure no-op, never a regression —
+      whenever there's no romaji, `original` has embedded non-Japanese content (a mixed line per
+      prompt rule 9, where there's no per-run romaji to substitute for just the Japanese
+      portions), or the romaji doesn't convert cleanly (loanwords/proper nouns routinely contain
+      sounds outside the wāpuro table). Pinned by 4 new cases in `SongListenScriptTests.swift`.
+- [x] **Breakdown should gracefully skip blank lines** — Root-caused and fixed 2026-09-03. A
+      blank line in the source lyrics doesn't get omitted by the model — it comes back as a
+      header with nothing after the colon (`**Line N:**`), which `SongBreakdownParser` was
+      parsing into a `SongLine` with an empty `original`. Every downstream consumer that matches
+      by *text* (`SongLineCueMatcher`, `SongListenScript`) already guarded against that and
+      degraded gracefully, but `SongLineCard.originalLine` had no such guard: it renders
+      `Text(line.original)` unconditionally, so an empty-original line showed as the "broken/empty
+      card" reported — just the "Line N" label over blank padding, no text, no expandable detail.
+      Fixed at the source instead of patching every consumer: `SongBreakdownParser.parseSection`
+      now drops a header whose original is blank (after trimming) before it ever becomes a
+      `SongLine`, so no card, cue-matcher, or narration step ever sees one. Pinned by
+      `testSkipsHeaderWithBlankOriginal` in `SongBreakdownParserTests.swift`.
 
 ## Settings
 

@@ -14,6 +14,13 @@ nonisolated struct SongListenSegment: Equatable, Sendable {
     let kind: SongListenSegmentKind
     let text: String
     let language: SongListenLanguage
+    // When non-nil, this is what actually gets synthesized instead of `text` — `text` stays
+    // the display/cue form (SongLineCard's highlight-matching compares against it, e.g.
+    // `word.surface`), while `spokenText` carries a pronunciation-correct substitute (kana
+    // converted from the LLM's own resolved romaji) for a Japanese kanji surface whose reading
+    // AVSpeechSynthesizer would otherwise have to guess. See
+    // SongListenScript.spokenReading(original:romaji:).
+    var spokenText: String? = nil
 }
 
 // What role a segment plays within its line — drives the silence gap inserted after it

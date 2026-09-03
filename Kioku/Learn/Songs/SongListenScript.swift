@@ -37,7 +37,13 @@ nonisolated enum SongListenScript {
                 steps.append(.clip(lineIndex: line.index, startMs: range.startMs, endMs: range.endMs))
             }
 
-            steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .sentence, text: original, language: .japanese)))
+            steps.append(.speech(SongListenSegment(
+                lineIndex: line.index,
+                kind: .sentence,
+                text: original,
+                language: .japanese,
+                spokenText: spokenReading(original: original, romaji: line.romaji)
+            )))
 
             if let gist = effectiveGist(for: line, linesByIndex: linesByIndex), gist.isEmpty == false {
                 steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .translation, text: ttsFriendlyText(gist), language: .english)))
@@ -46,7 +52,13 @@ nonisolated enum SongListenScript {
             for word in effectiveWords(for: line, linesByIndex: linesByIndex) {
                 let surface = word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard surface.isEmpty == false else { continue }
-                steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .wordSurface, text: surface, language: .japanese)))
+                steps.append(.speech(SongListenSegment(
+                    lineIndex: line.index,
+                    kind: .wordSurface,
+                    text: surface,
+                    language: .japanese,
+                    spokenText: spokenReading(original: surface, romaji: word.sungRomaji)
+                )))
 
                 let definition = SongLineCard.stripInlineMarkdown(word.definition)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -66,6 +78,33 @@ nonisolated enum SongListenScript {
             }
         }
         return steps
+    }
+
+    // Substitutes a pronunciation-correct kana reading for a Japanese kanji/kana string,
+    // derived from the LLM's own resolved romaji (SongLine.romaji / SongWord.sungRomaji —
+    // already computed for on-screen display, not new data), for AVSpeechSynthesizer to speak
+    // instead of `original`. Kanji readings are ambiguous (homographs, proper nouns, poetic
+    // readings), so letting the synthesizer guess from raw kanji is unreliable; kana has only
+    // one reading, so once the ambiguity is resolved once (by the LLM, same as furigana would)
+    // there's nothing left to mispronounce. Feeding the *romaji* itself to the synthesizer
+    // isn't an option: SongListenLanguageRuns classifies Latin script as English, so it would
+    // route to the English voice and be read as English words, not Japanese — hence the
+    // romaji→kana conversion here rather than passing romaji straight through.
+    //
+    // Falls back to `original` (today's behavior, i.e. a no-op) whenever anything about this
+    // isn't safe: no romaji available, `original` has embedded non-Japanese content (a mixed
+    // line per prompt rule 9 — SongListenLanguageRuns already splits those into per-language
+    // runs against `original`, and there's no per-run romaji to substitute for just the
+    // Japanese portions), or RomajiToKana can't cleanly convert the romaji (proper nouns and
+    // loanwords routinely contain sounds outside its wāpuro table). This can only ever improve
+    // pronunciation or leave it unchanged — never regress it.
+    private static func spokenReading(original: String, romaji: String?) -> String {
+        guard let romaji, romaji.isEmpty == false else { return original }
+        let hasEmbeddedEnglish = SongListenLanguageRuns.split(original, defaultLanguage: .japanese)
+            .contains { $0.language == .english }
+        guard hasEmbeddedEnglish == false else { return original }
+        guard let converted = RomajiToKana.convert(romaji), converted.didConvert else { return original }
+        return converted.kana
     }
 
     // Rewrites a "/"-separated alternative like "spinning/weaving" as "spinning or weaving" —

@@ -318,4 +318,30 @@ final class SongBreakdownParserTests: XCTestCase {
         XCTAssertEqual(lines[0].original, "I said 愛してる to her")
         XCTAssertEqual(lines[0].words.first?.surface, "愛してる")
     }
+
+    // A blank line in the source lyrics sometimes comes back as a header with nothing after
+    // the colon rather than being omitted outright. It has nothing to display or narrate, and
+    // used to survive parsing as a near-empty SongLine (SongLineCard would render just the
+    // "Line N" label over blank space) — dropped now so it never reaches a consumer.
+    func testSkipsHeaderWithBlankOriginal() throws {
+        let markdown = """
+        **Line 1: 君の名前を呼んだ**
+        *kimi no namae wo yonda*
+
+        **Gist:** Called your name.
+
+        ---
+
+        **Line 2:**
+
+        ---
+
+        **Line 3: 夜の風が吹く**
+        *yoru no kaze ga fuku*
+
+        **Gist:** The night wind blows.
+        """
+        let lines = try parser().parse(markdown: markdown)
+        XCTAssertEqual(lines.map(\.index), [1, 3])
+    }
 }
