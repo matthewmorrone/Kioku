@@ -869,6 +869,31 @@ own sections.)
       correctly once it's not handed three edges instead of one. Pinned by
       `SongWordFuriganaIsolationTests.swift` (real dictionary/segmenter, matching
       `SavedGlowLemmaBridgeTests`'s pattern).
+- [x] **Breakdown furigana randomly missing or fragmented across kanji runs (く over 朽 fine,
+      but 黄昏 shows only き)** — reported 2026-09-03, root-caused and fixed same day. Neither
+      the segmenter/lemma resolution nor the persisted `Note.segments` data was ever wrong —
+      verified both directly against a real device: the segmenter resolves 朽ちた→く and
+      黄昏→たそがれ (spanning both characters as one reading, correctly) every time, and the
+      note's own persisted segments already stored that exact correct reading. The bug was a
+      stale in-memory cache that never got invalidated. `ContentView.rebuildReadResources`
+      loads the dictionary in two stages — a fast placeholder segmenter, then a slower full
+      build that reconfigures the *same* segmenter object in place (`existingSegmenter.
+      reconfigure(from:)`, done deliberately so any view that captured a reference early keeps
+      seeing live data instead of "stuck with an empty trie forever" — see that function's
+      comment). `ReadView` already listens for this via `segmenterRevision` and invalidates its
+      own segmentation cache (`ReadView+Lifecycle.swift`'s `.onChange(of: segmenterRevision)`,
+      whose own comment describes this *exact* failure mode: "stale per-character entries from
+      disk persist forever once resources loaded") — but `SongStepperView`'s per-line furigana
+      cache (`SongStepperView+Furigana.swift`) had no equivalent, and its own cache-invalidation
+      guard only keys on line *text* changing, never on the segmenter underneath it improving.
+      A Breakdown sheet opened before Stage 2 finished loading (e.g. shortly after launch) could
+      permanently cache a degraded resolution for any line touched at that moment, correctly
+      resolving nothing further even minutes later once the dictionary was fully ready. Fixed by
+      threading `segmenterRevision` into `SongStepperView` (from `ReadView`'s own property,
+      already plumbed to it from `ContentView`) and clearing both furigana caches
+      (`furiganaCacheByLineIndex`, `wordFuriganaByKey`) on `.onChange(of: segmenterRevision)`,
+      mirroring ReadView's fix exactly. `SongsHomeView`'s caller (no segmenter passed at all)
+      defaults to revision 0 — inert, since there's no segmenter there to become stale.
 
 ## Settings
 

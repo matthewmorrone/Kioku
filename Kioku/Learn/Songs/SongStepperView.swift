@@ -27,6 +27,16 @@ struct SongStepperView: View {
     let segmenter: (any TextSegmenting)?
     let surfaceReadingData: SurfaceReadingDataMap
     let kanjiReadingFallback: KanjiReadingFallbackMap
+    // Bumped by ContentView whenever the shared segmenter is reconfigured with newly-loaded
+    // dictionary data (see ContentView.rebuildReadResources). The segmenter is mutated in
+    // place, not replaced, so a furigana cache built against it while data was still loading
+    // (e.g. a Breakdown sheet opened moments after launch) silently keeps stale/fragmentary
+    // per-character readings forever unless something forces a rebuild — this is that signal.
+    // ReadView's own segmentation cache already invalidates on this same revision (see
+    // ReadView+Lifecycle's `.onChange(of: segmenterRevision)`); this mirrors that fix for the
+    // Breakdown's furigana caches. Defaults to 0 for the SongsHomeView caller, which passes no
+    // segmenter at all and so has nothing to invalidate.
+    var segmenterRevision: Int = 0
     // Resolves tapped breakdown words to a dictionary entry for the lookup sheet. Optional so the
     // legacy SongsHomeView caller (no dictionary in scope) still compiles; tap-to-lookup no-ops there.
     let dictionaryStore: DictionaryStore?
@@ -91,13 +101,15 @@ struct SongStepperView: View {
          surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
          kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap(),
          dictionaryStore: DictionaryStore? = nil,
-         onFinishedPlaying: ((Note) -> Void)? = nil) {
+         onFinishedPlaying: ((Note) -> Void)? = nil,
+         segmenterRevision: Int = 0) {
         self.note = note
         self.segmenter = segmenter
         self.surfaceReadingData = surfaceReadingData
         self.kanjiReadingFallback = kanjiReadingFallback
         self.dictionaryStore = dictionaryStore
         self.onFinishedPlaying = onFinishedPlaying
+        self.segmenterRevision = segmenterRevision
     }
 
     // MARK: - Derived state
@@ -271,6 +283,19 @@ struct SongStepperView: View {
         // and auto-expands the line the model is currently writing.
         .onChange(of: displayItems) { _, items in
             refreshLineDerivedState(for: items)
+        }
+        // The segmenter is mutated in place when ContentView's slower dictionary/lexicon load
+        // finishes (see the segmenterRevision doc comment above) — a cache built against it
+        // beforehand (e.g. this sheet opened moments after launch) has no other signal telling
+        // it the data underneath just got better, and ensureFuriganaCaches' own guard only
+        // rebuilds on a *text* change, so it would otherwise keep stale/fragmentary per-
+        // character readings forever. Clearing both caches forces every line and word-list
+        // headword to re-resolve against the now-complete segmenter. Mirrors ReadView+
+        // Lifecycle's identical fix for the Read tab's own segmentation cache.
+        .onChange(of: segmenterRevision) { _, _ in
+            furiganaCacheByLineIndex = [:]
+            wordFuriganaByKey = [:]
+            refreshLineDerivedState(for: displayItems)
         }
         // Covers first appearance with an already-cached breakdown — onChange above only fires
         // on a *transition*, not on the initial value.
