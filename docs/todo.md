@@ -113,13 +113,18 @@ own sections.)
         `preferredLemma` returning a different member of an ambiguous lemma pair (靡かす vs 靡かせる)
         than the one saved. That couldn't be confirmed by static reading — and the nil-caching race
         above turned out to be the real cause.
-- [ ] **Furigana clipped in the Breakdown detail cards** — reported 2026-09-02 via screenshot:
-      the ふりがな reading ("いのち") over 命 in a Read-tab Breakdown vocab card is visibly cut off
-      at the top, unlike the already-resolved main-text ruby overhang cases above (which cover the
-      primary reading view, not these per-word breakdown cards). Not yet diagnosed — likely a
-      line-height/top-inset gap specific to whatever view renders the Breakdown card's headword +
-      ruby (distinct component from `KiokuCoreTextRendererView`). Repro: open Breakdown on any note
-      with a card whose headword carries a full-width furigana reading.
+- [x] **Furigana clipped in the Breakdown detail cards** — Fixed 2026-09-02. The Breakdown
+      card's headword (`SongLineCard.wordHeadword` → `FuriganaLabel`/`FuriganaView`, distinct from
+      `KiokuCoreTextRendererView`'s already-resolved ruby overhang) reserved headroom above the
+      base text using `UIFont.lineHeight` (a theoretical metric) but measured the actual furigana
+      glyphs it drew into that headroom with `NSString.size(withAttributes:)` — a different API
+      that reports a taller box for real hiragana glyphs on some fonts/sizes. When the measured
+      height exceeded the reserved `lineHeight`, the furigana's draw origin landed above y=0, which
+      `UIView.draw(_:)` silently discards (content outside `bounds` never reaches the backing
+      store). Fixed in `FuriganaView.swift` by reserving headroom with the same
+      `size(withAttributes:)` measurement used to draw the text (`measuredLineHeight(font:)`,
+      applied in `computeHeight`/`naturalSize`/`draw`), plus a `max(0, …)` clamp on the furigana
+      Y-origin as a backstop against any residual mismatch.
 
 ## Segmentation & Lookup
 
@@ -733,13 +738,23 @@ own sections.)
       (`segmentEdges`) as word-boundary markers for narration, instead of whatever ad hoc
       splitting TTS uses today, so narration pacing/highlighting can track the same boundaries the
       rest of the app already agrees on. Feeds into the two items above.
-- [ ] **Keep audio playing when the screen locks/turns off** — reported 2026-09-02: narration/
-      karaoke playback currently doesn't continue in the background once the device screen turns
-      off. Needs the standard iOS background-audio setup: `AVAudioSession` category `.playback`
-      (not `.ambient`/`.soloAmbient`), the "Audio, AirPlay, and Picture in Picture" background mode
-      capability enabled, and a populated `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` for
-      lock-screen transport controls. Check `AudioPlaybackController`'s current session category
-      and whether the background-mode capability is enabled in the target.
+- [x] **Keep audio playing when the screen locks/turns off** — Investigated and completed
+      2026-09-02. Two of the three pieces the todo called for were already in place and not the
+      cause of any reported gap: `AVAudioSession` category `.playback` (gated on the existing
+      `AudioSettings.backgroundPlaybackEnabled` toggle, default on) and the `audio` background
+      mode capability (`INFOPLIST_KEY_UIBackgroundModes = audio` in the pbxproj) were both added
+      2026-05-14 (`28509f8`) and cover every playback path (`AudioPlaybackController` is the one
+      player instance used by both karaoke and Listen-along narration). What was actually missing
+      was the third piece: no `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter` wiring at all, so a
+      user who locked the screen mid-playback had no lock-screen/Control Center transport (no
+      title, no play/pause, no scrubbing) even though audio itself kept playing. Added to
+      `AudioPlaybackController.swift`: `configureRemoteCommandCenter()` (play/pause/toggle/seek
+      commands wired to the controller, registered once in `init`) and `updateNowPlayingInfo()`
+      (title/duration/elapsed-time/rate, called from `load`/`play`/`pause`/`stop`/`seek`/
+      `resetToStart`/`unload`). `load(audioURL:cues:title:)` gained a `title` param — call sites
+      in `ReadView+AudioPlayback.swift`, `ReadView+Lifecycle.swift`, and
+      `SongStepperView+Listen.swift` now pass the note's `resolvedTitle` so the lock screen shows
+      the song/note name instead of a bare "Kioku".
 - [ ] **"Find correct timestamp" repair tool for a mismatched lyric cue** — reported 2026-09-02:
       when a user flags a `SubtitleCue` whose audio doesn't match its text, offer a "search the
       song for where this line actually is" fix. A full re-song alignment pass is the wrong tool —

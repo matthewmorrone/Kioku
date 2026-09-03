@@ -18,7 +18,7 @@ extension ReadView {
                         audioAttachmentCues = newCues
                         if let url = NotesAudioStore.shared.audioURL(for: attachmentID) {
                             do {
-                                try audioController.load(audioURL: url, cues: newCues)
+                                try audioController.load(audioURL: url, cues: newCues, title: resolvedTitle)
                             } catch {
                                 print("[ReadView] reload after subtitle edit failed for \(url.lastPathComponent): \(error.localizedDescription)")
                             }

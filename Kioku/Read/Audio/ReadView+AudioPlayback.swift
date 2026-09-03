@@ -49,7 +49,7 @@ extension ReadView {
 
         do {
             try StartupTimer.measure("loadAudioAttachmentIfNeeded.audioController.load") {
-                try audioController.load(audioURL: audioURL, cues: cues)
+                try audioController.load(audioURL: audioURL, cues: cues, title: resolvedTitle)
             }
             StartupTimer.mark("loadAudioAttachmentIfNeeded finished")
         } catch {

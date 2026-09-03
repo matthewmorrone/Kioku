@@ -142,7 +142,7 @@ extension SongStepperView {
         let cues = listenStore.cues(forNoteID: note.id)
         listenSegments = Self.listenSegments(for: breakdown, lineRanges: effectiveListenLineRanges)
         do {
-            try listenPlayback.load(audioURL: url, cues: cues)
+            try listenPlayback.load(audioURL: url, cues: cues, title: note.resolvedTitle)
         } catch {
             // Loaded-but-unplayable is rare (e.g. the cached file was removed mid-session);
             // the toolbar's retry re-renders it.
