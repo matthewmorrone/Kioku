@@ -474,6 +474,7 @@ struct SongStepperView: View {
                             playState: cardPlayState(for: item.line),
                             phase: item.phase,
                             listenHighlight: activeListenSegment?.lineIndex == item.line.index ? activeListenSegment : nil,
+                            listenSentenceProgress: activeListenSegment?.lineIndex == item.line.index ? listenSentenceProgress : nil,
                             onToggleExpansion: { toggleExpansion(for: item.line) },
                             onPlayLine: {
                                 switch cardPlayState(for: item.line) {

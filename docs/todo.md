@@ -741,22 +741,27 @@ own sections.)
       relaxation of rule 5's depth requirement. `MergedCorrectionBreakdownService` picks this up
       automatically since it reuses `SongBreakdownPrompt.staticInstructions()` verbatim rather than
       forking the prompt.
-- [ ] **Derive TTS word boundaries from the Read tab's existing segmentation** — reported
-      2026-09-02, investigated 2026-09-02 but left open: this needed a concrete target before it
-      could be built, and doesn't have one yet. What's actually true today: narration's Japanese
-      vocabulary steps (`.wordSurface`) are already one-step-per-word by construction (each of
-      `SongLine.words` — the LLM's own word list — gets its own `SongListenSegment`, so each
-      already has an unambiguous boundary and its own cue; nothing "ad hoc" splits it further).
-      The one place with no word-level boundaries at all is the `.sentence` step — the full sung
-      line is spoken (and cued) as a single unit, with no intra-line word timing, so there's
-      nothing today for the Read tab's `segmentEdges` to line up against unless that's built first
-      (word-by-word highlighting *during* the line recitation, analogous to the karaoke band).
-      Alternatively, this could mean replacing the LLM's own word list (`SongLine.words`) with
-      `segmentEdges`-derived boundaries as the source of narration's vocabulary steps, so
-      narration's word set matches dictionary lookup's exactly — a data-source decision that
-      overlaps the "Unify the two LLM call paths" item under Major Feature Additions. Needs a
-      decision on which of these (or something else) is actually wanted before implementation;
-      not attempted blind.
+- [x] **Derive TTS word boundaries from the Read tab's existing segmentation** — Done
+      2026-09-03, resolving the "needs a concrete target" gap noted below by picking the
+      word-by-word-highlight-during-recitation reading (the other candidate — replacing
+      `SongLine.words` with `segmentEdges`-derived boundaries — stays a live option, tracked
+      under "Unify the two LLM call paths"). Didn't touch synthesis at all: the `.sentence` step
+      still speaks the whole line as one `AVSpeechUtterance` (splitting it into per-word
+      utterances risked audibly worse prosody with no way for me to verify by ear, for a feature
+      whose whole premise is sounding natural — see the mangling/listening-friendly fixes above).
+      Instead, reused `LineFuriganaCache.segmentationRanges` — the exact `longestMatchEdges`
+      output already computed per line for furigana, i.e. the Read tab's own word boundaries —
+      to estimate, not measure, which word is being spoken: `SongLineCard.
+      estimatedActiveWordRange(progress:segmentationRanges:in:)` distributes
+      `SongStepperView+Listen.listenSentenceProgress` (0...1 through the active `.sentence`
+      cue's span) proportionally across each word's character count (AVSpeechSynthesizer's
+      buffer-based `write(_:toBufferCallback:)` rendering never reports real per-word timing, so
+      there's nothing exact to read). Wired into `SongLineCard.furiganaRow`'s existing
+      `KiokuCoreTextRendererView.playbackHighlightRange` — previously always `nil` for this
+      view — so the currently-estimated word lights up (accent-tinted) while the rest of the
+      line keeps its existing whole-line tint. Pure UI addition: no cache-key/renderVersion bump
+      needed since audio output is byte-for-byte unchanged. Pinned by 8 cases in
+      `SongLineCardTests.swift`.
 - [x] **Keep audio playing when the screen locks/turns off** — Investigated and completed
       2026-09-02. Two of the three pieces the todo called for were already in place and not the
       cause of any reported gap: `AVAudioSession` category `.playback` (gated on the existing
