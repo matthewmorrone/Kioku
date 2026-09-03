@@ -87,6 +87,15 @@ nonisolated final class SongBreakdownParser: Sendable {
         guard let lineIndex = headerIndex, let original = headerOriginal else {
             return nil
         }
+        // A blank line in the source lyrics sometimes comes back as a header with nothing
+        // after the colon (`**Line N:**` with no text) rather than being omitted outright —
+        // there's nothing to display or narrate for it, and rendering it produces a
+        // near-empty SongLineCard (just the "Line N" label over blank space). Drop it here so
+        // no consumer downstream (SongLineCard, SongListenScript, the stepper's row list) has
+        // to special-case it.
+        guard original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return nil
+        }
 
         var romaji: String? = nil
         var words: [SongWord] = []

@@ -72,6 +72,25 @@ extension SongStepperView {
         return cueIndex
     }
 
+    // Fractional progress (0...1) through the currently-active `.sentence` cue — used by
+    // SongLineCard to estimate which of the Read tab's segmented words is being spoken right
+    // now. AVSpeechSynthesizer's buffer-based `write(_:toBufferCallback:)` (see
+    // SongListenAudioService's header comment on why this feature renders through that API
+    // rather than live `speak(_:)`) never fires per-word timing callbacks, so there's no real
+    // per-word timestamp to read — this is what lets the highlight move at all without one:
+    // an estimate, not measured timing. `nil` whenever there's no active sentence cue to
+    // estimate a position within (including while paused: `isPlaying` gates on the timer
+    // actually advancing `currentTimeMs`, which stops the instant playback does).
+    var listenSentenceProgress: Double? {
+        guard listenPlayback.isPlaying,
+              let cueIndex = activeListenCueIndex, activeListenSegment?.kind == .sentence,
+              listenPlayback.cues.indices.contains(cueIndex) else { return nil }
+        let cue = listenPlayback.cues[cueIndex]
+        let span = cue.endMs - cue.startMs
+        guard span > 0 else { return nil }
+        return Double(listenPlayback.currentTimeMs - cue.startMs) / Double(span)
+    }
+
     // Toolbar headphones: play the whole track in sequence. Resumes from the start of the
     // highlighted segment (a line played from its card leaves the highlight on that line's
     // last word, so this continues into the next line) and renders first if the track
@@ -142,7 +161,7 @@ extension SongStepperView {
         let cues = listenStore.cues(forNoteID: note.id)
         listenSegments = Self.listenSegments(for: breakdown, lineRanges: effectiveListenLineRanges)
         do {
-            try listenPlayback.load(audioURL: url, cues: cues)
+            try listenPlayback.load(audioURL: url, cues: cues, title: note.resolvedTitle)
         } catch {
             // Loaded-but-unplayable is rare (e.g. the cached file was removed mid-session);
             // the toolbar's retry re-renders it.

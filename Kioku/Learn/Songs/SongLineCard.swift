@@ -44,6 +44,12 @@ struct SongLineCard: View {
     // The listen-along segment currently being spoken, when it belongs to this line: tints
     // the matching row (sentence / gist / word) so the card doubles as the transcript.
     let listenHighlight: SongListenSegment?
+    // Fractional progress (0...1) through the currently-speaking `.sentence` cue, when this
+    // line's sentence is what's playing — used to estimate (not measure; see
+    // SongStepperView+Listen's `listenSentenceProgress` doc comment) which of the Read tab's
+    // segmented words is being spoken right now, so `originalLine` can highlight just that word
+    // instead of the whole line. Nil whenever there's no sentence actively playing for this line.
+    let listenSentenceProgress: Double?
     let onToggleExpansion: () -> Void
     let onPlayLine: () -> Void
     // Opens the shared lookup sheet for a tapped vocabulary row. The parent owns the dictionary
@@ -131,7 +137,7 @@ struct SongLineCard: View {
         case .wordDefinition:
             return listenHighlight.text == SongLineCard.stripInlineMarkdown(word.definition)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-        case .sentence, .translation:
+        case .sentence, .translation, .patternNote:
             return false
         }
     }
@@ -317,10 +323,14 @@ struct SongLineCard: View {
     // Renders the line via the same CoreText renderer the Read tab uses, at the same 28pt
     // size as the plain Text branch. `isScrollEnabled` is false so the renderer's
     // `sizeThatFits` reports a real multi-line height to SwiftUI. Color alternation,
-    // highlights, and debug overlays are all off — this is a passive reveal, not
-    // interactive read mode.
+    // selection, and debug overlays are all off — this is a passive reveal, not interactive
+    // read mode — except `playbackHighlightRange`, which lights up the word Listen-along's
+    // estimate says is being spoken right now (see `estimatedActiveWordRange`).
     private func furiganaRow(cache: LineFuriganaCache) -> some View {
-        KiokuCoreTextRendererView(
+        let activeWordRange = listenSentenceProgress.flatMap {
+            Self.estimatedActiveWordRange(progress: $0, segmentationRanges: cache.segmentationRanges, in: line.original)
+        }
+        return KiokuCoreTextRendererView(
             text: line.original,
             segmentationRanges: cache.segmentationRanges,
             furiganaBySegmentLocation: cache.furiganaBySegmentLocation,
@@ -337,9 +347,9 @@ struct SongLineCard: View {
             isLineWrappingEnabled: true,
             isRubySpacingEnabled: true,
             selectedHighlightRange: nil,
-            playbackHighlightRange: nil,
+            playbackHighlightRange: activeWordRange,
             selectionHighlightColor: .clear,
-            playbackHighlightColor: .clear,
+            playbackHighlightColor: UIColor(Color.accentColor).withAlphaComponent(0.35),
             unknownSegmentLocations: [],
             isHighlightUnknownEnabled: false,
             unknownSegmentColor: .label,
@@ -349,6 +359,34 @@ struct SongLineCard: View {
             isScrollEnabled: false
         )
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // Estimates which of the Read tab's segmented words (`segmentationRanges`, from the same
+    // `longestMatchEdges` lookup already uses) is being spoken at `progress` through the
+    // sentence's cue, by distributing progress proportionally across each word's character
+    // count. This is a heuristic, not measured timing — AVSpeechSynthesizer's buffer-based
+    // rendering (see SongListenAudioService's header comment) never reports real per-word
+    // boundaries, so there's nothing exact to read. Character count (rather than, say, mora
+    // count) is a crude proxy for how long a word takes to say, but it's directionally right
+    // and doesn't require a second kana-aware pass over each word just for this estimate.
+    static func estimatedActiveWordRange(
+        progress: Double,
+        segmentationRanges: [Range<String.Index>],
+        in text: String
+    ) -> NSRange? {
+        guard segmentationRanges.isEmpty == false else { return nil }
+        let lengths = segmentationRanges.map { text.distance(from: $0.lowerBound, to: $0.upperBound) }
+        let totalLength = lengths.reduce(0, +)
+        guard totalLength > 0 else { return nil }
+        let targetOffset = Double(totalLength) * min(max(progress, 0), 0.999)
+        var cumulative = 0
+        for (range, length) in zip(segmentationRanges, lengths) {
+            cumulative += length
+            if Double(cumulative) > targetOffset {
+                return NSRange(range, in: text)
+            }
+        }
+        return NSRange(segmentationRanges[segmentationRanges.count - 1], in: text)
     }
 
     // Gist only — italicised so it reads as interpretation/voice rather than continuation
@@ -434,6 +472,8 @@ struct SongLineCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.horizontal, 4)
+        .background(speakingBackground(isSpeaking(.patternNote)))
     }
 
     // Strips inline-emphasis markup so the user doesn't see literal asterisks in body

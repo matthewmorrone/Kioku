@@ -59,6 +59,8 @@ enum SongBreakdownPrompt {
 
         9. **Mixed-language lines**: The text is not always pure Japanese. A line may be English (or another language) with Japanese words or phrases embedded in it, or Japanese with English embedded. These lines are NEVER skipped, merged into a neighbour, or trimmed to just their Japanese. Emit each one as a normal `**Line N: …**` entry whose header carries the full original line verbatim, non-Japanese text included. The romaji line covers only the Japanese portions (leave non-Japanese text exactly as written in place). Give one word bullet per Japanese word or phrase — even when a single word is the only Japanese in the line — and a gist for the whole line. A line with no Japanese at all still gets its header and a one-line gist (rule 7); note it as such rather than omitting it.
 
+        10. **Spoken-friendly phrasing**: word definitions, the gist, and the pattern-bank note are read aloud by a narration feature, not just displayed on screen — write them the way you'd say them out loud. Spell out alternatives with "or" rather than slashing them together ("spinning or weaving", not "spinning/weaving"), avoid stacking parentheticals inside a single definition, and prefer short declarative sentences over dense noun-phrase strings. This doesn't relax rule 5's depth — it's about phrasing, not content.
+
         ## Lyrics
 
         \(lyricsMarker)

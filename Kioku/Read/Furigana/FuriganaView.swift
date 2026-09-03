@@ -126,11 +126,24 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         return CGSize(width: width, height: computeHeight(for: width))
     }
 
+    // `UIFont.lineHeight` is a theoretical metric, but the furigana text below is measured
+    // (for its draw rect) with `NSString.size(withAttributes:)`, which reports a taller box
+    // for real hiragana glyphs on some fonts/sizes. Reserving headroom from `lineHeight` while
+    // measuring the actual glyph with the other API let the two numbers disagree — the reading
+    // could be measured as taller than the space reserved for it, pushing its draw origin
+    // above y=0, where `UIView.draw(_:)` content is silently discarded (drawing outside
+    // `bounds` never reaches the view's backing store, regardless of `clipsToBounds`). Using
+    // this same measurement for the reserved headroom (below, in `computeHeight`/`naturalSize`
+    // too) keeps the budget and the actual draw size in agreement.
+    private static func measuredLineHeight(font: UIFont) -> CGFloat {
+        ("あ" as NSString).size(withAttributes: [.font: font]).height
+    }
+
     // Renders the base text and per-run furigana annotations directly into the view's graphics context.
     override func draw(_ rect: CGRect) {
         let baseAttrString = baseAttributedString()
         let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
-        let topInset = furiganaFont.lineHeight + gap
+        let topInset = Self.measuredLineHeight(font: furiganaFont) + gap
 
         let drawWidth = bounds.width > 0 ? bounds.width : rect.width
         // The base text sits below the furigana headroom, drawn in UIKit coordinates.
@@ -175,8 +188,11 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
 
             let furiganaSize = (runReading as NSString).size(withAttributes: furiganaAttributes)
             let furiganaX = runRect.midX - furiganaSize.width / 2
-            // Place furigana above the run rect with the configured gap.
-            let furiganaY = runRect.minY - gap - furiganaSize.height
+            // Place furigana above the run rect with the configured gap. Clamped to 0 as a
+            // backstop — the headroom reservation above is sized to make this a no-op in the
+            // normal case, but this keeps any residual mismatch from clipping instead of just
+            // sitting a hair closer to the base text than `gap` asks for.
+            let furiganaY = max(0, runRect.minY - gap - furiganaSize.height)
             (runReading as NSString).draw(
                 in: CGRect(x: furiganaX, y: furiganaY, width: furiganaSize.width, height: furiganaSize.height),
                 withAttributes: furiganaAttributes
@@ -197,7 +213,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         )
         let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
         // Reserve room for furigana text plus the gap above the first baseline.
-        return ceil(size.height) + furiganaFont.lineHeight + gap
+        return ceil(size.height) + Self.measuredLineHeight(font: furiganaFont) + gap
     }
 
     // Computes the natural (unconstrained) size of the label — the width the text occupies
@@ -219,7 +235,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
             withAttributes: [.font: furiganaFont]
         ).width
         let naturalWidth = ceil(max(size.width, furiganaWidth))
-        let naturalHeight = ceil(size.height) + furiganaFont.lineHeight + gap
+        let naturalHeight = ceil(size.height) + Self.measuredLineHeight(font: furiganaFont) + gap
         return CGSize(width: naturalWidth, height: naturalHeight)
     }
 

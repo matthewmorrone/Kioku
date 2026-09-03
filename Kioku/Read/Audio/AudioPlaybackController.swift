@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import MediaPlayer
 
 // Controls MP3/audio playback and publishes the current subtitle cue index so ReadView can drive real-time text highlighting without any UI logic inside this class.
 @MainActor
@@ -15,6 +16,12 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // rhythm signal — louder samples pulse bigger. Set to 0 when paused/stopped so visuals can
     // react to the playback state without an additional gate.
     @Published var audioLevel: Double = 0
+    // Fired when AVAudioPlayer stops on its own having reached the end of the file — distinct
+    // from an explicit `pause()`/`stop()` call (including `playRange`'s scheduled auto-pause at
+    // a line's end, which always calls `pause()` before the player would reach true EOF). Used
+    // by SongStepperView to know when a full listen-along track — not just one line's clip —
+    // has finished, for the "continue to the next note" setting.
+    var onDidFinishPlayingNaturally: (() -> Void)? = nil
 
     private var player: AVAudioPlayer?
     var cues: [SubtitleCue] = []
@@ -36,10 +43,62 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // subtracted from AVAudioPlayer.currentTime. Reset to false on pause/stop so the
     // next play() re-reads it (route may have changed mid-pause, e.g., AirPods reconnect).
     private var didLogOutputLatency = false
+    // Title shown on the lock screen / Control Center Now Playing card. Set by `load()`;
+    // `nil` leaves the previous track's title in place, which never happens in practice since
+    // `load()` is always called with one before playback can start.
+    private var nowPlayingTitle: String?
 
     override init() {
         super.init()
         configureAudioSession()
+        configureRemoteCommandCenter()
+    }
+
+    // Wires the lock-screen / Control Center transport buttons to this controller. Registered
+    // once for the controller's lifetime — MPRemoteCommandCenter is a process-wide singleton,
+    // but only the app's single ReadView-owned controller instance ever plays audio, so there's
+    // no competing claimant to hand commands off to.
+    private func configureRemoteCommandCenter() {
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.addTarget { [weak self] _ in
+            guard let self, self.player != nil else { return .noSuchContent }
+            self.play()
+            return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            guard let self, self.player != nil else { return .noSuchContent }
+            self.pause()
+            return .success
+        }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            guard let self, self.player != nil else { return .noSuchContent }
+            self.isPlaying ? self.pause() : self.play()
+            return .success
+        }
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self, self.player != nil,
+                  let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            self.seek(toMs: Int(event.positionTime * 1000))
+            return .success
+        }
+    }
+
+    // Publishes the current track/position to the system Now Playing card (lock screen,
+    // Control Center, connected CarPlay/AirPlay endpoints). Only `elapsedPlaybackTime` and
+    // `rate` need refreshing on every seek/play/pause — the system interpolates the displayed
+    // elapsed time between updates from those two values, so this doesn't need to run on the
+    // 50ms polling timer.
+    private func updateNowPlayingInfo() {
+        guard let player else {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return
+        }
+        var info: [String: Any] = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        info[MPMediaItemPropertyTitle] = nowPlayingTitle ?? info[MPMediaItemPropertyTitle] ?? "Kioku"
+        info[MPMediaItemPropertyPlaybackDuration] = player.duration
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = player.currentTime
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     // Picks the session category based on the user's Background Audio setting.
@@ -64,18 +123,21 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         }
     }
 
-    // Loads audio from a URL and stores the cue list for highlight resolution.
+    // Loads audio from a URL and stores the cue list for highlight resolution. `title` names
+    // the track on the lock screen / Control Center Now Playing card.
     // Throws if AVAudioPlayer cannot open the file.
-    func load(audioURL: URL, cues: [SubtitleCue]) throws {
+    func load(audioURL: URL, cues: [SubtitleCue], title: String? = nil) throws {
         stop()
         let newPlayer = try AVAudioPlayer(contentsOf: audioURL)
         newPlayer.isMeteringEnabled = true
         newPlayer.prepareToPlay()
         player = newPlayer
         self.cues = cues
+        nowPlayingTitle = title
         duration = newPlayer.duration
         currentTimeMs = 0
         syncTimeAndCue()
+        updateNowPlayingInfo()
     }
 
     // Swaps the underlying audio file (original mix ↔ isolated vocal stem) WITHOUT changing cues
@@ -106,6 +168,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             isPlaying = false
         }
         syncTimeAndCue()
+        updateNowPlayingInfo()
     }
 
     // Replaces the cue list in place without disturbing the loaded player or the current
@@ -126,11 +189,13 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         duration = 0
         currentTimeMs = 0
         activeCueIndex = nil
+        nowPlayingTitle = nil
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         } catch {
             print("[AudioPlaybackController] setActive(false) failed: \(error.localizedDescription)")
         }
+        updateNowPlayingInfo()
     }
 
     // Starts or resumes playback. Begins polling for the current cue.
@@ -149,6 +214,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         player.play()
         isPlaying = true
         startTimer()
+        updateNowPlayingInfo()
         KaraokeDebugLog.log("controller.play: started cuesCount=\(cues.count)")
     }
 
@@ -167,6 +233,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         isPlaying = true
         startTimer()
         syncTimeAndCue()
+        updateNowPlayingInfo()
     }
 
     // Pauses playback and takes one final time snapshot.
@@ -178,6 +245,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         audioLevel = 0
         didLogOutputLatency = false
         syncTimeAndCue()
+        updateNowPlayingInfo()
     }
 
     // Stops playback and resets position to the start.
@@ -191,6 +259,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         audioLevel = 0
         stopAtMs = nil
         didLogOutputLatency = false
+        updateNowPlayingInfo()
     }
 
     // Plays a contiguous millisecond range, automatically pausing at `endMs`. Used by the
@@ -251,6 +320,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         stopTimer()
         currentTimeMs = 0
         syncTimeAndCue()
+        updateNowPlayingInfo()
     }
 
     // Seeks to a specific millisecond offset without interrupting the play/pause state.
@@ -276,6 +346,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
         let target = max(0, ms)
         currentTimeMs = target
         resolveActiveCue(atMs: target)
+        updateNowPlayingInfo()
     }
 
     // Schedules a 50 ms polling timer to keep currentTimeMs and activeCueIndex fresh during playback.
@@ -304,6 +375,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             stopTimer()
             activeCueIndex = nil
             audioLevel = 0
+            onDidFinishPlayingNaturally?()
             return
         }
 

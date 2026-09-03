@@ -107,7 +107,11 @@ nonisolated final class SongListenAudioService {
             switch step {
             case .speech(let segment):
                 let startMs = sink.elapsedMs
-                let runs = SongListenLanguageRuns.split(segment.text, defaultLanguage: segment.language)
+                // Synthesize the pronunciation-corrected substitute when the script provided
+                // one, but the cue below still carries `segment.text` — SongLineCard matches
+                // the listen-along highlight against the surface it displays, not what was
+                // actually spoken.
+                let runs = SongListenLanguageRuns.split(segment.spokenText ?? segment.text, defaultLanguage: segment.language)
                 for (runIndex, run) in runs.enumerated() {
                     if runIndex > 0 { try sink.writeSilenceBetweenVoices() }
                     let voice = run.language == .japanese ? japaneseVoice : englishVoice

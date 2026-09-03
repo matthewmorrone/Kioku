@@ -123,6 +123,17 @@ struct LyricsView: View {
         UIColor(hexString: savedNotLearnedHex) ?? .systemPurple
     }
 
+    // Active-word highlight, fixed (not theme/appearance-dependent): a solid amber pill with a
+    // near-black foreground override, ~13:1 contrast. Previously the highlight recolored only
+    // the *background* (a translucent gray, `UIColor.label.withAlphaComponent(0.32)`) while the
+    // glyph kept whatever semantic token color it already had — red-on-light-gray landed at
+    // ~2:1, worst on the red vocab words most worth reading. Ties into the scrubber's existing
+    // `.systemOrange` tint (LyricsView+Controls) to read as "now playing" without being the
+    // exact same (dynamic, appearance-dependent) color — this pill needs to guarantee its own
+    // contrast against a fixed foreground regardless of light/dark mode.
+    private static let activeWordHighlightColor = UIColor(hexString: "#FFCC66")!
+    private static let activeWordForegroundColor = UIColor(hexString: "#1A1A1A")!
+
     // Number of cues where the subtitle text differs from the corresponding note text.
     private var mismatchCount: Int {
         cues.indices.filter { hasMismatch(at: $0) }.count
@@ -409,7 +420,12 @@ struct LyricsView: View {
                         selectedHighlightRange: nil,
                         playbackHighlightRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                         selectionHighlightColor: .clear,
-                        playbackHighlightColor: UIColor.label.withAlphaComponent(0.32),
+                        playbackHighlightColor: Self.activeWordHighlightColor,
+                        // Overrides the highlighted range's glyph color so it never has to
+                        // compete with whatever semantic token color (red vocab, blue, etc.)
+                        // it already had — see activeWordForegroundColor's doc comment above.
+                        accentTextRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        accentTextColor: Self.activeWordForegroundColor,
                         // Dim is gated on alignment-coverage: when forced-alignment
                         // checkpoints don't reach near the cue end, we pass nil
                         // (renderer leaves the whole line at full alpha) rather than

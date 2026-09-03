@@ -28,16 +28,22 @@ struct SongsHomeView: View {
                     }
                 }
                 .navigationDestination(item: $selectedNote) { note in
-                    SongStepperView(note: note)
+                    SongStepperView(note: note, onFinishedPlaying: advanceToNextNoteIfEnabled)
                 }
         }
     }
 
     // Lists notes with non-empty content. Sorted to match NotesStore ordering so the user's
-    // expectations from the Notes tab carry over (most recently inserted at top).
+    // expectations from the Notes tab carry over (most recently inserted at top). Shared with
+    // `advanceToNextNoteIfEnabled` so "what's in the list" and "what's next after this one"
+    // can never disagree.
+    private var candidateNotes: [Note] {
+        notesStore.notes.filter { hasStudiableContent($0) }
+    }
+
     @ViewBuilder
     private var listContent: some View {
-        let candidates = notesStore.notes.filter { hasStudiableContent($0) }
+        let candidates = candidateNotes
         if candidates.isEmpty {
             emptyState
         } else {
@@ -52,6 +58,22 @@ struct SongsHomeView: View {
                 }
             }
         }
+    }
+
+    // Called when a SongStepperView's Listen-along track finishes playing on its own (not
+    // paused/stopped by the user). When the setting is on, moves straight to whichever note
+    // follows `finishedNote` in the same list this screen shows — the same
+    // `navigationDestination(item:)` binding just rebuilds SongStepperView fresh for the new
+    // note, identical to the user tapping that row themselves. No-op at the end of the list
+    // (nothing to advance to) or when the finished note isn't in the current list at all (e.g.
+    // it was deleted mid-playback).
+    private func advanceToNextNoteIfEnabled(_ finishedNote: Note) {
+        guard AudioSettings.autoAdvanceToNextNoteEnabled else { return }
+        let candidates = candidateNotes
+        guard let currentIndex = candidates.firstIndex(where: { $0.id == finishedNote.id }) else { return }
+        let nextIndex = candidates.index(after: currentIndex)
+        guard candidates.indices.contains(nextIndex) else { return }
+        selectedNote = candidates[nextIndex]
     }
 
     // Shown when the user has no notes with content yet.

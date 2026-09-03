@@ -113,13 +113,18 @@ own sections.)
         `preferredLemma` returning a different member of an ambiguous lemma pair (靡かす vs 靡かせる)
         than the one saved. That couldn't be confirmed by static reading — and the nil-caching race
         above turned out to be the real cause.
-- [ ] **Furigana clipped in the Breakdown detail cards** — reported 2026-09-02 via screenshot:
-      the ふりがな reading ("いのち") over 命 in a Read-tab Breakdown vocab card is visibly cut off
-      at the top, unlike the already-resolved main-text ruby overhang cases above (which cover the
-      primary reading view, not these per-word breakdown cards). Not yet diagnosed — likely a
-      line-height/top-inset gap specific to whatever view renders the Breakdown card's headword +
-      ruby (distinct component from `KiokuCoreTextRendererView`). Repro: open Breakdown on any note
-      with a card whose headword carries a full-width furigana reading.
+- [x] **Furigana clipped in the Breakdown detail cards** — Fixed 2026-09-02. The Breakdown
+      card's headword (`SongLineCard.wordHeadword` → `FuriganaLabel`/`FuriganaView`, distinct from
+      `KiokuCoreTextRendererView`'s already-resolved ruby overhang) reserved headroom above the
+      base text using `UIFont.lineHeight` (a theoretical metric) but measured the actual furigana
+      glyphs it drew into that headroom with `NSString.size(withAttributes:)` — a different API
+      that reports a taller box for real hiragana glyphs on some fonts/sizes. When the measured
+      height exceeded the reserved `lineHeight`, the furigana's draw origin landed above y=0, which
+      `UIView.draw(_:)` silently discards (content outside `bounds` never reaches the backing
+      store). Fixed in `FuriganaView.swift` by reserving headroom with the same
+      `size(withAttributes:)` measurement used to draw the text (`measuredLineHeight(font:)`,
+      applied in `computeHeight`/`naturalSize`/`draw`), plus a `max(0, …)` clamp on the furigana
+      Y-origin as a backstop against any residual mismatch.
 
 ## Segmentation & Lookup
 
@@ -457,21 +462,19 @@ own sections.)
         `SongBreakdownService.swift`, `SongBreakdownPrompt.swift`, `SongBreakdownParser.swift`
         (replaced by JSON decoder), `SongLine`/`SongWord` models (gain `segmentIDs` field),
         breakdown UI (`SongLineCard.swift` — render romaji from referenced segments).
-- [ ] **Active-word (karaoke) highlight has poor text contrast** — from app-usage triage
-      2026-07-03 (`docs/app-usage-issues.md` #2). The current-word highlight is a light
-      translucent gray pill, but the glyph keeps its semantic color (red for vocab, blue,
-      etc.), so red-on-light-gray lands at ~2:1 contrast — the highlighted word and its
-      furigana are nearly illegible, worst on the red words you most want to read. Root
-      cause: the highlight recolors only the *background*; the foreground stays whatever
-      semantic color it already had, so contrast is left to chance. Fix direction: when a
-      word is the active highlight, override its text color to a fixed high-contrast
-      foreground instead of keeping red/blue. Options (all ≥ WCAG AA 4.5:1): (A, recommended)
-      amber pill `#FFCC66` + near-black glyph `#1A1A1A` (~13:1), ties into the existing
-      orange playback/scrubber accent → reinforces "now playing"; (B) near-opaque light pill
-      `rgba(255,255,255,0.92)` + dark glyph `#1C1C1E` (~15:1); (C) saturated dark pill
-      (`rgba(90,140,210,0.85)` or solid `rgba(40,40,45,0.95)`) + white glyph (~8–10:1).
-      Highlight range comes from `AudioCueHighlightObserver` / `LyricsView`
-      (`Kioku/Read/AudioCueHighlightObserver.swift`, `Kioku/Read/Audio/LyricsView.swift`).
+- [x] **Active-word (karaoke) highlight has poor text contrast** — Done 2026-09-03, using
+      recommended option A. Confirmed the root cause exactly: `LyricsView`'s active-cue render
+      passed `playbackHighlightColor: UIColor.label.withAlphaComponent(0.32)` (the translucent
+      gray pill) but never touched the glyph's own foreground color, so a red/blue vocab word
+      kept its semantic color underneath — `AudioCueHighlightObserver` only computes *which
+      range* is active, not its color, so it needed no changes. Fixed by adding an amber pill
+      (`#FFCC66`) + near-black foreground override (`#1A1A1A`, ~13:1 contrast) as fixed
+      (non-theme-dependent) constants in `LyricsView.swift`. The foreground override uses
+      `KiokuCoreTextRendererView`'s existing `accentTextRange`/`accentTextColor` — already used
+      by `ExampleSentenceView` for the same "paint this range in a fixed color regardless of its
+      segment's own color" job, just not wired to the playback highlight here — passed the same
+      `cueLocalPlaybackHighlightRange(...)` as `playbackHighlightRange`, so the override always
+      exactly covers the highlighted span.
 - [ ] **Extract-words "Vocab" tab wrongly empty** — from app-usage triage 2026-07-03
       (`docs/app-usage-issues.md` #1), confirmed defect (not a UX nit). The Vocab tab shows
       "No dictionary-backed vocabulary in this text." / "Save 0 Words" for a song note
@@ -693,53 +696,81 @@ own sections.)
       section after the instrumental gap. ♪ interludes are real `SubtitleCue` rows with genuine
       `startMs`/`endMs` (`Kioku/Read/Audio/SubtitleCue.swift`), not separate widgets, so a line
       on the wrong side of the ♪ is a timing/order mismatch relative to the interlude cue —
-      likely the Re-align pass assigns a line to the wrong side of a long inter-vocal gap.
-      Would be auto-caught by the never-highlighted diagnostic below.
-- [ ] **Alignment-quality diagnostic: detect never-highlighted / un-reachable cues** — from
-      app-usage triage 2026-07-03 (`docs/app-usage-issues.md` #4). Today nothing detects a cue
-      that never becomes the active/highlighted line during playback, though the data supports
-      it. Active line = `AudioPlaybackController.resolveActiveCue(atMs:)`
-      (`Kioku/Read/Audio/AudioPlaybackController.swift:369`): scans the playhead against each
-      cue's half-open `[startMs, endMs)` range, taking the **first** match, with a fallback
-      chain (next upcoming → last-ended → previously active). A cue is un-highlightable two
-      ways, both expressible today with no guard: (1) **zero/negative duration**
-      (`startMs >= endMs`) — empty interval, playhead can never be inside; `normalizeTiming`
-      (`Kioku/Read/Audio/SubtitleEditorTimingTools.swift:51`) does not enforce a minimum
-      positive duration, so such a cue survives import; (2) **shadowed** — `firstIndex` means a
-      cue fully covered by an earlier cue is never returned as current. Caveat: the
-      `nextCue`/`previousCue` fallback can make even a degenerate cue *flash* transiently, so
-      "never the contains-playhead winner" ≠ "never visibly lights up" — a diagnostic must be
-      precise about which it reports. Proposed: simulate `resolveActiveCue` across the full
-      timeline (or just check `startMs >= endMs` + coverage/overlap) and surface cues never
-      chosen as active; this auto-catches the interlude-ordering bug above and any mis-timed /
-      orphan line. Ship as an editor/QA check (not necessarily user-facing).
-- [ ] **TTS narration skips/mangles text** — reported 2026-09-02: the read-aloud/narration audio
-      never voices "pattern to bank" (exact source string/screen not yet pinned down — needs a
-      repro to find where that text lives), and any literal "/" in generated text is read aloud
-      awkwardly (e.g. spoken as "slash" or garbled) instead of sounding natural. Probably two
-      fixes: (a) TTS-input preprocessing to strip/expand "/" before synthesis, and (b) stop
-      generating "/"-separated text in the first place — see the listening-friendly prompt item
-      below, likely the same root cause for the "/" case specifically.
-- [ ] **Generate breakdown/narration text in a listening-friendly style** — reported 2026-09-02.
-      LLM-generated explanation text (`SongBreakdownPrompt`/`SongBreakdownService`) is written for
-      silent reading, not read-aloud: slash-separated alternatives ("spinning/weaving"),
-      parentheticals, etc. read awkwardly through TTS. Update the prompt so the generated prose
-      favors natural spoken phrasing — spell out alternatives with "or" instead of "/", minimize
-      nested parentheticals, prefer short declarative sentences. Directly related to the TTS
-      mangling bug above (the "/" half of it, at least); doesn't obviously explain "pattern to
-      bank" without a repro.
-- [ ] **Derive TTS word boundaries from the Read tab's existing segmentation** — reported
-      2026-09-02. Idea: reuse the tokenizer/segmenter output already computed for lookup
-      (`segmentEdges`) as word-boundary markers for narration, instead of whatever ad hoc
-      splitting TTS uses today, so narration pacing/highlighting can track the same boundaries the
-      rest of the app already agrees on. Feeds into the two items above.
-- [ ] **Keep audio playing when the screen locks/turns off** — reported 2026-09-02: narration/
-      karaoke playback currently doesn't continue in the background once the device screen turns
-      off. Needs the standard iOS background-audio setup: `AVAudioSession` category `.playback`
-      (not `.ambient`/`.soloAmbient`), the "Audio, AirPlay, and Picture in Picture" background mode
-      capability enabled, and a populated `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` for
-      lock-screen transport controls. Check `AudioPlaybackController`'s current session category
-      and whether the background-mode capability is enabled in the target.
+      likely the Re-align pass assigns a line to the wrong side of a long inter-vocal gap. The
+      never-highlighted diagnostic below now ships and would flag this exact case in the
+      Subtitle Editor (a misplaced line typically becomes `.shadowed`) — but it only surfaces
+      the symptom for a human to notice, it doesn't fix the Re-align pass itself. Still open;
+      not attempted here (touching the aligner blind has regressed a different song before, per
+      "Lyric-alignment: repeated-lyric disambiguation" above).
+- [x] **Alignment-quality diagnostic: detect never-highlighted / un-reachable cues** — Already
+      done, found already shipped while triaging this list 2026-09-03 (this checkbox was just
+      stale): `CueReachabilityDiagnostic.swift` (`8308f05`, "flag cues that can never highlight
+      during playback") implements exactly the proposed check — the empty-interval case plus a
+      proper interval-coverage sweep for the shadowed case (handles a cue shadowed by the
+      *union* of several earlier cues, not just a single fully-covering one) — and is live in
+      `SubtitleEditorSheet`'s toolbar as a warning triangle with a count, with its own test file
+      (`CueReachabilityDiagnosticTests.swift`). Nothing to build.
+- [x] **TTS narration skips/mangles text** — Root-caused and fixed 2026-09-02. Both halves
+      pinned down (the "repro not found" note below is now moot): (1) "pattern to bank" was never
+      voiced because `SongListenScript.build` had no step for the pattern-bank note at all — it's
+      the one piece of `SongLineCard`'s displayed content (`effectiveGrammarNote`) that the
+      narration script builder never read, not a mangling of something that was spoken. Added a
+      `.patternNote` speech step (see the listening-friendly item below for the text-cleanup
+      applied to it) after the line's words, so listen-along now says "Pattern to bank: …" when a
+      line has one. (2) literal "/" read as "slash": added `SongListenScript.ttsFriendlyText`,
+      applied to gists, word definitions, and the pattern note before they reach
+      `AVSpeechSynthesizer` — rewrites a "/" directly between two word characters
+      ("spinning/weaving") to " or " ("spinning or weaving"); a "/" with whitespace already on
+      both sides is left alone. Only the spoken script is rewritten — `SongLineCard`'s on-screen
+      text keeps the literal "/". Pinned by `SongListenScriptTests.swift`.
+- [x] **Generate breakdown/narration text in a listening-friendly style** — Done 2026-09-02,
+      alongside the TTS mangling fix above (the runtime `ttsFriendlyText` rewrite covers existing
+      cached breakdowns; this covers newly-generated ones at the source). Added rule 10 to
+      `SongBreakdownPrompt.template` (appended rather than inserted, since rules 0–9 are
+      cross-referenced by number elsewhere in the same template): word definitions, the gist, and
+      the pattern-bank note are read aloud, so favor "or" over "/", avoid stacked parentheticals,
+      and prefer short declarative sentences — explicitly scoped as a phrasing change, not a
+      relaxation of rule 5's depth requirement. `MergedCorrectionBreakdownService` picks this up
+      automatically since it reuses `SongBreakdownPrompt.staticInstructions()` verbatim rather than
+      forking the prompt.
+- [x] **Derive TTS word boundaries from the Read tab's existing segmentation** — Done
+      2026-09-03, resolving the "needs a concrete target" gap noted below by picking the
+      word-by-word-highlight-during-recitation reading (the other candidate — replacing
+      `SongLine.words` with `segmentEdges`-derived boundaries — stays a live option, tracked
+      under "Unify the two LLM call paths"). Didn't touch synthesis at all: the `.sentence` step
+      still speaks the whole line as one `AVSpeechUtterance` (splitting it into per-word
+      utterances risked audibly worse prosody with no way for me to verify by ear, for a feature
+      whose whole premise is sounding natural — see the mangling/listening-friendly fixes above).
+      Instead, reused `LineFuriganaCache.segmentationRanges` — the exact `longestMatchEdges`
+      output already computed per line for furigana, i.e. the Read tab's own word boundaries —
+      to estimate, not measure, which word is being spoken: `SongLineCard.
+      estimatedActiveWordRange(progress:segmentationRanges:in:)` distributes
+      `SongStepperView+Listen.listenSentenceProgress` (0...1 through the active `.sentence`
+      cue's span) proportionally across each word's character count (AVSpeechSynthesizer's
+      buffer-based `write(_:toBufferCallback:)` rendering never reports real per-word timing, so
+      there's nothing exact to read). Wired into `SongLineCard.furiganaRow`'s existing
+      `KiokuCoreTextRendererView.playbackHighlightRange` — previously always `nil` for this
+      view — so the currently-estimated word lights up (accent-tinted) while the rest of the
+      line keeps its existing whole-line tint. Pure UI addition: no cache-key/renderVersion bump
+      needed since audio output is byte-for-byte unchanged. Pinned by 8 cases in
+      `SongLineCardTests.swift`.
+- [x] **Keep audio playing when the screen locks/turns off** — Investigated and completed
+      2026-09-02. Two of the three pieces the todo called for were already in place and not the
+      cause of any reported gap: `AVAudioSession` category `.playback` (gated on the existing
+      `AudioSettings.backgroundPlaybackEnabled` toggle, default on) and the `audio` background
+      mode capability (`INFOPLIST_KEY_UIBackgroundModes = audio` in the pbxproj) were both added
+      2026-05-14 (`28509f8`) and cover every playback path (`AudioPlaybackController` is the one
+      player instance used by both karaoke and Listen-along narration). What was actually missing
+      was the third piece: no `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter` wiring at all, so a
+      user who locked the screen mid-playback had no lock-screen/Control Center transport (no
+      title, no play/pause, no scrubbing) even though audio itself kept playing. Added to
+      `AudioPlaybackController.swift`: `configureRemoteCommandCenter()` (play/pause/toggle/seek
+      commands wired to the controller, registered once in `init`) and `updateNowPlayingInfo()`
+      (title/duration/elapsed-time/rate, called from `load`/`play`/`pause`/`stop`/`seek`/
+      `resetToStart`/`unload`). `load(audioURL:cues:title:)` gained a `title` param — call sites
+      in `ReadView+AudioPlayback.swift`, `ReadView+Lifecycle.swift`, and
+      `SongStepperView+Listen.swift` now pass the note's `resolvedTitle` so the lock screen shows
+      the song/note name instead of a bare "Kioku".
 - [ ] **"Find correct timestamp" repair tool for a mismatched lyric cue** — reported 2026-09-02:
       when a user flags a `SubtitleCue` whose audio doesn't match its text, offer a "search the
       song for where this line actually is" fix. A full re-song alignment pass is the wrong tool —
@@ -769,23 +800,55 @@ own sections.)
       generalize better here. Should reuse `CTCForcedAligner`/`SwiftWhisperAlign` infra rather than
       new signal-processing code. Ties into the repeated-lyric item above — the N-peak/
       occurrence-pairing idea may also improve `extractAnchors`'s occurrence-aware anchoring there.
-- [ ] **Toggle for continuing to the next song after playing a specific track** — reported
-      2026-09-03. When a specific song is played directly (not via a queue/playlist flow), add a
-      toggle for whether playback continues on to the next song afterward or stops.
-- [ ] **Fix TTS mispronunciation via a hidden-romaji channel** — reported 2026-09-03, a concrete
-      approach to the "TTS narration skips/mangles text" bug above. Kanji readings are ambiguous
-      (homographs, proper nouns, poetic/non-standard readings), so letting the TTS engine resolve
-      pronunciation from raw kanji/kana text is unreliable. Proposal: have the LLM prompt always
-      emit romaji alongside the Japanese text; the app-side response parser strips the romaji from
-      what's displayed/stored (so the visible text is unchanged), but feeds *only* the romaji to
-      the TTS engine instead of the kanji/kana — pronunciation then follows the reading the
-      segmentation/LLM already resolved, not the TTS's own guess. Related to the listening-friendly
-      prompt-style item above (same prompt, same output contract).
-- [ ] **Breakdown should gracefully skip blank lines** — reported 2026-09-03. The Breakdown view
-      needs to tolerate blank lines in the underlying lyric/note text instead of choking on them —
-      skip past them rather than erroring or rendering a broken/empty card. Not yet diagnosed;
-      check `SongBreakdownService`/`SongBreakdownParser` and the Breakdown line-rendering path for
-      where an empty line's absence of segments/gist is handled.
+- [x] **Toggle for continuing to the next song after playing a specific track** — Done
+      2026-09-03. Scoped to `SongsHomeView` → `SongStepperView`'s Listen-along (narration) flow —
+      the only place with an existing ordered list to advance through; the Read tab's raw karaoke
+      playback has no "next note" concept at all today and would need one invented from scratch
+      plus new cross-note navigation wired into `ReadView`'s already-complex lifecycle, unverifiable
+      without a device build (asked; the user picked this scope). "Next song" means the next note
+      in whatever `SongsHomeView` already lists (any note with content, matching the user's own
+      "songs = notes" usage, not just notes with an audio attachment). New `AudioSettings.
+      autoAdvanceToNextNoteEnabled` toggle ("Continue to Next Note" in Settings → Audio), default
+      off. `AudioPlaybackController` gained `onDidFinishPlayingNaturally`, fired from `timerTick`'s
+      existing natural-end-of-file branch — distinct from `playRange`'s per-line auto-pause, which
+      always calls `pause()` explicitly before reaching true EOF, so a per-line "play this line"
+      tap can never trigger it. `SongStepperView` gained an `onFinishedPlaying: ((Note) -> Void)?`
+      (nil for the Read-tab Breakdown sheet, which has no list to advance through), wired to that
+      callback in `.onAppear`. `SongsHomeView.advanceToNextNoteIfEnabled` resolves "next" from the
+      same `candidateNotes` list the screen renders and moves `selectedNote` there — the existing
+      `navigationDestination(item:)` binding rebuilds `SongStepperView` fresh for the new note,
+      identical to the user tapping that row themselves, so no new navigation-stack mechanics were
+      needed. No-op at the end of the list or if the finished note was removed mid-playback.
+- [x] **Fix TTS mispronunciation via a hidden-romaji channel** — Done 2026-09-03, adapted from
+      the proposal: the LLM already emits romaji alongside every line (`SongLine.romaji`) and
+      every word (`SongWord.sungRomaji`) — no prompt change needed to "start" emitting it. Feeding
+      *romaji itself* to the synthesizer isn't viable as proposed, though: `SongListenLanguageRuns`
+      classifies Latin script as English, so raw romaji would route to the English voice and be
+      read as English words, not spoken Japanese. Used **kana** as the hidden channel instead —
+      same goal (a pronunciation-resolved substitute the synthesizer never has to guess at), but
+      kana still classifies as Japanese so it flows through the existing per-run voice-switching
+      unchanged. `SongListenSegment` gained an optional `spokenText` field: `text` stays the
+      display/cue form (`SongLineCard`'s listen-along highlight matches against it), `spokenText`
+      is what `SongListenAudioService` actually synthesizes when present. `SongListenScript.
+      spokenReading(original:romaji:)` converts `romaji` via the existing `RomajiToKana`
+      converter (already used by the dictionary search field) and wires it into the `.sentence`
+      and `.wordSurface` steps, falling back to `original` — a pure no-op, never a regression —
+      whenever there's no romaji, `original` has embedded non-Japanese content (a mixed line per
+      prompt rule 9, where there's no per-run romaji to substitute for just the Japanese
+      portions), or the romaji doesn't convert cleanly (loanwords/proper nouns routinely contain
+      sounds outside the wāpuro table). Pinned by 4 new cases in `SongListenScriptTests.swift`.
+- [x] **Breakdown should gracefully skip blank lines** — Root-caused and fixed 2026-09-03. A
+      blank line in the source lyrics doesn't get omitted by the model — it comes back as a
+      header with nothing after the colon (`**Line N:**`), which `SongBreakdownParser` was
+      parsing into a `SongLine` with an empty `original`. Every downstream consumer that matches
+      by *text* (`SongLineCueMatcher`, `SongListenScript`) already guarded against that and
+      degraded gracefully, but `SongLineCard.originalLine` had no such guard: it renders
+      `Text(line.original)` unconditionally, so an empty-original line showed as the "broken/empty
+      card" reported — just the "Line N" label over blank padding, no text, no expandable detail.
+      Fixed at the source instead of patching every consumer: `SongBreakdownParser.parseSection`
+      now drops a header whose original is blank (after trimming) before it ever becomes a
+      `SongLine`, so no card, cue-matcher, or narration step ever sees one. Pinned by
+      `testSkipsHeaderWithBlankOriginal` in `SongBreakdownParserTests.swift`.
 
 ## Settings
 

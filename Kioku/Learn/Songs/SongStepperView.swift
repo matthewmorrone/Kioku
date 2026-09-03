@@ -30,6 +30,11 @@ struct SongStepperView: View {
     // Resolves tapped breakdown words to a dictionary entry for the lookup sheet. Optional so the
     // legacy SongsHomeView caller (no dictionary in scope) still compiles; tap-to-lookup no-ops there.
     let dictionaryStore: DictionaryStore?
+    // Called when Listen-along's track finishes playing on its own (not via a per-line stop or
+    // an explicit pause) — see SongStepperView+Listen's `onDidFinishPlayingNaturally` wiring.
+    // Nil for callers with no "next note" concept (e.g. ReadView's Breakdown sheet, which shows
+    // exactly the currently open note, not a list to advance through).
+    let onFinishedPlaying: ((Note) -> Void)?
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     // Drives the lookup sheet's save star for tapped words (globally injected at the app root).
     @EnvironmentObject private var wordsStore: WordsStore
@@ -85,12 +90,14 @@ struct SongStepperView: View {
          segmenter: (any TextSegmenting)? = nil,
          surfaceReadingData: SurfaceReadingDataMap = SurfaceReadingDataMap(),
          kanjiReadingFallback: KanjiReadingFallbackMap = KanjiReadingFallbackMap(),
-         dictionaryStore: DictionaryStore? = nil) {
+         dictionaryStore: DictionaryStore? = nil,
+         onFinishedPlaying: ((Note) -> Void)? = nil) {
         self.note = note
         self.segmenter = segmenter
         self.surfaceReadingData = surfaceReadingData
         self.kanjiReadingFallback = kanjiReadingFallback
         self.dictionaryStore = dictionaryStore
+        self.onFinishedPlaying = onFinishedPlaying
     }
 
     // MARK: - Derived state
@@ -270,6 +277,12 @@ struct SongStepperView: View {
         .onAppear {
             noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
             refreshLineDerivedState(for: displayItems)
+            // Reassigned on every appearance (harmless — same closure, same `listenPlayback`
+            // instance for this view's lifetime) so "continue to the next note" fires only
+            // once the whole track finishes on its own, never on a per-line stop.
+            listenPlayback.onDidFinishPlayingNaturally = { [note, onFinishedPlaying] in
+                onFinishedPlaying?(note)
+            }
         }
         // Loads the note's SRT cues (if it has audio) so each line can be matched to its sung
         // range for the listen-along render. No attachment, no file, or no cues are all the
@@ -461,6 +474,7 @@ struct SongStepperView: View {
                             playState: cardPlayState(for: item.line),
                             phase: item.phase,
                             listenHighlight: activeListenSegment?.lineIndex == item.line.index ? activeListenSegment : nil,
+                            listenSentenceProgress: activeListenSegment?.lineIndex == item.line.index ? listenSentenceProgress : nil,
                             onToggleExpansion: { toggleExpansion(for: item.line) },
                             onPlayLine: {
                                 switch cardPlayState(for: item.line) {
