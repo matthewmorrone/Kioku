@@ -769,6 +769,23 @@ own sections.)
       generalize better here. Should reuse `CTCForcedAligner`/`SwiftWhisperAlign` infra rather than
       new signal-processing code. Ties into the repeated-lyric item above — the N-peak/
       occurrence-pairing idea may also improve `extractAnchors`'s occurrence-aware anchoring there.
+- [ ] **Toggle for continuing to the next song after playing a specific track** — reported
+      2026-09-03. When a specific song is played directly (not via a queue/playlist flow), add a
+      toggle for whether playback continues on to the next song afterward or stops.
+- [ ] **Fix TTS mispronunciation via a hidden-romaji channel** — reported 2026-09-03, a concrete
+      approach to the "TTS narration skips/mangles text" bug above. Kanji readings are ambiguous
+      (homographs, proper nouns, poetic/non-standard readings), so letting the TTS engine resolve
+      pronunciation from raw kanji/kana text is unreliable. Proposal: have the LLM prompt always
+      emit romaji alongside the Japanese text; the app-side response parser strips the romaji from
+      what's displayed/stored (so the visible text is unchanged), but feeds *only* the romaji to
+      the TTS engine instead of the kanji/kana — pronunciation then follows the reading the
+      segmentation/LLM already resolved, not the TTS's own guess. Related to the listening-friendly
+      prompt-style item above (same prompt, same output contract).
+- [ ] **Breakdown should gracefully skip blank lines** — reported 2026-09-03. The Breakdown view
+      needs to tolerate blank lines in the underlying lyric/note text instead of choking on them —
+      skip past them rather than erroring or rendering a broken/empty card. Not yet diagnosed;
+      check `SongBreakdownService`/`SongBreakdownParser` and the Breakdown line-rendering path for
+      where an empty line's absence of segments/gist is handled.
 
 ## Settings
 
