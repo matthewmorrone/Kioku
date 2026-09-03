@@ -16,6 +16,12 @@ final class AudioPlaybackController: NSObject, ObservableObject {
     // rhythm signal — louder samples pulse bigger. Set to 0 when paused/stopped so visuals can
     // react to the playback state without an additional gate.
     @Published var audioLevel: Double = 0
+    // Fired when AVAudioPlayer stops on its own having reached the end of the file — distinct
+    // from an explicit `pause()`/`stop()` call (including `playRange`'s scheduled auto-pause at
+    // a line's end, which always calls `pause()` before the player would reach true EOF). Used
+    // by SongStepperView to know when a full listen-along track — not just one line's clip —
+    // has finished, for the "continue to the next note" setting.
+    var onDidFinishPlayingNaturally: (() -> Void)? = nil
 
     private var player: AVAudioPlayer?
     var cues: [SubtitleCue] = []
@@ -369,6 +375,7 @@ final class AudioPlaybackController: NSObject, ObservableObject {
             stopTimer()
             activeCueIndex = nil
             audioLevel = 0
+            onDidFinishPlayingNaturally?()
             return
         }
 

@@ -803,9 +803,25 @@ own sections.)
       generalize better here. Should reuse `CTCForcedAligner`/`SwiftWhisperAlign` infra rather than
       new signal-processing code. Ties into the repeated-lyric item above — the N-peak/
       occurrence-pairing idea may also improve `extractAnchors`'s occurrence-aware anchoring there.
-- [ ] **Toggle for continuing to the next song after playing a specific track** — reported
-      2026-09-03. When a specific song is played directly (not via a queue/playlist flow), add a
-      toggle for whether playback continues on to the next song afterward or stops.
+- [x] **Toggle for continuing to the next song after playing a specific track** — Done
+      2026-09-03. Scoped to `SongsHomeView` → `SongStepperView`'s Listen-along (narration) flow —
+      the only place with an existing ordered list to advance through; the Read tab's raw karaoke
+      playback has no "next note" concept at all today and would need one invented from scratch
+      plus new cross-note navigation wired into `ReadView`'s already-complex lifecycle, unverifiable
+      without a device build (asked; the user picked this scope). "Next song" means the next note
+      in whatever `SongsHomeView` already lists (any note with content, matching the user's own
+      "songs = notes" usage, not just notes with an audio attachment). New `AudioSettings.
+      autoAdvanceToNextNoteEnabled` toggle ("Continue to Next Note" in Settings → Audio), default
+      off. `AudioPlaybackController` gained `onDidFinishPlayingNaturally`, fired from `timerTick`'s
+      existing natural-end-of-file branch — distinct from `playRange`'s per-line auto-pause, which
+      always calls `pause()` explicitly before reaching true EOF, so a per-line "play this line"
+      tap can never trigger it. `SongStepperView` gained an `onFinishedPlaying: ((Note) -> Void)?`
+      (nil for the Read-tab Breakdown sheet, which has no list to advance through), wired to that
+      callback in `.onAppear`. `SongsHomeView.advanceToNextNoteIfEnabled` resolves "next" from the
+      same `candidateNotes` list the screen renders and moves `selectedNote` there — the existing
+      `navigationDestination(item:)` binding rebuilds `SongStepperView` fresh for the new note,
+      identical to the user tapping that row themselves, so no new navigation-stack mechanics were
+      needed. No-op at the end of the list or if the finished note was removed mid-playback.
 - [x] **Fix TTS mispronunciation via a hidden-romaji channel** — Done 2026-09-03, adapted from
       the proposal: the LLM already emits romaji alongside every line (`SongLine.romaji`) and
       every word (`SongWord.sungRomaji`) — no prompt change needed to "start" emitting it. Feeding

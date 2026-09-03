@@ -34,6 +34,7 @@ struct SettingsView: View {
     @AppStorage(TypographySettings.furiganaSizeKey) private var furiganaSize = TypographySettings.defaultFuriganaSize
     @AppStorage(LyricsHighlightGranularity.storageKey) private var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
+    @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) private var autoAdvanceToNextNote: Bool = AudioSettings.defaultAutoAdvanceToNextNote
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
     @AppStorage(DictionarySettings.includeArchaicReadingsKey) private var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
     @AppStorage(DictionarySettings.showJapaneseInPopoverKey) private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
@@ -289,6 +290,7 @@ struct SettingsView: View {
                                 ? Color.accentColor.opacity(0.15)
                                 : nil
                         )
+                    Toggle("Continue to Next Note", isOn: $autoAdvanceToNextNote)
                 } header: {
                     Text("Audio")
                 }
