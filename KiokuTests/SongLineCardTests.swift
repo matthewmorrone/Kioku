@@ -6,6 +6,7 @@ import XCTest
 // narrated line can highlight the word being spoken instead of just the whole line.
 // AVSpeechSynthesizer's buffer-based rendering never reports real per-word timing, so this is
 // a proportional-by-character-count estimate, not measured timing.
+@MainActor
 final class SongLineCardTests: XCTestCase {
     // "君" (1) / "の" (1) / "名前" (2) — total length 4, so each single-character word covers
     // a 0.25 slice of progress and the two-character word covers the remaining 0.5.

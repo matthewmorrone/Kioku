@@ -10,6 +10,7 @@ import XCTest
 // draw(_:) centered the wider ちから partly outside `bounds`, where UIKit content is silently
 // discarded -- the same class of clipping FuriganaViewTests' sibling fix
 // (measuredLineHeight) addressed vertically.
+@MainActor
 final class FuriganaViewTests: XCTestCase {
     private func furiganaWidth(of text: String, baseFontSize: CGFloat) -> CGFloat {
         let furiganaFont = UIFont.systemFont(ofSize: baseFontSize * TypographySettings.furiganaSizeFactor)

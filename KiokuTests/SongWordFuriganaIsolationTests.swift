@@ -14,6 +14,7 @@ import XCTest
 // edge instead of re-segmenting it. Uses the real production segmenter/dictionary (via
 // TestReadResources), same as SavedGlowLemmaBridgeTests, since this is a real trie/cost-model
 // behavior, not something a stub segmenter could reproduce.
+@MainActor
 final class SongWordFuriganaIsolationTests: XCTestCase {
     private func surfaceReadingData() throws -> SurfaceReadingDataMap {
         let resources = try TestReadResources.shared()
