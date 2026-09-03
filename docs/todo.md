@@ -696,26 +696,20 @@ own sections.)
       section after the instrumental gap. ♪ interludes are real `SubtitleCue` rows with genuine
       `startMs`/`endMs` (`Kioku/Read/Audio/SubtitleCue.swift`), not separate widgets, so a line
       on the wrong side of the ♪ is a timing/order mismatch relative to the interlude cue —
-      likely the Re-align pass assigns a line to the wrong side of a long inter-vocal gap.
-      Would be auto-caught by the never-highlighted diagnostic below.
-- [ ] **Alignment-quality diagnostic: detect never-highlighted / un-reachable cues** — from
-      app-usage triage 2026-07-03 (`docs/app-usage-issues.md` #4). Today nothing detects a cue
-      that never becomes the active/highlighted line during playback, though the data supports
-      it. Active line = `AudioPlaybackController.resolveActiveCue(atMs:)`
-      (`Kioku/Read/Audio/AudioPlaybackController.swift:369`): scans the playhead against each
-      cue's half-open `[startMs, endMs)` range, taking the **first** match, with a fallback
-      chain (next upcoming → last-ended → previously active). A cue is un-highlightable two
-      ways, both expressible today with no guard: (1) **zero/negative duration**
-      (`startMs >= endMs`) — empty interval, playhead can never be inside; `normalizeTiming`
-      (`Kioku/Read/Audio/SubtitleEditorTimingTools.swift:51`) does not enforce a minimum
-      positive duration, so such a cue survives import; (2) **shadowed** — `firstIndex` means a
-      cue fully covered by an earlier cue is never returned as current. Caveat: the
-      `nextCue`/`previousCue` fallback can make even a degenerate cue *flash* transiently, so
-      "never the contains-playhead winner" ≠ "never visibly lights up" — a diagnostic must be
-      precise about which it reports. Proposed: simulate `resolveActiveCue` across the full
-      timeline (or just check `startMs >= endMs` + coverage/overlap) and surface cues never
-      chosen as active; this auto-catches the interlude-ordering bug above and any mis-timed /
-      orphan line. Ship as an editor/QA check (not necessarily user-facing).
+      likely the Re-align pass assigns a line to the wrong side of a long inter-vocal gap. The
+      never-highlighted diagnostic below now ships and would flag this exact case in the
+      Subtitle Editor (a misplaced line typically becomes `.shadowed`) — but it only surfaces
+      the symptom for a human to notice, it doesn't fix the Re-align pass itself. Still open;
+      not attempted here (touching the aligner blind has regressed a different song before, per
+      "Lyric-alignment: repeated-lyric disambiguation" above).
+- [x] **Alignment-quality diagnostic: detect never-highlighted / un-reachable cues** — Already
+      done, found already shipped while triaging this list 2026-09-03 (this checkbox was just
+      stale): `CueReachabilityDiagnostic.swift` (`8308f05`, "flag cues that can never highlight
+      during playback") implements exactly the proposed check — the empty-interval case plus a
+      proper interval-coverage sweep for the shadowed case (handles a cue shadowed by the
+      *union* of several earlier cues, not just a single fully-covering one) — and is live in
+      `SubtitleEditorSheet`'s toolbar as a warning triangle with a count, with its own test file
+      (`CueReachabilityDiagnosticTests.swift`). Nothing to build.
 - [x] **TTS narration skips/mangles text** — Root-caused and fixed 2026-09-02. Both halves
       pinned down (the "repro not found" note below is now moot): (1) "pattern to bank" was never
       voiced because `SongListenScript.build` had no step for the pattern-bank note at all — it's
