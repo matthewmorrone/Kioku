@@ -421,11 +421,6 @@ struct LyricsView: View {
                         playbackHighlightRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                         selectionHighlightColor: .clear,
                         playbackHighlightColor: Self.activeWordHighlightColor,
-                        // Overrides the highlighted range's glyph color so it never has to
-                        // compete with whatever semantic token color (red vocab, blue, etc.)
-                        // it already had — see activeWordForegroundColor's doc comment above.
-                        accentTextRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
-                        accentTextColor: Self.activeWordForegroundColor,
                         // Dim is gated on alignment-coverage: when forced-alignment
                         // checkpoints don't reach near the cue end, we pass nil
                         // (renderer leaves the whole line at full alpha) rather than
@@ -446,6 +441,11 @@ struct LyricsView: View {
                         savedLearnedHighlightColor: resolvedSavedLearnedHighlightColor,
                         savedNotLearnedSegmentLocations: rebaseIntoCue(savedNotLearnedSegmentLocations, cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                         savedNotLearnedHighlightColor: resolvedSavedNotLearnedHighlightColor,
+                        // Overrides the highlighted range's glyph color so it never has to
+                        // compete with whatever semantic token color (red vocab, blue, etc.)
+                        // it already had — see activeWordForegroundColor's doc comment above.
+                        accentTextRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
+                        accentTextColor: Self.activeWordForegroundColor,
                         debugFlags: KiokuDebugOverlayView.Flags(),
                         illegalMergeLocation: nil,
                         onSegmentTapped: { localLocation, rect, _ in

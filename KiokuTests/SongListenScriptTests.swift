@@ -5,6 +5,7 @@ import XCTest
 // went wrong in the 2026-09-02 narration bugs: the pattern-bank note was silently dropped
 // from the script entirely, and "/"-separated alternatives in a gist/definition were left
 // for AVSpeechSynthesizer to read as the literal word "slash".
+@MainActor
 final class SongListenScriptTests: XCTestCase {
     private func line(
         index: Int = 1,
