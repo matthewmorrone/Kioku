@@ -70,21 +70,37 @@ final class MergedCorrectionBreakdownService {
         }
 
         let provider = LLMSettings.activeProvider()
+        let system = Self.systemPrompt
+        let user = Self.userMessage(noteContent: noteContent, compactInput: compactInput)
+        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
+            ?? LLMSettings.defaultTemperature
+
         // Same restriction SongBreakdownService applies: the breakdown half of this prompt is
-        // too wide for Apple Intelligence's on-device model to reliably produce. Checked before
-        // the API-key guard for the same reason SongBreakdownService checks it there — Apple
-        // Intelligence needs no key, so the key guard would otherwise misreport "not configured".
+        // too wide for Apple Intelligence's small on-device model to reliably produce. Private
+        // Cloud Compute (iOS 27+) is a full-size cloud-hosted model reached through the same
+        // FoundationModels session API, so it isn't subject to that limitation — route there
+        // when available, and only throw the "unsupported" error when this device has no PCC
+        // access. Checked before the API-key guard for the same reason SongBreakdownService
+        // checks it there — Apple Intelligence needs no key, so the key guard would otherwise
+        // misreport "not configured".
         if provider == .appleIntelligence {
+            #if canImport(FoundationModels)
+            if #available(iOS 27.0, *), PrivateCloudComputeAvailability.isAvailable {
+                let raw = try await PrivateCloudComputeMergedBreakdownClient.generate(
+                    systemPrompt: system,
+                    userMessage: user,
+                    temperature: temperature,
+                    onPartialLines: onPartialLines
+                )
+                return try Self.parseCombined(raw, provider: .appleIntelligence)
+            }
+            #endif
             throw SongBreakdownError.appleIntelligenceUnsupported
         }
         guard let apiKey = LLMSettings.activeAPIKey() else {
             throw SongBreakdownError.noKeyConfigured
         }
 
-        let system = Self.systemPrompt
-        let user = Self.userMessage(noteContent: noteContent, compactInput: compactInput)
-        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-            ?? LLMSettings.defaultTemperature
         let onDelta = Self.makeDeltaHandler(onPartialLines: onPartialLines)
 
         // Larger max_tokens than SongBreakdownService's 8192: this response has to carry a
