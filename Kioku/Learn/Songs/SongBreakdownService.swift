@@ -79,15 +79,43 @@ final class SongBreakdownService {
         }
 
         let provider = LLMSettings.activeProvider()
-        // Song breakdown doesn't yet support on-device generation — the structured-output
-        // prompt is wide enough that Apple Intelligence's small model can't reliably produce
-        // it. Checked BEFORE the API-key guard below: Apple Intelligence needs no key by
-        // design (LLMSettings.apiKey(for:) always returns nil for it), so without this check
-        // that guard would fire first and claim "No LLM is configured" — false, since one IS
-        // configured, it's just unsupported for this one feature. Throw the distinct,
-        // accurate error instead.
+        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
+            ?? LLMSettings.defaultTemperature
+        // The small on-device model can't reliably produce this feature's wide structured-
+        // output prompt, but Private Cloud Compute (iOS 27+) — Apple Intelligence's cloud-
+        // hosted model, reached through the same FoundationModels session API — is a full-size
+        // model and isn't subject to that limitation. Route there when available; only throw
+        // the distinct "unsupported" error when this device has no PCC access, so devices
+        // without it keep today's clear message instead of a confusing on-device failure.
+        // Checked BEFORE the API-key guard below: Apple Intelligence needs no key by design
+        // (LLMSettings.apiKey(for:) always returns nil for it), so without this check that
+        // guard would fire first and claim "No LLM is configured" — false, since one IS
+        // configured, it just needs PCC instead of an API key.
         if provider == .appleIntelligence {
-            NSLog("[SongBreakdown] Apple Intelligence selected but unsupported for breakdown — throwing appleIntelligenceUnsupported")
+            #if canImport(FoundationModels)
+            if #available(iOS 27.0, *), PrivateCloudComputeAvailability.isAvailable {
+                NSLog("[SongBreakdown] dispatching to Private Cloud Compute")
+                let httpStart = Date()
+                let raw = try await PrivateCloudComputeBreakdownClient.generate(
+                    lyrics: lyrics,
+                    temperature: temperature,
+                    onPartialLines: onPartialLines
+                )
+                NSLog("[SongBreakdown] Private Cloud Compute stream completed chars=%d duration=%.2fs — parsing",
+                      raw.count, Date().timeIntervalSince(httpStart))
+                let lines = try parser.parse(markdown: raw)
+                NSLog("[SongBreakdown] parsed lines=%d totalDuration=%.2fs",
+                      lines.count, Date().timeIntervalSince(startedAt))
+                return SongBreakdown(
+                    noteID: noteID,
+                    sourceTextHash: hash,
+                    generatedAt: Date(),
+                    provider: .appleIntelligence,
+                    lines: lines
+                )
+            }
+            #endif
+            NSLog("[SongBreakdown] Apple Intelligence selected but Private Cloud Compute unavailable — throwing appleIntelligenceUnsupported")
             throw SongBreakdownError.appleIntelligenceUnsupported
         }
         guard let apiKey = LLMSettings.activeAPIKey() else {
@@ -95,8 +123,6 @@ final class SongBreakdownService {
             throw SongBreakdownError.noKeyConfigured
         }
 
-        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-            ?? LLMSettings.defaultTemperature
         let onDelta = makeDeltaHandler(onPartialLines: onPartialLines)
         NSLog("[SongBreakdown] dispatching to %@ temperature=%.2f", provider.rawValue, temperature)
         let httpStart = Date()

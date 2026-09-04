@@ -26,6 +26,14 @@ struct LyricsView: View {
     // Current granularity setting, surfaced for the HUD. Per-cue checkpoints now ride on each cue
     // (cue.checkpoints) rather than a separate dictionary.
     let granularity: LyricsHighlightGranularity
+    // A second, independent @AppStorage binding to the SAME key `granularity` reads (ReadView's
+    // own @AppStorage, one level up) — `granularity` is a `let` so it can't be toggled from here;
+    // this one can, and SwiftUI's @AppStorage instances sharing a key stay in sync automatically,
+    // the same way SettingsView's Picker already does this independently. Backs the quick Word/
+    // Sentence toggle in reAlignBar() — a faster path than Settings for something you're likely
+    // to flip mid-listen while judging alignment quality.
+    // Not private: reAlignBar() (LyricsView+AlignmentFix.swift, a different file) reads/writes it.
+    @AppStorage(LyricsHighlightGranularity.storageKey) var quickGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     // Saved Highlight, in noteText UTF-16 coords — same signal as ReadView+Editor's
     // properties of the same name (resolved via resolvedDictionaryEntry(forSurface:), the
     // single canonical entry-ID resolution shared with the lookup sheet's button). Rebased to

@@ -145,24 +145,11 @@ extension ReadView {
         }
 
         do {
-            // Use an existing model, or download the default one automatically.
-            let modelURL: URL
-            if let existing = OnDeviceLyricAligner.bestAvailableModelURL() {
-                modelURL = existing
-            } else {
-                lyricAlignmentProgressMessage = "Downloading Whisper model (142 MB)..."
-                modelURL = try await OnDeviceLyricAligner.downloadDefaultModel { [self] message in
-                    lyricAlignmentProgressMessage = message
-                }
-            }
-
-            print("[LyricAlignment] using on-device model: \(modelURL.lastPathComponent)")
             lyricAlignmentProgressMessage = "Aligning..."
 
             let srtText = try await OnDeviceLyricAligner.align(
                 audioURL: sourceURL,
                 lyrics: trimmedLyrics,
-                modelURL: modelURL,
                 cancellationCheck: { [token = alignmentCancellationToken] in token.isCancelled },
                 // Show the pipeline's own per-phase status ("Isolating vocals… 73%",
                 // "Aligning lyrics… 45%") so the percentage tracks the ACTUAL current phase at its
@@ -250,11 +237,6 @@ extension ReadView {
             cueRealignErrorMessage = "Add lyrics to the note before re-aligning."
             return
         }
-        guard let modelURL = OnDeviceLyricAligner.bestAvailableModelURL() else {
-            cueRealignErrorMessage = "Download a Whisper model in Settings → Whisper Models to re-align on device."
-            return
-        }
-
         let totalLines = lyrics
             .components(separatedBy: "\n")
             .filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
@@ -275,7 +257,6 @@ extension ReadView {
             let result = try await OnDeviceLyricAligner.alignDetailed(
                 audioURL: audioURL,
                 lyrics: lyrics,
-                modelURL: modelURL,
                 cancellationCheck: { [token = alignmentCancellationToken] in token.isCancelled },
                 // The stage string already carries its own per-phase percent
                 // ("Isolating vocals… 73%", "Aligning lyrics… 45%"), so each phase shows

@@ -28,6 +28,8 @@ let package = Package(
                 // FireRedVAD: voice-activity detection to gate alignment to the sung segments
                 // (skips instrumental gaps, sets window boundaries at vocal pauses).
                 .product(name: "SpeechVAD", package: "speech-swift"),
+                // AlignedWord (the CTC aligner's per-word result type) lives here.
+                .product(name: "AudioCommon", package: "speech-swift"),
                 .product(name: "MLX", package: "mlx-swift"),
             ],
             swiftSettings: [

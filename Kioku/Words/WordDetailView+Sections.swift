@@ -77,30 +77,42 @@ extension WordDetailView {
                     // Each gloss renders as a smaller bordered sub-card; tapping one
                     // toggles a gloss-level selection. Mutual exclusion is enforced in
                     // the toggle handlers (see toggleSenseSelection / toggleGlossSelection).
-                    ForEach(sortedData, id: \.entry.entryId) { data in
-                        if data.entry.senses.isEmpty == false {
-                            // Frequency tier is intentionally NOT shown per card — it's a
-                            // surface-level statistic surfaced once in the header
-                            // (headerFrequencyLabel). See senseHeaderStrip.
-                            let isSavedEntry = data.entry.entryId == activeEntryID
-                            ForEach(Array(data.entry.senses.enumerated()), id: \.offset) { idx, sense in
-                                let senseRefs = isSavedEntry
-                                    ? senseReferences.filter { $0.senseOrderIndex == idx }
-                                    : []
-                                let senseSentences = data.sentencesBySenseID[sense.senseID] ?? []
-                                senseCard(
-                                    sense: sense,
-                                    entryID: data.entry.entryId,
-                                    isSavedEntry: isSavedEntry,
-                                    refs: senseRefs,
-                                    sentences: senseSentences
-                                )
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                                // Scroll anchor so a homonym re-point can bring this card into view.
-                                .id("def-\(data.entry.entryId)-\(idx)")
-                            }
+                    //
+                    // Flattened across entries (rather than nested ForEach per entry) so one
+                    // cap/expand toggle covers the whole section — light verbs like する carry
+                    // dozens of senses on a single entry that would otherwise push every other
+                    // section off the initial screen.
+                    let allRows = sortedData.flatMap { data -> [(entryID: Int64, isSavedEntry: Bool, idx: Int, sense: DictionaryEntrySense, refs: [SenseReference], sentences: [SentencePair])] in
+                        let isSavedEntry = data.entry.entryId == activeEntryID
+                        return data.entry.senses.enumerated().map { idx, sense in
+                            let senseRefs = isSavedEntry
+                                ? senseReferences.filter { $0.senseOrderIndex == idx }
+                                : []
+                            let senseSentences = data.sentencesBySenseID[sense.senseID] ?? []
+                            return (data.entry.entryId, isSavedEntry, idx, sense, senseRefs, senseSentences)
                         }
+                    }
+                    let senseCap = 5
+                    let shownRows = definitionsExpanded ? allRows : Array(allRows.prefix(senseCap))
+                    ForEach(Array(shownRows.enumerated()), id: \.offset) { _, row in
+                        senseCard(
+                            sense: row.sense,
+                            entryID: row.entryID,
+                            isSavedEntry: row.isSavedEntry,
+                            refs: row.refs,
+                            sentences: row.sentences
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        // Scroll anchor so a homonym re-point can bring this card into view.
+                        .id("def-\(row.entryID)-\(row.idx)")
+                    }
+                    if allRows.count > senseCap {
+                        Button(definitionsExpanded ? "Show fewer" : "Show \(allRows.count - senseCap) more…") {
+                            definitionsExpanded.toggle()
+                        }
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
                     }
                 }
             }

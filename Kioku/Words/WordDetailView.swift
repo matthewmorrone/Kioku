@@ -64,6 +64,10 @@ struct WordDetailView: View {
     @State var personalNoteText: String = ""
     // Not private: read/written by wordDetailMetadataSections's Examples section.
     @State var sentencesExpanded: Bool = false
+    // Not private: read/written by wordDetailDefinitionSections's Definition section.
+    // Caps senses shown per entry — light verbs like する carry dozens of senses that would
+    // otherwise push every other section off the initial screen.
+    @State var definitionsExpanded: Bool = false
     // Not private: read/written by wordDetailMetadataSections's Related Words section.
     @State var relatedExpanded: Bool = false
     // Not private: read/written by wordDetailMetadataSections's Kanji section.

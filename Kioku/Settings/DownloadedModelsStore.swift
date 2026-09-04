@@ -1,11 +1,13 @@
 // DownloadedModelsStore.swift
 //
-// Measures and deletes the on-device speech models that live OUTSIDE Library/Caches (see
-// CachesCleaner's header for why): the Qwen3 ASR + forced-aligner weights and the HTDemucs
-// vocal isolator, all rooted under Application Support/SpeechModels ([[ModelStorage]]) so iOS
-// won't purge them under storage pressure. "Clear Caches" deliberately doesn't touch these —
-// this is the counterpart for a user who explicitly wants the space back, at the cost of a
-// re-download next time the corresponding feature (alignment, bulk-import transcription) runs.
+// Measures and deletes the on-device speech models — plus the isolated vocal stems they
+// produce — that live OUTSIDE Library/Caches (see CachesCleaner's header for why): the Qwen3
+// ASR + forced-aligner weights and the HTDemucs vocal isolator under Application
+// Support/SpeechModels ([[ModelStorage]]), and cached stems under Application
+// Support/VocalStems ([[VocalStemCache]]) — none of which iOS will purge under storage
+// pressure. "Clear Caches" deliberately doesn't touch these — this is the counterpart for a
+// user who explicitly wants the space back, at the cost of a re-download (models) or
+// re-isolation (stems) next time the corresponding feature runs.
 
 import Foundation
 import SwiftWhisperAlign
@@ -21,11 +23,26 @@ nonisolated enum DownloadedModelsStore {
         sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.forcedAlignerModelId))
     }
 
-    // Sums the primary Application Support copy and the legacy Documents sideload (see
-    // HTDemucsModelStore's diagnostic-fallback comment) — a user could have either, or both,
-    // on disk depending on which app version first downloaded it.
+    // Sums every on-disk copy of the vocal isolator a user could have, depending on which app
+    // version first downloaded it: the CoreML .mlmodelc (HTDemucsModelStore, its own legacy
+    // Documents sideload), and the MLX HTDemucs-FT weights (the active path as of the A19 Pro
+    // retry — see CTCForcedAligner's isolation call site).
     static func htDemucsSizeBytes() -> Int {
-        sizeBytes(at: try? ModelStorage.directory(for: HTDemucsModelStore.modelId)) + sizeBytes(at: legacyHTDemucsURL())
+        sizeBytes(at: try? ModelStorage.directory(for: HTDemucsModelStore.modelId))
+            + sizeBytes(at: legacyHTDemucsURL())
+            + sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.htDemucsFTModelId))
+    }
+
+    // On-disk size of the cached isolated vocal stems (VocalStemCache), or 0 if empty. Moved out
+    // of Library/Caches into Application Support — see VocalStemCache's header — so, like the
+    // models above, it needs its own reclaim path since "Clear Caches" no longer covers it.
+    static func vocalStemsSizeBytes() -> Int {
+        sizeBytes(at: VocalStemCache.directoryForStorageManagement())
+    }
+
+    // Deletes every cached isolated vocal stem. No-op if nothing is cached.
+    static func deleteVocalStems() {
+        VocalStemCache.deleteAll()
     }
 
     // Deletes the downloaded Qwen3-ASR weights. No-op if nothing is downloaded.
@@ -38,13 +55,13 @@ nonisolated enum DownloadedModelsStore {
         removeContents(of: try? ModelStorage.directory(for: ModelStorage.forcedAlignerModelId))
     }
 
-    // Deletes the downloaded HTDemucs vocal isolator — both the primary Application Support
-    // copy and the legacy Documents sideload, if either is present.
+    // Deletes every on-disk copy of the HTDemucs vocal isolator (see htDemucsSizeBytes).
     static func deleteHTDemucs() {
         removeContents(of: try? ModelStorage.directory(for: HTDemucsModelStore.modelId))
         if let legacyURL = legacyHTDemucsURL() {
             try? FileManager.default.removeItem(at: legacyURL)
         }
+        removeContents(of: try? ModelStorage.directory(for: ModelStorage.htDemucsFTModelId))
     }
 
     // The legacy Documents/HTDemucsSpec.mlmodelc sideload path (see HTDemucsModelStore's

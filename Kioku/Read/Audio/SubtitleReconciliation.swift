@@ -218,7 +218,6 @@ enum SubtitleReconciliation {
         audioURL: URL,
         currentCues: [SubtitleCue],
         noteLines: [String],
-        modelURL: URL,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onProgress: (@Sendable (String) -> Void)? = nil
     ) async throws -> [SubtitleCue] {
@@ -270,7 +269,6 @@ enum SubtitleReconciliation {
                 let srt = try await OnDeviceLyricAligner.align(
                     audioURL: sliceURL,
                     lyrics: lyrics,
-                    modelURL: modelURL,
                     cancellationCheck: { cancellationCheck?() == true }
                 )
                 alignedCues = SubtitleParser.parse(srt)
