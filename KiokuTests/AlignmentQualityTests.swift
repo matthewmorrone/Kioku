@@ -125,16 +125,6 @@ final class AlignmentQualityTests: XCTestCase {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { $0.isEmpty == false && SubtitleParser.isNonSpeechCue($0) == false }
 
-        // Resolve a Whisper model — same pathway as the in-app reconcile uses.
-        let modelURL: URL
-        if let existing = OnDeviceLyricAligner.bestAvailableModelURL() {
-            modelURL = existing
-        } else {
-            modelURL = try await OnDeviceLyricAligner.downloadDefaultModel { message in
-                print("[QualityTest] model prep: \(message)")
-            }
-        }
-
         // Compute BEFORE metrics if we have a starting SRT — shows how far off
         // the input is from oracle. Then run the in-app reconcile (the exact
         // function the editor sheet calls) to compute AFTER metrics. The user-
@@ -163,7 +153,6 @@ final class AlignmentQualityTests: XCTestCase {
             audioURL: audioURL,
             currentCues: startingCues,
             noteLines: noteLines,
-            modelURL: modelURL,
             cancellationCheck: { false },
             onProgress: { _ in /* test ignores progress UI */ }
         )

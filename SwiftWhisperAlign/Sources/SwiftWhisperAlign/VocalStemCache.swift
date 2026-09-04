@@ -1,15 +1,21 @@
 // VocalStemCache.swift
 //
-// On-disk cache for isolated vocal stems. Vocal isolation (the HTDemucs CoreML pass in
-// CTCForcedAligner) is the most expensive and memory-hungry stage of alignment — several
-// seconds and the jetsam cliff on the A17 — yet the isolated stem is a *pure function* of the
-// source audio. Caching it lets every Re-align of unchanged audio skip both the stereo decode
-// and the isolation, dropping straight into the (cheap) trim/VAD/align stages.
+// On-disk cache for isolated vocal stems. Vocal isolation (HTDemucs-FT in CTCForcedAligner) is
+// the most expensive stage of alignment — minutes, not seconds — yet the isolated stem is a
+// *pure function* of the source audio. Caching it lets every Re-align of unchanged audio skip
+// both the stereo decode and the isolation, dropping straight into the (cheap) trim/VAD/align
+// stages.
 //
 // Format: raw little-endian Float32 mono @ 44.1 kHz (exactly the buffer HTDemucs returns), so
 // the round-trip is a byte-for-byte reinterpret — no WAV header to parse, no 16-bit
-// quantization. Stored under <Caches>/VocalStems so the OS can reclaim it under storage
-// pressure (it's regenerable) and it never inflates iCloud backup or the Files-app view.
+// quantization. Stored under Application Support/VocalStems (NOT Caches, despite being
+// regenerable): a Caches-resident stem was observed getting wiped across ordinary dev-reinstall
+// cycles on a nearly-empty 512 GB device — nowhere near genuine storage pressure — so Caches'
+// "OS may purge any time" contract was costing a real ~3.5 min HTDemucs-FT re-isolation on
+// every rebuild during testing, and would just as well bite a real user's low-storage moment.
+// `enforceBudget` (below) is the self-imposed cap that Caches used to give us for free; marked
+// excluded from iCloud backup (Application Support IS backed up by default, unlike Caches) so a
+// multi-hundred-MB regenerable cache doesn't burn the user's iCloud quota.
 //
 // Keyed by (filename, byte size): app audio is UUID-named so cross-song collisions are
 // impossible, and content-distinct audio essentially always differs in byte size, so a
@@ -34,15 +40,19 @@ public enum VocalStemCache {
     // Upper bound on what the stem cache may occupy on disk. The cache was previously UNBOUNDED —
     // every aligned song left a ~18 MB .f32 (plus a derived .wav) forever, reaching multiple GB on
     // a well-used device. 500 MB keeps ~25 recent songs' stems for instant Re-align while capping
-    // the growth. `Caches/` is OS-purgeable, but iOS only reclaims it under severe pressure, far too
-    // late — this enforces the bound ourselves, on launch and after every store.
+    // the growth. Now that this lives in Application Support (not Caches), the OS won't reclaim
+    // it at all on its own — this bound is the only thing keeping it from growing unbounded again.
     public static let maxBytes = 500 * 1024 * 1024
 
-    // <Caches>/VocalStems, created on demand. nil only if the caches directory is unavailable.
+    // Application Support/VocalStems, created on demand and excluded from iCloud backup (see the
+    // header comment for why this isn't Caches). nil only if Application Support is unavailable.
     private static func cacheDir() -> URL? {
-        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
-        let dir = caches.appendingPathComponent("VocalStems", isDirectory: true)
+        guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        var dir = support.appendingPathComponent("VocalStems", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? dir.setResourceValues(values)
         return dir
     }
 
@@ -82,6 +92,19 @@ public enum VocalStemCache {
     // is built from. Lets a SIBLING cache (e.g. the resumable anchor-transcript cache) key off the
     // exact same audio identity, so its entry is shared across attachment vs. temp-copy paths too.
     public static func identityKey(for audioURL: URL) -> String { fnv1a(contentKey(for: audioURL)) }
+
+    // The stem cache's on-disk directory, for Settings' storage-management UI to measure and
+    // reclaim — now that it lives in Application Support, "Clear Caches" no longer sweeps it,
+    // so this is the only way a user gets that space back short of `deleteAll`.
+    public static func directoryForStorageManagement() -> URL? { cacheDir() }
+
+    // Deletes every cached stem (and any derived .wav). No-op if nothing is cached yet.
+    public static func deleteAll() {
+        guard let dir = cacheDir(),
+              let entries = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+        else { return }
+        for url in entries { try? FileManager.default.removeItem(at: url) }
+    }
 
     // [DEBUG] Reports the computed cache filename, the source byte size, and whether a cache file
     // is present — so the harness can read the exact key off the breadcrumb and seed it precisely

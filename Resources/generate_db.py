@@ -1661,7 +1661,15 @@ def materialize_surface_readings(conn):
             reading TEXT NOT NULL,
             best_rank INTEGER NOT NULL,
             jpdb_rank INTEGER,
-            wordfreq_zipf REAL
+            wordfreq_zipf REAL,
+            -- 1 when this exact (surface, reading) pair has its OWN kanji_kana_links.jpdb_rank
+            -- (a real, directly-measured rank for this specific reading), 0 when jpdb_rank above
+            -- is only inherited from the entry's headword rank (er.rank) because the pair itself
+            -- was never ranked. jpdb_rank alone can't tell these apart (both cases end up with a
+            -- non-NULL, entry-shared value) — see the ORDER BY below for why that distinction
+            -- matters: 夜 defaulted to よ (inherited rank 287, same as よる's real rank 287, then
+            -- won the wordfreq_zipf tiebreak on corpus noise) instead of よる.
+            has_direct_rank INTEGER NOT NULL DEFAULT 0
         );
 
         WITH entry_rank AS (
@@ -1676,11 +1684,12 @@ def materialize_surface_readings(conn):
             WHERE kkl.jpdb_rank IS NOT NULL
             GROUP BY k.entry_id
         )
-        INSERT INTO surface_readings (surface, reading, best_rank, jpdb_rank, wordfreq_zipf)
+        INSERT INTO surface_readings (surface, reading, best_rank, jpdb_rank, wordfreq_zipf, has_direct_rank)
         SELECT surface, reading,
                MIN(best_rank) AS best_rank,
                MIN(jpdb_rank) AS jpdb_rank,
-               MAX(wordfreq_zipf) AS wordfreq_zipf
+               MAX(wordfreq_zipf) AS wordfreq_zipf,
+               MAX(has_direct_rank) AS has_direct_rank
         FROM (
             -- Kanji form as surface, kana form as reading. Joins through kanji_kana_links (built
             -- from each reading's re_restr/appliesToKanji, see build_entry()) rather than raw
@@ -1703,7 +1712,8 @@ def materialize_surface_readings(conn):
                        + CASE WHEN {deprioritized_predicate} THEN {DEPRIORITIZED_READING_RANK_PENALTY} ELSE 0 END
                        AS best_rank,
                    COALESCE(kkl.jpdb_rank, er.rank) AS jpdb_rank,
-                   kf.wordfreq_zipf AS wordfreq_zipf
+                   kf.wordfreq_zipf AS wordfreq_zipf,
+                   CASE WHEN kkl.jpdb_rank IS NOT NULL THEN 1 ELSE 0 END AS has_direct_rank
             FROM kanji kj
             JOIN kanji_kana_links kkl ON kkl.kanji_id = kj.id
             JOIN kana_forms kf ON kf.id = kkl.kana_id
@@ -1724,16 +1734,20 @@ def materialize_surface_readings(conn):
                        + CASE WHEN {deprioritized_predicate} THEN {DEPRIORITIZED_READING_RANK_PENALTY} ELSE 0 END
                        AS best_rank,
                    er.rank AS jpdb_rank,
-                   kf.wordfreq_zipf AS wordfreq_zipf
+                   kf.wordfreq_zipf AS wordfreq_zipf,
+                   0 AS has_direct_rank
             FROM kana_forms kf
             LEFT JOIN entry_rank er ON er.entry_id = kf.entry_id
         )
         GROUP BY surface, reading
-        -- wordfreq_zipf DESC breaks best_rank ties by actual per-reading usage before falling
-        -- back to alphabetical — SQLite sorts NULL first in ASC / last in DESC, so a reading
-        -- with no real frequency signal (e.g. ににん) correctly loses to one that has it (ふたり)
-        -- instead of winning-by-coincidence on kana ordering. See the branch-1 comment above.
-        ORDER BY surface ASC, MIN(best_rank) ASC, MAX(wordfreq_zipf) DESC, reading ASC;
+        -- has_direct_rank DESC comes FIRST: a reading with its own real jpdb_rank must never lose
+        -- a tie to a sibling that merely inherited the same entry-wide best_rank (see the
+        -- has_direct_rank column comment above — this is what fixes 夜 defaulting to よ). Then
+        -- wordfreq_zipf DESC breaks best_rank ties by actual per-reading usage before falling back
+        -- to alphabetical — SQLite sorts NULL first in ASC / last in DESC, so a reading with no
+        -- real frequency signal (e.g. ににん) correctly loses to one that has it (ふたり) instead
+        -- of winning-by-coincidence on kana ordering. See the branch-1 comment above.
+        ORDER BY surface ASC, MAX(has_direct_rank) DESC, MIN(best_rank) ASC, MAX(wordfreq_zipf) DESC, reading ASC;
 
         CREATE INDEX idx_surface_readings_surface ON surface_readings(surface);
         """

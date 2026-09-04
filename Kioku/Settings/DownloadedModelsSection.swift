@@ -1,9 +1,9 @@
 import SwiftUI
 
-// The three fixed-identity speech models DownloadedModelsStore manages (Whisper models are a
+// The four fixed-identity items DownloadedModelsStore manages (Whisper models are a
 // variable-length list instead — see WhisperModelManager.downloadedModels).
-private enum DownloadedModelKind: String, Identifiable {
-    case qwenASR, qwenForcedAligner, htDemucs
+private enum DownloadedModelKind: String, Identifiable, Equatable {
+    case qwenASR, qwenForcedAligner, htDemucs, vocalStems
 
     var id: String { rawValue }
 
@@ -13,6 +13,7 @@ private enum DownloadedModelKind: String, Identifiable {
         case .qwenASR: return "Speech Recognition Model"
         case .qwenForcedAligner: return "Forced Aligner Model"
         case .htDemucs: return "Vocal Isolator Model"
+        case .vocalStems: return "Cached Isolated Vocals"
         }
     }
 
@@ -25,27 +26,30 @@ private enum DownloadedModelKind: String, Identifiable {
         case .qwenASR: DownloadedModelsStore.deleteQwenASR()
         case .qwenForcedAligner: DownloadedModelsStore.deleteQwenForcedAligner()
         case .htDemucs: DownloadedModelsStore.deleteHTDemucs()
+        case .vocalStems: DownloadedModelsStore.deleteVocalStems()
         }
     }
 }
 
-// Settings → Downloaded Models section. Surfaces the on-device speech models that live outside
-// Library/Caches (see DownloadedModelsStore's header) — "Clear Caches" never touches these, so
-// this is the only place a user can reclaim the space: Qwen3-ASR, Qwen3-ForcedAligner, HTDemucs
-// (all fixed-identity, one row each), plus any downloaded Whisper model (a variable-length list,
-// previously only manageable from inside the Bulk Import flow). Hidden entirely when nothing is
-// downloaded yet, mirroring Clear Caches disabling itself at 0 bytes.
+// Settings → Downloaded Models section. Surfaces the on-device speech models (and the cached
+// isolated vocal stems they produce) that live outside Library/Caches (see DownloadedModelsStore's
+// header) — "Clear Caches" never touches these, so this is the only place a user can reclaim the
+// space: Qwen3-ASR, Qwen3-ForcedAligner, HTDemucs, and cached vocal stems (all fixed-identity, one
+// row each), plus any downloaded Whisper model (a variable-length list, previously only manageable
+// from inside the Bulk Import flow). Hidden entirely when nothing is downloaded yet, mirroring
+// Clear Caches disabling itself at 0 bytes.
 struct DownloadedModelsSection: View {
     @State private var whisperModelManager = WhisperModelManager()
     @State private var qwenASRBytes: Int = 0
     @State private var qwenForcedAlignerBytes: Int = 0
     @State private var htDemucsBytes: Int = 0
+    @State private var vocalStemsBytes: Int = 0
     @State private var modelPendingDeletion: DownloadedModelKind?
     @State private var whisperModelFilenamePendingDeletion: String?
 
     var body: some View {
         Group {
-            if qwenASRBytes > 0 || qwenForcedAlignerBytes > 0 || htDemucsBytes > 0
+            if qwenASRBytes > 0 || qwenForcedAlignerBytes > 0 || htDemucsBytes > 0 || vocalStemsBytes > 0
                 || whisperModelManager.downloadedModels.isEmpty == false {
                 Section {
                     if qwenASRBytes > 0 {
@@ -56,6 +60,9 @@ struct DownloadedModelsSection: View {
                     }
                     if htDemucsBytes > 0 {
                         downloadedModelRow(kind: .htDemucs, bytes: htDemucsBytes)
+                    }
+                    if vocalStemsBytes > 0 {
+                        downloadedModelRow(kind: .vocalStems, bytes: vocalStemsBytes)
                     }
                     ForEach(whisperModelManager.downloadedModels, id: \.self) { filename in
                         HStack {
@@ -87,7 +94,9 @@ struct DownloadedModelsSection: View {
             Button("Delete", role: .destructive) { performModelDeletion() }
             Button("Cancel", role: .cancel) { modelPendingDeletion = nil }
         } message: {
-            Text("This model will download again automatically the next time it's needed.")
+            Text(modelPendingDeletion == .vocalStems
+                 ? "These will be regenerated automatically the next time each song is aligned."
+                 : "This model will download again automatically the next time it's needed.")
         }
         .alert(
             "Delete Whisper Model?",
@@ -130,12 +139,14 @@ struct DownloadedModelsSection: View {
             (
                 DownloadedModelsStore.qwenASRSizeBytes(),
                 DownloadedModelsStore.qwenForcedAlignerSizeBytes(),
-                DownloadedModelsStore.htDemucsSizeBytes()
+                DownloadedModelsStore.htDemucsSizeBytes(),
+                DownloadedModelsStore.vocalStemsSizeBytes()
             )
         }.value
         qwenASRBytes = sizes.0
         qwenForcedAlignerBytes = sizes.1
         htDemucsBytes = sizes.2
+        vocalStemsBytes = sizes.3
     }
 
     // Deletes the fixed-identity model pending confirmation and re-measures its (now empty) size.

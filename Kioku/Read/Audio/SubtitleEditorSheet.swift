@@ -542,24 +542,7 @@ struct SubtitleEditorSheet: View {
         }
 
         isRetiming = true
-        retimeProgressMessage = "Preparing model…"
-
-        // Prep model (downloaded if needed). The orchestration takes it as input
-        // so the test can pass a pre-resolved URL without going through this UI
-        // download path.
-        let modelURL: URL
-        do {
-            if let existing = OnDeviceLyricAligner.bestAvailableModelURL() {
-                modelURL = existing
-            } else {
-                modelURL = try await OnDeviceLyricAligner.downloadDefaultModel { message in
-                    Task { @MainActor in retimeProgressMessage = message }
-                }
-            }
-        } catch {
-            retimeError = "Couldn't prepare the alignment model: \(error.localizedDescription)"
-            return
-        }
+        retimeProgressMessage = "Starting…"
 
         do {
             // Delegate the entire orchestration (matching, gap-build, slicing,
@@ -569,7 +552,6 @@ struct SubtitleEditorSheet: View {
                 audioURL: audioURL,
                 currentCues: ignoringCues ? [] : liveCues,
                 noteLines: noteLines,
-                modelURL: modelURL,
                 cancellationCheck: { Task.isCancelled },
                 onProgress: { message in
                     Task { @MainActor in retimeProgressMessage = message }
@@ -612,23 +594,6 @@ struct SubtitleEditorSheet: View {
         let lyrics = lines.joined(separator: "\n")
 
         isRetiming = true
-        retimeProgressMessage = "Preparing model…"
-
-        // Use an existing on-device model when available; otherwise download the default one.
-        let modelURL: URL
-        do {
-            if let existing = OnDeviceLyricAligner.bestAvailableModelURL() {
-                modelURL = existing
-            } else {
-                modelURL = try await OnDeviceLyricAligner.downloadDefaultModel { message in
-                    Task { @MainActor in retimeProgressMessage = message }
-                }
-            }
-        } catch {
-            retimeError = "Couldn't prepare the alignment model: \(error.localizedDescription)"
-            return
-        }
-
         let alignStartedAt = Date()
         retimeProgressMessage = "Starting…"
 
@@ -636,7 +601,6 @@ struct SubtitleEditorSheet: View {
             let srt = try await OnDeviceLyricAligner.align(
                 audioURL: audioURL,
                 lyrics: lyrics,
-                modelURL: modelURL,
                 cancellationCheck: { Task.isCancelled },
                 onStage: { stage in
                     // Show the pipeline's OWN per-phase status ("Isolating vocals… 73%",

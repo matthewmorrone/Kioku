@@ -21,6 +21,20 @@ enum AppleIntelligenceAvailability {
     }
 }
 
+// Private Cloud Compute (iOS 27+) is Apple Intelligence's cloud-hosted model, reached through
+// the same FoundationModels API as the on-device model — a full-size model, not subject to the
+// small on-device model's structured-output limitations. See PrivateCloudComputeBreakdownClient.
+enum PrivateCloudComputeAvailability {
+    static var isAvailable: Bool {
+        #if canImport(FoundationModels)
+        if #available(iOS 27.0, *) {
+            return PrivateCloudComputeLanguageModel().isAvailable
+        }
+        #endif
+        return false
+    }
+}
+
 #if canImport(FoundationModels)
 
 // Foundation Models Tool that lets the on-device model query our local

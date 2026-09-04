@@ -21,7 +21,10 @@ public enum TranscriptCache {
         }
     }
 
-    private static let formatVersion = 1
+    // Bumped 2026-09-04: cached transcripts from before the CoreML ASR tokenizer fix hold raw
+    // token IDs ("11528 8453 15170") instead of decoded text — invalidate them so a resume
+    // doesn't resurrect garbage.
+    private static let formatVersion = 2
 
     private static func cacheDir() -> URL? {
         guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }

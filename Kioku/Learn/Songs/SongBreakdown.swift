@@ -63,12 +63,14 @@ enum SongBreakdownProvider: String, Codable, Sendable {
     case stub
     case openAI = "openai"
     case claude = "claude"
+    case appleIntelligence = "apple_intelligence"
 
     var displayName: String {
         switch self {
         case .stub: return "Stub"
         case .openAI: return "OpenAI"
         case .claude: return "Claude"
+        case .appleIntelligence: return "Apple Intelligence"
         }
     }
 }
