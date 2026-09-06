@@ -53,4 +53,40 @@ final class FuriganaViewTests: XCTestCase {
         let expectedMinWidth = furiganaWidth(of: "ちから", baseFontSize: font.pointSize)
         XCTAssertGreaterThanOrEqual(size.width, expectedMinWidth)
     }
+
+    // Reproduction for: a multi-run Breakdown headword like 花の命 (はな + いのち) clipped
+    // いのち's trailing edge. 命 is the LAST character, so its wide reading needs more room on
+    // the right than the 3-character surface happens to have, even though いのち alone isn't
+    // wider than "花の命" as a whole -- the comparison the single-run fix above made. Without
+    // per-run overflow accounting, naturalSize() reported exactly the surface's own plain width,
+    // and the trailing run's centered furigana drew partly past the right edge.
+    func testNaturalSizeAccountsForOverflowFromATrailingRun() {
+        let view = FuriganaView()
+        let font = UIFont.systemFont(ofSize: 20, weight: .semibold)
+        view.configure(surface: "花の命", reading: "", font: font, gap: 2, explicitRunReadings: [0: "はな", 2: "いのち"])
+
+        let size = view.naturalSize()
+        let plainSurfaceWidth = ("花の命" as NSString).size(withAttributes: [.font: font]).width
+        XCTAssertGreaterThan(
+            size.width, plainSurfaceWidth,
+            "natural width (\(size.width)) must exceed the plain surface width (\(plainSurfaceWidth)) to leave room for いのち's overflow past 命, the last character"
+        )
+    }
+
+    // Same failure mode from the opposite (leading) edge: はかな over 儚, the FIRST character of
+    // a 2-character surface, centers its furigana past the left edge when the surface's own
+    // width already exceeds はかな's width on its own (so the single-run global comparison
+    // above never triggers).
+    func testNaturalSizeAccountsForOverflowFromALeadingRun() {
+        let view = FuriganaView()
+        let font = UIFont.systemFont(ofSize: 20, weight: .semibold)
+        view.configure(surface: "儚く", reading: "", font: font, gap: 2, explicitRunReadings: [0: "はかな"])
+
+        let size = view.naturalSize()
+        let plainSurfaceWidth = ("儚く" as NSString).size(withAttributes: [.font: font]).width
+        XCTAssertGreaterThan(
+            size.width, plainSurfaceWidth,
+            "natural width (\(size.width)) must exceed the plain surface width (\(plainSurfaceWidth)) to leave room for はかな's overflow past 儚, the first character"
+        )
+    }
 }

@@ -230,24 +230,53 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
             nil
         )
         let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
-        // Also account for the furigana text width, which may be wider than the kanji surface
-        // (e.g. ちから over 力: a 2-mora reading over a single narrow kanji). When
-        // explicitRunReadings is set, `reading` is passed as "" by callers (see FuriganaLabel)
-        // — measuring it here would silently report zero width and under-report the box a wide
-        // run's furigana needs, letting `draw(_:)` center it partly outside `bounds`, where
-        // UIKit discards it (the same class of clipping `measuredLineHeight` fixes vertically).
-        // Falls back to `reading` for the non-explicit-run call shape, unchanged from before.
-        let furiganaWidth: CGFloat
-        if explicitRunReadings.isEmpty == false {
-            furiganaWidth = explicitRunReadings.values
-                .map { ($0 as NSString).size(withAttributes: [.font: furiganaFont]).width }
-                .max() ?? 0
-        } else {
-            furiganaWidth = (reading as NSString).size(withAttributes: [.font: furiganaFont]).width
-        }
-        let naturalWidth = ceil(max(size.width, furiganaWidth))
+        let naturalTextWidth = ceil(size.width)
+        // Pads symmetrically by the largest per-run overflow found on either side — see
+        // runOverflowMargin's doc comment for why comparing only the single widest reading
+        // against the WHOLE surface (this method's previous fix) isn't enough for a multi-run
+        // surface like 花の命: いのち over 命, the last character, needs more room on the right
+        // than the 3-character surface happens to have, even though いのち alone isn't wider
+        // than "花の命" as a whole.
+        let overflowMargin = runOverflowMargin(naturalTextWidth: naturalTextWidth, furiganaFont: furiganaFont)
+        let naturalWidth = naturalTextWidth + 2 * overflowMargin
         let naturalHeight = ceil(size.height) + Self.measuredLineHeight(font: furiganaFont) + gap
         return CGSize(width: naturalWidth, height: naturalHeight)
+    }
+
+    // Returns the single symmetric margin (added to BOTH sides by naturalSize()) needed so no
+    // run's furigana draws outside the surface's own natural-width layout. A run's furigana is
+    // centered on that run's own glyph midpoint (see draw(_:)), so a run sitting near either
+    // edge of a multi-character surface can overflow past that edge even when its reading isn't
+    // wider than the surface as a whole — unlike the single-run-over-one-narrow-kanji case (e.g.
+    // ちから over 力), where the run's midpoint already sits at the surface's own center and the
+    // old global comparison caught it. Padding symmetrically, rather than only on the side that
+    // actually needs it, relies on draw(_:)'s existing center-aligned paragraph style to
+    // distribute the added width evenly, so no separate origin-offset bookkeeping is needed
+    // between this method and draw(_:).
+    private func runOverflowMargin(naturalTextWidth: CGFloat, furiganaFont: UIFont) -> CGFloat {
+        guard naturalTextWidth > 0 else { return 0 }
+        let runs = FuriganaAttributedString.kanjiRuns(in: surface)
+        guard runs.isEmpty == false else { return 0 }
+        let runReadings: [String]
+        if explicitRunReadings.isEmpty == false {
+            runReadings = runs.map { explicitRunReadings[$0.start] ?? "" }
+        } else if let projected = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs),
+                  projected.count == runs.count {
+            runReadings = projected
+        } else {
+            return 0
+        }
+        let naturalRect = CGRect(x: 0, y: 0, width: naturalTextWidth, height: .greatestFiniteMagnitude)
+        let runRects = uikitRunRects(for: baseAttributedString(), runs: runs, in: naturalRect)
+        var margin: CGFloat = 0
+        for (i, runReading) in runReadings.enumerated() {
+            guard runReading.isEmpty == false, i < runRects.count, runRects[i] != .null else { continue }
+            let furiganaWidth = (runReading as NSString).size(withAttributes: [.font: furiganaFont]).width
+            let midX = runRects[i].midX
+            margin = max(margin, furiganaWidth / 2 - midX)
+            margin = max(margin, midX + furiganaWidth / 2 - naturalTextWidth)
+        }
+        return max(0, ceil(margin))
     }
 
     // Builds a plain attributed string (no ruby) for CoreText base-text layout.
