@@ -553,10 +553,9 @@ struct SongLineCard: View {
     // A word-list headword: renders through the same CoreText renderer the Read tab and this
     // card's own big Japanese row use (see furiganaRow) — furigana over kanji runs when the
     // stepper resolved a reading for this surface, plain text otherwise (kana-only words, or a
-    // surface the resolver couldn't align). This used to go through FuriganaLabel, a second,
-    // independent single-word ruby renderer with its own (buggier) overhang handling; routing
-    // through the same renderer as everything else means there's exactly one ruby
-    // implementation to get right instead of two that can drift apart.
+    // surface the resolver couldn't align). Don't give this its own single-word ruby renderer —
+    // a second, independent implementation of the same overhang/kerning logic will drift out of
+    // sync with this one and need its own separate bug fixes.
     //
     // The renderer intercepts its own touches (a UIViewRepresentable wrapping a UITextView, same
     // as furiganaRow), so tapping the headword itself wouldn't reach wordEntryRow's surrounding
