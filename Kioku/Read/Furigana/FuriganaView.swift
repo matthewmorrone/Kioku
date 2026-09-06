@@ -4,6 +4,12 @@ import CoreText
 // UIView subclass that renders Japanese text with per-kanji-run furigana drawn manually above each kanji run.
 // Replaces CTRubyAnnotation with explicit overlay drawing so the gap between furigana and base text is controllable.
 // Supports long-press copy via UIContextMenuInteraction.
+// Avoids furigana clipping the same way KiokuCoreTextAttributedStringBuilder does for paragraph
+// text: when a run's ruby is wider than the run itself, kern its neighbor away to make room (see
+// RubyOverhang, applyRubyOverhangKerning). The one thing this view needs that the paragraph
+// renderer doesn't is edgeOverflowInsets — widening itself for a run with no neighbor to kern
+// (the very start/end of the surface), since this is a `.fixedSize` view with no ambient margin
+// to absorb that residual the way a full-screen paragraph's container does.
 final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
 
     // The plain text to copy when the user long-presses.
@@ -32,11 +38,12 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
     // Intrinsic size is computed from CoreText layout at the last known width.
     private var lastLayoutWidth: CGFloat = 0
 
-    // Per-side padding naturalSize() added around the base text so an edge run's furigana
-    // (e.g. いのち over 命, the last character of 花の命) doesn't draw outside bounds. Set by
+    // Per-side padding naturalSize() added around the base text for a run that overhangs a
+    // surface edge with no neighboring character to kern instead (see edgeOverflowInsets) — e.g.
+    // いのち over 命, the last character of 花の命, has nothing after it to push away. Set by
     // naturalSize() and consumed by draw(_:) to inset the base text by exactly the side(s) that
-    // actually needed it — e.g. left stays 0 when only the right side overflowed, so the base
-    // text isn't pushed off-center by padding it never needed. Left at 0 (their default) for the
+    // actually needed it — left stays 0 when only the right side overflowed, so the base text
+    // isn't pushed off-center by padding it never needed. Left at 0 (their default) for the
     // constrained-width sizeThatFits(_:) path, which never calls naturalSize() and so never
     // touches these — draw(_:) reproduces its old flush-at-bounds behavior exactly in that case.
     // Not private: FuriganaViewTests reads these after calling naturalSize() to verify a side
@@ -167,22 +174,10 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         // Draw base text using UIKit — no coordinate flip needed.
         baseAttrString.draw(in: textRect)
 
-        // Locate each kanji run, then resolve per-run readings.
-        // Prefer explicitRunReadings (keyed by run start char index) when provided — they come directly from furiganaBySegmentLocation and are always correct per segment.
-        // Fall back to normalizedRunReadings which projects from the concatenated full reading.
-        let runs = FuriganaAttributedString.kanjiRuns(in: surface)
-        guard !runs.isEmpty else { return }
-
-        let runReadings: [String]
-        if explicitRunReadings.isEmpty == false {
-            runReadings = runs.map { explicitRunReadings[$0.start] ?? "" }
-        } else if let projected = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs),
-                  projected.count == runs.count {
-            runReadings = projected
-        } else {
-            return
-        }
-
+        let entries = runsWithReadings()
+        guard entries.isEmpty == false else { return }
+        let runs = entries.map(\.run)
+        let runReadings = entries.map(\.reading)
         let runRects = uikitRunRects(for: baseAttrString, runs: runs, in: textRect)
 
         let paragraphStyle = NSMutableParagraphStyle()
@@ -233,7 +228,11 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
 
     // Computes the natural (unconstrained) size of the label — the width the text occupies
     // on a single line, and the corresponding height. Used when InlineWrapLayout asks for
-    // a chip's size with no width constraint (.unspecified proposal).
+    // a chip's size with no width constraint (.unspecified proposal). Most overhang is already
+    // absorbed by the per-run kerning baseAttributedString() embeds (see
+    // applyRubyOverhangKerning), so CTFramesetter's own natural-width measurement already
+    // accounts for it; edgeOverflowInsets covers only the residual case that kerning can't —
+    // a run at the very start/end of the surface, with no neighboring character to push away.
     func naturalSize() -> CGSize {
         let attrString = baseAttributedString()
         let framesetter = CTFramesetterCreateWithAttributedString(attrString)
@@ -245,60 +244,101 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
             nil
         )
         let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
-        let naturalTextWidth = ceil(size.width)
-        // Per-side (not symmetric) padding — see runOverflowMargins' doc comment for why
-        // comparing only the single widest reading against the WHOLE surface (this method's
-        // previous fix) isn't enough for a multi-run surface like 花の命: いのち over 命, the
-        // last character, needs more room on the right than the 3-character surface happens to
-        // have, even though いのち alone isn't wider than "花の命" as a whole. Stored so draw(_:)
-        // insets the base text by exactly these amounts instead of relying on center-aligned
-        // paragraph style to (mis)distribute the added width evenly across both sides even when
-        // only one side actually overflowed.
-        (overflowLeadingInset, overflowTrailingInset) = runOverflowMargins(naturalTextWidth: naturalTextWidth, furiganaFont: furiganaFont)
-        let naturalWidth = naturalTextWidth + overflowLeadingInset + overflowTrailingInset
+        (overflowLeadingInset, overflowTrailingInset) = edgeOverflowInsets(furiganaFont: furiganaFont)
+        let naturalWidth = ceil(size.width) + overflowLeadingInset + overflowTrailingInset
         let naturalHeight = ceil(size.height) + Self.measuredLineHeight(font: furiganaFont) + gap
         return CGSize(width: naturalWidth, height: naturalHeight)
     }
 
-    // Returns the (left, right) margins needed so no run's furigana draws outside the surface's
-    // own natural-width layout. A run's furigana is centered on that run's own glyph midpoint
-    // (see draw(_:)), so a run sitting near either edge of a multi-character surface can
-    // overflow past that edge even when its reading isn't wider than the surface as a whole —
-    // unlike the single-run-over-one-narrow-kanji case (e.g. ちから over 力), where the run's
-    // midpoint already sits at the surface's own center and both sides need the same margin.
-    // Computed independently per side (not as one shared max) so naturalSize()/draw(_:) only pad
-    // whichever side(s) actually need it — padding a side that doesn't need it would visibly
-    // shift the base text away from that edge, showing up as unexplained blank space before or
-    // after it.
-    private func runOverflowMargins(naturalTextWidth: CGFloat, furiganaFont: UIFont) -> (left: CGFloat, right: CGFloat) {
-        guard naturalTextWidth > 0 else { return (0, 0) }
+    // Returns each kanji run in `surface` paired with its resolved reading — explicit when
+    // provided (always correct per run), else projected from the concatenated `reading` string.
+    // Shared by draw(_:), applyRubyOverhangKerning, and edgeOverflowInsets so the "which runs get
+    // a reading" resolution logic lives in exactly one place.
+    private func runsWithReadings() -> [(run: (start: Int, end: Int), reading: String)] {
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)
-        guard runs.isEmpty == false else { return (0, 0) }
-        let runReadings: [String]
+        guard runs.isEmpty == false else { return [] }
+        let readings: [String]
         if explicitRunReadings.isEmpty == false {
-            runReadings = runs.map { explicitRunReadings[$0.start] ?? "" }
+            readings = runs.map { explicitRunReadings[$0.start] ?? "" }
         } else if let projected = FuriganaAttributedString.normalizedRunReadings(surface: surface, reading: reading, runs: runs),
                   projected.count == runs.count {
-            runReadings = projected
+            readings = projected
         } else {
-            return (0, 0)
+            return []
         }
-        let naturalRect = CGRect(x: 0, y: 0, width: naturalTextWidth, height: .greatestFiniteMagnitude)
-        let runRects = uikitRunRects(for: baseAttributedString(), runs: runs, in: naturalRect)
-        var left: CGFloat = 0
-        var right: CGFloat = 0
-        for (i, runReading) in runReadings.enumerated() {
-            guard runReading.isEmpty == false, i < runRects.count, runRects[i] != .null else { continue }
-            let furiganaWidth = (runReading as NSString).size(withAttributes: [.font: furiganaFont]).width
-            let midX = runRects[i].midX
-            left = max(left, furiganaWidth / 2 - midX)
-            right = max(right, midX + furiganaWidth / 2 - naturalTextWidth)
-        }
-        return (max(0, ceil(left)), max(0, ceil(right)))
+        return Array(zip(runs, readings))
     }
 
-    // Builds a plain attributed string (no ruby) for CoreText base-text layout.
-    // Applies per-character segment colors when segmentColors is populated.
+    // Mirrors KiokuCoreTextAttributedStringBuilder's inter-segment kern compensation (see
+    // RubyOverhang), scoped to this surface's own internal runs: when a kanji run's ruby is
+    // wider than the run itself, bump .kern on the adjoining character on each side — the run's
+    // own last character to push away whatever follows (right overhang), the preceding character
+    // to push the run itself right (left overhang) — so the ruby gets room without overlapping a
+    // neighbor. A run with no neighbor on a given side (the very start/end of the surface) is
+    // left alone here; edgeOverflowInsets widens the view for that residual instead.
+    private func applyRubyOverhangKerning(to attrString: NSMutableAttributedString) {
+        let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
+        let nsSurface = surface as NSString
+        let length = attrString.length
+        for (run, runReading) in runsWithReadings() {
+            guard runReading.isEmpty == false else { continue }
+            let kanjiText = nsSurface.substring(with: NSRange(location: run.start, length: run.end - run.start))
+            let kanjiWidth = (kanjiText as NSString).size(withAttributes: [.font: font]).width
+            let rubyWidth = (runReading as NSString).size(withAttributes: [.font: furiganaFont]).width
+            let overhang = RubyOverhang.margin(baseWidth: kanjiWidth, rubyWidth: rubyWidth)
+            guard overhang > 0.5 else { continue }
+            if run.end < length {
+                bumpKern(in: attrString, at: run.end - 1, by: overhang)
+            }
+            if run.start > 0 {
+                bumpKern(in: attrString, at: run.start - 1, by: overhang)
+            }
+        }
+    }
+
+    // Adds `amount` to whatever .kern is already set at `index` (rather than overwriting), so
+    // two adjacent runs that both need room at the same boundary character (e.g. two consecutive
+    // kanji runs with no kana between them) accumulate instead of one silently winning.
+    private func bumpKern(in attrString: NSMutableAttributedString, at index: Int, by amount: CGFloat) {
+        let existing = (attrString.attribute(.kern, at: index, effectiveRange: nil) as? CGFloat) ?? 0
+        attrString.addAttribute(.kern, value: existing + amount, range: NSRange(location: index, length: 1))
+    }
+
+    // Returns the (left, right) VIEW-LEVEL margins still needed after applyRubyOverhangKerning —
+    // the one case interior kerning can't solve: a run at the very start or end of the surface,
+    // with no neighboring character to push away (e.g. いのち over 命, the last character of
+    // 花の命, or はかな over 儚, the first character of 儚く). KiokuCoreTextAttributedStringBuilder
+    // has the same gap for a segment at the very start/end of a paragraph, but it goes unnoticed
+    // there because that view's container isn't fitted tightly to its content the way this
+    // `.fixedSize` view's bounds are — there's ambient margin to absorb it. This view has none,
+    // so it has to make room for itself instead.
+    private func edgeOverflowInsets(furiganaFont: UIFont) -> (left: CGFloat, right: CGFloat) {
+        let entries = runsWithReadings()
+        guard entries.isEmpty == false else { return (0, 0) }
+        let length = (surface as NSString).length
+        var left: CGFloat = 0
+        var right: CGFloat = 0
+        for (run, runReading) in entries {
+            guard runReading.isEmpty == false else { continue }
+            let kanjiText = (surface as NSString).substring(with: NSRange(location: run.start, length: run.end - run.start))
+            let kanjiWidth = (kanjiText as NSString).size(withAttributes: [.font: font]).width
+            let rubyWidth = (runReading as NSString).size(withAttributes: [.font: furiganaFont]).width
+            let overhang = RubyOverhang.margin(baseWidth: kanjiWidth, rubyWidth: rubyWidth)
+            guard overhang > 0.5 else { continue }
+            if run.start == 0 {
+                left = max(left, overhang)
+            }
+            if run.end == length {
+                right = max(right, overhang)
+            }
+        }
+        return (left, right)
+    }
+
+    // Builds a plain attributed string (no ruby) for CoreText base-text layout. Applies
+    // per-character segment colors when segmentColors is populated, and embeds the inter-run
+    // overhang kerning described at applyRubyOverhangKerning so every consumer (draw(_:),
+    // computeHeight(for:), naturalSize()) measures and lays out the same widened string.
     private func baseAttributedString() -> NSAttributedString {
         let style = NSMutableParagraphStyle()
         style.alignment = .center
@@ -321,6 +361,7 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
                 offset = end
             }
         }
+        applyRubyOverhangKerning(to: attrString)
         return attrString
     }
 
