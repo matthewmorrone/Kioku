@@ -32,6 +32,18 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
     // Intrinsic size is computed from CoreText layout at the last known width.
     private var lastLayoutWidth: CGFloat = 0
 
+    // Per-side padding naturalSize() added around the base text so an edge run's furigana
+    // (e.g. いのち over 命, the last character of 花の命) doesn't draw outside bounds. Set by
+    // naturalSize() and consumed by draw(_:) to inset the base text by exactly the side(s) that
+    // actually needed it — e.g. left stays 0 when only the right side overflowed, so the base
+    // text isn't pushed off-center by padding it never needed. Left at 0 (their default) for the
+    // constrained-width sizeThatFits(_:) path, which never calls naturalSize() and so never
+    // touches these — draw(_:) reproduces its old flush-at-bounds behavior exactly in that case.
+    // Not private: FuriganaViewTests reads these after calling naturalSize() to verify a side
+    // that doesn't need padding stays at 0, rather than only checking the total width.
+    var overflowLeadingInset: CGFloat = 0
+    var overflowTrailingInset: CGFloat = 0
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         commonInit()
@@ -146,8 +158,11 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         let topInset = Self.measuredLineHeight(font: furiganaFont) + gap
 
         let drawWidth = bounds.width > 0 ? bounds.width : rect.width
-        // The base text sits below the furigana headroom, drawn in UIKit coordinates.
-        let textRect = CGRect(x: 0, y: topInset, width: drawWidth, height: rect.height - topInset)
+        // The base text sits below the furigana headroom, drawn in UIKit coordinates, inset by
+        // whichever side(s) naturalSize() padded for edge-run overflow (0 on both sides outside
+        // that path — see overflowLeadingInset's doc comment).
+        let textWidth = max(0, drawWidth - overflowLeadingInset - overflowTrailingInset)
+        let textRect = CGRect(x: overflowLeadingInset, y: topInset, width: textWidth, height: rect.height - topInset)
 
         // Draw base text using UIKit — no coordinate flip needed.
         baseAttrString.draw(in: textRect)
@@ -231,32 +246,34 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
         )
         let furiganaFont = UIFont.systemFont(ofSize: font.pointSize * TypographySettings.furiganaSizeFactor)
         let naturalTextWidth = ceil(size.width)
-        // Pads symmetrically by the largest per-run overflow found on either side — see
-        // runOverflowMargin's doc comment for why comparing only the single widest reading
-        // against the WHOLE surface (this method's previous fix) isn't enough for a multi-run
-        // surface like 花の命: いのち over 命, the last character, needs more room on the right
-        // than the 3-character surface happens to have, even though いのち alone isn't wider
-        // than "花の命" as a whole.
-        let overflowMargin = runOverflowMargin(naturalTextWidth: naturalTextWidth, furiganaFont: furiganaFont)
-        let naturalWidth = naturalTextWidth + 2 * overflowMargin
+        // Per-side (not symmetric) padding — see runOverflowMargins' doc comment for why
+        // comparing only the single widest reading against the WHOLE surface (this method's
+        // previous fix) isn't enough for a multi-run surface like 花の命: いのち over 命, the
+        // last character, needs more room on the right than the 3-character surface happens to
+        // have, even though いのち alone isn't wider than "花の命" as a whole. Stored so draw(_:)
+        // insets the base text by exactly these amounts instead of relying on center-aligned
+        // paragraph style to (mis)distribute the added width evenly across both sides even when
+        // only one side actually overflowed.
+        (overflowLeadingInset, overflowTrailingInset) = runOverflowMargins(naturalTextWidth: naturalTextWidth, furiganaFont: furiganaFont)
+        let naturalWidth = naturalTextWidth + overflowLeadingInset + overflowTrailingInset
         let naturalHeight = ceil(size.height) + Self.measuredLineHeight(font: furiganaFont) + gap
         return CGSize(width: naturalWidth, height: naturalHeight)
     }
 
-    // Returns the single symmetric margin (added to BOTH sides by naturalSize()) needed so no
-    // run's furigana draws outside the surface's own natural-width layout. A run's furigana is
-    // centered on that run's own glyph midpoint (see draw(_:)), so a run sitting near either
-    // edge of a multi-character surface can overflow past that edge even when its reading isn't
-    // wider than the surface as a whole — unlike the single-run-over-one-narrow-kanji case (e.g.
-    // ちから over 力), where the run's midpoint already sits at the surface's own center and the
-    // old global comparison caught it. Padding symmetrically, rather than only on the side that
-    // actually needs it, relies on draw(_:)'s existing center-aligned paragraph style to
-    // distribute the added width evenly, so no separate origin-offset bookkeeping is needed
-    // between this method and draw(_:).
-    private func runOverflowMargin(naturalTextWidth: CGFloat, furiganaFont: UIFont) -> CGFloat {
-        guard naturalTextWidth > 0 else { return 0 }
+    // Returns the (left, right) margins needed so no run's furigana draws outside the surface's
+    // own natural-width layout. A run's furigana is centered on that run's own glyph midpoint
+    // (see draw(_:)), so a run sitting near either edge of a multi-character surface can
+    // overflow past that edge even when its reading isn't wider than the surface as a whole —
+    // unlike the single-run-over-one-narrow-kanji case (e.g. ちから over 力), where the run's
+    // midpoint already sits at the surface's own center and both sides need the same margin.
+    // Computed independently per side (not as one shared max) so naturalSize()/draw(_:) only pad
+    // whichever side(s) actually need it — padding a side that doesn't need it would visibly
+    // shift the base text away from that edge, showing up as unexplained blank space before or
+    // after it.
+    private func runOverflowMargins(naturalTextWidth: CGFloat, furiganaFont: UIFont) -> (left: CGFloat, right: CGFloat) {
+        guard naturalTextWidth > 0 else { return (0, 0) }
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)
-        guard runs.isEmpty == false else { return 0 }
+        guard runs.isEmpty == false else { return (0, 0) }
         let runReadings: [String]
         if explicitRunReadings.isEmpty == false {
             runReadings = runs.map { explicitRunReadings[$0.start] ?? "" }
@@ -264,19 +281,20 @@ final class FuriganaView: UIView, UIContextMenuInteractionDelegate {
                   projected.count == runs.count {
             runReadings = projected
         } else {
-            return 0
+            return (0, 0)
         }
         let naturalRect = CGRect(x: 0, y: 0, width: naturalTextWidth, height: .greatestFiniteMagnitude)
         let runRects = uikitRunRects(for: baseAttributedString(), runs: runs, in: naturalRect)
-        var margin: CGFloat = 0
+        var left: CGFloat = 0
+        var right: CGFloat = 0
         for (i, runReading) in runReadings.enumerated() {
             guard runReading.isEmpty == false, i < runRects.count, runRects[i] != .null else { continue }
             let furiganaWidth = (runReading as NSString).size(withAttributes: [.font: furiganaFont]).width
             let midX = runRects[i].midX
-            margin = max(margin, furiganaWidth / 2 - midX)
-            margin = max(margin, midX + furiganaWidth / 2 - naturalTextWidth)
+            left = max(left, furiganaWidth / 2 - midX)
+            right = max(right, midX + furiganaWidth / 2 - naturalTextWidth)
         }
-        return max(0, ceil(margin))
+        return (max(0, ceil(left)), max(0, ceil(right)))
     }
 
     // Builds a plain attributed string (no ruby) for CoreText base-text layout.

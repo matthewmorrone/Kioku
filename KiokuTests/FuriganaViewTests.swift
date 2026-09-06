@@ -71,6 +71,11 @@ final class FuriganaViewTests: XCTestCase {
             size.width, plainSurfaceWidth,
             "natural width (\(size.width)) must exceed the plain surface width (\(plainSurfaceWidth)) to leave room for いのち's overflow past 命, the last character"
         )
+        // Only the RIGHT side needed padding here (命 is the last character) -- the left side
+        // must stay at 0, or draw(_:) would push 花 away from the left edge for no reason,
+        // showing up as unexplained blank space before the headword.
+        XCTAssertEqual(view.overflowLeadingInset, 0, "花 (the first character) has no overflow, so the leading inset must stay 0")
+        XCTAssertGreaterThan(view.overflowTrailingInset, 0)
     }
 
     // Same failure mode from the opposite (leading) edge: はかな over 儚, the FIRST character of
@@ -88,5 +93,25 @@ final class FuriganaViewTests: XCTestCase {
             size.width, plainSurfaceWidth,
             "natural width (\(size.width)) must exceed the plain surface width (\(plainSurfaceWidth)) to leave room for はかな's overflow past 儚, the first character"
         )
+        // Only the LEFT side needed padding here (儚 is the first character) -- the right side
+        // must stay at 0, or draw(_:) would push く away from the right edge for no reason,
+        // showing up as unexplained blank space after the headword.
+        XCTAssertGreaterThan(view.overflowLeadingInset, 0)
+        XCTAssertEqual(view.overflowTrailingInset, 0, "く (the last character) has no overflow, so the trailing inset must stay 0")
+    }
+
+    // Reproduction for: after fixing the two edge cases above, naturalSize() padded BOTH sides
+    // by the larger of the two overflow amounts (see git history), so a single-run word needing
+    // padding on only one side got an unexplained blank space added to the OTHER side too --
+    // e.g. ちから over 力 (a single run centered in the surface, needing equal padding on both
+    // sides) worked by coincidence, but 花の命/儚く above did not. This case is the control: a
+    // truly symmetric surface should still get equal (not merely nonzero) padding on both sides.
+    func testNaturalSizeSplitsPaddingPerSideNotSymmetrically() {
+        let view = FuriganaView()
+        let font = UIFont.systemFont(ofSize: 28, weight: .medium)
+        view.configure(surface: "力", reading: "", font: font, gap: 2, explicitRunReadings: [0: "ちから"])
+
+        _ = view.naturalSize()
+        XCTAssertEqual(view.overflowLeadingInset, view.overflowTrailingInset, accuracy: 1)
     }
 }
