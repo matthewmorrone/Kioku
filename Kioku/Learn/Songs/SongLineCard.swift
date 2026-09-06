@@ -56,6 +56,11 @@ struct SongLineCard: View {
     // Opens the shared lookup sheet for a tapped vocabulary row. The parent owns the dictionary
     // resolution + presentation so this card stays a pure renderer.
     let onWordTapped: (SongWord) -> Void
+    // Scrolls the list to the given 1-indexed line number — the target of this card's own
+    // "Same as line N" / "Parallel to line N" reference label. The parent owns this (it holds
+    // the ScrollViewReader's proxy and the full items array needed to resolve a line index to
+    // a scroll target) so this card stays a pure renderer.
+    let onJumpToLine: (Int) -> Void
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
 
@@ -219,29 +224,36 @@ struct SongLineCard: View {
     }
 
     // Compact reference label: small arrow icon + "Same as line N" or "Parallel to line N · X → Y".
-    // Accent-coloured so it reads as a link cue without needing its own background panel.
+    // Accent-coloured so it reads as a link cue — and, via onJumpToLine, actually is one: tapping
+    // it scrolls to the referenced line.
     private func inlineReferenceLabel(_ reference: LineReference) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "arrow.uturn.backward")
-                .font(.caption2)
-            switch reference {
-            case .sameAsLine(let n):
-                Text("Same as line \(n)")
-                    .font(.footnote.weight(.semibold))
-            case .parallelTo(line: let n, substitution: let sub):
-                if sub.isEmpty {
-                    Text("Parallel to line \(n)")
+        Button {
+            onJumpToLine(reference.targetLineIndex)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.caption2)
+                switch reference {
+                case .sameAsLine(let n):
+                    Text("Same as line \(n)")
                         .font(.footnote.weight(.semibold))
-                } else {
-                    Text("Parallel to line \(n) · \(sub)")
-                        .font(.footnote.weight(.semibold))
+                case .parallelTo(line: let n, substitution: let sub):
+                    if sub.isEmpty {
+                        Text("Parallel to line \(n)")
+                            .font(.footnote.weight(.semibold))
+                    } else {
+                        Text("Parallel to line \(n) · \(sub)")
+                            .font(.footnote.weight(.semibold))
+                    }
                 }
             }
+            .foregroundStyle(Color.accentColor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .allowsTightening(true)
         }
-        .foregroundStyle(Color.accentColor)
-        .lineLimit(1)
-        .minimumScaleFactor(0.6)
-        .allowsTightening(true)
+        .buttonStyle(.plain)
+        .accessibilityHint("Jumps to line \(reference.targetLineIndex)")
     }
 
     // Surfaces a note when the line has no gist, no grammar note, no words, and no reference

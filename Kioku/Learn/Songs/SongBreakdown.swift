@@ -54,6 +54,16 @@ nonisolated struct SongWord: Codable, Equatable, Sendable {
 nonisolated enum LineReference: Codable, Equatable, Sendable {
     case sameAsLine(Int)
     case parallelTo(line: Int, substitution: String)
+
+    // The 1-indexed line number this reference points back to, regardless of which case —
+    // what a "jump to the referenced line" action needs, without the caller switching on the
+    // case itself.
+    var targetLineIndex: Int {
+        switch self {
+        case .sameAsLine(let n): return n
+        case .parallelTo(line: let n, substitution: _): return n
+        }
+    }
 }
 
 // Records which provider produced a breakdown so the cache can show diagnostics

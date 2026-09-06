@@ -511,7 +511,14 @@ struct SongStepperView: View {
                                 case .loading, nil: break
                                 }
                             },
-                            onWordTapped: { presentWordLookup($0) }
+                            onWordTapped: { presentWordLookup($0) },
+                            onJumpToLine: { targetIndex in
+                                guard let target = items.first(where: { $0.line.index == targetIndex }) else { return }
+                                expandedByLineIndex.insert(target.line.index)
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    proxy.scrollTo(target.id, anchor: .center)
+                                }
+                            }
                         )
                         .id(item.id)
                     }
