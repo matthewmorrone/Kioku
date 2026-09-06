@@ -594,6 +594,16 @@ struct SongLineCard: View {
                 isScrollEnabled: false
             )
             .frame(maxWidth: .infinity, alignment: .leading)
+            // RenderGeometry.resolve() bakes a fixed 4pt leftInset into every
+            // KiokuCoreTextRendererView instance. wordEntryRow's own VStack already adds
+            // .padding(.horizontal, 4) around the whole row (headword + definition below),
+            // so without this the two 4pt insets stack: the headword sits 8pt from the row's
+            // edge while the definition text and the "Show/Hide explanations" toggle above it
+            // sit at 4pt, reading as an unexplained extra indent before kanji-bearing headwords
+            // specifically (pure-kana words fall to the plain-Text branch below, which has no
+            // such built-in inset). Cancels the renderer's own inset so it lines up with its
+            // plain-Text siblings instead of compounding with the row's padding.
+            .padding(.leading, -4)
         } else {
             Text(word.surface)
                 .font(.title3.weight(.semibold))
