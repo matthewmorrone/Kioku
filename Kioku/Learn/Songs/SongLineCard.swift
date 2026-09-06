@@ -469,7 +469,7 @@ struct SongLineCard: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(SongLineCard.stripInlineMarkdown(SongLineCard.strippingPatternToBankPrefix(text)))
-                .font(.callout)
+                .font(.callout.italic())
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
