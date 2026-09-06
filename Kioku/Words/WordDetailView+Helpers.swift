@@ -86,10 +86,11 @@ extension WordDetailView {
     // the wrong place, dangling stems where several edges shared an endpoint) that were hard to
     // get right by eye.
     var sublatticeDiagram: some View {
-        // Excludes the trivial single-segment "path" (the whole surface taken as one unsplit
-        // token) — it contributes one giant edge spanning the entire diagram start to end, which
-        // isn't internal structure and just overlaps every real edge rather than adding to them.
-        sublatticeArcDiagram(edges: sublatticeUniqueEdges(for: sublatticePaths.filter { $0.count > 1 }))
+        // Includes the trivial single-segment "path" (the whole surface taken as one unsplit
+        // token) as its own start-to-end edge — SwiftDagre routes an edge spanning multiple
+        // boundaries around whatever shares its span, so it reads as an arc over the real
+        // segment edges rather than an overlapping mess.
+        sublatticeArcDiagram(edges: sublatticeUniqueEdges(for: sublatticePaths))
     }
 
     // Every distinct (position, text) segment across all candidate paths, deduped so a segment

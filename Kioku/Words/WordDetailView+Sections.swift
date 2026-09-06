@@ -138,6 +138,8 @@ extension WordDetailView {
             }
             Section("Paths — arcs") {
                 sublatticeDiagram
+            }
+            Section("Paths — text") {
                 ForEach(Array(sublatticePaths.enumerated()), id: \.offset) { _, path in
                     Text(path.joined(separator: " · "))
                         .font(.subheadline)
