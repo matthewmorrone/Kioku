@@ -49,9 +49,24 @@ extension SongStepperView {
                 lengthByLocation[localLocation] = lineCache.furiganaLengthBySegmentLocation[location]
             }
             if byLocation.isEmpty == false {
+                // Slice the LINE's real segment boundaries too, not one synthetic span
+                // covering the whole word. KiokuCoreTextAttributedStringBuilder's ruby-overhang
+                // kern compensation pushes apart SEGMENT boundaries, not run boundaries — a
+                // multi-run word like 花の命 (segmented as 花 / の / 命) needs 命's own segment
+                // boundary against の to get left-side kern room; collapsing everything to one
+                // span makes 命 look like it's mid-segment with no boundary to push against,
+                // silently disabling that compensation for every run but the very first.
+                let slicedSegments: [Range<String.Index>] = lineCache.segmentationRanges.compactMap { range in
+                    let nsRange = NSRange(range, in: contextLine.original)
+                    guard nsRange.location >= wordNSRange.location,
+                          nsRange.location + nsRange.length <= wordNSRange.location + wordNSRange.length else { return nil }
+                    let lowerOffset = nsRange.location - wordNSRange.location
+                    let upperOffset = lowerOffset + nsRange.length
+                    return String.Index(utf16Offset: lowerOffset, in: surface)..<String.Index(utf16Offset: upperOffset, in: surface)
+                }
                 return LineFuriganaCache(
                     sourceText: surface,
-                    segmentationRanges: [surface.startIndex..<surface.endIndex],
+                    segmentationRanges: slicedSegments.isEmpty ? [surface.startIndex..<surface.endIndex] : slicedSegments,
                     furiganaBySegmentLocation: byLocation,
                     furiganaLengthBySegmentLocation: lengthByLocation
                 )
@@ -76,9 +91,11 @@ extension SongStepperView {
     // FuriganaResolver.build still uses its full lemma/projection/fallback pipeline (including
     // the last-resort per-kanji reading for a surface that genuinely isn't a dictionary word),
     // it's just never given the option to sub-divide a string this function already knows is
-    // one word. segmentationRanges is likewise the single whole-surface span, not per-run —
-    // matching buildFuriganaCache's shape, where each range is one segmenter-level word/token,
-    // and this surface IS that one token by construction.
+    // one word — that's about READING resolution only. segmentationRanges is independent: one
+    // span per kanji run (see kanjiRunSegments) rather than one span for the whole surface, so
+    // KiokuCoreTextAttributedStringBuilder's ruby-overhang kern compensation — which pushes
+    // apart SEGMENT boundaries, not run boundaries — has a real neighbor to push for every run
+    // but the very first, the same as buildFuriganaCache's real per-line segments give it.
     private func buildWordFuriganaCache(forIsolated surface: String) -> LineFuriganaCache {
         guard let segmenter, surface.isEmpty == false else {
             return LineFuriganaCache(sourceText: surface, segmentationRanges: [], furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:])
@@ -99,10 +116,31 @@ extension SongStepperView {
         )
         return LineFuriganaCache(
             sourceText: surface,
-            segmentationRanges: [surface.startIndex..<surface.endIndex],
+            segmentationRanges: Self.kanjiRunSegments(in: surface),
             furiganaBySegmentLocation: resolved.byLocation,
             furiganaLengthBySegmentLocation: resolved.lengthByLocation
         )
+    }
+
+    // Derives kern-compensation segment boundaries for an isolated surface with no real
+    // sentence segmentation available: one span per kanji run, extended through any trailing
+    // kana up to the next kanji run (or the surface's end) so okurigana stays grouped with its
+    // kanji — the same shape a real sentence segmenter's segments would have for a compound
+    // like 儚く. Falls back to one whole-surface span when the surface has no kanji runs at all
+    // (pure kana, or empty).
+    private static func kanjiRunSegments(in surface: String) -> [Range<String.Index>] {
+        let runs = FuriganaAttributedString.kanjiRuns(in: surface)
+        guard runs.isEmpty == false else { return [surface.startIndex..<surface.endIndex] }
+        let length = surface.utf16.count
+        var segments: [Range<String.Index>] = []
+        if let first = runs.first, first.start > 0 {
+            segments.append(surface.startIndex..<String.Index(utf16Offset: first.start, in: surface))
+        }
+        for (i, run) in runs.enumerated() {
+            let end = i + 1 < runs.count ? runs[i + 1].start : length
+            segments.append(String.Index(utf16Offset: run.start, in: surface)..<String.Index(utf16Offset: end, in: surface))
+        }
+        return segments
     }
 
     // Reuses the Read tab's resolver so the breakdown gets the exact same reading
