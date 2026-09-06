@@ -249,11 +249,18 @@ extension WordDetailView {
     var currentSelectedSenseIDs: [Int64] { currentSavedWord.selectedSenseIDs }
     var currentSelectedGlosses: [GlossRef] { currentSavedWord.selectedGlosses }
 
-    // Delegates to the unit-tested WordVariants helper. Surfaces both kanji and
-    // kana alternates for kanji-bearing saved surfaces; returns [] for pure-kana
-    // surfaces (see WordVariants for the rationale and filter rules).
+    // Delegates to the unit-tested WordVariants helper. Surfaces alternate kanji
+    // spellings (same reading, different kanji) for kanji-bearing saved surfaces;
+    // returns [] for pure-kana surfaces (see WordVariants for the rationale).
     func alternateSpellings(entry: DictionaryEntry) -> [String] {
         WordVariants.alternateSpellings(savedSurface: word.surface, entry: entry)
+    }
+
+    // Delegates to the unit-tested WordVariants helper. Surfaces this entry's other valid
+    // readings — different pronunciations of the same kanji, not alternate spellings of the
+    // same sound (see WordVariants for the rationale, e.g. 振り子's しんし alongside ふりこ).
+    func otherReadings(entry: DictionaryEntry) -> [String] {
+        WordVariants.otherReadings(savedSurface: word.surface, entry: entry)
     }
 
     // Returns true when the entry flags the word as usually written in kana alone.

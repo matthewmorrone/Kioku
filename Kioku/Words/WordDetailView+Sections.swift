@@ -191,7 +191,11 @@ extension WordDetailView {
     // personal note field.
     @ViewBuilder
     var wordDetailMetadataSections: some View {
-        // Alternate spellings — driven by saved entry only.
+        // Alternate spellings and other readings — driven by saved entry only. Kept as separate
+        // sections (not merged into one list) since they answer different questions: alternate
+        // kanji spellings are the same word, same reading, different kanji, while other kana
+        // forms are different PRONUNCIATIONS of the same kanji, not alternate spellings of the
+        // same sound (see WordVariants).
         if let entry = savedDisplayData?.entry {
             let alternates = alternateSpellings(entry: entry)
             if alternates.isEmpty == false {
@@ -207,6 +211,16 @@ extension WordDetailView {
                                     .foregroundStyle(.tertiary)
                             }
                         }
+                    }
+                }
+            }
+
+            let readings = otherReadings(entry: entry)
+            if readings.isEmpty == false {
+                Section("Other Readings") {
+                    ForEach(readings, id: \.self) { reading in
+                        Text(reading)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
