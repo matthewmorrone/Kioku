@@ -192,7 +192,10 @@ final class SurfaceSheetViewController: UIViewController {
     }
 
     // Shows or hides the reading navigation arrows based on how many candidates exist.
+    // Same async-completion-after-teardown race as rebuildHeaderRow above — guard rather
+    // than force-unwrap the IUO outlets into a crash for a stale, ignorable completion.
     func updateReadingNavigationButtons() {
+        guard let prevReadingButton, let nextReadingButton else { return }
         let canCycleReadings = currentReadings.count > 1
         prevReadingButton.isHidden = !canCycleReadings
         nextReadingButton.isHidden = !canCycleReadings
