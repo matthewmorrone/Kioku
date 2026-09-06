@@ -89,10 +89,12 @@ struct SongStepperView: View {
     // override (keyed by note.content coordinates) can be rebased into a line's local
     // coordinates. See lineStartOffsets.
     @State var lineStartOffsetsByIndex: [Int: Int] = [:]
-    // Per-kanji-run readings for word-list headwords, keyed by (line, surface) — not surface
-    // alone, since the same word can appear on multiple lines with a different resolved
-    // reading. Built alongside furiganaCacheByLineIndex (see ensureFuriganaCaches).
-    @State var wordFuriganaByKey: [WordFuriganaKey: [Int: String]] = [:]
+    // Furigana cache for word-list headwords, keyed by (line, surface) — not surface alone,
+    // since the same word can appear on multiple lines with a different resolved reading.
+    // Same shape as furiganaCacheByLineIndex's per-line entries (see LineFuriganaCache) so a
+    // word headword renders through the same KiokuCoreTextRendererView the big Japanese row
+    // does. Built alongside furiganaCacheByLineIndex (see ensureFuriganaCaches).
+    @State var wordFuriganaCacheByKey: [WordFuriganaKey: LineFuriganaCache] = [:]
     // Convenience init for callers that don't (yet) supply the resolver deps — e.g. previews
     // or any future surface that doesn't have the segmenter in scope. Furigana becomes a
     // visual no-op in that mode.
@@ -294,7 +296,7 @@ struct SongStepperView: View {
         // Lifecycle's identical fix for the Read tab's own segmentation cache.
         .onChange(of: segmenterRevision) { _, _ in
             furiganaCacheByLineIndex = [:]
-            wordFuriganaByKey = [:]
+            wordFuriganaCacheByKey = [:]
             refreshLineDerivedState(for: displayItems)
         }
         // Covers first appearance with an already-cached breakdown — onChange above only fires
@@ -495,7 +497,7 @@ struct SongStepperView: View {
                             referencedLine: referencedLine(for: item.line),
                             isExpanded: expandedByLineIndex.contains(item.line.index),
                             furiganaCache: furiganaCacheByLineIndex[item.line.index],
-                            wordFurigana: wordFuriganaByKey,
+                            wordFurigana: wordFuriganaCacheByKey,
                             playState: cardPlayState(for: item.line),
                             phase: item.phase,
                             listenHighlight: activeListenSegment?.lineIndex == item.line.index ? activeListenSegment : nil,

@@ -19,37 +19,50 @@ extension SongStepperView {
         for line in lines {
             for word in line.words {
                 let key = WordFuriganaKey(lineIndex: line.index, surface: word.surface)
-                guard wordFuriganaByKey[key] == nil else { continue }
-                wordFuriganaByKey[key] = buildWordFuriganaRunReadings(for: word, contextLine: line)
+                guard wordFuriganaCacheByKey[key] == nil else { continue }
+                wordFuriganaCacheByKey[key] = buildWordFuriganaCache(for: word, contextLine: line)
             }
         }
     }
 
-    // Resolves per-kanji-run readings for a single word-list headword. Prefers slicing the
-    // already-resolved *line* cache (the word's readings as chosen with full sentence
-    // context — okurigana, verb-phrase segmentation, etc.) when the word's surface appears
-    // verbatim in that line; only isolated words (surface not found in the line, e.g. an
-    // LLM-normalized headword) fall back to segmenting the surface on its own, which can
-    // pick a different reading than the same characters would get in context.
-    private func buildWordFuriganaRunReadings(for word: SongWord, contextLine: SongLine) -> [Int: String] {
+    // Resolves a word-list headword's furigana as a full LineFuriganaCache — the same shape
+    // buildFuriganaCache produces for a whole line — so word headwords render through the exact
+    // same KiokuCoreTextRendererView the Read tab and this card's own big Japanese row use,
+    // instead of a second, separate single-word ruby renderer. Prefers slicing the already-
+    // resolved *line* cache (the word's readings as chosen with full sentence context —
+    // okurigana, verb-phrase segmentation, etc.) when the word's surface appears verbatim in
+    // that line; only isolated words (surface not found in the line, e.g. an LLM-normalized
+    // headword) fall back to segmenting the surface on its own, which can pick a different
+    // reading than the same characters would get in context.
+    func buildWordFuriganaCache(for word: SongWord, contextLine: SongLine) -> LineFuriganaCache {
+        let surface = word.surface
         if let lineCache = furiganaCacheByLineIndex[contextLine.index],
-           let wordRange = contextLine.original.range(of: word.surface) {
+           let wordRange = contextLine.original.range(of: surface) {
             let wordNSRange = NSRange(wordRange, in: contextLine.original)
-            let sliced = lineCache.furiganaBySegmentLocation.compactMap { location, reading -> (Int, String)? in
+            var byLocation: [Int: String] = [:]
+            var lengthByLocation: [Int: Int] = [:]
+            for (location, reading) in lineCache.furiganaBySegmentLocation {
                 guard location >= wordNSRange.location,
-                      location < wordNSRange.location + wordNSRange.length else { return nil }
-                return (location - wordNSRange.location, reading)
+                      location < wordNSRange.location + wordNSRange.length else { continue }
+                let localLocation = location - wordNSRange.location
+                byLocation[localLocation] = reading
+                lengthByLocation[localLocation] = lineCache.furiganaLengthBySegmentLocation[location]
             }
-            if sliced.isEmpty == false {
-                return Dictionary(uniqueKeysWithValues: sliced)
+            if byLocation.isEmpty == false {
+                return LineFuriganaCache(
+                    sourceText: surface,
+                    segmentationRanges: [surface.startIndex..<surface.endIndex],
+                    furiganaBySegmentLocation: byLocation,
+                    furiganaLengthBySegmentLocation: lengthByLocation
+                )
             }
         }
-        return buildWordFuriganaRunReadings(for: word.surface)
+        return buildWordFuriganaCache(forIsolated: surface)
     }
 
-    // Resolves per-kanji-run readings for a word's surface in isolation, with no surrounding
-    // sentence to segment against. Used as a fallback when the surface can't be located
-    // within its source line (e.g. an LLM-normalized headword that doesn't appear verbatim).
+    // Resolves a word's furigana in isolation, with no surrounding sentence to segment against.
+    // Used as a fallback when the surface can't be located within its source line (e.g. an
+    // LLM-normalized headword that doesn't appear verbatim).
     //
     // Treats `surface` as a single, already-known word — a `SongWord` bullet is one atomic
     // vocabulary item by construction — rather than asking the segmenter to rediscover word
@@ -63,23 +76,33 @@ extension SongStepperView {
     // FuriganaResolver.build still uses its full lemma/projection/fallback pipeline (including
     // the last-resort per-kanji reading for a surface that genuinely isn't a dictionary word),
     // it's just never given the option to sub-divide a string this function already knows is
-    // one word.
-    private func buildWordFuriganaRunReadings(for surface: String) -> [Int: String] {
-        guard let segmenter, surface.isEmpty == false else { return [:] }
+    // one word. segmentationRanges is likewise the single whole-surface span, not per-run —
+    // matching buildFuriganaCache's shape, where each range is one segmenter-level word/token,
+    // and this surface IS that one token by construction.
+    private func buildWordFuriganaCache(forIsolated surface: String) -> LineFuriganaCache {
+        guard let segmenter, surface.isEmpty == false else {
+            return LineFuriganaCache(sourceText: surface, segmentationRanges: [], furiganaBySegmentLocation: [:], furiganaLengthBySegmentLocation: [:])
+        }
         let wholeWordEdge = LatticeEdge(
             start: surface.startIndex,
             end: surface.endIndex,
             surface: surface,
             lemma: segmenter.preferredLemma(for: surface) ?? surface
         )
-        return FuriganaResolver(
+        let resolved = FuriganaResolver(
             segmenter: segmenter,
             kanjiReadingFallback: kanjiReadingFallback
         ).build(
             for: surface,
             edges: [wholeWordEdge],
             surfaceReadingData: surfaceReadingData
-        ).byLocation
+        )
+        return LineFuriganaCache(
+            sourceText: surface,
+            segmentationRanges: [surface.startIndex..<surface.endIndex],
+            furiganaBySegmentLocation: resolved.byLocation,
+            furiganaLengthBySegmentLocation: resolved.lengthByLocation
+        )
     }
 
     // Reuses the Read tab's resolver so the breakdown gets the exact same reading

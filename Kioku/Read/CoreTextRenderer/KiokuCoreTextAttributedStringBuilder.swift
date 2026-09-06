@@ -288,7 +288,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                 if inputs.isRubySpacingEnabled && inputs.isSegmentPacked == false {
                     let kanjiW = ceil((kanjiText as NSString).size(withAttributes: [.font: baseFont]).width)
                     let rubyW = ceil((reading as NSString).size(withAttributes: [.font: furiganaFont]).width)
-                    let overhang = RubyOverhang.margin(baseWidth: kanjiW, rubyWidth: rubyW)
+                    let overhang = max(0, ceil((rubyW - kanjiW) / 2))
                     if overhang > 0.5, let containingIdx = segmentNSRanges.firstIndex(where: { NSLocationInRange(kanjiLoc, $0) }) {
                         let containing = segmentNSRanges[containingIdx]
                         // Right side: bump .kern at the containing segment's tail ONLY

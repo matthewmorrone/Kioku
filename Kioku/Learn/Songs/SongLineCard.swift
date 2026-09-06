@@ -28,12 +28,13 @@ struct SongLineCard: View {
     // Lazily-populated cache; nil before the first expansion for this line. Owned by the
     // parent stepper so cache compute happens once per line per session.
     let furiganaCache: LineFuriganaCache?
-    // Per-kanji-run readings for word-list headwords, keyed by (line, surface) — not surface
-    // alone, since the same word can resolve to a different reading on different lines (see
-    // WordFuriganaKey). Owned by the parent stepper (it has the segmenter/surfaceReadingData
-    // in scope) and built eagerly alongside furiganaCache so every word in the explanations
-    // list can show furigana.
-    let wordFurigana: [WordFuriganaKey: [Int: String]]
+    // Furigana cache for word-list headwords, keyed by (line, surface) — not surface alone,
+    // since the same word can resolve to a different reading on different lines (see
+    // WordFuriganaKey). Same shape as furiganaCache (see LineFuriganaCache) so a headword
+    // renders through the same KiokuCoreTextRendererView the big Japanese row uses. Owned by
+    // the parent stepper (it has the segmenter/surfaceReadingData in scope) and built eagerly
+    // alongside furiganaCache so every word in the explanations list can show furigana.
+    let wordFurigana: [WordFuriganaKey: LineFuriganaCache]
     // Play-button state for this line's narration (sung clip when available, then the
     // sentence, gist, and words — see SongListenScript). Nil hides the button entirely.
     let playState: SongLineCardPlayState?
@@ -549,28 +550,50 @@ struct SongLineCard: View {
         .accessibilityHint("Look up \(word.surface)")
     }
 
-    // A word-list headword: furigana over kanji runs when the stepper resolved a reading for
-    // this surface, plain text otherwise (kana-only words, or a surface the resolver couldn't
-    // align). Font is a fixed UIFont matching `.title3.weight(.semibold)` since FuriganaLabel
-    // is a UIKit view and doesn't take a SwiftUI Font.
+    // A word-list headword: renders through the same CoreText renderer the Read tab and this
+    // card's own big Japanese row use (see furiganaRow) — furigana over kanji runs when the
+    // stepper resolved a reading for this surface, plain text otherwise (kana-only words, or a
+    // surface the resolver couldn't align). This used to go through FuriganaLabel, a second,
+    // independent single-word ruby renderer with its own (buggier) overhang handling; routing
+    // through the same renderer as everything else means there's exactly one ruby
+    // implementation to get right instead of two that can drift apart.
+    //
+    // The renderer intercepts its own touches (a UIViewRepresentable wrapping a UITextView, same
+    // as furiganaRow), so tapping the headword itself wouldn't reach wordEntryRow's surrounding
+    // Button — onSegmentTapped routes it to the same onWordTapped callback instead.
     @ViewBuilder
     private func wordHeadword(_ word: SongWord) -> some View {
         let key = WordFuriganaKey(lineIndex: effectiveWordsLineIndex, surface: word.surface)
-        // `.fixedSize` forces SwiftUI to propose an unconstrained width, which routes
-        // FuriganaLabel.sizeThatFits to its natural-width branch instead of the full row
-        // width. Without it, the label reports the entire row as its size and its internal
-        // .center paragraph alignment draws the headword centered in the row — inconsistent
-        // with the plain-Text branch below, which already hugs its own natural width and sits
-        // flush left.
-        if let runReadings = wordFurigana[key], runReadings.isEmpty == false {
-            FuriganaLabel(
-                surface: word.surface,
-                reading: "",
-                font: .systemFont(ofSize: 20, weight: .semibold),
-                gap: CGFloat(furiganaGap),
-                explicitRunReadings: runReadings
+        if let cache = wordFurigana[key], cache.furiganaBySegmentLocation.isEmpty == false {
+            KiokuCoreTextRendererView(
+                text: word.surface,
+                segmentationRanges: cache.segmentationRanges,
+                furiganaBySegmentLocation: cache.furiganaBySegmentLocation,
+                furiganaLengthBySegmentLocation: cache.furiganaLengthBySegmentLocation,
+                isFuriganaVisible: true,
+                isVisualEnhancementsEnabled: true,
+                isColorAlternationEnabled: false,
+                textSize: .constant(20),
+                lineSpacing: 4,
+                kerning: 0,
+                furiganaGap: furiganaGap,
+                evenSegmentColor: .label,
+                oddSegmentColor: .label,
+                isLineWrappingEnabled: true,
+                isRubySpacingEnabled: true,
+                selectedHighlightRange: nil,
+                playbackHighlightRange: nil,
+                selectionHighlightColor: .clear,
+                playbackHighlightColor: .clear,
+                unknownSegmentLocations: [],
+                isHighlightUnknownEnabled: false,
+                unknownSegmentColor: .label,
+                debugFlags: KiokuDebugOverlayView.Flags(),
+                illegalMergeLocation: nil,
+                onSegmentTapped: { _, _, _ in onWordTapped(word) },
+                isScrollEnabled: false
             )
-            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             Text(word.surface)
                 .font(.title3.weight(.semibold))
