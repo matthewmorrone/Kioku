@@ -103,8 +103,11 @@ jobs:
       # same repo) — never for a pull_request from a fork. A fork PR could otherwise redirect the
       # package graph to a malicious build-tool plugin and have it execute on the runner, with
       # access to the job's environment, before any human reviews the diff. A fork PR's `ios`
-      # check stays red on the CudaBuild error until a maintainer re-runs it after review — a
-      # deliberate fail-safe, not a bug.
+      # check stays red on the CudaBuild error permanently — re-running the same job does NOT
+      # help, since head.repo.full_name is fixed by the original event. Recovering requires a
+      # maintainer-controlled path outside this condition (e.g. pushing the reviewed diff to a
+      # same-repo branch, or a trusted-label/workflow_dispatch gate) — not implemented here. A
+      # permanently-red fork-PR check is the deliberate fail-safe, not a bug.
       - name: Build & test
         env:
           TRUST_PACKAGE_PLUGINS: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
