@@ -89,9 +89,34 @@ jobs:
       # tests during a fast iteration cycle" and separately documents that CI-env-var-based
       # skipping was already tried and found unreliable (doesn't propagate into the simulator
       # test process), so a build-flag exclusion here is the intended mechanism, not a workaround.
+      #
+      # -skipPackagePluginValidation: mlx-swift's Package.swift declares a "CudaBuild" build-tool
+      # plugin (for its optional CUDA/Linux backend, irrelevant to this iOS build) that Xcode
+      # otherwise refuses to run non-interactively with "Plugin \"CudaBuild\" from package
+      # \"mlx-swift\" must be enabled before it can be used" — there's no CI-safe way to grant that
+      # trust ahead of time (it's normally an Xcode GUI prompt), so this flag skips the trust
+      # check entirely. Scoped to this one invocation rather than a machine-wide
+      # `defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidation` so it only
+      # affects this job, not every Xcode invocation on the runner.
+      #
+      # Only applied for trusted triggers (a push, or a pull_request whose head lives in this
+      # same repo) — never for a pull_request from a fork. A fork PR could otherwise redirect the
+      # package graph to a malicious build-tool plugin and have it execute on the runner, with
+      # access to the job's environment, before any human reviews the diff. A fork PR's `ios`
+      # check stays red on the CudaBuild error permanently — re-running the same job does NOT
+      # help, since head.repo.full_name is fixed by the original event. Recovering requires a
+      # maintainer-controlled path outside this condition (e.g. pushing the reviewed diff to a
+      # same-repo branch, or a trusted-label/workflow_dispatch gate) — not implemented here. A
+      # permanently-red fork-PR check is the deliberate fail-safe, not a bug.
       - name: Build & test
+        env:
+          TRUST_PACKAGE_PLUGINS: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           set -o pipefail
+          plugin_flag=()
+          if [[ "$TRUST_PACKAGE_PLUGINS" == "true" ]]; then
+            plugin_flag=(-skipPackagePluginValidation)
+          fi
           xcodebuild test \
             -project Kioku.xcodeproj \
             -scheme Kioku \
@@ -101,6 +126,7 @@ jobs:
             -enableCodeCoverage YES \
             -derivedDataPath build \
             -resultBundlePath build/Kioku.xcresult \
+            "${plugin_flag[@]}" \
             CODE_SIGNING_ALLOWED=NO
 
       # Emit a per-target line-coverage summary into the workflow run page so
