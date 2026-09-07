@@ -35,7 +35,7 @@ extension ReadView {
                 Spacer()
                 titleLyricsButton
                 titleExtractWordsButton
-                if isLLMConfigured {
+                if isBreakdownConfigured {
                     titleBreakdownButton
                 }
             }
