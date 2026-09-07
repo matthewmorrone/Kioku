@@ -467,11 +467,15 @@ final class LLMCorrectionService {
 
     // Parses the numeric-seconds form of a 429 response's Retry-After header — the form OpenAI
     // and Anthropic both send. The HTTP-date form is intentionally not handled since neither
-    // provider uses it for this header; a missing or non-numeric value just falls back to the
-    // caller's default backoff instead of failing the request.
+    // provider uses it for this header; a missing, non-numeric, negative, or non-finite value
+    // (a malformed or hostile "-1"/"nan"/"inf") just falls back to the caller's default backoff
+    // instead of failing the request — the caller converts this to a UInt64 nanosecond count,
+    // which traps on a negative or non-finite Double.
     private static func retryAfterSeconds(from response: HTTPURLResponse) -> Double? {
-        guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
-        return Double(value)
+        guard let value = response.value(forHTTPHeaderField: "Retry-After"),
+              let seconds = Double(value),
+              seconds.isFinite, seconds >= 0 else { return nil }
+        return seconds
     }
 
     // Parses the compact format string returned by the LLM into [LLMSegmentEntry].
