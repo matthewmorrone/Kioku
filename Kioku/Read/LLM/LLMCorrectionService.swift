@@ -426,8 +426,7 @@ final class LLMCorrectionService {
     // Returns the body and status code together so callers can still log the status they got.
     private func send(_ request: URLRequest, provider: String) async throws -> (data: Data, statusCode: Int) {
         let maxAttempts = 3
-        var attempt = 1
-        while true {
+        for attempt in 1...maxAttempts {
             do {
                 let (data, response) = try await urlSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
@@ -452,8 +451,9 @@ final class LLMCorrectionService {
                 AppLog.error(.llmCorrection, "[\(provider)] request error \(error.localizedDescription), retrying (attempt \(attempt + 1)/\(maxAttempts))")
             }
             try await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
-            attempt += 1
         }
+        // Unreachable: attempt == maxAttempts always takes one of the throwing branches above.
+        throw LLMCorrectionError.networkError("\(provider): retry loop exhausted")
     }
 
     // Parses the compact format string returned by the LLM into [LLMSegmentEntry].
