@@ -7,7 +7,7 @@ import Foundation
 // gets to see the same lyrics context the segmentation pass reasons over instead of drifting
 // out of sync across two independent calls.
 //
-// Deliberately additive: reuses LLMCorrectionService.systemPrompt / .parseCompactResponse and
+// Deliberately additive: reuses LLMCorrectionService.systemPromptForRemoteProvider / .parseCompactResponse and
 // SongBreakdownPrompt / SongBreakdownParser verbatim rather than forking them, and leaves both
 // existing services completely untouched. The two output halves are stitched into one prompt
 // separated by `responseDelimiter`, then split back apart before parsing each half with its
@@ -33,16 +33,7 @@ final class MergedCorrectionBreakdownService {
     private let urlSession: URLSession
 
     init(urlSession: URLSession? = nil) {
-        self.urlSession = urlSession ?? MergedCorrectionBreakdownService.makeLongTimeoutSession()
-    }
-
-    // Mirrors SongBreakdownService's timeout: a combined call does at least as much work as a
-    // breakdown alone, so the same generous per-request/resource timeouts apply.
-    private static func makeLongTimeoutSession() -> URLSession {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 300
-        config.timeoutIntervalForResource = 600
-        return URLSession(configuration: config)
+        self.urlSession = urlSession ?? LLMStreamingClient.makeLongTimeoutSession()
     }
 
     // Runs the merged call and returns both halves already parsed into the same types their
@@ -70,19 +61,26 @@ final class MergedCorrectionBreakdownService {
         }
 
         let provider = LLMSettings.activeProvider()
-        // Same restriction SongBreakdownService applies: the breakdown half of this prompt is
-        // too wide for Apple Intelligence's on-device model to reliably produce. Checked before
-        // the API-key guard for the same reason SongBreakdownService checks it there — Apple
-        // Intelligence needs no key, so the key guard would otherwise misreport "not configured".
-        if provider == .appleIntelligence {
+        // No Apple Intelligence variant is supported here — not just the on-device model being
+        // too small for the breakdown half, but because this feature couples correction and
+        // breakdown into ONE call by design. Correction is meant to be free/on-device whenever
+        // Apple Intelligence is active (LLMCorrectionService never routes it through Cloud/Cloud
+        // Pro either — see appleIntelligenceCloudUnsupported there); folding it into this paid,
+        // cloud-only combined call would defeat that. Run the two features separately instead:
+        // SongBreakdownService already supports Apple Intelligence Cloud/Cloud Pro on its own,
+        // and correction already runs on-device on its own. Checked before the API-key guard
+        // below for the same reason SongBreakdownService checks it there — no Apple Intelligence
+        // variant has a key, so that guard would otherwise misreport "not configured".
+        if provider.isAppleIntelligence {
             throw SongBreakdownError.appleIntelligenceUnsupported
-        }
-        guard let apiKey = LLMSettings.activeAPIKey() else {
-            throw SongBreakdownError.noKeyConfigured
         }
 
         let system = Self.systemPrompt
         let user = Self.userMessage(noteContent: noteContent, compactInput: compactInput)
+
+        guard let apiKey = LLMSettings.activeAPIKey() else {
+            throw SongBreakdownError.noKeyConfigured
+        }
         let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
             ?? LLMSettings.defaultTemperature
         let onDelta = Self.makeDeltaHandler(onPartialLines: onPartialLines)
@@ -94,7 +92,11 @@ final class MergedCorrectionBreakdownService {
         let raw: String
         let producedBy: SongBreakdownProvider
         switch provider {
-        case .none, .appleIntelligence:
+        case .none, .appleIntelligence, .appleIntelligenceCloud, .appleIntelligenceCloudPro:
+            // Unreachable: .none has no API key (caught above), and every Apple Intelligence
+            // variant is caught by the isAppleIntelligence check before the guard. Kept
+            // exhaustive rather than `default:` so a future LLMProvider case fails to compile
+            // here instead of silently mis-dispatching.
             throw SongBreakdownError.noKeyConfigured
         case .openAI:
             raw = try await LLMStreamingClient.streamOpenAI(
@@ -198,7 +200,7 @@ final class MergedCorrectionBreakdownService {
 
         ---
 
-        \(LLMCorrectionService.systemPrompt)
+        \(LLMCorrectionService.systemPromptForRemoteProvider)
 
         FINAL OUTPUT STRUCTURE:
         1. First, produce the song breakdown exactly as specified above.

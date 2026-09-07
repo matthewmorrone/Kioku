@@ -342,6 +342,8 @@ final class SongBreakdownStore: ObservableObject {
         switch LLMSettings.activeProvider() {
         case .none: return ""
         case .appleIntelligence: return "Apple Intelligence"
+        case .appleIntelligenceCloud: return "Apple Intelligence (Cloud)"
+        case .appleIntelligenceCloudPro: return "Apple Intelligence (Cloud Pro)"
         case .openAI: return "OpenAI"
         case .claude: return "Claude"
         }

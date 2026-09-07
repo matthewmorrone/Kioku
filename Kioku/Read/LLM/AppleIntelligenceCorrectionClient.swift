@@ -161,10 +161,10 @@ enum AppleIntelligenceCorrectionClient {
             if let lookupTool {
                 session = LanguageModelSession(
                     tools: [lookupTool],
-                    instructions: LLMCorrectionService.systemPrompt
+                    instructions: LLMCorrectionService.systemPromptForAppleIntelligence
                 )
             } else {
-                session = LanguageModelSession(instructions: LLMCorrectionService.systemPrompt)
+                session = LanguageModelSession(instructions: LLMCorrectionService.systemPromptForAppleIntelligence)
             }
             do {
                 AppLog.debug(.llmCorrection, "[AppleIntelligence] line \(index) request:\n\(line)")

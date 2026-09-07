@@ -22,6 +22,18 @@ import Foundation
 // isolation), and every delta callback it makes is @Sendable for the same reason.
 nonisolated enum LLMStreamingClient {
 
+    // Shared session for remote LLM round-trips (streaming and one-shot alike): a full song
+    // breakdown or a correction on a large note can legitimately take 30-180s+, well past
+    // URLSession's default 60s request timeout. Every caller that talks to OpenAI/Claude should
+    // use this instead of URLSession.shared so a slow-but-successful response isn't cut off and
+    // reported as a spurious network error.
+    static func makeLongTimeoutSession() -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 600
+        return URLSession(configuration: config)
+    }
+
     // Streams an OpenAI chat completion. `messages` is the same role/content array a
     // non-streaming call would send; only `stream: true` is added.
     static func streamOpenAI(
@@ -123,7 +135,10 @@ nonisolated enum LLMStreamingClient {
                 errorData.append(byte)
             }
             let body = String(data: errorData, encoding: .utf8) ?? "(unreadable)"
-            NSLog("%@", "[LLMStreaming] \(providerName) HTTP \(http.statusCode) body=\(body.prefix(400))")
+            // Routed through AppLog (not NSLog): an error body can echo back request content on
+            // some providers' validation errors, so it gets the same `.private` redaction in a
+            // pulled release log archive that every other prompt/response log line gets.
+            AppLog.error(.llmCorrection, "[LLMStreaming] \(providerName) HTTP \(http.statusCode) body=\(body.prefix(400))")
             throw SongBreakdownError.networkError("\(providerName) HTTP \(http.statusCode): \(body)")
         }
 

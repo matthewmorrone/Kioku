@@ -3,6 +3,15 @@ import Foundation
 // Calls the configured LLM provider to obtain segmentation and reading corrections for a note.
 // Supports OpenAI chat completions and Anthropic Messages APIs with a compact human-readable format.
 final class LLMCorrectionService {
+    // Same generous timeout LLMStreamingClient's callers use: a non-streaming correction call on
+    // a large note can take well past URLSession.shared's default 60s, and this service is used
+    // both interactively (ReadView) and unattended (LLMCorrectionQueue's bulk-import pass), where
+    // a spurious timeout means a note silently falls back to unedited segmentation.
+    private let urlSession: URLSession
+
+    init(urlSession: URLSession? = nil) {
+        self.urlSession = urlSession ?? LLMStreamingClient.makeLongTimeoutSession()
+    }
 
     // Submits the note's current segmentation in compact format to the active LLM provider,
     // or parses the stub response directly when useLLM is off. Throws on misconfiguration.
@@ -75,6 +84,15 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.appleIntelligenceUnavailable
         }
 
+        // Apple Intelligence Cloud / Cloud Pro (Private Cloud Compute) is only wired for song
+        // breakdown today (AppleIntelligenceCloudClient) — correction stays on-device-only.
+        // Checked before the API-key guard for the same reason the on-device branch above is:
+        // no Apple Intelligence variant has a key, so that guard would otherwise misreport
+        // "No API key configured" instead of the accurate "not supported for this feature yet".
+        if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
+            throw LLMCorrectionError.appleIntelligenceCloudUnsupported
+        }
+
         guard let apiKey = LLMSettings.activeAPIKey() else {
             throw LLMCorrectionError.noKeyConfigured
         }
@@ -91,6 +109,9 @@ final class LLMCorrectionService {
         case .appleIntelligence:
             // Handled above; included so the switch stays exhaustive.
             throw LLMCorrectionError.appleIntelligenceUnavailable
+        case .appleIntelligenceCloud, .appleIntelligenceCloudPro:
+            // Handled above; included so the switch stays exhaustive.
+            throw LLMCorrectionError.appleIntelligenceCloudUnsupported
         case .openAI:
             raw = try await callOpenAIRaw(apiKey: apiKey, messages: messages)
         case .claude:
@@ -138,7 +159,14 @@ final class LLMCorrectionService {
 
     // Compact format: one line per source line, prefixed with a 1-based line number.
     // Example: 1|(食)[た]べる|は|\n2|(情報)[じょうほう]|(生)[い]き(方)[かた]|
-    static let systemPrompt = """
+    //
+    // Split into a shared core plus two provider-specific addenda: the on-device path wires
+    // JapaneseWordLookupTool but never has web search (Apple Intelligence is offline-only), while
+    // the remote paths (OpenAI/Claude) may have Claude's web_search tool but never the dictionary
+    // tool — neither today's OpenAI nor Claude request declares lookupJapaneseWord, so telling
+    // them about it was dead instruction weight sent (and cached) on every remote call for a
+    // capability that provider never actually has.
+    static let systemPromptCore = """
         You are an expert Japanese linguist. \
         You will be given Japanese text with a proposed morphological segmentation and readings. \
         The proposed segmentation is produced by an automated tool and may contain errors — treat it as a rough draft, not ground truth. \
@@ -207,11 +235,21 @@ final class LLMCorrectionService {
         Output: 1|(流)[なが]されて|たゆたう|の|このまま|
         Reason: たゆたう is one verb (to sway). The た at the end of 流されてた actually belongs with ゆた+う to form たゆたう; the segmenter mis-attached it. Split the trailing た off the preceding segment, then merge it with ゆた and う.
 
+        """
+
+    // On-device only (AppleIntelligenceCorrectionClient wires JapaneseWordLookupTool into the
+    // session alongside these instructions).
+    static let dictionaryToolInstructions = """
         CALLING THE DICTIONARY:
         - If a lookupJapaneseWord tool is available, you MUST use it before deciding NOT to merge consecutive kana-only segments. Try the combined surface; if the tool returns YES, merge them.
         - When a segment ENDS with a kana that could plausibly start a verb in the next segment (the Example 5 pattern), also try lookupJapaneseWord on the split+merged combination before deciding to leave it alone.
         - Conversely, never invent a compound: before merging consecutive kanji segments into a candidate compound, call lookupJapaneseWord; if it returns NO, do not merge.
+        """
 
+    // Remote providers only (Claude may have the web_search tool declared per LLMSettings'
+    // web-search opt-in; OpenAI's search path is a model swap, not a discretionary tool, but the
+    // instruction is harmless to include either way since it's conditioned on "if available").
+    static let webSearchInstructions = """
         USING WEB SEARCH (if available):
         - If a web_search tool is available AND the input looks like song lyrics (short repetitive lines, emotional language, kanji used with non-standard readings), use it to find the canonical lyrics for the song. Lyric sites (Uta-Net, J-Lyric, Genius, Niconico Kashi) typically publish the intended furigana — gikun (義訓: kanji read for meaning, like 本気 → マジ or 運命 → さだめ) and ateji are common in songs and JMdict won't have them.
         - If you find the canonical lyrics, prefer those readings over what you'd derive morphologically.
@@ -219,16 +257,22 @@ final class LLMCorrectionService {
         - For non-lyric input (regular prose, news, dictionary entries), do NOT use web search — JMdict + your training are sufficient.
         """
 
+    // Used by AppleIntelligenceCorrectionClient (on-device, dictionary tool wired, never web search).
+    static let systemPromptForAppleIntelligence = systemPromptCore + "\n\n" + dictionaryToolInstructions
+
+    // Used by the remote providers (OpenAI/Claude) — never the dictionary tool, may have web search.
+    static let systemPromptForRemoteProvider = systemPromptCore + "\n\n" + webSearchInstructions
+
     // Constructs system and user message content for the correction request. When
     // correctiveFeedback is supplied (a retry after a parse failure), it's prepended to the
     // user turn ahead of the compact segments so the model corrects itself against concrete
     // evidence of what went wrong, rather than blindly repeating the same mistake.
     private func buildMessages(compactSegments: String, correctiveFeedback: String? = nil) -> (system: String, user: String) {
         guard let correctiveFeedback else {
-            return (system: Self.systemPrompt, user: compactSegments)
+            return (system: Self.systemPromptForRemoteProvider, user: compactSegments)
         }
         let user = correctiveFeedback + "\n\n" + compactSegments
-        return (system: Self.systemPrompt, user: user)
+        return (system: Self.systemPromptForRemoteProvider, user: user)
     }
 
     // Builds the corrective-feedback preamble prepended to a retry's user message: what was
@@ -290,9 +334,7 @@ final class LLMCorrectionService {
         request.httpBody = bodyData
         AppLog.debug(.llmCorrection, "[OpenAI] POST \(url) model=\(modelID) temperature=\(usingSearchModel ? "omitted" : "\(temperature)") body bytes=\(bodyData.count)")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-        try validateHTTPResponse(response, data: data, provider: "OpenAI")
+        let (data, statusCode) = try await send(request, provider: "OpenAI")
 
         // OpenAI wraps the model output in choices[0].message.content as a string.
         guard
@@ -309,7 +351,7 @@ final class LLMCorrectionService {
         return content
     }
 
-    // Calls the Anthropic Messages API using the configured Claude model (Sonnet 4.6 by default).
+    // Calls the Anthropic Messages API using the configured Claude model (Sonnet 5 by default).
     // Returns the raw response text (unparsed) so the caller can route it through the shared
     // parse+salvage ladder in parseWithSalvage.
     private func callClaudeRaw(apiKey: String, messages: (system: String, user: String)) async throws -> String {
@@ -325,8 +367,8 @@ final class LLMCorrectionService {
         // Send the static system prompt as an array of content blocks with a cache_control
         // marker so Anthropic prompt caching bills the prompt at ~0.1x on repeat calls. The
         // per-note user turn stays uncached. GA feature — no beta header required; the existing
-        // anthropic-version header suffices. (Sonnet 4.6's ~2048-token min cacheable prefix means
-        // this ~2000-token correction prompt is borderline and may silently not cache.)
+        // anthropic-version header suffices. (Sonnet 5's 1024-token min cacheable prefix means
+        // this ~2000-token correction prompt clears it comfortably.)
         var body: [String: Any] = [
             "model": LLMSettings.claudeModel(),
             "max_tokens": 4096,
@@ -346,11 +388,13 @@ final class LLMCorrectionService {
         // to ground gikun/ateji readings JMdict doesn't carry. Anthropic handles the
         // search internally; we just see the final response with the text already
         // grounded. Tool round-trips bill separately, so this is gated on the
-        // user's opt-in setting.
+        // user's opt-in setting. `_20260209` is the current dynamic-filtering variant
+        // (Sonnet 4.6+ / Opus 4.6+); TODO once the exact URLs for all four lyric sources named
+        // in webSearchInstructions are confirmed, scope this further with `allowed_domains`.
         if LLMSettings.isWebSearchEnabled() {
             body["tools"] = [
                 [
-                    "type": "web_search_20250305",
+                    "type": "web_search_20260209",
                     "name": "web_search"
                 ]
             ]
@@ -360,9 +404,7 @@ final class LLMCorrectionService {
         request.httpBody = bodyData
         AppLog.debug(.llmCorrection, "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) temperature=\(temperature) webSearch=\(LLMSettings.isWebSearchEnabled()) body bytes=\(bodyData.count)")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-        try validateHTTPResponse(response, data: data, provider: "Claude")
+        let (data, statusCode) = try await send(request, provider: "Claude")
 
         // Anthropic returns an array of content blocks. When web_search is enabled
         // there are server_tool_use + web_search_tool_result blocks before the
@@ -387,16 +429,65 @@ final class LLMCorrectionService {
         return text
     }
 
-    // Validates the HTTP status code and surfaces the API error body when the request fails.
-    private func validateHTTPResponse(_ response: URLResponse, data: Data, provider: String) throws {
-        guard let http = response as? HTTPURLResponse else {
-            throw LLMCorrectionError.networkError("\(provider): non-HTTP response")
+    // Sends the request, retrying on transient failures (429, 5xx, or a connection-level error)
+    // up to twice more with a short backoff before giving up. This service backs both the
+    // interactive correction path and LLMCorrectionQueue's unattended bulk-import pass — a
+    // single rate-limit blip or server hiccup shouldn't need a manual re-trigger for a note that
+    // would have succeeded a second later. Client errors (4xx other than 429) are never retried:
+    // the request itself is wrong, so retrying just burns time and quota on the same failure.
+    // Returns the body and status code together so callers can still log the status they got.
+    private func send(_ request: URLRequest, provider: String) async throws -> (data: Data, statusCode: Int) {
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            var delaySeconds = Double(attempt)
+            do {
+                let (data, response) = try await urlSession.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw LLMCorrectionError.networkError("\(provider): non-HTTP response")
+                }
+                if (200..<300).contains(http.statusCode) {
+                    return (data, http.statusCode)
+                }
+                let retryable = http.statusCode == 429 || http.statusCode >= 500
+                guard retryable, attempt < maxAttempts else {
+                    let body = String(data: data, encoding: .utf8) ?? "(unreadable)"
+                    AppLog.error(.llmCorrection, "[\(provider)] HTTP \(http.statusCode) error body:\n\(body)")
+                    throw LLMCorrectionError.networkError("\(provider) HTTP \(http.statusCode): \(body)")
+                }
+                // Honor the provider's advertised Retry-After on a 429 instead of guessing: rate-limit
+                // windows are commonly well past our default 1s/2s backoff, and retrying before one
+                // elapses just burns both remaining attempts against the same still-active limit.
+                // Capped so a huge or malicious value can't stall the caller (both the interactive UI
+                // and the bulk queue block on this call).
+                if http.statusCode == 429, let retryAfter = Self.retryAfterSeconds(from: http) {
+                    delaySeconds = min(retryAfter, 30)
+                }
+                AppLog.error(.llmCorrection, "[\(provider)] HTTP \(http.statusCode), retrying in \(delaySeconds)s (attempt \(attempt + 1)/\(maxAttempts))")
+            } catch let error as LLMCorrectionError {
+                throw error
+            } catch {
+                guard attempt < maxAttempts else {
+                    throw LLMCorrectionError.networkError("\(provider): \(error.localizedDescription)")
+                }
+                AppLog.error(.llmCorrection, "[\(provider)] request error \(error.localizedDescription), retrying (attempt \(attempt + 1)/\(maxAttempts))")
+            }
+            try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
         }
-        guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "(unreadable)"
-            AppLog.error(.llmCorrection, "[\(provider)] HTTP \(http.statusCode) error body:\n\(body)")
-            throw LLMCorrectionError.networkError("\(provider) HTTP \(http.statusCode): \(body)")
-        }
+        // Unreachable: attempt == maxAttempts always takes one of the throwing branches above.
+        throw LLMCorrectionError.networkError("\(provider): retry loop exhausted")
+    }
+
+    // Parses the numeric-seconds form of a 429 response's Retry-After header — the form OpenAI
+    // and Anthropic both send. The HTTP-date form is intentionally not handled since neither
+    // provider uses it for this header; a missing, non-numeric, negative, or non-finite value
+    // (a malformed or hostile "-1"/"nan"/"inf") just falls back to the caller's default backoff
+    // instead of failing the request — the caller converts this to a UInt64 nanosecond count,
+    // which traps on a negative or non-finite Double.
+    private static func retryAfterSeconds(from response: HTTPURLResponse) -> Double? {
+        guard let value = response.value(forHTTPHeaderField: "Retry-After"),
+              let seconds = Double(value),
+              seconds.isFinite, seconds >= 0 else { return nil }
+        return seconds
     }
 
     // Parses the compact format string returned by the LLM into [LLMSegmentEntry].
@@ -566,6 +657,9 @@ final class LLMCorrectionService {
 enum LLMCorrectionError: LocalizedError {
     case noKeyConfigured
     case appleIntelligenceUnavailable
+    // Apple Intelligence Cloud / Cloud Pro is only wired for song breakdown today, not
+    // correction — see LLMCorrectionService.requestCorrections' provider dispatch.
+    case appleIntelligenceCloudUnsupported
     case networkError(String)
     case unexpectedResponseShape(String)
     case decodingError(String)
@@ -586,6 +680,8 @@ enum LLMCorrectionError: LocalizedError {
             return "No API key configured. Add one in Settings."
         case .appleIntelligenceUnavailable:
             return "Apple Intelligence isn't available on this device. Pick another provider in Settings."
+        case .appleIntelligenceCloudUnsupported:
+            return "Apple Intelligence Cloud isn't supported for note correction yet — pick On-Device Apple Intelligence, OpenAI, or Claude in Settings."
         case .networkError(let msg):
             return "Network error: \(msg)"
         case .unexpectedResponseShape(let msg):

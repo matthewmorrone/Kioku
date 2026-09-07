@@ -260,6 +260,7 @@ struct ReadView: View {
     @State var loadInfoToastClearTask: Task<Void, Never>?
     @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false
     @AppStorage(LLMSettings.stubResponseKey) private var llmStubResponse = ""
+    @AppStorage(SongBreakdownService.songStubResponseKey) private var breakdownStubResponse = ""
     // Keys themselves live in the Keychain; the revision counter is the reactive
     // signal that a key was added or cleared in Settings.
     @AppStorage(LLMSettings.keysRevisionKey) private var llmKeysRevision = 0
@@ -321,6 +322,31 @@ struct ReadView: View {
             return LLMSettings.apiKey(for: provider) != nil
         } else {
             return llmStubResponse.isEmpty == false
+        }
+    }
+
+    // Reactive equivalent of "is song breakdown usable with the active provider" — deliberately
+    // NOT shared with isLLMConfigured above, because breakdown and correction support opposite
+    // Apple Intelligence variants: correction is on-device-only (SongBreakdownError.appleIntelligenceUnsupported
+    // when Apple Intelligence Cloud/Cloud Pro is picked there), while breakdown is Cloud/Cloud
+    // Pro-only (SongBreakdownError.appleIntelligenceUnsupported when on-device is picked here).
+    // Reusing isLLMConfigured for the title row's breakdown button would hide the ONLY feature a
+    // Cloud-configured user actually has, even though LLMSettings.isConfigured() reports them
+    // configured. Also reads the breakdown-specific stub key in stub mode, not correction's —
+    // the two stubs are independent (see SongBreakdownService's own key comment).
+    var isBreakdownConfigured: Bool {
+        _ = llmKeysRevision
+        if llmUseLLM {
+            switch LLMSettings.activeProvider() {
+            case .appleIntelligence:
+                return false
+            case .appleIntelligenceCloud, .appleIntelligenceCloudPro:
+                return AppleIntelligenceCloudAvailability.isAvailable
+            case .none, .openAI, .claude:
+                return LLMSettings.activeAPIKey() != nil
+            }
+        } else {
+            return breakdownStubResponse.isEmpty == false
         }
     }
 
