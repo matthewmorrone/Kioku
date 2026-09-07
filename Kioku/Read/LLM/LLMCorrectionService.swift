@@ -427,6 +427,7 @@ final class LLMCorrectionService {
     private func send(_ request: URLRequest, provider: String) async throws -> (data: Data, statusCode: Int) {
         let maxAttempts = 3
         for attempt in 1...maxAttempts {
+            var delaySeconds = Double(attempt)
             do {
                 let (data, response) = try await urlSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
@@ -441,7 +442,15 @@ final class LLMCorrectionService {
                     AppLog.error(.llmCorrection, "[\(provider)] HTTP \(http.statusCode) error body:\n\(body)")
                     throw LLMCorrectionError.networkError("\(provider) HTTP \(http.statusCode): \(body)")
                 }
-                AppLog.error(.llmCorrection, "[\(provider)] HTTP \(http.statusCode), retrying (attempt \(attempt + 1)/\(maxAttempts))")
+                // Honor the provider's advertised Retry-After on a 429 instead of guessing: rate-limit
+                // windows are commonly well past our default 1s/2s backoff, and retrying before one
+                // elapses just burns both remaining attempts against the same still-active limit.
+                // Capped so a huge or malicious value can't stall the caller (both the interactive UI
+                // and the bulk queue block on this call).
+                if http.statusCode == 429, let retryAfter = Self.retryAfterSeconds(from: http) {
+                    delaySeconds = min(retryAfter, 30)
+                }
+                AppLog.error(.llmCorrection, "[\(provider)] HTTP \(http.statusCode), retrying in \(delaySeconds)s (attempt \(attempt + 1)/\(maxAttempts))")
             } catch let error as LLMCorrectionError {
                 throw error
             } catch {
@@ -450,10 +459,19 @@ final class LLMCorrectionService {
                 }
                 AppLog.error(.llmCorrection, "[\(provider)] request error \(error.localizedDescription), retrying (attempt \(attempt + 1)/\(maxAttempts))")
             }
-            try await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
+            try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
         }
         // Unreachable: attempt == maxAttempts always takes one of the throwing branches above.
         throw LLMCorrectionError.networkError("\(provider): retry loop exhausted")
+    }
+
+    // Parses the numeric-seconds form of a 429 response's Retry-After header — the form OpenAI
+    // and Anthropic both send. The HTTP-date form is intentionally not handled since neither
+    // provider uses it for this header; a missing or non-numeric value just falls back to the
+    // caller's default backoff instead of failing the request.
+    private static func retryAfterSeconds(from response: HTTPURLResponse) -> Double? {
+        guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
+        return Double(value)
     }
 
     // Parses the compact format string returned by the LLM into [LLMSegmentEntry].
