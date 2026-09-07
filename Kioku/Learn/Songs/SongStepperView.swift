@@ -254,9 +254,11 @@ struct SongStepperView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            // Honest framing: full-song breakdowns are minutes-long and bill per token. The old
-            // breakdown stays until the new one finishes, so a failed call costs only the tokens.
-            Text("Sends the full lyrics to the configured LLM provider. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
+            // No blanket "uses paid tokens" claim: that's only true for OpenAI/Claude — Apple
+            // Intelligence (on-device or Cloud/Cloud Pro) never bills the user's own account.
+            // The old breakdown stays until the new one finishes, so a failed call costs nothing
+            // beyond whatever the active provider actually charges.
+            Text("Sends the full lyrics to the configured LLM provider. Takes 30–180 seconds. The existing breakdown is replaced.")
         }
         .confirmationDialog(
             "Regenerate with merged segmentation correction?",
