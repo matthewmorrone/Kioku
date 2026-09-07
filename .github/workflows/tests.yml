@@ -89,6 +89,15 @@ jobs:
       # tests during a fast iteration cycle" and separately documents that CI-env-var-based
       # skipping was already tried and found unreliable (doesn't propagate into the simulator
       # test process), so a build-flag exclusion here is the intended mechanism, not a workaround.
+      #
+      # -skipPackagePluginValidation: mlx-swift's Package.swift declares a "CudaBuild" build-tool
+      # plugin (for its optional CUDA/Linux backend, irrelevant to this iOS build) that Xcode
+      # otherwise refuses to run non-interactively with "Plugin \"CudaBuild\" from package
+      # \"mlx-swift\" must be enabled before it can be used" — there's no CI-safe way to grant that
+      # trust ahead of time (it's normally an Xcode GUI prompt), so this flag skips the trust
+      # check entirely. Scoped to this one invocation rather than a machine-wide
+      # `defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidation` so it only
+      # affects this job, not every Xcode invocation on the runner.
       - name: Build & test
         run: |
           set -o pipefail
@@ -101,6 +110,7 @@ jobs:
             -enableCodeCoverage YES \
             -derivedDataPath build \
             -resultBundlePath build/Kioku.xcresult \
+            -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO
 
       # Emit a per-target line-coverage summary into the workflow run page so
