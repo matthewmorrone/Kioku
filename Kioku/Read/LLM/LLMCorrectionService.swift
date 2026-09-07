@@ -84,6 +84,15 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.appleIntelligenceUnavailable
         }
 
+        // Apple Intelligence Cloud / Cloud Pro (Private Cloud Compute) is only wired for song
+        // breakdown today (AppleIntelligenceCloudClient) — correction stays on-device-only.
+        // Checked before the API-key guard for the same reason the on-device branch above is:
+        // no Apple Intelligence variant has a key, so that guard would otherwise misreport
+        // "No API key configured" instead of the accurate "not supported for this feature yet".
+        if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
+            throw LLMCorrectionError.appleIntelligenceCloudUnsupported
+        }
+
         guard let apiKey = LLMSettings.activeAPIKey() else {
             throw LLMCorrectionError.noKeyConfigured
         }
@@ -100,6 +109,9 @@ final class LLMCorrectionService {
         case .appleIntelligence:
             // Handled above; included so the switch stays exhaustive.
             throw LLMCorrectionError.appleIntelligenceUnavailable
+        case .appleIntelligenceCloud, .appleIntelligenceCloudPro:
+            // Handled above; included so the switch stays exhaustive.
+            throw LLMCorrectionError.appleIntelligenceCloudUnsupported
         case .openAI:
             raw = try await callOpenAIRaw(apiKey: apiKey, messages: messages)
         case .claude:
@@ -645,6 +657,9 @@ final class LLMCorrectionService {
 enum LLMCorrectionError: LocalizedError {
     case noKeyConfigured
     case appleIntelligenceUnavailable
+    // Apple Intelligence Cloud / Cloud Pro is only wired for song breakdown today, not
+    // correction — see LLMCorrectionService.requestCorrections' provider dispatch.
+    case appleIntelligenceCloudUnsupported
     case networkError(String)
     case unexpectedResponseShape(String)
     case decodingError(String)
@@ -665,6 +680,8 @@ enum LLMCorrectionError: LocalizedError {
             return "No API key configured. Add one in Settings."
         case .appleIntelligenceUnavailable:
             return "Apple Intelligence isn't available on this device. Pick another provider in Settings."
+        case .appleIntelligenceCloudUnsupported:
+            return "Apple Intelligence Cloud isn't supported for note correction yet — pick On-Device Apple Intelligence, OpenAI, or Claude in Settings."
         case .networkError(let msg):
             return "Network error: \(msg)"
         case .unexpectedResponseShape(let msg):

@@ -68,16 +68,26 @@ final class SongBreakdownService {
         }
 
         let provider = LLMSettings.activeProvider()
-        // Song breakdown doesn't yet support on-device generation — the structured-output
-        // prompt is wide enough that Apple Intelligence's small model can't reliably produce
-        // it. Checked BEFORE the API-key guard below: Apple Intelligence needs no key by
-        // design (LLMSettings.apiKey(for:) always returns nil for it), so without this check
-        // that guard would fire first and claim "No LLM is configured" — false, since one IS
-        // configured, it's just unsupported for this one feature. Throw the distinct,
-        // accurate error instead.
+        // Song breakdown doesn't support ON-DEVICE generation — the structured-output prompt is
+        // wide enough that Apple Intelligence's small model can't reliably produce it. Checked
+        // BEFORE the API-key guard below: Apple Intelligence needs no key by design
+        // (LLMSettings.apiKey(for:) always returns nil for it), so without this check that guard
+        // would fire first and claim "No LLM is configured" — false, since one IS configured,
+        // it's just unsupported for this one feature. Throw the distinct, accurate error instead.
         if provider == .appleIntelligence {
             NSLog("[SongBreakdown] Apple Intelligence selected but unsupported for breakdown — throwing appleIntelligenceUnsupported")
             throw SongBreakdownError.appleIntelligenceUnsupported
+        }
+        // The Cloud/Cloud Pro variants (Private Cloud Compute) get their own dispatch path,
+        // bypassing the API-key guard below for the same reason as the on-device check above.
+        if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
+            return try await generateViaAppleIntelligenceCloud(
+                noteID: noteID,
+                lyrics: lyrics,
+                useDeepReasoning: provider == .appleIntelligenceCloudPro,
+                hash: hash,
+                startedAt: startedAt
+            )
         }
         guard let apiKey = LLMSettings.activeAPIKey() else {
             NSLog("[SongBreakdown] no API key for active provider — throwing noKeyConfigured")
@@ -92,10 +102,11 @@ final class SongBreakdownService {
         let raw: String
         let producedBy: SongBreakdownProvider
         switch provider {
-        case .none, .appleIntelligence:
-            // Unreachable: .none has no API key (caught above), and .appleIntelligence is
-            // caught before the guard. Kept exhaustive rather than `default:` so a future
-            // LLMProvider case fails to compile here instead of silently mis-dispatching.
+        case .none, .appleIntelligence, .appleIntelligenceCloud, .appleIntelligenceCloudPro:
+            // Unreachable: .none has no API key (caught above), .appleIntelligence is caught
+            // before the guard, and the cloud variants returned early above. Kept exhaustive
+            // rather than `default:` so a future LLMProvider case fails to compile here instead
+            // of silently mis-dispatching.
             throw SongBreakdownError.noKeyConfigured
         case .openAI:
             // A single user-role message containing the whole prompt: the prompt is a
@@ -189,6 +200,45 @@ final class SongBreakdownService {
         let digest = SHA256.hash(data: Data(text.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
+
+    // Apple Intelligence Cloud / Cloud Pro dispatch: a single non-streaming call through
+    // Private Cloud Compute (32K context vs. on-device's ~4-8K), unlike the on-device path
+    // which is unsupported for this feature entirely (see the appleIntelligenceUnsupported
+    // throw above). No onPartialLines callback is invoked mid-generation — see
+    // AppleIntelligenceCloudClient's header comment for why this is non-streaming — so the
+    // caller only sees the finished breakdown, same as if progressive updates were never wired.
+    private func generateViaAppleIntelligenceCloud(
+        noteID: UUID,
+        lyrics: String,
+        useDeepReasoning: Bool,
+        hash: String,
+        startedAt: Date
+    ) async throws -> SongBreakdown {
+        #if canImport(FoundationModels)
+        guard #available(iOS 27.0, *), AppleIntelligenceCloudAvailability.isAvailable else {
+            NSLog("[SongBreakdown] Apple Intelligence Cloud unavailable — throwing appleIntelligenceCloudUnavailable")
+            throw SongBreakdownError.appleIntelligenceCloudUnavailable
+        }
+        NSLog("[SongBreakdown] dispatching to Apple Intelligence Cloud deepReasoning=%@", useDeepReasoning ? "true" : "false")
+        let raw = try await AppleIntelligenceCloudClient.generate(
+            instructions: SongBreakdownPrompt.staticInstructions(),
+            prompt: lyrics,
+            useDeepReasoning: useDeepReasoning
+        )
+        let lines = try parser.parse(markdown: raw)
+        NSLog("[SongBreakdown] Apple Intelligence Cloud parsed lines=%d totalDuration=%.2fs",
+              lines.count, Date().timeIntervalSince(startedAt))
+        return SongBreakdown(
+            noteID: noteID,
+            sourceTextHash: hash,
+            generatedAt: Date(),
+            provider: .appleIntelligenceCloud,
+            lines: lines
+        )
+        #else
+        throw SongBreakdownError.appleIntelligenceCloudUnavailable
+        #endif
+    }
 }
 
 // Each case maps to a specific UI state in the stepper: missing key → settings link;
@@ -196,6 +246,7 @@ final class SongBreakdownService {
 enum SongBreakdownError: LocalizedError {
     case noKeyConfigured
     case appleIntelligenceUnsupported
+    case appleIntelligenceCloudUnavailable
     case networkError(String)
     case unexpectedResponseShape(String)
     case parseFailed(String)
@@ -206,7 +257,9 @@ enum SongBreakdownError: LocalizedError {
         case .noKeyConfigured:
             return "No LLM is configured. Set one up in Settings, or paste a stub response for offline use."
         case .appleIntelligenceUnsupported:
-            return "Song breakdown isn't supported with Apple Intelligence yet — pick OpenAI or Claude in Settings."
+            return "Song breakdown isn't supported with on-device Apple Intelligence — pick Cloud, Cloud Pro, OpenAI, or Claude in Settings."
+        case .appleIntelligenceCloudUnavailable:
+            return "Apple Intelligence Cloud isn't available. It needs iOS 27+, Apple Intelligence enabled, and a network connection."
         case .networkError(let msg):
             return "Network error: \(msg)"
         case .unexpectedResponseShape(let msg):

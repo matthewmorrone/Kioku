@@ -13,13 +13,15 @@ extension SettingsView {
             Toggle("Use LLM API", isOn: $useLLM)
 
             if useLLM {
-                // Apple Intelligence row is hidden on devices where Foundation
-                // Models isn't available — the framework reports availability at
-                // runtime, so the picker reflects the live state rather than
-                // listing an option that would always error.
+                // Apple Intelligence rows are hidden when their backing model isn't available —
+                // both availability checks report live runtime state, so the picker reflects
+                // what would actually work rather than listing an option that always errors.
+                // On-device and Cloud/Cloud Pro are independent checks: a device can have one
+                // without the other (e.g. Apple Intelligence enabled but offline, or an iOS 27
+                // Private Cloud Compute entitlement without on-device support).
                 Picker("Provider", selection: $llmProviderRaw) {
                     ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
-                        if provider != .appleIntelligence || AppleIntelligenceAvailability.isAvailable {
+                        if isProviderSelectable(provider) {
                             Text(provider.displayName).tag(provider.rawValue)
                         }
                     }
@@ -44,11 +46,12 @@ extension SettingsView {
                         llmKeysRevision += 1
                     }
 
-                // Web-search grounding for songs. Hidden when the provider can't
-                // use it (Apple Intelligence is offline-only). When on, Claude
-                // gets the server-side web_search tool; OpenAI swaps to
-                // gpt-4o-search-preview. Cost increases per call.
-                if (LLMProvider(rawValue: llmProviderRaw) ?? .none) != .appleIntelligence {
+                // Web-search grounding for songs. Hidden for every Apple Intelligence variant —
+                // on-device is offline-only, and Foundation Models has no Apple-provided
+                // web-search tool for Cloud/Cloud Pro to use either. When on, Claude gets the
+                // server-side web_search tool; OpenAI swaps to gpt-4o-search-preview. Cost
+                // increases per call.
+                if (LLMProvider(rawValue: llmProviderRaw) ?? .none).isAppleIntelligence == false {
                     Toggle("Web Search Grounding", isOn: $useWebSearch)
                 }
             }
@@ -66,6 +69,20 @@ extension SettingsView {
             }
         } header: {
             Text("AI Correction")
+        }
+    }
+
+    // Whether a provider row should appear in the picker at all — true for every
+    // non-Apple-Intelligence provider (key entry handles their own availability), and gated on
+    // the matching live availability check for the three Apple Intelligence variants.
+    private func isProviderSelectable(_ provider: LLMProvider) -> Bool {
+        switch provider {
+        case .appleIntelligence:
+            return AppleIntelligenceAvailability.isAvailable
+        case .appleIntelligenceCloud, .appleIntelligenceCloudPro:
+            return AppleIntelligenceCloudAvailability.isAvailable
+        case .none, .openAI, .claude:
+            return true
         }
     }
 }

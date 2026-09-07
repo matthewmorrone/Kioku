@@ -68,12 +68,25 @@ final class MergedCorrectionBreakdownService {
         if provider == .appleIntelligence {
             throw SongBreakdownError.appleIntelligenceUnsupported
         }
-        guard let apiKey = LLMSettings.activeAPIKey() else {
-            throw SongBreakdownError.noKeyConfigured
-        }
 
         let system = Self.systemPrompt
         let user = Self.userMessage(noteContent: noteContent, compactInput: compactInput)
+
+        // The Cloud/Cloud Pro variants get their own dispatch path, bypassing the API-key guard
+        // below for the same reason as the on-device check above. Uses the SAME combined
+        // system+user prompt the remote providers use — the merged prompt's own delimiter
+        // instruction (FINAL OUTPUT STRUCTURE below) is provider-agnostic text, not something
+        // built into the HTTP request shape.
+        if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
+            return try await Self.generateViaAppleIntelligenceCloud(
+                system: system,
+                user: user,
+                useDeepReasoning: provider == .appleIntelligenceCloudPro
+            )
+        }
+        guard let apiKey = LLMSettings.activeAPIKey() else {
+            throw SongBreakdownError.noKeyConfigured
+        }
         let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
             ?? LLMSettings.defaultTemperature
         let onDelta = Self.makeDeltaHandler(onPartialLines: onPartialLines)
@@ -85,7 +98,9 @@ final class MergedCorrectionBreakdownService {
         let raw: String
         let producedBy: SongBreakdownProvider
         switch provider {
-        case .none, .appleIntelligence:
+        case .none, .appleIntelligence, .appleIntelligenceCloud, .appleIntelligenceCloudPro:
+            // Unreachable: .none has no API key (caught above), .appleIntelligence is caught
+            // before the guard, and the cloud variants returned early above.
             throw SongBreakdownError.noKeyConfigured
         case .openAI:
             raw = try await LLMStreamingClient.streamOpenAI(
@@ -227,6 +242,30 @@ final class MergedCorrectionBreakdownService {
             out.append(line.isEmpty ? "\(n)|" : "\(n)|\(line)|")
         }
         return out.joined(separator: "\n")
+    }
+
+    // Apple Intelligence Cloud / Cloud Pro dispatch, mirroring SongBreakdownService's own
+    // Cloud path: a single non-streaming call through Private Cloud Compute. No mid-generation
+    // onPartialLines updates — see AppleIntelligenceCloudClient's header comment — so the
+    // caller only sees the finished, already-split result.
+    private static func generateViaAppleIntelligenceCloud(
+        system: String,
+        user: String,
+        useDeepReasoning: Bool
+    ) async throws -> MergedCorrectionBreakdownResult {
+        #if canImport(FoundationModels)
+        guard #available(iOS 27.0, *), AppleIntelligenceCloudAvailability.isAvailable else {
+            throw SongBreakdownError.appleIntelligenceCloudUnavailable
+        }
+        let raw = try await AppleIntelligenceCloudClient.generate(
+            instructions: system,
+            prompt: user,
+            useDeepReasoning: useDeepReasoning
+        )
+        return try Self.parseCombined(raw, provider: .appleIntelligenceCloud)
+        #else
+        throw SongBreakdownError.appleIntelligenceCloudUnavailable
+        #endif
     }
 }
 
