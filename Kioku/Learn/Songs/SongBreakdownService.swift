@@ -23,18 +23,7 @@ final class SongBreakdownService {
 
     init(parser: SongBreakdownParser = SongBreakdownParser(), urlSession: URLSession? = nil) {
         self.parser = parser
-        self.urlSession = urlSession ?? SongBreakdownService.makeLongTimeoutSession()
-    }
-
-    // Long-running LLM calls regularly exceed URLSession's default 60s timeout — a full song
-    // breakdown with deep word annotations can take 60-180s end-to-end. Use a 5-minute per-
-    // request timeout and a 10-minute resource timeout so we wait for a real response instead
-    // of the user seeing an opaque "request timed out" before the model finishes thinking.
-    private static func makeLongTimeoutSession() -> URLSession {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 300
-        config.timeoutIntervalForResource = 600
-        return URLSession(configuration: config)
+        self.urlSession = urlSession ?? LLMStreamingClient.makeLongTimeoutSession()
     }
 
     // Returns a SongBreakdown for the given note text. Stub mode parses the in-app stub field;
@@ -125,7 +114,7 @@ final class SongBreakdownService {
             // The large static instruction prompt goes as a cached system block
             // (cache_control: ephemeral) so it bills at ~0.1x on repeat calls; the per-song
             // lyrics travel uncached in the user turn. The song instructions (~2400 tokens)
-            // clear Sonnet 4.6's ~2048-token minimum cacheable prefix, so the marker takes effect.
+            // clear the current Sonnet's 1024-token minimum cacheable prefix, so the marker takes effect.
             raw = try await LLMStreamingClient.streamClaude(
                 apiKey: apiKey,
                 model: LLMSettings.claudeModel(),

@@ -7,7 +7,7 @@ import Foundation
 // gets to see the same lyrics context the segmentation pass reasons over instead of drifting
 // out of sync across two independent calls.
 //
-// Deliberately additive: reuses LLMCorrectionService.systemPrompt / .parseCompactResponse and
+// Deliberately additive: reuses LLMCorrectionService.systemPromptForRemoteProvider / .parseCompactResponse and
 // SongBreakdownPrompt / SongBreakdownParser verbatim rather than forking them, and leaves both
 // existing services completely untouched. The two output halves are stitched into one prompt
 // separated by `responseDelimiter`, then split back apart before parsing each half with its
@@ -33,16 +33,7 @@ final class MergedCorrectionBreakdownService {
     private let urlSession: URLSession
 
     init(urlSession: URLSession? = nil) {
-        self.urlSession = urlSession ?? MergedCorrectionBreakdownService.makeLongTimeoutSession()
-    }
-
-    // Mirrors SongBreakdownService's timeout: a combined call does at least as much work as a
-    // breakdown alone, so the same generous per-request/resource timeouts apply.
-    private static func makeLongTimeoutSession() -> URLSession {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 300
-        config.timeoutIntervalForResource = 600
-        return URLSession(configuration: config)
+        self.urlSession = urlSession ?? LLMStreamingClient.makeLongTimeoutSession()
     }
 
     // Runs the merged call and returns both halves already parsed into the same types their
@@ -198,7 +189,7 @@ final class MergedCorrectionBreakdownService {
 
         ---
 
-        \(LLMCorrectionService.systemPrompt)
+        \(LLMCorrectionService.systemPromptForRemoteProvider)
 
         FINAL OUTPUT STRUCTURE:
         1. First, produce the song breakdown exactly as specified above.
