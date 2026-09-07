@@ -216,7 +216,7 @@ final class SongBreakdownService {
         startedAt: Date,
         onPartialLines: (@Sendable ([SongLine]) -> Void)?
     ) async throws -> SongBreakdown {
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && KIOKU_APPLE_INTELLIGENCE_CLOUD
         guard #available(iOS 27.0, *), AppleIntelligenceCloudAvailability.isAvailable else {
             NSLog("[SongBreakdown] Apple Intelligence Cloud unavailable — throwing appleIntelligenceCloudUnavailable")
             throw SongBreakdownError.appleIntelligenceCloudUnavailable
