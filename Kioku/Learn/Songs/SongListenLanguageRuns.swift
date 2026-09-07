@@ -17,28 +17,50 @@ import Foundation
 nonisolated enum SongListenLanguageRuns {
 
     // Splits `text` into runs; never returns an empty array for non-empty input.
+    //
+    // Neutral characters (spaces, ASCII punctuation, digits) are buffered separately from the
+    // run being built rather than appended straight into it: which run they belong to isn't
+    // known until the NEXT classified character arrives. If that next character continues the
+    // same language, the buffered text was internal to the run (e.g. spaces between English
+    // words) and merges in. If it starts a different language, the buffered text sits between
+    // two runs (e.g. the space and "(" between a Japanese word and a following English aside)
+    // and belongs to the run about to START, not the one ending — otherwise trailing
+    // punctuation like "(" (not whitespace, so appendRun's trim wouldn't strip it) would stick
+    // to the wrong run. `pendingNeutral` losslessly holds this until that decision can be made.
     static func split(_ text: String, defaultLanguage: SongListenLanguage) -> [SongListenSegmentRun] {
         var runs: [SongListenSegmentRun] = []
         var currentText = ""
         var currentLanguage: SongListenLanguage? = nil
+        var pendingNeutral = ""
 
         for character in text {
             guard let language = classify(character) else {
-                currentText.append(character)
+                pendingNeutral.append(character)
                 continue
             }
-            if let currentLanguage, currentLanguage != language {
-                appendRun(&runs, text: currentText, language: currentLanguage)
-                currentText = ""
+            if let currentLanguage {
+                if currentLanguage == language {
+                    currentText += pendingNeutral
+                } else {
+                    appendRun(&runs, text: currentText, language: currentLanguage)
+                    currentText = pendingNeutral
+                }
+            } else {
+                currentText = pendingNeutral
             }
+            pendingNeutral = ""
             currentLanguage = language
             currentText.append(character)
         }
 
         if let currentLanguage {
+            currentText += pendingNeutral
             appendRun(&runs, text: currentText, language: currentLanguage)
-        } else if currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            appendRun(&runs, text: currentText, language: defaultLanguage)
+        } else {
+            let trailing = currentText + pendingNeutral
+            if trailing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                appendRun(&runs, text: trailing, language: defaultLanguage)
+            }
         }
         return runs
     }
