@@ -86,7 +86,8 @@ final class SongBreakdownService {
                 lyrics: lyrics,
                 useDeepReasoning: provider == .appleIntelligenceCloudPro,
                 hash: hash,
-                startedAt: startedAt
+                startedAt: startedAt,
+                onPartialLines: onPartialLines
             )
         }
         guard let apiKey = LLMSettings.activeAPIKey() else {
@@ -201,18 +202,19 @@ final class SongBreakdownService {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    // Apple Intelligence Cloud / Cloud Pro dispatch: a single non-streaming call through
-    // Private Cloud Compute (32K context vs. on-device's ~4-8K), unlike the on-device path
-    // which is unsupported for this feature entirely (see the appleIntelligenceUnsupported
-    // throw above). No onPartialLines callback is invoked mid-generation — see
-    // AppleIntelligenceCloudClient's header comment for why this is non-streaming — so the
-    // caller only sees the finished breakdown, same as if progressive updates were never wired.
+    // Apple Intelligence Cloud / Cloud Pro dispatch: a streaming call through Private Cloud
+    // Compute (32K context vs. on-device's ~4-8K), unlike the on-device path which is unsupported
+    // for this feature entirely (see the appleIntelligenceUnsupported throw above). Reuses the
+    // same makeDeltaHandler the OpenAI/Claude paths use for progressive per-line cards — see
+    // AppleIntelligenceCloudClient's header comment for how its onDelta fragments are confirmed
+    // to already be de-cumulated, same shape LLMStreamingClient's onDelta callbacks are.
     private func generateViaAppleIntelligenceCloud(
         noteID: UUID,
         lyrics: String,
         useDeepReasoning: Bool,
         hash: String,
-        startedAt: Date
+        startedAt: Date,
+        onPartialLines: (@Sendable ([SongLine]) -> Void)?
     ) async throws -> SongBreakdown {
         #if canImport(FoundationModels)
         guard #available(iOS 27.0, *), AppleIntelligenceCloudAvailability.isAvailable else {
@@ -220,10 +222,12 @@ final class SongBreakdownService {
             throw SongBreakdownError.appleIntelligenceCloudUnavailable
         }
         NSLog("[SongBreakdown] dispatching to Apple Intelligence Cloud deepReasoning=%@", useDeepReasoning ? "true" : "false")
+        let onDelta = makeDeltaHandler(onPartialLines: onPartialLines)
         let raw = try await AppleIntelligenceCloudClient.generate(
             instructions: SongBreakdownPrompt.staticInstructions(),
             prompt: lyrics,
-            useDeepReasoning: useDeepReasoning
+            useDeepReasoning: useDeepReasoning,
+            onDelta: onDelta
         )
         let lines = try parser.parse(markdown: raw)
         NSLog("[SongBreakdown] Apple Intelligence Cloud parsed lines=%d totalDuration=%.2fs",
