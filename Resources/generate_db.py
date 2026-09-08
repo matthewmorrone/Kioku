@@ -45,6 +45,23 @@ UNRANKED_RANK_SENTINEL = 9999999
 DEPRIORITIZED_READING_TAGS = ("ok", "ik", "sk")
 DEPRIORITIZED_READING_RANK_PENALTY = 50_000_000
 
+# (surface, reading) pairs where JPDB's corpus rank picks a reading that isn't the one Japanese
+# speakers actually default to, and JMdict carries no re_inf tag (ok/ik/sk) to catch it because
+# both readings are fully valid, common modern words — this isn't obsolescence, just a corpus
+# skew. E.g. 抱く: JPDB ranks いだく (literary/formal, "to harbor a feeling") ahead of だく (the
+# modern, colloquial default for "to hold/embrace"), likely because いだく's dialogue-corpus usage
+# skews toward being spelled out in kanji while だく's more casual/spoken usage doesn't. Subtracting
+# a large bonus from best_rank (the surface_readings ORDER BY sort key ONLY — never the jpdb_rank
+# column that's actually displayed) guarantees the preferred reading always wins regardless of the
+# corpus number, mirroring DEPRIORITIZED_READING_RANK_PENALTY above but in the opposite direction.
+# Keep this list small — it's a manually curated exception list, not a general ranking signal.
+PREFERRED_READING_OVERRIDES = {("抱く", "だく")}
+PREFERRED_READING_RANK_BONUS = 50_000_000
+
+
+def _sql_string_literal(text):
+    return "'" + text.replace("'", "''") + "'"
+
 
 def sha256_of_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -1652,6 +1669,10 @@ def materialize_surface_readings(conn):
         f"(',' || COALESCE(kf.info, '') || ',') LIKE '%,{tag},%'"
         for tag in DEPRIORITIZED_READING_TAGS
     )
+    preferred_predicate = " OR ".join(
+        f"(kj.text = {_sql_string_literal(surface)} AND kf.text = {_sql_string_literal(reading)})"
+        for surface, reading in PREFERRED_READING_OVERRIDES
+    ) or "0"
     conn.executescript(
         f"""
         DROP TABLE IF EXISTS surface_readings;
@@ -1701,6 +1722,7 @@ def materialize_surface_readings(conn):
             SELECT kj.text AS surface, kf.text AS reading,
                    COALESCE(kkl.jpdb_rank, er.rank, {UNRANKED_RANK_SENTINEL})
                        + CASE WHEN {deprioritized_predicate} THEN {DEPRIORITIZED_READING_RANK_PENALTY} ELSE 0 END
+                       - CASE WHEN {preferred_predicate} THEN {PREFERRED_READING_RANK_BONUS} ELSE 0 END
                        AS best_rank,
                    COALESCE(kkl.jpdb_rank, er.rank) AS jpdb_rank,
                    kf.wordfreq_zipf AS wordfreq_zipf
