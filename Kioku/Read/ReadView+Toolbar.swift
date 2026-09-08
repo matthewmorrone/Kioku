@@ -251,14 +251,6 @@ extension ReadView {
             }
 
             displayOptionRow(
-                title: "Highlight Unknown",
-                systemImage: isHighlightUnknownEnabled ? "questionmark.circle.fill" : "questionmark.circle",
-                isEnabled: isHighlightUnknownEnabled
-            ) {
-                isHighlightUnknownEnabled.toggle()
-            }
-
-            displayOptionRow(
                 title: "Segment Colors",
                 systemImage: isColorAlternationEnabled ? "paintpalette.fill" : "paintpalette",
                 isEnabled: isColorAlternationEnabled
@@ -328,13 +320,19 @@ extension ReadView {
         )
     }
 
-    // Three real Toggle rows (not Menu items) so flipping several categories in a row doesn't
-    // dismiss the popover between taps — see isShowingSavedHighlightCategories's doc comment.
+    // Real Toggle rows (not Menu items) so flipping several in a row doesn't dismiss the
+    // popover between taps — see isShowingSavedHighlightCategories's doc comment. Highlight
+    // Unknown lives here too, separated by a divider: it isn't one of the Saved-word categories
+    // the "Saved Highlight" row's master toggle bulk-sets, but it's the same kind of control —
+    // an independent per-category highlight toggle — so it belongs in this popover rather than
+    // as its own top-level row.
     private var savedHighlightCategoriesPopover: some View {
         VStack(alignment: .leading, spacing: 14) {
             Toggle("Save", isOn: $isSavedHighlightShowingSaved)
             Toggle("Learned", isOn: $isSavedHighlightShowingLearned)
             Toggle("Not Learned", isOn: $isSavedHighlightShowingNotLearned)
+            Divider()
+            Toggle("Highlight Unknown", isOn: $isHighlightUnknownEnabled)
         }
         .padding(16)
         .frame(width: 200)

@@ -377,9 +377,11 @@ private extension VerbConjugator {
 
     // MARK: Suru
 
-    // Produces the full paradigm for suru-compound verbs (e.g. 勉強する).
+    // Produces the full paradigm for suru verbs — both the bare verb (する) and
+    // suru-compounds (e.g. 勉強する). base.count >= 2 (not > 2) so する itself, whose
+    // prefix is legitimately "", still conjugates instead of being rejected as too short.
     static func suruGroups(_ base: String) -> [ConjugationGroup] {
-        guard base.hasSuffix("する"), base.count >= 3 else { return [] }
+        guard base.hasSuffix("する"), base.count >= 2 else { return [] }
         let prefix = String(base.dropLast(2))
 
         return [

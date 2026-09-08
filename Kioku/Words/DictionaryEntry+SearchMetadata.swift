@@ -3,13 +3,20 @@ import Foundation
 // Search-specific display and filtering helpers derived from the materialized dictionary entry.
 extension DictionaryEntry {
     // Returns the preferred headword shown in list rows and used for alphabetical sort.
-    var primarySearchSurface: String {
-        kanjiForms.first?.text ?? kanaForms.first?.text ?? matchedSurface
+    // Prefers an everyday kanji form; when the entry has none (hasNoEverydayKanji — every kanji
+    // is rK/oK/iK/sK, e.g. する's only kanji 為る is rK), falls to kana rather than surfacing that
+    // rare kanji, since that's how the word is actually written. Raw kanjiForms.first is a last
+    // resort for the never-happens case of a kanji-only entry with no kana form at all.
+    nonisolated var primarySearchSurface: String {
+        if let everyday = firstEverydayKanji { return everyday.text }
+        if hasNoEverydayKanji, let kana = kanaForms.first?.text { return kana }
+        return kanjiForms.first?.text ?? kanaForms.first?.text ?? matchedSurface
     }
 
-    // Returns the preferred reading shown beside the headword when it differs from the surface.
-    var primarySearchReading: String? {
-        guard kanjiForms.isEmpty == false else { return nil }
+    // Returns the preferred reading shown beside the headword when it differs from the surface,
+    // i.e. only when primarySearchSurface actually resolved to a kanji form.
+    nonisolated var primarySearchReading: String? {
+        guard hasNoEverydayKanji == false else { return nil }
         return kanaForms.first?.text
     }
 
@@ -59,7 +66,7 @@ extension DictionaryEntry {
 
     // True when the entry has no kanji a learner would actually encounter — either it has none
     // at all or every kanji form is tagged rare/outdated/irregular/search-only.
-    var hasNoEverydayKanji: Bool { firstEverydayKanji == nil }
+    nonisolated var hasNoEverydayKanji: Bool { firstEverydayKanji == nil }
 
     // True when every sense carries the JMdict `uk` (usually-kana) misc tag.
     var allSensesUsuallyKana: Bool {

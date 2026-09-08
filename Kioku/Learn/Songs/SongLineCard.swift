@@ -28,12 +28,13 @@ struct SongLineCard: View {
     // Lazily-populated cache; nil before the first expansion for this line. Owned by the
     // parent stepper so cache compute happens once per line per session.
     let furiganaCache: LineFuriganaCache?
-    // Per-kanji-run readings for word-list headwords, keyed by (line, surface) — not surface
-    // alone, since the same word can resolve to a different reading on different lines (see
-    // WordFuriganaKey). Owned by the parent stepper (it has the segmenter/surfaceReadingData
-    // in scope) and built eagerly alongside furiganaCache so every word in the explanations
-    // list can show furigana.
-    let wordFurigana: [WordFuriganaKey: [Int: String]]
+    // Furigana cache for word-list headwords, keyed by (line, surface) — not surface alone,
+    // since the same word can resolve to a different reading on different lines (see
+    // WordFuriganaKey). Same shape as furiganaCache (see LineFuriganaCache) so a headword
+    // renders through the same KiokuCoreTextRendererView the big Japanese row uses. Owned by
+    // the parent stepper (it has the segmenter/surfaceReadingData in scope) and built eagerly
+    // alongside furiganaCache so every word in the explanations list can show furigana.
+    let wordFurigana: [WordFuriganaKey: LineFuriganaCache]
     // Play-button state for this line's narration (sung clip when available, then the
     // sentence, gist, and words — see SongListenScript). Nil hides the button entirely.
     let playState: SongLineCardPlayState?
@@ -55,6 +56,11 @@ struct SongLineCard: View {
     // Opens the shared lookup sheet for a tapped vocabulary row. The parent owns the dictionary
     // resolution + presentation so this card stays a pure renderer.
     let onWordTapped: (SongWord) -> Void
+    // Scrolls the list to the given 1-indexed line number — the target of this card's own
+    // "Same as line N" / "Parallel to line N" reference label. The parent owns this (it holds
+    // the ScrollViewReader's proxy and the full items array needed to resolve a line index to
+    // a scroll target) so this card stays a pure renderer.
+    let onJumpToLine: (Int) -> Void
 
     @AppStorage(TypographySettings.furiganaGapKey) private var furiganaGap = TypographySettings.defaultFuriganaGap
 
@@ -218,29 +224,36 @@ struct SongLineCard: View {
     }
 
     // Compact reference label: small arrow icon + "Same as line N" or "Parallel to line N · X → Y".
-    // Accent-coloured so it reads as a link cue without needing its own background panel.
+    // Accent-coloured so it reads as a link cue — and, via onJumpToLine, actually is one: tapping
+    // it scrolls to the referenced line.
     private func inlineReferenceLabel(_ reference: LineReference) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "arrow.uturn.backward")
-                .font(.caption2)
-            switch reference {
-            case .sameAsLine(let n):
-                Text("Same as line \(n)")
-                    .font(.footnote.weight(.semibold))
-            case .parallelTo(line: let n, substitution: let sub):
-                if sub.isEmpty {
-                    Text("Parallel to line \(n)")
+        Button {
+            onJumpToLine(reference.targetLineIndex)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.caption2)
+                switch reference {
+                case .sameAsLine(let n):
+                    Text("Same as line \(n)")
                         .font(.footnote.weight(.semibold))
-                } else {
-                    Text("Parallel to line \(n) · \(sub)")
-                        .font(.footnote.weight(.semibold))
+                case .parallelTo(line: let n, substitution: let sub):
+                    if sub.isEmpty {
+                        Text("Parallel to line \(n)")
+                            .font(.footnote.weight(.semibold))
+                    } else {
+                        Text("Parallel to line \(n) · \(sub)")
+                            .font(.footnote.weight(.semibold))
+                    }
                 }
             }
+            .foregroundStyle(Color.accentColor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .allowsTightening(true)
         }
-        .foregroundStyle(Color.accentColor)
-        .lineLimit(1)
-        .minimumScaleFactor(0.6)
-        .allowsTightening(true)
+        .buttonStyle(.plain)
+        .accessibilityHint("Jumps to line \(reference.targetLineIndex)")
     }
 
     // Surfaces a note when the line has no gist, no grammar note, no words, and no reference
@@ -468,7 +481,7 @@ struct SongLineCard: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(SongLineCard.stripInlineMarkdown(SongLineCard.strippingPatternToBankPrefix(text)))
-                .font(.callout)
+                .font(.callout.italic())
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -549,28 +562,59 @@ struct SongLineCard: View {
         .accessibilityHint("Look up \(word.surface)")
     }
 
-    // A word-list headword: furigana over kanji runs when the stepper resolved a reading for
-    // this surface, plain text otherwise (kana-only words, or a surface the resolver couldn't
-    // align). Font is a fixed UIFont matching `.title3.weight(.semibold)` since FuriganaLabel
-    // is a UIKit view and doesn't take a SwiftUI Font.
+    // A word-list headword: renders through the same CoreText renderer the Read tab and this
+    // card's own big Japanese row use (see furiganaRow) — furigana over kanji runs when the
+    // stepper resolved a reading for this surface, plain text otherwise (kana-only words, or a
+    // surface the resolver couldn't align). Don't give this its own single-word ruby renderer —
+    // a second, independent implementation of the same overhang/kerning logic will drift out of
+    // sync with this one and need its own separate bug fixes.
+    //
+    // The renderer intercepts its own touches (a UIViewRepresentable wrapping a UITextView, same
+    // as furiganaRow), so tapping the headword itself wouldn't reach wordEntryRow's surrounding
+    // Button — onSegmentTapped routes it to the same onWordTapped callback instead.
     @ViewBuilder
     private func wordHeadword(_ word: SongWord) -> some View {
         let key = WordFuriganaKey(lineIndex: effectiveWordsLineIndex, surface: word.surface)
-        // `.fixedSize` forces SwiftUI to propose an unconstrained width, which routes
-        // FuriganaLabel.sizeThatFits to its natural-width branch instead of the full row
-        // width. Without it, the label reports the entire row as its size and its internal
-        // .center paragraph alignment draws the headword centered in the row — inconsistent
-        // with the plain-Text branch below, which already hugs its own natural width and sits
-        // flush left.
-        if let runReadings = wordFurigana[key], runReadings.isEmpty == false {
-            FuriganaLabel(
-                surface: word.surface,
-                reading: "",
-                font: .systemFont(ofSize: 20, weight: .semibold),
-                gap: CGFloat(furiganaGap),
-                explicitRunReadings: runReadings
+        if let cache = wordFurigana[key], cache.furiganaBySegmentLocation.isEmpty == false {
+            KiokuCoreTextRendererView(
+                text: word.surface,
+                segmentationRanges: cache.segmentationRanges,
+                furiganaBySegmentLocation: cache.furiganaBySegmentLocation,
+                furiganaLengthBySegmentLocation: cache.furiganaLengthBySegmentLocation,
+                isFuriganaVisible: true,
+                isVisualEnhancementsEnabled: true,
+                isColorAlternationEnabled: false,
+                textSize: .constant(20),
+                lineSpacing: 4,
+                kerning: 0,
+                furiganaGap: furiganaGap,
+                evenSegmentColor: .label,
+                oddSegmentColor: .label,
+                isLineWrappingEnabled: true,
+                isRubySpacingEnabled: true,
+                selectedHighlightRange: nil,
+                playbackHighlightRange: nil,
+                selectionHighlightColor: .clear,
+                playbackHighlightColor: .clear,
+                unknownSegmentLocations: [],
+                isHighlightUnknownEnabled: false,
+                unknownSegmentColor: .label,
+                debugFlags: KiokuDebugOverlayView.Flags(),
+                illegalMergeLocation: nil,
+                onSegmentTapped: { _, _, _ in onWordTapped(word) },
+                isScrollEnabled: false
             )
-            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // RenderGeometry.resolve() bakes a fixed 4pt leftInset into every
+            // KiokuCoreTextRendererView instance. wordEntryRow's own VStack already adds
+            // .padding(.horizontal, 4) around the whole row (headword + definition below),
+            // so without this the two 4pt insets stack: the headword sits 8pt from the row's
+            // edge while the definition text and the "Show/Hide explanations" toggle above it
+            // sit at 4pt, reading as an unexplained extra indent before kanji-bearing headwords
+            // specifically (pure-kana words fall to the plain-Text branch below, which has no
+            // such built-in inset). Cancels the renderer's own inset so it lines up with its
+            // plain-Text siblings instead of compounding with the row's padding.
+            .padding(.leading, -4)
         } else {
             Text(word.surface)
                 .font(.title3.weight(.semibold))

@@ -44,13 +44,25 @@ extension DictionaryStore {
 
 
     // Builds the unified per-surface reading and frequency map from the materialized surface_readings table.
-    // Ordered by (surface ASC, best_rank ASC, wordfreq_zipf DESC, reading ASC): best_rank is an
-    // entry-wide value shared by every reading of a multi-reading entry (JPDB ranks one written
-    // form per entry), so when it ties, wordfreq_zipf — which IS stored per-reading — breaks the
-    // tie by actual usage before falling back to alphabetical. Without the zipf tie-break, ties
-    // fell through to plain alphabetical order on the reading string, which is why 二人 defaulted
-    // to ににん (に < ふ) and 一人 to いちにん (い < ひ) instead of the common ふたり/ひとり —
-    // this mirrors the fix already applied in generate_db.py's own materialization ORDER BY.
+    // Ordered by (surface ASC, has_direct_rank DESC, best_rank ASC, wordfreq_zipf DESC, reading ASC).
+    //
+    // has_direct_rank comes first: best_rank is an entry-wide value shared by every reading of a
+    // multi-reading entry (JPDB ranks one written form per entry) — a reading with no rank of its
+    // own just INHERITS the entry's best_rank from whichever sibling reading actually earned it,
+    // which makes it tie exactly with that sibling's best_rank. has_direct_rank (1 = this exact
+    // pair has its own kanji_kana_links.jpdb_rank, 0 = inherited-only) breaks that tie in favor of
+    // the reading that's actually ranked, before best_rank is even consulted — without it, 夜
+    // defaulted to よ (inherited rank 287, tied with よる's real rank 287) because the NEXT
+    // tiebreaker, wordfreq_zipf, is corpus-noise-inflated for short/common-mora readings like よ.
+    // (jpdb_rank itself can't make this distinction — generate_db.py's materialization already
+    // COALESCEs it to the entry-wide fallback, so both よ and よる show jpdb_rank=287 there.)
+    //
+    // wordfreq_zipf still breaks ties WITHIN a has_direct_rank/best_rank tier by actual usage
+    // before falling back to alphabetical — without it, ties fell through to plain alphabetical
+    // order on the reading string, which is why 二人 defaulted to ににん (に < ふ) and 一人 to
+    // いちにん (い < ひ) instead of the common ふたり/ひとり. Both fixes mirror generate_db.py's
+    // own materialization ORDER BY.
+    //
     // Each surface retains up to maxReadingsPerSurface distinct readings; frequency data is populated
     // for any reading that has at least one frequency signal (jpdb_rank or wordfreq_zipf).
     nonisolated func fetchSurfaceReadingData(maxReadingsPerSurface: Int = 8) throws -> [String: SurfaceReadingData] {
@@ -58,7 +70,7 @@ extension DictionaryStore {
             let sql = """
             SELECT surface, reading, jpdb_rank, wordfreq_zipf
             FROM surface_readings
-            ORDER BY surface, best_rank, wordfreq_zipf DESC, reading
+            ORDER BY surface, has_direct_rank DESC, best_rank, wordfreq_zipf DESC, reading
             """
 
             var statement: OpaquePointer?

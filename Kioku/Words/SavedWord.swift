@@ -201,16 +201,13 @@ nonisolated struct SavedWord: Codable, Hashable, Identifiable {
 
     // Builds a non-persisted SavedWord wrapping a DictionaryEntry so a tap on a related/synonym
     // or common-word row can present a nested WordDetailView for it. Surface picks the same
-    // headword the row displays (first everyday kanji → first kanji form → first kana form).
+    // headword primarySearchSurface displays (first everyday kanji → kana when the entry has no
+    // everyday kanji, e.g. する whose only kanji 為る is rK → kanji form as a last resort).
     // entSeq is left nil because DictionaryEntry doesn't carry it — if the user saves the word
     // from inside the nested view, WordsStore.toggle resolves the stable key from the store at
     // write time, so the ephemeral record never persists as-is.
     static func ephemeral(for entry: DictionaryEntry) -> SavedWord {
-        let surface = entry.firstEverydayKanji?.text
-            ?? entry.kanjiForms.first?.text
-            ?? entry.kanaForms.first?.text
-            ?? ""
-        return SavedWord(canonicalEntryID: entry.entryId, surface: surface)
+        SavedWord(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
     }
 
     // Keeps saved-word identity stable across surface variants that map to the same dictionary entry.

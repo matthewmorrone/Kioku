@@ -209,18 +209,30 @@ enum KiokuCoreTextAttributedStringBuilder {
         }
 
         // Saved Highlight. Applied last of the foreground-color passes so it always wins
-        // on overlap.
+        // on overlap — EXCEPT it must still respect unplayed-dimming: a saved word (purple/
+        // green) that falls after `unplayedDimmingLocation` needs the same alpha the earlier
+        // dimming pass gave every other color, or it snaps back to full brightness the instant
+        // this pass runs, undoing the dim (previously observed on-device: red/blue alternation
+        // colors dimmed and stayed dimmed since nothing touches them afterward, but purple/green
+        // saved-word colors dimmed then immediately un-dimmed here).
         if inputs.isSavedHighlightEnabled {
+            let dimFrom = inputs.unplayedDimmingLocation
             for segmentRange in inputs.segmentationRanges {
                 let nsRange = NSRange(segmentRange, in: inputs.text)
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
+                var color: UIColor?
                 if inputs.savedLearnedSegmentLocations.contains(nsRange.location) {
-                    result.addAttribute(.foregroundColor, value: inputs.savedLearnedHighlightColor, range: nsRange)
+                    color = inputs.savedLearnedHighlightColor
                 } else if inputs.savedNotLearnedSegmentLocations.contains(nsRange.location) {
-                    result.addAttribute(.foregroundColor, value: inputs.savedNotLearnedHighlightColor, range: nsRange)
+                    color = inputs.savedNotLearnedHighlightColor
                 } else if inputs.savedSegmentLocations.contains(nsRange.location) {
-                    result.addAttribute(.foregroundColor, value: inputs.savedHighlightColor, range: nsRange)
+                    color = inputs.savedHighlightColor
                 }
+                guard var color else { continue }
+                if let dimFrom, nsRange.location >= dimFrom {
+                    color = color.withAlphaComponent(inputs.unplayedAlpha)
+                }
+                result.addAttribute(.foregroundColor, value: color, range: nsRange)
             }
         }
 

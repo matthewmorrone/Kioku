@@ -9,12 +9,20 @@
 // iCloud quota.
 
 import Foundation
+import SourceSeparation
 
 public enum ModelStorage {
     // Model IDs are pinned here (rather than relying on the SDK's `fromPretrained` defaults)
     // so the cache directory and the requested weights cannot drift apart silently.
     public static let asrModelId = "aufklarer/Qwen3-ASR-0.6B-MLX-4bit"
     public static let forcedAlignerModelId = "aufklarer/Qwen3-ForcedAligner-0.6B-4bit"
+    // CoreML build of the same Qwen3-ASR model (encoder.mlmodelc + decoder.mlmodelc), used by
+    // StemTranscriber instead of the MLX build — see its header comment for why.
+    public static let asrCoreMLModelId = "aufklarer/Qwen3-ASR-CoreML"
+    // Re-exposes HTDemucsSeparator.defaultModelId so Kioku (which depends on SwiftWhisperAlign,
+    // not directly on SourceSeparation) can locate the on-disk directory for storage management
+    // (Settings → Downloaded Models) without a second package dependency.
+    public static let htDemucsFTModelId = HTDemucsSeparator.defaultModelId
 
     // Returns a per-model subdirectory under Application Support, creating it on demand.
     // Slashes in the model id ("aufklarer/Qwen3-…") become nested path components, mirroring

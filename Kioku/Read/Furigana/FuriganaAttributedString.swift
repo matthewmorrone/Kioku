@@ -2,7 +2,8 @@ import UIKit
 import CoreText
 
 // Builds NSAttributedString with CTRubyAnnotation applied per kanji run.
-// Shared by FuriganaLabel (SwiftUI) and SegmentLookupSheet (UIKit).
+// Shared across several furigana consumers, e.g. SegmentLookupSheet (UIKit) and
+// KiokuCoreTextAttributedStringBuilder (kanjiRuns/normalizedRunReadings).
 enum FuriganaAttributedString {
 
     // Builds an attributed string with per-kanji-run furigana for the given surface and reading.

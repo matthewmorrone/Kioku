@@ -16,6 +16,7 @@ import Foundation
 import AVFoundation
 import Qwen3ASR
 import SourceSeparation
+import AudioCommon
 import MLX
 
 public struct CTCForcedAligner {
@@ -64,6 +65,21 @@ public struct CTCForcedAligner {
             defer { try? handle.close() }
             _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: data)
+        }
+    }
+
+    // [DEBUG] Lock-guarded "did this decile already get logged" check, so the weights-download
+    // progress closure (called from a URLSession delegate queue, thousands of times for a large
+    // file) can throttle its breadcrumb writes to ~once per 10% without a data race on a captured var.
+    private final class DecileTracker: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lastDecile = -1
+        func shouldLog(_ decile: Int) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard decile != lastDecile else { return false }
+            lastDecile = decile
+            return true
         }
     }
 
@@ -203,27 +219,71 @@ public struct CTCForcedAligner {
             // HTDemucsSeparator.fromPretrained(precision:) + Self.separateVocalsChunked(...) (that
             // chunked helper, which bounds peak memory, is still defined below).
             if Self.stemmingEnabled {
-                // Isolate vocals with Apple's AUSoundIsolation (Neural Engine) — the engine behind
-                // Apple Music Sing. Native, on-device, iOS 16.2+; no model, no Metal crash, no
-                // license question. (OpenUnmix/HTDemucs paths removed; see git history + the CoreML
-                // spike notes if Apple's isolation quality proves insufficient.)
+                // Isolate vocals with HTDemucs-FT (MLX) — the SOTA separator that produced the
+                // clean Mac stem. Previously SIGKILLed ~1s into separate() on the A17 GPU (a
+                // Metal fault confirmed exhaustively across precisions/chunk sizes/free memory),
+                // so this device fell back to the weaker on-device AUSoundIsolation. Re-trying on
+                // A19 Pro (different Metal generation) — see HTDemucsCoreMLSeparator for the
+                // fallback path if this still faults.
                 onStage?("Isolating…")
-                Self.breadcrumb("isolating (HTDemucs CoreML)")
-                let mono: [Float]
-                if #available(iOS 16.0, macOS 13.0, *) {
-                    mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
-                        stereo: stereo,
-                        cancellationCheck: cancellationCheck,
-                        onProgress: { frac in
-                            onProgress?(0.05 + 0.35 * frac)                       // global bar (legacy callers)
-                            onStage?("Isolating… \(Int((frac * 100).rounded()))%")  // per-phase %
-                        },
-                        onStage: onStage                                          // first-run model download phases
-                    )
-                } else {
-                    throw NSError(domain: "SwiftWhisperAlign.CTC", code: 16,
-                                  userInfo: [NSLocalizedDescriptionKey: "Vocal isolation needs iOS 16 or later."])
+                Self.breadcrumb("isolating (HTDemucs-FT MLX)")
+                // Downloads the two files directly via URLSession, pinned to the upload's commit
+                // (same discipline as WhisperDownloadableModel.pinnedRevision), rather than going
+                // through HTDemucsSeparator.fromPretrained/HuggingFaceDownloader's HubApi-based
+                // fetch. Two reasons: (1) fromPretrained's own progress handler reports the same
+                // static "Downloading htdemucs_ft..." string on every tick — no percent — which
+                // left the progress HUD (a plain Text) visibly frozen for the whole ~320 MB
+                // download; (2) on-device, that Hub client stalled indefinitely against the file's
+                // Xet-CDN redirect (root cause unconfirmed — the files resolve fine outside the
+                // app), whereas plain URLSession downloads are what every other model in this app
+                // (Whisper, dictionary, the old HTDemucs CoreML .zip) already uses successfully.
+                // Lands in ModelStorage's Application Support directory, not Library/Caches (which
+                // iOS purges under storage pressure — see ModelStorage.swift).
+                let precision = HTDemucsSeparator.Precision.fp16
+                let modelName = precision.modelName
+                let cacheDir = try ModelStorage.directory(for: HTDemucsSeparator.defaultModelId)
+                let weightsURL = cacheDir.appendingPathComponent("\(modelName).safetensors")
+                let configURL = cacheDir.appendingPathComponent("\(modelName)_config.json")
+                if FileManager.default.fileExists(atPath: weightsURL.path) == false {
+                    onStage?("Downloading isolator… 0%")
+                    // Commit aufklarer/HTDemucs-FT-MLX was pinned at (2026-09-04); bump deliberately
+                    // if the upstream weights are ever republished.
+                    let revision = "39820e356306479d81dacb9f1042e5de86d49e29"
+                    func remoteURL(_ filename: String) -> URL {
+                        URL(string: "https://huggingface.co/aufklarer/HTDemucs-FT-MLX/resolve/\(revision)/\(filename)")!
+                    }
+                    Self.breadcrumb("isolator: config download start")
+                    try await HTDemucsFTDownloader.downloadFile(from: remoteURL("\(modelName)_config.json"), to: configURL)
+                    Self.breadcrumb("isolator: config download done, weights download start")
+                    let decileTracker = Self.DecileTracker()
+                    // Pinned alongside `revision`: the fp16 weights' exact size at that commit
+                    // (confirmed via the HF API), used only as a progress-reporting fallback when
+                    // the CDN response doesn't carry a size URLSession recognizes — never as a
+                    // download-completeness check.
+                    let weightsExpectedBytes: Int64 = 336_115_816
+                    try await HTDemucsFTDownloader.downloadFile(
+                        from: remoteURL("\(modelName).safetensors"), to: weightsURL, expectedBytes: weightsExpectedBytes
+                    ) { frac in
+                        onStage?("Downloading isolator… \(Int((frac * 100).rounded()))%")
+                        onProgress?(0.05 + 0.05 * frac)
+                        if decileTracker.shouldLog(Int(frac * 10)) {
+                            Self.breadcrumb("isolator: weights download \(Int((frac * 100).rounded()))%")
+                        }
+                    }
+                    Self.breadcrumb("isolator: weights download done")
                 }
+                onStage?("Loading isolator…")
+                let separator = try HTDemucsSeparator.fromLocal(directory: cacheDir, modelName: modelName)
+                let mono = try Self.separateVocalsChunked(
+                    separator: separator,
+                    stereo: stereo,
+                    cancellationCheck: cancellationCheck,
+                    onProgress: { frac in
+                        onProgress?(0.10 + 0.30 * frac)                       // global bar (legacy callers)
+                        onStage?("Isolating… \(Int((frac * 100).rounded()))%")  // per-phase %
+                    },
+                    onStage: onStage
+                )
                 guard mono.isEmpty == false else {
                     throw NSError(domain: "SwiftWhisperAlign.CTC", code: 15,
                                   userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
@@ -276,16 +336,19 @@ public struct CTCForcedAligner {
         // are released before the aligner allocates), then mine confident line→time anchors from the
         // heard text. Falls back to an empty anchor set on any failure → routing uses VAD-gated.
         //
-        // The whole anchor-ASR + CTC-alignment block below runs pinned to MLX's CPU device.
-        // Confirmed on-device (repeatable SIGSEGV crash logs, iOS 27 beta 24A5380h): compiling
-        // this Transformer's attention layers on the GPU path crashes inside Apple's own
-        // MetalPerformanceShadersGraph MLIR optimizer (FoldMultiplyIntoSDPAScale) — a fault in
-        // Apple's compiled framework, not this code, and not one Swift can catch or recover from
-        // (a real SIGSEGV in a system framework is a hard, unrecoverable process kill). CPU is
-        // slower but deterministic. Scoped to just this block so vocal isolation (CoreML, a
-        // separate framework, unaffected) and audio decode/VAD keep full speed. Revisit once a
-        // future OS build fixes the compiler bug.
-        let rawUnits: [(start: Double, end: Double, text: String)] = try await MLX.Device.withDefaultDevice(.cpu) {
+        // This block used to run pinned to MLX's CPU device: on iOS 27 beta 24A5380h, compiling
+        // this Transformer's attention layers on GPU crashed inside Apple's own
+        // MetalPerformanceShadersGraph MLIR optimizer (FoldMultiplyIntoSDPAScale). CPU's
+        // *compiled* execution turned out to ALSO be broken on that OS family — every window
+        // failed with "[Compiled::eval_cpu] CPU compilation not supported on the platform." —
+        // and forcing eager execution to dodge that made each window take 70s+ instead of
+        // ~1-2s. Confirmed fixed on 24A5430a (a later beta): plain GPU + compiled (MLX's
+        // default, no overrides) now runs a full song's alignment in ~5s with no crash — same
+        // story as the unrelated A17→A19 HTDemucs-FT Metal fault elsewhere in this file, fixed
+        // by a newer OS/hardware combo rather than app-side code. If a future OS build
+        // regresses this, revert to `Device.withDefaultDevice(.cpu)` + `MLX.compile(enable:
+        // false)` (see git history) — confirmed to at least not crash, just ~40x slower.
+        let rawUnits: [(start: Double, end: Double, text: String)] = try await {
             var anchors: [(line: Int, time: Double)] = []
             if Self.anchorFillEnabled {
                 onStage?("Transcribing…")
@@ -297,9 +360,12 @@ public struct CTCForcedAligner {
                     cacheIdentity: VocalStemCache.identityKey(for: input.audioURL),
                     progress: { msg in
                         Self.breadcrumb("anchor-asr: \(msg)")
-                        // The ASR model load is a ~60 s opaque step BEFORE any piece, so onFraction can't
-                        // cover it — surface it explicitly so the label isn't frozen at a bare "…".
-                        if msg.hasPrefix("loading") { onStage?("Loading transcriber…") }
+                        // The ASR model load/download is a ~60 s+ opaque phase before any piece
+                        // (encoder/decoder download + compile), so onFraction can't cover it —
+                        // forward the real message (it carries its own live percent) rather than a
+                        // frozen placeholder. Per-piece previews ("12–36s → こんにちは") are excluded
+                        // — onFraction below already renders those as a clean "Transcribing… N%".
+                        if msg.contains("→") == false { onStage?(msg) }
                     },
                     // Per-phase % in the stage label, matching the isolation/alignment stages. Fires once
                     // per ~24 s piece (so it starts at the first piece's fraction, never a stuck 0%).
@@ -371,7 +437,7 @@ public struct CTCForcedAligner {
             }
             alignProgress(1.0)   // windows report progress at their start; close the phase at a true 100%
             return rawUnits
-        }
+        }()
         // Map back to the original timeline (undo the leading-silence trim).
         let units = rawUnits.map { (start: $0.start + leadOffsetSec, end: $0.end + leadOffsetSec, text: $0.text) }
         Self.breadcrumb("aligned \(units.count) units (\(vadSegs.isEmpty ? "windowed" : "VAD-gated"))")
@@ -1050,7 +1116,17 @@ public struct CTCForcedAligner {
                 // enough that the excess is a tiny fraction; at a 30 s window it's a flood.
                 let feedChars = max(24, Int(windowDur * songCharsPerSec))
                 let fedText = remaining.count > feedChars ? String(remaining.prefix(feedChars)) : remaining
-                let aligned = aligner.align(audio: window, text: fedText, sampleRate: audioRate)
+                // MLX's default error handler is an unconditional fatalError on ANY internal MLX
+                // failure (see StemTranscriber's transcribe call for the same guard + the on-device
+                // crash that motivated it). `withError` converts that into a catchable Swift error;
+                // a failed window is then treated exactly like an empty CTC result already is below
+                // (skip and retry text in the next window) rather than crashing the whole align.
+                var aligned: [AlignedWord] = []
+                do {
+                    aligned = try withError { aligner.align(audio: window, text: fedText, sampleRate: audioRate) }
+                } catch {
+                    Self.breadcrumb("vad win \(Int(audioStart))–\(Int(windowEnd))s CAUGHT: \(error)")
+                }
                 MLX.Memory.clearCache()
                 if aligned.isEmpty { audioStart = windowEnd; continue }
                 let units = aligned.map { (start: Double($0.startTime), end: Double($0.endTime), text: $0.text) }
@@ -1133,7 +1209,9 @@ public struct CTCForcedAligner {
             // Generous self-calibrated feed (see alignVADGated); plateau detector trims any cram.
             let feedChars = max(24, Int(windowDur * songCharsPerSec * 1.0))
             let fedText = remaining.count > feedChars ? String(remaining.prefix(feedChars)) : remaining
-            let aligned = aligner.align(audio: window, text: fedText, sampleRate: audioRate)
+            // See alignAnchored's identical guard: converts an MLX-internal fatalError into a
+            // catchable error, treating a failed window as an empty one instead of crashing.
+            let aligned = (try? withError { aligner.align(audio: window, text: fedText, sampleRate: audioRate) }) ?? []
             // Release MLX's buffer cache from this pass — it grows unbounded across
             // align() calls otherwise (memory marched 2749→743→226 MB → OOM). align()
             // has already evaluated, so the result is plain values; nothing live is freed.

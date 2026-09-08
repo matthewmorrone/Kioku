@@ -9,20 +9,24 @@
 
 import Foundation
 import Qwen3ASR
+import CoreML
 import MLX
 
 public enum StemTranscriber {
     // Transcribes `stem` in `pieceSec` chunks across each vocal region (defaults to the whole stem),
     // with a slight overlap so a line split across one boundary still appears whole in a neighbour.
-    // Piece count is kept modest on purpose: each piece is an MLX forward pass holding the ASR model
-    // resident, and too many in a row gets the app jetsam-killed (50% overlap / ~31 pieces did).
-    // Anchor PRECISION comes from the downstream refine pass, not from tiny pieces. One phrase per
-    // non-empty piece.
+    // Piece count used to be kept modest on purpose: each piece was an MLX forward pass holding the
+    // ASR model resident, and too many in a row got the app jetsam-killed (50% overlap / ~31 pieces
+    // did). Now that ASR runs on CoreML (see ensureModel below) instead of MLX, that specific memory
+    // profile no longer applies — a 24s-piece run stayed well clear of jetsam (lowest observed
+    // ~440 MB free over 10 pieces). The underlying tradeoff (more, smaller pieces = more total
+    // ASR inference time, in exchange for denser, better-localized anchor candidates) is still
+    // real; revisit pieceSec if jetsam resurfaces at this smaller size.
     public static func segments(
         stem: [Float],
         sampleRate: Int = 44_100,
         regions: [(start: Double, end: Double)]? = nil,
-        pieceSec: Double = 24,
+        pieceSec: Double = 12,
         language: String = "Japanese",
         // Audio identity (VocalStemCache.identityKey) enabling the resumable per-piece checkpoint.
         // nil disables checkpointing (diagnostic callers) and transcribes fresh.
@@ -78,16 +82,49 @@ public enum StemTranscriber {
         }
 
         // Lazily load the model only if at least one piece must actually be transcribed.
-        var model: Qwen3ASRModel?
-        func ensureModel() async throws -> Qwen3ASRModel {
+        // CoreML (not the MLX build): on-device testing (iOS 27 beta, A19 Pro) hit a repeatable
+        // SIGSEGV inside MLX's own CPU bfloat16 multiply kernel during Qwen3ASRModel's token
+        // generation — a native crash `withError` can't catch (that only intercepts errors MLX
+        // reports through its own C API, not raw memory faults). CoreMLASRModel is the same
+        // model exported to CoreML, run via transcribeBackgroundSafe() which explicitly avoids
+        // MLXArray for the whole forward pass (its own doc comment: built for exactly this class
+        // of crash, in code paths where "GPU access is prohibited").
+        var model: CoreMLASRModel?
+        func ensureModel() async throws -> CoreMLASRModel {
             if let m = model { return m }
             progress?("loading ASR…")
             // Pin to a non-purgeable Application Support path so a Caches eviction can't strand a
             // mid-transfer download (see ModelStorage for the full rationale).
-            let m = try await Qwen3ASRModel.fromPretrained(
-                modelId: ModelStorage.asrModelId,
-                cacheDir: try ModelStorage.directory(for: ModelStorage.asrModelId)
-            )
+            let coreMLDir = try ModelStorage.directory(for: ModelStorage.asrCoreMLModelId)
+            // fromPretrained's tokenizer step downloads from `tokenizerModelId` (the MLX repo) but
+            // writes into the SAME `cacheDir` passed for encoder/decoder (the CoreML repo) — that
+            // modelId/cacheDir mismatch confuses the Hub downloader's internal path derivation
+            // (see ModelStorage.swift's "models/" comment) and the tokenizer files silently never
+            // land, so `model.tokenizer` stays nil and transcribe() falls back to raw token IDs
+            // ("11528 8453 15170") instead of decoded text. Pre-seeding the files directly at the
+            // exact path fromPretrained checks sidesteps the mismatch (downloadWeights already
+            // skips files that already exist).
+            let vocabURL = coreMLDir.appendingPathComponent("vocab.json")
+            if FileManager.default.fileExists(atPath: vocabURL.path) == false {
+                // Pinned commit for aufklarer/Qwen3-ASR-0.6B-MLX-4bit (2026-09-04).
+                let tokenizerRevision = "bc441bd1e4295c1f42d9879f056049a925b6e013"
+                func tokenizerFileURL(_ filename: String) -> URL {
+                    URL(string: "https://huggingface.co/aufklarer/Qwen3-ASR-0.6B-MLX-4bit/resolve/\(tokenizerRevision)/\(filename)")!
+                }
+                for filename in ["vocab.json", "merges.txt", "tokenizer_config.json"] {
+                    try await HTDemucsFTDownloader.downloadFile(
+                        from: tokenizerFileURL(filename), to: coreMLDir.appendingPathComponent(filename)
+                    )
+                }
+            }
+            let m = try await CoreMLASRModel.fromPretrained(
+                cacheDir: coreMLDir
+            ) { frac, stage in
+                // fromPretrained's own `stage` string is static ("Downloading CoreML encoder...")
+                // on every tick — no percent — which leaves the progress HUD frozen-looking for the
+                // whole download (same fix as HTDemucs-FT's isolator download).
+                progress?("\(stage) \(Int((frac * 100).rounded()))%")
+            }
             model = m
             return m
         }
@@ -105,11 +142,26 @@ public enum StemTranscriber {
                 let s = Int(t0 * sr), e = min(stem.count, Int(t1 * sr))
                 if e > s {
                     let piece = Array(stem[s..<e])
-                    let text = (try await ensureModel())
-                        .transcribe(audio: piece, sampleRate: sampleRate, language: language)
+                    let model = try await ensureModel()
+                    // Using transcribe() (batched decoderPrefill), NOT transcribeBackgroundSafe()/
+                    // transcribeWithoutMLX() — that path hit its own on-device SIGSEGV (EXC_BAD_ACCESS
+                    // in CoreMLTextDecoder.audioEmbeddingFromMultiArray, an out-of-bounds read, distinct
+                    // from the MLX bfloat16 crash Qwen3ASRModel had). transcribe() uses a completely
+                    // different, well-exercised batched-prefill code path that doesn't call that
+                    // function at all. It does touch a little MLX (audioEmbeds.asArray(Float.self)) for
+                    // data transfer, not autoregressive generation — `withError` covers a
+                    // handler-reported failure there; it can't cover a raw memory fault (nothing can).
+                    // Protocol method: catches internally, returns "[CoreML error: ...]" on failure —
+                    // the anchor-and-fill design tolerates an empty/unmatched piece either way.
+                    var text = ((try? withError { model.transcribe(audio: piece, sampleRate: sampleRate, language: language) }) ?? "[CoreML error: withError caught an MLX failure]")
                         .trimmingCharacters(in: .whitespacesAndNewlines)
-                    MLX.Memory.clearCache()
-                    progress?("\(Int(t0))–\(Int(t1))s → \(text.prefix(16))")
+                    if text.hasPrefix("[CoreML error:") {
+                        progress?("\(Int(t0))–\(Int(t1))s → \(text.prefix(80))")
+                        text = ""
+                    }
+                    if text.isEmpty == false {
+                        progress?("\(Int(t0))–\(Int(t1))s → \(text.prefix(16))")
+                    }
                     keep(TranscriptCache.Piece(start: t0, end: t1, text: text))
                     // Checkpoint the instant the piece lands, so this work survives a kill.
                     if let id = cacheIdentity {

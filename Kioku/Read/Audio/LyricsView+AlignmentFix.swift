@@ -149,6 +149,35 @@ extension LyricsView {
                     ? "Playing isolated vocals. Tap to hear the original mix."
                     : "Playing original mix. Tap to hear the isolated vocals.")
             }
+
+            // Quick Word/Sentence granularity toggle — the same setting as Settings' "Highlight
+            // Granularity" picker (see LyricsView's quickGranularityRaw doc comment), surfaced here
+            // because judging whether word-level timing is holding up is something you do WHILE
+            // listening, not something worth a trip to Settings for. Only cycles Word ⇄ Sentence;
+            // Mora stays a Settings-only choice since it's a finer, less commonly needed option.
+            Button {
+                let current = LyricsHighlightGranularity(rawValue: quickGranularityRaw) ?? .word
+                let next: LyricsHighlightGranularity = current == .sentence ? .word : .sentence
+                quickGranularityRaw = next.rawValue
+            } label: {
+                let isSentence = quickGranularityRaw == LyricsHighlightGranularity.sentence.rawValue
+                HStack(spacing: 6) {
+                    Image(systemName: isSentence ? "line.3.horizontal" : "textformat.abc")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(isSentence ? "Line" : "Word")
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(isSentence ? Color.accentColor : Color.secondary)
+                .padding(.horizontal, 14)
+                .frame(height: 28)
+                .background((isSentence ? Color.accentColor : Color.secondary).opacity(0.16))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(quickGranularityRaw == LyricsHighlightGranularity.sentence.rawValue
+                ? "Highlighting by line. Tap to switch to word-by-word."
+                : "Highlighting word-by-word. Tap to switch to whole-line.")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)

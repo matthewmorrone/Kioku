@@ -170,19 +170,16 @@ enum OnDeviceLyricAligner {
         }
     }
 
-    // Force-aligns input lyric lines to audio using whisper.cpp's logits filter callback.
-    // The model is used purely as a timing engine — it emits only the provided lyric tokens.
+    // Force-aligns input lyric lines to audio via the CTC forced aligner (see CTCForcedAligner).
     // Non-speech gaps are inferred from timing gaps between lines.
     //
     // lyrics: the full note text (will be split on newlines; blank lines are skipped).
-    // modelURL: path to a GGML .bin file.
-    // onProgress: called on main queue with a 0–1 fraction as Whisper processes audio.
+    // onProgress: called on main queue with a 0–1 fraction as the pipeline processes audio.
     // onSegment: called each time a segment completes with partial aligned lines.
     // cancellationCheck: polled during inference; return true to abort.
     static func align(
         audioURL: URL,
         lyrics: String,
-        modelURL: URL,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onProgress: (@Sendable (Double) -> Void)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil,
@@ -218,9 +215,10 @@ enum OnDeviceLyricAligner {
         // DTW (Whisper cross-attention) collapsed on full songs (~101s median error
         // vs the stable-ts oracle, 0% within ±500ms). Replaced by the CTC forced
         // aligner (soniqo Qwen3ForcedAligner): ~3.9s median on the vocal stem, 26×
-        // better. `modelURL` is now unused (CTC downloads its own model via
-        // fromPretrained); kept in the signature for call-site stability. To revert,
-        // uncomment the ForcedAligner block below and comment out the CTC call.
+        // better — it downloads its own model via fromPretrained, so this no longer
+        // needs a GGML modelURL at all (dropped from the signature). To revert,
+        // uncomment the ForcedAligner block below and comment out the CTC call —
+        // note this branch would need a modelURL parameter added back first.
         // let aligner = ForcedAligner(modelURL: modelURL)
         // let srt = try await aligner.alignToSRT(
         //     input: input,
@@ -244,12 +242,10 @@ enum OnDeviceLyricAligner {
     // sub-line checkpoints) instead of flattened SRT text. The caller builds cues directly from
     // this so the karaoke checkpoints survive — an SRT round-trip is line-level and drops them,
     // which is why whole-note Re-align used to highlight only per-line. Mirrors `align`'s setup
-    // (line filtering, background-task assertion); `modelURL` is unused by the CTC path (kept for
-    // call-site parity).
+    // (line filtering, background-task assertion).
     static func alignDetailed(
         audioURL: URL,
         lyrics: String,
-        modelURL: URL,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil,
         onSegment: (@Sendable ([SwiftWhisperAlign.AlignedLine]) -> Void)? = nil
