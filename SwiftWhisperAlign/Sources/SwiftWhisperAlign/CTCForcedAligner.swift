@@ -15,7 +15,6 @@
 import Foundation
 import AVFoundation
 import Qwen3ASR
-import SourceSeparation
 import AudioCommon
 import MLX
 
@@ -65,21 +64,6 @@ public struct CTCForcedAligner {
             defer { try? handle.close() }
             _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: data)
-        }
-    }
-
-    // [DEBUG] Lock-guarded "did this decile already get logged" check, so the weights-download
-    // progress closure (called from a URLSession delegate queue, thousands of times for a large
-    // file) can throttle its breadcrumb writes to ~once per 10% without a data race on a captured var.
-    private final class DecileTracker: @unchecked Sendable {
-        private let lock = NSLock()
-        private var lastDecile = -1
-        func shouldLog(_ decile: Int) -> Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            guard decile != lastDecile else { return false }
-            lastDecile = decile
-            return true
         }
     }
 
@@ -207,75 +191,22 @@ public struct CTCForcedAligner {
 
             // Isolate vocals so the aligner sees speech-like audio rather than the full mix.
             //
-            // SEPARATOR = OpenUnmix. HTDemucs-FT isolates better (it produced the clean Mac stem), but
-            // it SIGKILLs the app ~1 s into the first separate() on the A17 GPU — an MLX/Metal op in
-            // its forward pass faults on device. Confirmed exhaustively: int8 AND fp16, 30 s AND 183 s
-            // chunks, all with ~2.6–3 GB free, foreground, uncatchable (no signal). OpenUnmix is the
-            // separator that runs to completion on-device. Its weaker isolation leaves some
-            // instrumental bleed, which the adaptive trimLeadingSilence gate below is tuned to absorb.
-            //
-            // To restore HTDemucs once soniqo's Metal path is device-safe — or to run separation on
-            // the Mac bridge and fetch the stem — swap the load+separate below for
-            // HTDemucsSeparator.fromPretrained(precision:) + Self.separateVocalsChunked(...) (that
-            // chunked helper, which bounds peak memory, is still defined below).
+            // SEPARATOR = HTDemucs-FT via CoreML/ANE (HTDemucsCoreMLSeparator) — the only HTDemucs
+            // backend this app now runs; the MLX build (HTDemucsSeparator) was removed. Both used to
+            // be blocked by separate on-device crashes (see git history — the MLX build SIGKILLed on
+            // the A17 GPU, the CoreML build's GPU/ANE compile crashed in Apple's own MPSGraph MLIR
+            // optimizer). The CoreML crash is confirmed fixed on 24A5430a — same bug the CTC aligner's
+            // own attention layers hit and already documents below — and CoreML/ANE runs a full song's
+            // separation in ~1/3 the wall time the MLX GPU path took once IT started completing (~69s
+            // vs ~184s here). Tradeoff, measured on tsukiiro-chainon: the CoreML export's ASR reads
+            // slightly worse on its own stem, costing 4 of 34 anchors (20 vs 24) and a real hit to
+            // worst-case timing (max Δ 6.0s→26.2s) — accepted for now in exchange for one separator
+            // instead of two duplicate on-device models; revisit if anchor quality needs tightening
+            // (extractAnchors' matching/gate tuning is the more likely lever than re-adding MLX).
             if Self.stemmingEnabled {
-                // Isolate vocals with HTDemucs-FT (MLX) — the SOTA separator that produced the
-                // clean Mac stem. Previously SIGKILLed ~1s into separate() on the A17 GPU (a
-                // Metal fault confirmed exhaustively across precisions/chunk sizes/free memory),
-                // so this device fell back to the weaker on-device AUSoundIsolation. Re-trying on
-                // A19 Pro (different Metal generation) — see HTDemucsCoreMLSeparator for the
-                // fallback path if this still faults.
                 onStage?("Isolating…")
-                Self.breadcrumb("isolating (HTDemucs-FT MLX)")
-                // Downloads the two files directly via URLSession, pinned to the upload's commit
-                // (same discipline as WhisperDownloadableModel.pinnedRevision), rather than going
-                // through HTDemucsSeparator.fromPretrained/HuggingFaceDownloader's HubApi-based
-                // fetch. Two reasons: (1) fromPretrained's own progress handler reports the same
-                // static "Downloading htdemucs_ft..." string on every tick — no percent — which
-                // left the progress HUD (a plain Text) visibly frozen for the whole ~320 MB
-                // download; (2) on-device, that Hub client stalled indefinitely against the file's
-                // Xet-CDN redirect (root cause unconfirmed — the files resolve fine outside the
-                // app), whereas plain URLSession downloads are what every other model in this app
-                // (Whisper, dictionary, the old HTDemucs CoreML .zip) already uses successfully.
-                // Lands in ModelStorage's Application Support directory, not Library/Caches (which
-                // iOS purges under storage pressure — see ModelStorage.swift).
-                let precision = HTDemucsSeparator.Precision.fp16
-                let modelName = precision.modelName
-                let cacheDir = try ModelStorage.directory(for: HTDemucsSeparator.defaultModelId)
-                let weightsURL = cacheDir.appendingPathComponent("\(modelName).safetensors")
-                let configURL = cacheDir.appendingPathComponent("\(modelName)_config.json")
-                if FileManager.default.fileExists(atPath: weightsURL.path) == false {
-                    onStage?("Downloading isolator… 0%")
-                    // Commit aufklarer/HTDemucs-FT-MLX was pinned at (2026-09-04); bump deliberately
-                    // if the upstream weights are ever republished.
-                    let revision = "39820e356306479d81dacb9f1042e5de86d49e29"
-                    func remoteURL(_ filename: String) -> URL {
-                        URL(string: "https://huggingface.co/aufklarer/HTDemucs-FT-MLX/resolve/\(revision)/\(filename)")!
-                    }
-                    Self.breadcrumb("isolator: config download start")
-                    try await HTDemucsFTDownloader.downloadFile(from: remoteURL("\(modelName)_config.json"), to: configURL)
-                    Self.breadcrumb("isolator: config download done, weights download start")
-                    let decileTracker = Self.DecileTracker()
-                    // Pinned alongside `revision`: the fp16 weights' exact size at that commit
-                    // (confirmed via the HF API), used only as a progress-reporting fallback when
-                    // the CDN response doesn't carry a size URLSession recognizes — never as a
-                    // download-completeness check.
-                    let weightsExpectedBytes: Int64 = 336_115_816
-                    try await HTDemucsFTDownloader.downloadFile(
-                        from: remoteURL("\(modelName).safetensors"), to: weightsURL, expectedBytes: weightsExpectedBytes
-                    ) { frac in
-                        onStage?("Downloading isolator… \(Int((frac * 100).rounded()))%")
-                        onProgress?(0.05 + 0.05 * frac)
-                        if decileTracker.shouldLog(Int(frac * 10)) {
-                            Self.breadcrumb("isolator: weights download \(Int((frac * 100).rounded()))%")
-                        }
-                    }
-                    Self.breadcrumb("isolator: weights download done")
-                }
-                onStage?("Loading isolator…")
-                let separator = try HTDemucsSeparator.fromLocal(directory: cacheDir, modelName: modelName)
-                let mono = try Self.separateVocalsChunked(
-                    separator: separator,
+                Self.breadcrumb("isolating (HTDemucs-FT CoreML/ANE)")
+                let mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
                     stereo: stereo,
                     cancellationCheck: cancellationCheck,
                     onProgress: { frac in
@@ -288,7 +219,7 @@ public struct CTCForcedAligner {
                     throw NSError(domain: "SwiftWhisperAlign.CTC", code: 15,
                                   userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
                 }
-                Self.breadcrumb("isolated voice \(mono.count) frames (HTDemucs)")
+                Self.breadcrumb("isolated voice \(mono.count) frames (HTDemucs CoreML)")
                 #if DEBUG
                 // [DEBUG] Save the isolated stem so it can be played from Files → On My iPhone →
                 // Kioku → isolated-vocal.wav to judge isolation quality + what's in the intro. Gated
@@ -660,96 +591,6 @@ public struct CTCForcedAligner {
         return (result, lineTokens)
     }
 
-
-    // Separates vocals from a decoded stereo mix in bounded-length chunks so peak memory stays
-    // under the jetsam limit (the call site explains why a single full-song separate() OOMs).
-    // Each chunk runs through the full HTDemucs bag, is downmixed to mono, and the MLX buffer
-    // cache is cleared before the next chunk allocates. Consecutive chunks overlap by `overlapSec`
-    // and are linearly crossfaded so the seam is continuous (the model has no context across a
-    // chunk boundary, so a hard cut would click). Returns full-length mono vocals at `sampleRate`,
-    // or [] if separation produced nothing. Throws CancellationError if cancelled between chunks.
-    private static func separateVocalsChunked(
-        separator: HTDemucsSeparator,
-        stereo: [[Float]],
-        chunkSec: Double = 30,
-        overlapSec: Double = 1,
-        sampleRate: Int = 44_100,
-        cancellationCheck: (@Sendable () -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil,
-        onStage: ((String) -> Void)? = nil
-    ) throws -> [Float] {
-        guard stereo.count == 2 else { return [] }
-        let left = stereo[0], right = stereo[1]
-        let L = min(left.count, right.count)
-        guard L > 0 else { return [] }
-
-        let chunkLen = max(1, Int(chunkSec * Double(sampleRate)))
-        let overlap = min(chunkLen / 2, max(0, Int(overlapSec * Double(sampleRate))))
-        let stride = max(1, chunkLen - overlap)
-        let totalChunks = max(1, (L + stride - 1) / stride)
-
-        var vocalMono: [Float] = []
-        vocalMono.reserveCapacity(L)
-
-        var start = 0
-        while start < L {
-            if cancellationCheck?() == true { throw CancellationError() }
-            let end = min(L, start + chunkLen)
-            let n = end - start
-
-            #if os(iOS)
-            let availMB = Int(os_proc_available_memory()) / (1024 * 1024)
-            #else
-            let availMB = -1
-            #endif
-
-            // Planar [all-L, all-R] for this chunk → [1, 2, n], the layout separate() expects.
-            var planar = [Float]()
-            planar.reserveCapacity(2 * n)
-            planar.append(contentsOf: left[start..<end])
-            planar.append(contentsOf: right[start..<end])
-            let mix = MLXArray(planar).reshaped([1, 2, n])
-
-            onStage?("Isolating… \(start / stride + 1)/\(totalChunks)")
-            breadcrumb("→ separate() chunk @\(start / sampleRate)s n=\(n) availMem=\(availMB)MB")
-            let stems = separator.separate(mix)
-            breadcrumb("← separate() returned chunk @\(start / sampleRate)s")
-            guard let vocalsArr = stems["vocals"] else {
-                MLX.Memory.clearCache()
-                start += stride
-                continue
-            }
-            // [1, 2, n] row-major → first half = left, second half = right; downmix to mono.
-            let vFlat = vocalsArr.asArray(Float.self)
-            MLX.Memory.clearCache()   // chunk is now plain Swift values; release the buffer pool
-            let half = vFlat.count / 2
-            var chunkVocal = [Float](repeating: 0, count: half)
-            for i in 0..<half { chunkVocal[i] = (vFlat[i] + vFlat[half + i]) * 0.5 }
-
-            breadcrumb("sep chunk \(start / sampleRate)–\(end / sampleRate)s · \(half) frames · availMem=\(availMB)MB")
-
-            if vocalMono.isEmpty {
-                vocalMono.append(contentsOf: chunkVocal)
-            } else {
-                // Crossfade this chunk's head over the already-written overlap region (indexed
-                // absolutely, so it stays aligned even for a short final chunk), then append the
-                // remainder. `ov` = how many of this chunk's samples land on written audio.
-                let ov = max(0, min(vocalMono.count - start, chunkVocal.count))
-                for j in 0..<ov {
-                    let t = Float(j) / Float(max(1, ov))
-                    vocalMono[start + j] = vocalMono[start + j] * (1 - t) + chunkVocal[j] * t
-                }
-                if chunkVocal.count > ov {
-                    vocalMono.append(contentsOf: chunkVocal[ov...])
-                }
-            }
-
-            onProgress?(Double(end) / Double(L))
-            if end >= L { break }
-            start += stride
-        }
-        return vocalMono
-    }
 
     // Energy-based voice-activity detection on the (clean) vocal stem: returns the sung
     // regions in seconds, split at instrumental gaps. Builds a smoothed RMS envelope, gates at
