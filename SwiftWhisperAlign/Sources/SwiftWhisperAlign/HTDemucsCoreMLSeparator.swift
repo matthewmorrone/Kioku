@@ -48,14 +48,14 @@ enum HTDemucsCoreMLSeparator {
     static func loadModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> MLModel {
         let url = try await HTDemucsModelStore.ensureModel(onStage: onStage)
         let cfg = MLModelConfiguration()
-        // .cpuOnly, not .all: confirmed on-device (repeatable SIGSEGV crash logs, iOS 27 beta
-        // 24A5380h) that letting CoreML route this model's Transformer attention layers through
-        // GPU/ANE crashes inside Apple's own MetalPerformanceShadersGraph MLIR optimizer
-        // (FoldMultiplyIntoSDPAScale) while compiling the MPSGraphExecutable — a fault in Apple's
-        // compiled framework, not this code, and not one Swift can catch (a SIGSEGV inside a
-        // system framework is a hard, unrecoverable process kill). CPU-only is slower but
-        // deterministic. Revisit once a future OS build fixes the compiler bug.
-        cfg.computeUnits = .cpuOnly
+        // .all, not .cpuOnly: this model's Transformer attention layers used to crash CoreML's
+        // GPU/ANE compilation on iOS 27 beta 24A5380h — a fault in Apple's own
+        // MetalPerformanceShadersGraph MLIR optimizer (FoldMultiplyIntoSDPAScale), the same bug
+        // CTCForcedAligner hit and confirmed fixed on 24A5430a (see its doc comment history).
+        // Confirmed fixed here too, on-device on 24A5430a: a full-song separation via .all ran
+        // clean in ~69s vs. the MLX separator's ~184s for the same song's separation stage — ANE
+        // is both faster and more power-efficient than the CPU fallback this used to require.
+        cfg.computeUnits = .all
         return try MLModel(contentsOf: url, configuration: cfg)
     }
 
