@@ -25,8 +25,9 @@ nonisolated enum DownloadedModelsStore {
 
     // Sums every on-disk copy of the vocal isolator a user could have, depending on which app
     // version first downloaded it: the CoreML .mlmodelc (HTDemucsModelStore, its own legacy
-    // Documents sideload), and the MLX HTDemucs-FT weights (the active path as of the A19 Pro
-    // retry — see CTCForcedAligner's isolation call site).
+    // Documents sideload) — the only isolator this app now runs — and the MLX HTDemucs-FT
+    // weights, orphaned now that CTCForcedAligner's isolation call site dropped that path but
+    // still worth reclaiming for anyone who downloaded them under an older app version.
     static func htDemucsSizeBytes() -> Int {
         sizeBytes(at: try? ModelStorage.directory(for: HTDemucsModelStore.modelId))
             + sizeBytes(at: legacyHTDemucsURL())
