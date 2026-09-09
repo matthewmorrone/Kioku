@@ -6,12 +6,13 @@ import FoundationModels
 // AppleIntelligenceCloudAvailability lives in its own file (AppleIntelligenceCloudAvailability.swift)
 // per this repo's Type Organization rule — see that file's header for why.
 //
-// KIOKU_APPLE_INTELLIGENCE_CLOUD gates this whole type off by default (never set in this repo) —
-// see AppleIntelligenceCloudAvailability.swift's header comment for why: CI's pinned Xcode 26.5
-// genuinely doesn't declare PrivateCloudComputeLanguageModel/ContextOptions, confirmed by an
-// actual CI compile failure, not a guess.
+// Gated on compiler(>=6.4) rather than a custom flag — see AppleIntelligenceCloudAvailability.swift's
+// header comment for why: CI's pinned Xcode 26.5 ships Swift 6.3.2, which doesn't declare
+// PrivateCloudComputeLanguageModel/ContextOptions at all; Xcode 27's Swift 6.4 does. The compiler
+// version check gates this off automatically on 26.5 and on automatically once the toolchain moves
+// past it, with no manual per-machine build setting required.
 
-#if canImport(FoundationModels) && KIOKU_APPLE_INTELLIGENCE_CLOUD
+#if canImport(FoundationModels) && compiler(>=6.4)
 
 // Runs a prompt through Apple Intelligence's server-side model (Private Cloud Compute) for the
 // song feature that has Apple Intelligence support (SongBreakdownService) — unlike on-device

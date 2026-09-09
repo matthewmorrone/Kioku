@@ -19,18 +19,15 @@ enum AppleIntelligenceCloudAvailability {
     // research found `isAvailable` cited but could not compile-check it. If this doesn't build,
     // check PrivateCloudComputeLanguageModel's actual API first.
     //
-    // KIOKU_APPLE_INTELLIGENCE_CLOUD: confirmed via CI (pinned to Xcode 26.5) that
-    // PrivateCloudComputeLanguageModel/ContextOptions genuinely don't exist in that SDK — this
-    // isn't a wrong-name guess, the types aren't declared at all yet on that toolchain. Gating on
-    // `canImport(FoundationModels)` alone isn't enough since that module DOES exist on 26.5 (the
-    // on-device SystemLanguageModel path compiles fine) — only the newer PCC-specific symbols are
-    // missing. This extra custom flag keeps CI green without deleting the feature: it's never set
-    // anywhere in this repo, so both CI and a fresh checkout compile the `false` fallback only. To
-    // try this locally once you have an Xcode/SDK that actually declares these types, add
-    // `KIOKU_APPLE_INTELLIGENCE_CLOUD` to the Kioku target's Debug config under Build Settings →
-    // Swift Compiler - Custom Flags → Active Compilation Conditions.
+    // Confirmed via CI (pinned to Xcode 26.5, Swift 6.3.2) that PrivateCloudComputeLanguageModel/
+    // ContextOptions genuinely don't exist in that SDK — this isn't a wrong-name guess, the types
+    // aren't declared at all yet on that toolchain. Gating on `canImport(FoundationModels)` alone
+    // isn't enough since that module DOES exist on 26.5 (the on-device SystemLanguageModel path
+    // compiles fine) — only the newer PCC-specific symbols are missing. Xcode 27 ships Swift 6.4,
+    // which does declare them, so `compiler(>=6.4)` gates this off on CI and on automatically once
+    // the toolchain in use is new enough — no manual per-machine build setting required.
     static var isAvailable: Bool {
-        #if canImport(FoundationModels) && KIOKU_APPLE_INTELLIGENCE_CLOUD
+        #if canImport(FoundationModels) && compiler(>=6.4)
         if #available(iOS 27.0, *) {
             return PrivateCloudComputeLanguageModel().isAvailable
         }
