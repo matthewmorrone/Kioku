@@ -1055,7 +1055,14 @@ public struct CTCForcedAligner {
         text: String,
         aligner: Qwen3ForcedAligner,
         segments: [(start: Double, end: Double)],
-        windowSec: Double = 30,
+        // Was 30 — a ~35s ceiling on a single align() call used to jetsam-kill the app (see
+        // CTCForcedAligner's doc comment history). Confirmed gone on iPhone 17: a single 120s
+        // align() call runs in ~3s with >1GB free throughout. Raised to 120 because sparse-anchor
+        // spans that actually reach the old cap measurably improve with more context in one call
+        // (on-device A/B on a thinned-anchor variant of tsukiiro-chainon: median 2.38s→1.96s,
+        // max 26.3s→21.3s, same 30s-cap architecture otherwise) — the cap wasn't just stale
+        // memory-safety margin, it was truncating real alignment context.
+        windowSec: Double = 120,
         appendTail: Bool = true,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onProgress: ((Double) -> Void)? = nil
@@ -1175,7 +1182,7 @@ public struct CTCForcedAligner {
         audioRate: Int,
         text: String,
         aligner: Qwen3ForcedAligner,
-        windowSec: Double = 30,
+        windowSec: Double = 120,   // see alignVADGated's windowSec doc — same ceiling, same fix
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onProgress: ((Double) -> Void)? = nil
     ) -> [(start: Double, end: Double, text: String)] {
