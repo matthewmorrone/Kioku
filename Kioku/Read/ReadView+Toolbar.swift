@@ -20,15 +20,13 @@ enum ReadToggleAppearance {
 // Toolbar buttons and display options popover for ReadView.
 extension ReadView {
     // Renders action buttons for segmentation and display controls. The lyrics (♪) and
-    // extract-words (list.bullet) buttons that used to live here moved up to the title
-    // row, so this row now hosts only the per-note correction / reset / furigana / edit
-    // controls.
+    // LLM correction (sparkles) buttons that used to live here moved up to the title
+    // row; extract-words (list.bullet) moved the other way, down from the title row,
+    // so this row now hosts extract-words / reset / edit.
     var toolbarButtons: some View {
         HStack {
             Spacer()
-            if isLLMConfigured {
-                llmCorrectionButton
-            }
+            titleExtractWordsButton
             resetButton
             editModeButton
         }
