@@ -81,8 +81,6 @@ final class MergedCorrectionBreakdownService {
         guard let apiKey = LLMSettings.activeAPIKey() else {
             throw SongBreakdownError.noKeyConfigured
         }
-        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-            ?? LLMSettings.defaultTemperature
         let onDelta = Self.makeDeltaHandler(onPartialLines: onPartialLines)
 
         // Larger max_tokens than SongBreakdownService's 8192: this response has to carry a
@@ -99,6 +97,8 @@ final class MergedCorrectionBreakdownService {
             // here instead of silently mis-dispatching.
             throw SongBreakdownError.noKeyConfigured
         case .openAI:
+            let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
+                ?? LLMSettings.defaultTemperature
             raw = try await LLMStreamingClient.streamOpenAI(
                 apiKey: apiKey,
                 model: LLMSettings.openAIModel(),
@@ -124,7 +124,6 @@ final class MergedCorrectionBreakdownService {
                 ]],
                 userContent: user,
                 maxTokens: 16384,
-                temperature: temperature,
                 urlSession: urlSession,
                 onDelta: onDelta
             )

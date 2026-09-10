@@ -27,29 +27,34 @@ extension SettingsView {
                     }
                 }
 
-                // Key entry rows are always visible so both keys can be saved independently.
+                // Each key field only appears while its provider is selected — showing both
+                // regardless of the picker just clutters the form with irrelevant fields.
                 // Edits write through to the Keychain; nothing secret touches UserDefaults.
-                SecureField("OpenAI API Key", text: $openAIKey)
-                    .textContentType(.password)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .onChange(of: openAIKey) {
-                        LLMSettings.setAPIKey(openAIKey, for: .openAI)
-                        llmKeysRevision += 1
-                    }
-                SecureField("Claude API Key", text: $claudeKey)
-                    .textContentType(.password)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .onChange(of: claudeKey) {
-                        LLMSettings.setAPIKey(claudeKey, for: .claude)
-                        llmKeysRevision += 1
-                    }
+                if (LLMProvider(rawValue: llmProviderRaw) ?? .none) == .openAI {
+                    SecureField("OpenAI API Key", text: $openAIKey)
+                        .textContentType(.password)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: openAIKey) {
+                            LLMSettings.setAPIKey(openAIKey, for: .openAI)
+                            llmKeysRevision += 1
+                        }
+                }
+                if (LLMProvider(rawValue: llmProviderRaw) ?? .none) == .claude {
+                    SecureField("Claude API Key", text: $claudeKey)
+                        .textContentType(.password)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: claudeKey) {
+                            LLMSettings.setAPIKey(claudeKey, for: .claude)
+                            llmKeysRevision += 1
+                        }
+                }
 
                 // Web-search grounding for songs. Hidden for every Apple Intelligence variant —
                 // on-device is offline-only, and Foundation Models has no Apple-provided
                 // web-search tool for Cloud/Cloud Pro to use either. When on, Claude gets the
-                // server-side web_search tool; OpenAI swaps to gpt-4o-search-preview. Cost
+                // server-side web_search tool; OpenAI swaps to gpt-5-search-api. Cost
                 // increases per call.
                 if (LLMProvider(rawValue: llmProviderRaw) ?? .none).isAppleIntelligence == false {
                     Toggle("Web Search Grounding", isOn: $useWebSearch)
@@ -57,15 +62,19 @@ extension SettingsView {
             }
 
             // Lower temperature = more deterministic output; higher = more varied corrections.
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Temperature")
-                    Spacer()
-                    Text(String(format: "%.2f", temperature))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+            // OpenAI only — current-generation Claude models reject the `temperature`
+            // parameter outright, so this has no effect when Claude is the active provider.
+            if (LLMProvider(rawValue: llmProviderRaw) ?? .none) != .claude {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Temperature")
+                        Spacer()
+                        Text(String(format: "%.2f", temperature))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    Slider(value: $temperature, in: 0.0...1.0, step: 0.05)
                 }
-                Slider(value: $temperature, in: 0.0...1.0, step: 0.05)
             }
         } header: {
             Text("AI Correction")
