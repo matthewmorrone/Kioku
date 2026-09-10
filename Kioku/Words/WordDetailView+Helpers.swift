@@ -489,31 +489,49 @@ extension WordDetailView {
             }
 
             if info.onReadings.isEmpty == false {
-                HStack(spacing: 4) {
-                    Text("ON")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                    // Display-time fold to hiragana (KANJIDIC2 stores on'yomi as katakana).
-                    // Matches the KanjiDetailView "On'yomi" section; source data unchanged.
-                    Text(info.onReadings
-                        .map(KanaNormalizer.katakanaToHiragana)
-                        .joined(separator: "・"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                // Display-time fold to hiragana (KANJIDIC2 stores on'yomi as katakana).
+                // Matches the KanjiDetailView "On'yomi" section; source data unchanged.
+                readingChipRow(label: "ON", readings: info.onReadings.map(KanaNormalizer.katakanaToHiragana))
             }
             if info.kunReadings.isEmpty == false {
-                HStack(spacing: 4) {
-                    Text("KUN")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                    Text(info.kunReadings.joined(separator: "・"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                readingChipRow(label: "KUN", readings: info.kunReadings)
             }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+    }
+
+    // One labeled row of reading chips (On'yomi or Kun'yomi) for the compact per-kanji row.
+    // Smaller and lighter than KanjiDetailView's full-sheet chips since a word can show several
+    // of these rows at once. Wraps via FlowLayout when a kanji has many readings.
+    @ViewBuilder
+    func readingChipRow(label: String, readings: [String]) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+            FlowLayout(spacing: 4) {
+                ForEach(Array(readings.enumerated()), id: \.offset) { _, reading in
+                    readingChip(reading)
+                }
+            }
+        }
+    }
+
+    // A single reading chip. Kun'yomi readings mark the boundary between the kanji's core
+    // reading and its okurigana (the inflecting kana suffix) with a "." (e.g. う.まれる) — rather
+    // than print that dot, the stem is colored differently from the okurigana so the split reads
+    // at a glance without the visual noise of a literal period.
+    @ViewBuilder
+    private func readingChip(_ reading: String) -> some View {
+        let parts = reading.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        let text: Text = parts.count == 2
+            ? Text(String(parts[0])).foregroundStyle(.primary) + Text(String(parts[1])).foregroundStyle(.orange)
+            : Text(reading).foregroundStyle(.primary)
+        text
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Color.secondary.opacity(0.15), in: Capsule())
     }
 }
