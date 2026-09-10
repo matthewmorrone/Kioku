@@ -17,6 +17,7 @@ struct FlashcardsView: View {
 
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
+    @EnvironmentObject private var historyStore: HistoryStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var session: [SavedWord] = []
@@ -212,7 +213,9 @@ struct FlashcardsView: View {
 
             Button {
                 guard session.isEmpty == false else { return }
-                detailWord = session[index]
+                let word = session[index]
+                historyStore.record(canonicalEntryID: word.canonicalEntryID, surface: word.surface)
+                detailWord = word
             } label: {
                 Image(systemName: "magnifyingglass")
                     .font(.title2)

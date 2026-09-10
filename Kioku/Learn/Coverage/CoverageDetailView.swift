@@ -59,6 +59,7 @@ struct CoverageDetailView: View {
     @EnvironmentObject private var wordsStore: WordsStore
     @EnvironmentObject private var notesStore: NotesStore
     @EnvironmentObject private var wordListsStore: WordListsStore
+    @EnvironmentObject private var historyStore: HistoryStore
 
     @State private var pendingSelection: CoverageStudySelection?
     // Persists across launches within this view instance so re-opening the launch sheet keeps the
@@ -217,6 +218,7 @@ struct CoverageDetailView: View {
             ForEach(MasteryStage.allCases, id: \.self) { stage in
                 ForEach(level.words(in: stage)) { word in
                     Button {
+                        historyStore.record(canonicalEntryID: word.canonicalEntryID, surface: word.surface)
                         selectedWord = word
                     } label: {
                         Text(word.surface)

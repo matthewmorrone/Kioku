@@ -22,6 +22,7 @@ struct KanjiDetailView: View {
     // even if env propagation through nested sheets ever drops it — matches the SegmentListView
     // pattern at the other call site that opens WordDetailView from a list.
     @EnvironmentObject private var wordsStore: WordsStore
+    @EnvironmentObject private var historyStore: HistoryStore
 
     var body: some View {
         NavigationStack {
@@ -89,6 +90,7 @@ struct KanjiDetailView: View {
                             // nested WordDetailView sheet. .contentShape ensures the empty space
                             // beside short glosses is hit-testable, not just the text glyphs.
                             Button {
+                                historyStore.record(canonicalEntryID: entry.entryId, surface: entry.primarySearchSurface)
                                 selectedCommonWord = SavedWord.ephemeral(for: entry)
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
