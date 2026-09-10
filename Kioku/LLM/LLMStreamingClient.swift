@@ -77,7 +77,6 @@ nonisolated enum LLMStreamingClient {
         system: [[String: Any]],
         userContent: String,
         maxTokens: Int,
-        temperature: Double,
         urlSession: URLSession,
         onDelta: @escaping @Sendable (String) -> Void
     ) async throws -> String {
@@ -88,10 +87,11 @@ nonisolated enum LLMStreamingClient {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        // Sampling params (temperature/top_p/top_k) are rejected with a 400 on current-generation
+        // Claude models (Sonnet 5 and later) — omit rather than send a value the API will reject.
         let body: [String: Any] = [
             "model": model,
             "max_tokens": maxTokens,
-            "temperature": temperature,
             "system": system,
             "messages": [
                 ["role": "user", "content": userContent]

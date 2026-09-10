@@ -137,7 +137,6 @@ final class SongBreakdownService {
                 ]],
                 userContent: lyrics,
                 maxTokens: 8192,
-                temperature: temperature,
                 urlSession: urlSession,
                 onDelta: onDelta
             )

@@ -81,8 +81,10 @@ enum LLMSettings {
     // For OpenAI: when web search is enabled, this model is used in place of the
     // user's configured model because web_search is a model-level feature in the
     // Chat Completions API rather than a separately-passable tool. The user's
-    // configured model is restored when web search is off.
-    static let openAISearchModel = "gpt-4o-search-preview"
+    // configured model is restored when web search is off. gpt-4o-search-preview
+    // and gpt-4o-mini-search-preview were retired 2026-07-23; gpt-5-search-api is
+    // their Chat Completions replacement.
+    static let openAISearchModel = "gpt-5-search-api"
 
     // Computed so a fresh install on an Apple-Intelligence-capable device picks
     // the on-device model by default instead of starting at "None". Existing

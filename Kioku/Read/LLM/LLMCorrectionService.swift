@@ -362,17 +362,16 @@ final class LLMCorrectionService {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-            ?? LLMSettings.defaultTemperature
         // Send the static system prompt as an array of content blocks with a cache_control
         // marker so Anthropic prompt caching bills the prompt at ~0.1x on repeat calls. The
         // per-note user turn stays uncached. GA feature — no beta header required; the existing
         // anthropic-version header suffices. (Sonnet 5's 1024-token min cacheable prefix means
         // this ~2000-token correction prompt clears it comfortably.)
+        // No `temperature` — sampling params are rejected with a 400 on current-generation
+        // Claude models (Sonnet 5 and later).
         var body: [String: Any] = [
             "model": LLMSettings.claudeModel(),
             "max_tokens": 4096,
-            "temperature": temperature,
             "system": [
                 [
                     "type": "text",
@@ -402,7 +401,7 @@ final class LLMCorrectionService {
 
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
-        AppLog.debug(.llmCorrection, "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) temperature=\(temperature) webSearch=\(LLMSettings.isWebSearchEnabled()) body bytes=\(bodyData.count)")
+        AppLog.debug(.llmCorrection, "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) webSearch=\(LLMSettings.isWebSearchEnabled()) body bytes=\(bodyData.count)")
 
         let (data, statusCode) = try await send(request, provider: "Claude")
 

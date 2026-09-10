@@ -124,7 +124,6 @@ final class MergedCorrectionBreakdownService {
                 ]],
                 userContent: user,
                 maxTokens: 16384,
-                temperature: temperature,
                 urlSession: urlSession,
                 onDelta: onDelta
             )
