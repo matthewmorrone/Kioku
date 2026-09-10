@@ -307,17 +307,17 @@ final class LLMCorrectionService {
 
         let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
             ?? LLMSettings.defaultTemperature
-        // OpenAI's Chat Completions web search is model-level (gpt-4o-search-preview),
+        // OpenAI's Chat Completions web search is model-level (gpt-5-search-api),
         // not a separately-passable tool — so we swap the model when the user has
         // opted in and restore the configured model when they haven't.
         let usingSearchModel = LLMSettings.isWebSearchEnabled()
         let modelID = usingSearchModel
             ? LLMSettings.openAISearchModel
             : LLMSettings.openAIModel()
-        // The gpt-4o-search-preview models reject the `temperature` argument
-        // (HTTP 400 "Model incompatible request argument supplied: temperature").
-        // Skip it on the search path; keep it for the regular path where
-        // sampling control is meaningful.
+        // gpt-5-search-api (like its retired gpt-4o-search-preview predecessor) rejects
+        // the `temperature` argument (HTTP 400 "Model incompatible request argument
+        // supplied: temperature"). Skip it on the search path; keep it for the regular
+        // path where sampling control is meaningful.
         var body: [String: Any] = [
             "model": modelID,
             "messages": [

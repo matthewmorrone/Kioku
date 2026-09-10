@@ -95,10 +95,8 @@ final class SongBreakdownService {
             throw SongBreakdownError.noKeyConfigured
         }
 
-        let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
-            ?? LLMSettings.defaultTemperature
         let onDelta = makeDeltaHandler(onPartialLines: onPartialLines)
-        NSLog("[SongBreakdown] dispatching to %@ temperature=%.2f", provider.rawValue, temperature)
+        NSLog("[SongBreakdown] dispatching to %@", provider.rawValue)
         let httpStart = Date()
         let raw: String
         let producedBy: SongBreakdownProvider
@@ -112,6 +110,8 @@ final class SongBreakdownService {
         case .openAI:
             // A single user-role message containing the whole prompt: the prompt is a
             // self-contained instruction + data and doesn't benefit from a system/user split.
+            let temperature = UserDefaults.standard.object(forKey: LLMSettings.temperatureKey) as? Double
+                ?? LLMSettings.defaultTemperature
             raw = try await LLMStreamingClient.streamOpenAI(
                 apiKey: apiKey,
                 model: LLMSettings.openAIModel(),
