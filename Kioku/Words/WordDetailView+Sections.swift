@@ -128,23 +128,13 @@ extension WordDetailView {
             }
         }
 
-        // Sublattice paths — all valid segmentation paths through the surface. Skipped
-        // when the compound-verb header (base + auxiliary, with glosses) already answers
-        // the same "how does this decompose" question more clearly — showing both duplicated
-        // the same insight in two places, one clean (header) and one raw (this list).
+        // Sublattice paths — all valid segmentation paths through the surface, as a node/edge
+        // diagram. Skipped when the compound-verb header (base + auxiliary, with glosses)
+        // already answers the same "how does this decompose" question more clearly — showing
+        // both duplicated the same insight in two places, one clean (header) and one raw (this).
         if sublatticePaths.count > 1, derivation?.compoundVerbParts == nil {
-            Section("Paths — rows") {
-                sublatticeDiagramRowsPerPath
-            }
-            Section("Paths — arcs") {
+            Section("Paths") {
                 sublatticeDiagram
-            }
-            Section("Paths — text") {
-                ForEach(Array(sublatticePaths.enumerated()), id: \.offset) { _, path in
-                    Text(path.joined(separator: " · "))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
             }
         }
 

@@ -145,6 +145,7 @@ extension SegmentListView {
     // notes show through; otherwise builds a transient SavedWord that drives the detail screen
     // without persisting anything.
     func presentWordDetail(canonicalEntryID: Int64, surface: String) {
+        historyStore.record(canonicalEntryID: canonicalEntryID, surface: surface)
         if let existing = wordsStore.words.first(where: { $0.canonicalEntryID == canonicalEntryID }) {
             detailWord = existing
         } else {

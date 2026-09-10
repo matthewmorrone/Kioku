@@ -538,6 +538,7 @@ extension WordsView {
                     chosenReading: word.selectedReading,
                     onTap: {
                         isSearchFieldFocused = false
+                        historyStore.record(canonicalEntryID: word.canonicalEntryID, surface: word.surface)
                         selectedDetailWord = word
                     }
                 )
@@ -566,10 +567,7 @@ extension WordsView {
                         entry: materialized,
                         gloss: materialized?.senses.first?.glosses.first,
                         onTap: {
-                            // Deliberately NOT re-recorded: revisiting a word from the history
-                            // list shouldn't refresh its timestamp and yank it to the top —
-                            // history reflects when the word was originally looked up.
-                            // historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
+                            historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
                             selectedDetailWord = wordForHistory(entry)
                         }
                     )

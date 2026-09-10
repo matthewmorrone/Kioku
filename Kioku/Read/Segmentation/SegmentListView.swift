@@ -8,6 +8,7 @@ struct SegmentListView: View {
     // Re-injected on the WordDetailView sheet below so list-membership UI inside the detail screen
     // resolves correctly when presented from this sheet.
     @EnvironmentObject private var wordListsStore: WordListsStore
+    @EnvironmentObject var historyStore: HistoryStore
 
     let text: String
     let edges: [LatticeEdge]
