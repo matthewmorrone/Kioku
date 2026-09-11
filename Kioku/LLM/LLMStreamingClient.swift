@@ -88,10 +88,13 @@ nonisolated enum LLMStreamingClient {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        // No `temperature`: the Claude 5 model family rejects it outright (HTTP 400
+        // "`temperature` is deprecated for this model") rather than ignoring it — see
+        // the same fix in LLMCorrectionService.callClaudeRaw. `temperature` stays a
+        // parameter here only because streamOpenAI shares this call shape.
         let body: [String: Any] = [
             "model": model,
             "max_tokens": maxTokens,
-            "temperature": temperature,
             "system": system,
             "messages": [
                 ["role": "user", "content": userContent]
