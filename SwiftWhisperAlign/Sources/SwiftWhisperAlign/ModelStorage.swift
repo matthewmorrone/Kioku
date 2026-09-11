@@ -15,7 +15,10 @@ public enum ModelStorage {
     // Model IDs are pinned here (rather than relying on the SDK's `fromPretrained` defaults)
     // so the cache directory and the requested weights cannot drift apart silently.
     public static let asrModelId = "aufklarer/Qwen3-ASR-0.6B-MLX-4bit"
-    public static let forcedAlignerModelId = "aufklarer/Qwen3-ForcedAligner-0.6B-4bit"
+    // 8-bit, not 4-bit: quantization measurably costs timestamp precision (oracle coverage
+    // 29% → 38% on the same fixture), and the ~600 MB is affordable. Not bf16: its ~1.2 GB of
+    // weights leave <1 GB of the per-process budget for a region pass, which jetsams.
+    public static let forcedAlignerModelId = "aufklarer/Qwen3-ForcedAligner-0.6B-8bit"
     // CoreML build of the same Qwen3-ASR model (encoder.mlmodelc + decoder.mlmodelc), used by
     // StemTranscriber instead of the MLX build — see its header comment for why.
     public static let asrCoreMLModelId = "aufklarer/Qwen3-ASR-CoreML"
