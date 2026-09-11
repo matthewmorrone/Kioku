@@ -9,9 +9,9 @@ extension ReadView {
 
     // Transcribes one imported audio file with Whisper and creates a note with cues.
     func transcribeAudioFileWithWhisper(at sourceURL: URL) async {
-        guard isPerformingAudioTranscription == false else { return }
-        isPerformingAudioTranscription = true
-        defer { isPerformingAudioTranscription = false }
+        guard subtitleImport.isPerformingAudioTranscription == false else { return }
+        subtitleImport.isPerformingAudioTranscription = true
+        defer { subtitleImport.isPerformingAudioTranscription = false }
 
         let noteID = beginStreamingTranscriptionNote(totalChunks: 1)
 
@@ -41,7 +41,7 @@ extension ReadView {
             // 3. Whisper segments are already phrase-level — map them straight to cues.
             let cues = Self.makeSubtitleCues(from: segments)
             guard cues.isEmpty == false else {
-                audioTranscriptionErrorMessage = "No speech was recognized in the selected audio file."
+                subtitleImport.audioTranscriptionErrorMessage = "No speech was recognized in the selected audio file."
                 setWhisperTranscriptionNote(id: noteID, statusLine: "No speech recognized", body: "")
                 return
             }
@@ -54,7 +54,7 @@ extension ReadView {
                 finalizeStreamingTranscriptionNote(id: noteID, finalText: finalText, attachmentID: attachmentID)
             }
         } catch {
-            audioTranscriptionErrorMessage = error.localizedDescription
+            subtitleImport.audioTranscriptionErrorMessage = error.localizedDescription
             setWhisperTranscriptionNote(id: noteID, statusLine: "Transcription failed", body: error.localizedDescription)
         }
     }

@@ -134,7 +134,7 @@ extension ReadView {
                 // alignment is a separate, explicit action (the Re-align control), not auto-triggered
                 // by this tap.
                 if audioPlayback.activeAudioAttachmentID == nil {
-                    isShowingLyricMediaPicker = true
+                    subtitleImport.isShowingLyricMediaPicker = true
                 } else {
                     audioPlayback.isShowingLyricsView.toggle()
                 }

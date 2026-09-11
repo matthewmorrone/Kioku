@@ -156,28 +156,10 @@ struct ReadView: View {
     // `Menu` — a Menu auto-dismisses after every tap (including a Toggle tap), which defeats
     // flipping more than one category per visit. A popover of real Toggle rows doesn't.
     @State var isShowingSavedHighlightCategories = false
-    @State var isShowingFileImporter = false
-    @State var isShowingSubtitlePopup = false
     @State var isShowingBreakdownSheet = false
-    @State var isPerformingAudioTranscription = false
-    @State var isGeneratingLyricAlignment = false
-    @State var isCancellingAlignment = false
-    @State var alignmentCancellationToken = AlignmentCancellationToken()
-    @State var audioTranscriptionErrorMessage = ""
-    @State var lyricAlignmentErrorMessage = ""
-    @State var lyricAlignmentProgressMessage = ""
-    @State var lyricAlignmentSourceFilename = ""
-    @State var alignmentResultSRT = ""
-    @State var pendingSubtitleAudioURL: URL? = nil
-    @State var pendingSubtitleAudioFilename = ""
-    @State var pendingSubtitleFileURL: URL? = nil
-    @State var pendingSubtitleFilename = ""
-    @State var pendingSubtitleTextGridURL: URL? = nil
-    @State var pendingSubtitleTextGridFilename = ""
-    @State var isShowingSubtitlePicker = false
-    @State var subtitlePickerTarget: SubtitlePickerTarget = .audio
-    // Drives the lyric-button "nothing loaded yet" media picker (mp3 + srt + textgrid, multi-select).
-    @State var isShowingLyricMediaPicker = false
+    // Subtitle/audio import UI state (transcription + alignment progress, staged picks,
+    // import sheets/pickers) — see SubtitleImportUIState.
+    @State var subtitleImport = SubtitleImportUIState()
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
     // Whole-note re-align UI state (progress/error, subtitle editor, mismatch dialog) — see

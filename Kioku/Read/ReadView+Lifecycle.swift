@@ -28,17 +28,17 @@ extension ReadView {
             }
             .alert("Audio Transcription Failed", isPresented: audioTranscriptionErrorPresented) {
                 Button("OK", role: .cancel) {
-                    audioTranscriptionErrorMessage = ""
+                    subtitleImport.audioTranscriptionErrorMessage = ""
                 }
             } message: {
-                Text(audioTranscriptionErrorMessage)
+                Text(subtitleImport.audioTranscriptionErrorMessage)
             }
             .alert("Generate SRT Failed", isPresented: lyricAlignmentErrorPresented) {
                 Button("OK", role: .cancel) {
-                    lyricAlignmentErrorMessage = ""
+                    subtitleImport.lyricAlignmentErrorMessage = ""
                 }
             } message: {
-                Text(lyricAlignmentErrorMessage)
+                Text(subtitleImport.lyricAlignmentErrorMessage)
             }
             .alert("Re-align Failed", isPresented: cueRealignErrorPresented) {
                 Button("OK", role: .cancel) {
@@ -352,7 +352,7 @@ extension ReadView {
             }
         }
         .overlay {
-            if isShowingSubtitlePopup || isGeneratingLyricAlignment {
+            if subtitleImport.isShowingSubtitlePopup || subtitleImport.isGeneratingLyricAlignment {
                 subtitlePopupOverlay
             }
         }
@@ -425,11 +425,11 @@ extension ReadView {
             )
         }
         .fileImporter(
-            isPresented: $isShowingSubtitlePicker,
-            allowedContentTypes: subtitlePickerTarget.contentTypes,
+            isPresented: $subtitleImport.isShowingSubtitlePicker,
+            allowedContentTypes: subtitleImport.subtitlePickerTarget.contentTypes,
             allowsMultipleSelection: false
         ) { result in
-            switch subtitlePickerTarget {
+            switch subtitleImport.subtitlePickerTarget {
             case .audio: handleLyricAlignmentAudioSelection(result)
             case .subtitleFile: handleSubtitleFileSelection(result)
             }
@@ -438,7 +438,7 @@ extension ReadView {
         // the user can grab "song.mp3" and "song.srt" (or "song.TextGrid") together; the handler
         // sorts them by kind and imports in one pass.
         .fileImporter(
-            isPresented: $isShowingLyricMediaPicker,
+            isPresented: $subtitleImport.isShowingLyricMediaPicker,
             allowedContentTypes: [.audio, .mpeg4Audio, .mp3, .subripText, .praatTextGrid],
             allowsMultipleSelection: true
         ) { result in
