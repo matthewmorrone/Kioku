@@ -208,8 +208,8 @@ extension ReadView {
         }.count
 
         if count > 0 {
-            subtitleMismatchCount = count
-            isShowingSubtitleMismatchDialog = true
+            lyricRealign.subtitleMismatchCount = count
+            lyricRealign.isShowingSubtitleMismatchDialog = true
         }
     }
 
@@ -224,17 +224,17 @@ extension ReadView {
     // windowing, via OnDeviceLyricAligner → CTCForcedAligner) over the note's lyrics against the
     // ALREADY-attached audio, then swaps the cue list in place — no wipe / re-import. Backs the
     // lyric view's top "Re-align" action (vs. `realignActiveCueWord`, which fixes one line in a
-    // padded window). Progress + spinner ride on `isReAligningWholeNote`; cancellation reuses the
+    // padded window). Progress + spinner ride on `lyricRealign.isReAligningWholeNote`; cancellation reuses the
     // shared alignment token so dismissing/cancelling mid-run stops the next window.
     @MainActor
     func realignWholeNote() async {
-        guard isReAligningWholeNote == false, realigningCueIndex == nil else { return }
+        guard lyricRealign.isReAligningWholeNote == false, lyricRealign.realigningCueIndex == nil else { return }
         guard let attachmentID = activeAudioAttachmentID,
               let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
 
         let lyrics = lyricsForAlignment
         guard lyrics.isEmpty == false else {
-            cueRealignErrorMessage = "Add lyrics to the note before re-aligning."
+            lyricRealign.cueRealignErrorMessage = "Add lyrics to the note before re-aligning."
             return
         }
         let totalLines = lyrics
@@ -242,12 +242,12 @@ extension ReadView {
             .filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
             .count
 
-        isReAligningWholeNote = true
-        reAlignProgressMessage = "Re-aligning \(totalLines) lines…"
+        lyricRealign.isReAligningWholeNote = true
+        lyricRealign.reAlignProgressMessage = "Re-aligning \(totalLines) lines…"
         alignmentCancellationToken.reset()
         defer {
-            isReAligningWholeNote = false
-            reAlignProgressMessage = ""
+            lyricRealign.isReAligningWholeNote = false
+            lyricRealign.reAlignProgressMessage = ""
         }
 
         do {
@@ -262,7 +262,7 @@ extension ReadView {
                 // ("Isolating vocals… 73%", "Aligning lyrics… 45%"), so each phase shows
                 // a true 0–100% of itself rather than a fudged combined bar.
                 onStage: { [self] stage in
-                    Task { @MainActor in reAlignProgressMessage = stage }
+                    Task { @MainActor in lyricRealign.reAlignProgressMessage = stage }
                 }
             )
 
@@ -327,7 +327,7 @@ extension ReadView {
         } catch is CancellationError {
             // User navigated away / cancelled mid-run; nothing to surface.
         } catch {
-            cueRealignErrorMessage = "Couldn't re-align: \(error.localizedDescription)"
+            lyricRealign.cueRealignErrorMessage = "Couldn't re-align: \(error.localizedDescription)"
         }
     }
 
@@ -480,7 +480,7 @@ extension ReadView {
         }
 
         if activeAudioAttachmentID != nil {
-            isShowingSubtitleEditor = true
+            lyricRealign.isShowingSubtitleEditor = true
         }
     }
 

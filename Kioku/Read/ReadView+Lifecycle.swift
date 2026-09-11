@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 extension ReadView {
     var alertingReadView: some View {
         lifecycleReadView
-            .sheet(isPresented: $isShowingSubtitleEditor) {
+            .sheet(isPresented: $lyricRealign.isShowingSubtitleEditor) {
                 if let attachmentID = activeAudioAttachmentID {
                     SubtitleEditorSheet(
                         attachmentID: attachmentID,
@@ -42,14 +42,14 @@ extension ReadView {
             }
             .alert("Re-align Failed", isPresented: cueRealignErrorPresented) {
                 Button("OK", role: .cancel) {
-                    cueRealignErrorMessage = ""
+                    lyricRealign.cueRealignErrorMessage = ""
                 }
             } message: {
-                Text(cueRealignErrorMessage)
+                Text(lyricRealign.cueRealignErrorMessage)
             }
             .confirmationDialog(
-                "\(subtitleMismatchCount) subtitle\(subtitleMismatchCount == 1 ? "" : "s") differ from note text",
-                isPresented: $isShowingSubtitleMismatchDialog,
+                "\(lyricRealign.subtitleMismatchCount) subtitle\(lyricRealign.subtitleMismatchCount == 1 ? "" : "s") differ from note text",
+                isPresented: $lyricRealign.isShowingSubtitleMismatchDialog,
                 titleVisibility: .visible
             ) {
                 Button("Update subtitles to match note") {
@@ -62,44 +62,44 @@ extension ReadView {
             } message: {
                 Text("The subtitle text doesn't match the note for some lines. This can happen when alignment produces different characters than the original.")
             }
-            .alert("AI Correction", isPresented: $isShowingLLMCorrectionError) {
+            .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMCorrectionError) {
                 Button("Retry") {
-                    llmCorrectionErrorMessage = ""
+                    llmCorrection.llmCorrectionErrorMessage = ""
                     requestLLMCorrection()
                 }
                 // Only shown when the failure was a whole-response parse failure (see
-                // llmCorrectionRetryContext) — resends the SAME provider with the previous raw
+                // llmCorrection.llmCorrectionRetryContext) — resends the SAME provider with the previous raw
                 // response and the parse error folded in as corrective feedback, instead of a
                 // blind identical retry.
-                if llmCorrectionRetryContext != nil {
+                if llmCorrection.llmCorrectionRetryContext != nil {
                     Button("Retry with Feedback") {
-                        llmCorrectionErrorMessage = ""
+                        llmCorrection.llmCorrectionErrorMessage = ""
                         requestLLMCorrectionWithFeedback()
                     }
                 }
                 Button("OK", role: .cancel) {
-                    llmCorrectionErrorMessage = ""
-                    llmCorrectionRetryContext = nil
+                    llmCorrection.llmCorrectionErrorMessage = ""
+                    llmCorrection.llmCorrectionRetryContext = nil
                 }
             } message: {
-                Text(llmCorrectionErrorMessage)
+                Text(llmCorrection.llmCorrectionErrorMessage)
             }
-            .alert("", isPresented: $isShowingLLMChangePopover) {
+            .alert("", isPresented: $llmCorrection.isShowingLLMChangePopover) {
                 Button("Confirm") {
-                    if let loc = llmChangePopoverLocation {
+                    if let loc = llmCorrection.llmChangePopoverLocation {
                         confirmLLMChange(at: loc)
                     }
                 }
                 Button("Undo", role: .destructive) {
-                    if let loc = llmChangePopoverLocation {
+                    if let loc = llmCorrection.llmChangePopoverLocation {
                         rejectLLMChange(at: loc)
                     }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text(llmChangePopoverText)
+                Text(llmCorrection.llmChangePopoverText)
             }
-            .alert("Re-run AI Correction?", isPresented: $isShowingLLMRerunConfirm) {
+            .alert("Re-run AI Correction?", isPresented: $llmCorrection.isShowingLLMRerunConfirm) {
                 Button("Re-run", role: .destructive) {
                     requestLLMCorrection()
                 }
@@ -384,9 +384,9 @@ extension ReadView {
                     onCueEdit: { edit in
                         applyLyricCueEdit(edit)
                     },
-                    realigningCueIndex: realigningCueIndex,
-                    isReAligning: isReAligningWholeNote,
-                    reAlignMessage: reAlignProgressMessage,
+                    realigningCueIndex: lyricRealign.realigningCueIndex,
+                    isReAligning: lyricRealign.isReAligningWholeNote,
+                    reAlignMessage: lyricRealign.reAlignProgressMessage,
                     stemAvailable: stemAvailableForActiveAudio,
                     isListeningToStem: $isListeningToStem
                 )

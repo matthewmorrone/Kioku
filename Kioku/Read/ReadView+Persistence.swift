@@ -54,7 +54,7 @@ extension ReadView {
 
             segmentationRefreshTask?.cancel()
             furiganaComputationTask?.cancel()
-            llmCorrectionTask?.cancel()
+            llmCorrection.llmCorrectionTask?.cancel()
             isLoadingSelectedNote = true
             activeNoteID = nil
             loadAudioAttachmentIfNeeded(attachmentID: nil)
@@ -73,11 +73,11 @@ extension ReadView {
             furiganaBySegmentLocation = [:]
             furiganaLengthBySegmentLocation = [:]
             illegalMergeBoundaryLocation = nil
-            pendingLLMChangedLocations = []
-            pendingLLMChangedReadingLocations = []
-            preLLMSegmentEntries = []
-            hasPendingLLMChanges = false
-            hasAppliedLLMCorrectionForCurrentNote = false
+            llmCorrection.pendingLLMChangedLocations = []
+            llmCorrection.pendingLLMChangedReadingLocations = []
+            llmCorrection.preLLMSegmentEntries = []
+            llmCorrection.hasPendingLLMChanges = false
+            llmCorrection.hasAppliedLLMCorrectionForCurrentNote = false
             SegmentLookupSheet.shared.dismissPopover()
             isLoadingSelectedNote = false
             return
@@ -93,12 +93,12 @@ extension ReadView {
 
         segmentationRefreshTask?.cancel()
         furiganaComputationTask?.cancel()
-        llmCorrectionTask?.cancel()
-        pendingLLMChangedLocations = []
-        pendingLLMChangedReadingLocations = []
-        preLLMSegmentEntries = []
-        hasPendingLLMChanges = false
-        hasAppliedLLMCorrectionForCurrentNote = false
+        llmCorrection.llmCorrectionTask?.cancel()
+        llmCorrection.pendingLLMChangedLocations = []
+        llmCorrection.pendingLLMChangedReadingLocations = []
+        llmCorrection.preLLMSegmentEntries = []
+        llmCorrection.hasPendingLLMChanges = false
+        llmCorrection.hasAppliedLLMCorrectionForCurrentNote = false
         let noteToLoad = notesStore.note(withID: selectedNote.id) ?? selectedNote
         StartupTimer.mark("loadSelectedNoteIfNeeded preparing note")
         isLoadingSelectedNote = true

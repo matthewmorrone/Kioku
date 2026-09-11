@@ -38,24 +38,24 @@ extension ReadView {
     // doesn't read as "this feature doesn't exist" when it's really "go set up a provider".
     var llmCorrectionButton: some View {
         Button {
-            if isRequestingLLMCorrection {
+            if llmCorrection.isRequestingLLMCorrection {
                 cancelLLMCorrection()
-            } else if hasPendingLLMChanges {
+            } else if llmCorrection.hasPendingLLMChanges {
                 confirmLLMChanges()
-            } else if hasAppliedLLMCorrectionForCurrentNote {
+            } else if llmCorrection.hasAppliedLLMCorrectionForCurrentNote {
                 // Only warn about replacing corrections once this note has actually had one
                 // applied — a fresh note runs straight away without the confirm dialog.
-                isShowingLLMRerunConfirm = true
+                llmCorrection.isShowingLLMRerunConfirm = true
             } else {
                 requestLLMCorrection()
             }
         } label: {
             Group {
-                if isRequestingLLMCorrection {
+                if llmCorrection.isRequestingLLMCorrection {
                     ProgressView()
                         .progressViewStyle(.circular)
                         .scaleEffect(0.7)
-                } else if hasPendingLLMChanges {
+                } else if llmCorrection.hasPendingLLMChanges {
                     // Sparkles with a checkmark badge signals "confirm these AI changes".
                     ZStack(alignment: .bottomTrailing) {
                         Image(systemName: "sparkles")
@@ -69,14 +69,14 @@ extension ReadView {
                         .font(.system(size: 16, weight: .semibold))
                 }
             }
-            .foregroundStyle(hasPendingLLMChanges ? Color.green : Color.accentColor)
+            .foregroundStyle(llmCorrection.hasPendingLLMChanges ? Color.green : Color.accentColor)
             .frame(width: 36, height: 36)
             .background(Circle().fill(ReadToggleAppearance.background))
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(isEditMode || isLLMConfigured == false)
         .opacity(isEditMode || isLLMConfigured == false ? 0.5 : 1.0)
-        .accessibilityLabel(hasPendingLLMChanges ? "Confirm AI Changes" : (isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
+        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Confirm AI Changes" : (llmCorrection.isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
         .accessibilityHint(isLLMConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
@@ -89,12 +89,12 @@ extension ReadView {
         // precomputed notes that were never touched. Per the toggle standard, an enabled reset
         // reads as "on" (accent) and a disabled one as "off" (secondary); the red reject badge
         // overrides while AI changes are pending.
-        let isEnabled = (hasManualSegmentationEdits || hasPendingLLMChanges) && isEditMode == false
+        let isEnabled = (hasManualSegmentationEdits || llmCorrection.hasPendingLLMChanges) && isEditMode == false
         return Button {
             resetSegmentationToComputed()
         } label: {
             Group {
-                if hasPendingLLMChanges {
+                if llmCorrection.hasPendingLLMChanges {
                     ZStack(alignment: .bottomTrailing) {
                         Image(systemName: "arrow.counterclockwise")
                             .font(.system(size: 16, weight: .semibold))
@@ -115,7 +115,7 @@ extension ReadView {
         .buttonStyle(PlainButtonStyle())
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1.0 : 0.5)
-        .accessibilityLabel(hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
+        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
     }
 
     // Title-row buttons. New-note + OCR migrated to the Notes tab; this row hosts the
@@ -414,17 +414,17 @@ extension ReadView {
         editModeButtonLabel
             .contentShape(Circle())
             .onTapGesture {
-                guard isRequestingLLMCorrection == false else { return }
+                guard llmCorrection.isRequestingLLMCorrection == false else { return }
                 isEditMode.toggle()
             }
             .onLongPressGesture(minimumDuration: 0.35) {
-                guard isRequestingLLMCorrection == false else { return }
+                guard llmCorrection.isRequestingLLMCorrection == false else { return }
                 isShowingDisplayOptions = true
             }
-            .disabled(isRequestingLLMCorrection)
-            .opacity(isRequestingLLMCorrection ? 0.4 : (isEditMode ? 1 : 0.7))
+            .disabled(llmCorrection.isRequestingLLMCorrection)
+            .opacity(llmCorrection.isRequestingLLMCorrection ? 0.4 : (isEditMode ? 1 : 0.7))
             .accessibilityLabel(isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
-            .accessibilityHint(isRequestingLLMCorrection ? "Disabled while AI correction runs" : "Long press for display options")
+            .accessibilityHint(llmCorrection.isRequestingLLMCorrection ? "Disabled while AI correction runs" : "Long press for display options")
             .accessibilityAddTraits(.isButton)
             .popover(isPresented: $isShowingDisplayOptions, arrowEdge: .bottom) {
                 displayOptionsPopover

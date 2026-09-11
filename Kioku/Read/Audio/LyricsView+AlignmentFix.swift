@@ -80,7 +80,7 @@ extension LyricsView {
                     HStack(spacing: 6) {
                         Image(systemName: "wand.and.stars")
                             .font(.system(size: 12, weight: .semibold))
-                        Text("Re-align")
+                        Text(cues.isEmpty ? "Align" : "Re-align")
                             .font(.system(size: 12, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
@@ -93,7 +93,7 @@ extension LyricsView {
                 }
                 .buttonStyle(.plain)
                 .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityLabel("Re-align all lyrics to the audio")
+                .accessibilityLabel(cues.isEmpty ? "Align all lyrics to the audio" : "Re-align all lyrics to the audio")
             }
 
             // Adjust toggle: reveal the per-line alignment-fix row. Off keeps the card clean while

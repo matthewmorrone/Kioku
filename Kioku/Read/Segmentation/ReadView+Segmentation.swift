@@ -92,13 +92,13 @@ extension ReadView {
         transientBlankReadingSegmentLocation = nil
         selectedHighlightRangeOverride = nil
         selectedBounds = nil
-        pendingLLMChangedLocations = []
-        pendingLLMChangedReadingLocations = []
-        pendingLLMChangesByLocation = [:]
-        preLLMSegmentEntries = []
-        hasPendingLLMChanges = false
+        llmCorrection.pendingLLMChangedLocations = []
+        llmCorrection.pendingLLMChangedReadingLocations = []
+        llmCorrection.pendingLLMChangesByLocation = [:]
+        llmCorrection.preLLMSegmentEntries = []
+        llmCorrection.hasPendingLLMChanges = false
         // Corrections were just cleared, so the next AI run should go straight through.
-        hasAppliedLLMCorrectionForCurrentNote = false
+        llmCorrection.hasAppliedLLMCorrectionForCurrentNote = false
         // Always drop user-edited readings so the reset is total. Re-segmentation will
         // backfill defaults from the lexicon below.
         furiganaBySegmentLocation = [:]
@@ -303,11 +303,11 @@ extension ReadView {
         defer { TapDiagnostics.mark("handleReadModeSegmentTap returning") }
         // If the tapped segment has a pending LLM change, show what changed instead of the lookup sheet.
         if let tappedSegmentLocation,
-           let changeDescription = pendingLLMChangesByLocation[tappedSegmentLocation] {
+           let changeDescription = llmCorrection.pendingLLMChangesByLocation[tappedSegmentLocation] {
             TapDiagnostics.mark("BAIL: pendingLLMChangesByLocation match, showing LLM change popover instead")
-            llmChangePopoverText = changeDescription
-            llmChangePopoverLocation = tappedSegmentLocation
-            isShowingLLMChangePopover = true
+            llmCorrection.llmChangePopoverText = changeDescription
+            llmCorrection.llmChangePopoverLocation = tappedSegmentLocation
+            llmCorrection.isShowingLLMChangePopover = true
             return
         }
 

@@ -187,13 +187,13 @@ extension ReadView {
     // per-character karaoke checkpoints. Persists cues + timings and refreshes the controller.
     @MainActor
     func realignActiveCueWord(cueIndex: Int) async {
-        // One re-align at a time — the spinner and the gate share `realigningCueIndex`.
-        guard realigningCueIndex == nil else { return }
+        // One re-align at a time — the spinner and the gate share `lyricRealign.realigningCueIndex`.
+        guard lyricRealign.realigningCueIndex == nil else { return }
         guard let attachmentID = activeAudioAttachmentID,
               audioAttachmentCues.indices.contains(cueIndex),
               let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
         guard let modelURL = OnDeviceLyricAligner.bestAvailableModelURL() else {
-            cueRealignErrorMessage = "Download a Whisper model in Settings → Whisper Models to re-align lyrics on device."
+            lyricRealign.cueRealignErrorMessage = "Download a Whisper model in Settings → Whisper Models to re-align lyrics on device."
             return
         }
 
@@ -209,8 +209,8 @@ extension ReadView {
         let windowStart = Double(max(0, cue.startMs - padMs)) / 1000.0
         let windowEnd = Double(min(durationMs, cue.endMs + padMs)) / 1000.0
 
-        realigningCueIndex = cueIndex
-        defer { realigningCueIndex = nil }
+        lyricRealign.realigningCueIndex = cueIndex
+        defer { lyricRealign.realigningCueIndex = nil }
 
         do {
             let result = try await OnDeviceLyricAligner.realignLine(
@@ -253,16 +253,16 @@ extension ReadView {
         } catch is CancellationError {
             // User navigated away mid-align; nothing to surface.
         } catch {
-            cueRealignErrorMessage = "Couldn't re-align this line: \(error.localizedDescription)"
+            lyricRealign.cueRealignErrorMessage = "Couldn't re-align this line: \(error.localizedDescription)"
         }
     }
 
     // Drives the dedicated re-align failure alert from the message string.
     var cueRealignErrorPresented: Binding<Bool> {
         Binding(
-            get: { cueRealignErrorMessage.isEmpty == false },
+            get: { lyricRealign.cueRealignErrorMessage.isEmpty == false },
             set: { presented in
-                if presented == false { cueRealignErrorMessage = "" }
+                if presented == false { lyricRealign.cueRealignErrorMessage = "" }
             }
         )
     }

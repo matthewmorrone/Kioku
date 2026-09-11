@@ -192,18 +192,9 @@ struct ReadView: View {
     @State var pendingScrollHighlightClearTask: Task<Void, Never>?
     @State var activePlaybackCueIndex: Int? = nil
     @State var activeAudioAttachmentID: UUID? = nil
-    // Cue index currently being re-aligned by the lyric view's in-place "fix word sweep"
-    // control; nil when idle. Drives the per-cue spinner in the lyric editing row and
-    // gates concurrent re-align requests to one at a time.
-    @State var realigningCueIndex: Int? = nil
-    // Surfaced in a dedicated alert when an in-place cue re-alignment fails, so the
-    // failure doesn't ride in under the unrelated "Generate SRT Failed" title.
-    @State var cueRealignErrorMessage = ""
-    // Drives the lyric view's top "Re-align" action: a full from-scratch re-run of the CTC
-    // pipeline over the attached audio (vs. the per-cue "fix word sweep"). The bar shows a
-    // spinner + progress while this is true; the message carries the live percent.
-    @State var isReAligningWholeNote = false
-    @State var reAlignProgressMessage = ""
+    // Whole-note re-align UI state (progress/error, subtitle editor, mismatch dialog) — see
+    // LyricRealignUIState.
+    @State var lyricRealign = LyricRealignUIState()
     // True while the lyric view is playing the isolated vocal stem instead of the original mix
     // (the "Vocals/Mix" toggle next to Re-align). ReadView swaps the AudioPlaybackController's
     // source in onChange; reset to false whenever the audio source could change underneath it
@@ -218,36 +209,9 @@ struct ReadView: View {
     var lyricsHighlightGranularity: LyricsHighlightGranularity {
         LyricsHighlightGranularity(rawValue: lyricsHighlightGranularityRaw) ?? LyricsHighlightGranularity.defaultValue
     }
-    @State var isShowingSubtitleEditor = false
-    @State var isShowingSubtitleMismatchDialog = false
-    @State var subtitleMismatchCount = 0
-    @State var isRequestingLLMCorrection = false
-    @State var isShowingLLMCorrectionError = false
-    @State var llmCorrectionErrorMessage = ""
-    // Populated only when the failure was LLMCorrectionError.unparseableAfterSalvage — the raw
-    // response that couldn't be parsed (even after on-device salvage) plus the reason, so the
-    // alert's "Retry with Feedback" action can resend the original provider a corrected request
-    // instead of a blind identical retry. Nil for every other failure kind (network, no key,
-    // etc.), which the alert uses to decide whether to show that extra button at all.
-    @State var llmCorrectionRetryContext: (rawResponse: String, reason: String)?
-    @State var llmCorrectionTask: Task<Void, Never>?
-    @State var pendingLLMChangedLocations: Set<Int> = []
-    // Subset of pendingLLMChangedLocations where only the furigana reading changed (surface unchanged).
-    @State var pendingLLMChangedReadingLocations: Set<Int> = []
-    @State var pendingLLMChangesByLocation: [Int: String] = [:]
-    // Full segment snapshot captured just before applying an LLM result, used to revert individual changes.
-    @State var preLLMSegmentEntries: [LLMSegmentEntry] = []
-    @State var hasPendingLLMChanges = false
-    @State var llmChangePopoverText: String = ""
-    @State var llmChangePopoverLocation: Int? = nil
-    @State var isShowingLLMChangePopover = false
-    @State var isShowingLLMRerunConfirm = false
-    // True once an LLM correction has actually been applied to the currently-loaded note.
-    // Gates the "Re-run AI Correction?" confirm so it only warns about replacing prior
-    // corrections — not on the first run. Reset when a note loads or corrections are cleared.
-    // (Session-scoped: reloading a previously-corrected note starts fresh, so the first tap
-    // after reload runs without the warning.)
-    @State var hasAppliedLLMCorrectionForCurrentNote = false
+    // LLM-correction UI state (in-flight request, pending per-location changes, alerts) — see
+    // LLMCorrectionUIState.
+    @State var llmCorrection = LLMCorrectionUIState()
     @State var pendingAutoSegQueue: [PendingAutoSegRequest] = []
     // Records the value that loadSelectedNoteIfNeeded just wrote into `text` so the deferred
     // SwiftUI .onChange(of: text) handler can recognize the load-assignment and skip its
