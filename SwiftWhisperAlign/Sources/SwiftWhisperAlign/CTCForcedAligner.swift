@@ -142,20 +142,45 @@ public struct CTCForcedAligner {
             lines: input.lines, regionDurations: chunkRegions.map { $0.end - $0.start }
         )
         var units: [(start: Double, end: Double, text: String)] = []
+        var carriedLines: [String] = []
         let pad = 0.25
         for (ri, region) in chunkRegions.enumerated() {
             let range = lineRanges[ri]
-            guard range.end > range.start else { continue }
-            let regionText = input.lines[range.start..<range.end].joined(separator: "\n")
+            let isLastRegion = ri == chunkRegions.count - 1
+            let regionLines = carriedLines + (range.end > range.start ? Array(input.lines[range.start..<range.end]) : [])
+            carriedLines = []
+            guard regionLines.isEmpty == false else { continue }
+            let regionText = regionLines.joined(separator: "\n")
             let s = max(0, region.start - pad)
             let e = min(totalSec, region.end + pad)
             let regionSamples = Array(vocalMono[Int(s * 44_100)..<min(vocalMono.count, Int(e * 44_100))])
             Self.breadcrumb("region \(ri + 1)/\(chunkRegions.count): \(Int(s))–\(Int(e))s, lines \(range.start + 1)–\(range.end) (\(regionText.count) chars)")
             let regionUnits = try Self.alignBySaturation(
                 samples: regionSamples, sampleRate: 44_100, text: regionText, aligner: aligner,
-                cancellationCheck: cancellationCheck
+                forceKeepAll: isLastRegion, cancellationCheck: cancellationCheck
             )
             for u in regionUnits { units.append((u.start + s, u.end + s, u.text)) }
+
+            // Self-correct the duration-proportional guess: a bridge/chorus can pack more
+            // characters per second than the song's average, so the estimate can hand a region
+            // one line more than its audio actually holds. If the region's own saturation plateau
+            // (inside alignBySaturation) left some of its assigned lines unplaced, don't force
+            // them in — carry them to the next region, which gets a second, better-fitting shot.
+            if isLastRegion == false {
+                let consumedChars = regionUnits.reduce(0) { $0 + $1.text.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 } }
+                var cum = 0
+                var consumedLineCount = 0
+                for line in regionLines {
+                    let n = line.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 }
+                    guard cum + n <= consumedChars else { break }
+                    cum += n
+                    consumedLineCount += 1
+                }
+                if consumedLineCount < regionLines.count {
+                    carriedLines = Array(regionLines[consumedLineCount...])
+                    Self.breadcrumb("region \(ri + 1) carried \(carriedLines.count) unplaced line(s) forward")
+                }
+            }
         }
         Self.breadcrumb("aligned \(units.count) units")
         onProgress?(0.9)
@@ -203,9 +228,12 @@ public struct CTCForcedAligner {
     // speech-swift's own alignLong strategy with a memory-bounded first pass instead of a
     // whole-file one. `withError` turns MLX's internal fatalError handler into a catchable Swift
     // error. The caller scopes `samples`/`text` to one region and its own disjoint slice of
-    // lines — this only has to sub-chunk when a single region overruns maxChunkSec.
+    // lines — this only has to sub-chunk when a single region overruns maxChunkSec. `forceKeepAll`
+    // is for the song's last region only: there's no later region to carry an unplaced trailing
+    // line to, so the hard "never drop a line" gate wins over a possibly-imprecise placement.
     private static func alignBySaturation(
         samples: [Float], sampleRate: Int, text: String, aligner: Qwen3ForcedAligner,
+        forceKeepAll: Bool = false,
         cancellationCheck: (@Sendable () -> Bool)?
     ) throws -> [(start: Double, end: Double, text: String)] {
         let totalSec = Double(samples.count) / Double(sampleRate)
@@ -216,7 +244,7 @@ public struct CTCForcedAligner {
         while chunkStart < totalSec, remaining.isEmpty == false {
             if cancellationCheck?() == true { throw CancellationError() }
             let chunkEnd = min(totalSec, chunkStart + maxChunkSec)
-            let isLast = chunkEnd >= totalSec
+            let isLast = forceKeepAll && chunkEnd >= totalSec
             let chunk = Array(samples[Int(chunkStart * Double(sampleRate))..<Int(chunkEnd * Double(sampleRate))])
             breadcrumb("align chunk \(ci + 1): \(Int(chunkStart))–\(Int(chunkEnd))s, \(remaining.count) chars left")
             let aligned = try withError { aligner.align(audio: chunk, text: remaining, sampleRate: sampleRate) }
