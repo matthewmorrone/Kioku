@@ -58,8 +58,8 @@ extension ReadView {
             isLoadingSelectedNote = true
             activeNoteID = nil
             loadAudioAttachmentIfNeeded(attachmentID: nil)
-            customTitle = ""
-            fallbackTitle = ""
+            titleEdit.customTitle = ""
+            titleEdit.fallbackTitle = ""
             text = ""
             segments = nil
             hasManualSegmentationEdits = false
@@ -84,7 +84,7 @@ extension ReadView {
         }
 
         // If the selection re-publishes the note that's already active, skip the full reload —
-        // otherwise in-flight edits in `text`/`customTitle` would be clobbered by the stored copy
+        // otherwise in-flight edits in `text`/`titleEdit.customTitle` would be clobbered by the stored copy
         // before the next save lands.
         if selectedNote.id == activeNoteID {
             self.selectedNote = nil
@@ -103,7 +103,7 @@ extension ReadView {
         StartupTimer.mark("loadSelectedNoteIfNeeded preparing note")
         isLoadingSelectedNote = true
         activeNoteID = noteToLoad.id
-        sharedScrollOffsetY = 0
+        editModeScroll.sharedScrollOffsetY = 0
         onActiveNoteChanged?(noteToLoad.id)
         // Update `text` BEFORE loading the audio attachment. loadAudioAttachmentIfNeeded resolves
         // cue→text highlight ranges by reading `text`; if it ran first, those ranges would be
@@ -113,8 +113,8 @@ extension ReadView {
         // without it, every note load fires segmentation twice.
         lastLoadedTextSnapshot = noteToLoad.content
         text = noteToLoad.content
-        customTitle = noteToLoad.title
-        fallbackTitle = noteToLoad.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        titleEdit.customTitle = noteToLoad.title
+        titleEdit.fallbackTitle = noteToLoad.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? firstLineTitle(from: noteToLoad.content)
             : noteToLoad.title
         // Load or unload the audio attachment whenever the active note changes — now that
@@ -133,7 +133,7 @@ extension ReadView {
         //     print("[NOTE LOAD] \(json)")
         // }
         if shouldActivateEditModeOnLoad {
-            isEditMode = true
+            editModeScroll.isEditMode = true
             shouldActivateEditModeOnLoad = false
         }
         // When segments are already persisted, apply them directly without running the segmenter.
@@ -220,7 +220,7 @@ extension ReadView {
         guard !isLoadingSelectedNote else { return }
 
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedTitle = customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = titleEdit.customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         // Don't create a note when both content and title are blank.
         // For a brand-new note not yet in the store this avoids persisting a completely empty entry.
         if trimmedText.isEmpty && trimmedTitle.isEmpty {
@@ -242,10 +242,10 @@ extension ReadView {
         }
 
         // Prefer explicit titles; otherwise derive one from first content line.
-        let titleToSave = customTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let titleToSave = titleEdit.customTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? firstLineTitle(from: text)
-            : customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        fallbackTitle = titleToSave
+            : titleEdit.customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        titleEdit.fallbackTitle = titleToSave
 
         let savedNoteID = notesStore.scheduleReadEditorPersist(
             id: activeNoteID,
@@ -333,12 +333,12 @@ extension ReadView {
     }
 
     var resolvedTitle: String {
-        let trimmedCustom = customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCustom = titleEdit.customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedCustom.isEmpty {
             return trimmedCustom
         }
 
-        return fallbackTitle
+        return titleEdit.fallbackTitle
     }
 
     var displayTitle: String {

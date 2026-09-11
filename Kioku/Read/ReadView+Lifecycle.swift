@@ -182,7 +182,7 @@ extension ReadView {
                         )
                     }
                 }
-                if isEditMode {
+                if editModeScroll.isEditMode {
                     // Preserve user customizations (splits/merges/furigana) in segments whose
                     // surfaces still match a prefix/suffix of the edited content. Only the
                     // diverging middle becomes an unsegmented stub; the segmenter will revisit
@@ -235,7 +235,7 @@ extension ReadView {
                 // whichever onChange fires last is the one that actually has both pieces ready.
                 jumpToPendingScrollSurfaceIfReady()
             }
-            .onChange(of: isEditMode) { _, editing in
+            .onChange(of: editModeScroll.isEditMode) { _, editing in
                 if editing {
                     // Hand the CT read view's live scroll position to the editor. The CT
                     // renderer reports into the reference-type memo (not @State) while the
@@ -243,10 +243,10 @@ extension ReadView {
                     // needs to catch up so RichTextEditor's applyExternalScrollIfNeeded
                     // restores the same position. Without this, the editor opened at a stale
                     // offset (last edit position or last sheet adjustment).
-                    sharedScrollOffsetY = readScrollOffsetMemo.value
+                    editModeScroll.sharedScrollOffsetY = editModeScroll.readScrollOffsetMemo.value
                     // Suspends in-progress furigana / segmentation work and clears transient
                     // selection state. Note: we deliberately do NOT clear furiganaBySegmentLocation
-                    // here. The renderer is gated by `isActive: isEditMode == false`, so it
+                    // here. The renderer is gated by `isActive: editModeScroll.isEditMode == false`, so it
                     // doesn't read the map during editing, and keeping the user's chosen
                     // readings in memory means we never have to "restore" them on exit.
                     // onChange(of: text) handles real text edits via reconcileSegments.

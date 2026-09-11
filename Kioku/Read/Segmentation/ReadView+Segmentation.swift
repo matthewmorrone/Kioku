@@ -105,7 +105,7 @@ extension ReadView {
         furiganaLengthBySegmentLocation = [:]
         SegmentLookupSheet.shared.dismissPopover()
 
-        if readResourcesReady && isEditMode == false {
+        if readResourcesReady && editModeScroll.isEditMode == false {
             refreshSegmentationRanges()
         } else {
             segmentLatticeEdges = []
@@ -207,7 +207,7 @@ extension ReadView {
                     text == sourceText,
                     activeNoteID == sourceNoteID,
                     segments == persistedSegments,
-                    isEditMode == false
+                    editModeScroll.isEditMode == false
                 else {
                     return
                 }

@@ -74,8 +74,8 @@ extension ReadView {
             .background(Circle().fill(ReadToggleAppearance.background))
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(isEditMode || isLLMConfigured == false)
-        .opacity(isEditMode || isLLMConfigured == false ? 0.5 : 1.0)
+        .disabled(editModeScroll.isEditMode || isLLMConfigured == false)
+        .opacity(editModeScroll.isEditMode || isLLMConfigured == false ? 0.5 : 1.0)
         .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Confirm AI Changes" : (llmCorrection.isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
         .accessibilityHint(isLLMConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
@@ -89,7 +89,7 @@ extension ReadView {
         // precomputed notes that were never touched. Per the toggle standard, an enabled reset
         // reads as "on" (accent) and a disabled one as "off" (secondary); the red reject badge
         // overrides while AI changes are pending.
-        let isEnabled = (hasManualSegmentationEdits || llmCorrection.hasPendingLLMChanges) && isEditMode == false
+        let isEnabled = (hasManualSegmentationEdits || llmCorrection.hasPendingLLMChanges) && editModeScroll.isEditMode == false
         return Button {
             resetSegmentationToComputed()
         } label: {
@@ -415,15 +415,15 @@ extension ReadView {
             .contentShape(Circle())
             .onTapGesture {
                 guard llmCorrection.isRequestingLLMCorrection == false else { return }
-                isEditMode.toggle()
+                editModeScroll.isEditMode.toggle()
             }
             .onLongPressGesture(minimumDuration: 0.35) {
                 guard llmCorrection.isRequestingLLMCorrection == false else { return }
                 isShowingDisplayOptions = true
             }
             .disabled(llmCorrection.isRequestingLLMCorrection)
-            .opacity(llmCorrection.isRequestingLLMCorrection ? 0.4 : (isEditMode ? 1 : 0.7))
-            .accessibilityLabel(isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
+            .opacity(llmCorrection.isRequestingLLMCorrection ? 0.4 : (editModeScroll.isEditMode ? 1 : 0.7))
+            .accessibilityLabel(editModeScroll.isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
             .accessibilityHint(llmCorrection.isRequestingLLMCorrection ? "Disabled while AI correction runs" : "Long press for display options")
             .accessibilityAddTraits(.isButton)
             .popover(isPresented: $isShowingDisplayOptions, arrowEdge: .bottom) {
@@ -439,7 +439,7 @@ extension ReadView {
     private var editModeButtonLabel: some View {
         Image(systemName: "character.cursor.ibeam.ja")
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEditMode))
+            .foregroundStyle(ReadToggleAppearance.foreground(isOn: editModeScroll.isEditMode))
             .frame(width: 36, height: 36)
             .background(Circle().fill(ReadToggleAppearance.background))
     }

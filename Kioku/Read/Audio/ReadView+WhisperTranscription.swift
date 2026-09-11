@@ -86,8 +86,8 @@ extension ReadView {
         _ = notesStore.upsertNote(id: id, title: titleToSave, content: noteContent, segments: nil)
         if activeNoteID == id {
             isLoadingSelectedNote = true
-            customTitle = titleToSave
-            fallbackTitle = titleToSave
+            titleEdit.customTitle = titleToSave
+            titleEdit.fallbackTitle = titleToSave
             text = noteContent
             segments = nil
             isLoadingSelectedNote = false

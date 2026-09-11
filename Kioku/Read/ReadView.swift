@@ -91,10 +91,8 @@ struct ReadView: View {
     @AppStorage(DebugSettings.leftInsetGuideKey) var debugLeftInsetGuide: Bool = false
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) var debugStartupSegmentationDiffs: Bool = false
 
-    @State var customTitle = ""
-    @State var fallbackTitle = ""
-    @State var titleDraft = ""
-    @State var isShowingTitleAlert = false
+    // Note-title editing state (custom title, fallback, rename-alert draft) — see TitleEditUIState.
+    @State var titleEdit = TitleEditUIState()
     @State var text = ""
     @State var segmentLatticeEdges: [LatticeEdge] = []
     @State var segmentEdges: [LatticeEdge] = []
@@ -137,19 +135,9 @@ struct ReadView: View {
     @State var furiganaComputationTask: Task<Void, Never>?
     @State var segmentationRefreshTask: Task<Void, Never>?
     @State var activeNoteID: UUID?
-    @StateObject private var lyricsTranslationCache = LyricsTranslationCache()
     @State var isLoadingSelectedNote = false
-    @State var isEditMode = false
-    @State var isSheetSwipeTransitionActive = false
-    @State var sharedScrollOffsetY: CGFloat = 0
-    // Live mirror of the CT read view's scroll offset; snapshotted into sharedScrollOffsetY
-    // when edit mode is entered. See ReadScrollOffsetMemo for why it's not @State itself.
-    @State var readScrollOffsetMemo = ReadScrollOffsetMemo()
-    // Extra contentInset.bottom currently injected into the read scroll view so the lookup
-    // sheet can keep the selected segment visible even when it sits past the natural bottom
-    // of the note. Tracked here so dismissal removes exactly what was added, regardless of
-    // any other inset changes the scroll view's owner might have made in the meantime.
-    @State var appliedSheetBottomInset: CGFloat = 0
+    // Edit-mode transition + scroll-position state — see EditModeScrollUIState.
+    @State var editModeScroll = EditModeScrollUIState()
     @State var isShowingSegmentList = false
     @State var isShowingDisplayOptions = false
     // Drives the Saved Highlight category submenu as its own popover rather than a SwiftUI

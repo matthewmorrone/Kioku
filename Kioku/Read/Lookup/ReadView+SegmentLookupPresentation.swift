@@ -42,7 +42,7 @@ extension ReadView {
                 leftNeighborSurface: adjacentSurfaces.left,
                 rightNeighborSurface: adjacentSurfaces.right,
                 onSelectPrevious: {
-                    isSheetSwipeTransitionActive = true
+                    editModeScroll.isSheetSwipeTransitionActive = true
                     let outcome = moveSelectedSegmentSelection(isMovingForward: false)
                     if let textView = sourceView as? UITextView,
                        let selectedSegmentLocation,
@@ -50,20 +50,20 @@ extension ReadView {
                         preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
                             Task { @MainActor in
                                 await Task.yield()
-                                isSheetSwipeTransitionActive = false
+                                editModeScroll.isSheetSwipeTransitionActive = false
                             }
                         }
                     } else {
                         Task { @MainActor in
                             await Task.yield()
-                            isSheetSwipeTransitionActive = false
+                            editModeScroll.isSheetSwipeTransitionActive = false
                         }
                     }
 
                     return outcome
                 },
                 onSelectNext: {
-                    isSheetSwipeTransitionActive = true
+                    editModeScroll.isSheetSwipeTransitionActive = true
                     let outcome = moveSelectedSegmentSelection(isMovingForward: true)
                     if let textView = sourceView as? UITextView,
                        let selectedSegmentLocation,
@@ -71,13 +71,13 @@ extension ReadView {
                         preScrollSegmentForSheetVisibility(sourceView: sourceView, tappedSegmentRect: selectedSegmentRect) {
                             Task { @MainActor in
                                 await Task.yield()
-                                isSheetSwipeTransitionActive = false
+                                editModeScroll.isSheetSwipeTransitionActive = false
                             }
                         }
                     } else {
                         Task { @MainActor in
                             await Task.yield()
-                            isSheetSwipeTransitionActive = false
+                            editModeScroll.isSheetSwipeTransitionActive = false
                         }
                     }
 
@@ -237,7 +237,7 @@ extension ReadView {
                     restoreScrollAfterSheetDismissal(sourceView: sourceView, completion: completion)
                 },
                 onDismiss: {
-                    isSheetSwipeTransitionActive = false
+                    editModeScroll.isSheetSwipeTransitionActive = false
                     clearSelectedSegmentStateAfterPopoverDismissal()
                 }
             )

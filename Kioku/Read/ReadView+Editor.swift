@@ -33,7 +33,7 @@ final class SavedHighlightMemo {
 // Reference-type mirror of the CoreText read view's live scroll offset. The CT renderer reports
 // every offset change here instead of into @State, so view-mode scrolling costs no SwiftUI body
 // re-eval per frame (each eval re-hashes the whole note for the typography fingerprint). The
-// value is snapshotted into `sharedScrollOffsetY` exactly when edit mode is entered — the only
+// value is snapshotted into `editModeScroll.sharedScrollOffsetY` exactly when edit mode is entered — the only
 // moment the editor needs it. Held by @State so it survives body re-evaluations (same pattern
 // as KnownWordFuriganaMemo above).
 final class ReadScrollOffsetMemo {
@@ -400,24 +400,24 @@ extension ReadView {
                         },
                         // Hidden in edit mode — gate updates so per-keystroke typing doesn't
                         // re-typeset this off-screen renderer (the typing-lag fix).
-                        isActive: isEditMode == false,
+                        isActive: editModeScroll.isEditMode == false,
                         // Edit↔view scroll sync: applied once when edit mode exits (restores
                         // the editor's position); reported into the reference-type memo so
                         // view-mode scrolling stays free of per-frame body re-evals. The memo
-                        // is snapshotted into sharedScrollOffsetY on entering edit
-                        // (ReadView+Lifecycle's onChange(of: isEditMode)).
-                        externalContentOffsetY: sharedScrollOffsetY,
-                        onScrollOffsetYChanged: { [readScrollOffsetMemo] newOffsetY in
-                            readScrollOffsetMemo.value = newOffsetY
+                        // is snapshotted into editModeScroll.sharedScrollOffsetY on entering edit
+                        // (ReadView+Lifecycle's onChange(of: editModeScroll.isEditMode)).
+                        externalContentOffsetY: editModeScroll.sharedScrollOffsetY,
+                        onScrollOffsetYChanged: { [editModeScroll] newOffsetY in
+                            editModeScroll.readScrollOffsetMemo.value = newOffsetY
                         },
                         // Reset scroll to the top whenever the active note changes. Keyed on
                         // the note id's hash so each note open is a distinct token transition;
                         // 0 when no note is active.
                         scrollToTopToken: activeNoteID?.hashValue ?? 0
                     )
-                    .opacity(isEditMode ? 0 : 1)
-                    .allowsHitTesting(isEditMode == false)
-                    .animation(.default, value: isEditMode)
+                    .opacity(editModeScroll.isEditMode ? 0 : 1)
+                    .allowsHitTesting(editModeScroll.isEditMode == false)
+                    .animation(.default, value: editModeScroll.isEditMode)
 
                 RichTextEditor(
                     text: $text,
@@ -429,10 +429,10 @@ extension ReadView {
                     isColorAlternationEnabled: isColorAlternationEnabled,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                     segmenter: segmenter,
-                    isEditMode: isEditMode,
-                    externalContentOffsetY: sharedScrollOffsetY,
+                    isEditMode: editModeScroll.isEditMode,
+                    externalContentOffsetY: editModeScroll.sharedScrollOffsetY,
                     onScrollOffsetYChanged: { newOffsetY in
-                        sharedScrollOffsetY = newOffsetY
+                        editModeScroll.sharedScrollOffsetY = newOffsetY
                     },
                     textSize: $textSize,
                     lineSpacing: lineSpacing,
@@ -441,9 +441,9 @@ extension ReadView {
                     debugHeadwordLineBands: debugHeadwordLineBands,
                     debugFuriganaLineBands: debugFuriganaLineBands
                 )
-                .opacity(isEditMode ? 1 : 0)
-                .allowsHitTesting(isEditMode)
-                .animation(.default, value: isEditMode)
+                .opacity(editModeScroll.isEditMode ? 1 : 0)
+                .allowsHitTesting(editModeScroll.isEditMode)
+                .animation(.default, value: editModeScroll.isEditMode)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -453,20 +453,20 @@ extension ReadView {
             RoundedRectangle(cornerRadius: 16)
                 .fill(
                     japaneseTheme
-                        ? (isEditMode ? Theme.surface : Theme.surfaceSecondary)
-                        : (isEditMode ? Color(.systemBackground) : Color(.secondarySystemBackground))
+                        ? (editModeScroll.isEditMode ? Theme.surface : Theme.surfaceSecondary)
+                        : (editModeScroll.isEditMode ? Color(.systemBackground) : Color(.secondarySystemBackground))
                 )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(
-                    isEditMode ? Color.accentColor.opacity(0.45) : Color.secondary.opacity(0.3),
-                    lineWidth: isEditMode ? 2 : 1
+                    editModeScroll.isEditMode ? Color.accentColor.opacity(0.45) : Color.secondary.opacity(0.3),
+                    lineWidth: editModeScroll.isEditMode ? 2 : 1
                 )
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 8)
-        .animation(.default, value: isEditMode)
+        .animation(.default, value: editModeScroll.isEditMode)
         // Disk/mem load-info toast disabled — re-enable by uncommenting this overlay and the
         // showLoadInfoToast(for:) call in ReadView+Persistence.swift.
         // .overlay(alignment: .top) {

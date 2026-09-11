@@ -137,7 +137,7 @@ extension ReadView {
     // Scrolls only enough to keep the selected segment inside the visible band above the lookup
     // sheet. When the segment sits past the natural bottom of the note, also adds a temporary
     // contentInset.bottom so the scroll offset can hold instead of bouncing back. The applied
-    // delta is tracked in `appliedSheetBottomInset` so dismissal removes exactly that much.
+    // delta is tracked in `editModeScroll.appliedSheetBottomInset` so dismissal removes exactly that much.
     func preScrollSegmentForSheetVisibility(
         sourceView: UIScrollView?,
         tappedSegmentRect: CGRect?,
@@ -154,7 +154,7 @@ extension ReadView {
         // present (e.g. swipe-to-next on the sheet); subtract it so the planner sees the same
         // natural max we'd see if no sheet were currently driving overscroll. Without this,
         // each tap would add the inset on top of the inset from the previous tap.
-        let priorAppliedInset = appliedSheetBottomInset
+        let priorAppliedInset = editModeScroll.appliedSheetBottomInset
         let naturalBottomInset = sourceView.adjustedContentInset.bottom - priorAppliedInset
         let minOffsetY = -sourceView.adjustedContentInset.top
         let maxContentOffsetY = max(
@@ -186,11 +186,11 @@ extension ReadView {
         guard let adjustment = ReadViewSheetVisibilityScrollPlanner.adjustment(for: context) else {
             // Already in a good spot — no scroll. But the CURRENT offset may itself rely on
             // overscroll injected by a PRIOR tap (a word near the bottom, where the planner pushed
-            // past the natural max and `appliedSheetBottomInset > 0`). Removing that inset wholesale
+            // past the natural max and `editModeScroll.appliedSheetBottomInset > 0`). Removing that inset wholesale
             // shrinks maxOffsetY below the current offset, so the scroll view bounces back down and
             // drops the just-tapped word under the sheet — the "second tap at the bottom hides the
             // word" bug. Keep exactly the inset still needed to hold the current offset; trim only
-            // the excess. (Do NOT touch `sharedScrollOffsetY` here: writing it forces a SwiftUI body
+            // the excess. (Do NOT touch `editModeScroll.sharedScrollOffsetY` here: writing it forces a SwiftUI body
             // re-eval that rebuilds the whole attributed string — the dominant per-tap cost.)
             let insetNeededToHoldCurrentOffset = max(0, sourceView.contentOffset.y - maxContentOffsetY)
             if abs(insetNeededToHoldCurrentOffset - priorAppliedInset) > 0.5 {
@@ -201,7 +201,7 @@ extension ReadView {
         }
 
         applyAdditionalBottomInset(adjustment.temporaryBottomInset, on: sourceView, animated: animated)
-        sharedScrollOffsetY = adjustment.targetOffsetY
+        editModeScroll.sharedScrollOffsetY = adjustment.targetOffsetY
         animateContentOffset(
             for: sourceView,
             targetOffsetY: adjustment.targetOffsetY,
@@ -241,7 +241,7 @@ extension ReadView {
             return
         }
 
-        sharedScrollOffsetY = dismissalTargetOffsetY
+        editModeScroll.sharedScrollOffsetY = dismissalTargetOffsetY
         animateContentOffset(
             for: sourceView,
             targetOffsetY: dismissalTargetOffsetY,
@@ -250,7 +250,7 @@ extension ReadView {
         )
     }
 
-    // Reconciles the read scroll view's bottom contentInset against `appliedSheetBottomInset`,
+    // Reconciles the read scroll view's bottom contentInset against `editModeScroll.appliedSheetBottomInset`,
     // adding or removing exactly the delta we previously injected. Sheet present/dismiss flow
     // through here so the inset is symmetric — every byte we add gets reclaimed on dismissal.
     private func applyAdditionalBottomInset(
@@ -259,13 +259,13 @@ extension ReadView {
         animated: Bool
     ) {
         let clampedDesired = max(0, desiredInset)
-        let delta = clampedDesired - appliedSheetBottomInset
+        let delta = clampedDesired - editModeScroll.appliedSheetBottomInset
         guard abs(delta) > 0.5 else { return }
 
         let newBottom = sourceView.contentInset.bottom + delta
         let newScrollIndicatorBottom = sourceView.verticalScrollIndicatorInsets.bottom + delta
 
-        appliedSheetBottomInset = clampedDesired
+        editModeScroll.appliedSheetBottomInset = clampedDesired
 
         let applyInsets: () -> Void = {
             var inset = sourceView.contentInset

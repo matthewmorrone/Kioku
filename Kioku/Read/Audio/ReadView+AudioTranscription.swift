@@ -161,8 +161,8 @@ extension ReadView {
 
         if activeNoteID == id {
             isLoadingSelectedNote = true
-            customTitle = titleToSave
-            fallbackTitle = titleToSave
+            titleEdit.customTitle = titleToSave
+            titleEdit.fallbackTitle = titleToSave
             text = noteContent
             segments = nil
             isLoadingSelectedNote = false
@@ -184,8 +184,8 @@ extension ReadView {
 
         if activeNoteID == id {
             isLoadingSelectedNote = true
-            customTitle = titleToSave
-            fallbackTitle = titleToSave
+            titleEdit.customTitle = titleToSave
+            titleEdit.fallbackTitle = titleToSave
             text = normalizedText
             segments = nil
             loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
