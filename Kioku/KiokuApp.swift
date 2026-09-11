@@ -36,6 +36,8 @@ struct KiokuApp: App {
         Task.detached(priority: .utility) {
             print("[KiokuApp] launch-time VocalStemCache.enforceBudget starting")
             VocalStemCache.enforceBudget()
+            let freed = CachesCleaner.sweepStaleDownloads()
+            print("[KiokuApp] launch-time stale-download sweep freed \(freed / 1_000_000) MB")
         }
         // (Startup dedup sweep temporarily disabled while diagnosing a launch crash — clone-on-import
         // in saveAudio still prevents NEW duplicates; the one-time reclaim sweep is re-enabled once

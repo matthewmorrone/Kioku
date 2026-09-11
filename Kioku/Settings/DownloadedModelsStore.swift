@@ -13,9 +13,13 @@ import Foundation
 import SwiftWhisperAlign
 
 nonisolated enum DownloadedModelsStore {
-    // On-disk size of the downloaded Qwen3-ASR weights, or 0 if not yet downloaded.
+    // On-disk size of the downloaded Qwen3-ASR weights, or 0 if not yet downloaded. Sums both
+    // builds: the CoreML export StemTranscriber actually runs, and the MLX weights — orphaned
+    // now that nothing loads them, but still worth reclaiming for anyone who downloaded them
+    // under an older app version.
     static func qwenASRSizeBytes() -> Int {
-        sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.asrModelId))
+        sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.asrCoreMLModelId))
+            + sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.asrModelId))
     }
 
     // On-disk size of the downloaded Qwen3-ForcedAligner weights, or 0 if not yet downloaded.
@@ -46,8 +50,10 @@ nonisolated enum DownloadedModelsStore {
         VocalStemCache.deleteAll()
     }
 
-    // Deletes the downloaded Qwen3-ASR weights. No-op if nothing is downloaded.
+    // Deletes every on-disk copy of the Qwen3-ASR weights (see qwenASRSizeBytes). No-op if
+    // nothing is downloaded.
     static func deleteQwenASR() {
+        removeContents(of: try? ModelStorage.directory(for: ModelStorage.asrCoreMLModelId))
         removeContents(of: try? ModelStorage.directory(for: ModelStorage.asrModelId))
     }
 

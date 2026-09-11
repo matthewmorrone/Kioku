@@ -613,7 +613,7 @@ struct SettingsView: View {
         cachesBytes = bytes
     }
 
-    // Wipes Library/Caches and reports the freed size via the shared transfer alert.
+    // Wipes Library/Caches and tmp/ and reports the freed size via the shared transfer alert.
     private func performCachesClear() {
         guard isClearingCaches == false else { return }
         isClearingCaches = true
