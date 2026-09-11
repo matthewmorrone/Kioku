@@ -121,22 +121,42 @@ public struct CTCForcedAligner {
         Self.breadcrumb("aligner loaded (fromPretrained returned)")
         if cancellationCheck?() == true { throw CancellationError() }
 
-        // Sung regions on the stem (breaths/consonant gaps ≤3 s merged), spliced into one
-        // contiguous buffer before alignment. This removes instrumental gaps from what the
-        // aligner sees at all — handed one inside its input, it parks lines on the wrong side
-        // of it — and it shrinks the buffer to just the sung duration, which is what keeps a
-        // long song's align() pass under the per-process memory ceiling.
+        // Sung regions on the stem (breaths/consonant gaps ≤3 s merged). Each region is aligned
+        // separately, against only the slice of lines proportional to its share of the sung
+        // duration (see `lineRangesByDuration`) — never the whole remaining lyric. Two problems
+        // this avoids: a region's align() call never sees a long instrumental gap inside its
+        // input (which parks lines on the wrong side of it), and it never sees the SAME lyric
+        // text twice. That second one matters more than it sounds: a chorus that repeats later
+        // in the song is a duplicate substring in the full lyric, and CTC alignment assumes a
+        // strictly monotonic text→audio mapping — handed both repeats in one call, it has no way
+        // to tell which occurrence it's hearing and can align a later repeat's words onto an
+        // earlier repeat's audio (measured 2026-09-11: a song's final chorus, itself a near-exact
+        // repeat of two earlier ones, landed 46-84 s early under whole-song alignment, spliced or
+        // not — the failure tracked the duplicated text, not chunk boundaries or pass length).
         let regions = Self.mergeSegments(Self.energyVADSegments(vocalMono, sampleRate: 44_100), maxGap: 3.0)
         Self.breadcrumb("energy-VAD \(regions.count) regions: " + regions.prefix(12).map { String(format: "%.0f-%.0f", $0.start, $0.end) }.joined(separator: " "))
-        let (splicedSamples, splice) = Self.splice(vocalMono, sampleRate: 44_100, regions: regions)
-        Self.breadcrumb("spliced \(splice.segments.count) segments, \(splicedSamples.count / 44_100)s (from \(vocalMono.count / 44_100)s)")
         onStage?("Aligning lyrics…")
-        let text = input.lines.joined(separator: "\n")
-        let splicedUnits = try Self.alignBySaturation(
-            samples: splicedSamples, sampleRate: 44_100, text: text, aligner: aligner,
-            cancellationCheck: cancellationCheck
+        let totalSec = Double(vocalMono.count) / 44_100.0
+        let chunkRegions = regions.isEmpty ? [(start: 0.0, end: totalSec)] : regions
+        let lineRanges = Self.lineRangesByDuration(
+            lines: input.lines, regionDurations: chunkRegions.map { $0.end - $0.start }
         )
-        let units = splicedUnits.map { (start: splice.toOriginal($0.start), end: splice.toOriginal($0.end), text: $0.text) }
+        var units: [(start: Double, end: Double, text: String)] = []
+        let pad = 0.25
+        for (ri, region) in chunkRegions.enumerated() {
+            let range = lineRanges[ri]
+            guard range.end > range.start else { continue }
+            let regionText = input.lines[range.start..<range.end].joined(separator: "\n")
+            let s = max(0, region.start - pad)
+            let e = min(totalSec, region.end + pad)
+            let regionSamples = Array(vocalMono[Int(s * 44_100)..<min(vocalMono.count, Int(e * 44_100))])
+            Self.breadcrumb("region \(ri + 1)/\(chunkRegions.count): \(Int(s))–\(Int(e))s, lines \(range.start + 1)–\(range.end) (\(regionText.count) chars)")
+            let regionUnits = try Self.alignBySaturation(
+                samples: regionSamples, sampleRate: 44_100, text: regionText, aligner: aligner,
+                cancellationCheck: cancellationCheck
+            )
+            for u in regionUnits { units.append((u.start + s, u.end + s, u.text)) }
+        }
         Self.breadcrumb("aligned \(units.count) units")
         onProgress?(0.9)
 
@@ -161,10 +181,18 @@ public struct CTCForcedAligner {
         return AlignmentResult(lines: lines, lineTokens: lineTokens)
     }
 
-    // Longest stretch of audio handed to one align() call. Two ceilings meet here: the model's
-    // reliable range is ~270 s (past it the trailing words collapse onto one timestamp), and on an
-    // iPhone 17 a 244 s call peaks ~1.3 GB while a 316 s call is jetsam-killed at the ~3.4 GB
-    // per-process limit. Most songs fit in one pass.
+    // Longest stretch of audio handed to one align() call — a safety net for the rare vocal
+    // region that's long on its own (most are well under this). Two ceilings meet here: the
+    // model's reliable range is ~270 s (past it the trailing words collapse onto one timestamp),
+    // and on an iPhone 17 a 244 s call peaks ~1.3 GB while a 316 s call is jetsam-killed at the
+    // ~3.4 GB per-process limit.
+    //
+    // NOTE: shrinking this to force more/earlier splits was tried (as the primary per-song
+    // chunking mechanism, before regions were each scoped to their own disjoint lines) and made
+    // things worse — measured 2026-09-11: 120 s cap on the same fixture, median 12.5 s vs 2.5 s,
+    // coverage 5.9% vs 14.7%. A shorter window doesn't make the model say "this doesn't fit" more
+    // often; it just silently compresses more text into whatever it's given, since the saturation
+    // detector below only catches literal timestamp collapse, not gradual over-compression.
     private static let maxChunkSec = 200.0
 
     // Aligns `text` over `samples` in fixed maxChunkSec windows, letting the MODEL decide which
@@ -174,8 +202,8 @@ public struct CTCForcedAligner {
     // the last kept word, and the placed characters are dropped from the text. This is
     // speech-swift's own alignLong strategy with a memory-bounded first pass instead of a
     // whole-file one. `withError` turns MLX's internal fatalError handler into a catchable Swift
-    // error. `samples` is expected to already be gapless (see `splice`) — a long instrumental
-    // stretch inside a window makes the model park lines on the wrong side of it.
+    // error. The caller scopes `samples`/`text` to one region and its own disjoint slice of
+    // lines — this only has to sub-chunk when a single region overruns maxChunkSec.
     private static func alignBySaturation(
         samples: [Float], sampleRate: Int, text: String, aligner: Qwen3ForcedAligner,
         cancellationCheck: (@Sendable () -> Bool)?
@@ -220,50 +248,39 @@ public struct CTCForcedAligner {
         return results
     }
 
-    // Maps a time in the spliced (gap-removed) timeline back to the original audio's timeline.
-    private struct Splice {
-        // Contiguous, sorted spans of the spliced buffer, each tagged with where it started in
-        // the original audio.
-        let segments: [(splicedStart: Double, splicedEnd: Double, originalStart: Double)]
-
-        func toOriginal(_ t: Double) -> Double {
-            guard segments.isEmpty == false else { return t }
-            var lo = 0, hi = segments.count - 1
-            while lo < hi {
-                let mid = (lo + hi + 1) / 2
-                if segments[mid].splicedStart <= t { lo = mid } else { hi = mid - 1 }
+    // Splits `lines` into one slice per region, snapping to whole-line boundaries so each
+    // slice's share of characters tracks that region's share of the total sung duration. This is
+    // an estimate, not a transcript — it only has to land close enough that no line (and so no
+    // repeated chorus) ends up duplicated across two regions' align() calls.
+    private static func lineRangesByDuration(
+        lines: [String], regionDurations: [Double]
+    ) -> [(start: Int, end: Int)] {
+        guard regionDurations.isEmpty == false else { return [] }
+        let charCounts = lines.map { $0.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 } }
+        let totalChars = charCounts.reduce(0, +)
+        let totalDur = regionDurations.reduce(0, +)
+        guard totalChars > 0, totalDur > 0 else {
+            return regionDurations.enumerated().map { i, _ in i == 0 ? (0, lines.count) : (lines.count, lines.count) }
+        }
+        var ranges: [(start: Int, end: Int)] = []
+        var lineIdx = 0
+        var charsSoFar = 0
+        var durSoFar = 0.0
+        for (i, d) in regionDurations.enumerated() {
+            durSoFar += d
+            let start = lineIdx
+            if i == regionDurations.count - 1 {
+                lineIdx = lines.count
+            } else {
+                let targetChars = Int((Double(totalChars) * durSoFar / totalDur).rounded())
+                while lineIdx < lines.count, charsSoFar < targetChars {
+                    charsSoFar += charCounts[lineIdx]
+                    lineIdx += 1
+                }
             }
-            let seg = segments[lo]
-            return seg.originalStart + (t - seg.splicedStart)
+            ranges.append((start, lineIdx))
         }
-    }
-
-    // Concatenates the padded vocal regions into one contiguous buffer so the aligner never
-    // sees an instrumental gap, returning the buffer plus the mapping back to the original
-    // timeline. Falls back to the untouched stem (identity mapping) when VAD found no regions.
-    private static func splice(
-        _ samples: [Float], sampleRate: Int, regions: [(start: Double, end: Double)]
-    ) -> ([Float], Splice) {
-        guard regions.isEmpty == false else {
-            return (samples, Splice(segments: [(0, Double(samples.count) / Double(sampleRate), 0)]))
-        }
-        let totalSec = Double(samples.count) / Double(sampleRate)
-        let pad = 0.25
-        var out: [Float] = []
-        out.reserveCapacity(samples.count)
-        var segs: [(splicedStart: Double, splicedEnd: Double, originalStart: Double)] = []
-        for r in regions {
-            let s = max(0, r.start - pad)
-            let e = min(totalSec, r.end + pad)
-            let startFrame = Int(s * Double(sampleRate))
-            let endFrame = min(samples.count, Int(e * Double(sampleRate)))
-            guard endFrame > startFrame else { continue }
-            let splicedStart = Double(out.count) / Double(sampleRate)
-            out.append(contentsOf: samples[startFrame..<endFrame])
-            let splicedEnd = Double(out.count) / Double(sampleRate)
-            segs.append((splicedStart, splicedEnd, s))
-        }
-        return (out, Splice(segments: segs))
+        return ranges
     }
 
     // Index of the first word in the trailing "stuck" plateau — ≥ `minSize` consecutive trailing
