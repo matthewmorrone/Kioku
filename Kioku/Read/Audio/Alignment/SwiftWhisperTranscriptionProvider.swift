@@ -1,5 +1,5 @@
 // SwiftWhisperTranscriptionProvider.swift
-// Bridges SwiftWhisper to the AlignmentSegment type expected by LineAligner.
+// Bridges SwiftWhisper (whisper.cpp) transcription to AlignmentSegment.
 //
 // SwiftWhisper.Segment uses startTime/endTime in milliseconds (Int).
 // AlignmentSegment uses start/end in seconds (Double).

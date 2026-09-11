@@ -1,7 +1,7 @@
 import XCTest
 @testable import Kioku
 
-// Pins SubtitleEditorTimingTools.clampOnsetsToVocal — the ground-truth safety net that pulls any
+// Pins SubtitleTimingTools.clampOnsetsToVocal — the ground-truth safety net that pulls any
 // cue whose ONSET landed inside a proven instrumental gap (a stretch with no energy-VAD vocal
 // segment) forward to where the vocal actually resumes. A sung line physically cannot begin during
 // stem silence, so a VAD gap edge is a hard wall, exactly like an alignment anchor.
@@ -36,7 +36,7 @@ final class SubtitleVocalClampTests: XCTestCase {
             cue("逢いたくて寂しくて駆け出しそうなハート", 134_060, 164_516), // INSIDE the gap
             cue("この広い宇宙で何度生まれ変わっても", 164_516, 169_576),   // first legit post-gap line
         ]
-        let out = SubtitleEditorTimingTools.clampOnsetsToVocal(
+        let out = SubtitleTimingTools.clampOnsetsToVocal(
             cues: cues, durationMs: durationMs, vocalSegments: vocals)
 
         // No onset survives inside (128_200, 153_200).
@@ -62,7 +62,7 @@ final class SubtitleVocalClampTests: XCTestCase {
             cue("この広い宇宙で何度生まれ変わっても", 164_516, 169_576),
         ]
         // Raw cues: the interlude ♪ is suppressed (a cue starts inside the gap).
-        let rawMarked = SubtitleEditorTimingTools.insertMusicMarkers(
+        let rawMarked = SubtitleTimingTools.insertMusicMarkers(
             cues: cues, durationMs: durationMs, vocalSegments: vocals)
         let rawInterludeMarkers = rawMarked.filter {
             SubtitleParser.isNonSpeechCue($0.text) && $0.startMs >= 127_480 && $0.endMs <= 154_000
@@ -70,9 +70,9 @@ final class SubtitleVocalClampTests: XCTestCase {
         XCTAssertTrue(rawInterludeMarkers.isEmpty, "precondition: raw cues suppress the interlude ♪")
 
         // Clamp first, then insert markers: the interlude ♪ reappears.
-        let clamped = SubtitleEditorTimingTools.clampOnsetsToVocal(
+        let clamped = SubtitleTimingTools.clampOnsetsToVocal(
             cues: cues, durationMs: durationMs, vocalSegments: vocals)
-        let marked = SubtitleEditorTimingTools.insertMusicMarkers(
+        let marked = SubtitleTimingTools.insertMusicMarkers(
             cues: clamped, durationMs: durationMs, vocalSegments: vocals)
         let interludeMarkers = marked.filter {
             SubtitleParser.isNonSpeechCue($0.text) && $0.startMs >= 127_480 && $0.endMs <= 154_000
@@ -87,7 +87,7 @@ final class SubtitleVocalClampTests: XCTestCase {
             cue("二行目", 60_000, 64_000),
             cue("三行目", 160_000, 164_000),
         ]
-        let out = SubtitleEditorTimingTools.clampOnsetsToVocal(
+        let out = SubtitleTimingTools.clampOnsetsToVocal(
             cues: cues, durationMs: durationMs, vocalSegments: vocals)
         XCTAssertEqual(out.map(\.startMs), cues.map(\.startMs))
     }
@@ -95,7 +95,7 @@ final class SubtitleVocalClampTests: XCTestCase {
     // No VAD info → identity (we have no ground truth to clamp against).
     func testNoVocalSegmentsIsIdentity() {
         let cues = [cue("一行目", 130_000, 134_000)]
-        let out = SubtitleEditorTimingTools.clampOnsetsToVocal(
+        let out = SubtitleTimingTools.clampOnsetsToVocal(
             cues: cues, durationMs: durationMs, vocalSegments: [])
         XCTAssertEqual(out.map(\.startMs), cues.map(\.startMs))
     }
@@ -106,7 +106,7 @@ final class SubtitleVocalClampTests: XCTestCase {
             cue("恋しくて", 130_000, 134_000, [cp(130_000, 0, 1), cp(132_000, 1, 1)]),
             cue("この広い宇宙で", 160_000, 164_000),
         ]
-        let out = SubtitleEditorTimingTools.clampOnsetsToVocal(
+        let out = SubtitleTimingTools.clampOnsetsToVocal(
             cues: cues, durationMs: durationMs, vocalSegments: vocals)
         let moved = out[0]
         XCTAssertGreaterThanOrEqual(moved.startMs, 153_200)

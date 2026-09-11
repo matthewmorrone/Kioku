@@ -32,7 +32,7 @@ struct LyricsView: View {
     // the same way SettingsView's Picker already does this independently. Backs the quick Word/
     // Sentence toggle in reAlignBar() — a faster path than Settings for something you're likely
     // to flip mid-listen while judging alignment quality.
-    // Not private: reAlignBar() (LyricsView+AlignmentFix.swift, a different file) reads/writes it.
+    // Not private: reAlignBar() (LyricsView+ReAlignBar.swift) reads/writes it.
     @AppStorage(LyricsHighlightGranularity.storageKey) var quickGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
     // Saved Highlight, in noteText UTF-16 coords — same signal as ReadView+Editor's
     // properties of the same name (resolved via resolvedDictionaryEntry(forSurface:), the
@@ -50,22 +50,12 @@ struct LyricsView: View {
     // playback stopped in the background can jump straight to the Background Audio toggle.
     // Defaulted so previews/other call sites stay valid.
     var onFocusSetting: ((String) -> Void)? = nil
-    // In-place cue editing: the persistent top row emits an intent (set/nudge the start or end
-    // boundary, or re-align the word sweep) for the cue currently on the active card. ReadView
-    // owns persistence + controller refresh. Defaulted so previews/other call sites stay valid.
-    var onCueEdit: (LyricCueEdit) -> Void = { _ in }
-    // Cue index currently being re-aligned on device (Whisper running); the "Fix" button shows a
-    // spinner for that cue and all edit buttons disable. nil when idle.
-    var realigningCueIndex: Int? = nil
-    // True while a FULL from-scratch re-align (whole note) is running, with `reAlignMessage`
-    // carrying the live progress text. Drives the top Re-align bar's spinner + label.
+    // The top bar's Re-align action; ReadView owns the run. Defaulted so previews stay valid.
+    var onReAlign: () -> Void = {}
+    // True while a whole-song re-align is running, with `reAlignMessage` carrying the live
+    // progress text. Drives the top bar's spinner + label.
     var isReAligning: Bool = false
     var reAlignMessage: String = ""
-    // Whether an isolated vocal stem is cached for this audio (so playback can switch to it) and
-    // the current toggle state. ReadView owns the state + the actual source swap; the bar just
-    // shows the control and flips the binding. Defaulted off/unavailable for other call sites.
-    var stemAvailable: Bool = false
-    var isListeningToStem: Binding<Bool> = .constant(false)
 
     // Horizontal fine-scrub sensitivity. 5 ms per point means a full ~300 pt swipe across the
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.
@@ -75,7 +65,6 @@ struct LyricsView: View {
     var activeIndex: Int { controller.activeCueIndex ?? 0 }
 
     // Clamped upper bound for seeks, in ms. Falls back generously when duration isn't known yet.
-    // Not private: read by alignmentFixRow in LyricsView+AlignmentFix.swift.
     var durationMs: Int {
         controller.duration > 0 ? Int(controller.duration * 1000) : Int.max
     }
@@ -204,44 +193,7 @@ struct LyricsView: View {
     // Playhead time (ms) captured at the start of a horizontal fine-scrub, so the seek maps
     // the cumulative translation onto an absolute time rather than integrating per-frame.
     @State private var fineScrubBaseMs: Int? = nil
-    // Alignment-adjust mode: reveals the per-line fix row and pins the card to a chosen target
-    // line so the transport can move the playhead INDEPENDENTLY. A mistimed line isn't "active"
-    // at the moment you want to assign it, so target and playhead must decouple — that decoupling
-    // is the whole reason the old inline row felt broken. Default off so the card reads clean.
-    // Not private (like the four below): also read/written by reAlignBar / alignmentFixRow in
-    // LyricsView+AlignmentFix.swift.
-    @State var isAdjustingAlignment = false
-    // The line being retimed while adjusting (persists across scrubs); nil → fall back to the
-    // playing line. Set by entering Adjust (→ the active line) or by dragging/tapping to pick.
-    @State var adjustTargetIndex: Int? = nil
-    // Peak envelope for the Adjust waveform editor. Source follows the Vocals/Mix toggle: the
-    // isolated vocal stem when "Vocals" is on (and a stem is cached), otherwise the full mix.
-    // `waveformNoteID` and `waveformIsStem` record which note + source it belongs to so switching
-    // notes OR flipping the toggle reloads it.
-    @State var waveform: WaveformEnvelope? = nil
-    @State var waveformNoteID: UUID? = nil
-    @State var waveformIsStem: Bool = false
-    // Debug: raw ASR transcript of the vocal stem, for diagnosing mis-timed lines (does the aligner
-    // actually "hear" a line where it belongs?). Triggered by a long-press on the timing readout;
-    // shown in a copyable sheet. Not a shipping affordance.
-    @State var stemTranscript: [SubtitleCue]?
-    @State var isDumpingTranscript = false
-    @State var transcriptStatus = ""
-    @State var showTranscriptSheet = false
-    // Long-press word context: when set, a confirmation dialog snaps the pressed word's START or
-    // END timing to the playhead snapshot, plus dictionary look-up. nil = hidden.
-    @State private var wordTimingMenu: WordTimingMenu? = nil
 
-    // Captures everything the long-press timing menu needs about the word that was pressed.
-    struct WordTimingMenu {
-        let cueIndex: Int
-        let playheadMs: Int       // playback position snapshotted at long-press
-        let wordCharOffset: Int   // cue-local UTF-16 start of the pressed word
-        let wordCharLength: Int
-        let wordText: String      // for the menu's title/message
-        let globalLocation: Int?  // noteText UTF-16 location, for routing to dictionary look-up
-        let rect: CGRect?
-    }
     @State private var translationTrigger: TranslationSession.Configuration? = nil
     // Supplies the note's SongBreakdown (if any) for LyricsView+BreakdownGist's gist lookup.
     // Auto-injected from the ancestor tree (ContentView) — no manual threading needed. Not
@@ -263,10 +215,6 @@ struct LyricsView: View {
     @AppStorage(TokenColorSettings.savedColorKey) private var savedHex: String = TokenColorSettings.defaultSavedHex
     @AppStorage(TokenColorSettings.savedLearnedColorKey) private var savedLearnedHex: String = TokenColorSettings.defaultSavedLearnedHex
     @AppStorage(TokenColorSettings.savedNotLearnedColorKey) private var savedNotLearnedHex: String = TokenColorSettings.defaultSavedNotLearnedHex
-    // Settings → Debug → "Karaoke HUD" controls whether the diagnostic strip
-    // overlays the active-cue card. Default off so the lyrics card reads clean;
-    // the binding is read-only here since the toggle lives in SettingsView.
-    @AppStorage(DebugSettings.karaokeDebugHUDKey) private var isKaraokeDebugHUDVisible: Bool = false
     @StateObject var translationCache = LyricsTranslationCache()
 
     // Previously three variants (appleMusic / accentBar / focusCard) selectable from Settings.
@@ -298,12 +246,8 @@ struct LyricsView: View {
         // The cue shown on the active card (and the scroller split point). ♪/♫ instrumental-gap
         // cues are first-class rows — during an intro/gap the active card simply shows the ♪ cue,
         // and the scroller shows the ♪ rows approaching and receding like any other line.
-        // In Adjust mode the card pins to the chosen target line (so the playhead can roam to a
-        // mistimed line's real start without the card following it); otherwise it tracks the live
-        // drag, then the playing line.
-        let displayIndex = dragDisplayIndex
-            ?? (isAdjustingAlignment ? adjustTargetIndex : nil)
-            ?? activeIndex
+        // Otherwise it tracks the live drag, then the playing line.
+        let displayIndex = dragDisplayIndex ?? activeIndex
 
         // Clamp range upper bounds against lower bounds — `ForEach(a..<b)` traps when `b < a`,
         // and that can happen here when an audio note has zero cues (transcription returned
@@ -317,33 +261,7 @@ struct LyricsView: View {
         let belowLower = displayIndex + 1
         let belowUpper = max(belowLower, cues.count)
         return VStack(spacing: 0) {
-            // Top action row. Replaced the per-cue timing-editor row (Set Start / playhead /
-            // Set End / Fix word sweep) with a single full Re-align action — re-runs the whole
-            // CTC pipeline on the attached audio. The old row is preserved (commented) below and
-            // `cueEditingRow(index:)` is kept defined for a one-line revert.
             reAlignBar()
-            cueTimingBar(index: displayIndex)
-            // The per-line alignment-fix row only appears in Adjust mode (toggled in reAlignBar),
-            // so normal listening stays clean. It targets `displayIndex` — which in Adjust mode is
-            // the pinned target line, not the playing line.
-            if isAdjustingAlignment, cues.isEmpty == false {
-                alignmentFixRow(index: displayIndex)
-            }
-            // Karaoke diagnostics HUD — only laid out when the user has flipped
-            // Settings → Debug → "Karaoke HUD". `if`-gated rather than
-            // `.opacity(0)` so it consumes no vertical space when off; otherwise
-            // the active cue would still sit shifted down by the HUD's height.
-            if isKaraokeDebugHUDVisible {
-                Text(karaokeDebugHUDText)
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(4)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.black.opacity(0.4))
-            }
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .center, spacing: 0) {
@@ -368,13 +286,7 @@ struct LyricsView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     guard cues.isEmpty == false else { return }
-                    if isAdjustingAlignment {
-                        // Step the target line up one (no seek) so you can retarget without losing
-                        // the playhead position you set.
-                        adjustTargetIndex = max(0, (adjustTargetIndex ?? activeIndex) - 1)
-                    } else {
-                        controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
-                    }
+                    controller.seek(toMs: cues[max(0, activeIndex - 1)].startMs)
                 }
 
                 // Active cue renderer — fed ONLY the active cue's substring (with furigana
@@ -473,22 +385,6 @@ struct LyricsView: View {
                             let globalLocation = localLocation.map { $0 + cueOriginInNote }
                             onSegmentTapped(globalLocation, rect, nil)
                         },
-                        onSegmentLongPressed: { localLocation, rect, _ in
-                            // Long-press opens a menu for the pressed WORD: snap its start or end
-                            // to the playhead (captured now), or look it up. The word's cue-local
-                            // char span comes from the segment under the press.
-                            let globalLocation = localLocation.map { $0 + cueOriginInNote }
-                            let segment = wordSegment(at: localLocation, in: cueInput)
-                            wordTimingMenu = WordTimingMenu(
-                                cueIndex: displayIndex,
-                                playheadMs: controller.currentTimeMs,
-                                wordCharOffset: segment?.offset ?? 0,
-                                wordCharLength: segment?.length ?? 0,
-                                wordText: segment?.text ?? "",
-                                globalLocation: globalLocation,
-                                rect: rect
-                            )
-                        },
                         isScrollEnabled: false,
                         textAlignment: .center
                     )
@@ -540,12 +436,7 @@ struct LyricsView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     guard cues.isEmpty == false else { return }
-                    if isAdjustingAlignment {
-                        // Step the target line down one (no seek), mirroring the upper tap zone.
-                        adjustTargetIndex = min(cues.count - 1, (adjustTargetIndex ?? activeIndex) + 1)
-                    } else {
-                        controller.seek(toMs: cues[min(cues.count - 1, activeIndex + 1)].startMs)
-                    }
+                    controller.seek(toMs: cues[min(cues.count - 1, activeIndex + 1)].startMs)
                 }
             } // end lyric VStack
             .clipped()
@@ -593,11 +484,7 @@ struct LyricsView: View {
                 .onEnded { _ in
                     // Horizontal scrub already seeked live; nothing to commit on release.
                     if dragAxis == .vertical {
-                        if isAdjustingAlignment {
-                            // Adjust mode: a vertical drag PICKS the target line — no seek, so the
-                            // playhead stays where you parked it to hear the real start.
-                            if let target = dragDisplayIndex { adjustTargetIndex = target }
-                        } else if dragOverscrolledToStart {
+                        if dragOverscrolledToStart {
                             controller.seek(toMs: 0)
                         } else if let target = dragDisplayIndex {
                             controller.seek(toMs: cues[target].startMs)
@@ -615,33 +502,6 @@ struct LyricsView: View {
         .shadow(color: .black.opacity(0.4), radius: 24, x: 0, y: 8)
         .onAppear {
             if let attachmentID { translationCache.load(for: attachmentID) }
-        }
-        .confirmationDialog(
-            wordTimingMenu?.wordText.isEmpty == false ? "“\(wordTimingMenu!.wordText)”" : "Word timing",
-            isPresented: Binding(
-                get: { wordTimingMenu != nil },
-                set: { presented in if presented == false { wordTimingMenu = nil } }
-            ),
-            presenting: wordTimingMenu
-        ) { menu in
-            Button("This word starts at \(formatTenths(ms: menu.playheadMs))") {
-                onCueEdit(.setWordStartToPlayhead(
-                    cueIndex: menu.cueIndex, charOffset: menu.wordCharOffset,
-                    charLength: menu.wordCharLength, ms: menu.playheadMs
-                ))
-            }
-            Button("This word ends at \(formatTenths(ms: menu.playheadMs))") {
-                onCueEdit(.setWordEndToPlayhead(
-                    cueIndex: menu.cueIndex, charOffset: menu.wordCharOffset,
-                    charLength: menu.wordCharLength, ms: menu.playheadMs
-                ))
-            }
-            Button("Look up word") {
-                onSegmentTapped(menu.globalLocation, menu.rect, nil)
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: { menu in
-            Text("Snap this word's start or end to the current playback position (\(formatTenths(ms: menu.playheadMs))). Scrub or pause to the right moment first.")
         }
     }
 
@@ -662,7 +522,7 @@ struct LyricsView: View {
         return String(format: "%d:%02d.%03d", clamped / 60_000, (clamped / 1000) % 60, clamped % 1000)
     }
 
-    // cueTimingBar, reAlignBar, and alignmentFixRow moved to LyricsView+AlignmentFix.swift.
+    // reAlignBar lives in LyricsView+ReAlignBar.swift;
     // controls (bottom transport bar) and LyricsScrubber moved to LyricsView+Controls.swift
     // to keep this file under the repo's line-count cap.
 

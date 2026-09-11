@@ -39,11 +39,6 @@ struct KiokuApp: App {
             let freed = CachesCleaner.sweepStaleDownloads()
             print("[KiokuApp] launch-time stale-download sweep freed \(freed / 1_000_000) MB")
         }
-        // (Startup dedup sweep temporarily disabled while diagnosing a launch crash — clone-on-import
-        // in saveAudio still prevents NEW duplicates; the one-time reclaim sweep is re-enabled once
-        // the launch path is confirmed clean.)
-        // Headless alignment-tuning harness — runs only when launched with KIOKU_ALIGN_HARNESS set.
-        AlignmentHarness.runIfRequested()
     }
 
     var body: some Scene {

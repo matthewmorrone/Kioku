@@ -19,10 +19,5 @@ final class AudioPlaybackUIState {
     var pendingScrollHighlightClearTask: Task<Void, Never>?
     var activePlaybackCueIndex: Int? = nil
     var activeAudioAttachmentID: UUID? = nil
-    // True while the lyric view is playing the isolated vocal stem instead of the original mix
-    // (the "Vocals/Mix" toggle next to Re-align). ReadView swaps the AudioPlaybackController's
-    // source in onChange; reset to false whenever the audio source could change underneath it
-    // (attachment switch, re-align that regenerates the stem).
-    var isListeningToStem = false
     var isShowingLyricsView = false
 }

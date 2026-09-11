@@ -29,6 +29,9 @@ struct WhisperDownloadableModel: Identifiable {
         WhisperDownloadableModel(id: "base",   displayName: "Base",   filename: "ggml-base.bin",   parameters: "74M",  sizeMB: 142),
         WhisperDownloadableModel(id: "small",  displayName: "Small",  filename: "ggml-small.bin",  parameters: "244M", sizeMB: 466),
         WhisperDownloadableModel(id: "medium", displayName: "Medium", filename: "ggml-medium.bin", parameters: "769M", sizeMB: 1500),
+        // 5-bit quantized large-v3: the full 32-layer decoder (best DTW alignment heads) at ~1.1 GB,
+        // vs ~3.1 GB for f16 which doesn't fit under the app's memory limit alongside the audio.
+        WhisperDownloadableModel(id: "large-v3-q5_0", displayName: "Large v3 (5-bit)", filename: "ggml-large-v3-q5_0.bin", parameters: "1550M", sizeMB: 1080),
     ]
 
     // Downloads are pinned to an immutable commit, not `main`: a moving branch means a

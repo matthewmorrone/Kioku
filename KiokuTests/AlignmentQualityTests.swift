@@ -146,15 +146,11 @@ final class AlignmentQualityTests: XCTestCase {
             beforeMetrics = nil
         }
 
-        // Call the EXACT orchestration function the in-app reconcile uses.
-        // Test and production share this code path so the test measures user-
-        // facing quality, not a re-implementation.
-        let reconciledCues = try await SubtitleReconciliation.reconcile(
+        // Call the EXACT function the app's Re-align actions use. Test and production share
+        // this code path so the test measures user-facing quality, not a re-implementation.
+        let reconciledCues = try await WholeSongAlignment.cues(
             audioURL: audioURL,
-            currentCues: startingCues,
-            noteLines: noteLines,
-            cancellationCheck: { false },
-            onProgress: { _ in /* test ignores progress UI */ }
+            lyrics: noteLines.joined(separator: "\n")
         )
 
         let afterSpeechCues = reconciledCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
@@ -180,7 +176,7 @@ final class AlignmentQualityTests: XCTestCase {
             var rows: [(oracleMs: Int, outMs: Int, delta: Int, text: String)] = []
             for oracleCue in oracleCues {
                 for j in nextOut..<afterSpeechCues.count
-                where SubtitleReconciliation.cueMatchesNoteLine(afterSpeechCues[j].text, oracleCue.text) {
+                where cueMatchesNoteLine(afterSpeechCues[j].text, oracleCue.text) {
                     rows.append((oracleCue.startMs, afterSpeechCues[j].startMs,
                                  abs(afterSpeechCues[j].startMs - oracleCue.startMs), oracleCue.text))
                     nextOut = j + 1
@@ -197,7 +193,7 @@ final class AlignmentQualityTests: XCTestCase {
         if afterMetrics.missingFromOutput.isEmpty == false {
             print("\n[DEBUG] Reconciled output cues (\(afterSpeechCues.count)):")
             for (i, cue) in afterSpeechCues.enumerated() {
-                let inOracle = oracleCues.contains { SubtitleReconciliation.cueMatchesNoteLine($0.text, cue.text) }
+                let inOracle = oracleCues.contains { cueMatchesNoteLine($0.text, cue.text) }
                 print("  [\(i)] \(cue.startMs)ms - \(cue.endMs)ms: \(cue.text) \(inOracle ? "✓" : "?")")
             }
             print("\n[DEBUG] Oracle cues NOT found in output (\(afterMetrics.missingFromOutput.count)):")
@@ -309,7 +305,7 @@ final class AlignmentQualityTests: XCTestCase {
     }
 
     // Matches each oracle cue to an output cue by normalized-exact text equality
-    // (same predicate as SubtitleReconciliation). Computes per-cue start-time
+    // (exact, then NFKC + whitespace-stripped). Computes per-cue start-time
     // deltas across matched pairs; aggregates median/max + coverage. Output
     // cues with no oracle counterpart are recorded as "extras" but don't fail
     // the test — they're informational.
@@ -328,7 +324,7 @@ final class AlignmentQualityTests: XCTestCase {
         for (oi, oracleCue) in oracle.enumerated() {
             var found: Int? = nil
             for j in nextOutputIdx..<output.count {
-                if SubtitleReconciliation.cueMatchesNoteLine(output[j].text, oracleCue.text) {
+                if cueMatchesNoteLine(output[j].text, oracleCue.text) {
                     found = j
                     break
                 }
@@ -381,4 +377,16 @@ final class AlignmentQualityTests: XCTestCase {
             extrasInOutput: extrasInOutput
         )
     }
+}
+
+// Exact match first, then NFKC + whitespace-strip exact. Deliberately not fuzzy — substring or
+// edit-distance matches collide with chorus refrains.
+private func cueMatchesNoteLine(_ cueText: String, _ noteLine: String) -> Bool {
+    if cueText == noteLine { return true }
+    let normalize: (String) -> String = { s in
+        (s as NSString).precomposedStringWithCompatibilityMapping
+            .components(separatedBy: .whitespacesAndNewlines)
+            .joined()
+    }
+    return normalize(cueText) == normalize(noteLine)
 }

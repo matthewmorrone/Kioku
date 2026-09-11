@@ -75,7 +75,12 @@ extension ReadView {
                 return
             }
             if hasEditableSubtitles {
-                presentSubtitleEditorIfPossible()
+                if audioPlayback.activeAudioAttachmentID == nil,
+                   let activeNoteID = document.activeNoteID,
+                   let attachmentID = notesStore.note(withID: activeNoteID)?.audioAttachmentID {
+                    loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
+                }
+                audioPlayback.isShowingLyricsView = true
             } else {
                 subtitleImport.isShowingSubtitlePopup = true
             }
@@ -146,71 +151,37 @@ extension ReadView {
 
         do {
             subtitleImport.lyricAlignmentProgressMessage = "Aligning..."
-
-            let srtText = try await OnDeviceLyricAligner.align(
+            let cues = try await WholeSongAlignment.cues(
                 audioURL: sourceURL,
                 lyrics: trimmedLyrics,
                 cancellationCheck: { [token = subtitleImport.alignmentCancellationToken] in token.isCancelled },
-                // Show the pipeline's own per-phase status ("Isolating vocals… 73%",
-                // "Aligning lyrics… 45%") so the percentage tracks the ACTUAL current phase at its
-                // true 0–100%. The old onProgress bar folded the ~50 s isolation into 5→40% while
-                // mislabeling it "Aligning", then flashed the real alignment 40→90% in seconds —
-                // which read as "stuck at 40%, then done".
                 onStage: { [self] stage in
                     Task { @MainActor in subtitleImport.lyricAlignmentProgressMessage = stage }
-                },
-                onSegment: { [self] partialLines in
-                    let n = partialLines.count
-                    let lastText = partialLines.last?.text ?? ""
-                    // Build partial SRT from the lines aligned so far.
-                    let partial = partialLines.enumerated().map { i, line in
-                        let startTs = SwiftWhisperAlign.SRTWriter.timestamp(line.start)
-                        let endTs = SwiftWhisperAlign.SRTWriter.timestamp(line.end)
-                        return "\(i + 1)\n\(startTs) --> \(endTs)\n\(line.text)"
-                    }.joined(separator: "\n\n")
-                    Task { @MainActor in
-                        subtitleImport.lyricAlignmentProgressMessage = "Line \(n)/\(totalLines): \(lastText)"
-                        subtitleImport.alignmentResultSRT = partial
-                    }
                 }
             )
-
-            subtitleImport.alignmentResultSRT = srtText
+            subtitleImport.alignmentResultSRT = SubtitleParser.formatSRT(from: cues)
             subtitleImport.lyricAlignmentProgressMessage = "Saving subtitles..."
             try saveAlignedSubtitles(
-                srtText: srtText,
+                cues: cues,
                 audioURL: sourceURL,
                 originalAudioFilename: originalAudioFilename,
                 noteID: noteID
             )
-            checkForSubtitleMismatches()
         } catch is CancellationError {
-            // User cancelled — no error to show.
             subtitleImport.alignmentResultSRT = ""
         } catch {
             subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
         }
     }
 
-    // Checks for mismatches between subtitle cue text and note text after save,
-    // and presents a resolution dialog if any are found.
-    @MainActor
-    func checkForSubtitleMismatches() {
-        let count = audioPlayback.audioAttachmentCues.enumerated().filter { index, cue in
-            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
-                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
-                  let swiftRange = Range(range, in: document.text) else {
-                return false
+    // Drives the Re-align failure alert from the message string.
+    var cueRealignErrorPresented: Binding<Bool> {
+        Binding(
+            get: { lyricRealign.cueRealignErrorMessage.isEmpty == false },
+            set: { presented in
+                if presented == false { lyricRealign.cueRealignErrorMessage = "" }
             }
-            let noteLineText = String(document.text[swiftRange])
-            return noteLineText != cue.text
-                && SubtitleParser.isNonSpeechCue(cue.text) == false
-        }.count
-
-        if count > 0 {
-            lyricRealign.subtitleMismatchCount = count
-            lyricRealign.isShowingSubtitleMismatchDialog = true
-        }
+        )
     }
 
     // Cancels the in-progress alignment. The abort_callback polls this flag.
@@ -220,15 +191,13 @@ extension ReadView {
         subtitleImport.alignmentCancellationToken.cancel()
     }
 
-    // Re-runs the FULL on-device alignment pipeline (CTC forced alignment + vocal separation +
-    // windowing, via OnDeviceLyricAligner → CTCForcedAligner) over the note's lyrics against the
-    // ALREADY-attached audio, then swaps the cue list in place — no wipe / re-import. Backs the
-    // lyric view's top "Re-align" action (vs. `realignActiveCueWord`, which fixes one line in a
-    // padded window). Progress + spinner ride on `lyricRealign.isReAligningWholeNote`; cancellation reuses the
-    // shared alignment token so dismissing/cancelling mid-run stops the next window.
+    // Re-runs the whole-song alignment over the note's lyrics against the already-attached
+    // audio, then swaps the cue list in place — no wipe / re-import. Backs the karaoke bar's
+    // "Re-align" action. Progress + spinner ride on `lyricRealign.isReAligningWholeNote`;
+    // cancellation reuses the shared alignment token.
     @MainActor
     func realignWholeNote() async {
-        guard lyricRealign.isReAligningWholeNote == false, lyricRealign.realigningCueIndex == nil else { return }
+        guard lyricRealign.isReAligningWholeNote == false else { return }
         guard let attachmentID = audioPlayback.activeAudioAttachmentID,
               let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
 
@@ -251,12 +220,11 @@ extension ReadView {
         }
 
         do {
-            // Detailed (structured) align: returns per-line timings AND per-unit sub-line
-            // checkpoints. Building cues from this — instead of round-tripping through line-level
-            // SRT — is what makes whole-note Re-align highlight per-word/per-mora instead of per-line.
-            let result = try await OnDeviceLyricAligner.alignDetailed(
+            let durationMs = audioPlayback.audioController.duration > 0 ? Int(audioPlayback.audioController.duration * 1000) : nil
+            let cuesWithMarkers = try await WholeSongAlignment.cues(
                 audioURL: audioURL,
                 lyrics: lyrics,
+                durationMs: durationMs,
                 cancellationCheck: { [token = subtitleImport.alignmentCancellationToken] in token.isCancelled },
                 // The stage string already carries its own per-phase percent
                 // ("Isolating vocals… 73%", "Aligning lyrics… 45%"), so each phase shows
@@ -264,50 +232,6 @@ extension ReadView {
                 onStage: { [self] stage in
                     Task { @MainActor in lyricRealign.reAlignProgressMessage = stage }
                 }
-            )
-
-            guard result.lines.isEmpty == false else {
-                throw NSError(
-                    domain: "Kioku.LyricAlignment",
-                    code: 5,
-                    userInfo: [NSLocalizedDescriptionKey: "Re-alignment produced no aligned lines."]
-                )
-            }
-
-            // Build cues straight from the structured result, folding each line's aligner units
-            // into per-character karaoke checkpoints (UTF-16 offsets map 1:1 onto CueCharTiming).
-            let durationMs = audioPlayback.audioController.duration > 0 ? Int(audioPlayback.audioController.duration * 1000) : nil
-            var cues: [SubtitleCue] = []
-            for (i, line) in result.lines.enumerated() {
-                let startMs = max(0, Int((line.start * 1000).rounded()))
-                var endMs = max(startMs + 50, Int((line.end * 1000).rounded()))   // ≥50 ms cue
-                if let durationMs { endMs = min(endMs, durationMs) }
-                let tokens = i < result.lineTokens.count ? result.lineTokens[i] : []
-                let checkpoints = tokens
-                    .map { token in
-                        CueCharTiming(
-                            timeMs: max(0, Int((token.start * 1000).rounded())),
-                            charOffsetInCue: token.charOffsetUTF16,
-                            charLength: token.charLengthUTF16
-                        )
-                    }
-                    .sorted { $0.timeMs < $1.timeMs }
-                cues.append(SubtitleCue(index: i + 1, startMs: startMs, endMs: endMs,
-                                        text: line.text, checkpoints: checkpoints))
-            }
-
-            // Ground-truth onset wall: pull any line whose onset drifted INTO a proven instrumental
-            // gap (anchor-fill char-rate slack) forward to where the vocal actually resumes. Without
-            // this a mis-timed line both sweeps "ghostly" over the silence and suppresses the gap's ♪.
-            let clampedCues = SubtitleEditorTimingTools.clampOnsetsToVocal(
-                cues: cues, durationMs: durationMs ?? 0, vocalSegments: result.vocalSegments
-            )
-
-            // Fill the instrumental stretches (intro, breaks, outro) with ♪ markers — driven by the
-            // aligner's vocal segments (real silence on the stem) rather than cue-time gaps, so a
-            // marker only appears where the singer truly isn't singing. Timings/checkpoints untouched.
-            let cuesWithMarkers = SubtitleEditorTimingTools.insertMusicMarkers(
-                cues: clampedCues, durationMs: durationMs ?? 0, vocalSegments: result.vocalSegments
             )
 
             // Persist in place on the SAME attachment (the audio is unchanged), then swap cues
@@ -334,18 +258,17 @@ extension ReadView {
     // Writes the on-device alignment SRT and paired audio file to disk and links them to the note.
     @MainActor
     func saveAlignedSubtitles(
-        srtText: String,
+        cues: [SubtitleCue],
         audioURL: URL,
         originalAudioFilename: String,
         noteID: UUID,
         textGridURL: URL? = nil
     ) throws {
-        let cues = SubtitleParser.parse(srtText)
         guard cues.isEmpty == false else {
             throw NSError(
                 domain: "Kioku.LyricAlignment",
                 code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "Alignment produced output but it was not valid SRT."]
+                userInfo: [NSLocalizedDescriptionKey: "Alignment produced no cues."]
             )
         }
 
@@ -468,20 +391,6 @@ extension ReadView {
         NotesAudioStore.shared.deleteAttachment(attachmentID)
         notesStore.updateAudioAttachment(id: noteID, attachmentID: nil)
         loadAudioAttachmentIfNeeded(attachmentID: nil)
-    }
-
-    // Ensures an audio attachment is loaded before opening the subtitle editor so the editor always has cue data.
-    @MainActor
-    func presentSubtitleEditorIfPossible() {
-        if audioPlayback.activeAudioAttachmentID == nil,
-           let activeNoteID = document.activeNoteID,
-           let attachmentID = notesStore.note(withID: activeNoteID)?.audioAttachmentID {
-            loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
-        }
-
-        if audioPlayback.activeAudioAttachmentID != nil {
-            lyricRealign.isShowingSubtitleEditor = true
-        }
     }
 
     // Receives the lyric-button quick-load picker result: a mixed bag of audio / srt / textgrid.
@@ -636,15 +545,19 @@ extension ReadView {
                     subtitleImport.lyricAlignmentErrorMessage = "Save or enter note text before importing subtitles."
                     return
                 }
+                let cues = SubtitleParser.parse(srtText)
+                guard cues.isEmpty == false else {
+                    subtitleImport.lyricAlignmentErrorMessage = "The subtitle file contained no cues."
+                    return
+                }
                 try saveAlignedSubtitles(
-                    srtText: srtText,
+                    cues: cues,
                     audioURL: audioURL,
                     originalAudioFilename: subtitleImport.pendingSubtitleAudioFilename,
                     noteID: noteID,
                     textGridURL: subtitleImport.pendingSubtitleTextGridURL
                 )
                 subtitleImport.alignmentResultSRT = srtText
-                checkForSubtitleMismatches()
             } catch {
                 subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
             }
@@ -665,58 +578,4 @@ extension ReadView {
         clearPendingSubtitleTextGridSelection()
     }
 
-    // Rewrites subtitle cues to use the note text for each line, preserving timestamps.
-    // Resolves mismatches caused by Whisper transcription errors in the alignment output.
-    @MainActor
-    func syncSubtitlesToNote() {
-        guard let attachmentID = audioPlayback.activeAudioAttachmentID else { return }
-
-        let rebuilt = audioPlayback.audioAttachmentCues.enumerated().map { index, cue -> SubtitleCue in
-            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
-                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
-                  let swiftRange = Range(range, in: document.text) else {
-                return cue
-            }
-            let noteLineText = String(document.text[swiftRange])
-            return SubtitleCue(index: cue.index, startMs: cue.startMs, endMs: cue.endMs, text: noteLineText)
-        }
-        // Carry per-word checkpoints onto any line whose text is unchanged; lines re-pointed at the
-        // note text lose theirs (their characters differ, so the old offsets no longer apply).
-        let updatedCues = SubtitleEditorTimingTools.mergeCheckpoints(into: rebuilt, from: audioPlayback.audioAttachmentCues)
-
-        do {
-            // cues.json is the sole persisted truth — no .srt sidecar is written.
-            try NotesAudioStore.shared.saveCues(updatedCues, attachmentID: attachmentID)
-            audioPlayback.audioAttachmentCues = updatedCues
-            // Re-resolve highlight ranges now that cue text matches note text exactly.
-            audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: updatedCues, in: document.text)
-        } catch {
-            print("[SyncSubtitles] failed to save updated cues: \(error)")
-        }
-    }
-
-    // Replaces note text lines with the corresponding subtitle cue text, preserving timestamps.
-    // Useful when the subtitle text is considered authoritative (e.g. from a reference SRT).
-    @MainActor
-    func syncNoteToSubtitles() {
-        var newText = document.text
-        // Apply replacements in reverse order so earlier ranges stay valid.
-        let replacements: [(NSRange, String)] = audioPlayback.audioAttachmentCues.enumerated().compactMap { index, cue in
-            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
-                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
-                  let swiftRange = Range(range, in: newText) else { return nil }
-            let noteLineText = String(newText[swiftRange])
-            guard noteLineText != cue.text else { return nil }
-            return (range, cue.text)
-        }.reversed()
-
-        for (range, replacement) in replacements {
-            guard let swiftRange = Range(range, in: newText) else { continue }
-            newText.replaceSubrange(swiftRange, with: replacement)
-        }
-
-        document.text = newText
-        // Re-resolve highlight ranges against the updated note text.
-        audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: audioPlayback.audioAttachmentCues, in: document.text)
-    }
 }

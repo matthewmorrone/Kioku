@@ -7,25 +7,6 @@ import UniformTypeIdentifiers
 extension ReadView {
     var alertingReadView: some View {
         lifecycleReadView
-            .sheet(isPresented: $lyricRealign.isShowingSubtitleEditor) {
-                if let attachmentID = audioPlayback.activeAudioAttachmentID {
-                    SubtitleEditorSheet(
-                        attachmentID: attachmentID,
-                        initialCues: audioPlayback.audioAttachmentCues,
-                        noteText: document.text
-                    ) { newCues in
-                        // Reload the controller with updated cues so highlighting stays in sync.
-                        audioPlayback.audioAttachmentCues = newCues
-                        if let url = NotesAudioStore.shared.audioURL(for: attachmentID) {
-                            do {
-                                try audioPlayback.audioController.load(audioURL: url, cues: newCues, title: resolvedTitle)
-                            } catch {
-                                print("[ReadView] reload after subtitle edit failed for \(url.lastPathComponent): \(error.localizedDescription)")
-                            }
-                        }
-                    }
-                }
-            }
             .alert("Audio Transcription Failed", isPresented: audioTranscriptionErrorPresented) {
                 Button("OK", role: .cancel) {
                     subtitleImport.audioTranscriptionErrorMessage = ""
@@ -46,21 +27,6 @@ extension ReadView {
                 }
             } message: {
                 Text(lyricRealign.cueRealignErrorMessage)
-            }
-            .confirmationDialog(
-                "\(lyricRealign.subtitleMismatchCount) subtitle\(lyricRealign.subtitleMismatchCount == 1 ? "" : "s") differ from note text",
-                isPresented: $lyricRealign.isShowingSubtitleMismatchDialog,
-                titleVisibility: .visible
-            ) {
-                Button("Update subtitles to match note") {
-                    syncSubtitlesToNote()
-                }
-                Button("Update note to match subtitles") {
-                    syncNoteToSubtitles()
-                }
-                Button("Ignore", role: .cancel) {}
-            } message: {
-                Text("The subtitle text doesn't match the note for some lines. This can happen when alignment produces different characters than the original.")
             }
             .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMCorrectionError) {
                 Button("Retry") {
@@ -381,21 +347,13 @@ extension ReadView {
                         audioPlayback.isShowingLyricsView = false
                     },
                     onFocusSetting: onFocusSetting,
-                    onCueEdit: { edit in
-                        applyLyricCueEdit(edit)
-                    },
-                    realigningCueIndex: lyricRealign.realigningCueIndex,
+                    onReAlign: { Task { await realignWholeNote() } },
                     isReAligning: lyricRealign.isReAligningWholeNote,
-                    reAlignMessage: lyricRealign.reAlignProgressMessage,
-                    stemAvailable: stemAvailableForActiveAudio,
-                    isListeningToStem: $audioPlayback.isListeningToStem
+                    reAlignMessage: lyricRealign.reAlignProgressMessage
                 )
                 .opacity(audioPlayback.isShowingLyricsView ? 1 : 0)
                 .allowsHitTesting(audioPlayback.isShowingLyricsView)
                 .animation(.easeInOut(duration: 0.2), value: audioPlayback.isShowingLyricsView)
-                .onChange(of: audioPlayback.isListeningToStem) { _, listening in
-                    switchLyricAudioSource(toStem: listening)
-                }
             }
         }
         .sheet(isPresented: $readSheets.isShowingSegmentList) {

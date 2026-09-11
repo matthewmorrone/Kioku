@@ -19,16 +19,11 @@ import AudioCommon
 import MLX
 
 public struct CTCForcedAligner {
-    // Qwen3ForcedAligner expects 24 kHz mono float audio.
-    private static let sampleRate = 24_000
-
     public init() {}
 
     // Aligns lyric lines to the audio, returning one AlignedLine per input line. Pipeline:
-    // isolate vocals (HTDemucs CoreML, cached per audio file) → trim the leading intro →
-    // energy-VAD the stem into vocal regions → transcribe the regions to mine line→time
-    // anchors (StemTranscriber) → forced-align each anchor-bounded span (alignAnchored),
-    // falling back to VAD-gated windows when there are too few anchors.
+    // isolate vocals (HTDemucs CoreML, cached per audio file) → trim the leading intro → one
+    // CTC forced-alignment pass over the whole stem with the whole lyric → map units to lines.
     public func align(
         input: AlignmentInput,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
@@ -49,22 +44,15 @@ public struct CTCForcedAligner {
         Self.breadcrumb("RUN START", reset: true)
         Self.breadcrumb("stem cache \(VocalStemCache.debugKeyInfo(for: input.audioURL))")
 
-        // JETSAM FIX (confirmed via on-device SIGKILL/EXC_CRASH + ctc-debug.log): bound MLX's
-        // retained GPU buffer cache for the whole run. By default MLX's cacheLimit equals its
-        // (very large) memoryLimit, so buffers freed after each ASR/aligner forward pass are
-        // RETAINED for reuse rather than returned to the OS — on-device this showed as ~800MB
-        // that never came back after the first transcription piece, steadily eating the jetsam
-        // headroom os_proc_available_memory() reports until a forward-pass spike crossed the
-        // limit and the OS killed us mid-StemTranscriber. Capping the cache forces those buffers
-        // back to the OS between passes (per-piece clearCache() still runs), lowering peak
-        // footprint. This is output-preserving: it changes only allocator retention, never any
-        // computation. Unlike memoryLimit, a low cacheLimit cannot stall allocation — allocations
-        // simply bypass the cache and hit the OS directly. Restored on exit so we don't perturb
-        // any other in-process MLX user.
+        // Bound MLX's retained buffer cache for the run. By default cacheLimit equals the (huge)
+        // memoryLimit, so every buffer freed inside the aligner's forward pass is kept for reuse
+        // instead of returned to the OS; over a full-song pass that retained pile is what pushes
+        // the process past the jetsam line (confirmed 2026-09-11: same call survives with the
+        // cap, is killed without it). Output-preserving — allocator retention only. A low cap
+        // can't stall allocation; allocations just bypass the cache. Restored on exit.
         let priorCacheLimit = MLX.Memory.cacheLimit
-        MLX.Memory.cacheLimit = 48 * 1024 * 1024   // 48 MB — small cap; MLX docs note even ~2MB rarely hurts throughput
+        MLX.Memory.cacheLimit = 48 * 1024 * 1024
         defer { MLX.Memory.cacheLimit = priorCacheLimit }
-        Self.breadcrumb("MLX cacheLimit \(priorCacheLimit / (1024 * 1024))MB→48MB · active=\(MLX.Memory.activeMemory / (1024 * 1024))MB cache=\(MLX.Memory.cacheMemory / (1024 * 1024))MB")
 
         // Vocal isolation is the most expensive stage, and the isolated stem is a pure function
         // of the source audio — so a Re-align of unchanged audio loads the stem off disk and skips
@@ -86,10 +74,7 @@ public struct CTCForcedAligner {
 
             // Isolate vocals so the aligner sees speech-like audio rather than the full mix.
             // HTDemucs-FT via CoreML/ANE is the only separator; it runs a full song in ~1/3 the
-            // wall time of the MLX build it replaced. Measured tradeoff on tsukiiro-chainon: the
-            // ASR reads its stem slightly worse, costing 4 of 34 anchors (20 vs 24) and worst-case
-            // timing (max Δ 6.0s→26.2s). If anchor quality needs tightening, tune extractAnchors'
-            // matching/gate rather than re-adding a second separator model.
+            // wall time of the MLX build it replaced.
             onStage?("Isolating…")
             Self.breadcrumb("isolating (HTDemucs-FT CoreML/ANE)")
             let mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
@@ -120,132 +105,53 @@ public struct CTCForcedAligner {
         let (trimmedVocal, leadOffsetSec) = Self.trimLeadingSilence(vocalMono, sampleRate: 44_100)
         Self.breadcrumb("vocal mono \(trimmedVocal.count) frames, trimmed \(String(format: "%.1f", leadOffsetSec))s lead")
 
-        // VAD: detect the sung segments across the whole stem so alignment windows snap to
-        // vocal pauses and skip instrumental gaps (fixes the mid-song window-seam collapses and
-        // the lines that stretched across instrumental breaks). ENERGY-based, not a speech VAD:
-        // on the now-clean HTDemucs stem the vocal regions are exactly the loud spans and the
-        // gaps are exactly the instrumental breaks — and energy survives sustained sung vowels
-        // where a speech VAD (FireRedVAD) fragments. Empty → falls back to fixed windows.
+        // Energy-VAD the stem into sung regions. Not used to steer alignment — the aligner sees the
+        // whole stem in one call — only reported back as `vocalSegments` so the caller can place ♪
+        // markers on the real instrumental gaps. Energy-based (not a speech VAD) because on the
+        // clean HTDemucs stem the vocal regions are exactly the loud spans, and energy survives
+        // sustained sung vowels where a speech VAD fragments. Breaths/consonant gaps ≤3 s are merged.
         onStage?("Detecting vocals…")
-        // The raw energy gate over-fragments a verse into 3–6 s slivers (breaths, consonant
-        // gaps). Merge anything separated by ≤3 s back into one region so each alignment window
-        // is a coherent vocal span; only the real instrumental gaps (≫3 s) stay as splits. This
-        // is essential: a 6 s sliver handed to the CTC aligner crams the whole lyric into it.
         let vadRaw = Self.energyVADSegments(trimmedVocal, sampleRate: 44_100)
         let vadSegs = Self.mergeSegments(vadRaw, maxGap: 3.0)
         Self.breadcrumb("energy-VAD \(vadRaw.count)→\(vadSegs.count) segs: " +
                         vadSegs.prefix(12).map { String(format: "%.0f-%.0f", $0.start, $0.end) }.joined(separator: " "))
 
-        // Anchor pass: transcribe the stem FIRST (before the aligner is loaded, so the ASR weights
-        // are released before the aligner allocates), then mine confident line→time anchors from the
-        // heard text. Falls back to an empty anchor set on any failure → routing uses VAD-gated.
-        //
-        // This block used to run pinned to MLX's CPU device: on iOS 27 beta 24A5380h, compiling
-        // this Transformer's attention layers on GPU crashed inside Apple's own
-        // MetalPerformanceShadersGraph MLIR optimizer (FoldMultiplyIntoSDPAScale). CPU's
-        // *compiled* execution turned out to ALSO be broken on that OS family — every window
-        // failed with "[Compiled::eval_cpu] CPU compilation not supported on the platform." —
-        // and forcing eager execution to dodge that made each window take 70s+ instead of
-        // ~1-2s. Confirmed fixed on 24A5430a (a later beta): plain GPU + compiled (MLX's
-        // default, no overrides) now runs a full song's alignment in ~5s with no crash — same
-        // story as the unrelated A17→A19 HTDemucs-FT Metal fault elsewhere in this file, fixed
-        // by a newer OS/hardware combo rather than app-side code. If a future OS build
-        // regresses this, revert to `Device.withDefaultDevice(.cpu)` + `MLX.compile(enable:
-        // false)` (see git history) — confirmed to at least not crash, just ~40x slower.
-        let rawUnits: [(start: Double, end: Double, text: String)] = try await {
-            onStage?("Transcribing…")
-            let phrases = (try? await StemTranscriber.segments(
-                stem: trimmedVocal, sampleRate: 44_100, regions: vadSegs,
-                // Resumable checkpoint: an interrupted transcription resumes from the last completed
-                // piece instead of redoing the ~60 s load + every piece. Keyed by audio identity, so
-                // it survives across app launches and is reused by later re-aligns.
-                cacheIdentity: VocalStemCache.identityKey(for: input.audioURL),
-                progress: { msg in
-                    Self.breadcrumb("anchor-asr: \(msg)")
-                    // The ASR model load/download is a ~60 s+ opaque phase before any piece
-                    // (encoder/decoder download + compile), so onFraction can't cover it —
-                    // forward the real message (it carries its own live percent) rather than a
-                    // frozen placeholder. Per-piece previews ("12–36s → こんにちは") are excluded
-                    // — onFraction below already renders those as a clean "Transcribing… N%".
-                    if msg.contains("→") == false { onStage?(msg) }
-                },
-                // Per-phase % in the stage label, matching the isolation/alignment stages. Fires once
-                // per ~24 s piece (so it starts at the first piece's fraction, never a stuck 0%).
-                onFraction: { frac in
-                    onStage?("Transcribing… \(Int((frac * 100).rounded()))%")
-                },
-                cancellationCheck: cancellationCheck)) ?? []
-            Self.breadcrumb("transcribed \(phrases.count) pieces over \(vadSegs.count) regions")
-            let anchors = Self.extractAnchors(lines: input.lines, phrases: phrases, vadSegs: vadSegs)
-            MLX.Memory.clearCache()   // free the ASR model's GPU buffers before the aligner allocates
-            Self.breadcrumb("anchors \(anchors.count)/\(input.lines.count): " +
-                anchors.prefix(12).map { "L\($0.line)@\(String(format: "%.0f", $0.time))" }.joined(separator: " "))
-            if cancellationCheck?() == true { throw CancellationError() }
-
-            // Downloads the CTC model on first use; cached thereafter in Application Support (not the
-            // purgeable Caches dir — see ModelStorage). Surface the staged progress to the UI so this
-            // isn't a frozen "Preparing alignment model…" through a ~400 MB download + weight load,
-            // and breadcrumb the milestones (with availMem) so a run that dies here reveals WHETHER it
-            // died mid-download (network) or mid-weight-load (memory). Skip the high-frequency
-            // download-weights ticks.
-            onStage?("Preparing aligner…")
-            Self.breadcrumb("aligner: fromPretrained begin")
-            let aligner = try await Qwen3ForcedAligner.fromPretrained(
-                modelId: ModelStorage.forcedAlignerModelId,
-                cacheDir: try ModelStorage.directory(for: ModelStorage.forcedAlignerModelId),
-                progressHandler: { frac, stage in
-                    if stage.hasPrefix("Downloading") {
-                        // The downloader reports 0…0.8 of the overall bar; rescale to a clean 0–100% of the
-                        // download so the label reads as its own stage, not a stuttering "Preparing… 80%".
-                        let pct = Int((min(frac, 0.8) / 0.8 * 100).rounded())
-                        onStage?("Downloading aligner… \(pct)%")
-                    } else {
-                        onStage?("Preparing aligner…")   // tokenizer + weight load: fast, no useful %
-                    }
-                    // Breadcrumb milestones (with availMem) — skip the high-frequency download-weights ticks —
-                    // so a run that dies here shows WHETHER it died mid-download (network) or mid-load (memory).
-                    if stage.hasPrefix("Downloading weights") == false {
-                        Self.breadcrumb("aligner-load: \(stage) \(Int((frac * 100).rounded()))%")
-                    }
+        // Download (first use) + load the CTC aligner. Weights live in Application Support, not
+        // the purgeable Caches dir — see ModelStorage.
+        onStage?("Preparing aligner…")
+        Self.breadcrumb("aligner: fromPretrained begin")
+        let aligner = try await Qwen3ForcedAligner.fromPretrained(
+            modelId: ModelStorage.forcedAlignerModelId,
+            cacheDir: try ModelStorage.directory(for: ModelStorage.forcedAlignerModelId),
+            progressHandler: { frac, stage in
+                if stage.hasPrefix("Downloading") {
+                    // The downloader reports 0…0.8 of the overall bar; rescale to a clean 0–100% of the
+                    // download so the label reads as its own stage, not a stuttering "Preparing… 80%".
+                    let pct = Int((min(frac, 0.8) / 0.8 * 100).rounded())
+                    onStage?("Downloading aligner… \(pct)%")
+                } else {
+                    onStage?("Preparing aligner…")   // tokenizer + weight load: fast, no useful %
                 }
-            )
-            Self.breadcrumb("aligner loaded (fromPretrained returned)")
-            if cancellationCheck?() == true { throw CancellationError() }
-
-            onStage?("Aligning lyrics…")
-            let text = input.lines.joined(separator: "\n")
-
-            let alignProgress: (Double) -> Void = { frac in
-                onProgress?(0.40 + 0.50 * frac)                        // global bar (legacy callers)
-                onStage?("Aligning lyrics… \(Int((frac * 100).rounded()))%")   // per-phase %
+                if stage.hasPrefix("Downloading weights") == false {
+                    Self.breadcrumb("aligner-load: \(stage) \(Int((frac * 100).rounded()))%")
+                }
             }
-            // Routing: anchor-and-fill when the transcription yielded ≥2 anchors (walls the char-rate
-            // drift can't cross); otherwise VAD-gated windows. Continuous windowing is only the
-            // no-VAD fallback — its char-rate is diluted by instrumental time (totalChars / totalSec
-            // instead of / totalVocalSec), so it under-feeds and strands the song's last lines.
-            let rawUnits: [(start: Double, end: Double, text: String)]
-            if anchors.count >= 2 {
-                Self.breadcrumb("aligning (anchor-fill) \(input.lines.count) lines, \(anchors.count) anchors")
-                rawUnits = Self.alignAnchored(
-                    samples: trimmedVocal, audioRate: 44_100, lines: input.lines, anchors: anchors,
-                    vadSegs: vadSegs, aligner: aligner, cancellationCheck: cancellationCheck, onProgress: alignProgress)
-            } else if vadSegs.isEmpty {
-                Self.breadcrumb("aligning (windowed) \(text.count) chars over ~\(trimmedVocal.count / 44_100)s")
-                rawUnits = Self.alignWindowed(
-                    samples: trimmedVocal, audioRate: 44_100, text: text, aligner: aligner,
-                    cancellationCheck: cancellationCheck, onProgress: alignProgress)
-            } else {
-                Self.breadcrumb("aligning (VAD-gated) \(text.count) chars over \(vadSegs.count) segments")
-                rawUnits = Self.alignVADGated(
-                    samples: trimmedVocal, audioRate: 44_100, text: text, aligner: aligner,
-                    segments: vadSegs, cancellationCheck: cancellationCheck, onProgress: alignProgress)
-            }
-            alignProgress(1.0)   // windows report progress at their start; close the phase at a true 100%
-            return rawUnits
-        }()
+        )
+        Self.breadcrumb("aligner loaded (fromPretrained returned)")
+        if cancellationCheck?() == true { throw CancellationError() }
+
+        // One CTC pass over the whole stem with the whole lyric. The aligner is rated for up to
+        // five minutes of audio per call; a full-song call peaks around 1.3 GB on an iPhone 17.
+        // `withError` turns MLX's internal fatalError handler into a catchable Swift error.
+        onStage?("Aligning lyrics…")
+        let text = input.lines.joined(separator: "\n")
+        Self.breadcrumb("aligning \(text.count) chars over \(trimmedVocal.count / 44_100)s in one pass")
+        let aligned = try withError { aligner.align(audio: trimmedVocal, text: text, sampleRate: 44_100) }
+        MLX.Memory.clearCache()
+        let rawUnits = aligned.map { (start: Double($0.startTime), end: Double($0.endTime), text: $0.text) }
         // Map back to the original timeline (undo the leading-silence trim).
         let units = rawUnits.map { (start: $0.start + leadOffsetSec, end: $0.end + leadOffsetSec, text: $0.text) }
-        Self.breadcrumb("aligned \(units.count) units (\(vadSegs.isEmpty ? "windowed" : "VAD-gated"))")
+        Self.breadcrumb("aligned \(units.count) units")
         onProgress?(0.9)
 
         // Decouple from the soniqo result type — pull starts/ends/texts into plain arrays.
@@ -299,24 +205,6 @@ public struct CTCForcedAligner {
         }
         VocalStemCache.store(mono, for: url)
         return mono
-    }
-
-    // Aligns and returns SRT text — drop-in for ForcedAligner.alignToSRT.
-    public func alignToSRT(
-        input: AlignmentInput,
-        cancellationCheck: (@Sendable () -> Bool)? = nil,
-        onProgress: (@Sendable (Double) -> Void)? = nil,
-        onStage: (@Sendable (String) -> Void)? = nil,
-        onSegment: (@Sendable ([AlignedLine]) -> Void)? = nil
-    ) async throws -> String {
-        let result = try await align(
-            input: input,
-            cancellationCheck: cancellationCheck,
-            onProgress: onProgress,
-            onStage: onStage,
-            onSegment: onSegment
-        )
-        return SRTWriter.write(result)
     }
 
     // Maps the aligner's per-unit (start, end, text) output onto the input lines by accumulating
@@ -545,431 +433,6 @@ public struct CTCForcedAligner {
             }
         }
         return merged
-    }
-
-
-
-    // Aligns text to audio gated by VAD segments: aligns text only WITHIN sung regions,
-    // sub-windowing long ones, and treats each segment's end as a trustworthy boundary (a real
-    // vocal pause) so the last line of a segment isn't squished — and skips instrumental gaps
-    // entirely so no line stretches across silence. Returns units in absolute seconds.
-    // Index of the first word in the trailing "stuck" plateau — ≥ `minSize` consecutive trailing
-    // words whose start times differ by < `tol` — or `aligned.count` if none. That plateau is the
-    // CTC saturation signature: the model ran out of reliable audio and the monotonicity pass
-    // collapsed the leftover tokens onto the last anchor. Ported from the soniqo aligner's own
-    // long-audio chunker; replaces the hand-rolled near-zero-duration cram guard.
-    private static func trailingPlateauStart(_ units: [(start: Double, end: Double, text: String)], tol: Double, minSize: Int) -> Int {
-        let n = units.count
-        guard n > minSize else { return n }
-        var plateauStart = n
-        for i in (1..<n).reversed() {
-            if abs(units[i].start - units[i - 1].start) < tol {
-                plateauStart = i - 1
-            } else {
-                break
-            }
-        }
-        return (n - plateauStart) >= minSize ? plateauStart : n
-    }
-
-    // One window's aligned units → the trustworthy prefix to keep. First drops the saturated tail
-    // (the plateau) when `trimSaturation`, then — unless the window ends at a real vocal pause
-    // (`keepToEdge`) — drops units past the window's boundary margin, which are legit but belong to
-    // the next window. Always keeps ≥1 unit so the loop makes forward progress.
-    private static func reliablePrefix(
-        _ units: [(start: Double, end: Double, text: String)], windowDur: Double, boundaryMargin: Double,
-        keepToEdge: Bool, trimSaturation: Bool
-    ) -> [(start: Double, end: Double, text: String)] {
-        guard units.isEmpty == false else { return [] }
-        var kept = trimSaturation
-            ? Array(units.prefix(trailingPlateauStart(units, tol: 0.1, minSize: 4)))
-            : units
-        if keepToEdge == false {
-            let cutoff = windowDur - boundaryMargin
-            while let last = kept.last, last.start >= cutoff { kept.removeLast() }
-        }
-        if kept.isEmpty { kept = [units[0]] }
-        return kept
-    }
-
-
-
-    // Mines confident line→time anchors by matching each lyric line against each transcription
-    // phrase by LONGEST CONTIGUOUS shared run — scattered single-char coincidences (which sank the
-    // global-NW version, e.g. a spurious L14@10s) don't count; only a run of consecutive shared
-    // chars (触れられない=6, 深い闇=3) does. The anchor time interpolates where the run falls inside
-    // its phrase. We then keep the maximal run-WEIGHTED monotonic-in-time backbone, so a chain of
-    // strong real anchors beats any stray weak match that doesn't fit the timeline.
-    private static func extractAnchors(
-        lines: [String], phrases: [(start: Double, end: Double, text: String)],
-        vadSegs: [(start: Double, end: Double)]
-    ) -> [(line: Int, time: Double)] {
-        let keep: (Character) -> Bool = { $0.isWhitespace == false && $0.isPunctuation == false }
-        let phraseChars: [(chars: [Character], t0: Double, t1: Double)] = phrases.compactMap {
-            let c = Array($0.text.filter(keep)); return c.isEmpty ? nil : (chars: c, t0: $0.start, t1: $0.end)
-        }
-        guard phraseChars.isEmpty == false else { return [] }
-
-        // Expected time per line: char-proportional position mapped over the vocal (VAD) timeline.
-        // Drives BOTH the tie-break below (pick the piece nearest the lyric-position estimate, so a
-        // line on the far side of a gap isn't walled onto the near side) and the chorus gate.
-        let lineChars = lines.map { Double(max(1, $0.filter(keep).count)) }
-        let totalChars = max(1, lineChars.reduce(0, +))
-        var expected: [Double] = []
-        if vadSegs.isEmpty == false {
-            let segDur = vadSegs.map { max(0, $0.end - $0.start) }
-            let totalVocal = max(1, segDur.reduce(0, +))
-            let timeAtVocalFrac: (Double) -> Double = { f in
-                var target = f * totalVocal
-                for (i, seg) in vadSegs.enumerated() {
-                    if target <= segDur[i] { return seg.start + target }
-                    target -= segDur[i]
-                }
-                return vadSegs.last?.end ?? 0
-            }
-            expected = [Double](repeating: 0, count: lines.count)
-            var cum = 0.0
-            for i in 0..<lines.count { expected[i] = timeAtVocalFrac((cum + lineChars[i] / 2) / totalChars); cum += lineChars[i] }
-        }
-
-        // Per line: the strongest contiguous run against any phrase. On EQUAL run length, prefer the
-        // phrase whose interpolated time is closest to the line's expected position — so a line that
-        // matches two pieces equally (a coincidental early 2-char hit vs the real post-gap one) takes
-        // the temporally-sensible one. A 2-char run is enough now; the tie-break + chorus gate +
-        // run-weighted LIS keep junk out, and 2-char matches are needed to anchor short garbled lines
-        // (e.g. 脆い爪先→目先) onto the correct side of an internal gap.
-        var cands: [(line: Int, time: Double, run: Int)] = []
-        for (li, line) in lines.enumerated() {
-            let lc = Array(line.filter(keep))
-            guard lc.count >= 2 else { continue }
-            let exp: Double? = li < expected.count ? expected[li] : nil
-            var best: (run: Int, time: Double, dist: Double)?
-            for ph in phraseChars {
-                let (run, endInB) = Self.longestCommonRun(lc, ph.chars)
-                guard run >= 2 else { continue }
-                let startB = max(0, endInB - run)                       // 0-based run start within phrase
-                let frac = Double(startB) / Double(max(1, ph.chars.count))
-                let t = ph.t0 + frac * max(0, ph.t1 - ph.t0)            // interpolate within the phrase
-                let dist = exp.map { abs(t - $0) } ?? 0
-                if best == nil || run > best!.run || (run == best!.run && dist < best!.dist) {
-                    best = (run, t, dist)
-                }
-            }
-            if let b = best { cands.append((line: li, time: b.time, run: b.run)) }
-        }
-        guard cands.isEmpty == false else { return [] }
-
-        // Chorus-repetition gate: a repeated lyric ("…忘れない") can match the WRONG repetition and
-        // teleport to a far chorus. Drop any candidate grossly far from its expected char-position.
-        // The threshold must clear the largest LEGITIMATE char-rate error — which spikes next to a
-        // long held note (涙色のシェノーン held ~32s pulls the char-proportional estimate ~29s early
-        // for the following line) — while still rejecting a wrong-repetition teleport, which is a full
-        // chorus-spacing away (~150s here). 40s sits in that gap: it admits the real post-interlude
-        // onset (a flat 28s dropped it, stranding 悲しみの嘘を忘れない ~30s early → it showed BEFORE the
-        // ♪ at 2:59 instead of after at 3:29) and still walls out teleports (~110s of margin to the
-        // repetition floor). Graded: max Δ 29.8s→9.0s, this line 29.8s→2.4s, on the correct side now.
-        // Kept as a flat gate for ALL lines — a uniqueness exemption disabled it too broadly and
-        // scrambled ordering.
-        if expected.isEmpty == false {
-            cands = cands.filter { abs($0.time - expected[$0.line]) <= 40.0 }
-            guard cands.isEmpty == false else { return [] }
-        }
-
-        // Run-weighted longest-increasing-(time)-subsequence over candidates in line order.
-        let cs = cands.sorted { $0.line < $1.line }
-        let k = cs.count
-        var w = cs.map { Double($0.run) }
-        var parent = [Int](repeating: -1, count: k)
-        for i in 0..<k {
-            for j in 0..<i where cs[j].time < cs[i].time && w[j] + Double(cs[i].run) > w[i] {
-                w[i] = w[j] + Double(cs[i].run); parent[i] = j
-            }
-        }
-        var bi = 0
-        for i in 1..<k where w[i] > w[bi] { bi = i }
-        var chain: [Int] = []; var idx = bi
-        while idx >= 0 { chain.append(idx); idx = parent[idx] }
-        return chain.reversed().map { (line: cs[$0].line, time: cs[$0].time) }
-    }
-
-    // Longest run of consecutive equal characters shared by a and b. Returns the run length and the
-    // (1-based, inclusive) end index of that run within b, so the caller can locate it inside b.
-    private static func longestCommonRun(_ a: [Character], _ b: [Character]) -> (len: Int, endInB: Int) {
-        guard a.isEmpty == false, b.isEmpty == false else { return (0, 0) }
-        var prev = [Int](repeating: 0, count: b.count + 1)
-        var best = 0, bestEnd = 0
-        for i in 1...a.count {
-            var cur = [Int](repeating: 0, count: b.count + 1)
-            for j in 1...b.count where a[i - 1] == b[j - 1] {
-                cur[j] = prev[j - 1] + 1
-                if cur[j] > best { best = cur[j]; bestEnd = j }
-            }
-            prev = cur
-        }
-        return (best, bestEnd)
-    }
-
-
-    // Anchor-and-fill. The lines between two consecutive anchors are forced-aligned to the audio
-    // between their times, so a wrong char-rate guess can't drift a line PAST an anchor. Reuses
-    // alignVADGated per span (windows + respects VAD gaps within, with the span's OWN char-rate, and
-    // no song-long tail). Head covers lines before the first anchor; the final span gets the tail.
-    private static func alignAnchored(
-        samples: [Float], audioRate: Int, lines: [String],
-        anchors: [(line: Int, time: Double)],
-        vadSegs: [(start: Double, end: Double)],
-        aligner: Qwen3ForcedAligner,
-        cancellationCheck: (@Sendable () -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil
-    ) -> [(start: Double, end: Double, text: String)] {
-        let n = lines.count
-        let totalSec = Double(samples.count) / Double(audioRate)
-        let firstVocal = vadSegs.first?.start ?? 0
-        let lastVocal = max(vadSegs.last?.end ?? totalSec, anchors.last?.time ?? totalSec)
-        let sorted = anchors.sorted { $0.line < $1.line }
-
-        // (lineStart, lineEnd, t0, t1) spans: optional head, then between each anchor and the next.
-        var spans: [(ls: Int, le: Int, t0: Double, t1: Double)] = []
-        // Unlike interior/tail spans (provably monotonic via the anchor chain), nothing
-        // guarantees firstVocal <= first.time — clamp so the head span can't invert and
-        // fall back to alignVADGated's whole-song search space.
-        if let first = sorted.first, first.line > 0 { spans.append((0, first.line, min(firstVocal, first.time), first.time)) }
-        for k in 0..<sorted.count {
-            let ls = sorted[k].line
-            let le = k + 1 < sorted.count ? sorted[k + 1].line : n
-            let t1 = k + 1 < sorted.count ? sorted[k + 1].time : lastVocal
-            if le > ls { spans.append((ls, le, sorted[k].time, t1)) }
-        }
-
-        var results: [(start: Double, end: Double, text: String)] = []
-        for (si, sp) in spans.enumerated() {
-            if cancellationCheck?() == true { break }
-            let isLast = si == spans.count - 1
-            let segText = lines[sp.ls..<sp.le].joined(separator: "\n")
-            // VAD gaps within this span (skip instrumental); fall back to the whole span.
-            let inside = vadSegs.compactMap { v -> (start: Double, end: Double)? in
-                let s = max(v.start, sp.t0), e = min(v.end, sp.t1)
-                return e - s > 0.2 ? (start: s, end: e) : nil
-            }
-            let span = inside.isEmpty ? [(start: sp.t0, end: sp.t1)] : inside
-            Self.breadcrumb("anchor-seg \(si): lines \(sp.ls)–\(sp.le - 1) in " +
-                            "\(String(format: "%.0f–%.0f", sp.t0, sp.t1))s (\(span.count) vad)")
-            let units = Self.alignVADGated(
-                samples: samples, audioRate: audioRate, text: segText, aligner: aligner,
-                segments: span, appendTail: isLast,
-                cancellationCheck: cancellationCheck, onProgress: nil)
-            results.append(contentsOf: units)
-            onProgress?(Double(si + 1) / Double(max(1, spans.count)))
-        }
-        return results
-    }
-
-    private static func alignVADGated(
-        samples: [Float],
-        audioRate: Int,
-        text: String,
-        aligner: Qwen3ForcedAligner,
-        segments: [(start: Double, end: Double)],
-        // Was 30 — a ~35s ceiling on a single align() call used to jetsam-kill the app (see
-        // CTCForcedAligner's doc comment history). Confirmed gone on iPhone 17: a single 120s
-        // align() call runs in ~3s with >1GB free throughout. Raised to 120 because sparse-anchor
-        // spans that actually reach the old cap measurably improve with more context in one call
-        // (on-device A/B on a thinned-anchor variant of tsukiiro-chainon: median 2.38s→1.96s,
-        // max 26.3s→21.3s, same 30s-cap architecture otherwise) — the cap wasn't just stale
-        // memory-safety margin, it was truncating real alignment context.
-        windowSec: Double = 120,
-        appendTail: Bool = true,
-        cancellationCheck: (@Sendable () -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil
-    ) -> [(start: Double, end: Double, text: String)] {
-        let sr = Double(audioRate)
-        let totalSec = Double(samples.count) / sr
-        let boundaryMargin = 1.5
-
-        // Ensure any text the VAD missed still has audio to land on: append a tail region. Disabled
-        // for anchor-bounded spans, whose text must stay inside [t0,t1] (a tail to song-end would let
-        // a span's trailing line escape its anchor wall).
-        var segs = segments.filter { $0.end > $0.start }
-        if appendTail, let last = segs.last, last.end < totalSec - 1.0 { segs.append((last.end, totalSec)) }
-        if segs.isEmpty { segs = [(0, totalSec)] }
-
-        var results: [(start: Double, end: Double, text: String)] = []
-        var remaining = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Progress is the fraction of LYRIC TEXT placed, not audio swept: the run ends when the
-        // text is exhausted (often well before the final segment), so a vocal-swept metric stalls
-        // partway then jumps. Text-consumed rises to a true 100% exactly when alignment finishes.
-        let totalChars = max(1, remaining.count)
-        // The song's OWN average char-rate (total lyric chars ÷ total vocal seconds) — self-
-        // calibrating, replacing the old global maxSungCharsPerSec constant. Used only to bound how
-        // much text each window is fed; the plateau detector does the actual cram trimming.
-        let totalVocalSec = max(1.0, segments.reduce(0.0) { $0 + ($1.end - $1.start) })
-        let songCharsPerSec = Double(remaining.count) / totalVocalSec
-
-        // No hard per-segment text budget. The tight 1.0× feed below already paces consumption to
-        // ~each segment's duration-proportional share per window, and every segment is processed to
-        // its own vocal pause (segEnd) — so a segment finishes its OWN audio rather than having a
-        // budget cap cut its last line short and spill it across the next instrumental gap.
-        for (segIdx, seg) in segs.enumerated() {
-            if remaining.isEmpty { break }
-            let isLastSeg = segIdx == segs.count - 1
-            var audioStart = seg.start
-            let segEnd = min(seg.end, totalSec)
-            var iter = 0
-            let maxIter = Int((segEnd - seg.start) / 2.0) + 16
-            while audioStart < segEnd - 0.3 && remaining.isEmpty == false && iter < maxIter {
-                iter += 1
-                if cancellationCheck?() == true { break }
-                let windowEnd = min(audioStart + windowSec, segEnd)
-                let windowDur = windowEnd - audioStart
-                let isSegTail = windowEnd >= segEnd - 0.01
-                let startIdx = Int(audioStart * sr)
-                let endIdx = min(samples.count, Int(windowEnd * sr))
-                guard endIdx > startIdx else { break }
-                let window = Array(samples[startIdx..<endIdx])
-
-                breadcrumb("vad win \(Int(audioStart))–\(Int(windowEnd))s · \(remaining.count) chars left")
-                onProgress?(Double(totalChars - remaining.count) / Double(totalChars))
-                // Feed ~1× the window's expected content (its duration × the song's own measured
-                // char-rate). TIGHT on purpose, and load-bearing: over-feeding (tried 1.5×) makes
-                // CTC SPREAD the overflow across the window with distinct compressed start-times —
-                // NOT the equal-time pile the plateau detector looks for — so the excess slips past
-                // every guard and gets committed early, cramming the whole back half forward (median
-                // jumped to ~35 s). alignLong over-feeds safely only because its chunks are long
-                // enough that the excess is a tiny fraction; at a 30 s window it's a flood.
-                let feedChars = max(24, Int(windowDur * songCharsPerSec))
-                let fedText = remaining.count > feedChars ? String(remaining.prefix(feedChars)) : remaining
-                // MLX's default error handler is an unconditional fatalError on ANY internal MLX
-                // failure (see StemTranscriber's transcribe call for the same guard + the on-device
-                // crash that motivated it). `withError` converts that into a catchable Swift error;
-                // a failed window is then treated exactly like an empty CTC result already is below
-                // (skip and retry text in the next window) rather than crashing the whole align.
-                var aligned: [AlignedWord] = []
-                do {
-                    aligned = try withError { aligner.align(audio: window, text: fedText, sampleRate: audioRate) }
-                } catch {
-                    Self.breadcrumb("vad win \(Int(audioStart))–\(Int(windowEnd))s CAUGHT: \(error)")
-                }
-                MLX.Memory.clearCache()
-                if aligned.isEmpty { audioStart = windowEnd; continue }
-                let units = aligned.map { (start: Double($0.startTime), end: Double($0.endTime), text: $0.text) }
-
-                // Keep the trustworthy prefix: drop the saturated (crammed) tail and the units past
-                // the boundary margin so they retry in the next overlapping window — EXCEPT at a
-                // segment tail. There the "next window" is across a real instrumental gap, so a
-                // trimmed line isn't deferred, it's exiled to the far side of the break (the
-                // 生きてゆく +19s off-by-one). At a seg tail we keep the whole fed span — both the
-                // boundary tail (keepToEdge) and the saturated tail (no trimSaturation) — so the
-                // segment's last lines stay in the segment that actually holds their audio.
-                let reliable = reliablePrefix(
-                    units, windowDur: windowDur, boundaryMargin: boundaryMargin,
-                    keepToEdge: isSegTail, trimSaturation: isLastSeg == false && isSegTail == false
-                )
-                for u in reliable { results.append((u.start + audioStart, u.end + audioStart, u.text)) }
-
-                // Advance text past the consumed units (non-whitespace char count).
-                let consumedNonWS = reliable.reduce(0) { acc, u in acc + u.text.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 } }
-                var dropped = 0
-                var idx = remaining.startIndex
-                while dropped < consumedNonWS && idx < remaining.endIndex {
-                    if remaining[idx].isWhitespace == false { dropped += 1 }
-                    idx = remaining.index(after: idx)
-                }
-                while idx < remaining.endIndex && remaining[idx].isWhitespace { idx = remaining.index(after: idx) }
-                remaining = String(remaining[idx...])
-                onProgress?(Double(totalChars - remaining.count) / Double(totalChars))   // bump as text is placed
-
-                if isSegTail { break }   // consumed this segment to its pause
-                let lastEndAbs = (reliable.last?.end ?? windowDur) + audioStart
-                audioStart = max(lastEndAbs, audioStart + 3.0)
-            }
-        }
-        return results
-    }
-
-    // No-VAD fallback: drives align() over sliding windows of the whole stem. Each window aligns
-    // the remaining text; only units landing comfortably inside the window are kept (units
-    // crammed at the window edge belong to later audio and are retried in the next window, so
-    // nothing is dropped). Returns units in absolute seconds.
-    private static func alignWindowed(
-        samples: [Float],
-        audioRate: Int,
-        text: String,
-        aligner: Qwen3ForcedAligner,
-        windowSec: Double = 120,   // see alignVADGated's windowSec doc — same ceiling, same fix
-        cancellationCheck: (@Sendable () -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil
-    ) -> [(start: Double, end: Double, text: String)] {
-        let sr = Double(audioRate)
-        let totalSec = Double(samples.count) / sr
-        let boundaryMargin = 2.0   // units ending within this of the window edge are unreliable
-
-        var results: [(start: Double, end: Double, text: String)] = []
-        var audioStart = 0.0
-        var remaining = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let totalChars = max(1, remaining.count)   // progress = lyric text placed (see alignVADGated)
-        // Self-calibrated feed rate (no VAD here, so denominator is the whole audio span).
-        let songCharsPerSec = Double(remaining.count) / max(1.0, totalSec)
-        var iter = 0
-        let maxIter = Int(totalSec / 5.0) + 64   // progress is ≥5s/iter; generous safety cap
-
-        while audioStart < totalSec - 0.5 && remaining.isEmpty == false && iter < maxIter {
-            iter += 1
-            if cancellationCheck?() == true { break }
-
-            let windowEnd = min(audioStart + windowSec, totalSec)
-            let windowDur = windowEnd - audioStart
-            let isLast = windowEnd >= totalSec - 0.01
-            let startIdx = Int(audioStart * sr)
-            let endIdx = min(samples.count, Int(windowEnd * sr))
-            guard endIdx > startIdx else { break }
-            let window = Array(samples[startIdx..<endIdx])
-
-            breadcrumb("window \(Int(audioStart))–\(Int(windowEnd))s · \(remaining.count) chars left")
-            onProgress?(Double(totalChars - remaining.count) / Double(totalChars))   // lyric text placed
-            // Generous self-calibrated feed (see alignVADGated); plateau detector trims any cram.
-            let feedChars = max(24, Int(windowDur * songCharsPerSec * 1.0))
-            let fedText = remaining.count > feedChars ? String(remaining.prefix(feedChars)) : remaining
-            // See alignAnchored's identical guard: converts an MLX-internal fatalError into a
-            // catchable error, treating a failed window as an empty one instead of crashing.
-            let aligned = (try? withError { aligner.align(audio: window, text: fedText, sampleRate: audioRate) }) ?? []
-            // Release MLX's buffer cache from this pass — it grows unbounded across
-            // align() calls otherwise (memory marched 2749→743→226 MB → OOM). align()
-            // has already evaluated, so the result is plain values; nothing live is freed.
-            MLX.Memory.clearCache()
-            if aligned.isEmpty { audioStart = windowEnd; continue }
-            let units = aligned.map { (start: Double($0.startTime), end: Double($0.endTime), text: $0.text) }
-
-            // Keep the trustworthy prefix: drop the saturated (crammed) tail, then drop past the
-            // boundary margin — except on the final window, which keeps everything (nowhere to retry).
-            let reliable = reliablePrefix(
-                units, windowDur: windowDur, boundaryMargin: boundaryMargin,
-                keepToEdge: isLast, trimSaturation: isLast == false
-            )
-
-            for u in reliable {
-                results.append((u.start + audioStart, u.end + audioStart, u.text))
-            }
-            if isLast { break }
-
-            // Advance text past the consumed units, matched by non-whitespace char count
-            // (robust to tokenizer whitespace differences vs the input).
-            let consumedNonWS = reliable.reduce(0) { acc, u in
-                acc + u.text.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 }
-            }
-            var dropped = 0
-            var idx = remaining.startIndex
-            while dropped < consumedNonWS && idx < remaining.endIndex {
-                if remaining[idx].isWhitespace == false { dropped += 1 }
-                idx = remaining.index(after: idx)
-            }
-            while idx < remaining.endIndex && remaining[idx].isWhitespace { idx = remaining.index(after: idx) }
-            remaining = String(remaining[idx...])
-
-            // Advance audio to the last reliable unit's end (≥5s progress so we can't stall).
-            let lastEndAbs = (reliable.last?.end ?? windowDur) + audioStart
-            audioStart = max(lastEndAbs, audioStart + 5.0)
-        }
-        return results
     }
 
     // Trims the leading instrumental intro on a vocal stem so the aligner doesn't pin the

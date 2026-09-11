@@ -39,6 +39,10 @@ private enum DownloadedModelKind: String, Identifiable, Equatable {
 // from inside the Bulk Import flow). Hidden entirely when nothing is downloaded yet, mirroring
 // Clear Caches disabling itself at 0 bytes.
 struct DownloadedModelsSection: View {
+    // Re-measures every row whenever the owner bumps this (e.g. after Clear Caches).
+    var refreshToken: Int = 0
+    // Called after any deletion here so the owner can re-measure its own storage readouts.
+    var onStorageChanged: () -> Void = {}
     @State private var whisperModelManager = WhisperModelManager()
     @State private var qwenASRBytes: Int = 0
     @State private var qwenForcedAlignerBytes: Int = 0
@@ -110,7 +114,10 @@ struct DownloadedModelsSection: View {
         } message: {
             Text("This model will download again automatically the next time it's needed.")
         }
-        .task { await refreshDownloadedModelBytes() }
+        .task(id: refreshToken) {
+            whisperModelManager.refreshDownloadedModels()
+            await refreshDownloadedModelBytes()
+        }
     }
 
     // One row for a fixed-identity model (Whisper's variable-length list is rendered inline in
@@ -156,6 +163,7 @@ struct DownloadedModelsSection: View {
         Task {
             await Task.detached(priority: .utility) { kind.delete() }.value
             await refreshDownloadedModelBytes()
+            onStorageChanged()
         }
     }
 
@@ -165,6 +173,7 @@ struct DownloadedModelsSection: View {
         guard let filename = whisperModelFilenamePendingDeletion else { return }
         whisperModelFilenamePendingDeletion = nil
         try? whisperModelManager.deleteModel(filename: filename)
+        onStorageChanged()
     }
 
     // Renders a byte count as a human-readable string (e.g. "747 MB", "1.2 GB") — matches what

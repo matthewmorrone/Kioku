@@ -112,7 +112,6 @@ struct SettingsView: View {
     @AppStorage(DebugSettings.bisectorFuriganaKey) var debugBisectorFurigana: Bool = false
     @AppStorage(DebugSettings.envelopeRectsKey) var debugEnvelopeRects: Bool = false
     @AppStorage(DebugSettings.leftInsetGuideKey) var debugLeftInsetGuide: Bool = false
-    @AppStorage(DebugSettings.karaokeDebugHUDKey) var debugKaraokeHUD: Bool = false
 
     @State private var wotdPermissionStatus: UNAuthorizationStatus = .notDetermined
     @State private var wotdPendingCount: Int = 0
@@ -148,6 +147,9 @@ struct SettingsView: View {
     // Drives the byte readout on the Clear Caches button so the user sees what's about to free.
     @State private var cachesBytes: Int = 0
     @State private var isClearingCaches = false
+    // Bumped after Clear Caches so the Downloaded Models section re-measures; the section
+    // reports its own deletions back so the Clear Caches readout re-measures too.
+    @State private var storageRefreshToken = 0
     @State private var isShowingClearCachesConfirmation = false
 
     // advancedSettings (the "Advanced" screen's sections) and particlesBinding / demotionsBinding
@@ -498,7 +500,10 @@ struct SettingsView: View {
 
                 // MARK: Downloaded Models — extracted to its own file (self-contained @State +
                 // alerts) so this file stays under the 1000-line invariant cap.
-                DownloadedModelsSection()
+                DownloadedModelsSection(
+                    refreshToken: storageRefreshToken,
+                    onStorageChanged: { Task { await refreshCachesBytes() } }
+                )
             }
             .scrollDismissesKeyboard(.interactively)
             .washiBackground()
@@ -559,7 +564,7 @@ struct SettingsView: View {
             Button("Clear", role: .destructive) { performCachesClear() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Frees \(formattedBytes(cachesBytes)) of on-disk caches (isolated vocal stems, transcript checkpoints). Saved words, audio, and downloaded alignment models are NOT affected. Aligning a song the first time after this will redo the source-separation step.")
+            Text("Frees \(formattedBytes(cachesBytes)) of on-disk caches (compiled model bundles, download staging, temporary files). Saved words, audio, downloaded models, and isolated vocals are not affected. The first alignment afterward recompiles the vocal isolator, so it takes a little longer.")
         }
         .task { await refreshCachesBytes() }
         .alert("Replace All Data?", isPresented: $isShowingImportConfirmation) {
@@ -621,6 +626,7 @@ struct SettingsView: View {
             let freed = await Task.detached(priority: .utility) { CachesCleaner.clearAll() }.value
             cachesBytes = 0
             isClearingCaches = false
+            storageRefreshToken += 1
             showTransferAlert(title: "Caches Cleared", message: "Freed \(formattedBytes(freed)).")
         }
     }

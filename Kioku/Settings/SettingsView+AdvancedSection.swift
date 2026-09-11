@@ -78,7 +78,6 @@ extension SettingsView {
             Toggle("Headword Bisectors", isOn: $debugBisectorHeadword)
             Toggle("Furigana Bisectors", isOn: $debugBisectorFurigana)
             Toggle("Left Inset Guide", isOn: $debugLeftInsetGuide)
-            Toggle("Karaoke HUD", isOn: $debugKaraokeHUD)
         } header: {
             Text("Debug Overlays")
         }

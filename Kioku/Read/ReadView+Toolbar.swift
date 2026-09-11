@@ -139,16 +139,7 @@ extension ReadView {
                     audioPlayback.isShowingLyricsView.toggle()
                 }
             }
-            .onLongPressGesture(minimumDuration: 0.35) {
-                // Long press opens the subtitle editor sheet — the only place to access
-                // the alignment menu (Reconcile from Note / Re-time / Validate / etc.).
-                // Mirrors the furigana button's tap-toggles-state, long-press-opens-tools
-                // affordance. presentSubtitleEditorIfPossible() lazy-loads the audio
-                // attachment first when needed, so it's safe to call without checking.
-                presentSubtitleEditorIfPossible()
-            }
             .accessibilityLabel(audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
-            .accessibilityHint("Long press to edit subtitles")
             .accessibilityAddTraits(.isButton)
     }
 

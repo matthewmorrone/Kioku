@@ -9,7 +9,6 @@ let package = Package(
         .library(name: "SwiftWhisperAlign", targets: ["SwiftWhisperAlign"]),
     ],
     dependencies: [
-        .package(path: "../Packages/SwiftWhisper"),
         // CTC forced aligner (Qwen3ForcedAligner) — replaces the Whisper-DTW path.
         // Model downloads at runtime via fromPretrained(); nothing is bundled.
         .package(url: "https://github.com/soniqo/speech-swift", branch: "main"),
@@ -22,7 +21,6 @@ let package = Package(
         .target(
             name: "SwiftWhisperAlign",
             dependencies: [
-                .product(name: "SwiftWhisper", package: "SwiftWhisper"),
                 .product(name: "Qwen3ASR", package: "speech-swift"),
                 .product(name: "SourceSeparation", package: "speech-swift"),
                 // FireRedVAD: voice-activity detection to gate alignment to the sung segments
@@ -44,7 +42,6 @@ let package = Package(
             name: "SwiftWhisperAlignTests",
             dependencies: [
                 "SwiftWhisperAlign",
-                .product(name: "SwiftWhisper", package: "SwiftWhisper"),
             ]
         ),
     ],

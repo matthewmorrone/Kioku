@@ -30,8 +30,6 @@ struct NotesView: View {
     // field string (unknown values from a future build fall back to manual) plus a direction flag.
     @AppStorage("notes.sortField") private var sortFieldRaw = NotesSortField.manual.rawValue
     @AppStorage("notes.sortAscending") private var sortAscending = true
-    @State private var subtitleEditorAttachmentID: UUID?
-    @State private var subtitleEditorNoteTitle: String = ""
 
     // OCR state owned by NotesView. Declared here (not in the extension) because Swift
     // extensions on structs cannot add stored properties — only the helpers and the
@@ -152,20 +150,6 @@ struct NotesView: View {
             .sheet(isPresented: $isShowingBulkImportSheet) {
                 BulkImportSheet(store: store)
                     .environmentObject(store)
-            }
-            .sheet(item: Binding(
-                get: { subtitleEditorAttachmentID.map { SubtitleEditorPresentation(attachmentID: $0) } },
-                set: { newValue in subtitleEditorAttachmentID = newValue?.attachmentID }
-            )) { presentation in
-                let cues = NotesAudioStore.shared.loadCues(for: presentation.attachmentID)
-                SubtitleEditorSheet(
-                    attachmentID: presentation.attachmentID,
-                    initialCues: cues,
-                    noteText: subtitleEditorNoteTitle,
-                    onSave: { updated in
-                        try? NotesAudioStore.shared.saveCues(updated, attachmentID: presentation.attachmentID)
-                    }
-                )
             }
             .washiBackground()
             .toolbar {
@@ -514,13 +498,6 @@ struct NotesView: View {
         }
 
         if let attachmentID = note.audioAttachmentID {
-            Button {
-                subtitleEditorNoteTitle = note.content
-                subtitleEditorAttachmentID = attachmentID
-            } label: {
-                Label("Edit Subtitles", systemImage: "captions.bubble")
-            }
-
             Button(role: .destructive) {
                 resetSubtitleAttachment(for: note)
             } label: {
@@ -606,13 +583,6 @@ struct NotesView: View {
 
         return "\(title)\n\n\(note.content)"
     }
-}
-
-// Identifiable wrapper so the SubtitleEditorSheet can be presented via .sheet(item:) from the
-// context menu — Identifiable conformance is required by the sheet-item modifier.
-private struct SubtitleEditorPresentation: Identifiable {
-    var attachmentID: UUID
-    var id: UUID { attachmentID }
 }
 
 #Preview {
