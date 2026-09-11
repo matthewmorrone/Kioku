@@ -131,24 +131,24 @@ final class AlignmentQualityTests: XCTestCase {
             afterMetrics: afterMetrics
         )
 
-        // Diagnostic: per-cue start deltas (worst offenders first) so a grading run
-        // pinpoints WHICH line is mis-placed, not just the aggregate. Monotonic walk
-        // mirrors computeMetrics. This is how the interlude misplacement was located.
+        // Diagnostic: every matched cue in song order with its SIGNED start delta (negative =
+        // output is early) and both cues' spans, so a grading run shows not just which line is
+        // off but which way, and whether the miss tracks a pause before the line. Monotonic
+        // walk mirrors computeMetrics.
         do {
             var nextOut = 0
-            var rows: [(oracleMs: Int, outMs: Int, delta: Int, text: String)] = []
+            print("\n[DEBUG] Per-cue (song order; Δ<0 = output early):")
+            print("   Δstart      oracle span          out span             text")
             for oracleCue in oracleCues {
                 for j in nextOut..<afterSpeechCues.count
                 where cueMatchesNoteLine(afterSpeechCues[j].text, oracleCue.text) {
-                    rows.append((oracleCue.startMs, afterSpeechCues[j].startMs,
-                                 abs(afterSpeechCues[j].startMs - oracleCue.startMs), oracleCue.text))
+                    let out = afterSpeechCues[j]
+                    print(String(format: "  %+6dms  %6d–%6dms  %6d–%6dms  %@",
+                                 out.startMs - oracleCue.startMs,
+                                 oracleCue.startMs, oracleCue.endMs, out.startMs, out.endMs, oracleCue.text))
                     nextOut = j + 1
                     break
                 }
-            }
-            print("\n[DEBUG] Worst per-cue start deltas:")
-            for r in rows.sorted(by: { $0.delta > $1.delta }).prefix(8) {
-                print(String(format: "  Δ%6dms  oracle=%6dms  out=%6dms  %@", r.delta, r.oracleMs, r.outMs, r.text))
             }
         }
 

@@ -138,49 +138,40 @@ public struct CTCForcedAligner {
         onStage?("Aligning lyrics…")
         let totalSec = Double(vocalMono.count) / 44_100.0
         let chunkRegions = regions.isEmpty ? [(start: 0.0, end: totalSec)] : regions
-        let lineRanges = Self.lineRangesByDuration(
+        var lineRanges = Self.lineRangesByDuration(
             lines: input.lines, regionDurations: chunkRegions.map { $0.end - $0.start }
         )
+        // The duration split is only a guess (a bridge can pack more characters per second than
+        // the verses), so each boundary is settled by the model itself before any region is
+        // aligned: see `arbitrateBoundary`.
+        for k in 0..<(chunkRegions.count - 1) {
+            if cancellationCheck?() == true { throw CancellationError() }
+            let guess = lineRanges[k].end
+            let boundary = try Self.arbitrateBoundary(
+                samples: vocalMono, sampleRate: 44_100, lines: input.lines,
+                lo: max(lineRanges[k].start, guess - 3), guess: guess, hi: min(lineRanges[k + 1].end, guess + 3),
+                tail: chunkRegions[k], head: chunkRegions[k + 1],
+                language: input.language, aligner: aligner
+            )
+            Self.breadcrumb("boundary \(k + 1): guessed line \(guess), model says \(boundary)")
+            lineRanges[k].end = boundary
+            lineRanges[k + 1].start = boundary
+        }
         var units: [(start: Double, end: Double, text: String)] = []
-        var carriedLines: [String] = []
         let pad = 0.25
         for (ri, region) in chunkRegions.enumerated() {
             let range = lineRanges[ri]
-            let isLastRegion = ri == chunkRegions.count - 1
-            let regionLines = carriedLines + (range.end > range.start ? Array(input.lines[range.start..<range.end]) : [])
-            carriedLines = []
-            guard regionLines.isEmpty == false else { continue }
-            let regionText = regionLines.joined(separator: "\n")
+            guard range.end > range.start else { continue }
+            let regionText = input.lines[range.start..<range.end].joined(separator: "\n")
             let s = max(0, region.start - pad)
             let e = min(totalSec, region.end + pad)
             let regionSamples = Array(vocalMono[Int(s * 44_100)..<min(vocalMono.count, Int(e * 44_100))])
             Self.breadcrumb("region \(ri + 1)/\(chunkRegions.count): \(Int(s))–\(Int(e))s, lines \(range.start + 1)–\(range.end) (\(regionText.count) chars)")
             let regionUnits = try Self.alignBySaturation(
-                samples: regionSamples, sampleRate: 44_100, text: regionText, aligner: aligner,
-                forceKeepAll: isLastRegion, cancellationCheck: cancellationCheck
+                samples: regionSamples, sampleRate: 44_100, text: regionText, language: input.language,
+                aligner: aligner, cancellationCheck: cancellationCheck
             )
             for u in regionUnits { units.append((u.start + s, u.end + s, u.text)) }
-
-            // Self-correct the duration-proportional guess: a bridge/chorus can pack more
-            // characters per second than the song's average, so the estimate can hand a region
-            // one line more than its audio actually holds. If the region's own saturation plateau
-            // (inside alignBySaturation) left some of its assigned lines unplaced, don't force
-            // them in — carry them to the next region, which gets a second, better-fitting shot.
-            if isLastRegion == false {
-                let consumedChars = regionUnits.reduce(0) { $0 + $1.text.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 } }
-                var cum = 0
-                var consumedLineCount = 0
-                for line in regionLines {
-                    let n = line.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 }
-                    guard cum + n <= consumedChars else { break }
-                    cum += n
-                    consumedLineCount += 1
-                }
-                if consumedLineCount < regionLines.count {
-                    carriedLines = Array(regionLines[consumedLineCount...])
-                    Self.breadcrumb("region \(ri + 1) carried \(carriedLines.count) unplaced line(s) forward")
-                }
-            }
         }
         Self.breadcrumb("aligned \(units.count) units")
         onProgress?(0.9)
@@ -228,12 +219,9 @@ public struct CTCForcedAligner {
     // speech-swift's own alignLong strategy with a memory-bounded first pass instead of a
     // whole-file one. `withError` turns MLX's internal fatalError handler into a catchable Swift
     // error. The caller scopes `samples`/`text` to one region and its own disjoint slice of
-    // lines — this only has to sub-chunk when a single region overruns maxChunkSec. `forceKeepAll`
-    // is for the song's last region only: there's no later region to carry an unplaced trailing
-    // line to, so the hard "never drop a line" gate wins over a possibly-imprecise placement.
+    // lines — this only has to sub-chunk when a single region overruns maxChunkSec.
     private static func alignBySaturation(
-        samples: [Float], sampleRate: Int, text: String, aligner: Qwen3ForcedAligner,
-        forceKeepAll: Bool = false,
+        samples: [Float], sampleRate: Int, text: String, language: String, aligner: Qwen3ForcedAligner,
         cancellationCheck: (@Sendable () -> Bool)?
     ) throws -> [(start: Double, end: Double, text: String)] {
         let totalSec = Double(samples.count) / Double(sampleRate)
@@ -244,10 +232,13 @@ public struct CTCForcedAligner {
         while chunkStart < totalSec, remaining.isEmpty == false {
             if cancellationCheck?() == true { throw CancellationError() }
             let chunkEnd = min(totalSec, chunkStart + maxChunkSec)
-            let isLast = forceKeepAll && chunkEnd >= totalSec
+            let isLast = chunkEnd >= totalSec
             let chunk = Array(samples[Int(chunkStart * Double(sampleRate))..<Int(chunkEnd * Double(sampleRate))])
             breadcrumb("align chunk \(ci + 1): \(Int(chunkStart))–\(Int(chunkEnd))s, \(remaining.count) chars left")
-            let aligned = try withError { aligner.align(audio: chunk, text: remaining, sampleRate: sampleRate) }
+            // The language hint picks the library's word splitter: for Japanese that's
+            // morpheme segmentation; the default ("English") path only splits on whitespace and
+            // per-kanji, so an all-kana line becomes a single timestamp unit.
+            let aligned = try withError { aligner.align(audio: chunk, text: remaining, sampleRate: sampleRate, language: language) }
             MLX.Memory.clearCache()
             ci += 1
             guard aligned.isEmpty == false else { chunkStart = chunkEnd; continue }
@@ -276,10 +267,59 @@ public struct CTCForcedAligner {
         return results
     }
 
+    // Settles where the lyric splits between two adjacent vocal regions by asking the model: the
+    // last ~15 s of the earlier region and the first ~15 s of the later one are spliced together
+    // with 2 s of silence at the seam, and the candidate lines `lo..<hi` around the duration-based
+    // `guess` are aligned over that. The first candidate whose first unit lands at or past the
+    // seam starts the later region. The window is short and duplicate-free, so this is well
+    // inside the model's comfort zone, and the silence at the seam stops a held final vowel on
+    // the earlier side from swallowing the later region's first words (the model's habit on
+    // sung holds). Returns the boundary as a line index in [lo, hi]; `guess` if it can't tell.
+    private static func arbitrateBoundary(
+        samples: [Float], sampleRate: Int, lines: [String],
+        lo: Int, guess: Int, hi: Int,
+        tail: (start: Double, end: Double), head: (start: Double, end: Double),
+        language: String, aligner: Qwen3ForcedAligner
+    ) throws -> Int {
+        guard hi > lo else { return guess }
+        let sr = Double(sampleRate)
+        let span = 15.0, pad = 0.25, silence = 2.0
+        let totalSec = Double(samples.count) / sr
+        let tailStart = max(0, tail.start - pad, tail.end - span)
+        let tailEnd = min(totalSec, tail.end + pad)
+        let headStart = max(0, head.start - pad)
+        let headEnd = min(totalSec, head.end + pad, head.start + span)
+        guard tailEnd > tailStart, headEnd > headStart else { return guess }
+        var spliced = Array(samples[Int(tailStart * sr)..<Int(tailEnd * sr)])
+        let seam = Double(spliced.count) / sr
+        spliced += [Float](repeating: 0, count: Int(silence * sr))
+        spliced += samples[Int(headStart * sr)..<Int(headEnd * sr)]
+
+        let text = lines[lo..<hi].joined(separator: "\n")
+        let aligned = try withError { aligner.align(audio: spliced, text: text, sampleRate: sampleRate, language: language) }
+        MLX.Memory.clearCache()
+        guard aligned.isEmpty == false else { return guess }
+
+        // Each candidate line starts where the unit covering its first character starts.
+        var charStarts: [Double] = []
+        for w in aligned {
+            let n = w.text.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 }
+            charStarts.append(contentsOf: repeatElement(Double(w.startTime), count: n))
+        }
+        var cum = 0
+        for li in lo..<hi {
+            let start = cum < charStarts.count ? charStarts[cum] : Double.infinity
+            // Half a second of slop: the model's timestamps are quantized and tend to lead.
+            if start >= seam - 0.5 { return li }
+            cum += lines[li].reduce(0) { $1.isWhitespace ? $0 : $0 + 1 }
+        }
+        return hi
+    }
+
     // Splits `lines` into one slice per region, snapping to whole-line boundaries so each
     // slice's share of characters tracks that region's share of the total sung duration. This is
-    // an estimate, not a transcript — it only has to land close enough that no line (and so no
-    // repeated chorus) ends up duplicated across two regions' align() calls.
+    // only a first guess — `arbitrateBoundary` settles each boundary with the model — but it has
+    // to land close enough that the true boundary is within a few lines of it.
     private static func lineRangesByDuration(
         lines: [String], regionDurations: [Double]
     ) -> [(start: Int, end: Int)] {
