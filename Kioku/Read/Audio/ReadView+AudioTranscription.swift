@@ -88,7 +88,7 @@ extension ReadView {
             let copiedURL = try AudioTranscriptionHelpers.copyImportedAudioToTemporaryLocation(sourceURL)
             defer { try? FileManager.default.removeItem(at: copiedURL) }
 
-            let contextual = AudioTranscriptionHelpers.makeSpeechContextualStrings(from: text, title: resolvedTitle)
+            let contextual = AudioTranscriptionHelpers.makeSpeechContextualStrings(from: document.text, title: resolvedTitle)
 
             // Whisper alone needs a downloaded model — fetch it (with download progress) first.
             var modelURL: URL?
@@ -159,13 +159,13 @@ extension ReadView {
             segments: nil
         )
 
-        if activeNoteID == id {
-            isLoadingSelectedNote = true
+        if document.activeNoteID == id {
+            document.isLoadingSelectedNote = true
             titleEdit.customTitle = titleToSave
             titleEdit.fallbackTitle = titleToSave
-            text = noteContent
-            segments = nil
-            isLoadingSelectedNote = false
+            document.text = noteContent
+            document.segments = nil
+            document.isLoadingSelectedNote = false
         }
     }
 
@@ -182,14 +182,14 @@ extension ReadView {
         )
         notesStore.updateAudioAttachment(id: id, attachmentID: attachmentID)
 
-        if activeNoteID == id {
-            isLoadingSelectedNote = true
+        if document.activeNoteID == id {
+            document.isLoadingSelectedNote = true
             titleEdit.customTitle = titleToSave
             titleEdit.fallbackTitle = titleToSave
-            text = normalizedText
-            segments = nil
+            document.text = normalizedText
+            document.segments = nil
             loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
-            isLoadingSelectedNote = false
+            document.isLoadingSelectedNote = false
         }
     }
 

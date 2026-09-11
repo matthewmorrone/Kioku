@@ -40,7 +40,7 @@ extension ReadView {
             return
         }
 
-        let capturedText = text
+        let capturedText = document.text
         let compactSegments = LLMCorrectionDiagnostics.buildCompactFormat(from: currentSegments)
         let service = LLMCorrectionService()
 
@@ -68,7 +68,7 @@ extension ReadView {
         // Captured so a response that lands after the user has switched notes (cooperative
         // cancellation doesn't interrupt an in-flight network/model call) is discarded instead
         // of being applied against whatever note happens to be active when it arrives.
-        let sourceNoteID = activeNoteID
+        let sourceNoteID = document.activeNoteID
 
         AppLog.debug(.llmCorrection, "requestLLMCorrection starting — provider=\(provider) streaming=\(willStream) segments=\(currentSegments.count) isRetry=\(correctiveFeedback != nil)")
         llmCorrection.isRequestingLLMCorrection = true
@@ -87,7 +87,7 @@ extension ReadView {
                     dictionary: dictionaryStore,
                     correctiveFeedback: correctiveFeedback,
                     onPartial: willStream ? { @MainActor partial in
-                        guard self.activeNoteID == sourceNoteID else { return }
+                        guard self.document.activeNoteID == sourceNoteID else { return }
                         let merged = Self.mergeResponsePerLine(
                             response: partial,
                             originalText: capturedText,
@@ -99,7 +99,7 @@ extension ReadView {
                 LLMCorrectionService.logOutcome(provider: provider, result: .success(response))
 
                 await MainActor.run {
-                    guard activeNoteID == sourceNoteID else { return }
+                    guard document.activeNoteID == sourceNoteID else { return }
                     if willStream {
                         // Streaming already applied every line as it arrived;
                         // the final response equals the last partial. Just flag
@@ -257,7 +257,7 @@ extension ReadView {
     // line in the current text (e.g., text changed mid-request).
     var inFlightLineSegmentLocations: Set<Int> {
         guard let lineIndex = aiProgress.currentLineIndex else { return [] }
-        let lines = text.components(separatedBy: "\n")
+        let lines = document.text.components(separatedBy: "\n")
         guard lineIndex >= 0, lineIndex < lines.count else { return [] }
 
         // Walk up to the target line, summing each prior line's UTF-16 count
@@ -270,8 +270,8 @@ extension ReadView {
         let lineEnd = lineStart + lines[lineIndex].utf16.count
 
         var locs: Set<Int> = []
-        for edge in segmentEdges {
-            let r = NSRange(edge.start..<edge.end, in: text)
+        for edge in document.segmentEdges {
+            let r = NSRange(edge.start..<edge.end, in: document.text)
             guard r.location != NSNotFound else { continue }
             if r.location >= lineStart, r.location < lineEnd {
                 locs.insert(r.location)
@@ -283,12 +283,12 @@ extension ReadView {
     // Converts the current segment edges and reading overrides into LLMSegmentEntry values
     // so the LLM can see both the segmentation boundaries and the furigana assigned to each.
     func buildLLMSegmentEntries() -> [LLMSegmentEntry] {
-        segmentEdges.compactMap { edge in
-            let nsRange = NSRange(edge.start..<edge.end, in: text)
+        document.segmentEdges.compactMap { edge in
+            let nsRange = NSRange(edge.start..<edge.end, in: document.text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { return nil }
 
             // Segment-level furigana takes priority over per-run reconstructed readings.
-            if let override = furiganaBySegmentLocation[nsRange.location] {
+            if let override = document.furiganaBySegmentLocation[nsRange.location] {
                 return LLMSegmentEntry(surface: edge.surface, reading: override)
             }
 
@@ -316,7 +316,7 @@ extension ReadView {
             }
             let prefixUTF16 = String(chars[..<run.start]).utf16.count
             let runLocation = segmentLocation + prefixUTF16
-            guard let runReading = furiganaBySegmentLocation[runLocation], runReading.isEmpty == false else {
+            guard let runReading = document.furiganaBySegmentLocation[runLocation], runReading.isEmpty == false else {
                 return ""
             }
             reading += runReading
@@ -368,7 +368,7 @@ extension ReadView {
         }
 
         // Snapshot old state before mutating anything — used for diff and per-change undo.
-        let oldFurigana = furiganaBySegmentLocation
+        let oldFurigana = document.furiganaBySegmentLocation
         // For streaming, capture llmCorrection.preLLMSegmentEntries on the FIRST apply of the
         // run only. Subsequent applies during a streaming run would otherwise
         // overwrite the snapshot with post-previous-apply state, breaking the
@@ -395,7 +395,7 @@ extension ReadView {
         //
         // Strategy: for each new edge, find the old segment(s) that overlap its span.
         // Group new edges that share the same set of old segment(s).
-        let oldSegs: [LLMCorrectionOldSeg] = segmentEdges.compactMap { edge in
+        let oldSegs: [LLMCorrectionOldSeg] = document.segmentEdges.compactMap { edge in
             let r = NSRange(edge.start..<edge.end, in: originalText)
             guard r.location != NSNotFound else { return nil }
             return LLMCorrectionOldSeg(location: r.location, end: r.location + r.length, surface: edge.surface)
@@ -464,8 +464,8 @@ extension ReadView {
                 // there — but we still do it explicitly so a true "clear"
                 // signal works for kana segments whose state was stale.
                 if ScriptClassifier.containsKanji(edge.surface) == false {
-                    furiganaBySegmentLocation.removeValue(forKey: location)
-                    furiganaLengthBySegmentLocation.removeValue(forKey: location)
+                    document.furiganaBySegmentLocation.removeValue(forKey: location)
+                    document.furiganaLengthBySegmentLocation.removeValue(forKey: location)
                 }
             } else {
                 // Write per-kanji-run furigana via the shared helper — clears stale entries
@@ -475,8 +475,8 @@ extension ReadView {
                 // nothing and we explicitly drop the segment-level entry below.
                 let wrote = applyPerRunFurigana(surface: edge.surface, reading: entry.reading, at: location)
                 if !wrote {
-                    furiganaBySegmentLocation.removeValue(forKey: location)
-                    furiganaLengthBySegmentLocation.removeValue(forKey: location)
+                    document.furiganaBySegmentLocation.removeValue(forKey: location)
+                    document.furiganaLengthBySegmentLocation.removeValue(forKey: location)
                 }
 
                 // Compare normalized display output against the pre-mutation snapshot so we aren't
@@ -564,10 +564,10 @@ extension ReadView {
         let groupEnd: Int = {
             // Estimate group end from the rightmost sibling's current segment boundary.
             let maxLoc = siblingLocations.max() ?? location
-            if let edge = segmentEdges.first(where: {
-                NSRange($0.start..<$0.end, in: text).location == maxLoc
+            if let edge = document.segmentEdges.first(where: {
+                NSRange($0.start..<$0.end, in: document.text).location == maxLoc
             }) {
-                let r = NSRange(edge.start..<edge.end, in: text)
+                let r = NSRange(edge.start..<edge.end, in: document.text)
                 return r.location + r.length
             }
             return maxLoc + 1
@@ -587,8 +587,8 @@ extension ReadView {
         // Build the outside-group entries from current state and splice them around the reverted span.
         var outsideBefore: [LLMSegmentEntry] = []
         var outsideAfter: [LLMSegmentEntry] = []
-        for edge in segmentEdges {
-            let r = NSRange(edge.start..<edge.end, in: text)
+        for edge in document.segmentEdges {
+            let r = NSRange(edge.start..<edge.end, in: document.text)
             guard r.location != NSNotFound, r.length > 0 else { continue }
             if r.location + r.length <= groupStart {
                 let reading = reconstructedReading(for: edge.surface, at: r.location)
@@ -611,7 +611,7 @@ extension ReadView {
         // Re-apply as a new LLM response so all pipeline invariants are satisfied.
         _ = applyLLMCorrectionResponse(
             LLMCorrectionResponse(segments: fullEntries),
-            originalText: text
+            originalText: document.text
         )
 
         // Restore the original snapshot so other pending changes can still be individually reverted.

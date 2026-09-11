@@ -26,7 +26,7 @@ extension ReadView {
                 // handleReadModeSegmentTap's readResourcesReady guard) highlights immediately
                 // but its lookup is queued — this spinner is the only feedback that anything
                 // is happening during that wait, which can run several seconds on first launch.
-                if pendingSegmentTapAfterResourcesReady != nil {
+                if segmentSelection.pendingSegmentTapAfterResourcesReady != nil {
                     ProgressView()
                         .progressViewStyle(.circular)
                         .scaleEffect(0.7)

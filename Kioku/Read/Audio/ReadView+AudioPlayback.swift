@@ -20,7 +20,7 @@ extension ReadView {
             audioPlayback.isShowingLyricsView = false
             audioPlayback.playbackHighlightRangeOverride = nil
             audioPlayback.activePlaybackCueIndex = nil
-            selectedHighlightRangeOverride = nil
+            segmentSelection.selectedHighlightRangeOverride = nil
             return
         }
 
@@ -32,7 +32,7 @@ extension ReadView {
         }
         audioPlayback.audioAttachmentCues = cues
         audioPlayback.audioAttachmentHighlightRanges = StartupTimer.measure("loadAudioAttachmentIfNeeded.resolveHighlightRanges") {
-            SubtitleParser.resolveHighlightRanges(for: cues, in: text)
+            SubtitleParser.resolveHighlightRanges(for: cues, in: document.text)
         }
         // Checkpoints arrive inline on each cue from loadCues — no separate timings load.
         audioPlayback.playbackHighlightRangeOverride = nil

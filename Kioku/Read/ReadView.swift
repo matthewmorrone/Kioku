@@ -93,63 +93,19 @@ struct ReadView: View {
 
     // Note-title editing state (custom title, fallback, rename-alert draft) — see TitleEditUIState.
     @State var titleEdit = TitleEditUIState()
-    @State var text = ""
-    @State var segmentLatticeEdges: [LatticeEdge] = []
-    @State var segmentEdges: [LatticeEdge] = []
-    @State var segmentRanges: [Range<String.Index>] = []
-    // Cache for the saved-highlight set so it isn't recomputed (dictionary-lookup sweep) on
-    // every body eval.
-    @State var savedHighlightMemo = SavedHighlightMemo()
-    // Cache for the "hide furigana for known words" segment set — same memoization rationale
-    // as savedHighlightMemo above.
-    @State var knownWordFuriganaMemo = KnownWordFuriganaMemo()
-    @State var unknownSegmentLocations: Set<Int> = []
-    @State var selectedSegmentLocation: Int?
-    @State var selectedHighlightRangeOverride: NSRange?
-    @State var selectedBounds: ClosedRange<Int>?
-    @State var transientBlankReadingSegmentLocation: Int?
-    // Holds a tap that arrived before dictionary resources finished loading (readResourcesReady
-    // was still false), so it can be replayed automatically once loading completes instead of
-    // silently failing — conjugated words need the segmenter's deinflector to resolve a lemma,
-    // which isn't ready in the first moment or two after app launch, while plain dictionary-form
-    // words happen to work immediately (the raw surface itself is a valid lookup candidate).
-    @State var pendingSegmentTapAfterResourcesReady: (location: Int?, rect: CGRect?, sourceView: UIScrollView?)?
-    @State var segments: [SegmentRange]?
-    // True once the user has manually changed this note's segmentation (merge/split) or its
-    // readings (pin/unpin furigana), or applied an LLM correction. Drives the reset button's
-    // enabled state. `segments != nil` can't stand in for this: import precompute persists the
-    // *computed* segmentation to disk, so a freshly-loaded, never-edited note still has non-nil
-    // segments. This flag is set only at genuine user-mutation funnels and cleared on note load
-    // and reset, so it stays false for precomputed-but-unedited notes.
-    @State var hasManualSegmentationEdits = false
-    @State var furiganaBySegmentLocation: [Int: String] = [:]
-    @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
-    // Locations whose wide furigana entries came from the synthesis pass (per-character
-    // concatenation, e.g. ものご for 物語 when the dict reading isn't yet loaded). Tracked
-    // in-memory so a later recompute with a real dict-derived compound reading can replace
-    // them. On note load this set is reconstructed by `performScheduleFuriganaGeneration`'s
-    // pre-apply classifier, which marks any wide entry whose value matches a naive per-
-    // character dict concat — precise enough to spare LLM pins (whose value diverges from
-    // the concat) but aggressive enough to recover disk state poisoned by pre-gate code.
-    @State var synthesizedFuriganaLocations: Set<Int> = []
-    @State var furiganaComputationTask: Task<Void, Never>?
-    @State var segmentationRefreshTask: Task<Void, Never>?
-    @State var activeNoteID: UUID?
-    @State var isLoadingSelectedNote = false
+    // The open note: text, source note id, segmentation, furigana maps, render caches — see
+    // ReadDocumentState.
+    @State var document = ReadDocumentState()
+    // Segment selection for lookup (selected location/bounds, deferred tap, illegal-merge flash) —
+    // see SegmentSelectionUIState.
+    @State var segmentSelection = SegmentSelectionUIState()
     // Edit-mode transition + scroll-position state — see EditModeScrollUIState.
     @State var editModeScroll = EditModeScrollUIState()
-    @State var isShowingSegmentList = false
-    @State var isShowingDisplayOptions = false
-    // Drives the Saved Highlight category submenu as its own popover rather than a SwiftUI
-    // `Menu` — a Menu auto-dismisses after every tap (including a Toggle tap), which defeats
-    // flipping more than one category per visit. A popover of real Toggle rows doesn't.
-    @State var isShowingSavedHighlightCategories = false
-    @State var isShowingBreakdownSheet = false
+    // Toolbar sheet/popover presentation flags — see ReadSheetsUIState.
+    @State var readSheets = ReadSheetsUIState()
     // Subtitle/audio import UI state (transcription + alignment progress, staged picks,
     // import sheets/pickers) — see SubtitleImportUIState.
     @State var subtitleImport = SubtitleImportUIState()
-    @State var illegalMergeBoundaryLocation: Int?
-    @State var illegalMergeFlashTask: Task<Void, Never>?
     // Whole-note re-align UI state (progress/error, subtitle editor, mismatch dialog) — see
     // LyricRealignUIState.
     @State var lyricRealign = LyricRealignUIState()
@@ -166,16 +122,6 @@ struct ReadView: View {
     // LLM-correction UI state (in-flight request, pending per-location changes, alerts) — see
     // LLMCorrectionUIState.
     @State var llmCorrection = LLMCorrectionUIState()
-    @State var pendingAutoSegQueue: [PendingAutoSegRequest] = []
-    // Records the value that loadSelectedNoteIfNeeded just wrote into `text` so the deferred
-    // SwiftUI .onChange(of: text) handler can recognize the load-assignment and skip its
-    // recompute/persist work. Without this guard every note open triggers a redundant second
-    // refreshSegmentationRanges right after the explicit one in the load path.
-    @State var lastLoadedTextSnapshot: String?
-    // Debug overlay: disk/mem segment + furigana counts shown for ~2s on every note load,
-    // so we can see at a glance whether persisted data round-trips correctly.
-    @State var loadInfoToastMessage: String?
-    @State var loadInfoToastClearTask: Task<Void, Never>?
     @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false
     @AppStorage(LLMSettings.stubResponseKey) private var llmStubResponse = ""
     @AppStorage(SongBreakdownService.songStubResponseKey) private var breakdownStubResponse = ""
@@ -278,14 +224,14 @@ struct ReadView: View {
     // the breakdown sheet so it shows the right note regardless of how it got loaded
     // (selection from Notes, restored from `lastActiveNoteID`, fresh OCR import).
     var currentDisplayedNote: Note? {
-        if let id = activeNoteID, let stored = notesStore.note(withID: id) {
+        if let id = document.activeNoteID, let stored = notesStore.note(withID: id) {
             return stored
         }
         // Unsaved buffer fallback: a fresh note created via "New Note" hasn't been added
         // to the store yet. We still want the breakdown sheet to work against the typed
         // text — synthesize a transient Note carrying whatever's in the editor right now.
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            return Note(id: activeNoteID ?? UUID(), content: text)
+        if document.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return Note(id: document.activeNoteID ?? UUID(), content: document.text)
         }
         return nil
     }

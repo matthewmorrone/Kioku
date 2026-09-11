@@ -84,13 +84,13 @@ extension ReadView {
         let noteContent = bodyText.isEmpty ? "[\(statusLine)]" : "[\(statusLine)]\n\n\(bodyText)"
         let titleToSave = firstLineTitle(from: noteContent)
         _ = notesStore.upsertNote(id: id, title: titleToSave, content: noteContent, segments: nil)
-        if activeNoteID == id {
-            isLoadingSelectedNote = true
+        if document.activeNoteID == id {
+            document.isLoadingSelectedNote = true
             titleEdit.customTitle = titleToSave
             titleEdit.fallbackTitle = titleToSave
-            text = noteContent
-            segments = nil
-            isLoadingSelectedNote = false
+            document.text = noteContent
+            document.segments = nil
+            document.isLoadingSelectedNote = false
         }
     }
 }

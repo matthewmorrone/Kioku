@@ -89,7 +89,7 @@ extension ReadView {
         // precomputed notes that were never touched. Per the toggle standard, an enabled reset
         // reads as "on" (accent) and a disabled one as "off" (secondary); the red reject badge
         // overrides while AI changes are pending.
-        let isEnabled = (hasManualSegmentationEdits || llmCorrection.hasPendingLLMChanges) && editModeScroll.isEditMode == false
+        let isEnabled = (document.hasManualSegmentationEdits || llmCorrection.hasPendingLLMChanges) && editModeScroll.isEditMode == false
         return Button {
             resetSegmentationToComputed()
         } label: {
@@ -154,7 +154,7 @@ extension ReadView {
 
     var titleExtractWordsButton: some View {
         Button {
-            isShowingSegmentList = true
+            readSheets.isShowingSegmentList = true
         } label: {
             titleActionLabel(systemImage: "list.bullet", foreground: .accentColor)
         }
@@ -166,13 +166,13 @@ extension ReadView {
     // as a spinner on the toolbar icon so a multi-minute LLM call (often 60-180s) doesn't read
     // as an inert button while it's actually working in the background.
     private var isBreakdownGeneratingForActiveNote: Bool {
-        guard let activeNoteID else { return false }
+        guard let activeNoteID = document.activeNoteID else { return false }
         return songBreakdownStore.isGenerating(forNoteID: activeNoteID)
     }
 
     var titleBreakdownButton: some View {
         Button {
-            isShowingBreakdownSheet = true
+            readSheets.isShowingBreakdownSheet = true
         } label: {
             if isBreakdownGeneratingForActiveNote {
                 ProgressView()
@@ -304,14 +304,14 @@ extension ReadView {
             .buttonStyle(.plain)
 
             Button {
-                isShowingSavedHighlightCategories = true
+                readSheets.isShowingSavedHighlightCategories = true
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
             }
-            .popover(isPresented: $isShowingSavedHighlightCategories, arrowEdge: .trailing) {
+            .popover(isPresented: $readSheets.isShowingSavedHighlightCategories, arrowEdge: .trailing) {
                 savedHighlightCategoriesPopover
             }
         }
@@ -419,14 +419,14 @@ extension ReadView {
             }
             .onLongPressGesture(minimumDuration: 0.35) {
                 guard llmCorrection.isRequestingLLMCorrection == false else { return }
-                isShowingDisplayOptions = true
+                readSheets.isShowingDisplayOptions = true
             }
             .disabled(llmCorrection.isRequestingLLMCorrection)
             .opacity(llmCorrection.isRequestingLLMCorrection ? 0.4 : (editModeScroll.isEditMode ? 1 : 0.7))
             .accessibilityLabel(editModeScroll.isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
             .accessibilityHint(llmCorrection.isRequestingLLMCorrection ? "Disabled while AI correction runs" : "Long press for display options")
             .accessibilityAddTraits(.isButton)
-            .popover(isPresented: $isShowingDisplayOptions, arrowEdge: .bottom) {
+            .popover(isPresented: $readSheets.isShowingDisplayOptions, arrowEdge: .bottom) {
                 displayOptionsPopover
                     .presentationCompactAdaptation(.popover)
                     .fixedSize(horizontal: false, vertical: true)

@@ -97,14 +97,14 @@ extension ReadView {
                       let word = wordsStore.words.first(where: { $0.canonicalEntryID == entry.entryId })
                 else { return false }
                 // return wordsStore.words.contains { $0.canonicalEntryID == entry.entryId }
-                guard let activeNoteID else { return true }
+                guard let activeNoteID = document.activeNoteID else { return true }
                 return word.sourceNoteIDs.isEmpty || word.sourceNoteIDs.contains(activeNoteID)
             },
             sheetIsSavedElsewhereProvider: { [weak nestedSheet] in
                 // Hollow-yellow star: saved, but attributed only to other notes.
                 guard let entry = nestedSheet?.currentSheetDictionaryEntry,
                       let word = wordsStore.words.first(where: { $0.canonicalEntryID == entry.entryId }),
-                      let activeNoteID
+                      let activeNoteID = document.activeNoteID
                 else { return false }
                 return word.sourceNoteIDs.isEmpty == false && word.sourceNoteIDs.contains(activeNoteID) == false
             },
@@ -114,7 +114,7 @@ extension ReadView {
                     canonicalEntryID: entry.entryId,
                     storedSurface: lemma,
                     encounteredSurface: lemma,
-                    sourceNoteID: activeNoteID,
+                    sourceNoteID: document.activeNoteID,
                     defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
                 )
             },
@@ -128,7 +128,7 @@ extension ReadView {
                     state,
                     for: entry.entryId,
                     ensureSavedWithSurface: lemma,
-                    sourceNoteID: activeNoteID,
+                    sourceNoteID: document.activeNoteID,
                     defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
                 )
             },

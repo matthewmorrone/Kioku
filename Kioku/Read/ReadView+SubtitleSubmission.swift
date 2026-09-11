@@ -219,8 +219,8 @@ extension ReadView {
             guard SubtitleParser.isNonSpeechCue(cue.text) == false else { continue }
             guard index < audioPlayback.audioAttachmentHighlightRanges.count,
                   let range = audioPlayback.audioAttachmentHighlightRanges[index],
-                  let swiftRange = Range(range, in: text) else { continue }
-            let noteLineText = String(text[swiftRange])
+                  let swiftRange = Range(range, in: document.text) else { continue }
+            let noteLineText = String(document.text[swiftRange])
             if noteLineText != cue.text {
                 mismatched.insert(cue.text)
             }

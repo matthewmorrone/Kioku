@@ -12,7 +12,7 @@ extension ReadView {
                     SubtitleEditorSheet(
                         attachmentID: attachmentID,
                         initialCues: audioPlayback.audioAttachmentCues,
-                        noteText: text
+                        noteText: document.text
                     ) { newCues in
                         // Reload the controller with updated cues so highlighting stays in sync.
                         audioPlayback.audioAttachmentCues = newCues
@@ -140,7 +140,7 @@ extension ReadView {
         selectionLifecycleReadView
             .onDisappear {
                 // Flushes any pending edit persistence before leaving the read screen.
-                segmentationRefreshTask?.cancel()
+                document.segmentationRefreshTask?.cancel()
                 flushPendingNotePersistenceIfNeeded()
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -162,12 +162,12 @@ extension ReadView {
                 // Syncs editor state when Notes tab selects a different note.
                 loadSelectedNoteIfNeeded()
             }
-            .onChange(of: text) { oldText, newText in
+            .onChange(of: document.text) { oldText, newText in
                 // Suppress this handler when the change was the load-handler's own assignment.
                 // SwiftUI runs onChange after isLoadingSelectedNote has already been cleared, so
                 // a flag isn't enough — match the actual value the loader wrote.
-                if let snapshot = lastLoadedTextSnapshot, snapshot == newText {
-                    lastLoadedTextSnapshot = nil
+                if let snapshot = document.lastLoadedTextSnapshot, snapshot == newText {
+                    document.lastLoadedTextSnapshot = nil
                     return
                 }
                 // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
@@ -188,33 +188,33 @@ extension ReadView {
                     // diverging middle becomes an unsegmented stub; the segmenter will revisit
                     // it when edit mode exits.
                     let reconciled: [SegmentRange]?
-                    if let existing = segments {
+                    if let existing = document.segments {
                         reconciled = reconcileSegments(existing, to: newText)
                     } else {
                         reconciled = nil
                     }
-                    segments = reconciled
-                    illegalMergeBoundaryLocation = nil
-                    illegalMergeFlashTask?.cancel()
-                    segmentationRefreshTask?.cancel()
-                    furiganaComputationTask?.cancel()
-                    segmentLatticeEdges = []
-                    segmentEdges = []
-                    segmentRanges = []
-                    selectedSegmentLocation = nil
-                    selectedHighlightRangeOverride = nil
-                    selectedBounds = nil
+                    document.segments = reconciled
+                    segmentSelection.illegalMergeBoundaryLocation = nil
+                    segmentSelection.illegalMergeFlashTask?.cancel()
+                    document.segmentationRefreshTask?.cancel()
+                    document.furiganaComputationTask?.cancel()
+                    document.segmentLatticeEdges = []
+                    document.segmentEdges = []
+                    document.segmentRanges = []
+                    segmentSelection.selectedSegmentLocation = nil
+                    segmentSelection.selectedHighlightRangeOverride = nil
+                    segmentSelection.selectedBounds = nil
                     SegmentLookupSheet.shared.dismissPopover()
                     // Rebuild the runtime furigana map from the reconciled segments so annotations
                     // in surviving regions are not dropped and their absolute offsets reflect any
                     // shift caused by length changes in the edited region.
                     if let reconciled {
                         let restored = furiganaFromSegmentRanges(reconciled)
-                        furiganaBySegmentLocation = restored.byLocation
-                        furiganaLengthBySegmentLocation = restored.lengthByLocation
+                        document.furiganaBySegmentLocation = restored.byLocation
+                        document.furiganaLengthBySegmentLocation = restored.lengthByLocation
                     } else {
-                        furiganaBySegmentLocation = [:]
-                        furiganaLengthBySegmentLocation = [:]
+                        document.furiganaBySegmentLocation = [:]
+                        document.furiganaLengthBySegmentLocation = [:]
                     }
                     scheduleCurrentNotePersistenceIfNeeded()
                     return
@@ -229,7 +229,7 @@ extension ReadView {
             .onChange(of: pendingScrollTarget) { _, _ in
                 jumpToPendingScrollSurfaceIfReady()
             }
-            .onChange(of: activeNoteID) { _, _ in
+            .onChange(of: document.activeNoteID) { _, _ in
                 // activeNoteID and text update together (loadSelectedNoteIfNeeded), but that load
                 // can finish either before or after pendingScrollTarget arrives from ContentView —
                 // whichever onChange fires last is the one that actually has both pieces ready.
@@ -250,16 +250,16 @@ extension ReadView {
                     // doesn't read the map during editing, and keeping the user's chosen
                     // readings in memory means we never have to "restore" them on exit.
                     // onChange(of: text) handles real text edits via reconcileSegments.
-                    illegalMergeBoundaryLocation = nil
-                    illegalMergeFlashTask?.cancel()
-                    segmentationRefreshTask?.cancel()
-                    furiganaComputationTask?.cancel()
-                    segmentLatticeEdges = []
-                    segmentEdges = []
-                    segmentRanges = []
-                    selectedSegmentLocation = nil
-                    selectedHighlightRangeOverride = nil
-                    selectedBounds = nil
+                    segmentSelection.illegalMergeBoundaryLocation = nil
+                    segmentSelection.illegalMergeFlashTask?.cancel()
+                    document.segmentationRefreshTask?.cancel()
+                    document.furiganaComputationTask?.cancel()
+                    document.segmentLatticeEdges = []
+                    document.segmentEdges = []
+                    document.segmentRanges = []
+                    segmentSelection.selectedSegmentLocation = nil
+                    segmentSelection.selectedHighlightRangeOverride = nil
+                    segmentSelection.selectedBounds = nil
                     SegmentLookupSheet.shared.dismissPopover()
                 } else {
                     // Always flush pending edits when leaving edit mode so no changes are lost.
@@ -271,9 +271,9 @@ extension ReadView {
                 }
             }
             .onChange(of: segmenterRevision) { _, _ in
-                if text.isEmpty == false, debugStartupSegmentationDiffs {
+                if document.text.isEmpty == false, debugStartupSegmentationDiffs {
                     StartupTimer.measure("SegmentationDiffPrinter.printDiffs") {
-                        SegmentationDiffPrinter.printDiffs(for: text, trieSegmenter: segmenter)
+                        SegmentationDiffPrinter.printDiffs(for: document.text, trieSegmenter: segmenter)
                     }
                 }
 
@@ -286,9 +286,9 @@ extension ReadView {
                 // range entries survive (user pins, prior-correct annotations) while
                 // fragmented narrow entries get superseded by wider compound spans.
                 // Otherwise (no persisted segments) recompute full segmentation.
-                if segments != nil {
+                if document.segments != nil {
                     StartupTimer.mark("scheduling furigana now that surfaceReadingData is ready")
-                    scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                    scheduleFuriganaGeneration(for: document.text, edges: document.segmentEdges)
                 } else {
                     StartupTimer.mark("no persisted segments, running full segmentation")
                     refreshSegmentationRanges()
@@ -307,8 +307,8 @@ extension ReadView {
                 // Goes straight to the lookup half (selectedSegmentLocation is already set from
                 // the original tap) rather than re-entering handleReadModeSegmentTap, which would
                 // see it as already-selected and toggle it off instead of looking it up.
-                if let pending = pendingSegmentTapAfterResourcesReady, let location = pending.location {
-                    pendingSegmentTapAfterResourcesReady = nil
+                if let pending = segmentSelection.pendingSegmentTapAfterResourcesReady, let location = pending.location {
+                    segmentSelection.pendingSegmentTapAfterResourcesReady = nil
                     presentLookupForSegmentTap(tappedSegmentLocation: location, tappedSegmentRect: pending.rect, sourceView: pending.sourceView)
                 }
             }
@@ -339,8 +339,8 @@ extension ReadView {
                 cues: audioPlayback.audioAttachmentCues,
                 highlightRanges: audioPlayback.audioAttachmentHighlightRanges,
                 granularity: lyricsHighlightGranularity,
-                segmentationRanges: segmentRanges,
-                noteText: text,
+                segmentationRanges: document.segmentRanges,
+                noteText: document.text,
                 playbackHighlightRangeOverride: $audioPlayback.playbackHighlightRangeOverride,
                 activePlaybackCueIndex: $audioPlayback.activePlaybackCueIndex
             )
@@ -362,12 +362,12 @@ extension ReadView {
                     controller: audioPlayback.audioController,
                     cues: audioPlayback.audioAttachmentCues,
                     highlightRanges: audioPlayback.audioAttachmentHighlightRanges,
-                    furiganaBySegmentLocation: furiganaBySegmentLocation,
-                    furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
-                    segmentationRanges: segmentRanges,
-                    noteText: text,
+                    furiganaBySegmentLocation: document.furiganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: document.furiganaLengthBySegmentLocation,
+                    segmentationRanges: document.segmentRanges,
+                    noteText: document.text,
                     attachmentID: audioPlayback.activeAudioAttachmentID,
-                    noteID: activeNoteID,
+                    noteID: document.activeNoteID,
                     playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : audioPlayback.playbackHighlightRangeOverride,
                     granularity: lyricsHighlightGranularity,
                     isSavedHighlightEnabled: isSavedHighlightEnabled,
@@ -398,15 +398,15 @@ extension ReadView {
                 }
             }
         }
-        .sheet(isPresented: $isShowingSegmentList) {
+        .sheet(isPresented: $readSheets.isShowingSegmentList) {
             SegmentListView(
-                text: text,
-                edges: segmentEdges,
-                latticeEdges: segmentLatticeEdges,
+                text: document.text,
+                edges: document.segmentEdges,
+                latticeEdges: document.segmentLatticeEdges,
                 dictionaryStore: dictionaryStore,
                 segmenter: segmenter,
                 lexicon: lexicon,
-                sourceNoteID: activeNoteID,
+                sourceNoteID: document.activeNoteID,
                 note: currentDisplayedNote,
                 lemmaForSurface: { segmenter.preferredLemma(for: $0) },
                 lemmaCandidatesForSurface: { segmenter.lemmaCandidates(for: $0) },
@@ -452,7 +452,7 @@ extension ReadView {
         // `selectedNote` binding: ReadView's load handler consumes `selectedNote` (sets it
         // to nil) once the note has been loaded into `text` / `activeNoteID`, so reading
         // the binding here would always see nil and render an empty sheet.
-        .sheet(isPresented: $isShowingBreakdownSheet) {
+        .sheet(isPresented: $readSheets.isShowingBreakdownSheet) {
             if let note = currentDisplayedNote {
                 NavigationStack {
                     // Threading the segmenter + surfaceReadingData lets the breakdown's
@@ -469,7 +469,7 @@ extension ReadView {
                     )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
-                                Button("Done") { isShowingBreakdownSheet = false }
+                                Button("Done") { readSheets.isShowingBreakdownSheet = false }
                             }
                         }
                 }
@@ -488,18 +488,18 @@ extension ReadView {
     // "unplayed" dimming it also drives requires real cue data (cueHasReliableDimCoverage), which
     // isn't present here, so only the scroll + a plain highlight tint apply.
     func jumpToPendingScrollSurfaceIfReady() {
-        guard let target = pendingScrollTarget, activeNoteID == target.noteID else { return }
-        guard let range = text.range(of: target.surface) else {
+        guard let target = pendingScrollTarget, document.activeNoteID == target.noteID else { return }
+        guard let range = document.text.range(of: target.surface) else {
             pendingScrollTarget = nil
             return
         }
-        let nsRange = NSRange(range, in: text)
+        let nsRange = NSRange(range, in: document.text)
         guard nsRange.length > 0 else {
             pendingScrollTarget = nil
             return
         }
-        selectedSegmentLocation = nsRange.location
-        selectedHighlightRangeOverride = nsRange
+        segmentSelection.selectedSegmentLocation = nsRange.location
+        segmentSelection.selectedHighlightRangeOverride = nsRange
         audioPlayback.playbackHighlightRangeOverride = nsRange
         pendingScrollTarget = nil
 
