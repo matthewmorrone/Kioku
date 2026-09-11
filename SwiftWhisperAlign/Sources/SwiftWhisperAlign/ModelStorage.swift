@@ -19,6 +19,12 @@ public enum ModelStorage {
     // 29% → 38% on the same fixture), and the ~600 MB is affordable. Not bf16: its ~1.2 GB of
     // weights leave <1 GB of the per-process budget for a region pass, which jetsams.
     public static let forcedAlignerModelId = "aufklarer/Qwen3-ForcedAligner-0.6B-8bit"
+    // Aligner builds an earlier app version may have downloaded; nothing loads them, but the
+    // storage-management screen still measures and reclaims them ([[DownloadedModelsStore]]).
+    public static let retiredForcedAlignerModelIds = [
+        "aufklarer/Qwen3-ForcedAligner-0.6B-4bit",
+        "aufklarer/Qwen3-ForcedAligner-0.6B-bf16",
+    ]
     // CoreML build of the same Qwen3-ASR model (encoder.mlmodelc + decoder.mlmodelc), used by
     // StemTranscriber instead of the MLX build — see its header comment for why.
     public static let asrCoreMLModelId = "aufklarer/Qwen3-ASR-CoreML"

@@ -23,8 +23,14 @@ nonisolated enum DownloadedModelsStore {
     }
 
     // On-disk size of the downloaded Qwen3-ForcedAligner weights, or 0 if not yet downloaded.
+    // Sums the build the app loads plus any retired quantization an older app version
+    // downloaded — orphaned, but still worth reclaiming.
     static func qwenForcedAlignerSizeBytes() -> Int {
-        sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.forcedAlignerModelId))
+        forcedAlignerModelIds.reduce(0) { $0 + sizeBytes(at: try? ModelStorage.directory(for: $1)) }
+    }
+
+    private static var forcedAlignerModelIds: [String] {
+        [ModelStorage.forcedAlignerModelId] + ModelStorage.retiredForcedAlignerModelIds
     }
 
     // Sums every on-disk copy of the vocal isolator a user could have, depending on which app
@@ -57,9 +63,12 @@ nonisolated enum DownloadedModelsStore {
         removeContents(of: try? ModelStorage.directory(for: ModelStorage.asrModelId))
     }
 
-    // Deletes the downloaded Qwen3-ForcedAligner weights. No-op if nothing is downloaded.
+    // Deletes every on-disk copy of the Qwen3-ForcedAligner weights (see
+    // qwenForcedAlignerSizeBytes). No-op if nothing is downloaded.
     static func deleteQwenForcedAligner() {
-        removeContents(of: try? ModelStorage.directory(for: ModelStorage.forcedAlignerModelId))
+        for id in forcedAlignerModelIds {
+            removeContents(of: try? ModelStorage.directory(for: id))
+        }
     }
 
     // Deletes every on-disk copy of the HTDemucs vocal isolator (see htDemucsSizeBytes).
