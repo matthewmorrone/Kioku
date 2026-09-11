@@ -121,15 +121,12 @@ public struct CTCForcedAligner {
         Self.breadcrumb("aligner loaded (fromPretrained returned)")
         if cancellationCheck?() == true { throw CancellationError() }
 
-        // One CTC pass over the whole stem with the whole lyric. The aligner is rated for up to
-        // five minutes of audio per call; a full-song call peaks around 1.3 GB on an iPhone 17.
-        // `withError` turns MLX's internal fatalError handler into a catchable Swift error.
         onStage?("Aligning lyrics…")
         let text = input.lines.joined(separator: "\n")
-        Self.breadcrumb("aligning \(text.count) chars over \(vocalMono.count / 44_100)s in one pass")
-        let aligned = try withError { aligner.align(audio: vocalMono, text: text, sampleRate: 44_100) }
-        MLX.Memory.clearCache()
-        let units = aligned.map { (start: Double($0.startTime), end: Double($0.endTime), text: $0.text) }
+        let units = try Self.alignBySaturation(
+            samples: vocalMono, sampleRate: 44_100, text: text, aligner: aligner,
+            cancellationCheck: cancellationCheck
+        )
         Self.breadcrumb("aligned \(units.count) units")
         onProgress?(0.9)
 
@@ -152,6 +149,79 @@ public struct CTCForcedAligner {
         onSegment?(lines)
         onProgress?(1.0)
         return AlignmentResult(lines: lines, lineTokens: lineTokens)
+    }
+
+    // Longest stretch of audio handed to one align() call. Two ceilings meet here: the model's
+    // reliable range is ~270 s (past it the trailing words collapse onto one timestamp), and on an
+    // iPhone 17 a 244 s call peaks ~1.3 GB while a 316 s call is jetsam-killed at the ~3.4 GB
+    // per-process limit. Most songs fit in one pass.
+    private static let maxChunkSec = 200.0
+
+    // Aligns `text` over `samples` in as few align() calls as the chunk cap allows, letting the
+    // MODEL decide which words belong to each chunk: every call gets all the not-yet-placed text,
+    // and words that don't belong in that audio come back crammed onto one trailing timestamp (the
+    // aligner's saturation signature). Everything before that plateau is kept, the audio cursor
+    // moves to the last kept word, and the placed characters are dropped from the text. This is
+    // speech-swift's own alignLong strategy with a memory-bounded first pass instead of a whole-file
+    // one. `withError` turns MLX's internal fatalError handler into a catchable Swift error.
+    private static func alignBySaturation(
+        samples: [Float], sampleRate: Int, text: String, aligner: Qwen3ForcedAligner,
+        cancellationCheck: (@Sendable () -> Bool)?
+    ) throws -> [(start: Double, end: Double, text: String)] {
+        let totalSec = Double(samples.count) / Double(sampleRate)
+        var results: [(start: Double, end: Double, text: String)] = []
+        var remaining = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var audioStart = 0.0
+        var pass = 0
+        while remaining.isEmpty == false, audioStart < totalSec - 0.5, pass < 12 {
+            pass += 1
+            if cancellationCheck?() == true { throw CancellationError() }
+            let chunkEnd = min(audioStart + maxChunkSec, totalSec)
+            let isLast = chunkEnd >= totalSec - 0.01
+            let chunk = Array(samples[Int(audioStart * Double(sampleRate))..<min(samples.count, Int(chunkEnd * Double(sampleRate)))])
+            breadcrumb("align pass \(pass): \(Int(audioStart))–\(Int(chunkEnd))s, \(remaining.count) chars left")
+            let aligned = try withError { aligner.align(audio: chunk, text: remaining, sampleRate: sampleRate) }
+            MLX.Memory.clearCache()
+            guard aligned.isEmpty == false else { audioStart = chunkEnd; continue }
+
+            let keepCount = isLast ? aligned.count : trailingPlateauStart(aligned, tolerance: 0.1, minSize: 5)
+            let kept = aligned.prefix(keepCount)
+            guard kept.isEmpty == false else { audioStart = chunkEnd; continue }
+            for w in kept {
+                results.append((Double(w.startTime) + audioStart, Double(w.endTime) + audioStart, w.text))
+            }
+            if isLast || keepCount == aligned.count { break }
+
+            // Drop the placed characters (non-whitespace count) from the text and move the cursor.
+            let consumed = kept.reduce(0) { $0 + $1.text.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 } }
+            var dropped = 0
+            var idx = remaining.startIndex
+            while dropped < consumed, idx < remaining.endIndex {
+                if remaining[idx].isWhitespace == false { dropped += 1 }
+                idx = remaining.index(after: idx)
+            }
+            while idx < remaining.endIndex, remaining[idx].isWhitespace { idx = remaining.index(after: idx) }
+            remaining = String(remaining[idx...])
+            audioStart = max(Double(kept.last!.endTime) + audioStart, audioStart + 1.0)
+        }
+        return results
+    }
+
+    // Index of the first word in the trailing "stuck" plateau — ≥ `minSize` consecutive trailing
+    // words whose start times differ by < `tolerance` — or `aligned.count` if none. Same detector
+    // as speech-swift's alignLong.
+    private static func trailingPlateauStart(_ aligned: [AlignedWord], tolerance: Float, minSize: Int) -> Int {
+        let n = aligned.count
+        guard n > minSize else { return n }
+        var plateauStart = n
+        for i in (1..<n).reversed() {
+            if abs(aligned[i].startTime - aligned[i - 1].startTime) < tolerance {
+                plateauStart = i - 1
+            } else {
+                break
+            }
+        }
+        return (n - plateauStart) >= minSize ? plateauStart : n
     }
 
     // Isolated vocal stem (mono, 44.1 kHz) for `url` — from the shared on-disk cache when present

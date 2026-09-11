@@ -2,9 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 import SwiftWhisperAlign
 
-// Thread-safe cancellation flag for alignment. The @State Bool drives UI; this token
-// is what we hand to the @Sendable cancellationCheck closure so whisper.cpp can poll
-// from inference threads without crossing actor isolation. cancelAlignment() flips both.
+// Thread-safe cancellation flag for alignment. The @Observable Bool drives UI; this token is
+// what we hand to the @Sendable cancellationCheck closure so the aligner can poll it from
+// inference threads without crossing actor isolation. cancelAlignment() flips both.
 nonisolated final class AlignmentCancellationToken: @unchecked Sendable {
     private let lock = NSLock()
     private var _isCancelled = false

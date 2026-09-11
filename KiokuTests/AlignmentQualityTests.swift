@@ -58,12 +58,6 @@ final class AlignmentQualityTests: XCTestCase {
         try await runQualityCheck(fixtureName: "tsukiiro-chainon")
     }
 
-    // From-scratch alignment (no starting SRT) — the path the karaoke "Re-align" button runs, and
-    // the one that was never graded. Reproduces the gross post-interlude misplacement.
-    func testQuality_TsukiiroChainon_fromScratch() async throws {
-        try await runQualityCheck(fixtureName: "tsukiiro-chainon", fromScratch: true)
-    }
-
     // MARK: - Harness
 
     private struct Tolerance: Decodable {
@@ -86,7 +80,7 @@ final class AlignmentQualityTests: XCTestCase {
     // within tolerance of the oracle. Throws (via XCTFail) on any threshold
     // violation; prints metrics on success so passing runs still tell you how
     // close you actually were.
-    private func runQualityCheck(fixtureName: String, fromScratch: Bool = false) async throws {
+    private func runQualityCheck(fixtureName: String) async throws {
         let bundle = Bundle(for: type(of: self))
         // Synchronized file groups flatten subdirectories when copying resources
         // into the test bundle, so all fixture files live at the bundle root with
@@ -105,14 +99,6 @@ final class AlignmentQualityTests: XCTestCase {
         let oracleURL = try requireResource(bundle: bundle, basename: "\(fixtureName).ground-truth", extensions: ["srt"])
         let toleranceURL = try requireResource(bundle: bundle, basename: "\(fixtureName).tolerance", extensions: ["json"])
         let audioURL = try requireResource(bundle: bundle, basename: "\(fixtureName).audio", extensions: ["mp3", "m4a", "wav"])
-        // Optional: starting SRT — when present we measure the in-app anchored
-        // Reconcile pipeline (starts from this SRT, fills gaps via aligner). When
-        // absent we degrade to raw alignment (empty starting cues → one giant gap).
-        // fromScratch ignores the (good) starting SRT so reconcile aligns from an empty cue set —
-        // the raw from-scratch alignment the karaoke Re-align button actually runs, which the
-        // starting-SRT path never exercises.
-        let startingSrtURL = fromScratch ? nil : bundle.url(forResource: "\(fixtureName).starting-srt", withExtension: "srt")
-
         let noteText = try String(contentsOf: noteURL, encoding: .utf8)
         let oracleText = try String(contentsOf: oracleURL, encoding: .utf8)
         let toleranceData = try Data(contentsOf: toleranceURL)
@@ -125,35 +111,14 @@ final class AlignmentQualityTests: XCTestCase {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { $0.isEmpty == false && SubtitleParser.isNonSpeechCue($0) == false }
 
-        // Compute BEFORE metrics if we have a starting SRT — shows how far off
-        // the input is from oracle. Then run the in-app reconcile (the exact
-        // function the editor sheet calls) to compute AFTER metrics. The user-
-        // visible quality is the AFTER number; the delta tells us whether the
-        // pipeline is helping.
-        let beforeMetrics: QualityMetrics?
-        let startingCues: [SubtitleCue]
-        if let startingSrtURL {
-            let startingSrtText = try String(contentsOf: startingSrtURL, encoding: .utf8)
-            startingCues = SubtitleParser.parse(startingSrtText)
-            let startingSpeechCues = startingCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
-            beforeMetrics = computeMetrics(
-                output: startingSpeechCues,
-                oracle: oracleCues,
-                perCueStartMsTolerance: tolerance.perCueStartMsTolerance
-            )
-        } else {
-            startingCues = []
-            beforeMetrics = nil
-        }
-
         // Call the EXACT function the app's Re-align actions use. Test and production share
         // this code path so the test measures user-facing quality, not a re-implementation.
-        let reconciledCues = try await WholeSongAlignment.cues(
+        let alignedCues = try await WholeSongAlignment.cues(
             audioURL: audioURL,
             lyrics: noteLines.joined(separator: "\n")
         )
 
-        let afterSpeechCues = reconciledCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
+        let afterSpeechCues = alignedCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }
         let afterMetrics = computeMetrics(
             output: afterSpeechCues,
             oracle: oracleCues,
@@ -163,9 +128,7 @@ final class AlignmentQualityTests: XCTestCase {
         printMetricsReport(
             fixtureName: fixtureName,
             tolerance: tolerance,
-            beforeMetrics: beforeMetrics,
-            afterMetrics: afterMetrics,
-            startingCueCount: startingCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }.count
+            afterMetrics: afterMetrics
         )
 
         // Diagnostic: per-cue start deltas (worst offenders first) so a grading run
@@ -189,7 +152,7 @@ final class AlignmentQualityTests: XCTestCase {
             }
         }
 
-        // Temporary debug: dump reconciled cue list to diagnose missing-line drops.
+        // Dumps the output cue list when a line is missing, to show where it went.
         if afterMetrics.missingFromOutput.isEmpty == false {
             print("\n[DEBUG] Reconciled output cues (\(afterSpeechCues.count)):")
             for (i, cue) in afterSpeechCues.enumerated() {
@@ -202,18 +165,18 @@ final class AlignmentQualityTests: XCTestCase {
             }
         }
 
-        // Hard gate: never drop a line. The reconcile pipeline force-fits
+        // Hard gate: never drop a line. The alignment must place every note line;
         // overflow rather than drop; this is a structural guarantee, not a
         // quality knob.
         XCTAssertTrue(afterMetrics.missingFromOutput.isEmpty,
-                      "Ground-truth cues missing from reconcile output: \(afterMetrics.missingFromOutput)")
+                      "Ground-truth cues missing from output: \(afterMetrics.missingFromOutput)")
 
         // Aspirational timing gate — see XCTExpectFailure note in
         // docs/INVARIANTS.md Alignment #9. Metrics print regardless; the
         // expectFailure suppresses the red so CI tracks the numbers instead of
         // blocking on quality. When quality improves to consistently meet
         // tolerance, XCTExpectFailure will itself fail and we drop the wrapper.
-        XCTExpectFailure("Anchored reconcile timing not yet within tolerance — see printed metrics for the current AFTER numbers and the BEFORE/AFTER delta") {
+        XCTExpectFailure("Alignment timing not yet within tolerance — see printed metrics for the current AFTER numbers and the BEFORE/AFTER delta") {
             XCTAssertGreaterThanOrEqual(afterMetrics.coverageFraction, tolerance.minCoverage,
                                         "Coverage \(afterMetrics.coverageFraction) < tolerance.minCoverage \(tolerance.minCoverage)")
             XCTAssertLessThanOrEqual(afterMetrics.medianStartDeltaMs, tolerance.medianStartMsTolerance,
@@ -221,17 +184,11 @@ final class AlignmentQualityTests: XCTestCase {
         }
     }
 
-    // Renders the metrics block. When beforeMetrics is non-nil, shows BEFORE
-    // (starting SRT vs oracle) and AFTER (reconciled SRT vs oracle) side by
-    // side so the delta is obvious — the whole point of measuring this is to
-    // see whether the pipeline is helping. When beforeMetrics is nil there's
-    // no starting SRT so only AFTER is shown (equivalent to raw alignment).
+    // Renders the metrics block: the aligned output graded against the oracle.
     private func printMetricsReport(
         fixtureName: String,
         tolerance: Tolerance,
-        beforeMetrics: QualityMetrics?,
-        afterMetrics: QualityMetrics,
-        startingCueCount: Int
+        afterMetrics: QualityMetrics
     ) {
         func row(_ label: String, _ metrics: QualityMetrics, totalOracleCount: Int) -> [String] {
             let textMatchPct = totalOracleCount == 0 ? 100.0 : Double(metrics.matchedCueCount) / Double(totalOracleCount) * 100
@@ -251,38 +208,17 @@ final class AlignmentQualityTests: XCTestCase {
 
         var lines: [String] = [
             "",
-            "┌─ [QualityTest] \(fixtureName) — in-app anchored Reconcile pipeline ──",
+            "┌─ [QualityTest] \(fixtureName) — whole-song alignment ──",
             "│  oracle cues:         \(afterMetrics.oracleCueCount)",
             "│  tolerance:           ≥ \(String(format: "%.0f%%", tolerance.minCoverage * 100)) within ±\(tolerance.perCueStartMsTolerance)ms · median Δ ≤ \(tolerance.medianStartMsTolerance)ms",
             "│",
         ]
 
-        if let beforeMetrics {
-            lines += [
-                "│  BEFORE  (starting SRT vs oracle — what users start from)",
-                "│   starting cues:      \(startingCueCount)",
-            ]
-            lines += row("BEFORE", beforeMetrics, totalOracleCount: afterMetrics.oracleCueCount)
-            lines += ["│"]
-        }
         lines += [
-            "│  AFTER   (reconcile output vs oracle — what users get)",
+            "│  RESULT  (aligned output vs oracle — what users get)",
         ]
         lines += row("AFTER", afterMetrics, totalOracleCount: afterMetrics.oracleCueCount)
 
-        if let beforeMetrics {
-            // Delta highlights — the test's reason for existing.
-            let medianDelta = beforeMetrics.medianStartDeltaMs - afterMetrics.medianStartDeltaMs
-            let coverageDelta = (afterMetrics.coverageFraction - beforeMetrics.coverageFraction) * 100
-            let medianSign = medianDelta >= 0 ? "−" : "+"
-            let coverageSign = coverageDelta >= 0 ? "+" : "−"
-            lines += [
-                "│",
-                "│  DELTA   (lower median = better; higher coverage = better)",
-                "│   median Δstart:      \(medianSign)\(abs(medianDelta)) ms",
-                "│   coverage:           \(coverageSign)\(String(format: "%.1f", abs(coverageDelta))) percentage points",
-            ]
-        }
         lines += [
             "└────────────────────────────────────────────────────────────────────",
             "",
@@ -315,7 +251,7 @@ final class AlignmentQualityTests: XCTestCase {
         perCueStartMsTolerance: Int
     ) -> QualityMetrics {
         // Walk oracle cues in order, find the next matching output cue (also
-        // monotonically). Same monotonic walk as the reconcile matcher — keeps
+        // monotonically). Monotonic so repeated chorus lines can't cross-bind — keeps
         // chorus refrains from cross-binding.
         var nextOutputIdx = 0
         var matchedPairs: [(Int, SubtitleCue, SubtitleCue)] = []  // (oracleIdx, oracle, output)
