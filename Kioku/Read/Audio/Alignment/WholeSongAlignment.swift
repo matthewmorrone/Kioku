@@ -61,15 +61,28 @@ enum WholeSongAlignment {
                                     text: line.text, checkpoints: checkpoints))
         }
 
-        // Pull any line whose onset drifted into a proven instrumental gap forward to where the
-        // vocal actually resumes, so it neither sweeps over silence nor suppresses the gap's ♪.
-        let clamped = SubtitleTimingTools.clampOnsetsToVocal(
-            cues: cues, durationMs: durationMs, vocalSegments: result.vocalSegments
-        )
-        // ♪ markers over the intro, breaks, and outro — driven by the stem's vocal regions, so a
-        // marker only appears where the singer truly isn't singing.
-        return SubtitleTimingTools.insertMusicMarkers(
-            cues: clamped, durationMs: durationMs, vocalSegments: result.vocalSegments
-        )
+        return insertingMusicMarkers(into: cues, durationMs: durationMs)
+    }
+
+    // A gap at least this long between consecutive lines (or before the first / after the last)
+    // is an instrumental stretch and gets a ♪ cue.
+    static let interludeMinMs = 4000
+
+    // Inserts ♪ cues into the gaps between aligned lines and renumbers the result.
+    static func insertingMusicMarkers(into cues: [SubtitleCue], durationMs: Int) -> [SubtitleCue] {
+        var out: [SubtitleCue] = []
+        var lastEnd = 0
+        for cue in cues {
+            if cue.startMs - lastEnd >= interludeMinMs {
+                out.append(SubtitleCue(index: 0, startMs: lastEnd, endMs: cue.startMs, text: "♪"))
+            }
+            out.append(cue)
+            lastEnd = max(lastEnd, cue.endMs)
+        }
+        if durationMs - lastEnd >= interludeMinMs {
+            out.append(SubtitleCue(index: 0, startMs: lastEnd, endMs: durationMs, text: "♪"))
+        }
+        for i in out.indices { out[i].index = i + 1 }
+        return out
     }
 }

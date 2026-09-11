@@ -22,8 +22,8 @@ public struct CTCForcedAligner {
     public init() {}
 
     // Aligns lyric lines to the audio, returning one AlignedLine per input line. Pipeline:
-    // isolate vocals (HTDemucs CoreML, cached per audio file) → trim the leading intro → one
-    // CTC forced-alignment pass over the whole stem with the whole lyric → map units to lines.
+    // isolate vocals (HTDemucs CoreML, cached per audio file) → one CTC forced-alignment pass
+    // over the whole stem with the whole lyric → map units to lines.
     public func align(
         input: AlignmentInput,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
@@ -91,30 +91,11 @@ public struct CTCForcedAligner {
                               userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
             }
             Self.breadcrumb("isolated voice \(mono.count) frames (HTDemucs CoreML)")
-            #if DEBUG
-            Self.saveDebugWAV(mono, sampleRate: 44_100, name: "isolated-vocal.wav")
-            #endif
             VocalStemCache.store(mono, for: input.audioURL)
             Self.breadcrumb("vocal stem cached")
             vocalMono = mono
         }
         onProgress?(0.4)
-
-        // (a) Trim the leading instrumental-intro silence on the (now quiet) vocal stem so
-        // the aligner doesn't pin the first line to 0:00. The lead is added back afterward.
-        let (trimmedVocal, leadOffsetSec) = Self.trimLeadingSilence(vocalMono, sampleRate: 44_100)
-        Self.breadcrumb("vocal mono \(trimmedVocal.count) frames, trimmed \(String(format: "%.1f", leadOffsetSec))s lead")
-
-        // Energy-VAD the stem into sung regions. Not used to steer alignment — the aligner sees the
-        // whole stem in one call — only reported back as `vocalSegments` so the caller can place ♪
-        // markers on the real instrumental gaps. Energy-based (not a speech VAD) because on the
-        // clean HTDemucs stem the vocal regions are exactly the loud spans, and energy survives
-        // sustained sung vowels where a speech VAD fragments. Breaths/consonant gaps ≤3 s are merged.
-        onStage?("Detecting vocals…")
-        let vadRaw = Self.energyVADSegments(trimmedVocal, sampleRate: 44_100)
-        let vadSegs = Self.mergeSegments(vadRaw, maxGap: 3.0)
-        Self.breadcrumb("energy-VAD \(vadRaw.count)→\(vadSegs.count) segs: " +
-                        vadSegs.prefix(12).map { String(format: "%.0f-%.0f", $0.start, $0.end) }.joined(separator: " "))
 
         // Download (first use) + load the CTC aligner. Weights live in Application Support, not
         // the purgeable Caches dir — see ModelStorage.
@@ -145,12 +126,10 @@ public struct CTCForcedAligner {
         // `withError` turns MLX's internal fatalError handler into a catchable Swift error.
         onStage?("Aligning lyrics…")
         let text = input.lines.joined(separator: "\n")
-        Self.breadcrumb("aligning \(text.count) chars over \(trimmedVocal.count / 44_100)s in one pass")
-        let aligned = try withError { aligner.align(audio: trimmedVocal, text: text, sampleRate: 44_100) }
+        Self.breadcrumb("aligning \(text.count) chars over \(vocalMono.count / 44_100)s in one pass")
+        let aligned = try withError { aligner.align(audio: vocalMono, text: text, sampleRate: 44_100) }
         MLX.Memory.clearCache()
-        let rawUnits = aligned.map { (start: Double($0.startTime), end: Double($0.endTime), text: $0.text) }
-        // Map back to the original timeline (undo the leading-silence trim).
-        let units = rawUnits.map { (start: $0.start + leadOffsetSec, end: $0.end + leadOffsetSec, text: $0.text) }
+        let units = aligned.map { (start: Double($0.startTime), end: Double($0.endTime), text: $0.text) }
         Self.breadcrumb("aligned \(units.count) units")
         onProgress?(0.9)
 
@@ -172,10 +151,7 @@ public struct CTCForcedAligner {
 
         onSegment?(lines)
         onProgress?(1.0)
-        // Vocal regions in absolute song time (undo the leading-silence trim) — the caller marks
-        // the gaps BETWEEN these as ♪, so markers track real silence on the stem, not cue-time slack.
-        let vocalSegments = vadSegs.map { (start: $0.start + leadOffsetSec, end: $0.end + leadOffsetSec) }
-        return AlignmentResult(lines: lines, lineTokens: lineTokens, vocalSegments: vocalSegments)
+        return AlignmentResult(lines: lines, lineTokens: lineTokens)
     }
 
     // Isolated vocal stem (mono, 44.1 kHz) for `url` — from the shared on-disk cache when present
@@ -217,8 +193,7 @@ public struct CTCForcedAligner {
         ends: [Double],
         texts: [String],
         lastEnd: Double,
-        lines: [String],
-        regularize: Bool = true
+        lines: [String]
     ) -> (lines: [AlignedLine], lineTokens: [[AlignedToken]]) {
         func nonWS(_ s: String) -> Int { s.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 } }
 
@@ -300,33 +275,6 @@ public struct CTCForcedAligner {
                 flush()
             }
 
-            // Straddle fix: a line's word times can't really span a 5s+ internal gap — no sung line
-            // pauses that long mid-phrase. When they do, the line's tail spilled across an
-            // instrumental break: the windowing ran out of segment audio for the last line before a
-            // gap, so CTC placed the line's ONSET (the tokens before the gap) at its true start and
-            // smeared the remaining tokens onto the far side. Keep the line on the onset side — cap
-            // its end before the gap and pull the spilled tail tokens back to just after the onset —
-            // so neither the line start nor the per-word sweep jumps the interlude (the 生きてゆく
-            // +19s off-by-one). A clean line that genuinely begins after a gap has ALL its tokens on
-            // the far side, so it never straddles and this never fires on it.
-            if tokens.count > 1 {
-                var gapIdx = 0
-                var gapMax = 0.0
-                for t in 1..<tokens.count {
-                    let gp = tokens[t].start - tokens[t - 1].start
-                    if gp > gapMax { gapMax = gp; gapIdx = t }
-                }
-                if gapMax > 5.0, gapIdx > 0 {
-                    let onsetEnd = tokens[gapIdx - 1].start
-                    end = max(start + 0.3, min(onsetEnd + 0.5, nextBound))
-                    for t in gapIdx..<tokens.count {
-                        let pulled = min(end, onsetEnd + 0.1 * Double(t - gapIdx + 1))
-                        tokens[t] = AlignedToken(start: pulled,
-                                                 charOffsetUTF16: tokens[t].charOffsetUTF16,
-                                                 charLengthUTF16: tokens[t].charLengthUTF16)
-                    }
-                }
-            }
             result.append(AlignedLine(text: line, start: start, end: end))
 
             // Keep the aligner's REAL per-word times — they track the actual singing, so the
@@ -334,8 +282,7 @@ public struct CTCForcedAligner {
             // singing isn't evenly paced). Only enforce a small minimum gap, which separates CTC
             // frame-quantization clusters (several words stamped within a few ms, then a hold) into
             // distinct visible moments while leaving real held-note gaps intact. Forward-only,
-            // clamped to the line end. (`regularize` is retained on the signature for the disabled
-            // pass-2 path; both paths now keep real timing.)
+            // clamped to the line end.
             if tokens.count > 1 {
                 let minGap = 0.1
                 for t in 1..<tokens.count {
@@ -347,206 +294,11 @@ public struct CTCForcedAligner {
                     }
                 }
             }
-            _ = regularize
             lineTokens.append(tokens)
         }
         return (result, lineTokens)
     }
 
-
-    // Energy-based voice-activity detection on the (clean) vocal stem: returns the sung
-    // regions in seconds, split at instrumental gaps. Builds a smoothed RMS envelope, gates at
-    // a fraction of the stem's own loud-vocal level (95th-pct), and groups frames above the
-    // gate into runs (tolerating sub-`minGapMs` dips within a phrase). Unlike a speech VAD,
-    // sustained sung vowels keep energy up, so phrases stay whole instead of fragmenting.
-    private static func energyVADSegments(
-        _ samples: [Float], sampleRate: Int,
-        gateFraction: Float = 0.2, minSpeechMs: Int = 300, minGapMs: Int = 350
-    ) -> [(start: Double, end: Double)] {
-        guard samples.count > sampleRate / 5 else { return [] }
-        let frameLen = max(1, sampleRate / 50)   // 20 ms
-        var env: [Float] = []
-        env.reserveCapacity(samples.count / frameLen + 1)
-        var i = 0
-        while i < samples.count {
-            let end = min(i + frameLen, samples.count)
-            var sum: Float = 0; var j = i
-            while j < end { sum += samples[j] * samples[j]; j += 1 }
-            env.append((sum / Float(end - i)).squareRoot())
-            i = end
-        }
-        // ~0.3 s centered smooth so brief transients don't fragment a phrase.
-        let half = max(1, (sampleRate / frameLen) / 6)
-        var sm = [Float](repeating: 0, count: env.count)
-        for k in 0..<env.count {
-            let lo = max(0, k - half), hi = min(env.count - 1, k + half)
-            var s: Float = 0; for m in lo...hi { s += env[m] }
-            sm[k] = s / Float(hi - lo + 1)
-        }
-        let sorted = sm.sorted()
-        let ref = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
-        guard ref > 0 else { return [] }
-        let gate = ref * gateFraction
-        let fps = max(1, sampleRate / frameLen)
-        let minSpeech = max(1, fps * minSpeechMs / 1000)
-        let minGap = max(1, fps * minGapMs / 1000)
-
-        var segs: [(start: Double, end: Double)] = []
-        var k = 0
-        while k < sm.count {
-            if sm[k] > gate {
-                let startF = k
-                var endF = k, gap = 0, j = k
-                while j < sm.count {
-                    if sm[j] > gate { endF = j; gap = 0 }
-                    else { gap += 1; if gap >= minGap { break } }
-                    j += 1
-                }
-                if endF - startF + 1 >= minSpeech {
-                    // NOTE: a Schmitt-trigger start-backoff (like trimLeadingSilence) is NOT safe
-                    // here. Mid-song, the audio before a segment is an instrumental break, not
-                    // silence — its bleed keeps energy above any low floor, so a backoff walks the
-                    // start all the way back across the break and pulls a post-gap line ~16–25 s
-                    // early (measured). The intro is genuinely silent, so the trim's backoff is
-                    // safe; these interior onsets are not. Keep the gated start.
-                    segs.append((Double(startF * frameLen) / Double(sampleRate),
-                                 Double((endF + 1) * frameLen) / Double(sampleRate)))
-                }
-                k = j + 1
-            } else { k += 1 }
-        }
-        return segs
-    }
-
-    // Merges VAD segments separated by short gaps (within-phrase breaths) so we align over
-    // coherent vocal regions instead of over-fragmenting, while still breaking at the real
-    // instrumental gaps. Returns (start,end) seconds, sorted.
-    private static func mergeSegments(_ segs: [(start: Double, end: Double)], maxGap: Double = 0.6) -> [(start: Double, end: Double)] {
-        let sorted = segs.sorted { $0.start < $1.start }
-        var merged: [(start: Double, end: Double)] = []
-        for s in sorted {
-            if var last = merged.last, s.start - last.end <= maxGap {
-                last.end = max(last.end, s.end)
-                merged[merged.count - 1] = last
-            } else {
-                merged.append(s)
-            }
-        }
-        return merged
-    }
-
-    // Trims the leading instrumental intro on a vocal stem so the aligner doesn't pin the
-    // first line to 0:00. Uses an ADAPTIVE energy gate, not a fixed amplitude: OpenUnmix
-    // leaves low-level instrumental bleed in the "silent" intro that a fixed gate trips on
-    // (observed on-device: trimmed 0.0s while the real vocal onset was seconds in, so line 1
-    // pinned to 0:00). Instead we build a short-window RMS envelope and gate at a fraction
-    // of the stem's OWN loud-vocal level (95th-percentile RMS, robust to transient clicks),
-    // which self-calibrates to whatever the bleed floor happens to be. Returns the trimmed
-    // audio and the lead removed in seconds (added back to timestamps afterward).
-    private static func trimLeadingSilence(
-        _ samples: [Float], sampleRate: Int, gateFraction: Float = 0.5, minRunMs: Int = 1000
-    ) -> (trimmed: [Float], leadSec: Double) {
-        guard samples.count > sampleRate / 5 else { return (samples, 0) }
-
-        // 20 ms RMS envelope.
-        let frameLen = max(1, sampleRate / 50)
-        var env: [Float] = []
-        env.reserveCapacity(samples.count / frameLen + 1)
-        var i = 0
-        while i < samples.count {
-            let end = min(i + frameLen, samples.count)
-            var sum: Float = 0
-            var j = i
-            while j < end { sum += samples[j] * samples[j]; j += 1 }
-            env.append((sum / Float(end - i)).squareRoot())
-            i = end
-        }
-
-        // Smooth the envelope with a ~0.5 s centered moving average so brief faint blips
-        // (breaths, a stray intro sound, isolation transients) don't read as onset — only
-        // sustained singing survives the average. Without this the gate tripped on a
-        // one-frame ~0.1 spike at 2 s while the real vocals start ~28 s.
-        let half = max(1, (sampleRate / frameLen) / 4)   // ~0.25 s each side ≈ 0.5 s window
-        var smooth = [Float](repeating: 0, count: env.count)
-        for k in 0..<env.count {
-            let lo = max(0, k - half), hi = min(env.count - 1, k + half)
-            var s: Float = 0
-            for m in lo...hi { s += env[m] }
-            smooth[k] = s / Float(hi - lo + 1)
-        }
-
-        // Loud-vocal reference = 95th-percentile RMS; gate at a fraction of it. Faint intro
-        // content sits below this fraction of the loud-vocal level; sung vocals sit above.
-        let sorted = env.sorted()
-        let ref = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
-        guard ref > 0 else { return (samples, 0) }
-        let threshold = ref * gateFraction
-
-        // First sustained run of the SMOOTHED envelope above the gate = vocal onset.
-        let minRunFrames = max(1, minRunMs / 20)
-        var run = 0
-        var onsetFrame = -1
-        for (k, e) in smooth.enumerated() {
-            if e > threshold {
-                run += 1
-                if run >= minRunFrames { onsetFrame = k - run + 1; break }
-            } else {
-                run = 0
-            }
-        }
-        breadcrumb(String(format: "trim: frames=%d ref95=%.4f gate=%.4f onsetFrame=%d",
-                          env.count, ref, threshold, onsetFrame))
-        // [DIAGNOSTIC] coarse energy profile (max RMS per 1 s) over the first 45 s, to see
-        // where the real sustained vocal onset is vs. where the gate first trips.
-        let fps = max(1, sampleRate / frameLen)
-        var profile = ""
-        for s in 0..<min(45, (env.count + fps - 1) / fps) {
-            let lo = s * fps, hi = min((s + 1) * fps, env.count)
-            if lo >= hi { break }
-            var mx: Float = 0
-            for k in lo..<hi { mx = max(mx, env[k]) }
-            profile += String(format: "%d:%.3f ", s, mx)
-        }
-        breadcrumb("trim profile s:maxRMS " + profile)
-        guard onsetFrame > 0 else { return (samples, 0) }
-        // Schmitt-trigger backoff: the 50%-of-peak gate CONFIRMS sustained singing, but a word
-        // that swells in only crosses 50% once it's underway — so the confirmed frame is late and
-        // trimming there clips the first word's soft attack (segment-opening lines then align
-        // ~1–2 s late). Walk the start edge back to where the smoothed envelope first rose above a
-        // low floor (a fraction of the gate = the attack), bounded so a faint intro can't drag it
-        // to 0. This keeps detection robust (high gate) while marking the onset early (low gate).
-        let lowGate = threshold * 0.2
-        let maxBackoff = max(1, fps * 3)
-        var softOnset = onsetFrame
-        while softOnset > 0, onsetFrame - softOnset < maxBackoff, smooth[softOnset - 1] > lowGate {
-            softOnset -= 1
-        }
-        breadcrumb("trim onset frame \(onsetFrame)→\(softOnset) (soft-attack backoff)")
-        let onset = softOnset * frameLen
-        guard onset > sampleRate / 5 else { return (samples, 0) }   // <0.2s lead → not worth trimming
-        let start = max(0, onset - sampleRate / 10)                 // keep 100 ms before onset
-        return (Array(samples[start...]), Double(start) / Double(sampleRate))
-    }
-
-    // Previous fixed-amplitude gate (replaced — tripped on OpenUnmix bleed, never trimmed):
-    // private static func trimLeadingSilence(
-    //     _ samples: [Float], sampleRate: Int, threshold: Float = 0.02, minRunMs: Int = 120
-    // ) -> (trimmed: [Float], leadSec: Double) {
-    //     let minRun = max(1, sampleRate * minRunMs / 1000)
-    //     var run = 0
-    //     var onset = -1
-    //     for i in 0..<samples.count {
-    //         if abs(samples[i]) > threshold {
-    //             run += 1
-    //             if run >= minRun { onset = i - run + 1; break }
-    //         } else {
-    //             run = 0
-    //         }
-    //     }
-    //     guard onset > sampleRate / 5 else { return (samples, 0) }
-    //     let start = max(0, onset - sampleRate / 10)
-    //     return (Array(samples[start...]), Double(start) / Double(sampleRate))
-    // }
 
     // Decodes any audio file to 44.1 kHz stereo 32-bit float PCM via AVAssetReader
     // (the format OpenUnmix source separation expects). Deinterleaves into [left, right].
