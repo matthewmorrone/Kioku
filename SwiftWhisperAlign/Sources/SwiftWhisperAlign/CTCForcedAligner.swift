@@ -121,12 +121,22 @@ public struct CTCForcedAligner {
         Self.breadcrumb("aligner loaded (fromPretrained returned)")
         if cancellationCheck?() == true { throw CancellationError() }
 
+        // Sung regions on the stem (breaths/consonant gaps ≤3 s merged), spliced into one
+        // contiguous buffer before alignment. This removes instrumental gaps from what the
+        // aligner sees at all — handed one inside its input, it parks lines on the wrong side
+        // of it — and it shrinks the buffer to just the sung duration, which is what keeps a
+        // long song's align() pass under the per-process memory ceiling.
+        let regions = Self.mergeSegments(Self.energyVADSegments(vocalMono, sampleRate: 44_100), maxGap: 3.0)
+        Self.breadcrumb("energy-VAD \(regions.count) regions: " + regions.prefix(12).map { String(format: "%.0f-%.0f", $0.start, $0.end) }.joined(separator: " "))
+        let (splicedSamples, splice) = Self.splice(vocalMono, sampleRate: 44_100, regions: regions)
+        Self.breadcrumb("spliced \(splice.segments.count) segments, \(splicedSamples.count / 44_100)s (from \(vocalMono.count / 44_100)s)")
         onStage?("Aligning lyrics…")
         let text = input.lines.joined(separator: "\n")
-        let units = try Self.alignBySaturation(
-            samples: vocalMono, sampleRate: 44_100, text: text, aligner: aligner,
+        let splicedUnits = try Self.alignBySaturation(
+            samples: splicedSamples, sampleRate: 44_100, text: text, aligner: aligner,
             cancellationCheck: cancellationCheck
         )
+        let units = splicedUnits.map { (start: splice.toOriginal($0.start), end: splice.toOriginal($0.end), text: $0.text) }
         Self.breadcrumb("aligned \(units.count) units")
         onProgress?(0.9)
 
@@ -157,13 +167,15 @@ public struct CTCForcedAligner {
     // per-process limit. Most songs fit in one pass.
     private static let maxChunkSec = 200.0
 
-    // Aligns `text` over `samples` in as few align() calls as the chunk cap allows, letting the
-    // MODEL decide which words belong to each chunk: every call gets all the not-yet-placed text,
-    // and words that don't belong in that audio come back crammed onto one trailing timestamp (the
-    // aligner's saturation signature). Everything before that plateau is kept, the audio cursor
-    // moves to the last kept word, and the placed characters are dropped from the text. This is
-    // speech-swift's own alignLong strategy with a memory-bounded first pass instead of a whole-file
-    // one. `withError` turns MLX's internal fatalError handler into a catchable Swift error.
+    // Aligns `text` over `samples` in fixed maxChunkSec windows, letting the MODEL decide which
+    // words belong to each window: every call gets all the not-yet-placed text, and words that
+    // don't belong in that audio come back crammed onto one trailing timestamp (the aligner's
+    // saturation signature). Everything before that plateau is kept, the audio cursor moves to
+    // the last kept word, and the placed characters are dropped from the text. This is
+    // speech-swift's own alignLong strategy with a memory-bounded first pass instead of a
+    // whole-file one. `withError` turns MLX's internal fatalError handler into a catchable Swift
+    // error. `samples` is expected to already be gapless (see `splice`) — a long instrumental
+    // stretch inside a window makes the model park lines on the wrong side of it.
     private static func alignBySaturation(
         samples: [Float], sampleRate: Int, text: String, aligner: Qwen3ForcedAligner,
         cancellationCheck: (@Sendable () -> Bool)?
@@ -171,28 +183,28 @@ public struct CTCForcedAligner {
         let totalSec = Double(samples.count) / Double(sampleRate)
         var results: [(start: Double, end: Double, text: String)] = []
         var remaining = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        var audioStart = 0.0
-        var pass = 0
-        while remaining.isEmpty == false, audioStart < totalSec - 0.5, pass < 12 {
-            pass += 1
+        var chunkStart = 0.0
+        var ci = 0
+        while chunkStart < totalSec, remaining.isEmpty == false {
             if cancellationCheck?() == true { throw CancellationError() }
-            let chunkEnd = min(audioStart + maxChunkSec, totalSec)
-            let isLast = chunkEnd >= totalSec - 0.01
-            let chunk = Array(samples[Int(audioStart * Double(sampleRate))..<min(samples.count, Int(chunkEnd * Double(sampleRate)))])
-            breadcrumb("align pass \(pass): \(Int(audioStart))–\(Int(chunkEnd))s, \(remaining.count) chars left")
+            let chunkEnd = min(totalSec, chunkStart + maxChunkSec)
+            let isLast = chunkEnd >= totalSec
+            let chunk = Array(samples[Int(chunkStart * Double(sampleRate))..<Int(chunkEnd * Double(sampleRate))])
+            breadcrumb("align chunk \(ci + 1): \(Int(chunkStart))–\(Int(chunkEnd))s, \(remaining.count) chars left")
             let aligned = try withError { aligner.align(audio: chunk, text: remaining, sampleRate: sampleRate) }
             MLX.Memory.clearCache()
-            guard aligned.isEmpty == false else { audioStart = chunkEnd; continue }
+            ci += 1
+            guard aligned.isEmpty == false else { chunkStart = chunkEnd; continue }
 
             let keepCount = isLast ? aligned.count : trailingPlateauStart(aligned, tolerance: 0.1, minSize: 5)
             let kept = aligned.prefix(keepCount)
-            guard kept.isEmpty == false else { audioStart = chunkEnd; continue }
+            guard kept.isEmpty == false else { chunkStart = chunkEnd; continue }
             for w in kept {
-                results.append((Double(w.startTime) + audioStart, Double(w.endTime) + audioStart, w.text))
+                results.append((Double(w.startTime) + chunkStart, Double(w.endTime) + chunkStart, w.text))
             }
-            if isLast || keepCount == aligned.count { break }
+            if keepCount == aligned.count { break }
 
-            // Drop the placed characters (non-whitespace count) from the text and move the cursor.
+            // Drop the placed characters (non-whitespace count) from the text.
             let consumed = kept.reduce(0) { $0 + $1.text.reduce(0) { $1.isWhitespace ? $0 : $0 + 1 } }
             var dropped = 0
             var idx = remaining.startIndex
@@ -202,9 +214,56 @@ public struct CTCForcedAligner {
             }
             while idx < remaining.endIndex, remaining[idx].isWhitespace { idx = remaining.index(after: idx) }
             remaining = String(remaining[idx...])
-            audioStart = max(Double(kept.last!.endTime) + audioStart, audioStart + 1.0)
+            chunkStart = chunkEnd
         }
+
         return results
+    }
+
+    // Maps a time in the spliced (gap-removed) timeline back to the original audio's timeline.
+    private struct Splice {
+        // Contiguous, sorted spans of the spliced buffer, each tagged with where it started in
+        // the original audio.
+        let segments: [(splicedStart: Double, splicedEnd: Double, originalStart: Double)]
+
+        func toOriginal(_ t: Double) -> Double {
+            guard segments.isEmpty == false else { return t }
+            var lo = 0, hi = segments.count - 1
+            while lo < hi {
+                let mid = (lo + hi + 1) / 2
+                if segments[mid].splicedStart <= t { lo = mid } else { hi = mid - 1 }
+            }
+            let seg = segments[lo]
+            return seg.originalStart + (t - seg.splicedStart)
+        }
+    }
+
+    // Concatenates the padded vocal regions into one contiguous buffer so the aligner never
+    // sees an instrumental gap, returning the buffer plus the mapping back to the original
+    // timeline. Falls back to the untouched stem (identity mapping) when VAD found no regions.
+    private static func splice(
+        _ samples: [Float], sampleRate: Int, regions: [(start: Double, end: Double)]
+    ) -> ([Float], Splice) {
+        guard regions.isEmpty == false else {
+            return (samples, Splice(segments: [(0, Double(samples.count) / Double(sampleRate), 0)]))
+        }
+        let totalSec = Double(samples.count) / Double(sampleRate)
+        let pad = 0.25
+        var out: [Float] = []
+        out.reserveCapacity(samples.count)
+        var segs: [(splicedStart: Double, splicedEnd: Double, originalStart: Double)] = []
+        for r in regions {
+            let s = max(0, r.start - pad)
+            let e = min(totalSec, r.end + pad)
+            let startFrame = Int(s * Double(sampleRate))
+            let endFrame = min(samples.count, Int(e * Double(sampleRate)))
+            guard endFrame > startFrame else { continue }
+            let splicedStart = Double(out.count) / Double(sampleRate)
+            out.append(contentsOf: samples[startFrame..<endFrame])
+            let splicedEnd = Double(out.count) / Double(sampleRate)
+            segs.append((splicedStart, splicedEnd, s))
+        }
+        return (out, Splice(segments: segs))
     }
 
     // Index of the first word in the trailing "stuck" plateau — ≥ `minSize` consecutive trailing
@@ -369,6 +428,87 @@ public struct CTCForcedAligner {
         return (result, lineTokens)
     }
 
+
+    // Energy-based voice-activity detection on the (clean) vocal stem: returns the sung
+    // regions in seconds, split at instrumental gaps. Builds a smoothed RMS envelope, gates at
+    // a fraction of the stem's own loud-vocal level (95th-pct), and groups frames above the
+    // gate into runs (tolerating sub-`minGapMs` dips within a phrase). Unlike a speech VAD,
+    // sustained sung vowels keep energy up, so phrases stay whole instead of fragmenting.
+    private static func energyVADSegments(
+        _ samples: [Float], sampleRate: Int,
+        gateFraction: Float = 0.2, minSpeechMs: Int = 300, minGapMs: Int = 350
+    ) -> [(start: Double, end: Double)] {
+        guard samples.count > sampleRate / 5 else { return [] }
+        let frameLen = max(1, sampleRate / 50)   // 20 ms
+        var env: [Float] = []
+        env.reserveCapacity(samples.count / frameLen + 1)
+        var i = 0
+        while i < samples.count {
+            let end = min(i + frameLen, samples.count)
+            var sum: Float = 0; var j = i
+            while j < end { sum += samples[j] * samples[j]; j += 1 }
+            env.append((sum / Float(end - i)).squareRoot())
+            i = end
+        }
+        // ~0.3 s centered smooth so brief transients don't fragment a phrase.
+        let half = max(1, (sampleRate / frameLen) / 6)
+        var sm = [Float](repeating: 0, count: env.count)
+        for k in 0..<env.count {
+            let lo = max(0, k - half), hi = min(env.count - 1, k + half)
+            var s: Float = 0; for m in lo...hi { s += env[m] }
+            sm[k] = s / Float(hi - lo + 1)
+        }
+        let sorted = sm.sorted()
+        let ref = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+        guard ref > 0 else { return [] }
+        let gate = ref * gateFraction
+        let fps = max(1, sampleRate / frameLen)
+        let minSpeech = max(1, fps * minSpeechMs / 1000)
+        let minGap = max(1, fps * minGapMs / 1000)
+
+        var segs: [(start: Double, end: Double)] = []
+        var k = 0
+        while k < sm.count {
+            if sm[k] > gate {
+                let startF = k
+                var endF = k, gap = 0, j = k
+                while j < sm.count {
+                    if sm[j] > gate { endF = j; gap = 0 }
+                    else { gap += 1; if gap >= minGap { break } }
+                    j += 1
+                }
+                if endF - startF + 1 >= minSpeech {
+                    // NOTE: a Schmitt-trigger start-backoff (like trimLeadingSilence) is NOT safe
+                    // here. Mid-song, the audio before a segment is an instrumental break, not
+                    // silence — its bleed keeps energy above any low floor, so a backoff walks the
+                    // start all the way back across the break and pulls a post-gap line ~16–25 s
+                    // early (measured). The intro is genuinely silent, so the trim's backoff is
+                    // safe; these interior onsets are not. Keep the gated start.
+                    segs.append((Double(startF * frameLen) / Double(sampleRate),
+                                 Double((endF + 1) * frameLen) / Double(sampleRate)))
+                }
+                k = j + 1
+            } else { k += 1 }
+        }
+        return segs
+    }
+
+    // Merges VAD segments separated by short gaps (within-phrase breaths) so we align over
+    // coherent vocal regions instead of over-fragmenting, while still breaking at the real
+    // instrumental gaps. Returns (start,end) seconds, sorted.
+    private static func mergeSegments(_ segs: [(start: Double, end: Double)], maxGap: Double = 0.6) -> [(start: Double, end: Double)] {
+        let sorted = segs.sorted { $0.start < $1.start }
+        var merged: [(start: Double, end: Double)] = []
+        for s in sorted {
+            if var last = merged.last, s.start - last.end <= maxGap {
+                last.end = max(last.end, s.end)
+                merged[merged.count - 1] = last
+            } else {
+                merged.append(s)
+            }
+        }
+        return merged
+    }
 
     // Decodes any audio file to 44.1 kHz stereo 32-bit float PCM via AVAssetReader
     // (the format OpenUnmix source separation expects). Deinterleaves into [left, right].
