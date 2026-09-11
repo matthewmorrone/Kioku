@@ -405,18 +405,21 @@ final class LLMCorrectionService {
         // (HTTP 400 "`temperature` is deprecated for this model") rather than just
         // ignoring it, so sending the Settings slider's value here breaks every call.
         // The slider still applies to OpenAI's request below.
+        var conversation: [[String: Any]] = [
+            ["role": "user", "content": messages.user]
+        ]
         var body: [String: Any] = [
             "model": LLMSettings.claudeModel(),
-            "max_tokens": 4096,
+            // Headroom for the web_search loop: server_tool_use blocks count against this
+            // budget too, so 4096 could be spent entirely on searching and leave no room for
+            // the actual correction text.
+            "max_tokens": 16384,
             "system": [
                 [
                     "type": "text",
                     "text": messages.system,
                     "cache_control": ["type": "ephemeral"]
                 ]
-            ],
-            "messages": [
-                ["role": "user", "content": messages.user]
             ]
         ]
         // Server-side web_search tool: the model can search canonical lyric sources
@@ -435,33 +438,47 @@ final class LLMCorrectionService {
             ]
         }
 
-        let bodyData = try JSONSerialization.data(withJSONObject: body)
-        request.httpBody = bodyData
-        AppLog.debug(.llmCorrection, "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) webSearch=\(LLMSettings.isWebSearchEnabled()) body bytes=\(bodyData.count)")
+        // Anthropic returns an array of content blocks. When web_search is enabled there are
+        // server_tool_use + web_search_tool_result blocks before the final text block(s); when
+        // it's disabled there's typically just one text block. Either way the model's final
+        // answer lives in the type=="text" blocks, concatenated in order.
+        //
+        // A server-tool loop can also end with stop_reason "pause_turn" — the model paused
+        // mid-search and the caller is expected to send the content back as an assistant turn
+        // so it can keep going. Do that a few times before giving up.
+        for turn in 1...4 {
+            body["messages"] = conversation
+            let bodyData = try JSONSerialization.data(withJSONObject: body)
+            request.httpBody = bodyData
+            AppLog.debug(.llmCorrection, "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) webSearch=\(LLMSettings.isWebSearchEnabled()) turn=\(turn) body bytes=\(bodyData.count)")
 
-        let (data, statusCode) = try await send(request, provider: "Claude")
+            let (data, statusCode) = try await send(request, provider: "Claude")
+            guard
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let content = json["content"] as? [[String: Any]]
+            else {
+                throw LLMCorrectionError.unexpectedResponseShape("Claude response missing content array")
+            }
+            let stopReason = json["stop_reason"] as? String ?? "?"
+            let text = content.compactMap { block -> String? in
+                guard let type = block["type"] as? String, type == "text" else { return nil }
+                return block["text"] as? String
+            }.joined()
 
-        // Anthropic returns an array of content blocks. When web_search is enabled
-        // there are server_tool_use + web_search_tool_result blocks before the
-        // final text block(s); when it's disabled there's typically just one text
-        // block. Either way the model's final answer lives in the type=="text"
-        // blocks, concatenated in order — so we walk and join them.
-        guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let content = json["content"] as? [[String: Any]]
-        else {
-            throw LLMCorrectionError.unexpectedResponseShape("Claude response missing content array")
+            if text.isEmpty == false {
+                AppLog.debug(.llmCorrection, "[Claude] HTTP \(statusCode) stop=\(stopReason) raw response:\n\(text)")
+                return text
+            }
+            if stopReason == "pause_turn" {
+                conversation.append(["role": "assistant", "content": content])
+                continue
+            }
+            let blockTypes = content.compactMap { $0["type"] as? String }.joined(separator: ",")
+            let raw = String(data: data, encoding: .utf8) ?? "(unreadable)"
+            AppLog.error(.llmCorrection, "[Claude] HTTP \(statusCode) stop=\(stopReason) blocks=[\(blockTypes)] no text; body:\n\(raw.prefix(4000))")
+            throw LLMCorrectionError.unexpectedResponseShape("Claude response had no text content blocks (stop_reason=\(stopReason), blocks=[\(blockTypes)])")
         }
-        let text = content.compactMap { block -> String? in
-            guard let type = block["type"] as? String, type == "text" else { return nil }
-            return block["text"] as? String
-        }.joined()
-        guard text.isEmpty == false else {
-            throw LLMCorrectionError.unexpectedResponseShape("Claude response had no text content blocks")
-        }
-
-        AppLog.debug(.llmCorrection, "[Claude] HTTP \(statusCode) raw response:\n\(text)")
-        return text
+        throw LLMCorrectionError.unexpectedResponseShape("Claude kept pausing its web-search turn without answering")
     }
 
     // Sends the request, retrying on transient failures (429, 5xx, or a connection-level error)
