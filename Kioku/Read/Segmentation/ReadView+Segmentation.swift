@@ -8,25 +8,25 @@ extension ReadView {
     // Applies a user-chosen reading override for the currently selected segment and persists it across furigana recomputation.
     // When shouldApplyChangesGlobally is active, the override is also applied to all other segment edges with the same surface.
     func applyReadingOverride(reading: String) {
-        guard let location = selectedSegmentLocation else { return }
-        transientBlankReadingSegmentLocation = nil
+        guard let location = segmentSelection.selectedSegmentLocation else { return }
+        segmentSelection.transientBlankReadingSegmentLocation = nil
 
         // Derive the surface text and length from the merged edge bounds so the furigana rect covers
         // the correct source characters, not the reading's kana length.
         let surfaceLength: Int
         let selectedSurface: String?
-        if let bounds = selectedBounds,
-           bounds.lowerBound < segmentEdges.count,
-           bounds.upperBound < segmentEdges.count {
-            let start = segmentEdges[bounds.lowerBound].start
-            let end = segmentEdges[bounds.upperBound].end
-            surfaceLength = NSRange(start..<end, in: text).length
-            selectedSurface = surfaceLength > 0 ? String(text[start..<end]) : nil
+        if let bounds = segmentSelection.selectedBounds,
+           bounds.lowerBound < document.segmentEdges.count,
+           bounds.upperBound < document.segmentEdges.count {
+            let start = document.segmentEdges[bounds.lowerBound].start
+            let end = document.segmentEdges[bounds.upperBound].end
+            surfaceLength = NSRange(start..<end, in: document.text).length
+            selectedSurface = surfaceLength > 0 ? String(document.text[start..<end]) : nil
         } else {
             // Fall back to the existing computed length for this location.
-            surfaceLength = furiganaLengthBySegmentLocation[location] ?? 0
-            if surfaceLength > 0, let range = Range(NSRange(location: location, length: surfaceLength), in: text) {
-                selectedSurface = String(text[range])
+            surfaceLength = document.furiganaLengthBySegmentLocation[location] ?? 0
+            if surfaceLength > 0, let range = Range(NSRange(location: location, length: surfaceLength), in: document.text) {
+                selectedSurface = String(document.text[range])
             } else {
                 selectedSurface = nil
             }
@@ -37,8 +37,8 @@ extension ReadView {
         // other edges that share the same surface text so the override is consistent across the note.
         var targets: [(location: Int, length: Int)] = [(location, surfaceLength)]
         if shouldApplyChangesGlobally, let surface = selectedSurface {
-            for edge in segmentEdges {
-                let edgeNSRange = NSRange(edge.start..<edge.end, in: text)
+            for edge in document.segmentEdges {
+                let edgeNSRange = NSRange(edge.start..<edge.end, in: document.text)
                 guard edgeNSRange.location != NSNotFound,
                       edgeNSRange.length > 0,
                       edgeNSRange.location != location,
@@ -56,7 +56,7 @@ extension ReadView {
             }
         }
         // A pinned reading is a genuine user edit — enable the reset button.
-        hasManualSegmentationEdits = true
+        document.hasManualSegmentationEdits = true
         // Rebuild segments with updated furigana then persist.
         rebuildAndPersistSegments()
     }
@@ -66,17 +66,17 @@ extension ReadView {
     // is also set so the UI shows no ruby until the recompute finishes — without that, the
     // user's old override would briefly remain visible during the async backfill.
     func clearReadingOverrideForCurrentSegment() {
-        guard let location = selectedSegmentLocation else { return }
+        guard let location = segmentSelection.selectedSegmentLocation else { return }
         // Unpinning a reading is a user edit too (it overrides the persisted reading back to the
         // auto-derived default), so the reset button should stay available.
-        hasManualSegmentationEdits = true
-        transientBlankReadingSegmentLocation = location
-        furiganaBySegmentLocation.removeValue(forKey: location)
-        furiganaLengthBySegmentLocation.removeValue(forKey: location)
+        document.hasManualSegmentationEdits = true
+        segmentSelection.transientBlankReadingSegmentLocation = location
+        document.furiganaBySegmentLocation.removeValue(forKey: location)
+        document.furiganaLengthBySegmentLocation.removeValue(forKey: location)
         // performScheduleFuriganaGeneration uses backfill semantics — it only writes a
         // location if the current map has no entry there. Removing the entry first means
         // the freshly computed default reading is the value that gets backfilled.
-        scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+        scheduleFuriganaGeneration(for: document.text, edges: document.segmentEdges)
     }
 
     // Clears note-backed segment range overrides AND user-edited furigana readings,
@@ -84,34 +84,34 @@ extension ReadView {
     // done unconditionally so the reset button visibly drops manual reading edits
     // (otherwise the post-segmenter backfill leaves stale overrides in place).
     func resetSegmentationToComputed() {
-        segments = nil
-        hasManualSegmentationEdits = false
-        illegalMergeBoundaryLocation = nil
-        illegalMergeFlashTask?.cancel()
-        selectedSegmentLocation = nil
-        transientBlankReadingSegmentLocation = nil
-        selectedHighlightRangeOverride = nil
-        selectedBounds = nil
-        pendingLLMChangedLocations = []
-        pendingLLMChangedReadingLocations = []
-        pendingLLMChangesByLocation = [:]
-        preLLMSegmentEntries = []
-        hasPendingLLMChanges = false
+        document.segments = nil
+        document.hasManualSegmentationEdits = false
+        segmentSelection.illegalMergeBoundaryLocation = nil
+        segmentSelection.illegalMergeFlashTask?.cancel()
+        segmentSelection.selectedSegmentLocation = nil
+        segmentSelection.transientBlankReadingSegmentLocation = nil
+        segmentSelection.selectedHighlightRangeOverride = nil
+        segmentSelection.selectedBounds = nil
+        llmCorrection.pendingLLMChangedLocations = []
+        llmCorrection.pendingLLMChangedReadingLocations = []
+        llmCorrection.pendingLLMChangesByLocation = [:]
+        llmCorrection.preLLMSegmentEntries = []
+        llmCorrection.hasPendingLLMChanges = false
         // Corrections were just cleared, so the next AI run should go straight through.
-        hasAppliedLLMCorrectionForCurrentNote = false
+        llmCorrection.hasAppliedLLMCorrectionForCurrentNote = false
         // Always drop user-edited readings so the reset is total. Re-segmentation will
         // backfill defaults from the lexicon below.
-        furiganaBySegmentLocation = [:]
-        furiganaLengthBySegmentLocation = [:]
+        document.furiganaBySegmentLocation = [:]
+        document.furiganaLengthBySegmentLocation = [:]
         SegmentLookupSheet.shared.dismissPopover()
 
-        if readResourcesReady && isEditMode == false {
+        if readResourcesReady && editModeScroll.isEditMode == false {
             refreshSegmentationRanges()
         } else {
-            segmentLatticeEdges = []
-            segmentEdges = []
-            segmentRanges = []
-            unknownSegmentLocations = []
+            document.segmentLatticeEdges = []
+            document.segmentEdges = []
+            document.segmentRanges = []
+            document.unknownSegmentLocations = []
         }
 
         // Belt-and-braces persistence clear so a buggy furigana entry that's already on disk
@@ -123,7 +123,7 @@ extension ReadView {
         //      on next note open the load path sees segments=nil and re-runs the segmenter
         //      against the current (fixed) furigana pipeline rather than restoring stale data.
         //   3. Synchronously flush so the disk state matches before any async path runs.
-        if let activeNoteID {
+        if let activeNoteID = document.activeNoteID {
             notesStore.clearRuntimeSegmentation(noteID: activeNoteID)
         }
         persistCurrentNoteIfNeeded()
@@ -136,12 +136,12 @@ extension ReadView {
     //   - Slow path: actually run the segmenter → queue a confirm prompt.
     // Empty text is a no-op in either path.
     func refreshSegmentationRanges(reason: String = #function) {
-        guard text.isEmpty == false else { return }
+        guard document.text.isEmpty == false else { return }
 
-        if let segments, let edges = edgesFromSegmentRanges(segments, in: text) {
-            segmentEdges = edges
-            segmentRanges = edges.map { $0.start..<$0.end }
-            unknownSegmentLocations = []
+        if let segments = document.segments, let edges = edgesFromSegmentRanges(segments, in: document.text) {
+            document.segmentEdges = edges
+            document.segmentRanges = edges.map { $0.start..<$0.end }
+            document.unknownSegmentLocations = []
             recordRuntimeSegmentationSnapshot(for: edges)
             return
         }
@@ -155,41 +155,41 @@ extension ReadView {
     // Rebuilds greedy segmentation ranges used by alternating segment colors in the editor.
     // Skips recomputation when persisted segments already cover the text — trusts them as ground truth.
     func performRefreshSegmentationRanges() {
-        segmentationRefreshTask?.cancel()
-        segmentationRefreshTask = nil
+        document.segmentationRefreshTask?.cancel()
+        document.segmentationRefreshTask = nil
 
-        if let segments, let edges = edgesFromSegmentRanges(segments, in: text) {
-            segmentEdges = edges
-            segmentRanges = edges.map { $0.start..<$0.end }
-            unknownSegmentLocations = []
+        if let segments = document.segments, let edges = edgesFromSegmentRanges(segments, in: document.text) {
+            document.segmentEdges = edges
+            document.segmentRanges = edges.map { $0.start..<$0.end }
+            document.unknownSegmentLocations = []
             recordRuntimeSegmentationSnapshot(for: edges)
             return
         }
 
         guard readResourcesReady else {
-            illegalMergeBoundaryLocation = nil
-            illegalMergeFlashTask?.cancel()
-            furiganaComputationTask?.cancel()
-            segmentLatticeEdges = []
-            segmentEdges = []
-            segmentRanges = []
-            unknownSegmentLocations = []
-            selectedSegmentLocation = nil
-            transientBlankReadingSegmentLocation = nil
-            selectedHighlightRangeOverride = nil
-            selectedBounds = nil
+            segmentSelection.illegalMergeBoundaryLocation = nil
+            segmentSelection.illegalMergeFlashTask?.cancel()
+            document.furiganaComputationTask?.cancel()
+            document.segmentLatticeEdges = []
+            document.segmentEdges = []
+            document.segmentRanges = []
+            document.unknownSegmentLocations = []
+            segmentSelection.selectedSegmentLocation = nil
+            segmentSelection.transientBlankReadingSegmentLocation = nil
+            segmentSelection.selectedHighlightRangeOverride = nil
+            segmentSelection.selectedBounds = nil
             SegmentLookupSheet.shared.dismissPopover()
-            furiganaBySegmentLocation = [:]
-            furiganaLengthBySegmentLocation = [:]
+            document.furiganaBySegmentLocation = [:]
+            document.furiganaLengthBySegmentLocation = [:]
             return
         }
 
-        let sourceText = text
-        let sourceNoteID = activeNoteID
-        let persistedSegments = segments
+        let sourceText = document.text
+        let sourceNoteID = document.activeNoteID
+        let persistedSegments = document.segments
 
         StartupTimer.mark("refreshSegmentationRanges: running segmenter")
-        segmentationRefreshTask = Task(priority: .userInitiated) {
+        document.segmentationRefreshTask = Task(priority: .userInitiated) {
             let segmentationResult = await Task.detached(priority: .userInitiated) { [segmenter = self.segmenter, sourceText] in
                 StartupTimer.measure("segmenter.longestMatchResult") {
                     segmenter.longestMatchResult(for: sourceText)
@@ -204,57 +204,57 @@ extension ReadView {
             await MainActor.run {
                 guard
                     Task.isCancelled == false,
-                    text == sourceText,
-                    activeNoteID == sourceNoteID,
-                    segments == persistedSegments,
-                    isEditMode == false
+                    document.text == sourceText,
+                    document.activeNoteID == sourceNoteID,
+                    document.segments == persistedSegments,
+                    editModeScroll.isEditMode == false
                 else {
                     return
                 }
 
-                segmentLatticeEdges = segmentationResult.latticeEdges
+                document.segmentLatticeEdges = segmentationResult.latticeEdges
                 // segmenter.debugPrintLattice(for: text)
                 let baseEdges = segmentationResult.selectedEdges
                 let refreshedEdges: [LatticeEdge]
                 if let persistedSegments,
                    let overriddenEdges = edgesFromSegmentRanges(persistedSegments, in: sourceText) {
                     if shouldDiscardPersistedSegmentOverride(overriddenEdges: overriddenEdges, computedEdges: baseEdges) {
-                        self.segments = nil
+                        self.document.segments = nil
                         persistCurrentNoteIfNeeded()
                         refreshedEdges = baseEdges
                     } else {
                         refreshedEdges = overriddenEdges
                     }
                 } else {
-                    if segments != nil {
-                        segments = nil
+                    if document.segments != nil {
+                        document.segments = nil
                         persistCurrentNoteIfNeeded()
                     }
                     refreshedEdges = baseEdges
                 }
 
-                segmentEdges = refreshedEdges
-                segmentRanges = refreshedEdges.map { edge in
+                document.segmentEdges = refreshedEdges
+                document.segmentRanges = refreshedEdges.map { edge in
                     edge.start..<edge.end
                 }
-                unknownSegmentLocations = unknownSegmentLocations(for: refreshedEdges)
+                document.unknownSegmentLocations = unknownSegmentLocations(for: refreshedEdges)
                 recordRuntimeSegmentationSnapshot(for: refreshedEdges)
 
                 // Clears stale selection if the tapped segment no longer exists after recomputing ranges.
-                if let selectedSegmentLocation {
-                    let hasSelectedSegment = segmentRanges.contains { segmentRange in
+                if let selectedSegmentLocation = segmentSelection.selectedSegmentLocation {
+                    let hasSelectedSegment = document.segmentRanges.contains { segmentRange in
                         let nsRange = NSRange(segmentRange, in: sourceText)
                         return nsRange.location == selectedSegmentLocation && nsRange.length > 0
                     }
                     if hasSelectedSegment == false {
-                        self.selectedSegmentLocation = nil
-                        selectedHighlightRangeOverride = nil
-                        selectedBounds = nil
+                        segmentSelection.selectedSegmentLocation = nil
+                        segmentSelection.selectedHighlightRangeOverride = nil
+                        segmentSelection.selectedBounds = nil
                         SegmentLookupSheet.shared.dismissPopover()
                     }
                 }
 
-                segmentationRefreshTask = nil
+                document.segmentationRefreshTask = nil
                 // Direct call (not via the queueing public entry point) so the user only sees
                 // one confirm for the seg+furigana pair when refreshSegmentationRanges runs —
                 // furigana is a downstream of the segmentation refresh that just got approved.
@@ -269,18 +269,18 @@ extension ReadView {
 
     // Records the current runtime segmentation for the active note so export can reuse live segment boundaries.
     func recordRuntimeSegmentationSnapshot(for edges: [LatticeEdge]) {
-        guard let activeNoteID else {
+        guard let activeNoteID = document.activeNoteID else {
             return
         }
 
         let segments = buildSegmentRanges(
             from: edges,
-            furiganaByLocation: furiganaBySegmentLocation,
-            furiganaLengthByLocation: furiganaLengthBySegmentLocation
+            furiganaByLocation: document.furiganaBySegmentLocation,
+            furiganaLengthByLocation: document.furiganaLengthBySegmentLocation
         )
         notesStore.recordRuntimeSegmentation(
             noteID: activeNoteID,
-            content: text,
+            content: document.text,
             segments: segments
         )
     }
@@ -303,37 +303,37 @@ extension ReadView {
         defer { TapDiagnostics.mark("handleReadModeSegmentTap returning") }
         // If the tapped segment has a pending LLM change, show what changed instead of the lookup sheet.
         if let tappedSegmentLocation,
-           let changeDescription = pendingLLMChangesByLocation[tappedSegmentLocation] {
+           let changeDescription = llmCorrection.pendingLLMChangesByLocation[tappedSegmentLocation] {
             TapDiagnostics.mark("BAIL: pendingLLMChangesByLocation match, showing LLM change popover instead")
-            llmChangePopoverText = changeDescription
-            llmChangePopoverLocation = tappedSegmentLocation
-            isShowingLLMChangePopover = true
+            llmCorrection.llmChangePopoverText = changeDescription
+            llmCorrection.llmChangePopoverLocation = tappedSegmentLocation
+            llmCorrection.isShowingLLMChangePopover = true
             return
         }
 
         guard let tappedSegmentLocation else {
             TapDiagnostics.mark("BAIL: tappedSegmentLocation is nil (tapped empty space)")
-            selectedSegmentLocation = nil
-            selectedHighlightRangeOverride = nil
-            selectedBounds = nil
+            segmentSelection.selectedSegmentLocation = nil
+            segmentSelection.selectedHighlightRangeOverride = nil
+            segmentSelection.selectedBounds = nil
             SegmentLookupSheet.shared.dismissPopover()
             return
         }
 
-        if selectedSegmentLocation == tappedSegmentLocation {
+        if segmentSelection.selectedSegmentLocation == tappedSegmentLocation {
             TapDiagnostics.mark("BAIL: tapped the already-selected segment (toggle-off)")
-            selectedSegmentLocation = nil
-            selectedHighlightRangeOverride = nil
-            selectedBounds = nil
+            segmentSelection.selectedSegmentLocation = nil
+            segmentSelection.selectedHighlightRangeOverride = nil
+            segmentSelection.selectedBounds = nil
             SegmentLookupSheet.shared.dismissPopover()
             return
         }
 
         // Highlight state is set unconditionally and immediately, matching pre-existing behavior —
         // only the dictionary-backed lookup below needs to wait for resources.
-        selectedSegmentLocation = tappedSegmentLocation
-        selectedHighlightRangeOverride = nil
-        selectedBounds = initialMergedEdgeBounds(for: tappedSegmentLocation)
+        segmentSelection.selectedSegmentLocation = tappedSegmentLocation
+        segmentSelection.selectedHighlightRangeOverride = nil
+        segmentSelection.selectedBounds = initialMergedEdgeBounds(for: tappedSegmentLocation)
         // debugPrintLatticeSectionForCurrentSelection(at: tappedSegmentLocation)
 
         // Dictionary resources (segmenter trie/deinflector) may still be loading in the first
@@ -347,7 +347,7 @@ extension ReadView {
         // re-entering here would hit the toggle-off branch above and deselect instead of look up.
         guard readResourcesReady else {
             TapDiagnostics.mark("QUEUED: readResourcesReady == false, will replay lookup once resources finish loading")
-            pendingSegmentTapAfterResourcesReady = (location: tappedSegmentLocation, rect: tappedSegmentRect, sourceView: sourceView)
+            segmentSelection.pendingSegmentTapAfterResourcesReady = (location: tappedSegmentLocation, rect: tappedSegmentRect, sourceView: sourceView)
             return
         }
 
@@ -411,16 +411,16 @@ extension ReadView {
     // Resolves the tapped segment surface and the best-ordered gloss from dictionary results.
     func definitionPayloadForSelectedSegment(at selectedLocation: Int) -> (surface: String, definition: String)? {
         guard
-            let tappedSegmentRange = segmentRanges.first(where: { segmentRange in
-                let nsRange = NSRange(segmentRange, in: text)
+            let tappedSegmentRange = document.segmentRanges.first(where: { segmentRange in
+                let nsRange = NSRange(segmentRange, in: document.text)
                 return nsRange.location == selectedLocation && nsRange.length > 0
             })
         else {
-            TapDiagnostics.mark("definitionPayload: no segmentRange matches location=\(selectedLocation) (segmentRanges.count=\(segmentRanges.count))")
+            TapDiagnostics.mark("definitionPayload: no segmentRange matches location=\(selectedLocation) (segmentRanges.count=\(document.segmentRanges.count))")
             return nil
         }
 
-        let tappedSurface = String(text[tappedSegmentRange])
+        let tappedSurface = String(document.text[tappedSegmentRange])
         if shouldIgnoreSegmentForDefinitionLookup(tappedSurface) {
             TapDiagnostics.mark("definitionPayload: shouldIgnoreSegmentForDefinitionLookup(\(tappedSurface)) == true")
             return nil
@@ -549,7 +549,7 @@ extension ReadView {
         guard let entry = currentSegmentDictionaryEntry(),
               let saved = wordsStore.words.first(where: { $0.canonicalEntryID == entry.entryId })
         else { return false }
-        guard let activeNoteID else { return false }
+        guard let activeNoteID = document.activeNoteID else { return false }
         return saved.sourceNoteIDs.isEmpty == false && saved.sourceNoteIDs.contains(activeNoteID) == false
     }
 
@@ -567,7 +567,7 @@ extension ReadView {
             canonicalEntryID: entry.entryId,
             storedSurface: key,
             encounteredSurface: key,
-            sourceNoteID: activeNoteID,
+            sourceNoteID: document.activeNoteID,
             defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
         )
     }
@@ -600,7 +600,7 @@ extension ReadView {
             state,
             for: entry.entryId,
             ensureSavedWithSurface: key,
-            sourceNoteID: activeNoteID,
+            sourceNoteID: document.activeNoteID,
             defaultSenseIDs: DefaultSenseSelection.defaultSelectedSenseIDs(for: entry)
         )
     }

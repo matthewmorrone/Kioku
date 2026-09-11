@@ -7,18 +7,18 @@ import UniformTypeIdentifiers
 extension ReadView {
     var alertingReadView: some View {
         lifecycleReadView
-            .sheet(isPresented: $isShowingSubtitleEditor) {
-                if let attachmentID = activeAudioAttachmentID {
+            .sheet(isPresented: $lyricRealign.isShowingSubtitleEditor) {
+                if let attachmentID = audioPlayback.activeAudioAttachmentID {
                     SubtitleEditorSheet(
                         attachmentID: attachmentID,
-                        initialCues: audioAttachmentCues,
-                        noteText: text
+                        initialCues: audioPlayback.audioAttachmentCues,
+                        noteText: document.text
                     ) { newCues in
                         // Reload the controller with updated cues so highlighting stays in sync.
-                        audioAttachmentCues = newCues
+                        audioPlayback.audioAttachmentCues = newCues
                         if let url = NotesAudioStore.shared.audioURL(for: attachmentID) {
                             do {
-                                try audioController.load(audioURL: url, cues: newCues, title: resolvedTitle)
+                                try audioPlayback.audioController.load(audioURL: url, cues: newCues, title: resolvedTitle)
                             } catch {
                                 print("[ReadView] reload after subtitle edit failed for \(url.lastPathComponent): \(error.localizedDescription)")
                             }
@@ -28,28 +28,28 @@ extension ReadView {
             }
             .alert("Audio Transcription Failed", isPresented: audioTranscriptionErrorPresented) {
                 Button("OK", role: .cancel) {
-                    audioTranscriptionErrorMessage = ""
+                    subtitleImport.audioTranscriptionErrorMessage = ""
                 }
             } message: {
-                Text(audioTranscriptionErrorMessage)
+                Text(subtitleImport.audioTranscriptionErrorMessage)
             }
             .alert("Generate SRT Failed", isPresented: lyricAlignmentErrorPresented) {
                 Button("OK", role: .cancel) {
-                    lyricAlignmentErrorMessage = ""
+                    subtitleImport.lyricAlignmentErrorMessage = ""
                 }
             } message: {
-                Text(lyricAlignmentErrorMessage)
+                Text(subtitleImport.lyricAlignmentErrorMessage)
             }
             .alert("Re-align Failed", isPresented: cueRealignErrorPresented) {
                 Button("OK", role: .cancel) {
-                    cueRealignErrorMessage = ""
+                    lyricRealign.cueRealignErrorMessage = ""
                 }
             } message: {
-                Text(cueRealignErrorMessage)
+                Text(lyricRealign.cueRealignErrorMessage)
             }
             .confirmationDialog(
-                "\(subtitleMismatchCount) subtitle\(subtitleMismatchCount == 1 ? "" : "s") differ from note text",
-                isPresented: $isShowingSubtitleMismatchDialog,
+                "\(lyricRealign.subtitleMismatchCount) subtitle\(lyricRealign.subtitleMismatchCount == 1 ? "" : "s") differ from note text",
+                isPresented: $lyricRealign.isShowingSubtitleMismatchDialog,
                 titleVisibility: .visible
             ) {
                 Button("Update subtitles to match note") {
@@ -62,44 +62,44 @@ extension ReadView {
             } message: {
                 Text("The subtitle text doesn't match the note for some lines. This can happen when alignment produces different characters than the original.")
             }
-            .alert("AI Correction", isPresented: $isShowingLLMCorrectionError) {
+            .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMCorrectionError) {
                 Button("Retry") {
-                    llmCorrectionErrorMessage = ""
+                    llmCorrection.llmCorrectionErrorMessage = ""
                     requestLLMCorrection()
                 }
                 // Only shown when the failure was a whole-response parse failure (see
-                // llmCorrectionRetryContext) — resends the SAME provider with the previous raw
+                // llmCorrection.llmCorrectionRetryContext) — resends the SAME provider with the previous raw
                 // response and the parse error folded in as corrective feedback, instead of a
                 // blind identical retry.
-                if llmCorrectionRetryContext != nil {
+                if llmCorrection.llmCorrectionRetryContext != nil {
                     Button("Retry with Feedback") {
-                        llmCorrectionErrorMessage = ""
+                        llmCorrection.llmCorrectionErrorMessage = ""
                         requestLLMCorrectionWithFeedback()
                     }
                 }
                 Button("OK", role: .cancel) {
-                    llmCorrectionErrorMessage = ""
-                    llmCorrectionRetryContext = nil
+                    llmCorrection.llmCorrectionErrorMessage = ""
+                    llmCorrection.llmCorrectionRetryContext = nil
                 }
             } message: {
-                Text(llmCorrectionErrorMessage)
+                Text(llmCorrection.llmCorrectionErrorMessage)
             }
-            .alert("", isPresented: $isShowingLLMChangePopover) {
+            .alert("", isPresented: $llmCorrection.isShowingLLMChangePopover) {
                 Button("Confirm") {
-                    if let loc = llmChangePopoverLocation {
+                    if let loc = llmCorrection.llmChangePopoverLocation {
                         confirmLLMChange(at: loc)
                     }
                 }
                 Button("Undo", role: .destructive) {
-                    if let loc = llmChangePopoverLocation {
+                    if let loc = llmCorrection.llmChangePopoverLocation {
                         rejectLLMChange(at: loc)
                     }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text(llmChangePopoverText)
+                Text(llmCorrection.llmChangePopoverText)
             }
-            .alert("Re-run AI Correction?", isPresented: $isShowingLLMRerunConfirm) {
+            .alert("Re-run AI Correction?", isPresented: $llmCorrection.isShowingLLMRerunConfirm) {
                 Button("Re-run", role: .destructive) {
                     requestLLMCorrection()
                 }
@@ -140,7 +140,7 @@ extension ReadView {
         selectionLifecycleReadView
             .onDisappear {
                 // Flushes any pending edit persistence before leaving the read screen.
-                segmentationRefreshTask?.cancel()
+                document.segmentationRefreshTask?.cancel()
                 flushPendingNotePersistenceIfNeeded()
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -162,59 +162,59 @@ extension ReadView {
                 // Syncs editor state when Notes tab selects a different note.
                 loadSelectedNoteIfNeeded()
             }
-            .onChange(of: text) { oldText, newText in
+            .onChange(of: document.text) { oldText, newText in
                 // Suppress this handler when the change was the load-handler's own assignment.
                 // SwiftUI runs onChange after isLoadingSelectedNote has already been cleared, so
                 // a flag isn't enough — match the actual value the loader wrote.
-                if let snapshot = lastLoadedTextSnapshot, snapshot == newText {
-                    lastLoadedTextSnapshot = nil
+                if let snapshot = document.lastLoadedTextSnapshot, snapshot == newText {
+                    document.lastLoadedTextSnapshot = nil
                     return
                 }
                 // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
                 // mapping is stable for in-line edits but shifts whenever lines are added or removed.
-                if audioAttachmentCues.isEmpty == false {
+                if audioPlayback.audioAttachmentCues.isEmpty == false {
                     let oldLineCount = oldText.components(separatedBy: .newlines).count
                     let newLineCount = newText.components(separatedBy: .newlines).count
                     if oldLineCount != newLineCount {
-                        audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(
-                            for: audioAttachmentCues,
+                        audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(
+                            for: audioPlayback.audioAttachmentCues,
                             in: newText
                         )
                     }
                 }
-                if isEditMode {
+                if editModeScroll.isEditMode {
                     // Preserve user customizations (splits/merges/furigana) in segments whose
                     // surfaces still match a prefix/suffix of the edited content. Only the
                     // diverging middle becomes an unsegmented stub; the segmenter will revisit
                     // it when edit mode exits.
                     let reconciled: [SegmentRange]?
-                    if let existing = segments {
+                    if let existing = document.segments {
                         reconciled = reconcileSegments(existing, to: newText)
                     } else {
                         reconciled = nil
                     }
-                    segments = reconciled
-                    illegalMergeBoundaryLocation = nil
-                    illegalMergeFlashTask?.cancel()
-                    segmentationRefreshTask?.cancel()
-                    furiganaComputationTask?.cancel()
-                    segmentLatticeEdges = []
-                    segmentEdges = []
-                    segmentRanges = []
-                    selectedSegmentLocation = nil
-                    selectedHighlightRangeOverride = nil
-                    selectedBounds = nil
+                    document.segments = reconciled
+                    segmentSelection.illegalMergeBoundaryLocation = nil
+                    segmentSelection.illegalMergeFlashTask?.cancel()
+                    document.segmentationRefreshTask?.cancel()
+                    document.furiganaComputationTask?.cancel()
+                    document.segmentLatticeEdges = []
+                    document.segmentEdges = []
+                    document.segmentRanges = []
+                    segmentSelection.selectedSegmentLocation = nil
+                    segmentSelection.selectedHighlightRangeOverride = nil
+                    segmentSelection.selectedBounds = nil
                     SegmentLookupSheet.shared.dismissPopover()
                     // Rebuild the runtime furigana map from the reconciled segments so annotations
                     // in surviving regions are not dropped and their absolute offsets reflect any
                     // shift caused by length changes in the edited region.
                     if let reconciled {
                         let restored = furiganaFromSegmentRanges(reconciled)
-                        furiganaBySegmentLocation = restored.byLocation
-                        furiganaLengthBySegmentLocation = restored.lengthByLocation
+                        document.furiganaBySegmentLocation = restored.byLocation
+                        document.furiganaLengthBySegmentLocation = restored.lengthByLocation
                     } else {
-                        furiganaBySegmentLocation = [:]
-                        furiganaLengthBySegmentLocation = [:]
+                        document.furiganaBySegmentLocation = [:]
+                        document.furiganaLengthBySegmentLocation = [:]
                     }
                     scheduleCurrentNotePersistenceIfNeeded()
                     return
@@ -229,13 +229,13 @@ extension ReadView {
             .onChange(of: pendingScrollTarget) { _, _ in
                 jumpToPendingScrollSurfaceIfReady()
             }
-            .onChange(of: activeNoteID) { _, _ in
+            .onChange(of: document.activeNoteID) { _, _ in
                 // activeNoteID and text update together (loadSelectedNoteIfNeeded), but that load
                 // can finish either before or after pendingScrollTarget arrives from ContentView —
                 // whichever onChange fires last is the one that actually has both pieces ready.
                 jumpToPendingScrollSurfaceIfReady()
             }
-            .onChange(of: isEditMode) { _, editing in
+            .onChange(of: editModeScroll.isEditMode) { _, editing in
                 if editing {
                     // Hand the CT read view's live scroll position to the editor. The CT
                     // renderer reports into the reference-type memo (not @State) while the
@@ -243,23 +243,23 @@ extension ReadView {
                     // needs to catch up so RichTextEditor's applyExternalScrollIfNeeded
                     // restores the same position. Without this, the editor opened at a stale
                     // offset (last edit position or last sheet adjustment).
-                    sharedScrollOffsetY = readScrollOffsetMemo.value
+                    editModeScroll.sharedScrollOffsetY = editModeScroll.readScrollOffsetMemo.value
                     // Suspends in-progress furigana / segmentation work and clears transient
                     // selection state. Note: we deliberately do NOT clear furiganaBySegmentLocation
-                    // here. The renderer is gated by `isActive: isEditMode == false`, so it
+                    // here. The renderer is gated by `isActive: editModeScroll.isEditMode == false`, so it
                     // doesn't read the map during editing, and keeping the user's chosen
                     // readings in memory means we never have to "restore" them on exit.
                     // onChange(of: text) handles real text edits via reconcileSegments.
-                    illegalMergeBoundaryLocation = nil
-                    illegalMergeFlashTask?.cancel()
-                    segmentationRefreshTask?.cancel()
-                    furiganaComputationTask?.cancel()
-                    segmentLatticeEdges = []
-                    segmentEdges = []
-                    segmentRanges = []
-                    selectedSegmentLocation = nil
-                    selectedHighlightRangeOverride = nil
-                    selectedBounds = nil
+                    segmentSelection.illegalMergeBoundaryLocation = nil
+                    segmentSelection.illegalMergeFlashTask?.cancel()
+                    document.segmentationRefreshTask?.cancel()
+                    document.furiganaComputationTask?.cancel()
+                    document.segmentLatticeEdges = []
+                    document.segmentEdges = []
+                    document.segmentRanges = []
+                    segmentSelection.selectedSegmentLocation = nil
+                    segmentSelection.selectedHighlightRangeOverride = nil
+                    segmentSelection.selectedBounds = nil
                     SegmentLookupSheet.shared.dismissPopover()
                 } else {
                     // Always flush pending edits when leaving edit mode so no changes are lost.
@@ -271,9 +271,9 @@ extension ReadView {
                 }
             }
             .onChange(of: segmenterRevision) { _, _ in
-                if text.isEmpty == false, debugStartupSegmentationDiffs {
+                if document.text.isEmpty == false, debugStartupSegmentationDiffs {
                     StartupTimer.measure("SegmentationDiffPrinter.printDiffs") {
-                        SegmentationDiffPrinter.printDiffs(for: text, trieSegmenter: segmenter)
+                        SegmentationDiffPrinter.printDiffs(for: document.text, trieSegmenter: segmenter)
                     }
                 }
 
@@ -286,9 +286,9 @@ extension ReadView {
                 // range entries survive (user pins, prior-correct annotations) while
                 // fragmented narrow entries get superseded by wider compound spans.
                 // Otherwise (no persisted segments) recompute full segmentation.
-                if segments != nil {
+                if document.segments != nil {
                     StartupTimer.mark("scheduling furigana now that surfaceReadingData is ready")
-                    scheduleFuriganaGeneration(for: text, edges: segmentEdges)
+                    scheduleFuriganaGeneration(for: document.text, edges: document.segmentEdges)
                 } else {
                     StartupTimer.mark("no persisted segments, running full segmentation")
                     refreshSegmentationRanges()
@@ -307,8 +307,8 @@ extension ReadView {
                 // Goes straight to the lookup half (selectedSegmentLocation is already set from
                 // the original tap) rather than re-entering handleReadModeSegmentTap, which would
                 // see it as already-selected and toggle it off instead of looking it up.
-                if let pending = pendingSegmentTapAfterResourcesReady, let location = pending.location {
-                    pendingSegmentTapAfterResourcesReady = nil
+                if let pending = segmentSelection.pendingSegmentTapAfterResourcesReady, let location = pending.location {
+                    segmentSelection.pendingSegmentTapAfterResourcesReady = nil
                     presentLookupForSegmentTap(tappedSegmentLocation: location, tappedSegmentRect: pending.rect, sourceView: pending.sourceView)
                 }
             }
@@ -335,14 +335,14 @@ extension ReadView {
         .toolbar(.visible, for: .tabBar)
         .background {
             AudioCueHighlightObserver(
-                controller: audioController,
-                cues: audioAttachmentCues,
-                highlightRanges: audioAttachmentHighlightRanges,
+                controller: audioPlayback.audioController,
+                cues: audioPlayback.audioAttachmentCues,
+                highlightRanges: audioPlayback.audioAttachmentHighlightRanges,
                 granularity: lyricsHighlightGranularity,
-                segmentationRanges: segmentRanges,
-                noteText: text,
-                playbackHighlightRangeOverride: $playbackHighlightRangeOverride,
-                activePlaybackCueIndex: $activePlaybackCueIndex
+                segmentationRanges: document.segmentRanges,
+                noteText: document.text,
+                playbackHighlightRangeOverride: $audioPlayback.playbackHighlightRangeOverride,
+                activePlaybackCueIndex: $audioPlayback.activePlaybackCueIndex
             )
         }
         .overlay(alignment: .topLeading) {
@@ -352,23 +352,23 @@ extension ReadView {
             }
         }
         .overlay {
-            if isShowingSubtitlePopup || isGeneratingLyricAlignment {
+            if subtitleImport.isShowingSubtitlePopup || subtitleImport.isGeneratingLyricAlignment {
                 subtitlePopupOverlay
             }
         }
         .overlay {
-            if activeAudioAttachmentID != nil {
+            if audioPlayback.activeAudioAttachmentID != nil {
                 LyricsView(
-                    controller: audioController,
-                    cues: audioAttachmentCues,
-                    highlightRanges: audioAttachmentHighlightRanges,
-                    furiganaBySegmentLocation: furiganaBySegmentLocation,
-                    furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
-                    segmentationRanges: segmentRanges,
-                    noteText: text,
-                    attachmentID: activeAudioAttachmentID,
-                    noteID: activeNoteID,
-                    playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : playbackHighlightRangeOverride,
+                    controller: audioPlayback.audioController,
+                    cues: audioPlayback.audioAttachmentCues,
+                    highlightRanges: audioPlayback.audioAttachmentHighlightRanges,
+                    furiganaBySegmentLocation: document.furiganaBySegmentLocation,
+                    furiganaLengthBySegmentLocation: document.furiganaLengthBySegmentLocation,
+                    segmentationRanges: document.segmentRanges,
+                    noteText: document.text,
+                    attachmentID: audioPlayback.activeAudioAttachmentID,
+                    noteID: document.activeNoteID,
+                    playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : audioPlayback.playbackHighlightRangeOverride,
                     granularity: lyricsHighlightGranularity,
                     isSavedHighlightEnabled: isSavedHighlightEnabled,
                     savedSegmentLocations: savedSegmentLocations,
@@ -378,35 +378,35 @@ extension ReadView {
                         handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: sourceView)
                     },
                     onDismiss: {
-                        isShowingLyricsView = false
+                        audioPlayback.isShowingLyricsView = false
                     },
                     onFocusSetting: onFocusSetting,
                     onCueEdit: { edit in
                         applyLyricCueEdit(edit)
                     },
-                    realigningCueIndex: realigningCueIndex,
-                    isReAligning: isReAligningWholeNote,
-                    reAlignMessage: reAlignProgressMessage,
+                    realigningCueIndex: lyricRealign.realigningCueIndex,
+                    isReAligning: lyricRealign.isReAligningWholeNote,
+                    reAlignMessage: lyricRealign.reAlignProgressMessage,
                     stemAvailable: stemAvailableForActiveAudio,
-                    isListeningToStem: $isListeningToStem
+                    isListeningToStem: $audioPlayback.isListeningToStem
                 )
-                .opacity(isShowingLyricsView ? 1 : 0)
-                .allowsHitTesting(isShowingLyricsView)
-                .animation(.easeInOut(duration: 0.2), value: isShowingLyricsView)
-                .onChange(of: isListeningToStem) { _, listening in
+                .opacity(audioPlayback.isShowingLyricsView ? 1 : 0)
+                .allowsHitTesting(audioPlayback.isShowingLyricsView)
+                .animation(.easeInOut(duration: 0.2), value: audioPlayback.isShowingLyricsView)
+                .onChange(of: audioPlayback.isListeningToStem) { _, listening in
                     switchLyricAudioSource(toStem: listening)
                 }
             }
         }
-        .sheet(isPresented: $isShowingSegmentList) {
+        .sheet(isPresented: $readSheets.isShowingSegmentList) {
             SegmentListView(
-                text: text,
-                edges: segmentEdges,
-                latticeEdges: segmentLatticeEdges,
+                text: document.text,
+                edges: document.segmentEdges,
+                latticeEdges: document.segmentLatticeEdges,
                 dictionaryStore: dictionaryStore,
                 segmenter: segmenter,
                 lexicon: lexicon,
-                sourceNoteID: activeNoteID,
+                sourceNoteID: document.activeNoteID,
                 note: currentDisplayedNote,
                 lemmaForSurface: { segmenter.preferredLemma(for: $0) },
                 lemmaCandidatesForSurface: { segmenter.lemmaCandidates(for: $0) },
@@ -425,11 +425,11 @@ extension ReadView {
             )
         }
         .fileImporter(
-            isPresented: $isShowingSubtitlePicker,
-            allowedContentTypes: subtitlePickerTarget.contentTypes,
+            isPresented: $subtitleImport.isShowingSubtitlePicker,
+            allowedContentTypes: subtitleImport.subtitlePickerTarget.contentTypes,
             allowsMultipleSelection: false
         ) { result in
-            switch subtitlePickerTarget {
+            switch subtitleImport.subtitlePickerTarget {
             case .audio: handleLyricAlignmentAudioSelection(result)
             case .subtitleFile: handleSubtitleFileSelection(result)
             }
@@ -438,7 +438,7 @@ extension ReadView {
         // the user can grab "song.mp3" and "song.srt" (or "song.TextGrid") together; the handler
         // sorts them by kind and imports in one pass.
         .fileImporter(
-            isPresented: $isShowingLyricMediaPicker,
+            isPresented: $subtitleImport.isShowingLyricMediaPicker,
             allowedContentTypes: [.audio, .mpeg4Audio, .mp3, .subripText, .praatTextGrid],
             allowsMultipleSelection: true
         ) { result in
@@ -452,7 +452,7 @@ extension ReadView {
         // `selectedNote` binding: ReadView's load handler consumes `selectedNote` (sets it
         // to nil) once the note has been loaded into `text` / `activeNoteID`, so reading
         // the binding here would always see nil and render an empty sheet.
-        .sheet(isPresented: $isShowingBreakdownSheet) {
+        .sheet(isPresented: $readSheets.isShowingBreakdownSheet) {
             if let note = currentDisplayedNote {
                 NavigationStack {
                     // Threading the segmenter + surfaceReadingData lets the breakdown's
@@ -469,7 +469,7 @@ extension ReadView {
                     )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
-                                Button("Done") { isShowingBreakdownSheet = false }
+                                Button("Done") { readSheets.isShowingBreakdownSheet = false }
                             }
                         }
                 }
@@ -482,33 +482,33 @@ extension ReadView {
     // sets selectedReadNote and pendingScrollTarget together but loadSelectedNoteIfNeeded's text/
     // activeNoteID update can land on either side of that in the update cycle. Finds the surface's
     // first occurrence, selects it (the same highlight the lookup sheet's star context menu shows)
-    // and borrows playbackHighlightRangeOverride to scroll it into view — the one existing
+    // and borrows audioPlayback.playbackHighlightRangeOverride to scroll it into view — the one existing
     // scroll-to-range mechanism in this renderer, normally driven by audio cue playback (see
     // KiokuCoreTextRendererView's scrollRangeIntoView call). Safe to reuse outside playback: the
     // "unplayed" dimming it also drives requires real cue data (cueHasReliableDimCoverage), which
     // isn't present here, so only the scroll + a plain highlight tint apply.
     func jumpToPendingScrollSurfaceIfReady() {
-        guard let target = pendingScrollTarget, activeNoteID == target.noteID else { return }
-        guard let range = text.range(of: target.surface) else {
+        guard let target = pendingScrollTarget, document.activeNoteID == target.noteID else { return }
+        guard let range = document.text.range(of: target.surface) else {
             pendingScrollTarget = nil
             return
         }
-        let nsRange = NSRange(range, in: text)
+        let nsRange = NSRange(range, in: document.text)
         guard nsRange.length > 0 else {
             pendingScrollTarget = nil
             return
         }
-        selectedSegmentLocation = nsRange.location
-        selectedHighlightRangeOverride = nsRange
-        playbackHighlightRangeOverride = nsRange
+        segmentSelection.selectedSegmentLocation = nsRange.location
+        segmentSelection.selectedHighlightRangeOverride = nsRange
+        audioPlayback.playbackHighlightRangeOverride = nsRange
         pendingScrollTarget = nil
 
-        pendingScrollHighlightClearTask?.cancel()
-        pendingScrollHighlightClearTask = Task { @MainActor in
+        audioPlayback.pendingScrollHighlightClearTask?.cancel()
+        audioPlayback.pendingScrollHighlightClearTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             if Task.isCancelled { return }
-            if playbackHighlightRangeOverride == nsRange {
-                playbackHighlightRangeOverride = nil
+            if audioPlayback.playbackHighlightRangeOverride == nsRange {
+                audioPlayback.playbackHighlightRangeOverride = nil
             }
         }
     }

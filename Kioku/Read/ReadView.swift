@@ -91,126 +91,27 @@ struct ReadView: View {
     @AppStorage(DebugSettings.leftInsetGuideKey) var debugLeftInsetGuide: Bool = false
     @AppStorage(DebugSettings.startupSegmentationDiffsKey) var debugStartupSegmentationDiffs: Bool = false
 
-    @State var customTitle = ""
-    @State var fallbackTitle = ""
-    @State var titleDraft = ""
-    @State var isShowingTitleAlert = false
-    @State var text = ""
-    @State var segmentLatticeEdges: [LatticeEdge] = []
-    @State var segmentEdges: [LatticeEdge] = []
-    @State var segmentRanges: [Range<String.Index>] = []
-    // Cache for the saved-highlight set so it isn't recomputed (dictionary-lookup sweep) on
-    // every body eval.
-    @State var savedHighlightMemo = SavedHighlightMemo()
-    // Cache for the "hide furigana for known words" segment set — same memoization rationale
-    // as savedHighlightMemo above.
-    @State var knownWordFuriganaMemo = KnownWordFuriganaMemo()
-    @State var unknownSegmentLocations: Set<Int> = []
-    @State var selectedSegmentLocation: Int?
-    @State var selectedHighlightRangeOverride: NSRange?
-    @State var selectedBounds: ClosedRange<Int>?
-    @State var transientBlankReadingSegmentLocation: Int?
-    // Holds a tap that arrived before dictionary resources finished loading (readResourcesReady
-    // was still false), so it can be replayed automatically once loading completes instead of
-    // silently failing — conjugated words need the segmenter's deinflector to resolve a lemma,
-    // which isn't ready in the first moment or two after app launch, while plain dictionary-form
-    // words happen to work immediately (the raw surface itself is a valid lookup candidate).
-    @State var pendingSegmentTapAfterResourcesReady: (location: Int?, rect: CGRect?, sourceView: UIScrollView?)?
-    @State var segments: [SegmentRange]?
-    // True once the user has manually changed this note's segmentation (merge/split) or its
-    // readings (pin/unpin furigana), or applied an LLM correction. Drives the reset button's
-    // enabled state. `segments != nil` can't stand in for this: import precompute persists the
-    // *computed* segmentation to disk, so a freshly-loaded, never-edited note still has non-nil
-    // segments. This flag is set only at genuine user-mutation funnels and cleared on note load
-    // and reset, so it stays false for precomputed-but-unedited notes.
-    @State var hasManualSegmentationEdits = false
-    @State var furiganaBySegmentLocation: [Int: String] = [:]
-    @State var furiganaLengthBySegmentLocation: [Int: Int] = [:]
-    // Locations whose wide furigana entries came from the synthesis pass (per-character
-    // concatenation, e.g. ものご for 物語 when the dict reading isn't yet loaded). Tracked
-    // in-memory so a later recompute with a real dict-derived compound reading can replace
-    // them. On note load this set is reconstructed by `performScheduleFuriganaGeneration`'s
-    // pre-apply classifier, which marks any wide entry whose value matches a naive per-
-    // character dict concat — precise enough to spare LLM pins (whose value diverges from
-    // the concat) but aggressive enough to recover disk state poisoned by pre-gate code.
-    @State var synthesizedFuriganaLocations: Set<Int> = []
-    @State var furiganaComputationTask: Task<Void, Never>?
-    @State var segmentationRefreshTask: Task<Void, Never>?
-    @State var activeNoteID: UUID?
-    @StateObject private var lyricsTranslationCache = LyricsTranslationCache()
-    @State var isLoadingSelectedNote = false
-    @State var isEditMode = false
-    @State var isSheetSwipeTransitionActive = false
-    @State var sharedScrollOffsetY: CGFloat = 0
-    // Live mirror of the CT read view's scroll offset; snapshotted into sharedScrollOffsetY
-    // when edit mode is entered. See ReadScrollOffsetMemo for why it's not @State itself.
-    @State var readScrollOffsetMemo = ReadScrollOffsetMemo()
-    // Extra contentInset.bottom currently injected into the read scroll view so the lookup
-    // sheet can keep the selected segment visible even when it sits past the natural bottom
-    // of the note. Tracked here so dismissal removes exactly what was added, regardless of
-    // any other inset changes the scroll view's owner might have made in the meantime.
-    @State var appliedSheetBottomInset: CGFloat = 0
-    @State var isShowingSegmentList = false
-    @State var isShowingDisplayOptions = false
-    // Drives the Saved Highlight category submenu as its own popover rather than a SwiftUI
-    // `Menu` — a Menu auto-dismisses after every tap (including a Toggle tap), which defeats
-    // flipping more than one category per visit. A popover of real Toggle rows doesn't.
-    @State var isShowingSavedHighlightCategories = false
-    @State var isShowingFileImporter = false
-    @State var isShowingSubtitlePopup = false
-    @State var isShowingBreakdownSheet = false
-    @State var isPerformingAudioTranscription = false
-    @State var isGeneratingLyricAlignment = false
-    @State var isCancellingAlignment = false
-    @State var alignmentCancellationToken = AlignmentCancellationToken()
-    @State var audioTranscriptionErrorMessage = ""
-    @State var lyricAlignmentErrorMessage = ""
-    @State var lyricAlignmentProgressMessage = ""
-    @State var lyricAlignmentSourceFilename = ""
-    @State var alignmentResultSRT = ""
-    @State var pendingSubtitleAudioURL: URL? = nil
-    @State var pendingSubtitleAudioFilename = ""
-    @State var pendingSubtitleFileURL: URL? = nil
-    @State var pendingSubtitleFilename = ""
-    @State var pendingSubtitleTextGridURL: URL? = nil
-    @State var pendingSubtitleTextGridFilename = ""
-    @State var isShowingSubtitlePicker = false
-    @State var subtitlePickerTarget: SubtitlePickerTarget = .audio
-    // Drives the lyric-button "nothing loaded yet" media picker (mp3 + srt + textgrid, multi-select).
-    @State var isShowingLyricMediaPicker = false
-    @State var illegalMergeBoundaryLocation: Int?
-    @State var illegalMergeFlashTask: Task<Void, Never>?
-    @State var audioController = AudioPlaybackController()
-    // Cues carry their per-cue karaoke checkpoints inline (cue.checkpoints); there is no separate
-    // timings state to keep in sync.
-    @State var audioAttachmentCues: [SubtitleCue] = []
-    @State var audioAttachmentHighlightRanges: [NSRange?] = []
-    @State var playbackHighlightRangeOverride: NSRange?
-    // Clears jumpToPendingScrollSurfaceIfReady's playbackHighlightRangeOverride borrow a few
-    // seconds after landing, so a "jump to this word" highlight fades rather than sitting
-    // indefinitely as if audio were still playing.
-    @State var pendingScrollHighlightClearTask: Task<Void, Never>?
-    @State var activePlaybackCueIndex: Int? = nil
-    @State var activeAudioAttachmentID: UUID? = nil
-    // Cue index currently being re-aligned by the lyric view's in-place "fix word sweep"
-    // control; nil when idle. Drives the per-cue spinner in the lyric editing row and
-    // gates concurrent re-align requests to one at a time.
-    @State var realigningCueIndex: Int? = nil
-    // Surfaced in a dedicated alert when an in-place cue re-alignment fails, so the
-    // failure doesn't ride in under the unrelated "Generate SRT Failed" title.
-    @State var cueRealignErrorMessage = ""
-    // Drives the lyric view's top "Re-align" action: a full from-scratch re-run of the CTC
-    // pipeline over the attached audio (vs. the per-cue "fix word sweep"). The bar shows a
-    // spinner + progress while this is true; the message carries the live percent.
-    @State var isReAligningWholeNote = false
-    @State var reAlignProgressMessage = ""
-    // True while the lyric view is playing the isolated vocal stem instead of the original mix
-    // (the "Vocals/Mix" toggle next to Re-align). ReadView swaps the AudioPlaybackController's
-    // source in onChange; reset to false whenever the audio source could change underneath it
-    // (attachment switch, re-align that regenerates the stem).
-    @State var isListeningToStem = false
-
-    @State var isShowingLyricsView = false
+    // Note-title editing state (custom title, fallback, rename-alert draft) — see TitleEditUIState.
+    @State var titleEdit = TitleEditUIState()
+    // The open note: text, source note id, segmentation, furigana maps, render caches — see
+    // ReadDocumentState.
+    @State var document = ReadDocumentState()
+    // Segment selection for lookup (selected location/bounds, deferred tap, illegal-merge flash) —
+    // see SegmentSelectionUIState.
+    @State var segmentSelection = SegmentSelectionUIState()
+    // Edit-mode transition + scroll-position state — see EditModeScrollUIState.
+    @State var editModeScroll = EditModeScrollUIState()
+    // Toolbar sheet/popover presentation flags — see ReadSheetsUIState.
+    @State var readSheets = ReadSheetsUIState()
+    // Subtitle/audio import UI state (transcription + alignment progress, staged picks,
+    // import sheets/pickers) — see SubtitleImportUIState.
+    @State var subtitleImport = SubtitleImportUIState()
+    // Whole-note re-align UI state (progress/error, subtitle editor, mismatch dialog) — see
+    // LyricRealignUIState.
+    @State var lyricRealign = LyricRealignUIState()
+    // Audio-attachment playback state (controller, cues, highlight override, active cue/attachment) —
+    // see AudioPlaybackUIState.
+    @State var audioPlayback = AudioPlaybackUIState()
     @AppStorage(LyricsHighlightGranularity.storageKey) var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
 
     // Typed view of the granularity AppStorage, falling back to the default when the persisted
@@ -218,46 +119,9 @@ struct ReadView: View {
     var lyricsHighlightGranularity: LyricsHighlightGranularity {
         LyricsHighlightGranularity(rawValue: lyricsHighlightGranularityRaw) ?? LyricsHighlightGranularity.defaultValue
     }
-    @State var isShowingSubtitleEditor = false
-    @State var isShowingSubtitleMismatchDialog = false
-    @State var subtitleMismatchCount = 0
-    @State var isRequestingLLMCorrection = false
-    @State var isShowingLLMCorrectionError = false
-    @State var llmCorrectionErrorMessage = ""
-    // Populated only when the failure was LLMCorrectionError.unparseableAfterSalvage — the raw
-    // response that couldn't be parsed (even after on-device salvage) plus the reason, so the
-    // alert's "Retry with Feedback" action can resend the original provider a corrected request
-    // instead of a blind identical retry. Nil for every other failure kind (network, no key,
-    // etc.), which the alert uses to decide whether to show that extra button at all.
-    @State var llmCorrectionRetryContext: (rawResponse: String, reason: String)?
-    @State var llmCorrectionTask: Task<Void, Never>?
-    @State var pendingLLMChangedLocations: Set<Int> = []
-    // Subset of pendingLLMChangedLocations where only the furigana reading changed (surface unchanged).
-    @State var pendingLLMChangedReadingLocations: Set<Int> = []
-    @State var pendingLLMChangesByLocation: [Int: String] = [:]
-    // Full segment snapshot captured just before applying an LLM result, used to revert individual changes.
-    @State var preLLMSegmentEntries: [LLMSegmentEntry] = []
-    @State var hasPendingLLMChanges = false
-    @State var llmChangePopoverText: String = ""
-    @State var llmChangePopoverLocation: Int? = nil
-    @State var isShowingLLMChangePopover = false
-    @State var isShowingLLMRerunConfirm = false
-    // True once an LLM correction has actually been applied to the currently-loaded note.
-    // Gates the "Re-run AI Correction?" confirm so it only warns about replacing prior
-    // corrections — not on the first run. Reset when a note loads or corrections are cleared.
-    // (Session-scoped: reloading a previously-corrected note starts fresh, so the first tap
-    // after reload runs without the warning.)
-    @State var hasAppliedLLMCorrectionForCurrentNote = false
-    @State var pendingAutoSegQueue: [PendingAutoSegRequest] = []
-    // Records the value that loadSelectedNoteIfNeeded just wrote into `text` so the deferred
-    // SwiftUI .onChange(of: text) handler can recognize the load-assignment and skip its
-    // recompute/persist work. Without this guard every note open triggers a redundant second
-    // refreshSegmentationRanges right after the explicit one in the load path.
-    @State var lastLoadedTextSnapshot: String?
-    // Debug overlay: disk/mem segment + furigana counts shown for ~2s on every note load,
-    // so we can see at a glance whether persisted data round-trips correctly.
-    @State var loadInfoToastMessage: String?
-    @State var loadInfoToastClearTask: Task<Void, Never>?
+    // LLM-correction UI state (in-flight request, pending per-location changes, alerts) — see
+    // LLMCorrectionUIState.
+    @State var llmCorrection = LLMCorrectionUIState()
     @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false
     @AppStorage(LLMSettings.stubResponseKey) private var llmStubResponse = ""
     @AppStorage(SongBreakdownService.songStubResponseKey) private var breakdownStubResponse = ""
@@ -309,15 +173,19 @@ struct ReadView: View {
     // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM
     // setting changes. Reading llmKeysRevision ties body invalidation to key edits;
     // the actual presence check goes to the Keychain. Internal so the toolbar and
-    // title-row extensions can hide their LLM buttons until a provider is available.
-    // Apple Intelligence requires no key, so it counts as configured whenever the
-    // on-device model is present and ready, regardless of remote key state.
+    // title-row extensions can enable/disable their LLM buttons appropriately.
+    // Apple Intelligence (on-device or Cloud/Cloud Pro) requires no key, so it counts as
+    // configured whenever the corresponding model is present and ready, regardless of
+    // remote key state.
     var isLLMConfigured: Bool {
         _ = llmKeysRevision
         if llmUseLLM {
             let provider = LLMSettings.activeProvider()
             if provider == .appleIntelligence {
                 return AppleIntelligenceAvailability.isAvailable
+            }
+            if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
+                return AppleIntelligenceCloudAvailability.isAvailable
             }
             return LLMSettings.apiKey(for: provider) != nil
         } else {
@@ -356,14 +224,14 @@ struct ReadView: View {
     // the breakdown sheet so it shows the right note regardless of how it got loaded
     // (selection from Notes, restored from `lastActiveNoteID`, fresh OCR import).
     var currentDisplayedNote: Note? {
-        if let id = activeNoteID, let stored = notesStore.note(withID: id) {
+        if let id = document.activeNoteID, let stored = notesStore.note(withID: id) {
             return stored
         }
         // Unsaved buffer fallback: a fresh note created via "New Note" hasn't been added
         // to the store yet. We still want the breakdown sheet to work against the typed
         // text — synthesize a transient Note carrying whatever's in the editor right now.
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            return Note(id: activeNoteID ?? UUID(), content: text)
+        if document.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return Note(id: document.activeNoteID ?? UUID(), content: document.text)
         }
         return nil
     }

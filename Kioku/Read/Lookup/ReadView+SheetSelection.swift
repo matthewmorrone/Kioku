@@ -85,24 +85,24 @@ extension ReadView {
 
     // Clears selected segment state when segment action UI is dismissed by user interaction.
     func clearSelectedSegmentStateAfterPopoverDismissal() {
-        transientBlankReadingSegmentLocation = nil
-        selectedSegmentLocation = nil
-        selectedHighlightRangeOverride = nil
-        selectedBounds = nil
+        segmentSelection.transientBlankReadingSegmentLocation = nil
+        segmentSelection.selectedSegmentLocation = nil
+        segmentSelection.selectedHighlightRangeOverride = nil
+        segmentSelection.selectedBounds = nil
     }
 
     // Resolves segment surface text for a selected location without dictionary lookup overhead.
     func surfaceForSegment(at selectedLocation: Int) -> String? {
         guard
-            let tappedSegmentRange = segmentRanges.first(where: { segmentRange in
-                let nsRange = NSRange(segmentRange, in: text)
+            let tappedSegmentRange = document.segmentRanges.first(where: { segmentRange in
+                let nsRange = NSRange(segmentRange, in: document.text)
                 return nsRange.location == selectedLocation && nsRange.length > 0
             })
         else {
             return nil
         }
 
-        let tappedSurface = String(text[tappedSegmentRange])
+        let tappedSurface = String(document.text[tappedSegmentRange])
         if shouldIgnoreSegmentForDefinitionLookup(tappedSurface) {
             return nil
         }
@@ -137,7 +137,7 @@ extension ReadView {
     // Scrolls only enough to keep the selected segment inside the visible band above the lookup
     // sheet. When the segment sits past the natural bottom of the note, also adds a temporary
     // contentInset.bottom so the scroll offset can hold instead of bouncing back. The applied
-    // delta is tracked in `appliedSheetBottomInset` so dismissal removes exactly that much.
+    // delta is tracked in `editModeScroll.appliedSheetBottomInset` so dismissal removes exactly that much.
     func preScrollSegmentForSheetVisibility(
         sourceView: UIScrollView?,
         tappedSegmentRect: CGRect?,
@@ -154,7 +154,7 @@ extension ReadView {
         // present (e.g. swipe-to-next on the sheet); subtract it so the planner sees the same
         // natural max we'd see if no sheet were currently driving overscroll. Without this,
         // each tap would add the inset on top of the inset from the previous tap.
-        let priorAppliedInset = appliedSheetBottomInset
+        let priorAppliedInset = editModeScroll.appliedSheetBottomInset
         let naturalBottomInset = sourceView.adjustedContentInset.bottom - priorAppliedInset
         let minOffsetY = -sourceView.adjustedContentInset.top
         let maxContentOffsetY = max(
@@ -186,11 +186,11 @@ extension ReadView {
         guard let adjustment = ReadViewSheetVisibilityScrollPlanner.adjustment(for: context) else {
             // Already in a good spot — no scroll. But the CURRENT offset may itself rely on
             // overscroll injected by a PRIOR tap (a word near the bottom, where the planner pushed
-            // past the natural max and `appliedSheetBottomInset > 0`). Removing that inset wholesale
+            // past the natural max and `editModeScroll.appliedSheetBottomInset > 0`). Removing that inset wholesale
             // shrinks maxOffsetY below the current offset, so the scroll view bounces back down and
             // drops the just-tapped word under the sheet — the "second tap at the bottom hides the
             // word" bug. Keep exactly the inset still needed to hold the current offset; trim only
-            // the excess. (Do NOT touch `sharedScrollOffsetY` here: writing it forces a SwiftUI body
+            // the excess. (Do NOT touch `editModeScroll.sharedScrollOffsetY` here: writing it forces a SwiftUI body
             // re-eval that rebuilds the whole attributed string — the dominant per-tap cost.)
             let insetNeededToHoldCurrentOffset = max(0, sourceView.contentOffset.y - maxContentOffsetY)
             if abs(insetNeededToHoldCurrentOffset - priorAppliedInset) > 0.5 {
@@ -201,7 +201,7 @@ extension ReadView {
         }
 
         applyAdditionalBottomInset(adjustment.temporaryBottomInset, on: sourceView, animated: animated)
-        sharedScrollOffsetY = adjustment.targetOffsetY
+        editModeScroll.sharedScrollOffsetY = adjustment.targetOffsetY
         animateContentOffset(
             for: sourceView,
             targetOffsetY: adjustment.targetOffsetY,
@@ -241,7 +241,7 @@ extension ReadView {
             return
         }
 
-        sharedScrollOffsetY = dismissalTargetOffsetY
+        editModeScroll.sharedScrollOffsetY = dismissalTargetOffsetY
         animateContentOffset(
             for: sourceView,
             targetOffsetY: dismissalTargetOffsetY,
@@ -250,7 +250,7 @@ extension ReadView {
         )
     }
 
-    // Reconciles the read scroll view's bottom contentInset against `appliedSheetBottomInset`,
+    // Reconciles the read scroll view's bottom contentInset against `editModeScroll.appliedSheetBottomInset`,
     // adding or removing exactly the delta we previously injected. Sheet present/dismiss flow
     // through here so the inset is symmetric — every byte we add gets reclaimed on dismissal.
     private func applyAdditionalBottomInset(
@@ -259,13 +259,13 @@ extension ReadView {
         animated: Bool
     ) {
         let clampedDesired = max(0, desiredInset)
-        let delta = clampedDesired - appliedSheetBottomInset
+        let delta = clampedDesired - editModeScroll.appliedSheetBottomInset
         guard abs(delta) > 0.5 else { return }
 
         let newBottom = sourceView.contentInset.bottom + delta
         let newScrollIndicatorBottom = sourceView.verticalScrollIndicatorInsets.bottom + delta
 
-        appliedSheetBottomInset = clampedDesired
+        editModeScroll.appliedSheetBottomInset = clampedDesired
 
         let applyInsets: () -> Void = {
             var inset = sourceView.contentInset
@@ -290,7 +290,7 @@ extension ReadView {
 
     // Moves sheet selection to the previous or next selectable segment and returns refreshed sheet payload.
     func moveSelectedSegmentSelection(isMovingForward: Bool) -> (surface: String, leftNeighborSurface: String?, rightNeighborSurface: String?)? {
-        guard let currentBounds = selectedBounds ?? selectedSegmentLocation.flatMap({ location in
+        guard let currentBounds = segmentSelection.selectedBounds ?? segmentSelection.selectedSegmentLocation.flatMap({ location in
             initialMergedEdgeBounds(for: location)
         }) else {
             return nil
@@ -299,22 +299,22 @@ extension ReadView {
         let step = isMovingForward ? 1 : -1
         var candidateIndex = isMovingForward ? currentBounds.upperBound + 1 : currentBounds.lowerBound - 1
 
-        while candidateIndex >= 0 && candidateIndex < segmentEdges.count {
-            let candidateEdge = segmentEdges[candidateIndex]
+        while candidateIndex >= 0 && candidateIndex < document.segmentEdges.count {
+            let candidateEdge = document.segmentEdges[candidateIndex]
             if shouldIgnoreSegmentForDefinitionLookup(candidateEdge.surface) == false {
-                let candidateRange = NSRange(candidateEdge.start..<candidateEdge.end, in: text)
+                let candidateRange = NSRange(candidateEdge.start..<candidateEdge.end, in: document.text)
                 guard candidateRange.location != NSNotFound, candidateRange.length > 0 else {
                     return nil
                 }
 
-                selectedBounds = candidateIndex...candidateIndex
-                selectedSegmentLocation = candidateRange.location
-                selectedHighlightRangeOverride = candidateRange
+                segmentSelection.selectedBounds = candidateIndex...candidateIndex
+                segmentSelection.selectedSegmentLocation = candidateRange.location
+                segmentSelection.selectedHighlightRangeOverride = candidateRange
                 // debugPrintLatticeSectionForCurrentSelection(at: candidateRange.location)
 
-                let leftNeighborSurface = candidateIndex > 0 ? segmentEdges[candidateIndex - 1].surface : nil
+                let leftNeighborSurface = candidateIndex > 0 ? document.segmentEdges[candidateIndex - 1].surface : nil
                 let rightNeighborIndex = candidateIndex + 1
-                let rightNeighborSurface = rightNeighborIndex < segmentEdges.count ? segmentEdges[rightNeighborIndex].surface : nil
+                let rightNeighborSurface = rightNeighborIndex < document.segmentEdges.count ? document.segmentEdges[rightNeighborIndex].surface : nil
                 return (
                     surface: candidateEdge.surface,
                     leftNeighborSurface: leftNeighborSurface,
@@ -331,15 +331,15 @@ extension ReadView {
     // Resolves the selected segment rect in text-view coordinates so sheet-visibility scroll checks can re-run after swipe navigation.
     func selectedSegmentRectInTextView(sourceView: UITextView, selectedLocation: Int) -> CGRect? {
         guard
-            let tappedSegmentRange = segmentRanges.first(where: { segmentRange in
-                let nsRange = NSRange(segmentRange, in: text)
+            let tappedSegmentRange = document.segmentRanges.first(where: { segmentRange in
+                let nsRange = NSRange(segmentRange, in: document.text)
                 return nsRange.location == selectedLocation && nsRange.length > 0
             })
         else {
             return nil
         }
 
-        let segmentNSRange = NSRange(tappedSegmentRange, in: text)
+        let segmentNSRange = NSRange(tappedSegmentRange, in: document.text)
         guard
             segmentNSRange.location != NSNotFound,
             segmentNSRange.length > 0,
@@ -360,20 +360,20 @@ extension ReadView {
 
     // Builds unique reading candidates for the currently selected segment(s), leading with the lexicon reading so it matches the LEXICON section.
     func uniqueReadingsForCurrentSelectedKanjiSegment() -> [String] {
-        guard let selectedBounds,
-              selectedBounds.lowerBound < segmentEdges.count,
-              selectedBounds.upperBound < segmentEdges.count else {
+        guard let selectedBounds = segmentSelection.selectedBounds,
+              selectedBounds.lowerBound < document.segmentEdges.count,
+              selectedBounds.upperBound < document.segmentEdges.count else {
             return []
         }
 
-        let selectedEdges = Array(segmentEdges[selectedBounds])
+        let selectedEdges = Array(document.segmentEdges[selectedBounds])
         guard let selectedStart = selectedEdges.first?.start,
               let selectedEnd = selectedEdges.last?.end,
               selectedStart < selectedEnd else {
             return []
         }
 
-        let mergedSurface = String(text[selectedStart..<selectedEnd])
+        let mergedSurface = String(document.text[selectedStart..<selectedEnd])
 
         var readingCandidates: [String] = []
         var seenReadings = Set<String>()
@@ -435,7 +435,7 @@ extension ReadView {
         // assigned it "み" from the inflected lemma 眩しい), use the reading already on screen
         // so the sheet header never looks blanker than the text it came from.
         if readingCandidates.isEmpty {
-            let mergedStartUTF16 = text.utf16.distance(from: text.startIndex, to: selectedStart)
+            let mergedStartUTF16 = document.text.utf16.distance(from: document.text.startIndex, to: selectedStart)
             let displayedReading = reconstructedReading(for: mergedSurface, at: mergedStartUTF16)
             appendReading(displayedReading.isEmpty ? nil : displayedReading)
         }
@@ -445,9 +445,9 @@ extension ReadView {
 
     // Builds a formatted debug string showing key Lexicon method outputs for the currently selected surface.
     func lexiconDebugInfoForCurrentSelectedSegment() -> String {
-        guard let selectedBounds,
-              selectedBounds.lowerBound < segmentEdges.count,
-              selectedBounds.upperBound < segmentEdges.count else {
+        guard let selectedBounds = segmentSelection.selectedBounds,
+              selectedBounds.lowerBound < document.segmentEdges.count,
+              selectedBounds.upperBound < document.segmentEdges.count else {
             return ""
         }
 
@@ -455,12 +455,12 @@ extension ReadView {
             return "(Lexicon unavailable)"
         }
 
-        let selectedEdges = Array(segmentEdges[selectedBounds])
+        let selectedEdges = Array(document.segmentEdges[selectedBounds])
         guard let startIndex = selectedEdges.first?.start, let endIndex = selectedEdges.last?.end else {
             return ""
         }
 
-        let surface = String(text[startIndex..<endIndex])
+        let surface = String(document.text[startIndex..<endIndex])
         var lines: [String] = []
 
         lines.append("reading: \(lexicon.reading(surface: surface))")
@@ -497,12 +497,12 @@ extension ReadView {
     // Returns the base lemma and inflection chain for the current selection when it is a conjugated/inflected form.
     // Returns nil when the surface matches its own lemma (i.e. no inflection occurred).
     func lemmaInfoForCurrentSelectedSegment() -> (lemma: String, chain: [String])? {
-        guard let selectedBounds, let lexicon,
-              selectedBounds.lowerBound < segmentEdges.count,
-              selectedBounds.upperBound < segmentEdges.count else { return nil }
-        let selectedEdges = Array(segmentEdges[selectedBounds])
+        guard let selectedBounds = segmentSelection.selectedBounds, let lexicon,
+              selectedBounds.lowerBound < document.segmentEdges.count,
+              selectedBounds.upperBound < document.segmentEdges.count else { return nil }
+        let selectedEdges = Array(document.segmentEdges[selectedBounds])
         guard let start = selectedEdges.first?.start, let end = selectedEdges.last?.end else { return nil }
-        let surface = String(text[start..<end])
+        let surface = String(document.text[start..<end])
         let info = lexicon.inflectionInfo(surface: surface)
         guard let info, info.lemma != surface else { return nil }
 
@@ -588,33 +588,33 @@ extension ReadView {
     // so callers can look up frequency for whichever reading is currently displayed.
     // Falls back to deinflected lemma forms when the surface has no direct frequency entry.
     func frequencyRankForCurrentSelectedSegment() -> [String: FrequencyData]? {
-        guard let selectedBounds,
-              selectedBounds.lowerBound < segmentEdges.count,
-              selectedBounds.upperBound < segmentEdges.count else {
+        guard let selectedBounds = segmentSelection.selectedBounds,
+              selectedBounds.lowerBound < document.segmentEdges.count,
+              selectedBounds.upperBound < document.segmentEdges.count else {
             return nil
         }
 
-        let startIndex = segmentEdges[selectedBounds.lowerBound].start
-        let endIndex = segmentEdges[selectedBounds.upperBound].end
-        let surface = String(text[startIndex..<endIndex])
+        let startIndex = document.segmentEdges[selectedBounds.lowerBound].start
+        let endIndex = document.segmentEdges[selectedBounds.upperBound].end
+        let surface = String(document.text[startIndex..<endIndex])
 
         return frequencyData(forSurface: surface)
     }
 
     // Captures lattice edges enclosed by the currently selected merged segment span for future sheet UI usage.
     func sublatticeEdgesForCurrentSelectedSegment() -> [LatticeEdge] {
-        guard let selectedBounds,
-              selectedBounds.lowerBound < segmentEdges.count,
-              selectedBounds.upperBound < segmentEdges.count else {
+        guard let selectedBounds = segmentSelection.selectedBounds,
+              selectedBounds.lowerBound < document.segmentEdges.count,
+              selectedBounds.upperBound < document.segmentEdges.count else {
             return []
         }
 
-        let selectedStart = segmentEdges[selectedBounds.lowerBound].start
-        let selectedEnd = segmentEdges[selectedBounds.upperBound].end
+        let selectedStart = document.segmentEdges[selectedBounds.lowerBound].start
+        let selectedEnd = document.segmentEdges[selectedBounds.upperBound].end
 
         let sectionEdges = Lattice.sectionEdges(
-            from: segmentLatticeEdges,
-            in: text,
+            from: document.segmentLatticeEdges,
+            in: document.text,
             selectedStart: selectedStart,
             selectedEnd: selectedEnd
         )
@@ -630,19 +630,19 @@ extension ReadView {
         // selected segment's surface: it's a handful of characters, costs a single longestMatchResult
         // (the same call WordDetailView uses), and the edges' indices are self-consistent within the
         // surface — all sublatticeValidPaths needs, since it returns surfaces, not text offsets.
-        let surface = String(text[selectedStart..<selectedEnd])
+        let surface = String(document.text[selectedStart..<selectedEnd])
         guard surface.isEmpty == false else { return [] }
         return segmenter.longestMatchResult(for: surface).latticeEdges
     }
 
     // Returns the merged surface text for the currently selected segment bounds, or nil when nothing is selected.
     func currentSelectedSurface() -> String? {
-        guard let bounds = selectedBounds,
-              bounds.lowerBound < segmentEdges.count,
-              bounds.upperBound < segmentEdges.count else { return nil }
-        let start = segmentEdges[bounds.lowerBound].start
-        let end = segmentEdges[bounds.upperBound].end
-        let surface = String(text[start..<end])
+        guard let bounds = segmentSelection.selectedBounds,
+              bounds.lowerBound < document.segmentEdges.count,
+              bounds.upperBound < document.segmentEdges.count else { return nil }
+        let start = document.segmentEdges[bounds.lowerBound].start
+        let end = document.segmentEdges[bounds.upperBound].end
+        let surface = String(document.text[start..<end])
         return surface.isEmpty ? nil : surface
     }
 }

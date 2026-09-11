@@ -20,15 +20,15 @@ extension ReadView {
         }
 
         let boundaryCharacterIndex = leftEdge.end
-        if boundaryCharacterIndex > text.startIndex {
-            let previousCharacter = text[text.index(before: boundaryCharacterIndex)]
+        if boundaryCharacterIndex > document.text.startIndex {
+            let previousCharacter = document.text[document.text.index(before: boundaryCharacterIndex)]
             if previousCharacter == "\n" || previousCharacter == "\r" {
                 return false
             }
         }
 
-        if boundaryCharacterIndex < text.endIndex {
-            let nextCharacter = text[boundaryCharacterIndex]
+        if boundaryCharacterIndex < document.text.endIndex {
+            let nextCharacter = document.text[boundaryCharacterIndex]
             if nextCharacter == "\n" || nextCharacter == "\r" {
                 return false
             }
@@ -45,21 +45,21 @@ extension ReadView {
 
     // Flashes a temporary red boundary marker in read mode when an illegal merge is attempted.
     func flashIllegalMergeBoundary(between leftEdge: LatticeEdge, and rightEdge: LatticeEdge) {
-        let boundaryRange = NSRange(leftEdge.start..<rightEdge.start, in: text)
+        let boundaryRange = NSRange(leftEdge.start..<rightEdge.start, in: document.text)
         guard boundaryRange.location != NSNotFound else {
             return
         }
 
-        illegalMergeBoundaryLocation = boundaryRange.location
-        illegalMergeFlashTask?.cancel()
-        illegalMergeFlashTask = Task {
+        segmentSelection.illegalMergeBoundaryLocation = boundaryRange.location
+        segmentSelection.illegalMergeFlashTask?.cancel()
+        segmentSelection.illegalMergeFlashTask = Task {
             try? await Task.sleep(nanoseconds: 320_000_000)
             guard Task.isCancelled == false else {
                 return
             }
 
             await MainActor.run {
-                illegalMergeBoundaryLocation = nil
+                segmentSelection.illegalMergeBoundaryLocation = nil
             }
         }
     }

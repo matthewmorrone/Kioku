@@ -66,72 +66,72 @@ extension ReadView {
             break
         }
 
-        guard let attachmentID = activeAudioAttachmentID else { return }
-        let durationMs = audioController.duration > 0 ? Int(audioController.duration * 1000) : Int.max
+        guard let attachmentID = audioPlayback.activeAudioAttachmentID else { return }
+        let durationMs = audioPlayback.audioController.duration > 0 ? Int(audioPlayback.audioController.duration * 1000) : Int.max
 
         switch edit {
         case .setStart(let idx):
-            guard audioAttachmentCues.indices.contains(idx) else { return }
+            guard audioPlayback.audioAttachmentCues.indices.contains(idx) else { return }
             // "Start here": relocate the WHOLE line so it begins at the playhead, preserving its
             // duration — start, end, and every word-checkpoint shift by the same delta. The old
             // behavior clamped the new start to the line's own end, which made it impossible to move
             // a line LATER than where it currently ends (the common fix for a line timed too early —
             // it silently did almost nothing). Floor at the previous line's start so a move can't
             // reorder cues; cap at the song length, not the line's own end.
-            let floor = idx > 0 ? audioAttachmentCues[idx - 1].startMs : 0
-            let desired = max(floor, min(audioController.currentTimeMs, durationMs - minCueDurationMs))
-            let delta = desired - audioAttachmentCues[idx].startMs
+            let floor = idx > 0 ? audioPlayback.audioAttachmentCues[idx - 1].startMs : 0
+            let desired = max(floor, min(audioPlayback.audioController.currentTimeMs, durationMs - minCueDurationMs))
+            let delta = desired - audioPlayback.audioAttachmentCues[idx].startMs
             guard delta != 0 else { return }
-            let newStart = max(0, audioAttachmentCues[idx].startMs + delta)
-            audioAttachmentCues[idx].startMs = newStart
-            audioAttachmentCues[idx].endMs = min(durationMs, max(newStart + minCueDurationMs, audioAttachmentCues[idx].endMs + delta))
-            for k in audioAttachmentCues[idx].checkpoints.indices {
-                audioAttachmentCues[idx].checkpoints[k].timeMs = max(0, audioAttachmentCues[idx].checkpoints[k].timeMs + delta)
+            let newStart = max(0, audioPlayback.audioAttachmentCues[idx].startMs + delta)
+            audioPlayback.audioAttachmentCues[idx].startMs = newStart
+            audioPlayback.audioAttachmentCues[idx].endMs = min(durationMs, max(newStart + minCueDurationMs, audioPlayback.audioAttachmentCues[idx].endMs + delta))
+            for k in audioPlayback.audioAttachmentCues[idx].checkpoints.indices {
+                audioPlayback.audioAttachmentCues[idx].checkpoints[k].timeMs = max(0, audioPlayback.audioAttachmentCues[idx].checkpoints[k].timeMs + delta)
             }
         case .setStartRipple(let idx):
-            guard audioAttachmentCues.indices.contains(idx) else { return }
+            guard audioPlayback.audioAttachmentCues.indices.contains(idx) else { return }
             // Clamp the target's new start between the previous line's start and the song length, then
             // shift it and every following line (until the next ♪) — boundaries AND checkpoints — by
             // that same delta, so a uniformly-drifted section snaps into place in one tap. Capping at
             // the song length (not the line's own end) lets a section be dragged forward past where it
             // currently sits — without that, the ripple silently did almost nothing for late sections.
-            let floorMs = idx > 0 ? audioAttachmentCues[idx - 1].startMs : 0
-            let desired = max(floorMs, min(audioController.currentTimeMs, durationMs - minCueDurationMs))
-            let delta = desired - audioAttachmentCues[idx].startMs
+            let floorMs = idx > 0 ? audioPlayback.audioAttachmentCues[idx - 1].startMs : 0
+            let desired = max(floorMs, min(audioPlayback.audioController.currentTimeMs, durationMs - minCueDurationMs))
+            let delta = desired - audioPlayback.audioAttachmentCues[idx].startMs
             guard delta != 0 else { return }
             var i = idx
-            while i < audioAttachmentCues.count {
-                if i > idx, SubtitleParser.isNonSpeechCue(audioAttachmentCues[i].text) { break }
-                let ns = max(0, audioAttachmentCues[i].startMs + delta)
-                audioAttachmentCues[i].startMs = ns
-                audioAttachmentCues[i].endMs = min(durationMs, max(ns + minCueDurationMs, audioAttachmentCues[i].endMs + delta))
-                for k in audioAttachmentCues[i].checkpoints.indices {
-                    audioAttachmentCues[i].checkpoints[k].timeMs = max(0, audioAttachmentCues[i].checkpoints[k].timeMs + delta)
+            while i < audioPlayback.audioAttachmentCues.count {
+                if i > idx, SubtitleParser.isNonSpeechCue(audioPlayback.audioAttachmentCues[i].text) { break }
+                let ns = max(0, audioPlayback.audioAttachmentCues[i].startMs + delta)
+                audioPlayback.audioAttachmentCues[i].startMs = ns
+                audioPlayback.audioAttachmentCues[i].endMs = min(durationMs, max(ns + minCueDurationMs, audioPlayback.audioAttachmentCues[i].endMs + delta))
+                for k in audioPlayback.audioAttachmentCues[i].checkpoints.indices {
+                    audioPlayback.audioAttachmentCues[i].checkpoints[k].timeMs = max(0, audioPlayback.audioAttachmentCues[i].checkpoints[k].timeMs + delta)
                 }
                 i += 1
             }
         case .setEnd(let idx):
-            guard audioAttachmentCues.indices.contains(idx) else { return }
-            let start = audioAttachmentCues[idx].startMs
-            audioAttachmentCues[idx].endMs = min(durationMs, max(audioController.currentTimeMs, start + minCueDurationMs))
+            guard audioPlayback.audioAttachmentCues.indices.contains(idx) else { return }
+            let start = audioPlayback.audioAttachmentCues[idx].startMs
+            audioPlayback.audioAttachmentCues[idx].endMs = min(durationMs, max(audioPlayback.audioController.currentTimeMs, start + minCueDurationMs))
         case .setStartToMs(let idx, let ms):
-            guard audioAttachmentCues.indices.contains(idx) else { return }
-            let end = audioAttachmentCues[idx].endMs
-            audioAttachmentCues[idx].startMs = max(0, min(ms, end - minCueDurationMs))
+            guard audioPlayback.audioAttachmentCues.indices.contains(idx) else { return }
+            let end = audioPlayback.audioAttachmentCues[idx].endMs
+            audioPlayback.audioAttachmentCues[idx].startMs = max(0, min(ms, end - minCueDurationMs))
         case .setEndToMs(let idx, let ms):
-            guard audioAttachmentCues.indices.contains(idx) else { return }
-            let start = audioAttachmentCues[idx].startMs
-            audioAttachmentCues[idx].endMs = min(durationMs, max(ms, start + minCueDurationMs))
+            guard audioPlayback.audioAttachmentCues.indices.contains(idx) else { return }
+            let start = audioPlayback.audioAttachmentCues[idx].startMs
+            audioPlayback.audioAttachmentCues[idx].endMs = min(durationMs, max(ms, start + minCueDurationMs))
         case .realignWord, .realignAll, .setWordStartToPlayhead, .setWordEndToPlayhead:
             return  // handled above
         }
 
         do {
-            try NotesAudioStore.shared.saveCues(audioAttachmentCues, attachmentID: attachmentID)
+            try NotesAudioStore.shared.saveCues(audioPlayback.audioAttachmentCues, attachmentID: attachmentID)
         } catch {
             print("[ReadView] saveCues after in-place lyric edit failed: \(error.localizedDescription)")
         }
-        audioController.updateCues(audioAttachmentCues)
+        audioPlayback.audioController.updateCues(audioPlayback.audioAttachmentCues)
     }
 
     // Snaps one word's karaoke checkpoint to `ms`. `isEnd == false` sets the word's START — the
@@ -141,23 +141,23 @@ extension ReadView {
     // so a line with no timing can be hand-built word by word.
     @MainActor
     private func setWordTiming(cueIndex: Int, charOffset: Int, charLength: Int, ms: Int, isEnd: Bool) {
-        guard let attachmentID = activeAudioAttachmentID,
-              audioAttachmentCues.indices.contains(cueIndex) else { return }
-        let cue = audioAttachmentCues[cueIndex]
+        guard let attachmentID = audioPlayback.activeAudioAttachmentID,
+              audioPlayback.audioAttachmentCues.indices.contains(cueIndex) else { return }
+        let cue = audioPlayback.audioAttachmentCues[cueIndex]
         let textLength = cue.text.utf16.count
         let targetOffset = isEnd ? (charOffset + charLength) : charOffset
         let clampedMs = max(0, ms)
 
         // The last word's "end" is the line end — there's no next-word checkpoint to anchor.
         if isEnd && targetOffset >= textLength {
-            let durationMs = audioController.duration > 0 ? Int(audioController.duration * 1000) : Int.max
-            audioAttachmentCues[cueIndex].endMs = min(durationMs, max(cue.startMs + minCueDurationMs, clampedMs))
+            let durationMs = audioPlayback.audioController.duration > 0 ? Int(audioPlayback.audioController.duration * 1000) : Int.max
+            audioPlayback.audioAttachmentCues[cueIndex].endMs = min(durationMs, max(cue.startMs + minCueDurationMs, clampedMs))
             do {
-                try NotesAudioStore.shared.saveCues(audioAttachmentCues, attachmentID: attachmentID)
+                try NotesAudioStore.shared.saveCues(audioPlayback.audioAttachmentCues, attachmentID: attachmentID)
             } catch {
                 print("[ReadView] saveCues after word-end edit failed: \(error.localizedDescription)")
             }
-            audioController.updateCues(audioAttachmentCues)
+            audioPlayback.audioController.updateCues(audioPlayback.audioAttachmentCues)
             return
         }
 
@@ -170,16 +170,16 @@ extension ReadView {
         }
         // Keep checkpoints ordered by position so the sweep advances left-to-right.
         checkpoints.sort { $0.charOffsetInCue < $1.charOffsetInCue }
-        audioAttachmentCues[cueIndex].checkpoints = checkpoints
+        audioPlayback.audioAttachmentCues[cueIndex].checkpoints = checkpoints
 
         do {
-            try NotesAudioStore.shared.saveCues(audioAttachmentCues, attachmentID: attachmentID)
+            try NotesAudioStore.shared.saveCues(audioPlayback.audioAttachmentCues, attachmentID: attachmentID)
         } catch {
             print("[ReadView] saveCues after word-timing edit failed: \(error.localizedDescription)")
         }
         // The updated cues feed the highlight observer reactively. updateCues keeps the controller's
         // copy in sync; its boundaries are unchanged but its checkpoints now match.
-        audioController.updateCues(audioAttachmentCues)
+        audioPlayback.audioController.updateCues(audioPlayback.audioAttachmentCues)
     }
 
     // Re-runs on-device forced alignment for a single cue over a padded window around its
@@ -187,30 +187,30 @@ extension ReadView {
     // per-character karaoke checkpoints. Persists cues + timings and refreshes the controller.
     @MainActor
     func realignActiveCueWord(cueIndex: Int) async {
-        // One re-align at a time — the spinner and the gate share `realigningCueIndex`.
-        guard realigningCueIndex == nil else { return }
-        guard let attachmentID = activeAudioAttachmentID,
-              audioAttachmentCues.indices.contains(cueIndex),
+        // One re-align at a time — the spinner and the gate share `lyricRealign.realigningCueIndex`.
+        guard lyricRealign.realigningCueIndex == nil else { return }
+        guard let attachmentID = audioPlayback.activeAudioAttachmentID,
+              audioPlayback.audioAttachmentCues.indices.contains(cueIndex),
               let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
         guard let modelURL = OnDeviceLyricAligner.bestAvailableModelURL() else {
-            cueRealignErrorMessage = "Download a Whisper model in Settings → Whisper Models to re-align lyrics on device."
+            lyricRealign.cueRealignErrorMessage = "Download a Whisper model in Settings → Whisper Models to re-align lyrics on device."
             return
         }
 
-        let cue = audioAttachmentCues[cueIndex]
+        let cue = audioPlayback.audioAttachmentCues[cueIndex]
         let lineText = cue.text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Nothing to align for instrumental ♪ markers or blank cues.
         guard lineText.isEmpty == false, SubtitleParser.isNonSpeechCue(lineText) == false else { return }
 
-        let durationMs = audioController.duration > 0 ? Int(audioController.duration * 1000) : cue.endMs + 2000
+        let durationMs = audioPlayback.audioController.duration > 0 ? Int(audioPlayback.audioController.duration * 1000) : cue.endMs + 2000
         // Pad the window so a badly-mistimed cue still contains its real audio. The forced
         // decoder places this one line within the window; the boundaries come back tightened.
         let padMs = 1500
         let windowStart = Double(max(0, cue.startMs - padMs)) / 1000.0
         let windowEnd = Double(min(durationMs, cue.endMs + padMs)) / 1000.0
 
-        realigningCueIndex = cueIndex
-        defer { realigningCueIndex = nil }
+        lyricRealign.realigningCueIndex = cueIndex
+        defer { lyricRealign.realigningCueIndex = nil }
 
         do {
             let result = try await OnDeviceLyricAligner.realignLine(
@@ -223,14 +223,14 @@ extension ReadView {
 
             // The cue list can shift while alignment runs (note switch, another edit). Re-find
             // the same cue by its stable SRT index and bail if it's gone or moved.
-            guard audioAttachmentCues.indices.contains(cueIndex),
-                  audioAttachmentCues[cueIndex].index == cue.index else { return }
+            guard audioPlayback.audioAttachmentCues.indices.contains(cueIndex),
+                  audioPlayback.audioAttachmentCues[cueIndex].index == cue.index else { return }
 
             // Tighten boundaries from the new line span.
             let newStart = max(0, Int((result.line.start * 1000).rounded()))
             let newEnd = min(durationMs, max(newStart + minCueDurationMs, Int((result.line.end * 1000).rounded())))
-            audioAttachmentCues[cueIndex].startMs = newStart
-            audioAttachmentCues[cueIndex].endMs = newEnd
+            audioPlayback.audioAttachmentCues[cueIndex].startMs = newStart
+            audioPlayback.audioAttachmentCues[cueIndex].endMs = newEnd
 
             // Rebuild this cue's per-character checkpoints inline (empty when the sweep found none).
             let checkpoints = result.tokens
@@ -242,27 +242,27 @@ extension ReadView {
                     )
                 }
                 .sorted { $0.timeMs < $1.timeMs }
-            audioAttachmentCues[cueIndex].checkpoints = checkpoints
+            audioPlayback.audioAttachmentCues[cueIndex].checkpoints = checkpoints
 
             do {
-                try NotesAudioStore.shared.saveCues(audioAttachmentCues, attachmentID: attachmentID)
+                try NotesAudioStore.shared.saveCues(audioPlayback.audioAttachmentCues, attachmentID: attachmentID)
             } catch {
                 print("[ReadView] persist after cue re-align failed: \(error.localizedDescription)")
             }
-            audioController.updateCues(audioAttachmentCues)
+            audioPlayback.audioController.updateCues(audioPlayback.audioAttachmentCues)
         } catch is CancellationError {
             // User navigated away mid-align; nothing to surface.
         } catch {
-            cueRealignErrorMessage = "Couldn't re-align this line: \(error.localizedDescription)"
+            lyricRealign.cueRealignErrorMessage = "Couldn't re-align this line: \(error.localizedDescription)"
         }
     }
 
     // Drives the dedicated re-align failure alert from the message string.
     var cueRealignErrorPresented: Binding<Bool> {
         Binding(
-            get: { cueRealignErrorMessage.isEmpty == false },
+            get: { lyricRealign.cueRealignErrorMessage.isEmpty == false },
             set: { presented in
-                if presented == false { cueRealignErrorMessage = "" }
+                if presented == false { lyricRealign.cueRealignErrorMessage = "" }
             }
         )
     }

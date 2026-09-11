@@ -27,11 +27,11 @@ nonisolated final class AlignmentCancellationToken: @unchecked Sendable {
 // aligns transcription segments to note text lines, and saves the resulting SRT.
 extension ReadView {
     var hasEditableSubtitles: Bool {
-        if activeAudioAttachmentID != nil {
+        if audioPlayback.activeAudioAttachmentID != nil {
             return true
         }
 
-        guard let activeNoteID else {
+        guard let activeNoteID = document.activeNoteID else {
             return false
         }
 
@@ -40,22 +40,22 @@ extension ReadView {
 
     var lyricAlignmentErrorPresented: Binding<Bool> {
         Binding(
-            get: { lyricAlignmentErrorMessage.isEmpty == false },
+            get: { subtitleImport.lyricAlignmentErrorMessage.isEmpty == false },
             set: { isPresented in
                 if isPresented == false {
-                    lyricAlignmentErrorMessage = ""
+                    subtitleImport.lyricAlignmentErrorMessage = ""
                 }
             }
         )
     }
 
     var canOpenSubtitleFlow: Bool {
-        isGeneratingLyricAlignment == false
+        subtitleImport.isGeneratingLyricAlignment == false
     }
 
     var generateSRTButton: some View {
         Group {
-            if isGeneratingLyricAlignment {
+            if subtitleImport.isGeneratingLyricAlignment {
                 ProgressView()
                     .controlSize(.small)
             } else {
@@ -77,7 +77,7 @@ extension ReadView {
             if hasEditableSubtitles {
                 presentSubtitleEditorIfPossible()
             } else {
-                isShowingSubtitlePopup = true
+                subtitleImport.isShowingSubtitlePopup = true
             }
         }
         .onLongPressGesture(minimumDuration: 0.45) {
@@ -97,25 +97,25 @@ extension ReadView {
         switch result {
         case .success(let selectedURLs):
             guard let sourceURL = selectedURLs.first else {
-                lyricAlignmentErrorMessage = "No audio file was selected."
+                subtitleImport.lyricAlignmentErrorMessage = "No audio file was selected."
                 return
             }
             preparePendingSubtitleAudioSelection(from: sourceURL)
         case .failure(let error):
-            lyricAlignmentErrorMessage = error.localizedDescription
+            subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
         }
     }
 
     // Uses on-device Whisper transcription to align note lyrics to the audio and persists the resulting SRT.
     @MainActor
     func generateAlignedSRT(fromPreparedAudioURL sourceURL: URL, originalAudioFilename: String) async {
-        guard isGeneratingLyricAlignment == false else {
+        guard subtitleImport.isGeneratingLyricAlignment == false else {
             return
         }
 
         let trimmedLyrics = lyricsForAlignment
         guard trimmedLyrics.isEmpty == false else {
-            lyricAlignmentErrorMessage = "Add lyrics to the note before generating subtitles."
+            subtitleImport.lyricAlignmentErrorMessage = "Add lyrics to the note before generating subtitles."
             return
         }
 
@@ -126,38 +126,38 @@ extension ReadView {
 
         flushPendingNotePersistenceIfNeeded()
 
-        guard let noteID = activeNoteID else {
-            lyricAlignmentErrorMessage = "Save or enter note text before generating subtitles."
+        guard let noteID = document.activeNoteID else {
+            subtitleImport.lyricAlignmentErrorMessage = "Save or enter note text before generating subtitles."
             return
         }
 
-        isGeneratingLyricAlignment = true
-        isCancellingAlignment = false
-        alignmentCancellationToken.reset()
-        alignmentResultSRT = ""
-        lyricAlignmentProgressMessage = "Preparing \(totalLines) lines..."
-        lyricAlignmentSourceFilename = originalAudioFilename
+        subtitleImport.isGeneratingLyricAlignment = true
+        subtitleImport.isCancellingAlignment = false
+        subtitleImport.alignmentCancellationToken.reset()
+        subtitleImport.alignmentResultSRT = ""
+        subtitleImport.lyricAlignmentProgressMessage = "Preparing \(totalLines) lines..."
+        subtitleImport.lyricAlignmentSourceFilename = originalAudioFilename
         defer {
-            isGeneratingLyricAlignment = false
-            isCancellingAlignment = false
-            lyricAlignmentProgressMessage = ""
-            lyricAlignmentSourceFilename = ""
+            subtitleImport.isGeneratingLyricAlignment = false
+            subtitleImport.isCancellingAlignment = false
+            subtitleImport.lyricAlignmentProgressMessage = ""
+            subtitleImport.lyricAlignmentSourceFilename = ""
         }
 
         do {
-            lyricAlignmentProgressMessage = "Aligning..."
+            subtitleImport.lyricAlignmentProgressMessage = "Aligning..."
 
             let srtText = try await OnDeviceLyricAligner.align(
                 audioURL: sourceURL,
                 lyrics: trimmedLyrics,
-                cancellationCheck: { [token = alignmentCancellationToken] in token.isCancelled },
+                cancellationCheck: { [token = subtitleImport.alignmentCancellationToken] in token.isCancelled },
                 // Show the pipeline's own per-phase status ("Isolating vocals… 73%",
                 // "Aligning lyrics… 45%") so the percentage tracks the ACTUAL current phase at its
                 // true 0–100%. The old onProgress bar folded the ~50 s isolation into 5→40% while
                 // mislabeling it "Aligning", then flashed the real alignment 40→90% in seconds —
                 // which read as "stuck at 40%, then done".
                 onStage: { [self] stage in
-                    Task { @MainActor in lyricAlignmentProgressMessage = stage }
+                    Task { @MainActor in subtitleImport.lyricAlignmentProgressMessage = stage }
                 },
                 onSegment: { [self] partialLines in
                     let n = partialLines.count
@@ -169,14 +169,14 @@ extension ReadView {
                         return "\(i + 1)\n\(startTs) --> \(endTs)\n\(line.text)"
                     }.joined(separator: "\n\n")
                     Task { @MainActor in
-                        lyricAlignmentProgressMessage = "Line \(n)/\(totalLines): \(lastText)"
-                        alignmentResultSRT = partial
+                        subtitleImport.lyricAlignmentProgressMessage = "Line \(n)/\(totalLines): \(lastText)"
+                        subtitleImport.alignmentResultSRT = partial
                     }
                 }
             )
 
-            alignmentResultSRT = srtText
-            lyricAlignmentProgressMessage = "Saving subtitles..."
+            subtitleImport.alignmentResultSRT = srtText
+            subtitleImport.lyricAlignmentProgressMessage = "Saving subtitles..."
             try saveAlignedSubtitles(
                 srtText: srtText,
                 audioURL: sourceURL,
@@ -186,9 +186,9 @@ extension ReadView {
             checkForSubtitleMismatches()
         } catch is CancellationError {
             // User cancelled — no error to show.
-            alignmentResultSRT = ""
+            subtitleImport.alignmentResultSRT = ""
         } catch {
-            lyricAlignmentErrorMessage = error.localizedDescription
+            subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
         }
     }
 
@@ -196,45 +196,45 @@ extension ReadView {
     // and presents a resolution dialog if any are found.
     @MainActor
     func checkForSubtitleMismatches() {
-        let count = audioAttachmentCues.enumerated().filter { index, cue in
-            guard index < audioAttachmentHighlightRanges.count,
-                  let range = audioAttachmentHighlightRanges[index],
-                  let swiftRange = Range(range, in: text) else {
+        let count = audioPlayback.audioAttachmentCues.enumerated().filter { index, cue in
+            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
+                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
+                  let swiftRange = Range(range, in: document.text) else {
                 return false
             }
-            let noteLineText = String(text[swiftRange])
+            let noteLineText = String(document.text[swiftRange])
             return noteLineText != cue.text
                 && SubtitleParser.isNonSpeechCue(cue.text) == false
         }.count
 
         if count > 0 {
-            subtitleMismatchCount = count
-            isShowingSubtitleMismatchDialog = true
+            lyricRealign.subtitleMismatchCount = count
+            lyricRealign.isShowingSubtitleMismatchDialog = true
         }
     }
 
     // Cancels the in-progress alignment. The abort_callback polls this flag.
     @MainActor
     func cancelAlignment() {
-        isCancellingAlignment = true
-        alignmentCancellationToken.cancel()
+        subtitleImport.isCancellingAlignment = true
+        subtitleImport.alignmentCancellationToken.cancel()
     }
 
     // Re-runs the FULL on-device alignment pipeline (CTC forced alignment + vocal separation +
     // windowing, via OnDeviceLyricAligner → CTCForcedAligner) over the note's lyrics against the
     // ALREADY-attached audio, then swaps the cue list in place — no wipe / re-import. Backs the
     // lyric view's top "Re-align" action (vs. `realignActiveCueWord`, which fixes one line in a
-    // padded window). Progress + spinner ride on `isReAligningWholeNote`; cancellation reuses the
+    // padded window). Progress + spinner ride on `lyricRealign.isReAligningWholeNote`; cancellation reuses the
     // shared alignment token so dismissing/cancelling mid-run stops the next window.
     @MainActor
     func realignWholeNote() async {
-        guard isReAligningWholeNote == false, realigningCueIndex == nil else { return }
-        guard let attachmentID = activeAudioAttachmentID,
+        guard lyricRealign.isReAligningWholeNote == false, lyricRealign.realigningCueIndex == nil else { return }
+        guard let attachmentID = audioPlayback.activeAudioAttachmentID,
               let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
 
         let lyrics = lyricsForAlignment
         guard lyrics.isEmpty == false else {
-            cueRealignErrorMessage = "Add lyrics to the note before re-aligning."
+            lyricRealign.cueRealignErrorMessage = "Add lyrics to the note before re-aligning."
             return
         }
         let totalLines = lyrics
@@ -242,12 +242,12 @@ extension ReadView {
             .filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
             .count
 
-        isReAligningWholeNote = true
-        reAlignProgressMessage = "Re-aligning \(totalLines) lines…"
-        alignmentCancellationToken.reset()
+        lyricRealign.isReAligningWholeNote = true
+        lyricRealign.reAlignProgressMessage = "Re-aligning \(totalLines) lines…"
+        subtitleImport.alignmentCancellationToken.reset()
         defer {
-            isReAligningWholeNote = false
-            reAlignProgressMessage = ""
+            lyricRealign.isReAligningWholeNote = false
+            lyricRealign.reAlignProgressMessage = ""
         }
 
         do {
@@ -257,12 +257,12 @@ extension ReadView {
             let result = try await OnDeviceLyricAligner.alignDetailed(
                 audioURL: audioURL,
                 lyrics: lyrics,
-                cancellationCheck: { [token = alignmentCancellationToken] in token.isCancelled },
+                cancellationCheck: { [token = subtitleImport.alignmentCancellationToken] in token.isCancelled },
                 // The stage string already carries its own per-phase percent
                 // ("Isolating vocals… 73%", "Aligning lyrics… 45%"), so each phase shows
                 // a true 0–100% of itself rather than a fudged combined bar.
                 onStage: { [self] stage in
-                    Task { @MainActor in reAlignProgressMessage = stage }
+                    Task { @MainActor in lyricRealign.reAlignProgressMessage = stage }
                 }
             )
 
@@ -276,7 +276,7 @@ extension ReadView {
 
             // Build cues straight from the structured result, folding each line's aligner units
             // into per-character karaoke checkpoints (UTF-16 offsets map 1:1 onto CueCharTiming).
-            let durationMs = audioController.duration > 0 ? Int(audioController.duration * 1000) : nil
+            let durationMs = audioPlayback.audioController.duration > 0 ? Int(audioPlayback.audioController.duration * 1000) : nil
             var cues: [SubtitleCue] = []
             for (i, line) in result.lines.enumerated() {
                 let startMs = max(0, Int((line.start * 1000).rounded()))
@@ -316,18 +316,18 @@ extension ReadView {
             // these cues (♪ markers and all), so no .srt sidecar is written. Per-word checkpoints
             // ride inline on each cue.
             try NotesAudioStore.shared.saveCues(cuesWithMarkers, attachmentID: attachmentID)
-            audioAttachmentCues = cuesWithMarkers
+            audioPlayback.audioAttachmentCues = cuesWithMarkers
             // Recompute the cue→note-line ranges against the NEW cue list. They map 1:1 with the
             // cues by position, so they must be regenerated whenever the cue list changes shape —
             // inserting ♪ markers shifts every index, and a stale array desyncs the active card,
             // the rows above it, and the mismatch flag (the karaoke view indexes both by the same
             // position).
-            audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cuesWithMarkers, in: text)
-            audioController.updateCues(cuesWithMarkers)
+            audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cuesWithMarkers, in: document.text)
+            audioPlayback.audioController.updateCues(cuesWithMarkers)
         } catch is CancellationError {
             // User navigated away / cancelled mid-run; nothing to surface.
         } catch {
-            cueRealignErrorMessage = "Couldn't re-align: \(error.localizedDescription)"
+            lyricRealign.cueRealignErrorMessage = "Couldn't re-align: \(error.localizedDescription)"
         }
     }
 
@@ -377,21 +377,21 @@ extension ReadView {
             NotesAudioStore.shared.deleteAttachment(previousAttachmentID)
         }
 
-        if activeNoteID == noteID {
+        if document.activeNoteID == noteID {
             loadAudioAttachmentIfNeeded(attachmentID: newAttachmentID)
-            // loadAudioAttachmentIfNeeded resets isShowingLyricsView to false (correct on
+            // loadAudioAttachmentIfNeeded resets audioPlayback.isShowingLyricsView to false (correct on
             // note-open, where the overlay should stay hidden). But this is an *explicit*
             // import/align completion — the user just asked for these cues — so reveal the
             // lyric overlay. Without this the cues load but sit at opacity 0 until the user
             // manually taps the ♪ button, which reads as "the import did nothing."
-            isShowingLyricsView = true
+            audioPlayback.isShowingLyricsView = true
         }
     }
 
     // Drops a duplicated title line from the alignment payload when the note starts with the title.
     // This keeps alignment tolerant of notes shaped like "Title\n\nlyrics...".
     private var lyricsForAlignment: String {
-        let normalizedText = text
+        let normalizedText = document.text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -429,19 +429,19 @@ extension ReadView {
     private func preparePendingSubtitleAudioSelection(from sourceURL: URL) {
         do {
             clearPendingSubtitleAudioSelection()
-            pendingSubtitleAudioURL = try AudioTranscriptionHelpers.copyImportedAudioToTemporaryLocation(sourceURL)
-            pendingSubtitleAudioFilename = sourceURL.lastPathComponent
+            subtitleImport.pendingSubtitleAudioURL = try AudioTranscriptionHelpers.copyImportedAudioToTemporaryLocation(sourceURL)
+            subtitleImport.pendingSubtitleAudioFilename = sourceURL.lastPathComponent
         } catch {
-            lyricAlignmentErrorMessage = error.localizedDescription
+            subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
         }
     }
 
     // Clears staged audio selection state, optionally cleaning up the temporary copy.
     @MainActor
     func clearPendingSubtitleAudioSelection(removeTemporaryFile: Bool = true) {
-        let temporaryURL = pendingSubtitleAudioURL
-        pendingSubtitleAudioURL = nil
-        pendingSubtitleAudioFilename = ""
+        let temporaryURL = subtitleImport.pendingSubtitleAudioURL
+        subtitleImport.pendingSubtitleAudioURL = nil
+        subtitleImport.pendingSubtitleAudioFilename = ""
         if removeTemporaryFile, let temporaryURL {
             try? FileManager.default.removeItem(at: temporaryURL)
         }
@@ -457,14 +457,14 @@ extension ReadView {
     @MainActor
     func resetCurrentSubtitleAttachment() {
         clearPendingSubtitleAudioSelection()
-        lyricAlignmentErrorMessage = ""
+        subtitleImport.lyricAlignmentErrorMessage = ""
 
-        guard let noteID = activeNoteID,
+        guard let noteID = document.activeNoteID,
               let attachmentID = notesStore.note(withID: noteID)?.audioAttachmentID else {
             return
         }
 
-        audioController.stop()
+        audioPlayback.audioController.stop()
         NotesAudioStore.shared.deleteAttachment(attachmentID)
         notesStore.updateAudioAttachment(id: noteID, attachmentID: nil)
         loadAudioAttachmentIfNeeded(attachmentID: nil)
@@ -473,14 +473,14 @@ extension ReadView {
     // Ensures an audio attachment is loaded before opening the subtitle editor so the editor always has cue data.
     @MainActor
     func presentSubtitleEditorIfPossible() {
-        if activeAudioAttachmentID == nil,
-           let activeNoteID,
+        if audioPlayback.activeAudioAttachmentID == nil,
+           let activeNoteID = document.activeNoteID,
            let attachmentID = notesStore.note(withID: activeNoteID)?.audioAttachmentID {
             loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
         }
 
-        if activeAudioAttachmentID != nil {
-            isShowingSubtitleEditor = true
+        if audioPlayback.activeAudioAttachmentID != nil {
+            lyricRealign.isShowingSubtitleEditor = true
         }
     }
 
@@ -504,7 +504,7 @@ extension ReadView {
             }
 
             guard let audioURL else {
-                lyricAlignmentErrorMessage = "Pick an audio file (mp3 / m4a) — the lyric view needs something to play."
+                subtitleImport.lyricAlignmentErrorMessage = "Pick an audio file (mp3 / m4a) — the lyric view needs something to play."
                 return
             }
 
@@ -513,7 +513,7 @@ extension ReadView {
             clearPendingSubtitleTextGridSelection()
 
             preparePendingSubtitleAudioSelection(from: audioURL)
-            guard pendingSubtitleAudioURL != nil else { return } // staging error already surfaced
+            guard subtitleImport.pendingSubtitleAudioURL != nil else { return } // staging error already surfaced
 
             if let srtURL { stagePendingSidecar(srtURL, as: .srt) }
             if let textGridURL { stagePendingSidecar(textGridURL, as: .textGrid) }
@@ -522,7 +522,7 @@ extension ReadView {
 
         case .failure(let error):
             if Self.isUserCancelledFileSelection(error) == false {
-                lyricAlignmentErrorMessage = error.localizedDescription
+                subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
             }
         }
     }
@@ -539,27 +539,27 @@ extension ReadView {
             try FileManager.default.copyItem(at: sourceURL, to: dest)
             switch kind {
             case .srt:
-                pendingSubtitleFileURL = dest
-                pendingSubtitleFilename = sourceURL.lastPathComponent
+                subtitleImport.pendingSubtitleFileURL = dest
+                subtitleImport.pendingSubtitleFilename = sourceURL.lastPathComponent
             case .textGrid:
-                pendingSubtitleTextGridURL = dest
-                pendingSubtitleTextGridFilename = sourceURL.lastPathComponent
+                subtitleImport.pendingSubtitleTextGridURL = dest
+                subtitleImport.pendingSubtitleTextGridFilename = sourceURL.lastPathComponent
             default:
                 break
             }
         } catch {
-            lyricAlignmentErrorMessage = error.localizedDescription
+            subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
         }
     }
 
     // Clears any staged TextGrid file selection.
     @MainActor
     func clearPendingSubtitleTextGridSelection() {
-        if let url = pendingSubtitleTextGridURL {
+        if let url = subtitleImport.pendingSubtitleTextGridURL {
             try? FileManager.default.removeItem(at: url)
         }
-        pendingSubtitleTextGridURL = nil
-        pendingSubtitleTextGridFilename = ""
+        subtitleImport.pendingSubtitleTextGridURL = nil
+        subtitleImport.pendingSubtitleTextGridFilename = ""
     }
 
     // Receives the file picker result for an existing subtitle file and stages it.
@@ -568,7 +568,7 @@ extension ReadView {
         switch result {
         case .success(let urls):
             guard let sourceURL = urls.first else {
-                lyricAlignmentErrorMessage = "No subtitle file was selected."
+                subtitleImport.lyricAlignmentErrorMessage = "No subtitle file was selected."
                 return
             }
             do {
@@ -578,14 +578,14 @@ extension ReadView {
                 let tempDir = FileManager.default.temporaryDirectory
                 let dest = tempDir.appendingPathComponent(UUID().uuidString + "_" + sourceURL.lastPathComponent)
                 try FileManager.default.copyItem(at: sourceURL, to: dest)
-                pendingSubtitleFileURL = dest
-                pendingSubtitleFilename = sourceURL.lastPathComponent
+                subtitleImport.pendingSubtitleFileURL = dest
+                subtitleImport.pendingSubtitleFilename = sourceURL.lastPathComponent
             } catch {
-                lyricAlignmentErrorMessage = error.localizedDescription
+                subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
             }
         case .failure(let error):
             if Self.isUserCancelledFileSelection(error) == false {
-                lyricAlignmentErrorMessage = error.localizedDescription
+                subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
             }
         }
     }
@@ -593,21 +593,21 @@ extension ReadView {
     // Clears staged subtitle file selection.
     @MainActor
     func clearPendingSubtitleFileSelection() {
-        if let url = pendingSubtitleFileURL {
+        if let url = subtitleImport.pendingSubtitleFileURL {
             try? FileManager.default.removeItem(at: url)
         }
-        pendingSubtitleFileURL = nil
-        pendingSubtitleFilename = ""
+        subtitleImport.pendingSubtitleFileURL = nil
+        subtitleImport.pendingSubtitleFilename = ""
     }
 
     // Validates the staged audio and either imports the provided subtitle file
     // or triggers on-device alignment using the note text as lyrics.
     @MainActor
     func submitPendingSubtitleSelection() async {
-        lyricAlignmentErrorMessage = ""
+        subtitleImport.lyricAlignmentErrorMessage = ""
 
-        guard let audioURL = pendingSubtitleAudioURL else {
-            lyricAlignmentErrorMessage = "Select an audio file before submitting."
+        guard let audioURL = subtitleImport.pendingSubtitleAudioURL else {
+            subtitleImport.lyricAlignmentErrorMessage = "Select an audio file before submitting."
             return
         }
 
@@ -617,9 +617,9 @@ extension ReadView {
         //      pick produce a playable note (its finer tiers still bind karaoke checkpoints below).
         //   3. Neither → fall through to on-device forced alignment using the note text as lyrics.
         let resolvedSRT: String?
-        if let subtitleURL = pendingSubtitleFileURL {
+        if let subtitleURL = subtitleImport.pendingSubtitleFileURL {
             resolvedSRT = try? SubtitleSourceLoader.readText(from: subtitleURL)
-        } else if let textGridURL = pendingSubtitleTextGridURL,
+        } else if let textGridURL = subtitleImport.pendingSubtitleTextGridURL,
                   let content = try? SubtitleSourceLoader.readText(from: textGridURL),
                   let cues = try? SubtitleSourceLoader.deriveCues(fromTextGrid: content),
                   cues.isEmpty == false {
@@ -632,29 +632,29 @@ extension ReadView {
             // We have cue text (from SRT or a TextGrid) — import directly, skip alignment.
             do {
                 flushPendingNotePersistenceIfNeeded()
-                guard let noteID = activeNoteID else {
-                    lyricAlignmentErrorMessage = "Save or enter note text before importing subtitles."
+                guard let noteID = document.activeNoteID else {
+                    subtitleImport.lyricAlignmentErrorMessage = "Save or enter note text before importing subtitles."
                     return
                 }
                 try saveAlignedSubtitles(
                     srtText: srtText,
                     audioURL: audioURL,
-                    originalAudioFilename: pendingSubtitleAudioFilename,
+                    originalAudioFilename: subtitleImport.pendingSubtitleAudioFilename,
                     noteID: noteID,
-                    textGridURL: pendingSubtitleTextGridURL
+                    textGridURL: subtitleImport.pendingSubtitleTextGridURL
                 )
-                alignmentResultSRT = srtText
+                subtitleImport.alignmentResultSRT = srtText
                 checkForSubtitleMismatches()
             } catch {
-                lyricAlignmentErrorMessage = error.localizedDescription
+                subtitleImport.lyricAlignmentErrorMessage = error.localizedDescription
             }
         } else {
             // No subtitle file or TextGrid — run forced alignment.
             await generateAlignedSRT(
                 fromPreparedAudioURL: audioURL,
-                originalAudioFilename: pendingSubtitleAudioFilename
+                originalAudioFilename: subtitleImport.pendingSubtitleAudioFilename
             )
-            guard lyricAlignmentErrorMessage.isEmpty else {
+            guard subtitleImport.lyricAlignmentErrorMessage.isEmpty else {
                 return
             }
         }
@@ -669,27 +669,27 @@ extension ReadView {
     // Resolves mismatches caused by Whisper transcription errors in the alignment output.
     @MainActor
     func syncSubtitlesToNote() {
-        guard let attachmentID = activeAudioAttachmentID else { return }
+        guard let attachmentID = audioPlayback.activeAudioAttachmentID else { return }
 
-        let rebuilt = audioAttachmentCues.enumerated().map { index, cue -> SubtitleCue in
-            guard index < audioAttachmentHighlightRanges.count,
-                  let range = audioAttachmentHighlightRanges[index],
-                  let swiftRange = Range(range, in: text) else {
+        let rebuilt = audioPlayback.audioAttachmentCues.enumerated().map { index, cue -> SubtitleCue in
+            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
+                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
+                  let swiftRange = Range(range, in: document.text) else {
                 return cue
             }
-            let noteLineText = String(text[swiftRange])
+            let noteLineText = String(document.text[swiftRange])
             return SubtitleCue(index: cue.index, startMs: cue.startMs, endMs: cue.endMs, text: noteLineText)
         }
         // Carry per-word checkpoints onto any line whose text is unchanged; lines re-pointed at the
         // note text lose theirs (their characters differ, so the old offsets no longer apply).
-        let updatedCues = SubtitleEditorTimingTools.mergeCheckpoints(into: rebuilt, from: audioAttachmentCues)
+        let updatedCues = SubtitleEditorTimingTools.mergeCheckpoints(into: rebuilt, from: audioPlayback.audioAttachmentCues)
 
         do {
             // cues.json is the sole persisted truth — no .srt sidecar is written.
             try NotesAudioStore.shared.saveCues(updatedCues, attachmentID: attachmentID)
-            audioAttachmentCues = updatedCues
+            audioPlayback.audioAttachmentCues = updatedCues
             // Re-resolve highlight ranges now that cue text matches note text exactly.
-            audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: updatedCues, in: text)
+            audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: updatedCues, in: document.text)
         } catch {
             print("[SyncSubtitles] failed to save updated cues: \(error)")
         }
@@ -699,11 +699,11 @@ extension ReadView {
     // Useful when the subtitle text is considered authoritative (e.g. from a reference SRT).
     @MainActor
     func syncNoteToSubtitles() {
-        var newText = text
+        var newText = document.text
         // Apply replacements in reverse order so earlier ranges stay valid.
-        let replacements: [(NSRange, String)] = audioAttachmentCues.enumerated().compactMap { index, cue in
-            guard index < audioAttachmentHighlightRanges.count,
-                  let range = audioAttachmentHighlightRanges[index],
+        let replacements: [(NSRange, String)] = audioPlayback.audioAttachmentCues.enumerated().compactMap { index, cue in
+            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
+                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
                   let swiftRange = Range(range, in: newText) else { return nil }
             let noteLineText = String(newText[swiftRange])
             guard noteLineText != cue.text else { return nil }
@@ -715,8 +715,8 @@ extension ReadView {
             newText.replaceSubrange(swiftRange, with: replacement)
         }
 
-        text = newText
+        document.text = newText
         // Re-resolve highlight ranges against the updated note text.
-        audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: audioAttachmentCues, in: text)
+        audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: audioPlayback.audioAttachmentCues, in: document.text)
     }
 }

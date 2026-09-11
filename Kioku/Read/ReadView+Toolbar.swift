@@ -34,27 +34,28 @@ extension ReadView {
 
     // Triggers an LLM correction request for the current note's segmentation and readings.
     // While changes are pending, acts as a confirm button (sparkles + checkmark overlay).
-    // Only enabled when a provider key is configured in Settings and the note is in read mode.
+    // Always visible — disabled (not hidden) when no provider is configured, so its absence
+    // doesn't read as "this feature doesn't exist" when it's really "go set up a provider".
     var llmCorrectionButton: some View {
         Button {
-            if isRequestingLLMCorrection {
+            if llmCorrection.isRequestingLLMCorrection {
                 cancelLLMCorrection()
-            } else if hasPendingLLMChanges {
+            } else if llmCorrection.hasPendingLLMChanges {
                 confirmLLMChanges()
-            } else if hasAppliedLLMCorrectionForCurrentNote {
+            } else if llmCorrection.hasAppliedLLMCorrectionForCurrentNote {
                 // Only warn about replacing corrections once this note has actually had one
                 // applied — a fresh note runs straight away without the confirm dialog.
-                isShowingLLMRerunConfirm = true
+                llmCorrection.isShowingLLMRerunConfirm = true
             } else {
                 requestLLMCorrection()
             }
         } label: {
             Group {
-                if isRequestingLLMCorrection {
+                if llmCorrection.isRequestingLLMCorrection {
                     ProgressView()
                         .progressViewStyle(.circular)
                         .scaleEffect(0.7)
-                } else if hasPendingLLMChanges {
+                } else if llmCorrection.hasPendingLLMChanges {
                     // Sparkles with a checkmark badge signals "confirm these AI changes".
                     ZStack(alignment: .bottomTrailing) {
                         Image(systemName: "sparkles")
@@ -68,14 +69,15 @@ extension ReadView {
                         .font(.system(size: 16, weight: .semibold))
                 }
             }
-            .foregroundStyle(hasPendingLLMChanges ? Color.green : Color.accentColor)
+            .foregroundStyle(llmCorrection.hasPendingLLMChanges ? Color.green : Color.accentColor)
             .frame(width: 36, height: 36)
             .background(Circle().fill(ReadToggleAppearance.background))
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(isEditMode)
-        .opacity(isEditMode ? 0.5 : 1.0)
-        .accessibilityLabel(hasPendingLLMChanges ? "Confirm AI Changes" : (isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
+        .disabled(editModeScroll.isEditMode || isLLMConfigured == false)
+        .opacity(editModeScroll.isEditMode || isLLMConfigured == false ? 0.5 : 1.0)
+        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Confirm AI Changes" : (llmCorrection.isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
+        .accessibilityHint(isLLMConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
     // Resets custom segment segmentation back to computed segmentation.
@@ -87,12 +89,12 @@ extension ReadView {
         // precomputed notes that were never touched. Per the toggle standard, an enabled reset
         // reads as "on" (accent) and a disabled one as "off" (secondary); the red reject badge
         // overrides while AI changes are pending.
-        let isEnabled = (hasManualSegmentationEdits || hasPendingLLMChanges) && isEditMode == false
+        let isEnabled = (document.hasManualSegmentationEdits || llmCorrection.hasPendingLLMChanges) && editModeScroll.isEditMode == false
         return Button {
             resetSegmentationToComputed()
         } label: {
             Group {
-                if hasPendingLLMChanges {
+                if llmCorrection.hasPendingLLMChanges {
                     ZStack(alignment: .bottomTrailing) {
                         Image(systemName: "arrow.counterclockwise")
                             .font(.system(size: 16, weight: .semibold))
@@ -113,7 +115,7 @@ extension ReadView {
         .buttonStyle(PlainButtonStyle())
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1.0 : 0.5)
-        .accessibilityLabel(hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
+        .accessibilityLabel(llmCorrection.hasPendingLLMChanges ? "Reject AI Changes" : "Reset Segmentation")
     }
 
     // Title-row buttons. New-note + OCR migrated to the Notes tab; this row hosts the
@@ -122,7 +124,7 @@ extension ReadView {
     // visual peers — same capsule background, same accent treatment — so the row reads as
     // "actions for the currently-open note."
     var titleLyricsButton: some View {
-        titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: isShowingLyricsView))
+        titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: audioPlayback.isShowingLyricsView))
             .contentShape(Capsule())
             .onTapGesture {
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the
@@ -131,10 +133,10 @@ extension ReadView {
                 // with no cues yet, showing an empty lyrics overlay is fine and playback still works;
                 // alignment is a separate, explicit action (the Re-align control), not auto-triggered
                 // by this tap.
-                if activeAudioAttachmentID == nil {
-                    isShowingLyricMediaPicker = true
+                if audioPlayback.activeAudioAttachmentID == nil {
+                    subtitleImport.isShowingLyricMediaPicker = true
                 } else {
-                    isShowingLyricsView.toggle()
+                    audioPlayback.isShowingLyricsView.toggle()
                 }
             }
             .onLongPressGesture(minimumDuration: 0.35) {
@@ -145,14 +147,14 @@ extension ReadView {
                 // attachment first when needed, so it's safe to call without checking.
                 presentSubtitleEditorIfPossible()
             }
-            .accessibilityLabel(isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
+            .accessibilityLabel(audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
             .accessibilityHint("Long press to edit subtitles")
             .accessibilityAddTraits(.isButton)
     }
 
     var titleExtractWordsButton: some View {
         Button {
-            isShowingSegmentList = true
+            readSheets.isShowingSegmentList = true
         } label: {
             titleActionLabel(systemImage: "list.bullet", foreground: .accentColor)
         }
@@ -164,13 +166,13 @@ extension ReadView {
     // as a spinner on the toolbar icon so a multi-minute LLM call (often 60-180s) doesn't read
     // as an inert button while it's actually working in the background.
     private var isBreakdownGeneratingForActiveNote: Bool {
-        guard let activeNoteID else { return false }
+        guard let activeNoteID = document.activeNoteID else { return false }
         return songBreakdownStore.isGenerating(forNoteID: activeNoteID)
     }
 
     var titleBreakdownButton: some View {
         Button {
-            isShowingBreakdownSheet = true
+            readSheets.isShowingBreakdownSheet = true
         } label: {
             if isBreakdownGeneratingForActiveNote {
                 ProgressView()
@@ -183,7 +185,10 @@ extension ReadView {
             }
         }
         .buttonStyle(.plain)
+        .disabled(isBreakdownConfigured == false)
+        .opacity(isBreakdownConfigured ? 1.0 : 0.5)
         .accessibilityLabel(isBreakdownGeneratingForActiveNote ? "Breakdown generating" : "Open Breakdown")
+        .accessibilityHint(isBreakdownConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
     // Shared visual treatment for the three title-row action buttons. Sized to match the
@@ -299,14 +304,14 @@ extension ReadView {
             .buttonStyle(.plain)
 
             Button {
-                isShowingSavedHighlightCategories = true
+                readSheets.isShowingSavedHighlightCategories = true
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
             }
-            .popover(isPresented: $isShowingSavedHighlightCategories, arrowEdge: .trailing) {
+            .popover(isPresented: $readSheets.isShowingSavedHighlightCategories, arrowEdge: .trailing) {
                 savedHighlightCategoriesPopover
             }
         }
@@ -409,19 +414,19 @@ extension ReadView {
         editModeButtonLabel
             .contentShape(Circle())
             .onTapGesture {
-                guard isRequestingLLMCorrection == false else { return }
-                isEditMode.toggle()
+                guard llmCorrection.isRequestingLLMCorrection == false else { return }
+                editModeScroll.isEditMode.toggle()
             }
             .onLongPressGesture(minimumDuration: 0.35) {
-                guard isRequestingLLMCorrection == false else { return }
-                isShowingDisplayOptions = true
+                guard llmCorrection.isRequestingLLMCorrection == false else { return }
+                readSheets.isShowingDisplayOptions = true
             }
-            .disabled(isRequestingLLMCorrection)
-            .opacity(isRequestingLLMCorrection ? 0.4 : (isEditMode ? 1 : 0.7))
-            .accessibilityLabel(isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
-            .accessibilityHint(isRequestingLLMCorrection ? "Disabled while AI correction runs" : "Long press for display options")
+            .disabled(llmCorrection.isRequestingLLMCorrection)
+            .opacity(llmCorrection.isRequestingLLMCorrection ? 0.4 : (editModeScroll.isEditMode ? 1 : 0.7))
+            .accessibilityLabel(editModeScroll.isEditMode ? "Disable Edit Mode" : "Enable Edit Mode")
+            .accessibilityHint(llmCorrection.isRequestingLLMCorrection ? "Disabled while AI correction runs" : "Long press for display options")
             .accessibilityAddTraits(.isButton)
-            .popover(isPresented: $isShowingDisplayOptions, arrowEdge: .bottom) {
+            .popover(isPresented: $readSheets.isShowingDisplayOptions, arrowEdge: .bottom) {
                 displayOptionsPopover
                     .presentationCompactAdaptation(.popover)
                     .fixedSize(horizontal: false, vertical: true)
@@ -434,7 +439,7 @@ extension ReadView {
     private var editModeButtonLabel: some View {
         Image(systemName: "character.cursor.ibeam.ja")
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(ReadToggleAppearance.foreground(isOn: isEditMode))
+            .foregroundStyle(ReadToggleAppearance.foreground(isOn: editModeScroll.isEditMode))
             .frame(width: 36, height: 36)
             .background(Circle().fill(ReadToggleAppearance.background))
     }

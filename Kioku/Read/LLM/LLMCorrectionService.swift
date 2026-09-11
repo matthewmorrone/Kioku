@@ -84,13 +84,17 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.appleIntelligenceUnavailable
         }
 
-        // Apple Intelligence Cloud / Cloud Pro (Private Cloud Compute) is only wired for song
-        // breakdown today (AppleIntelligenceCloudClient) — correction stays on-device-only.
-        // Checked before the API-key guard for the same reason the on-device branch above is:
-        // no Apple Intelligence variant has a key, so that guard would otherwise misreport
-        // "No API key configured" instead of the accurate "not supported for this feature yet".
+        // Apple Intelligence Cloud / Cloud Pro (Private Cloud Compute), via the same client
+        // SongBreakdownService uses. Checked before the API-key guard for the same reason the
+        // on-device branch above is: no Apple Intelligence variant has a key, so that guard
+        // would otherwise misreport "No API key configured".
         if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
-            throw LLMCorrectionError.appleIntelligenceCloudUnsupported
+            let raw = try await generateViaAppleIntelligenceCloud(
+                compactSegments: compactSegments,
+                correctiveFeedback: correctiveFeedback,
+                useDeepReasoning: provider == .appleIntelligenceCloudPro
+            )
+            return try await parseWithSalvage(raw)
         }
 
         guard let apiKey = LLMSettings.activeAPIKey() else {
@@ -111,7 +115,7 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.appleIntelligenceUnavailable
         case .appleIntelligenceCloud, .appleIntelligenceCloudPro:
             // Handled above; included so the switch stays exhaustive.
-            throw LLMCorrectionError.appleIntelligenceCloudUnsupported
+            throw LLMCorrectionError.appleIntelligenceCloudUnavailable
         case .openAI:
             raw = try await callOpenAIRaw(apiKey: apiKey, messages: messages)
         case .claude:
@@ -295,6 +299,35 @@ final class LLMCorrectionService {
             """
     }
 
+    // Apple Intelligence Cloud / Cloud Pro dispatch: a one-shot call through Private Cloud
+    // Compute, the same client SongBreakdownService uses (see its header comment for why PCC's
+    // 32K context can take the whole prompt in one shot, unlike on-device correction's
+    // per-line chunking). Returns raw text so the caller routes it through the same
+    // parseWithSalvage ladder as OpenAI/Claude — Cloud can produce the same kind of
+    // slightly-malformed output a remote HTTP provider can.
+    private func generateViaAppleIntelligenceCloud(
+        compactSegments: String,
+        correctiveFeedback: String?,
+        useDeepReasoning: Bool
+    ) async throws -> String {
+        #if canImport(FoundationModels) && compiler(>=6.4)
+        guard #available(iOS 27.0, *), AppleIntelligenceCloudAvailability.isAvailable else {
+            throw LLMCorrectionError.appleIntelligenceCloudUnavailable
+        }
+        let messages = buildMessages(compactSegments: compactSegments, correctiveFeedback: correctiveFeedback)
+        AppLog.debug(.llmCorrection, "[AppleIntelligenceCloud] deepReasoning=\(useDeepReasoning) instructions:\n\(messages.system)\nprompt:\n\(messages.user)")
+        let raw = try await AppleIntelligenceCloudClient.generate(
+            instructions: messages.system,
+            prompt: messages.user,
+            useDeepReasoning: useDeepReasoning
+        )
+        AppLog.debug(.llmCorrection, "[AppleIntelligenceCloud] raw response:\n\(raw)")
+        return raw
+        #else
+        throw LLMCorrectionError.appleIntelligenceCloudUnavailable
+        #endif
+    }
+
     // Calls OpenAI chat completions. No json_object response_format — compact text output.
     // Returns the raw response text (unparsed) so the caller can route it through the shared
     // parse+salvage ladder in parseWithSalvage.
@@ -367,20 +400,24 @@ final class LLMCorrectionService {
         // per-note user turn stays uncached. GA feature — no beta header required; the existing
         // anthropic-version header suffices. (Sonnet 5's 1024-token min cacheable prefix means
         // this ~2000-token correction prompt clears it comfortably.)
+        //
         // No `temperature` — sampling params are rejected with a 400 on current-generation
-        // Claude models (Sonnet 5 and later).
+        // Claude models (Sonnet 5 and later). The Settings slider still applies to OpenAI.
+        var conversation: [[String: Any]] = [
+            ["role": "user", "content": messages.user]
+        ]
         var body: [String: Any] = [
             "model": LLMSettings.claudeModel(),
-            "max_tokens": 4096,
+            // Headroom for the web_search loop: server_tool_use blocks count against this
+            // budget too, so 4096 could be spent entirely on searching and leave no room for
+            // the actual correction text.
+            "max_tokens": 16384,
             "system": [
                 [
                     "type": "text",
                     "text": messages.system,
                     "cache_control": ["type": "ephemeral"]
                 ]
-            ],
-            "messages": [
-                ["role": "user", "content": messages.user]
             ]
         ]
         // Server-side web_search tool: the model can search canonical lyric sources
@@ -399,33 +436,47 @@ final class LLMCorrectionService {
             ]
         }
 
-        let bodyData = try JSONSerialization.data(withJSONObject: body)
-        request.httpBody = bodyData
-        AppLog.debug(.llmCorrection, "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) webSearch=\(LLMSettings.isWebSearchEnabled()) body bytes=\(bodyData.count)")
+        // Anthropic returns an array of content blocks. When web_search is enabled there are
+        // server_tool_use + web_search_tool_result blocks before the final text block(s); when
+        // it's disabled there's typically just one text block. Either way the model's final
+        // answer lives in the type=="text" blocks, concatenated in order.
+        //
+        // A server-tool loop can also end with stop_reason "pause_turn" — the model paused
+        // mid-search and the caller is expected to send the content back as an assistant turn
+        // so it can keep going. Do that a few times before giving up.
+        for turn in 1...4 {
+            body["messages"] = conversation
+            let bodyData = try JSONSerialization.data(withJSONObject: body)
+            request.httpBody = bodyData
+            AppLog.debug(.llmCorrection, "[Claude] POST \(url) model=\(LLMSettings.claudeModel()) webSearch=\(LLMSettings.isWebSearchEnabled()) turn=\(turn) body bytes=\(bodyData.count)")
 
-        let (data, statusCode) = try await send(request, provider: "Claude")
+            let (data, statusCode) = try await send(request, provider: "Claude")
+            guard
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let content = json["content"] as? [[String: Any]]
+            else {
+                throw LLMCorrectionError.unexpectedResponseShape("Claude response missing content array")
+            }
+            let stopReason = json["stop_reason"] as? String ?? "?"
+            let text = content.compactMap { block -> String? in
+                guard let type = block["type"] as? String, type == "text" else { return nil }
+                return block["text"] as? String
+            }.joined()
 
-        // Anthropic returns an array of content blocks. When web_search is enabled
-        // there are server_tool_use + web_search_tool_result blocks before the
-        // final text block(s); when it's disabled there's typically just one text
-        // block. Either way the model's final answer lives in the type=="text"
-        // blocks, concatenated in order — so we walk and join them.
-        guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let content = json["content"] as? [[String: Any]]
-        else {
-            throw LLMCorrectionError.unexpectedResponseShape("Claude response missing content array")
+            if text.isEmpty == false {
+                AppLog.debug(.llmCorrection, "[Claude] HTTP \(statusCode) stop=\(stopReason) raw response:\n\(text)")
+                return text
+            }
+            if stopReason == "pause_turn" {
+                conversation.append(["role": "assistant", "content": content])
+                continue
+            }
+            let blockTypes = content.compactMap { $0["type"] as? String }.joined(separator: ",")
+            let raw = String(data: data, encoding: .utf8) ?? "(unreadable)"
+            AppLog.error(.llmCorrection, "[Claude] HTTP \(statusCode) stop=\(stopReason) blocks=[\(blockTypes)] no text; body:\n\(raw.prefix(4000))")
+            throw LLMCorrectionError.unexpectedResponseShape("Claude response had no text content blocks (stop_reason=\(stopReason), blocks=[\(blockTypes)])")
         }
-        let text = content.compactMap { block -> String? in
-            guard let type = block["type"] as? String, type == "text" else { return nil }
-            return block["text"] as? String
-        }.joined()
-        guard text.isEmpty == false else {
-            throw LLMCorrectionError.unexpectedResponseShape("Claude response had no text content blocks")
-        }
-
-        AppLog.debug(.llmCorrection, "[Claude] HTTP \(statusCode) raw response:\n\(text)")
-        return text
+        throw LLMCorrectionError.unexpectedResponseShape("Claude kept pausing its web-search turn without answering")
     }
 
     // Sends the request, retrying on transient failures (429, 5xx, or a connection-level error)
@@ -656,9 +707,10 @@ final class LLMCorrectionService {
 enum LLMCorrectionError: LocalizedError {
     case noKeyConfigured
     case appleIntelligenceUnavailable
-    // Apple Intelligence Cloud / Cloud Pro is only wired for song breakdown today, not
-    // correction — see LLMCorrectionService.requestCorrections' provider dispatch.
-    case appleIntelligenceCloudUnsupported
+    // Apple Intelligence Cloud/Cloud Pro was picked but Private Cloud Compute isn't reachable —
+    // device/OS below the requirement, or the compiler predates FoundationModels' PCC API (see
+    // AppleIntelligenceCloudAvailability's header comment).
+    case appleIntelligenceCloudUnavailable
     case networkError(String)
     case unexpectedResponseShape(String)
     case decodingError(String)
@@ -679,8 +731,8 @@ enum LLMCorrectionError: LocalizedError {
             return "No API key configured. Add one in Settings."
         case .appleIntelligenceUnavailable:
             return "Apple Intelligence isn't available on this device. Pick another provider in Settings."
-        case .appleIntelligenceCloudUnsupported:
-            return "Apple Intelligence Cloud isn't supported for note correction yet — pick On-Device Apple Intelligence, OpenAI, or Claude in Settings."
+        case .appleIntelligenceCloudUnavailable:
+            return "Apple Intelligence Cloud isn't available on this device. Pick another provider in Settings."
         case .networkError(let msg):
             return "Network error: \(msg)"
         case .unexpectedResponseShape(let msg):

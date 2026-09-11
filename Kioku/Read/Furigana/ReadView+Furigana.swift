@@ -28,13 +28,13 @@ extension ReadView {
     // a confirm prompt (see requestAutoSegConfirm) before invoking this worker.
     func performScheduleFuriganaGeneration(for sourceText: String, edges: [LatticeEdge]) {
         StartupTimer.mark("scheduleFuriganaGeneration called (\(edges.count) edges)")
-        furiganaComputationTask?.cancel()
+        document.furiganaComputationTask?.cancel()
         let currentSurfaceReadingData = surfaceReadingData
         let hasKanjiEdges = edges.contains { edge in
             ScriptClassifier.containsKanji(edge.surface)
         }
 
-        furiganaComputationTask = Task(priority: .userInitiated) {
+        document.furiganaComputationTask = Task(priority: .userInitiated) {
             let furiganaResult = StartupTimer.measure("buildFuriganaBySegmentLocation (\(edges.count) edges)") {
                 buildFuriganaBySegmentLocation(
                     for: sourceText,
@@ -56,8 +56,8 @@ extension ReadView {
                 // user exits edit mode and triggers another recompute.
                 guard
                     Task.isCancelled == false,
-                    text == sourceText,
-                    segmentEdges.isEmpty == false
+                    document.text == sourceText,
+                    document.segmentEdges.isEmpty == false
                 else {
                     return
                 }
@@ -70,9 +70,9 @@ extension ReadView {
                 // the recompute had nothing new to contribute.
                 let shouldRunBackfill = !(hasKanjiEdges
                     && furiganaResult.furiganaByLocation.isEmpty
-                    && furiganaBySegmentLocation.isEmpty == false)
+                    && document.furiganaBySegmentLocation.isEmpty == false)
 
-                let migratedSynthesizedLocations = synthesizedFuriganaLocations
+                let migratedSynthesizedLocations = document.synthesizedFuriganaLocations
 
                 let intermediate: (byLocation: [Int: String], lengthByLocation: [Int: Int], synthesizedLocations: Set<Int>)
                 if shouldRunBackfill {
@@ -84,16 +84,16 @@ extension ReadView {
                     // collisions against entries in `migratedSynthesizedLocations` are replaced
                     // by the dict-derived value (recovers disk-poisoned wide entries).
                     intermediate = furiganaAfterApplyingNewAnnotations(
-                        existingByLocation: furiganaBySegmentLocation,
-                        existingLengthByLocation: furiganaLengthBySegmentLocation,
+                        existingByLocation: document.furiganaBySegmentLocation,
+                        existingLengthByLocation: document.furiganaLengthBySegmentLocation,
                         newByLocation: furiganaResult.furiganaByLocation,
                         newLengthByLocation: furiganaResult.lengthByLocation,
                         synthesizedLocations: migratedSynthesizedLocations
                     )
                 } else {
                     intermediate = (
-                        byLocation: furiganaBySegmentLocation,
-                        lengthByLocation: furiganaLengthBySegmentLocation,
+                        byLocation: document.furiganaBySegmentLocation,
+                        lengthByLocation: document.furiganaLengthBySegmentLocation,
                         synthesizedLocations: migratedSynthesizedLocations
                     )
                 }
@@ -112,16 +112,16 @@ extension ReadView {
                     synthesized = furiganaAfterSynthesizingCompoundReadings(
                         furiganaByLocation: intermediate.byLocation,
                         furiganaLengthByLocation: intermediate.lengthByLocation,
-                        edges: segmentEdges,
+                        edges: document.segmentEdges,
                         sourceText: sourceText,
                         synthesizedLocations: intermediate.synthesizedLocations
                     )
                 } else {
                     synthesized = intermediate
                 }
-                furiganaBySegmentLocation = synthesized.byLocation
-                furiganaLengthBySegmentLocation = synthesized.lengthByLocation
-                synthesizedFuriganaLocations = synthesized.synthesizedLocations
+                document.furiganaBySegmentLocation = synthesized.byLocation
+                document.furiganaLengthBySegmentLocation = synthesized.lengthByLocation
+                document.synthesizedFuriganaLocations = synthesized.synthesizedLocations
 
                 // Persist segments with furigana now that readings are fully resolved.
                 rebuildAndPersistSegments(recordRuntime: true)
@@ -181,12 +181,12 @@ extension ReadView {
         // Clear any pre-existing entries whose range overlaps the surface — a stale
         // segment-level entry would otherwise coexist with new per-run entries.
         let segmentNSRange = NSRange(location: location, length: surfaceUTF16Length)
-        let staleLocations = Set(furiganaBySegmentLocation.keys.filter { loc in
-            let len = furiganaLengthBySegmentLocation[loc] ?? 0
+        let staleLocations = Set(document.furiganaBySegmentLocation.keys.filter { loc in
+            let len = document.furiganaLengthBySegmentLocation[loc] ?? 0
             return NSIntersectionRange(NSRange(location: loc, length: len), segmentNSRange).length > 0
         })
-        furiganaBySegmentLocation = furiganaBySegmentLocation.filter { !staleLocations.contains($0.key) }
-        furiganaLengthBySegmentLocation = furiganaLengthBySegmentLocation.filter { !staleLocations.contains($0.key) }
+        document.furiganaBySegmentLocation = document.furiganaBySegmentLocation.filter { !staleLocations.contains($0.key) }
+        document.furiganaLengthBySegmentLocation = document.furiganaLengthBySegmentLocation.filter { !staleLocations.contains($0.key) }
 
         let chars = Array(surface)
         let runs = FuriganaAttributedString.kanjiRuns(in: surface)
@@ -206,8 +206,8 @@ extension ReadView {
             let prefixUTF16 = String(chars[..<run.start]).utf16.count
             let runLength = String(chars[run.start..<run.end]).utf16.count
             let runLocation = location + prefixUTF16
-            furiganaBySegmentLocation[runLocation] = runReading
-            furiganaLengthBySegmentLocation[runLocation] = runLength
+            document.furiganaBySegmentLocation[runLocation] = runReading
+            document.furiganaLengthBySegmentLocation[runLocation] = runLength
             wroteAny = true
         }
         return wroteAny

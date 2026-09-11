@@ -33,7 +33,7 @@ final class SavedHighlightMemo {
 // Reference-type mirror of the CoreText read view's live scroll offset. The CT renderer reports
 // every offset change here instead of into @State, so view-mode scrolling costs no SwiftUI body
 // re-eval per frame (each eval re-hashes the whole note for the typography fingerprint). The
-// value is snapshotted into `sharedScrollOffsetY` exactly when edit mode is entered — the only
+// value is snapshotted into `editModeScroll.sharedScrollOffsetY` exactly when edit mode is entered — the only
 // moment the editor needs it. Held by @State so it survives body re-evaluations (same pattern
 // as KnownWordFuriganaMemo above).
 final class ReadScrollOffsetMemo {
@@ -49,22 +49,22 @@ extension ReadView {
     // For new or un-segmented notes, segmentRanges is empty until the segmenter computes it, so
     // this stays false and the original gating still applies.
     var hasRendererSegmentation: Bool {
-        segmentRanges.isEmpty == false
+        document.segmentRanges.isEmpty == false
     }
 
     // Prefers the explicit override (set during merge/split previews) over the simple
     // location-based lookup so behavior matches between renderers when an override is active.
     func resolveSelectedHighlightRange() -> NSRange? {
-        let ns = text as NSString
-        if let override = selectedHighlightRangeOverride,
+        let ns = document.text as NSString
+        if let override = segmentSelection.selectedHighlightRangeOverride,
            override.location != NSNotFound,
            override.length > 0,
            override.upperBound <= ns.length {
             return override
         }
-        guard let location = selectedSegmentLocation else { return nil }
-        for range in segmentRanges {
-            let ns = NSRange(range, in: text)
+        guard let location = segmentSelection.selectedSegmentLocation else { return nil }
+        for range in document.segmentRanges {
+            let ns = NSRange(range, in: document.text)
             if ns.location == location, ns.length > 0 {
                 return ns
             }
@@ -87,30 +87,30 @@ extension ReadView {
     // the object's fields, not the @State wrapper).
     var savedSegmentLocations: Set<Int> {
         ensureSavedHighlightComputed()
-        return savedHighlightMemo.locations
+        return document.savedHighlightMemo.locations
     }
 
     // Subset of savedSegmentLocations marked Learned — see SavedHighlightMemo.learnedLocations.
     var savedLearnedSegmentLocations: Set<Int> {
         ensureSavedHighlightComputed()
-        return savedHighlightMemo.learnedLocations
+        return document.savedHighlightMemo.learnedLocations
     }
 
     // Subset of savedSegmentLocations marked Not Learned, same rationale as
     // savedLearnedSegmentLocations above.
     var savedNotLearnedSegmentLocations: Set<Int> {
         ensureSavedHighlightComputed()
-        return savedHighlightMemo.notLearnedLocations
+        return document.savedHighlightMemo.notLearnedLocations
     }
 
     // Shared memo-check for the saved-location computed vars above — recomputes at most
     // once per signature change regardless of which (or both) properties are read this pass.
     private func ensureSavedHighlightComputed() {
         guard isSavedHighlightEnabled else {
-            savedHighlightMemo.signature = nil
-            savedHighlightMemo.locations = []
-            savedHighlightMemo.learnedLocations = []
-            savedHighlightMemo.notLearnedLocations = []
+            document.savedHighlightMemo.signature = nil
+            document.savedHighlightMemo.locations = []
+            document.savedHighlightMemo.learnedLocations = []
+            document.savedHighlightMemo.notLearnedLocations = []
             return
         }
 
@@ -124,10 +124,10 @@ extension ReadView {
         // visible second wave. Gating the computation itself on both means every eligible word
         // appears together in one pass, even though the very first paint is delayed a little.
         guard dictionaryStore != nil, lexicon != nil else {
-            savedHighlightMemo.signature = nil
-            savedHighlightMemo.locations = []
-            savedHighlightMemo.learnedLocations = []
-            savedHighlightMemo.notLearnedLocations = []
+            document.savedHighlightMemo.signature = nil
+            document.savedHighlightMemo.locations = []
+            document.savedHighlightMemo.learnedLocations = []
+            document.savedHighlightMemo.notLearnedLocations = []
             return
         }
 
@@ -140,9 +140,9 @@ extension ReadView {
         // way the older FavoritedGlowMemo bug did (see docs/todo.md, "glow conjugated favorites
         // by not caching nil lemmas").
         var hasher = Hasher()
-        hasher.combine(segmentRanges.count)
-        if let first = segmentRanges.first { hasher.combine(NSRange(first, in: text).location) }
-        if let last = segmentRanges.last { hasher.combine(NSRange(last, in: text).location) }
+        hasher.combine(document.segmentRanges.count)
+        if let first = document.segmentRanges.first { hasher.combine(NSRange(first, in: document.text).location) }
+        if let last = document.segmentRanges.last { hasher.combine(NSRange(last, in: document.text).location) }
         for word in wordsStore.words {
             hasher.combine(word.canonicalEntryID)
             hasher.combine(word.learnedMark)
@@ -151,15 +151,15 @@ extension ReadView {
         hasher.combine(isSavedHighlightShowingLearned)
         hasher.combine(isSavedHighlightShowingNotLearned)
         let signature = hasher.finalize()
-        if savedHighlightMemo.signature == signature {
+        if document.savedHighlightMemo.signature == signature {
             return
         }
 
         let result = computeSavedSegmentLocations()
-        savedHighlightMemo.signature = signature
-        savedHighlightMemo.locations = result.locations
-        savedHighlightMemo.learnedLocations = result.learnedLocations
-        savedHighlightMemo.notLearnedLocations = result.notLearnedLocations
+        document.savedHighlightMemo.signature = signature
+        document.savedHighlightMemo.locations = result.locations
+        document.savedHighlightMemo.learnedLocations = result.learnedLocations
+        document.savedHighlightMemo.notLearnedLocations = result.notLearnedLocations
     }
 
     // The heavy computation behind the saved-location properties, run only on a memo miss.
@@ -173,13 +173,13 @@ extension ReadView {
     private func computeSavedSegmentLocations() -> (locations: Set<Int>, learnedLocations: Set<Int>, notLearnedLocations: Set<Int>) {
         guard wordsStore.words.isEmpty == false else { return ([], [], []) }
 
-        let ns = text as NSString
+        let ns = document.text as NSString
         var locations = Set<Int>()
         var learnedLocations = Set<Int>()
         var notLearnedLocations = Set<Int>()
         var savedWordBySurface: [String: SavedWord?] = [:]
-        for range in segmentRanges {
-            let nsRange = NSRange(range, in: text)
+        for range in document.segmentRanges {
+            let nsRange = NSRange(range, in: document.text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
             let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
             guard surface.isEmpty == false else { continue }
@@ -216,23 +216,23 @@ extension ReadView {
     // per-segment lemma-bridging sweep on a memo hit.
     var furiganaSuppressedForKnownWordsSegmentLocations: Set<Int> {
         ensureKnownWordFuriganaComputed()
-        return knownWordFuriganaMemo.locations
+        return document.knownWordFuriganaMemo.locations
     }
 
     // Shared memo-check for furiganaSuppressedForKnownWordsSegmentLocations — recomputes at
     // most once per signature change, mirroring ensureSavedHighlightComputed above.
     private func ensureKnownWordFuriganaComputed() {
         guard isFuriganaHiddenForKnownWords else {
-            knownWordFuriganaMemo.signature = nil
-            knownWordFuriganaMemo.locations = []
+            document.knownWordFuriganaMemo.signature = nil
+            document.knownWordFuriganaMemo.locations = []
             return
         }
 
         var hasher = Hasher()
-        hasher.combine(activeNoteID)
-        hasher.combine(segmentRanges.count)
-        if let first = segmentRanges.first { hasher.combine(NSRange(first, in: text).location) }
-        if let last = segmentRanges.last { hasher.combine(NSRange(last, in: text).location) }
+        hasher.combine(document.activeNoteID)
+        hasher.combine(document.segmentRanges.count)
+        if let first = document.segmentRanges.first { hasher.combine(NSRange(first, in: document.text).location) }
+        if let last = document.segmentRanges.last { hasher.combine(NSRange(last, in: document.text).location) }
         for word in wordsStore.words {
             hasher.combine(word.canonicalEntryID)
             for surface in word.encounteredSurfaces.sorted() { hasher.combine(surface) }
@@ -240,12 +240,12 @@ extension ReadView {
         for id in wordsStore.learned.sorted() { hasher.combine(id) }
         for id in wordsStore.mastered.sorted() { hasher.combine(id) }
         let signature = hasher.finalize()
-        if knownWordFuriganaMemo.signature == signature {
+        if document.knownWordFuriganaMemo.signature == signature {
             return
         }
 
-        knownWordFuriganaMemo.signature = signature
-        knownWordFuriganaMemo.locations = computeFuriganaSuppressedForKnownWordsSegmentLocations()
+        document.knownWordFuriganaMemo.signature = signature
+        document.knownWordFuriganaMemo.locations = computeFuriganaSuppressedForKnownWordsSegmentLocations()
     }
 
     // The heavy computation behind furiganaSuppressedForKnownWordsSegmentLocations, run only
@@ -267,23 +267,23 @@ extension ReadView {
         }
         guard entryIDBySurface.isEmpty == false else { return [] }
 
-        let textKey = text.hashValue
-        if knownWordFuriganaMemo.lemmaTextKey != textKey {
-            knownWordFuriganaMemo.lemmaTextKey = textKey
-            knownWordFuriganaMemo.lemmaBySurface = [:]
+        let textKey = document.text.hashValue
+        if document.knownWordFuriganaMemo.lemmaTextKey != textKey {
+            document.knownWordFuriganaMemo.lemmaTextKey = textKey
+            document.knownWordFuriganaMemo.lemmaBySurface = [:]
         }
-        let resolveLemma: (String) -> String? = { [segmenter, knownWordFuriganaMemo] surface in
+        let resolveLemma: (String) -> String? = { [segmenter, knownWordFuriganaMemo = document.knownWordFuriganaMemo] surface in
             if let cached = knownWordFuriganaMemo.lemmaBySurface[surface] { return cached }
             let value = segmenter.preferredLemma(for: surface)
             if let value { knownWordFuriganaMemo.lemmaBySurface[surface] = value }
             return value
         }
 
-        let ns = text as NSString
+        let ns = document.text as NSString
         var locations = Set<Int>()
         var isKnownBySurface: [String: Bool] = [:]
-        for range in segmentRanges {
-            let nsRange = NSRange(range, in: text)
+        for range in document.segmentRanges {
+            let nsRange = NSRange(range, in: document.text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
             let surface = ns.substring(with: nsRange).trimmingCharacters(in: .whitespacesAndNewlines)
             guard surface.isEmpty == false else { continue }
@@ -309,12 +309,12 @@ extension ReadView {
     // disagree about which readings are showing.
     var displayedFuriganaBySegmentLocation: [Int: String] {
         guard (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible else { return [:] }
-        return furiganaExcludingKnownWordSuppressions(furiganaBySegmentLocation)
+        return furiganaExcludingKnownWordSuppressions(document.furiganaBySegmentLocation)
     }
 
     var displayedFuriganaLengthBySegmentLocation: [Int: Int] {
         guard (readResourcesReady || hasRendererSegmentation) && isFuriganaVisible else { return [:] }
-        return furiganaExcludingKnownWordSuppressions(furiganaLengthBySegmentLocation)
+        return furiganaExcludingKnownWordSuppressions(document.furiganaLengthBySegmentLocation)
     }
 
     // Shared filter behind both displayed* properties above, so the "hide furigana for known
@@ -330,8 +330,8 @@ extension ReadView {
         VStack(spacing: 8) {
             ZStack {
                 KiokuCoreTextRendererView(
-                        text: text,
-                        segmentationRanges: segmentRanges,
+                        text: document.text,
+                        segmentationRanges: document.segmentRanges,
                         furiganaBySegmentLocation: displayedFuriganaBySegmentLocation,
                         furiganaLengthBySegmentLocation: displayedFuriganaLengthBySegmentLocation,
                         isFuriganaVisible: isFuriganaVisible,
@@ -354,7 +354,7 @@ extension ReadView {
                         isLineWrappingEnabled: isLineWrappingEnabled,
                         isRubySpacingEnabled: isRubySpacingEnabled,
                         selectedHighlightRange: resolveSelectedHighlightRange(),
-                        playbackHighlightRange: playbackHighlightRangeOverride,
+                        playbackHighlightRange: audioPlayback.playbackHighlightRangeOverride,
                         // Same gating as the segment colors above — user hex when Custom Token
                         // Colors is on, theme default when off — so the three picker controls
                         // stay coherent and a theme switch flows through.
@@ -363,11 +363,11 @@ extension ReadView {
                             : (UIColor(hexString: Theme.activePalette.defaultHighlightHex) ?? .systemYellow)
                         ).withAlphaComponent(0.35),
                         playbackHighlightColor: UIColor.systemBlue.withAlphaComponent(0.20),
-                        unknownSegmentLocations: unknownSegmentLocations,
+                        unknownSegmentLocations: document.unknownSegmentLocations,
                         isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                         unknownSegmentColor: .label,
-                        changedSegmentLocations: pendingLLMChangedLocations,
-                        changedReadingLocations: pendingLLMChangedReadingLocations,
+                        changedSegmentLocations: llmCorrection.pendingLLMChangedLocations,
+                        changedReadingLocations: llmCorrection.pendingLLMChangedReadingLocations,
                         inFlightSegmentLocations: inFlightLineSegmentLocations,
                         isSavedHighlightEnabled: isSavedHighlightEnabled,
                         savedSegmentLocations: savedSegmentLocations,
@@ -389,7 +389,7 @@ extension ReadView {
                             headwordLineNumbers: debugHeadwordLineNumbers,
                             rubyLineNumbers: debugRubyLineNumbers
                         ),
-                        illegalMergeLocation: illegalMergeBoundaryLocation,
+                        illegalMergeLocation: segmentSelection.illegalMergeBoundaryLocation,
                         onSegmentTapped: { location, rect, scrollView in
                             // The CoreText path forwards its underlying KiokuScrollingTextView so
                             // the sheet-visibility scroll helpers (contentInset.bottom for
@@ -400,39 +400,39 @@ extension ReadView {
                         },
                         // Hidden in edit mode — gate updates so per-keystroke typing doesn't
                         // re-typeset this off-screen renderer (the typing-lag fix).
-                        isActive: isEditMode == false,
+                        isActive: editModeScroll.isEditMode == false,
                         // Edit↔view scroll sync: applied once when edit mode exits (restores
                         // the editor's position); reported into the reference-type memo so
                         // view-mode scrolling stays free of per-frame body re-evals. The memo
-                        // is snapshotted into sharedScrollOffsetY on entering edit
-                        // (ReadView+Lifecycle's onChange(of: isEditMode)).
-                        externalContentOffsetY: sharedScrollOffsetY,
-                        onScrollOffsetYChanged: { [readScrollOffsetMemo] newOffsetY in
-                            readScrollOffsetMemo.value = newOffsetY
+                        // is snapshotted into editModeScroll.sharedScrollOffsetY on entering edit
+                        // (ReadView+Lifecycle's onChange(of: editModeScroll.isEditMode)).
+                        externalContentOffsetY: editModeScroll.sharedScrollOffsetY,
+                        onScrollOffsetYChanged: { [editModeScroll] newOffsetY in
+                            editModeScroll.readScrollOffsetMemo.value = newOffsetY
                         },
                         // Reset scroll to the top whenever the active note changes. Keyed on
                         // the note id's hash so each note open is a distinct token transition;
                         // 0 when no note is active.
-                        scrollToTopToken: activeNoteID?.hashValue ?? 0
+                        scrollToTopToken: document.activeNoteID?.hashValue ?? 0
                     )
-                    .opacity(isEditMode ? 0 : 1)
-                    .allowsHitTesting(isEditMode == false)
-                    .animation(.default, value: isEditMode)
+                    .opacity(editModeScroll.isEditMode ? 0 : 1)
+                    .allowsHitTesting(editModeScroll.isEditMode == false)
+                    .animation(.default, value: editModeScroll.isEditMode)
 
                 RichTextEditor(
-                    text: $text,
+                    text: $document.text,
                     isLineWrappingEnabled: isLineWrappingEnabled,
-                    segmentationRanges: segmentRanges,
+                    segmentationRanges: document.segmentRanges,
                     furiganaBySegmentLocation: displayedFuriganaBySegmentLocation,
                     furiganaLengthBySegmentLocation: displayedFuriganaLengthBySegmentLocation,
                     isVisualEnhancementsEnabled: readResourcesReady || hasRendererSegmentation,
                     isColorAlternationEnabled: isColorAlternationEnabled,
                     isHighlightUnknownEnabled: isHighlightUnknownEnabled,
                     segmenter: segmenter,
-                    isEditMode: isEditMode,
-                    externalContentOffsetY: sharedScrollOffsetY,
+                    isEditMode: editModeScroll.isEditMode,
+                    externalContentOffsetY: editModeScroll.sharedScrollOffsetY,
                     onScrollOffsetYChanged: { newOffsetY in
-                        sharedScrollOffsetY = newOffsetY
+                        editModeScroll.sharedScrollOffsetY = newOffsetY
                     },
                     textSize: $textSize,
                     lineSpacing: lineSpacing,
@@ -441,9 +441,9 @@ extension ReadView {
                     debugHeadwordLineBands: debugHeadwordLineBands,
                     debugFuriganaLineBands: debugFuriganaLineBands
                 )
-                .opacity(isEditMode ? 1 : 0)
-                .allowsHitTesting(isEditMode)
-                .animation(.default, value: isEditMode)
+                .opacity(editModeScroll.isEditMode ? 1 : 0)
+                .allowsHitTesting(editModeScroll.isEditMode)
+                .animation(.default, value: editModeScroll.isEditMode)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -453,38 +453,19 @@ extension ReadView {
             RoundedRectangle(cornerRadius: 16)
                 .fill(
                     japaneseTheme
-                        ? (isEditMode ? Theme.surface : Theme.surfaceSecondary)
-                        : (isEditMode ? Color(.systemBackground) : Color(.secondarySystemBackground))
+                        ? (editModeScroll.isEditMode ? Theme.surface : Theme.surfaceSecondary)
+                        : (editModeScroll.isEditMode ? Color(.systemBackground) : Color(.secondarySystemBackground))
                 )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(
-                    isEditMode ? Color.accentColor.opacity(0.45) : Color.secondary.opacity(0.3),
-                    lineWidth: isEditMode ? 2 : 1
+                    editModeScroll.isEditMode ? Color.accentColor.opacity(0.45) : Color.secondary.opacity(0.3),
+                    lineWidth: editModeScroll.isEditMode ? 2 : 1
                 )
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 8)
-        .animation(.default, value: isEditMode)
-        // Disk/mem load-info toast disabled — re-enable by uncommenting this overlay and the
-        // showLoadInfoToast(for:) call in ReadView+Persistence.swift.
-        // .overlay(alignment: .top) {
-        //     if let message = loadInfoToastMessage {
-        //         Text(message)
-        //             .font(.system(size: 11, weight: .semibold, design: .monospaced))
-        //             .foregroundStyle(.white)
-        //             .padding(.horizontal, 10)
-        //             .padding(.vertical, 5)
-        //             .background(Capsule().fill(Color.black.opacity(0.78)))
-        //             .padding(.top, 12)
-        //             .onTapGesture {
-        //                 loadInfoToastClearTask?.cancel()
-        //                 loadInfoToastMessage = nil
-        //             }
-        //             .transition(.opacity.combined(with: .move(edge: .top)))
-        //     }
-        // }
-        // .animation(.easeInOut(duration: 0.18), value: loadInfoToastMessage)
+        .animation(.default, value: editModeScroll.isEditMode)
     }
 }

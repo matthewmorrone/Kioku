@@ -30,33 +30,33 @@ extension ReadView {
     // response from the same provider failed to parse — see requestLLMCorrectionWithFeedback().
     // Threaded straight through to LLMCorrectionService.requestCorrections.
     func requestLLMCorrection(correctiveFeedback: String? = nil) {
-        guard llmCorrectionTask == nil else { return }
+        guard llmCorrection.llmCorrectionTask == nil else { return }
 
         let currentSegments = buildLLMSegmentEntries()
         guard currentSegments.isEmpty == false else {
-            llmCorrectionErrorMessage = "No segments to correct. Make sure the note has content and segmentation has loaded."
-            llmCorrectionRetryContext = nil
-            isShowingLLMCorrectionError = true
+            llmCorrection.llmCorrectionErrorMessage = "No segments to correct. Make sure the note has content and segmentation has loaded."
+            llmCorrection.llmCorrectionRetryContext = nil
+            llmCorrection.isShowingLLMCorrectionError = true
             return
         }
 
-        let capturedText = text
+        let capturedText = document.text
         let compactSegments = LLMCorrectionDiagnostics.buildCompactFormat(from: currentSegments)
         let service = LLMCorrectionService()
 
         // Clear stale pending state before starting a fresh run. The streaming
-        // path snapshots preLLMSegmentEntries on the first partial apply, so
+        // path snapshots llmCorrection.preLLMSegmentEntries on the first partial apply, so
         // any leftover snapshot from a prior session would corrupt the
         // reject-to-original path.
-        pendingLLMChangedLocations = []
-        pendingLLMChangedReadingLocations = []
-        pendingLLMChangesByLocation = [:]
-        preLLMSegmentEntries = []
-        hasPendingLLMChanges = false
+        llmCorrection.pendingLLMChangedLocations = []
+        llmCorrection.pendingLLMChangedReadingLocations = []
+        llmCorrection.pendingLLMChangesByLocation = [:]
+        llmCorrection.preLLMSegmentEntries = []
+        llmCorrection.hasPendingLLMChanges = false
         // Clear any retry context from a prior failed attempt — a fresh request (whether
         // plain or corrective) shouldn't carry forward a stale "resend with feedback" option
         // from an unrelated earlier failure.
-        llmCorrectionRetryContext = nil
+        llmCorrection.llmCorrectionRetryContext = nil
 
         // Only the on-device provider streams today. Remote and stub return a
         // single response; we apply it once at the end. Reading this once up
@@ -68,15 +68,15 @@ extension ReadView {
         // Captured so a response that lands after the user has switched notes (cooperative
         // cancellation doesn't interrupt an in-flight network/model call) is discarded instead
         // of being applied against whatever note happens to be active when it arrives.
-        let sourceNoteID = activeNoteID
+        let sourceNoteID = document.activeNoteID
 
         AppLog.debug(.llmCorrection, "requestLLMCorrection starting — provider=\(provider) streaming=\(willStream) segments=\(currentSegments.count) isRetry=\(correctiveFeedback != nil)")
-        isRequestingLLMCorrection = true
-        llmCorrectionTask = Task {
+        llmCorrection.isRequestingLLMCorrection = true
+        llmCorrection.llmCorrectionTask = Task {
             defer {
                 Task { @MainActor in
-                    isRequestingLLMCorrection = false
-                    llmCorrectionTask = nil
+                    llmCorrection.isRequestingLLMCorrection = false
+                    llmCorrection.llmCorrectionTask = nil
                 }
             }
 
@@ -87,7 +87,7 @@ extension ReadView {
                     dictionary: dictionaryStore,
                     correctiveFeedback: correctiveFeedback,
                     onPartial: willStream ? { @MainActor partial in
-                        guard self.activeNoteID == sourceNoteID else { return }
+                        guard self.document.activeNoteID == sourceNoteID else { return }
                         let merged = Self.mergeResponsePerLine(
                             response: partial,
                             originalText: capturedText,
@@ -99,15 +99,15 @@ extension ReadView {
                 LLMCorrectionService.logOutcome(provider: provider, result: .success(response))
 
                 await MainActor.run {
-                    guard activeNoteID == sourceNoteID else { return }
+                    guard document.activeNoteID == sourceNoteID else { return }
                     if willStream {
                         // Streaming already applied every line as it arrived;
                         // the final response equals the last partial. Just flag
                         // the note as having had a correction applied so a
                         // subsequent sparkles tap goes through the rerun-confirm
                         // dialog.
-                        if hasPendingLLMChanges {
-                            hasAppliedLLMCorrectionForCurrentNote = true
+                        if llmCorrection.hasPendingLLMChanges {
+                            llmCorrection.hasAppliedLLMCorrectionForCurrentNote = true
                         }
                     } else {
                         // Remote / stub one-shot — merge per-line with baseline
@@ -128,16 +128,16 @@ extension ReadView {
             } catch {
                 LLMCorrectionService.logOutcome(provider: provider, result: .failure(error))
                 await MainActor.run {
-                    llmCorrectionErrorMessage = error.localizedDescription
+                    llmCorrection.llmCorrectionErrorMessage = error.localizedDescription
                     // Only a whole-response parse failure (nothing recognizable found, even
                     // after the automatic on-device salvage pass) carries a retry context —
                     // that's the one failure kind where resending with concrete feedback about
                     // what went wrong can actually help. Network errors, missing keys, etc. have
                     // nothing productive to "correct."
                     if case let LLMCorrectionError.unparseableAfterSalvage(rawResponse, reason) = error {
-                        llmCorrectionRetryContext = (rawResponse, reason)
+                        llmCorrection.llmCorrectionRetryContext = (rawResponse, reason)
                     }
-                    isShowingLLMCorrectionError = true
+                    llmCorrection.isShowingLLMCorrectionError = true
                 }
             }
         }
@@ -149,7 +149,7 @@ extension ReadView {
     // from the alert's plain "Retry" button, which just calls requestLLMCorrection() again.
     // No-ops if there's no retry context (e.g. the user dismissed the alert first).
     func requestLLMCorrectionWithFeedback() {
-        guard let context = llmCorrectionRetryContext else { return }
+        guard let context = llmCorrection.llmCorrectionRetryContext else { return }
         AppLog.debug(.llmCorrection, "retrying with corrective feedback — reason: \(context.reason)")
         let feedback = LLMCorrectionService.correctiveFeedback(
             previousRawResponse: context.rawResponse,
@@ -162,18 +162,18 @@ extension ReadView {
     // case, then UNIONS the per-pass changed locations into the accumulated
     // pending state instead of overwriting. The pre-LLM snapshot is captured by
     // applyLLMCorrectionResponse on its first call of the run (when
-    // preLLMSegmentEntries is empty) and preserved on subsequent calls.
+    // llmCorrection.preLLMSegmentEntries is empty) and preserved on subsequent calls.
     func applyLLMStreamingPartial(_ partial: LLMCorrectionResponse, originalText: String) {
         let result = applyLLMCorrectionResponse(partial, originalText: originalText)
         switch result {
         case .applied(_, let changedLocations, let changedReadingLocations, let changesByLocation):
-            pendingLLMChangedLocations.formUnion(changedLocations)
-            pendingLLMChangedReadingLocations.formUnion(changedReadingLocations)
+            llmCorrection.pendingLLMChangedLocations.formUnion(changedLocations)
+            llmCorrection.pendingLLMChangedReadingLocations.formUnion(changedReadingLocations)
             for (loc, desc) in changesByLocation {
-                pendingLLMChangesByLocation[loc] = desc
+                llmCorrection.pendingLLMChangesByLocation[loc] = desc
             }
-            if pendingLLMChangedLocations.isEmpty == false {
-                hasPendingLLMChanges = true
+            if llmCorrection.pendingLLMChangedLocations.isEmpty == false {
+                llmCorrection.hasPendingLLMChanges = true
             }
         case .surfaceMismatch(let msg), .networkError(let msg), .decodingError(let msg):
             // A streaming partial failed validation — the per-line client
@@ -244,9 +244,9 @@ extension ReadView {
 
     // Cancels any in-flight LLM correction request.
     func cancelLLMCorrection() {
-        llmCorrectionTask?.cancel()
-        llmCorrectionTask = nil
-        isRequestingLLMCorrection = false
+        llmCorrection.llmCorrectionTask?.cancel()
+        llmCorrection.llmCorrectionTask = nil
+        llmCorrection.isRequestingLLMCorrection = false
     }
 
     // Segment-start UTF-16 locations covering the note line the AI is processing
@@ -257,7 +257,7 @@ extension ReadView {
     // line in the current text (e.g., text changed mid-request).
     var inFlightLineSegmentLocations: Set<Int> {
         guard let lineIndex = aiProgress.currentLineIndex else { return [] }
-        let lines = text.components(separatedBy: "\n")
+        let lines = document.text.components(separatedBy: "\n")
         guard lineIndex >= 0, lineIndex < lines.count else { return [] }
 
         // Walk up to the target line, summing each prior line's UTF-16 count
@@ -270,8 +270,8 @@ extension ReadView {
         let lineEnd = lineStart + lines[lineIndex].utf16.count
 
         var locs: Set<Int> = []
-        for edge in segmentEdges {
-            let r = NSRange(edge.start..<edge.end, in: text)
+        for edge in document.segmentEdges {
+            let r = NSRange(edge.start..<edge.end, in: document.text)
             guard r.location != NSNotFound else { continue }
             if r.location >= lineStart, r.location < lineEnd {
                 locs.insert(r.location)
@@ -283,12 +283,12 @@ extension ReadView {
     // Converts the current segment edges and reading overrides into LLMSegmentEntry values
     // so the LLM can see both the segmentation boundaries and the furigana assigned to each.
     func buildLLMSegmentEntries() -> [LLMSegmentEntry] {
-        segmentEdges.compactMap { edge in
-            let nsRange = NSRange(edge.start..<edge.end, in: text)
+        document.segmentEdges.compactMap { edge in
+            let nsRange = NSRange(edge.start..<edge.end, in: document.text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else { return nil }
 
             // Segment-level furigana takes priority over per-run reconstructed readings.
-            if let override = furiganaBySegmentLocation[nsRange.location] {
+            if let override = document.furiganaBySegmentLocation[nsRange.location] {
                 return LLMSegmentEntry(surface: edge.surface, reading: override)
             }
 
@@ -316,7 +316,7 @@ extension ReadView {
             }
             let prefixUTF16 = String(chars[..<run.start]).utf16.count
             let runLocation = segmentLocation + prefixUTF16
-            guard let runReading = furiganaBySegmentLocation[runLocation], runReading.isEmpty == false else {
+            guard let runReading = document.furiganaBySegmentLocation[runLocation], runReading.isEmpty == false else {
                 return ""
             }
             reading += runReading
@@ -368,18 +368,18 @@ extension ReadView {
         }
 
         // Snapshot old state before mutating anything — used for diff and per-change undo.
-        let oldFurigana = furiganaBySegmentLocation
-        // For streaming, capture preLLMSegmentEntries on the FIRST apply of the
+        let oldFurigana = document.furiganaBySegmentLocation
+        // For streaming, capture llmCorrection.preLLMSegmentEntries on the FIRST apply of the
         // run only. Subsequent applies during a streaming run would otherwise
         // overwrite the snapshot with post-previous-apply state, breaking the
         // reject-to-original guarantee. The streaming entry point clears
-        // preLLMSegmentEntries before kicking off, so an empty value here
+        // llmCorrection.preLLMSegmentEntries before kicking off, so an empty value here
         // means "first apply, snapshot now"; non-empty means "leave the
         // original snapshot in place." The single-shot path also benefits:
         // requestLLMCorrection always clears the snapshot first, so the
         // first apply still records it.
-        if preLLMSegmentEntries.isEmpty {
-            preLLMSegmentEntries = buildLLMSegmentEntries()
+        if llmCorrection.preLLMSegmentEntries.isEmpty {
+            llmCorrection.preLLMSegmentEntries = buildLLMSegmentEntries()
         }
 
         var diffLines: [String] = []
@@ -395,7 +395,7 @@ extension ReadView {
         //
         // Strategy: for each new edge, find the old segment(s) that overlap its span.
         // Group new edges that share the same set of old segment(s).
-        let oldSegs: [LLMCorrectionOldSeg] = segmentEdges.compactMap { edge in
+        let oldSegs: [LLMCorrectionOldSeg] = document.segmentEdges.compactMap { edge in
             let r = NSRange(edge.start..<edge.end, in: originalText)
             guard r.location != NSNotFound else { return nil }
             return LLMCorrectionOldSeg(location: r.location, end: r.location + r.length, surface: edge.surface)
@@ -464,8 +464,8 @@ extension ReadView {
                 // there — but we still do it explicitly so a true "clear"
                 // signal works for kana segments whose state was stale.
                 if ScriptClassifier.containsKanji(edge.surface) == false {
-                    furiganaBySegmentLocation.removeValue(forKey: location)
-                    furiganaLengthBySegmentLocation.removeValue(forKey: location)
+                    document.furiganaBySegmentLocation.removeValue(forKey: location)
+                    document.furiganaLengthBySegmentLocation.removeValue(forKey: location)
                 }
             } else {
                 // Write per-kanji-run furigana via the shared helper — clears stale entries
@@ -475,8 +475,8 @@ extension ReadView {
                 // nothing and we explicitly drop the segment-level entry below.
                 let wrote = applyPerRunFurigana(surface: edge.surface, reading: entry.reading, at: location)
                 if !wrote {
-                    furiganaBySegmentLocation.removeValue(forKey: location)
-                    furiganaLengthBySegmentLocation.removeValue(forKey: location)
+                    document.furiganaBySegmentLocation.removeValue(forKey: location)
+                    document.furiganaLengthBySegmentLocation.removeValue(forKey: location)
                 }
 
                 // Compare normalized display output against the pre-mutation snapshot so we aren't
@@ -521,27 +521,27 @@ extension ReadView {
 
     // Confirms pending LLM changes, clearing the highlight state set after a successful correction.
     func confirmLLMChanges() {
-        pendingLLMChangedLocations = []
-        pendingLLMChangedReadingLocations = []
-        pendingLLMChangesByLocation = [:]
-        preLLMSegmentEntries = []
-        hasPendingLLMChanges = false
+        llmCorrection.pendingLLMChangedLocations = []
+        llmCorrection.pendingLLMChangedReadingLocations = []
+        llmCorrection.pendingLLMChangesByLocation = [:]
+        llmCorrection.preLLMSegmentEntries = []
+        llmCorrection.hasPendingLLMChanges = false
     }
 
     // Confirms a single pending change at the given location and clears it from pending state.
     // If this was the last pending change, accepts all (same effect as confirmLLMChanges).
     func confirmLLMChange(at location: Int) {
         // All siblings sharing the same change description are confirmed together.
-        let description = pendingLLMChangesByLocation[location]
+        let description = llmCorrection.pendingLLMChangesByLocation[location]
         let siblings = description.map { desc in
-            pendingLLMChangesByLocation.filter { $0.value == desc }.map(\.key)
+            llmCorrection.pendingLLMChangesByLocation.filter { $0.value == desc }.map(\.key)
         } ?? [location]
         for loc in siblings {
-            pendingLLMChangedLocations.remove(loc)
-            pendingLLMChangedReadingLocations.remove(loc)
-            pendingLLMChangesByLocation.removeValue(forKey: loc)
+            llmCorrection.pendingLLMChangedLocations.remove(loc)
+            llmCorrection.pendingLLMChangedReadingLocations.remove(loc)
+            llmCorrection.pendingLLMChangesByLocation.removeValue(forKey: loc)
         }
-        if pendingLLMChangedLocations.isEmpty {
+        if llmCorrection.pendingLLMChangedLocations.isEmpty {
             confirmLLMChanges()
         }
     }
@@ -550,24 +550,24 @@ extension ReadView {
     // for that group's span, leaving changes at other locations intact.
     // Falls back to a full revert when partial undo isn't possible (e.g. no snapshot).
     func rejectLLMChange(at location: Int) {
-        guard preLLMSegmentEntries.isEmpty == false else {
+        guard llmCorrection.preLLMSegmentEntries.isEmpty == false else {
             resetSegmentationToComputed()
             return
         }
 
         // Collect sibling locations that share the same change group (same description text).
-        let description = pendingLLMChangesByLocation[location]
+        let description = llmCorrection.pendingLLMChangesByLocation[location]
         let siblingLocations: [Int] = description.map { desc in
-            pendingLLMChangesByLocation.filter { $0.value == desc }.map(\.key)
+            llmCorrection.pendingLLMChangesByLocation.filter { $0.value == desc }.map(\.key)
         } ?? [location]
         let groupStart = siblingLocations.min() ?? location
         let groupEnd: Int = {
             // Estimate group end from the rightmost sibling's current segment boundary.
             let maxLoc = siblingLocations.max() ?? location
-            if let edge = segmentEdges.first(where: {
-                NSRange($0.start..<$0.end, in: text).location == maxLoc
+            if let edge = document.segmentEdges.first(where: {
+                NSRange($0.start..<$0.end, in: document.text).location == maxLoc
             }) {
-                let r = NSRange(edge.start..<edge.end, in: text)
+                let r = NSRange(edge.start..<edge.end, in: document.text)
                 return r.location + r.length
             }
             return maxLoc + 1
@@ -576,7 +576,7 @@ extension ReadView {
         // Build a merged entry list: current entries outside the group span, pre-LLM inside.
         var mergedEntries: [LLMSegmentEntry] = []
         var preCursor = 0
-        for entry in preLLMSegmentEntries {
+        for entry in llmCorrection.preLLMSegmentEntries {
             let entryStart = preCursor
             preCursor += entry.surface.utf16.count
             if entryStart >= groupStart && entryStart < groupEnd {
@@ -587,8 +587,8 @@ extension ReadView {
         // Build the outside-group entries from current state and splice them around the reverted span.
         var outsideBefore: [LLMSegmentEntry] = []
         var outsideAfter: [LLMSegmentEntry] = []
-        for edge in segmentEdges {
-            let r = NSRange(edge.start..<edge.end, in: text)
+        for edge in document.segmentEdges {
+            let r = NSRange(edge.start..<edge.end, in: document.text)
             guard r.location != NSNotFound, r.length > 0 else { continue }
             if r.location + r.length <= groupStart {
                 let reading = reconstructedReading(for: edge.surface, at: r.location)
@@ -606,24 +606,24 @@ extension ReadView {
         }
 
         // Preserve snapshot before re-applying so subsequent rejects still have reference data.
-        let savedSnapshot = preLLMSegmentEntries
+        let savedSnapshot = llmCorrection.preLLMSegmentEntries
 
         // Re-apply as a new LLM response so all pipeline invariants are satisfied.
         _ = applyLLMCorrectionResponse(
             LLMCorrectionResponse(segments: fullEntries),
-            originalText: text
+            originalText: document.text
         )
 
         // Restore the original snapshot so other pending changes can still be individually reverted.
-        preLLMSegmentEntries = savedSnapshot
+        llmCorrection.preLLMSegmentEntries = savedSnapshot
 
         // Remove the reverted group from pending state.
         for loc in siblingLocations {
-            pendingLLMChangedLocations.remove(loc)
-            pendingLLMChangedReadingLocations.remove(loc)
-            pendingLLMChangesByLocation.removeValue(forKey: loc)
+            llmCorrection.pendingLLMChangedLocations.remove(loc)
+            llmCorrection.pendingLLMChangedReadingLocations.remove(loc)
+            llmCorrection.pendingLLMChangesByLocation.removeValue(forKey: loc)
         }
-        if pendingLLMChangedLocations.isEmpty {
+        if llmCorrection.pendingLLMChangedLocations.isEmpty {
             confirmLLMChanges()
         }
     }
@@ -635,26 +635,26 @@ extension ReadView {
                 AppLog.debug(.llmCorrection, "applied correction — \(diff.count) change(s):\n\(diff.joined(separator: "\n"))")
             }
             if changedLocations.isEmpty == false {
-                pendingLLMChangedLocations = changedLocations
-                pendingLLMChangedReadingLocations = changedReadingLocations
-                pendingLLMChangesByLocation = changesByLocation
-                hasPendingLLMChanges = true
+                llmCorrection.pendingLLMChangedLocations = changedLocations
+                llmCorrection.pendingLLMChangedReadingLocations = changedReadingLocations
+                llmCorrection.pendingLLMChangesByLocation = changesByLocation
+                llmCorrection.hasPendingLLMChanges = true
                 // This note now has an AI correction applied — future taps should confirm
                 // before replacing it rather than re-running silently.
-                hasAppliedLLMCorrectionForCurrentNote = true
+                llmCorrection.hasAppliedLLMCorrectionForCurrentNote = true
             }
         case .surfaceMismatch(let msg):
             AppLog.error(.llmCorrection, "surface mismatch: \(msg)")
-            llmCorrectionErrorMessage = msg
-            isShowingLLMCorrectionError = true
+            llmCorrection.llmCorrectionErrorMessage = msg
+            llmCorrection.isShowingLLMCorrectionError = true
         case .networkError(let msg):
             AppLog.error(.llmCorrection, "network error: \(msg)")
-            llmCorrectionErrorMessage = msg
-            isShowingLLMCorrectionError = true
+            llmCorrection.llmCorrectionErrorMessage = msg
+            llmCorrection.isShowingLLMCorrectionError = true
         case .decodingError(let msg):
             AppLog.error(.llmCorrection, "decoding error: \(msg)")
-            llmCorrectionErrorMessage = msg
-            isShowingLLMCorrectionError = true
+            llmCorrection.llmCorrectionErrorMessage = msg
+            llmCorrection.isShowingLLMCorrectionError = true
         }
     }
 }

@@ -9,15 +9,15 @@ extension ReadView {
             Color.black.opacity(0.15)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    if isGeneratingLyricAlignment == false {
+                    if subtitleImport.isGeneratingLyricAlignment == false {
                         dismissSubtitlePopup()
                     }
                 }
 
             VStack(alignment: .leading, spacing: 14) {
-                if alignmentResultSRT.isEmpty == false && isGeneratingLyricAlignment == false {
+                if subtitleImport.alignmentResultSRT.isEmpty == false && subtitleImport.isGeneratingLyricAlignment == false {
                     alignmentResultContent
-                } else if isGeneratingLyricAlignment {
+                } else if subtitleImport.isGeneratingLyricAlignment {
                     alignmentProgressContent
                 } else {
                     audioSelectionContent
@@ -32,8 +32,8 @@ extension ReadView {
 
     // Clears popup state and dismisses.
     private func dismissSubtitlePopup() {
-        isShowingSubtitlePopup = false
-        alignmentResultSRT = ""
+        subtitleImport.isShowingSubtitlePopup = false
+        subtitleImport.alignmentResultSRT = ""
         clearPendingSubtitleFileSelection()
     }
 
@@ -45,24 +45,24 @@ extension ReadView {
 
             // Audio file picker row.
             filePickerRow(
-                hasFile: pendingSubtitleAudioURL != nil,
+                hasFile: subtitleImport.pendingSubtitleAudioURL != nil,
                 icon: "waveform",
                 title: "Audio File",
-                filename: pendingSubtitleAudioFilename.isEmpty ? "Choose..." : pendingSubtitleAudioFilename
+                filename: subtitleImport.pendingSubtitleAudioFilename.isEmpty ? "Choose..." : subtitleImport.pendingSubtitleAudioFilename
             ) {
-                subtitlePickerTarget = .audio
-                isShowingSubtitlePicker = true
+                subtitleImport.subtitlePickerTarget = .audio
+                subtitleImport.isShowingSubtitlePicker = true
             }
 
             // Subtitle file picker row (optional — skips alignment if provided).
             filePickerRow(
-                hasFile: pendingSubtitleFileURL != nil,
+                hasFile: subtitleImport.pendingSubtitleFileURL != nil,
                 icon: "captions.bubble",
                 title: "Subtitle File",
-                filename: pendingSubtitleFilename.isEmpty ? "Optional (.srt)" : pendingSubtitleFilename
+                filename: subtitleImport.pendingSubtitleFilename.isEmpty ? "Optional (.srt)" : subtitleImport.pendingSubtitleFilename
             ) {
-                subtitlePickerTarget = .subtitleFile
-                isShowingSubtitlePicker = true
+                subtitleImport.subtitlePickerTarget = .subtitleFile
+                subtitleImport.isShowingSubtitlePicker = true
             }
 
             HStack(spacing: 12) {
@@ -80,7 +80,7 @@ extension ReadView {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(pendingSubtitleAudioURL == nil)
+                .disabled(subtitleImport.pendingSubtitleAudioURL == nil)
             }
         }
     }
@@ -136,11 +136,11 @@ extension ReadView {
         VStack(spacing: 14) {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
-                Text(lyricAlignmentProgressMessage.isEmpty ? "Aligning…" : lyricAlignmentProgressMessage)
+                Text(subtitleImport.lyricAlignmentProgressMessage.isEmpty ? "Aligning…" : subtitleImport.lyricAlignmentProgressMessage)
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .animation(.easeInOut(duration: 0.15), value: lyricAlignmentProgressMessage)
+                    .animation(.easeInOut(duration: 0.15), value: subtitleImport.lyricAlignmentProgressMessage)
             }
             .foregroundStyle(.primary)
             .padding(.horizontal, 16)
@@ -152,7 +152,7 @@ extension ReadView {
                 .font(.system(size: 13, weight: .semibold))
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
-                .disabled(isCancellingAlignment)
+                .disabled(subtitleImport.isCancellingAlignment)
         }
     }
 
@@ -197,7 +197,7 @@ extension ReadView {
     private var highlightedAlignmentResult: AttributedString {
         let mismatchedTexts = buildMismatchedCueTexts()
         var result = AttributedString()
-        let lines = alignmentResultSRT.components(separatedBy: "\n")
+        let lines = subtitleImport.alignmentResultSRT.components(separatedBy: "\n")
 
         for (i, line) in lines.enumerated() {
             var attrLine = AttributedString(line)
@@ -215,12 +215,12 @@ extension ReadView {
     // Returns the set of cue text strings that don't match their corresponding note text.
     private func buildMismatchedCueTexts() -> Set<String> {
         var mismatched = Set<String>()
-        for (index, cue) in audioAttachmentCues.enumerated() {
+        for (index, cue) in audioPlayback.audioAttachmentCues.enumerated() {
             guard SubtitleParser.isNonSpeechCue(cue.text) == false else { continue }
-            guard index < audioAttachmentHighlightRanges.count,
-                  let range = audioAttachmentHighlightRanges[index],
-                  let swiftRange = Range(range, in: text) else { continue }
-            let noteLineText = String(text[swiftRange])
+            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
+                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
+                  let swiftRange = Range(range, in: document.text) else { continue }
+            let noteLineText = String(document.text[swiftRange])
             if noteLineText != cue.text {
                 mismatched.insert(cue.text)
             }

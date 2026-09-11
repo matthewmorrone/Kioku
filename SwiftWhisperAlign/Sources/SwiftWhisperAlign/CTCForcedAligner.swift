@@ -15,7 +15,6 @@
 import Foundation
 import AVFoundation
 import Qwen3ASR
-import SourceSeparation
 import AudioCommon
 import MLX
 
@@ -23,130 +22,13 @@ public struct CTCForcedAligner {
     // Qwen3ForcedAligner expects 24 kHz mono float audio.
     private static let sampleRate = 24_000
 
-    // Vocal-separation ("stemming") toggle. When false, the raw mix is fed straight to the
-    // aligner — no separation — to confirm the forced-alignment stage works on its own.
-    // When true, vocals are isolated via Apple's AUSoundIsolation (Neural Engine).
-    private static let stemmingEnabled = true
-
-    // Route alignment through VAD-gated segment windows (true) vs continuous sliding windows
-    // (false). Kept true: the A/B showed continuous windowing UNDER-FEEDS — its char-rate is
-    // diluted by instrumental time (totalChars / totalSec instead of / totalVocalSec), so it
-    // strands the song's last lines (ran out of audio with 40 chars unplaced). VAD-gating's
-    // vocal-only rate calibration is load-bearing. (Flag retained to re-run the A/B cheaply.)
-    private static let vadGatingEnabled = true
-
-    // Anchor-and-fill from TRANSCRIPTION anchors. The fill engine (alignAnchored) is correct: a line
-    // next to a good anchor lands within 0.16s. The first attempt regressed because the anchor SOURCE
-    // — VAD-gated StreamingASR — was front-loaded (Silero drops sustained back-half vowels), so no
-    // anchors reached the back where the catastrophes are. Now we transcribe in fixed PIECES over the
-    // energy-VAD regions (no Silero in the path), forcing whole-song coverage. See StemTranscriber.
-    private static let anchorFillEnabled = true
-
     public init() {}
 
-    // Writes a timestamped breadcrumb + remaining memory budget to
-    // <Documents>/ctc-debug.log. Survives a hard SIGKILL (file is flushed each call),
-    // so the LAST line pinpoints which stage was running when the OS killed the app,
-    // and the availMem trend shows whether it's a memory exhaustion. Best-effort; never
-    // throws. `reset:true` starts a fresh log for the run.
-    private static func breadcrumb(_ stage: String, reset: Bool = false) {
-        #if os(iOS)
-        let availMB = Int(os_proc_available_memory()) / (1024 * 1024)
-        #else
-        let availMB = -1
-        #endif
-        let line = "[\(Date())] \(stage) | availMem=\(availMB)MB\n"
-        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-              let data = line.data(using: .utf8) else { return }
-        let url = dir.appendingPathComponent("ctc-debug.log")
-        if reset || FileManager.default.fileExists(atPath: url.path) == false {
-            try? data.write(to: url)
-        } else if let handle = try? FileHandle(forWritingTo: url) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: data)
-        }
-    }
-
-    // [DEBUG] Lock-guarded "did this decile already get logged" check, so the weights-download
-    // progress closure (called from a URLSession delegate queue, thousands of times for a large
-    // file) can throttle its breadcrumb writes to ~once per 10% without a data race on a captured var.
-    private final class DecileTracker: @unchecked Sendable {
-        private let lock = NSLock()
-        private var lastDecile = -1
-        func shouldLog(_ decile: Int) -> Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            guard decile != lastDecile else { return false }
-            lastDecile = decile
-            return true
-        }
-    }
-
-    // [DEBUG] Writes mono float samples to <Documents>/<name> as a 16-bit PCM WAV. Used to
-    // dump the isolated vocal stem so it can be played/inspected from the Files app (the app
-    // has UIFileSharingEnabled). Best-effort; never throws.
-    private static func saveDebugWAV(_ samples: [Float], sampleRate: Double, name: String) {
-        guard samples.isEmpty == false,
-              let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-        else { return }
-        let url = dir.appendingPathComponent(name)
-        try? FileManager.default.removeItem(at: url)
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false
-        ]
-        guard let file = try? AVAudioFile(forWriting: url, settings: settings),
-              let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat,
-                                         frameCapacity: AVAudioFrameCount(samples.count)),
-              let ch = buf.floatChannelData else { return }
-        buf.frameLength = AVAudioFrameCount(samples.count)
-        samples.withUnsafeBufferPointer { ch[0].update(from: $0.baseAddress!, count: samples.count) }
-        try? file.write(from: buf)
-    }
-
-    // [PROBE] Samples os_proc_available_memory() on a background thread between start() and
-    // stopMinMB(), tracking the MINIMUM seen — i.e. the peak memory pressure during a blocking
-    // align() pass (which a single post-call sample misses, since GPU.clearCache() frees it first).
-    private final class PeakMemTracker: @unchecked Sendable {
-        private let lock = NSLock()
-        private var minAvailBytes = UInt.max
-        private var running = false
-
-        // Begins sampling on a detached thread; resets the running minimum.
-        func start() {
-            lock.lock(); minAvailBytes = .max; running = true; lock.unlock()
-            Thread.detachNewThread { [weak self] in
-                while let self, self.isRunning {
-                    #if os(iOS)
-                    let a = UInt(os_proc_available_memory())
-                    self.lock.lock(); if a < self.minAvailBytes { self.minAvailBytes = a }; self.lock.unlock()
-                    #endif
-                    usleep(50_000)   // 50 ms
-                }
-            }
-        }
-
-        // Explicit loop condition for start()'s sampling thread, per the Loop Safety
-        // invariant — checked once per iteration instead of an unconditional while true.
-        private var isRunning: Bool {
-            lock.lock(); defer { lock.unlock() }
-            return running
-        }
-
-        // Stops sampling and returns the peak pressure (lowest available memory) in MB.
-        func stopMinMB() -> Int {
-            lock.lock(); running = false; let m = minAvailBytes; lock.unlock()
-            return Int(m / (1024 * 1024))
-        }
-    }
-
-
-    // Aligns lyric lines to the audio, returning one AlignedLine per input line.
+    // Aligns lyric lines to the audio, returning one AlignedLine per input line. Pipeline:
+    // isolate vocals (HTDemucs CoreML, cached per audio file) → trim the leading intro →
+    // energy-VAD the stem into vocal regions → transcribe the regions to mine line→time
+    // anchors (StemTranscriber) → forced-align each anchor-bounded span (alignAnchored),
+    // falling back to VAD-gated windows when there are too few anchors.
     public func align(
         input: AlignmentInput,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
@@ -184,14 +66,11 @@ public struct CTCForcedAligner {
         defer { MLX.Memory.cacheLimit = priorCacheLimit }
         Self.breadcrumb("MLX cacheLimit \(priorCacheLimit / (1024 * 1024))MB→48MB · active=\(MLX.Memory.activeMemory / (1024 * 1024))MB cache=\(MLX.Memory.cacheMemory / (1024 * 1024))MB")
 
-        // Vocal isolation is the most expensive and memory-hungry stage (the HTDemucs CoreML pass
-        // below — several seconds and the jetsam cliff on the A17), yet the isolated stem is a pure
-        // function of the source audio. So before decoding + isolating, consult the on-disk stem
-        // cache: a Re-align of unchanged audio loads the stem straight off disk and skips BOTH the
-        // stereo decode and the isolation, dropping in at the trim/VAD stage. Only the stemming-on
-        // path is cacheable (the raw-mix branch has nothing to isolate).
+        // Vocal isolation is the most expensive stage, and the isolated stem is a pure function
+        // of the source audio — so a Re-align of unchanged audio loads the stem off disk and skips
+        // both the stereo decode and the isolation, dropping in at the trim/VAD stage.
         let vocalMono: [Float]
-        if Self.stemmingEnabled, let cached = VocalStemCache.load(for: input.audioURL) {
+        if let cached = VocalStemCache.load(for: input.audioURL) {
             Self.breadcrumb("vocal stem CACHE HIT \(cached.count) frames (~\(cached.count / 44_100)s)")
             onStage?("Loading cached vocals…")
             vocalMono = cached
@@ -206,108 +85,33 @@ public struct CTCForcedAligner {
             onProgress?(0.05)
 
             // Isolate vocals so the aligner sees speech-like audio rather than the full mix.
-            //
-            // SEPARATOR = OpenUnmix. HTDemucs-FT isolates better (it produced the clean Mac stem), but
-            // it SIGKILLs the app ~1 s into the first separate() on the A17 GPU — an MLX/Metal op in
-            // its forward pass faults on device. Confirmed exhaustively: int8 AND fp16, 30 s AND 183 s
-            // chunks, all with ~2.6–3 GB free, foreground, uncatchable (no signal). OpenUnmix is the
-            // separator that runs to completion on-device. Its weaker isolation leaves some
-            // instrumental bleed, which the adaptive trimLeadingSilence gate below is tuned to absorb.
-            //
-            // To restore HTDemucs once soniqo's Metal path is device-safe — or to run separation on
-            // the Mac bridge and fetch the stem — swap the load+separate below for
-            // HTDemucsSeparator.fromPretrained(precision:) + Self.separateVocalsChunked(...) (that
-            // chunked helper, which bounds peak memory, is still defined below).
-            if Self.stemmingEnabled {
-                // Isolate vocals with HTDemucs-FT (MLX) — the SOTA separator that produced the
-                // clean Mac stem. Previously SIGKILLed ~1s into separate() on the A17 GPU (a
-                // Metal fault confirmed exhaustively across precisions/chunk sizes/free memory),
-                // so this device fell back to the weaker on-device AUSoundIsolation. Re-trying on
-                // A19 Pro (different Metal generation) — see HTDemucsCoreMLSeparator for the
-                // fallback path if this still faults.
-                onStage?("Isolating…")
-                Self.breadcrumb("isolating (HTDemucs-FT MLX)")
-                // Downloads the two files directly via URLSession, pinned to the upload's commit
-                // (same discipline as WhisperDownloadableModel.pinnedRevision), rather than going
-                // through HTDemucsSeparator.fromPretrained/HuggingFaceDownloader's HubApi-based
-                // fetch. Two reasons: (1) fromPretrained's own progress handler reports the same
-                // static "Downloading htdemucs_ft..." string on every tick — no percent — which
-                // left the progress HUD (a plain Text) visibly frozen for the whole ~320 MB
-                // download; (2) on-device, that Hub client stalled indefinitely against the file's
-                // Xet-CDN redirect (root cause unconfirmed — the files resolve fine outside the
-                // app), whereas plain URLSession downloads are what every other model in this app
-                // (Whisper, dictionary, the old HTDemucs CoreML .zip) already uses successfully.
-                // Lands in ModelStorage's Application Support directory, not Library/Caches (which
-                // iOS purges under storage pressure — see ModelStorage.swift).
-                let precision = HTDemucsSeparator.Precision.fp16
-                let modelName = precision.modelName
-                let cacheDir = try ModelStorage.directory(for: HTDemucsSeparator.defaultModelId)
-                let weightsURL = cacheDir.appendingPathComponent("\(modelName).safetensors")
-                let configURL = cacheDir.appendingPathComponent("\(modelName)_config.json")
-                if FileManager.default.fileExists(atPath: weightsURL.path) == false {
-                    onStage?("Downloading isolator… 0%")
-                    // Commit aufklarer/HTDemucs-FT-MLX was pinned at (2026-09-04); bump deliberately
-                    // if the upstream weights are ever republished.
-                    let revision = "39820e356306479d81dacb9f1042e5de86d49e29"
-                    func remoteURL(_ filename: String) -> URL {
-                        URL(string: "https://huggingface.co/aufklarer/HTDemucs-FT-MLX/resolve/\(revision)/\(filename)")!
-                    }
-                    Self.breadcrumb("isolator: config download start")
-                    try await HTDemucsFTDownloader.downloadFile(from: remoteURL("\(modelName)_config.json"), to: configURL)
-                    Self.breadcrumb("isolator: config download done, weights download start")
-                    let decileTracker = Self.DecileTracker()
-                    // Pinned alongside `revision`: the fp16 weights' exact size at that commit
-                    // (confirmed via the HF API), used only as a progress-reporting fallback when
-                    // the CDN response doesn't carry a size URLSession recognizes — never as a
-                    // download-completeness check.
-                    let weightsExpectedBytes: Int64 = 336_115_816
-                    try await HTDemucsFTDownloader.downloadFile(
-                        from: remoteURL("\(modelName).safetensors"), to: weightsURL, expectedBytes: weightsExpectedBytes
-                    ) { frac in
-                        onStage?("Downloading isolator… \(Int((frac * 100).rounded()))%")
-                        onProgress?(0.05 + 0.05 * frac)
-                        if decileTracker.shouldLog(Int(frac * 10)) {
-                            Self.breadcrumb("isolator: weights download \(Int((frac * 100).rounded()))%")
-                        }
-                    }
-                    Self.breadcrumb("isolator: weights download done")
-                }
-                onStage?("Loading isolator…")
-                let separator = try HTDemucsSeparator.fromLocal(directory: cacheDir, modelName: modelName)
-                let mono = try Self.separateVocalsChunked(
-                    separator: separator,
-                    stereo: stereo,
-                    cancellationCheck: cancellationCheck,
-                    onProgress: { frac in
-                        onProgress?(0.10 + 0.30 * frac)                       // global bar (legacy callers)
-                        onStage?("Isolating… \(Int((frac * 100).rounded()))%")  // per-phase %
-                    },
-                    onStage: onStage
-                )
-                guard mono.isEmpty == false else {
-                    throw NSError(domain: "SwiftWhisperAlign.CTC", code: 15,
-                                  userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
-                }
-                Self.breadcrumb("isolated voice \(mono.count) frames (HTDemucs)")
-                #if DEBUG
-                // [DEBUG] Save the isolated stem so it can be played from Files → On My iPhone →
-                // Kioku → isolated-vocal.wav to judge isolation quality + what's in the intro. Gated
-                // out of release: it's a 19 MB write per align with no user-facing purpose.
-                Self.saveDebugWAV(mono, sampleRate: 44_100, name: "isolated-vocal.wav")
-                #endif
-                // Persist the stem so the next Re-align of this exact audio skips isolation.
-                VocalStemCache.store(mono, for: input.audioURL)
-                Self.breadcrumb("vocal stem cached")
-                vocalMono = mono
-            } else {
-                // Stemming OFF: downmix the raw stereo mix to mono and align on that directly.
-                onStage?("Preparing audio…")
-                let n = stereo[0].count
-                var mono = [Float](repeating: 0, count: n)
-                for i in 0..<n { mono[i] = (stereo[0][i] + stereo[1][i]) * 0.5 }
-                Self.breadcrumb("stemming DISABLED — raw mix \(n) frames")
-                vocalMono = mono
+            // HTDemucs-FT via CoreML/ANE is the only separator; it runs a full song in ~1/3 the
+            // wall time of the MLX build it replaced. Measured tradeoff on tsukiiro-chainon: the
+            // ASR reads its stem slightly worse, costing 4 of 34 anchors (20 vs 24) and worst-case
+            // timing (max Δ 6.0s→26.2s). If anchor quality needs tightening, tune extractAnchors'
+            // matching/gate rather than re-adding a second separator model.
+            onStage?("Isolating…")
+            Self.breadcrumb("isolating (HTDemucs-FT CoreML/ANE)")
+            let mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
+                stereo: stereo,
+                cancellationCheck: cancellationCheck,
+                onProgress: { frac in
+                    onProgress?(0.10 + 0.30 * frac)                       // global bar
+                    onStage?("Isolating… \(Int((frac * 100).rounded()))%")  // per-phase %
+                },
+                onStage: onStage
+            )
+            guard mono.isEmpty == false else {
+                throw NSError(domain: "SwiftWhisperAlign.CTC", code: 15,
+                              userInfo: [NSLocalizedDescriptionKey: "Vocal isolation produced no output."])
             }
+            Self.breadcrumb("isolated voice \(mono.count) frames (HTDemucs CoreML)")
+            #if DEBUG
+            Self.saveDebugWAV(mono, sampleRate: 44_100, name: "isolated-vocal.wav")
+            #endif
+            VocalStemCache.store(mono, for: input.audioURL)
+            Self.breadcrumb("vocal stem cached")
+            vocalMono = mono
         }
         onProgress?(0.4)
 
@@ -349,37 +153,34 @@ public struct CTCForcedAligner {
         // regresses this, revert to `Device.withDefaultDevice(.cpu)` + `MLX.compile(enable:
         // false)` (see git history) — confirmed to at least not crash, just ~40x slower.
         let rawUnits: [(start: Double, end: Double, text: String)] = try await {
-            var anchors: [(line: Int, time: Double)] = []
-            if Self.anchorFillEnabled {
-                onStage?("Transcribing…")
-                let phrases = (try? await StemTranscriber.segments(
-                    stem: trimmedVocal, sampleRate: 44_100, regions: vadSegs,
-                    // Resumable checkpoint: a kill mid-transcription (the jetsam-prone stage) resumes from
-                    // the last completed piece instead of redoing the ~60 s load + every piece. Keyed by
-                    // audio identity, so it survives across app launches and is reused by later re-aligns.
-                    cacheIdentity: VocalStemCache.identityKey(for: input.audioURL),
-                    progress: { msg in
-                        Self.breadcrumb("anchor-asr: \(msg)")
-                        // The ASR model load/download is a ~60 s+ opaque phase before any piece
-                        // (encoder/decoder download + compile), so onFraction can't cover it —
-                        // forward the real message (it carries its own live percent) rather than a
-                        // frozen placeholder. Per-piece previews ("12–36s → こんにちは") are excluded
-                        // — onFraction below already renders those as a clean "Transcribing… N%".
-                        if msg.contains("→") == false { onStage?(msg) }
-                    },
-                    // Per-phase % in the stage label, matching the isolation/alignment stages. Fires once
-                    // per ~24 s piece (so it starts at the first piece's fraction, never a stuck 0%).
-                    onFraction: { frac in
-                        onStage?("Transcribing… \(Int((frac * 100).rounded()))%")
-                    },
-                    cancellationCheck: cancellationCheck)) ?? []
-                Self.breadcrumb("transcribed \(phrases.count) pieces over \(vadSegs.count) regions")
-                anchors = Self.extractAnchors(lines: input.lines, phrases: phrases, vadSegs: vadSegs)
-                MLX.Memory.clearCache()   // free the ASR model's GPU buffers before the aligner allocates
-                Self.breadcrumb("anchors \(anchors.count)/\(input.lines.count): " +
-                    anchors.prefix(12).map { "L\($0.line)@\(String(format: "%.0f", $0.time))" }.joined(separator: " "))
-                if cancellationCheck?() == true { throw CancellationError() }
-            }
+            onStage?("Transcribing…")
+            let phrases = (try? await StemTranscriber.segments(
+                stem: trimmedVocal, sampleRate: 44_100, regions: vadSegs,
+                // Resumable checkpoint: an interrupted transcription resumes from the last completed
+                // piece instead of redoing the ~60 s load + every piece. Keyed by audio identity, so
+                // it survives across app launches and is reused by later re-aligns.
+                cacheIdentity: VocalStemCache.identityKey(for: input.audioURL),
+                progress: { msg in
+                    Self.breadcrumb("anchor-asr: \(msg)")
+                    // The ASR model load/download is a ~60 s+ opaque phase before any piece
+                    // (encoder/decoder download + compile), so onFraction can't cover it —
+                    // forward the real message (it carries its own live percent) rather than a
+                    // frozen placeholder. Per-piece previews ("12–36s → こんにちは") are excluded
+                    // — onFraction below already renders those as a clean "Transcribing… N%".
+                    if msg.contains("→") == false { onStage?(msg) }
+                },
+                // Per-phase % in the stage label, matching the isolation/alignment stages. Fires once
+                // per ~24 s piece (so it starts at the first piece's fraction, never a stuck 0%).
+                onFraction: { frac in
+                    onStage?("Transcribing… \(Int((frac * 100).rounded()))%")
+                },
+                cancellationCheck: cancellationCheck)) ?? []
+            Self.breadcrumb("transcribed \(phrases.count) pieces over \(vadSegs.count) regions")
+            let anchors = Self.extractAnchors(lines: input.lines, phrases: phrases, vadSegs: vadSegs)
+            MLX.Memory.clearCache()   // free the ASR model's GPU buffers before the aligner allocates
+            Self.breadcrumb("anchors \(anchors.count)/\(input.lines.count): " +
+                anchors.prefix(12).map { "L\($0.line)@\(String(format: "%.0f", $0.time))" }.joined(separator: " "))
+            if cancellationCheck?() == true { throw CancellationError() }
 
             // Downloads the CTC model on first use; cached thereafter in Application Support (not the
             // purgeable Caches dir — see ModelStorage). Surface the staged progress to the UI so this
@@ -418,13 +219,17 @@ public struct CTCForcedAligner {
                 onProgress?(0.40 + 0.50 * frac)                        // global bar (legacy callers)
                 onStage?("Aligning lyrics… \(Int((frac * 100).rounded()))%")   // per-phase %
             }
+            // Routing: anchor-and-fill when the transcription yielded ≥2 anchors (walls the char-rate
+            // drift can't cross); otherwise VAD-gated windows. Continuous windowing is only the
+            // no-VAD fallback — its char-rate is diluted by instrumental time (totalChars / totalSec
+            // instead of / totalVocalSec), so it under-feeds and strands the song's last lines.
             let rawUnits: [(start: Double, end: Double, text: String)]
-            if Self.anchorFillEnabled && anchors.count >= 2 {
+            if anchors.count >= 2 {
                 Self.breadcrumb("aligning (anchor-fill) \(input.lines.count) lines, \(anchors.count) anchors")
                 rawUnits = Self.alignAnchored(
                     samples: trimmedVocal, audioRate: 44_100, lines: input.lines, anchors: anchors,
                     vadSegs: vadSegs, aligner: aligner, cancellationCheck: cancellationCheck, onProgress: alignProgress)
-            } else if vadSegs.isEmpty || Self.vadGatingEnabled == false {
+            } else if vadSegs.isEmpty {
                 Self.breadcrumb("aligning (windowed) \(text.count) chars over ~\(trimmedVocal.count / 44_100)s")
                 rawUnits = Self.alignWindowed(
                     samples: trimmedVocal, audioRate: 44_100, text: text, aligner: aligner,
@@ -660,96 +465,6 @@ public struct CTCForcedAligner {
         return (result, lineTokens)
     }
 
-
-    // Separates vocals from a decoded stereo mix in bounded-length chunks so peak memory stays
-    // under the jetsam limit (the call site explains why a single full-song separate() OOMs).
-    // Each chunk runs through the full HTDemucs bag, is downmixed to mono, and the MLX buffer
-    // cache is cleared before the next chunk allocates. Consecutive chunks overlap by `overlapSec`
-    // and are linearly crossfaded so the seam is continuous (the model has no context across a
-    // chunk boundary, so a hard cut would click). Returns full-length mono vocals at `sampleRate`,
-    // or [] if separation produced nothing. Throws CancellationError if cancelled between chunks.
-    private static func separateVocalsChunked(
-        separator: HTDemucsSeparator,
-        stereo: [[Float]],
-        chunkSec: Double = 30,
-        overlapSec: Double = 1,
-        sampleRate: Int = 44_100,
-        cancellationCheck: (@Sendable () -> Bool)? = nil,
-        onProgress: ((Double) -> Void)? = nil,
-        onStage: ((String) -> Void)? = nil
-    ) throws -> [Float] {
-        guard stereo.count == 2 else { return [] }
-        let left = stereo[0], right = stereo[1]
-        let L = min(left.count, right.count)
-        guard L > 0 else { return [] }
-
-        let chunkLen = max(1, Int(chunkSec * Double(sampleRate)))
-        let overlap = min(chunkLen / 2, max(0, Int(overlapSec * Double(sampleRate))))
-        let stride = max(1, chunkLen - overlap)
-        let totalChunks = max(1, (L + stride - 1) / stride)
-
-        var vocalMono: [Float] = []
-        vocalMono.reserveCapacity(L)
-
-        var start = 0
-        while start < L {
-            if cancellationCheck?() == true { throw CancellationError() }
-            let end = min(L, start + chunkLen)
-            let n = end - start
-
-            #if os(iOS)
-            let availMB = Int(os_proc_available_memory()) / (1024 * 1024)
-            #else
-            let availMB = -1
-            #endif
-
-            // Planar [all-L, all-R] for this chunk → [1, 2, n], the layout separate() expects.
-            var planar = [Float]()
-            planar.reserveCapacity(2 * n)
-            planar.append(contentsOf: left[start..<end])
-            planar.append(contentsOf: right[start..<end])
-            let mix = MLXArray(planar).reshaped([1, 2, n])
-
-            onStage?("Isolating… \(start / stride + 1)/\(totalChunks)")
-            breadcrumb("→ separate() chunk @\(start / sampleRate)s n=\(n) availMem=\(availMB)MB")
-            let stems = separator.separate(mix)
-            breadcrumb("← separate() returned chunk @\(start / sampleRate)s")
-            guard let vocalsArr = stems["vocals"] else {
-                MLX.Memory.clearCache()
-                start += stride
-                continue
-            }
-            // [1, 2, n] row-major → first half = left, second half = right; downmix to mono.
-            let vFlat = vocalsArr.asArray(Float.self)
-            MLX.Memory.clearCache()   // chunk is now plain Swift values; release the buffer pool
-            let half = vFlat.count / 2
-            var chunkVocal = [Float](repeating: 0, count: half)
-            for i in 0..<half { chunkVocal[i] = (vFlat[i] + vFlat[half + i]) * 0.5 }
-
-            breadcrumb("sep chunk \(start / sampleRate)–\(end / sampleRate)s · \(half) frames · availMem=\(availMB)MB")
-
-            if vocalMono.isEmpty {
-                vocalMono.append(contentsOf: chunkVocal)
-            } else {
-                // Crossfade this chunk's head over the already-written overlap region (indexed
-                // absolutely, so it stays aligned even for a short final chunk), then append the
-                // remainder. `ov` = how many of this chunk's samples land on written audio.
-                let ov = max(0, min(vocalMono.count - start, chunkVocal.count))
-                for j in 0..<ov {
-                    let t = Float(j) / Float(max(1, ov))
-                    vocalMono[start + j] = vocalMono[start + j] * (1 - t) + chunkVocal[j] * t
-                }
-                if chunkVocal.count > ov {
-                    vocalMono.append(contentsOf: chunkVocal[ov...])
-                }
-            }
-
-            onProgress?(Double(end) / Double(L))
-            if end >= L { break }
-            start += stride
-        }
-        return vocalMono
-    }
 
     // Energy-based voice-activity detection on the (clean) vocal stem: returns the sung
     // regions in seconds, split at instrumental gaps. Builds a smoothed RMS envelope, gates at
@@ -1055,7 +770,14 @@ public struct CTCForcedAligner {
         text: String,
         aligner: Qwen3ForcedAligner,
         segments: [(start: Double, end: Double)],
-        windowSec: Double = 30,
+        // Was 30 — a ~35s ceiling on a single align() call used to jetsam-kill the app (see
+        // CTCForcedAligner's doc comment history). Confirmed gone on iPhone 17: a single 120s
+        // align() call runs in ~3s with >1GB free throughout. Raised to 120 because sparse-anchor
+        // spans that actually reach the old cap measurably improve with more context in one call
+        // (on-device A/B on a thinned-anchor variant of tsukiiro-chainon: median 2.38s→1.96s,
+        // max 26.3s→21.3s, same 30s-cap architecture otherwise) — the cap wasn't just stale
+        // memory-safety margin, it was truncating real alignment context.
+        windowSec: Double = 120,
         appendTail: Bool = true,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onProgress: ((Double) -> Void)? = nil
@@ -1164,18 +886,16 @@ public struct CTCForcedAligner {
         return results
     }
 
-    // Drives align() over short audio windows so peak memory stays bounded — a single
-    // full-song pass allocates multi-GB encoder attention and is jetsam-killed on device
-    // (confirmed: crash inside align() with 2.7 GB still free). Each window aligns the
-    // remaining text; only units landing comfortably inside the window are kept (units
-    // crammed at the window edge belong to later audio and are retried in the next
-    // window, so nothing is dropped). Returns units in absolute seconds.
+    // No-VAD fallback: drives align() over sliding windows of the whole stem. Each window aligns
+    // the remaining text; only units landing comfortably inside the window are kept (units
+    // crammed at the window edge belong to later audio and are retried in the next window, so
+    // nothing is dropped). Returns units in absolute seconds.
     private static func alignWindowed(
         samples: [Float],
         audioRate: Int,
         text: String,
         aligner: Qwen3ForcedAligner,
-        windowSec: Double = 30,
+        windowSec: Double = 120,   // see alignVADGated's windowSec doc — same ceiling, same fix
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onProgress: ((Double) -> Void)? = nil
     ) -> [(start: Double, end: Double, text: String)] {

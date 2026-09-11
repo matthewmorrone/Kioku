@@ -142,6 +142,14 @@ struct LyricsView: View {
     private static let activeWordHighlightColor = UIColor(hexString: "#FFCC66")!
     private static let activeWordForegroundColor = UIColor(hexString: "#1A1A1A")!
 
+    // Played-portion band: marks "already sung" text as the playhead advances through the
+    // active line. A background highlight, not a foreground-color fade — see
+    // KiokuCoreTextRendererView's unplayedDimmingColor doc comment for why a fade doesn't
+    // survive later foreground-color passes (the purple/green Saved Highlight bug). Low-alpha
+    // `.label` is theme-adaptive (dark wash in light mode, light wash in dark mode) and reads
+    // as a subtle "done" marker without competing with the amber active-word pill it sits under.
+    private static let playedLineHighlightColor = UIColor.label.withAlphaComponent(0.10)
+
     // Number of cues where the subtitle text differs from the corresponding note text.
     private var mismatchCount: Int {
         cues.indices.filter { hasMismatch(at: $0) }.count
@@ -429,16 +437,17 @@ struct LyricsView: View {
                         playbackHighlightRange: cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count),
                         selectionHighlightColor: .clear,
                         playbackHighlightColor: Self.activeWordHighlightColor,
-                        // Dim is gated on alignment-coverage: when forced-alignment
-                        // checkpoints don't reach near the cue end, we pass nil
-                        // (renderer leaves the whole line at full alpha) rather than
-                        // freezing the dim frontier mid-line. The active band still
-                        // moves — only the "unplayed tail" visual disappears for
-                        // low-coverage cues. See `cueHasReliableDimCoverage` for the
-                        // 90%-of-cueLen threshold and its rationale.
+                        // The played-portion band is gated on alignment-coverage: when
+                        // forced-alignment checkpoints don't reach near the cue end, we pass
+                        // nil (renderer shows no band at all) rather than freezing the band's
+                        // trailing edge mid-line. The active-word pill still moves — only the
+                        // "already sung" band disappears for low-coverage cues. See
+                        // `cueHasReliableDimCoverage` for the 90%-of-cueLen threshold and its
+                        // rationale.
                         unplayedDimmingLocation: cueHasReliableDimCoverage(forCueAtIndex: displayIndex, cueLength: cueInput.text.utf16.count)
                             ? cueLocalPlaybackHighlightRange(cueOriginInNote: cueOriginInNote, cueLength: cueInput.text.utf16.count).map { $0.location + $0.length }
                             : nil,
+                        unplayedDimmingColor: Self.playedLineHighlightColor,
                         unknownSegmentLocations: untimedLocations,
                         isHighlightUnknownEnabled: false,
                         unknownSegmentColor: .tertiaryLabel,

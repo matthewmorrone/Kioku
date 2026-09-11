@@ -26,13 +26,13 @@ extension ReadView {
     // whether they remembered the runtime snapshot or the persist call.
     func rebuildAndPersistSegments(recordRuntime: Bool = false) {
         let rebuilt = buildSegmentRanges(
-            from: segmentEdges,
-            furiganaByLocation: furiganaBySegmentLocation,
-            furiganaLengthByLocation: furiganaLengthBySegmentLocation
+            from: document.segmentEdges,
+            furiganaByLocation: document.furiganaBySegmentLocation,
+            furiganaLengthByLocation: document.furiganaLengthBySegmentLocation
         )
-        segments = rebuilt
+        document.segments = rebuilt
         if recordRuntime {
-            recordRuntimeSegmentationSnapshot(for: segmentEdges)
+            recordRuntimeSegmentationSnapshot(for: document.segmentEdges)
         }
         persistCurrentNoteIfNeeded()
     }
@@ -43,10 +43,10 @@ extension ReadView {
         // applied LLM correction (the only three callers). Mark the note edited so the reset
         // button reads as enabled; the load/reset paths clear this flag back to false.
         if persistOverride {
-            hasManualSegmentationEdits = true
+            document.hasManualSegmentationEdits = true
         }
-        segmentEdges = edges
-        segmentRanges = edges.map { edge in
+        document.segmentEdges = edges
+        document.segmentRanges = edges.map { edge in
             edge.start..<edge.end
         }
         // Manual edits (split/merge) intentionally produce surfaces that won't resolve in
@@ -56,17 +56,17 @@ extension ReadView {
         // against the base text). That manifests to the user as "all segment colors went
         // away after the split." Mirror refreshSegmentationRanges' fast path here and let
         // the next full segmenter pass repopulate unknowns from real lookup misses.
-        unknownSegmentLocations = []
+        document.unknownSegmentLocations = []
         recordRuntimeSegmentationSnapshot(for: edges)
 
         let pruned = pruneFuriganaForSegmentation(
-            furiganaByLocation: furiganaBySegmentLocation,
-            furiganaLengthByLocation: furiganaLengthBySegmentLocation,
+            furiganaByLocation: document.furiganaBySegmentLocation,
+            furiganaLengthByLocation: document.furiganaLengthBySegmentLocation,
             edges: edges,
-            sourceText: text
+            sourceText: document.text
         )
-        furiganaBySegmentLocation = pruned.byLocation
-        furiganaLengthBySegmentLocation = pruned.lengthByLocation
+        document.furiganaBySegmentLocation = pruned.byLocation
+        document.furiganaLengthBySegmentLocation = pruned.lengthByLocation
 
         if persistOverride {
             // Persist with the in-memory furigana embedded so the synchronous disk write
@@ -79,7 +79,7 @@ extension ReadView {
         // surface, split produced segments without their own annotations). The compute pass
         // backfills missing entries without overwriting existing ones, so user overrides
         // and already-correct annotations stay put while gaps get filled.
-        scheduleFuriganaGeneration(for: text, edges: edges)
+        scheduleFuriganaGeneration(for: document.text, edges: edges)
     }
 
     // Marks the UTF-16 start locations of segments that do not resolve through the dictionary pipeline.
@@ -87,7 +87,7 @@ extension ReadView {
         var unknownLocations: Set<Int> = []
 
         for edge in edges {
-            let nsRange = NSRange(edge.start..<edge.end, in: text)
+            let nsRange = NSRange(edge.start..<edge.end, in: document.text)
             guard nsRange.location != NSNotFound, nsRange.length > 0 else {
                 continue
             }
@@ -116,7 +116,7 @@ extension ReadView {
     ) -> [SegmentRange] {
         SegmentRange.ranges(
             from: edges,
-            in: sourceText ?? text,
+            in: sourceText ?? document.text,
             furiganaByLocation: furiganaByLocation,
             furiganaLengthByLocation: furiganaLengthByLocation
         )

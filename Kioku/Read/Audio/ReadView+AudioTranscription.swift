@@ -13,10 +13,10 @@ extension ReadView {
     // Binds audio transcription error presentation to whether the read screen currently has a transcription failure message.
     var audioTranscriptionErrorPresented: Binding<Bool> {
         Binding(
-            get: { audioTranscriptionErrorMessage.isEmpty == false },
+            get: { subtitleImport.audioTranscriptionErrorMessage.isEmpty == false },
             set: { isPresented in
                 if isPresented == false {
-                    audioTranscriptionErrorMessage = ""
+                    subtitleImport.audioTranscriptionErrorMessage = ""
                 }
             }
         )
@@ -25,10 +25,10 @@ extension ReadView {
     // Renders the title-row waveform button that imports an audio file for transcription.
     var audioTranscriptionButton: some View {
         Button {
-            isShowingFileImporter = true
+            subtitleImport.isShowingFileImporter = true
         } label: {
             Group {
-                if isPerformingAudioTranscription {
+                if subtitleImport.isPerformingAudioTranscription {
                     ProgressView()
                         .controlSize(.small)
                 } else {
@@ -36,7 +36,7 @@ extension ReadView {
                         .font(.system(size: 14, weight: .semibold))
                 }
             }
-            .foregroundStyle(isPerformingAudioTranscription ? Color.secondary : Color.accentColor)
+            .foregroundStyle(subtitleImport.isPerformingAudioTranscription ? Color.secondary : Color.accentColor)
             .frame(width: 30, height: 30)
             .background(
                 Capsule()
@@ -44,14 +44,14 @@ extension ReadView {
             )
         }
         .buttonStyle(.plain)
-        .disabled(isPerformingAudioTranscription)
+        .disabled(subtitleImport.isPerformingAudioTranscription)
         .accessibilityLabel("Import Audio for Transcription")
         .fileImporter(
-            isPresented: $isShowingFileImporter,
+            isPresented: $subtitleImport.isShowingFileImporter,
             allowedContentTypes: [.audio, .mpeg4Audio, .mp3],
             allowsMultipleSelection: false
         ) { result in
-            isShowingFileImporter = false
+            subtitleImport.isShowingFileImporter = false
             handleAudioImportSelection(result)
         }
     }
@@ -61,7 +61,7 @@ extension ReadView {
         switch result {
         case .success(let selectedURLs):
             guard let sourceURL = selectedURLs.first else {
-                audioTranscriptionErrorMessage = "No audio file was selected."
+                subtitleImport.audioTranscriptionErrorMessage = "No audio file was selected."
                 return
             }
 
@@ -69,15 +69,15 @@ extension ReadView {
                 await transcribeAudioFile(at: sourceURL)
             }
         case .failure(let error):
-            audioTranscriptionErrorMessage = error.localizedDescription
+            subtitleImport.audioTranscriptionErrorMessage = error.localizedDescription
         }
     }
 
     // Runs the selected transcription engine for one imported audio file and creates a new note with transcript and karaoke timing data.
     func transcribeAudioFile(at sourceURL: URL) async {
-        guard isPerformingAudioTranscription == false else { return }
-        isPerformingAudioTranscription = true
-        defer { isPerformingAudioTranscription = false }
+        guard subtitleImport.isPerformingAudioTranscription == false else { return }
+        subtitleImport.isPerformingAudioTranscription = true
+        defer { subtitleImport.isPerformingAudioTranscription = false }
 
         // One shared engine for every import path (see AudioTranscriptionService). Qwen3 isolates the
         // vocal stem first; Apple Speech chunks; Whisper needs a model. The note shows a status line
@@ -88,7 +88,7 @@ extension ReadView {
             let copiedURL = try AudioTranscriptionHelpers.copyImportedAudioToTemporaryLocation(sourceURL)
             defer { try? FileManager.default.removeItem(at: copiedURL) }
 
-            let contextual = AudioTranscriptionHelpers.makeSpeechContextualStrings(from: text, title: resolvedTitle)
+            let contextual = AudioTranscriptionHelpers.makeSpeechContextualStrings(from: document.text, title: resolvedTitle)
 
             // Whisper alone needs a downloaded model — fetch it (with download progress) first.
             var modelURL: URL?
@@ -109,7 +109,7 @@ extension ReadView {
                 whisperModelURL: modelURL, contextualStrings: contextual
             )
             guard cues.isEmpty == false else {
-                audioTranscriptionErrorMessage = "No speech was recognized in the selected audio file."
+                subtitleImport.audioTranscriptionErrorMessage = "No speech was recognized in the selected audio file."
                 setWhisperTranscriptionNote(id: noteID, statusLine: "No speech recognized", body: "")
                 return
             }
@@ -122,7 +122,7 @@ extension ReadView {
                 finalizeStreamingTranscriptionNote(id: noteID, finalText: finalText, attachmentID: attachmentID)
             }
         } catch {
-            audioTranscriptionErrorMessage = error.localizedDescription
+            subtitleImport.audioTranscriptionErrorMessage = error.localizedDescription
             setWhisperTranscriptionNote(id: noteID, statusLine: "Transcription failed", body: error.localizedDescription)
         }
     }
@@ -159,13 +159,13 @@ extension ReadView {
             segments: nil
         )
 
-        if activeNoteID == id {
-            isLoadingSelectedNote = true
-            customTitle = titleToSave
-            fallbackTitle = titleToSave
-            text = noteContent
-            segments = nil
-            isLoadingSelectedNote = false
+        if document.activeNoteID == id {
+            document.isLoadingSelectedNote = true
+            titleEdit.customTitle = titleToSave
+            titleEdit.fallbackTitle = titleToSave
+            document.text = noteContent
+            document.segments = nil
+            document.isLoadingSelectedNote = false
         }
     }
 
@@ -182,14 +182,14 @@ extension ReadView {
         )
         notesStore.updateAudioAttachment(id: id, attachmentID: attachmentID)
 
-        if activeNoteID == id {
-            isLoadingSelectedNote = true
-            customTitle = titleToSave
-            fallbackTitle = titleToSave
-            text = normalizedText
-            segments = nil
+        if document.activeNoteID == id {
+            document.isLoadingSelectedNote = true
+            titleEdit.customTitle = titleToSave
+            titleEdit.fallbackTitle = titleToSave
+            document.text = normalizedText
+            document.segments = nil
             loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
-            isLoadingSelectedNote = false
+            document.isLoadingSelectedNote = false
         }
     }
 
