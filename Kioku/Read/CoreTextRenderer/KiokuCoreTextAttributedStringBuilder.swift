@@ -91,12 +91,6 @@ enum KiokuCoreTextAttributedStringBuilder {
         // value as the headword width, and footprint centering would put the headword
         // off-center inside its footprint. Default false to preserve classic behavior.
         var isSegmentPacked: Bool = false
-        // Apple Music-style "unplayed tail" dimming. When set, foreground colors at
-        // UTF-16 locations >= this index get their alpha multiplied by `unplayedAlpha`
-        // so the unplayed portion of an active lyric line reads as faded white while
-        // the played portion stays full-strength. nil disables the effect.
-        var unplayedDimmingLocation: Int? = nil
-        var unplayedAlpha: CGFloat = 0.18
         // When set, replaces the implicit `textSize * 0.5` furigana font size used for
         // the ruby-overhang kern math. Default nil preserves legacy behavior.
         var furiganaSizeOverride: CGFloat? = nil
@@ -172,15 +166,6 @@ enum KiokuCoreTextAttributedStringBuilder {
 
         }
 
-        if let dimFrom = inputs.unplayedDimmingLocation, dimFrom < result.length {
-            let dimRange = NSRange(location: dimFrom, length: result.length - dimFrom)
-            let alpha = inputs.unplayedAlpha
-            result.enumerateAttribute(.foregroundColor, in: dimRange, options: []) { value, subrange, _ in
-                let base = (value as? UIColor) ?? .label
-                result.addAttribute(.foregroundColor, value: base.withAlphaComponent(alpha), range: subrange)
-            }
-        }
-
         // Changed-segment highlight for a pending LLM correction. Applied last so it always
         // wins over the alternation/unknown colors. CTLineDraw honors .foregroundColor, and
         // the ruby draw pass reads each kanji run's .foregroundColor (see KiokuCoreTextView
@@ -208,15 +193,8 @@ enum KiokuCoreTextAttributedStringBuilder {
             }
         }
 
-        // Saved Highlight. Applied last of the foreground-color passes so it always wins
-        // on overlap — EXCEPT it must still respect unplayed-dimming: a saved word (purple/
-        // green) that falls after `unplayedDimmingLocation` needs the same alpha the earlier
-        // dimming pass gave every other color, or it snaps back to full brightness the instant
-        // this pass runs, undoing the dim (previously observed on-device: red/blue alternation
-        // colors dimmed and stayed dimmed since nothing touches them afterward, but purple/green
-        // saved-word colors dimmed then immediately un-dimmed here).
+        // Saved Highlight. Applied last of the foreground-color passes so it always wins on overlap.
         if inputs.isSavedHighlightEnabled {
-            let dimFrom = inputs.unplayedDimmingLocation
             for segmentRange in inputs.segmentationRanges {
                 let nsRange = NSRange(segmentRange, in: inputs.text)
                 guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
@@ -228,10 +206,7 @@ enum KiokuCoreTextAttributedStringBuilder {
                 } else if inputs.savedSegmentLocations.contains(nsRange.location) {
                     color = inputs.savedHighlightColor
                 }
-                guard var color else { continue }
-                if let dimFrom, nsRange.location >= dimFrom {
-                    color = color.withAlphaComponent(inputs.unplayedAlpha)
-                }
+                guard let color else { continue }
                 result.addAttribute(.foregroundColor, value: color, range: nsRange)
             }
         }

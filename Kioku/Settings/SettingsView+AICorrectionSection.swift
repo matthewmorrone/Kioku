@@ -74,13 +74,19 @@ extension SettingsView {
 
     // Whether a provider row should appear in the picker at all — true for every
     // non-Apple-Intelligence provider (key entry handles their own availability), and gated on
-    // the matching live availability check for the three Apple Intelligence variants.
+    // the matching live availability check for on-device Apple Intelligence.
+    // Cloud / Cloud Pro are hard-blocked regardless of AppleIntelligenceCloudAvailability: that
+    // check only reflects whether the PrivateCloudComputeLanguageModel type exists, not whether
+    // this app holds the required com.apple.developer.private-cloud-compute entitlement (an
+    // Apple-approved, application-only grant this app doesn't have) — selecting either variant
+    // SIGTRAPs inside FoundationModels on first use rather than failing gracefully (confirmed
+    // on-device 2026-09-10). Revisit once the entitlement is actually granted.
     private func isProviderSelectable(_ provider: LLMProvider) -> Bool {
         switch provider {
         case .appleIntelligence:
             return AppleIntelligenceAvailability.isAvailable
         case .appleIntelligenceCloud, .appleIntelligenceCloudPro:
-            return AppleIntelligenceCloudAvailability.isAvailable
+            return false
         case .none, .openAI, .claude:
             return true
         }

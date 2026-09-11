@@ -84,13 +84,17 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.appleIntelligenceUnavailable
         }
 
-        // Apple Intelligence Cloud / Cloud Pro (Private Cloud Compute) is only wired for song
-        // breakdown today (AppleIntelligenceCloudClient) — correction stays on-device-only.
-        // Checked before the API-key guard for the same reason the on-device branch above is:
-        // no Apple Intelligence variant has a key, so that guard would otherwise misreport
-        // "No API key configured" instead of the accurate "not supported for this feature yet".
+        // Apple Intelligence Cloud / Cloud Pro (Private Cloud Compute), via the same client
+        // SongBreakdownService uses. Checked before the API-key guard for the same reason the
+        // on-device branch above is: no Apple Intelligence variant has a key, so that guard
+        // would otherwise misreport "No API key configured".
         if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
-            throw LLMCorrectionError.appleIntelligenceCloudUnsupported
+            let raw = try await generateViaAppleIntelligenceCloud(
+                compactSegments: compactSegments,
+                correctiveFeedback: correctiveFeedback,
+                useDeepReasoning: provider == .appleIntelligenceCloudPro
+            )
+            return try await parseWithSalvage(raw)
         }
 
         guard let apiKey = LLMSettings.activeAPIKey() else {
@@ -111,7 +115,7 @@ final class LLMCorrectionService {
             throw LLMCorrectionError.appleIntelligenceUnavailable
         case .appleIntelligenceCloud, .appleIntelligenceCloudPro:
             // Handled above; included so the switch stays exhaustive.
-            throw LLMCorrectionError.appleIntelligenceCloudUnsupported
+            throw LLMCorrectionError.appleIntelligenceCloudUnavailable
         case .openAI:
             raw = try await callOpenAIRaw(apiKey: apiKey, messages: messages)
         case .claude:
@@ -293,6 +297,35 @@ final class LLMCorrectionService {
             line must start with its line number N followed by | and end with | — output ONLY \
             the corrected compact format, no explanation, no commentary before or after.
             """
+    }
+
+    // Apple Intelligence Cloud / Cloud Pro dispatch: a one-shot call through Private Cloud
+    // Compute, the same client SongBreakdownService uses (see its header comment for why PCC's
+    // 32K context can take the whole prompt in one shot, unlike on-device correction's
+    // per-line chunking). Returns raw text so the caller routes it through the same
+    // parseWithSalvage ladder as OpenAI/Claude — Cloud can produce the same kind of
+    // slightly-malformed output a remote HTTP provider can.
+    private func generateViaAppleIntelligenceCloud(
+        compactSegments: String,
+        correctiveFeedback: String?,
+        useDeepReasoning: Bool
+    ) async throws -> String {
+        #if canImport(FoundationModels) && compiler(>=6.4)
+        guard #available(iOS 27.0, *), AppleIntelligenceCloudAvailability.isAvailable else {
+            throw LLMCorrectionError.appleIntelligenceCloudUnavailable
+        }
+        let messages = buildMessages(compactSegments: compactSegments, correctiveFeedback: correctiveFeedback)
+        AppLog.debug(.llmCorrection, "[AppleIntelligenceCloud] deepReasoning=\(useDeepReasoning) instructions:\n\(messages.system)\nprompt:\n\(messages.user)")
+        let raw = try await AppleIntelligenceCloudClient.generate(
+            instructions: messages.system,
+            prompt: messages.user,
+            useDeepReasoning: useDeepReasoning
+        )
+        AppLog.debug(.llmCorrection, "[AppleIntelligenceCloud] raw response:\n\(raw)")
+        return raw
+        #else
+        throw LLMCorrectionError.appleIntelligenceCloudUnavailable
+        #endif
     }
 
     // Calls OpenAI chat completions. No json_object response_format — compact text output.
@@ -657,9 +690,10 @@ final class LLMCorrectionService {
 enum LLMCorrectionError: LocalizedError {
     case noKeyConfigured
     case appleIntelligenceUnavailable
-    // Apple Intelligence Cloud / Cloud Pro is only wired for song breakdown today, not
-    // correction — see LLMCorrectionService.requestCorrections' provider dispatch.
-    case appleIntelligenceCloudUnsupported
+    // Apple Intelligence Cloud/Cloud Pro was picked but Private Cloud Compute isn't reachable —
+    // device/OS below the requirement, or the compiler predates FoundationModels' PCC API (see
+    // AppleIntelligenceCloudAvailability's header comment).
+    case appleIntelligenceCloudUnavailable
     case networkError(String)
     case unexpectedResponseShape(String)
     case decodingError(String)
@@ -680,8 +714,8 @@ enum LLMCorrectionError: LocalizedError {
             return "No API key configured. Add one in Settings."
         case .appleIntelligenceUnavailable:
             return "Apple Intelligence isn't available on this device. Pick another provider in Settings."
-        case .appleIntelligenceCloudUnsupported:
-            return "Apple Intelligence Cloud isn't supported for note correction yet — pick On-Device Apple Intelligence, OpenAI, or Claude in Settings."
+        case .appleIntelligenceCloudUnavailable:
+            return "Apple Intelligence Cloud isn't available on this device. Pick another provider in Settings."
         case .networkError(let msg):
             return "Network error: \(msg)"
         case .unexpectedResponseShape(let msg):

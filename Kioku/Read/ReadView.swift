@@ -309,15 +309,19 @@ struct ReadView: View {
     // Reactive equivalent of LLMSettings.isConfigured() — re-evaluates when any LLM
     // setting changes. Reading llmKeysRevision ties body invalidation to key edits;
     // the actual presence check goes to the Keychain. Internal so the toolbar and
-    // title-row extensions can hide their LLM buttons until a provider is available.
-    // Apple Intelligence requires no key, so it counts as configured whenever the
-    // on-device model is present and ready, regardless of remote key state.
+    // title-row extensions can enable/disable their LLM buttons appropriately.
+    // Apple Intelligence (on-device or Cloud/Cloud Pro) requires no key, so it counts as
+    // configured whenever the corresponding model is present and ready, regardless of
+    // remote key state.
     var isLLMConfigured: Bool {
         _ = llmKeysRevision
         if llmUseLLM {
             let provider = LLMSettings.activeProvider()
             if provider == .appleIntelligence {
                 return AppleIntelligenceAvailability.isAvailable
+            }
+            if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
+                return AppleIntelligenceCloudAvailability.isAvailable
             }
             return LLMSettings.apiKey(for: provider) != nil
         } else {

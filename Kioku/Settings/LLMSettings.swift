@@ -95,9 +95,20 @@ enum LLMSettings {
     }
 
     // Returns the active provider from UserDefaults, defaulting to none if unrecognized.
+    // Apple Intelligence Cloud / Cloud Pro are clamped to .none here — Private Cloud Compute
+    // needs the com.apple.developer.private-cloud-compute entitlement (Apple Developer Program
+    // Small Business track, application-only, not self-service), which this app doesn't have.
+    // Calling into PrivateCloudComputeLanguageModel without it doesn't throw a catchable error —
+    // it SIGTRAPs inside FoundationModels itself (confirmed on-device 2026-09-10). Clamping here
+    // (not just hiding the picker rows in SettingsView+AICorrectionSection) self-heals any device
+    // that already has one of these values stored, without needing to touch UserDefaults directly.
     static func activeProvider() -> LLMProvider {
         let raw = UserDefaults.standard.string(forKey: providerKey) ?? defaultProvider
-        return LLMProvider(rawValue: raw) ?? .none
+        let provider = LLMProvider(rawValue: raw) ?? .none
+        if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
+            return .none
+        }
+        return provider
     }
 
     // Returns the API key for the given provider from the Keychain, or nil if not set.

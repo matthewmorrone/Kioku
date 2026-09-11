@@ -53,11 +53,16 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
     let playbackHighlightRange: NSRange?
     let selectionHighlightColor: UIColor
     let playbackHighlightColor: UIColor
-    // Apple Music-style unplayed-tail dimming: glyphs at UTF-16 locations >= this index
-    // fade to `unplayedAlpha`, so the played portion of an active lyric line stays bright
-    // while the unplayed tail reads as faded. nil disables the effect (default).
+    // Apple Music-style progress indicator: the played portion of an active lyric line
+    // (UTF-16 locations < this index) gets a highlight band in `unplayedDimmingColor`, so
+    // it reads as "already sung" while the rest of the line stays at its normal color.
+    // nil disables the effect (default). A background band, not a foreground-color fade —
+    // fading each glyph's existing color used to require every OTHER foreground-color pass
+    // (Saved Highlight's purple/green, in particular) to know about and re-apply the fade,
+    // and a color applied after the dim pass would silently snap back to full brightness.
+    // A band sidesteps that whole class of bug: nothing here ever touches .foregroundColor.
     var unplayedDimmingLocation: Int? = nil
-    var unplayedAlpha: CGFloat = 0.18
+    var unplayedDimmingColor: UIColor = .clear
     // Unknown-segment highlight: locations whose surface isn't in the dictionary. Each gets
     // the unknown color overlaid on its NSRange. Empty = feature off.
     let unknownSegmentLocations: Set<Int>
@@ -320,8 +325,6 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         typographyHasher.combine(accentTextRange?.location ?? -1)
         typographyHasher.combine(accentTextRange?.length ?? -1)
         typographyHasher.combine(accentTextColor.description)
-        typographyHasher.combine(unplayedDimmingLocation ?? -1)
-        typographyHasher.combine(unplayedAlpha)
         typographyHasher.combine(furiganaGap)
         typographyHasher.combine(furiganaSizeOverride ?? -1)
         let typographyFingerprint = typographyHasher.finalize()
@@ -350,8 +353,6 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
                     changedReadingLocations: changedReadingLocations,
                     inFlightSegmentLocations: inFlightSegmentLocations,
                     isSegmentPacked: isRubySpacingEnabled && isFuriganaVisible,
-                    unplayedDimmingLocation: unplayedDimmingLocation,
-                    unplayedAlpha: unplayedAlpha,
                     furiganaSizeOverride: furiganaSizeOverride,
                     isSavedHighlightEnabled: isSavedHighlightEnabled,
                     savedSegmentLocations: savedSegmentLocations,
@@ -544,8 +545,12 @@ struct KiokuCoreTextRendererView: UIViewRepresentable {
         uiView.debugOverlay.illegalMergeLocation = illegalMergeLocation
         uiView.debugOverlay.flags = debugFlags
 
-        // Selection sits below playback so a playing-tapped segment shows the playback color.
+        // Played-portion band sits below selection and playback, so both still show on top
+        // where they overlap it (the active word's own pill covers the tail end of this band).
         var bands: [KiokuCoreTextView.HighlightBand] = []
+        if let dimTo = unplayedDimmingLocation, dimTo > 0 {
+            bands.append(.init(range: NSRange(location: 0, length: dimTo), color: unplayedDimmingColor))
+        }
         if let range = selectedHighlightRange, range.length > 0 {
             bands.append(.init(range: range, color: selectionHighlightColor))
         }

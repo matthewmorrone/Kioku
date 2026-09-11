@@ -63,14 +63,14 @@ final class MergedCorrectionBreakdownService {
         let provider = LLMSettings.activeProvider()
         // No Apple Intelligence variant is supported here — not just the on-device model being
         // too small for the breakdown half, but because this feature couples correction and
-        // breakdown into ONE call by design. Correction is meant to be free/on-device whenever
-        // Apple Intelligence is active (LLMCorrectionService never routes it through Cloud/Cloud
-        // Pro either — see appleIntelligenceCloudUnsupported there); folding it into this paid,
-        // cloud-only combined call would defeat that. Run the two features separately instead:
-        // SongBreakdownService already supports Apple Intelligence Cloud/Cloud Pro on its own,
-        // and correction already runs on-device on its own. Checked before the API-key guard
-        // below for the same reason SongBreakdownService checks it there — no Apple Intelligence
-        // variant has a key, so that guard would otherwise misreport "not configured".
+        // breakdown into ONE call by design. Correction is meant to be free whenever Apple
+        // Intelligence (on-device OR Cloud/Cloud Pro) is active — LLMCorrectionService now
+        // supports both independently — and folding it into this paid, structured combined call
+        // would defeat that. Run the two features separately instead: SongBreakdownService
+        // already supports Apple Intelligence Cloud/Cloud Pro on its own, and correction now
+        // supports every Apple Intelligence variant on its own too. Checked before the API-key
+        // guard below for the same reason SongBreakdownService checks it there — no Apple
+        // Intelligence variant has a key, so that guard would otherwise misreport "not configured".
         if provider.isAppleIntelligence {
             throw SongBreakdownError.appleIntelligenceUnsupported
         }

@@ -33,12 +33,8 @@ extension ReadView {
                         .accessibilityLabel("Loading dictionary")
                 }
                 Spacer()
-                if isLLMConfigured {
-                    llmCorrectionButton
-                }
-                if isBreakdownConfigured {
-                    titleBreakdownButton
-                }
+                llmCorrectionButton
+                titleBreakdownButton
                 titleLyricsButton
             }
         }

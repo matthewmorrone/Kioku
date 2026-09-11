@@ -34,7 +34,8 @@ extension ReadView {
 
     // Triggers an LLM correction request for the current note's segmentation and readings.
     // While changes are pending, acts as a confirm button (sparkles + checkmark overlay).
-    // Only enabled when a provider key is configured in Settings and the note is in read mode.
+    // Always visible — disabled (not hidden) when no provider is configured, so its absence
+    // doesn't read as "this feature doesn't exist" when it's really "go set up a provider".
     var llmCorrectionButton: some View {
         Button {
             if isRequestingLLMCorrection {
@@ -73,9 +74,10 @@ extension ReadView {
             .background(Circle().fill(ReadToggleAppearance.background))
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(isEditMode)
-        .opacity(isEditMode ? 0.5 : 1.0)
+        .disabled(isEditMode || isLLMConfigured == false)
+        .opacity(isEditMode || isLLMConfigured == false ? 0.5 : 1.0)
         .accessibilityLabel(hasPendingLLMChanges ? "Confirm AI Changes" : (isRequestingLLMCorrection ? "Cancel AI Correction" : "Request AI Correction"))
+        .accessibilityHint(isLLMConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
     // Resets custom segment segmentation back to computed segmentation.
@@ -183,7 +185,10 @@ extension ReadView {
             }
         }
         .buttonStyle(.plain)
+        .disabled(isBreakdownConfigured == false)
+        .opacity(isBreakdownConfigured ? 1.0 : 0.5)
         .accessibilityLabel(isBreakdownGeneratingForActiveNote ? "Breakdown generating" : "Open Breakdown")
+        .accessibilityHint(isBreakdownConfigured ? "" : "Set up an AI provider in Settings to use this")
     }
 
     // Shared visual treatment for the three title-row action buttons. Sized to match the
