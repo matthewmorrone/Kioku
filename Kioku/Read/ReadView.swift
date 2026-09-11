@@ -180,28 +180,12 @@ struct ReadView: View {
     @State var isShowingLyricMediaPicker = false
     @State var illegalMergeBoundaryLocation: Int?
     @State var illegalMergeFlashTask: Task<Void, Never>?
-    @State var audioController = AudioPlaybackController()
-    // Cues carry their per-cue karaoke checkpoints inline (cue.checkpoints); there is no separate
-    // timings state to keep in sync.
-    @State var audioAttachmentCues: [SubtitleCue] = []
-    @State var audioAttachmentHighlightRanges: [NSRange?] = []
-    @State var playbackHighlightRangeOverride: NSRange?
-    // Clears jumpToPendingScrollSurfaceIfReady's playbackHighlightRangeOverride borrow a few
-    // seconds after landing, so a "jump to this word" highlight fades rather than sitting
-    // indefinitely as if audio were still playing.
-    @State var pendingScrollHighlightClearTask: Task<Void, Never>?
-    @State var activePlaybackCueIndex: Int? = nil
-    @State var activeAudioAttachmentID: UUID? = nil
     // Whole-note re-align UI state (progress/error, subtitle editor, mismatch dialog) — see
     // LyricRealignUIState.
     @State var lyricRealign = LyricRealignUIState()
-    // True while the lyric view is playing the isolated vocal stem instead of the original mix
-    // (the "Vocals/Mix" toggle next to Re-align). ReadView swaps the AudioPlaybackController's
-    // source in onChange; reset to false whenever the audio source could change underneath it
-    // (attachment switch, re-align that regenerates the stem).
-    @State var isListeningToStem = false
-
-    @State var isShowingLyricsView = false
+    // Audio-attachment playback state (controller, cues, highlight override, active cue/attachment) —
+    // see AudioPlaybackUIState.
+    @State var audioPlayback = AudioPlaybackUIState()
     @AppStorage(LyricsHighlightGranularity.storageKey) var lyricsHighlightGranularityRaw = LyricsHighlightGranularity.defaultValue.rawValue
 
     // Typed view of the granularity AppStorage, falling back to the default when the persisted

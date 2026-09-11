@@ -354,7 +354,7 @@ extension ReadView {
                         isLineWrappingEnabled: isLineWrappingEnabled,
                         isRubySpacingEnabled: isRubySpacingEnabled,
                         selectedHighlightRange: resolveSelectedHighlightRange(),
-                        playbackHighlightRange: playbackHighlightRangeOverride,
+                        playbackHighlightRange: audioPlayback.playbackHighlightRangeOverride,
                         // Same gating as the segment colors above — user hex when Custom Token
                         // Colors is on, theme default when off — so the three picker controls
                         // stay coherent and a theme switch flows through.

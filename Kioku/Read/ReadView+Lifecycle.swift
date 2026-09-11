@@ -8,17 +8,17 @@ extension ReadView {
     var alertingReadView: some View {
         lifecycleReadView
             .sheet(isPresented: $lyricRealign.isShowingSubtitleEditor) {
-                if let attachmentID = activeAudioAttachmentID {
+                if let attachmentID = audioPlayback.activeAudioAttachmentID {
                     SubtitleEditorSheet(
                         attachmentID: attachmentID,
-                        initialCues: audioAttachmentCues,
+                        initialCues: audioPlayback.audioAttachmentCues,
                         noteText: text
                     ) { newCues in
                         // Reload the controller with updated cues so highlighting stays in sync.
-                        audioAttachmentCues = newCues
+                        audioPlayback.audioAttachmentCues = newCues
                         if let url = NotesAudioStore.shared.audioURL(for: attachmentID) {
                             do {
-                                try audioController.load(audioURL: url, cues: newCues, title: resolvedTitle)
+                                try audioPlayback.audioController.load(audioURL: url, cues: newCues, title: resolvedTitle)
                             } catch {
                                 print("[ReadView] reload after subtitle edit failed for \(url.lastPathComponent): \(error.localizedDescription)")
                             }
@@ -172,12 +172,12 @@ extension ReadView {
                 }
                 // Re-resolves cue highlight ranges only when the line count changes, since cue-to-line
                 // mapping is stable for in-line edits but shifts whenever lines are added or removed.
-                if audioAttachmentCues.isEmpty == false {
+                if audioPlayback.audioAttachmentCues.isEmpty == false {
                     let oldLineCount = oldText.components(separatedBy: .newlines).count
                     let newLineCount = newText.components(separatedBy: .newlines).count
                     if oldLineCount != newLineCount {
-                        audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(
-                            for: audioAttachmentCues,
+                        audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(
+                            for: audioPlayback.audioAttachmentCues,
                             in: newText
                         )
                     }
@@ -335,14 +335,14 @@ extension ReadView {
         .toolbar(.visible, for: .tabBar)
         .background {
             AudioCueHighlightObserver(
-                controller: audioController,
-                cues: audioAttachmentCues,
-                highlightRanges: audioAttachmentHighlightRanges,
+                controller: audioPlayback.audioController,
+                cues: audioPlayback.audioAttachmentCues,
+                highlightRanges: audioPlayback.audioAttachmentHighlightRanges,
                 granularity: lyricsHighlightGranularity,
                 segmentationRanges: segmentRanges,
                 noteText: text,
-                playbackHighlightRangeOverride: $playbackHighlightRangeOverride,
-                activePlaybackCueIndex: $activePlaybackCueIndex
+                playbackHighlightRangeOverride: $audioPlayback.playbackHighlightRangeOverride,
+                activePlaybackCueIndex: $audioPlayback.activePlaybackCueIndex
             )
         }
         .overlay(alignment: .topLeading) {
@@ -357,18 +357,18 @@ extension ReadView {
             }
         }
         .overlay {
-            if activeAudioAttachmentID != nil {
+            if audioPlayback.activeAudioAttachmentID != nil {
                 LyricsView(
-                    controller: audioController,
-                    cues: audioAttachmentCues,
-                    highlightRanges: audioAttachmentHighlightRanges,
+                    controller: audioPlayback.audioController,
+                    cues: audioPlayback.audioAttachmentCues,
+                    highlightRanges: audioPlayback.audioAttachmentHighlightRanges,
                     furiganaBySegmentLocation: furiganaBySegmentLocation,
                     furiganaLengthBySegmentLocation: furiganaLengthBySegmentLocation,
                     segmentationRanges: segmentRanges,
                     noteText: text,
-                    attachmentID: activeAudioAttachmentID,
+                    attachmentID: audioPlayback.activeAudioAttachmentID,
                     noteID: activeNoteID,
-                    playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : playbackHighlightRangeOverride,
+                    playbackHighlightRangeOverride: lyricsHighlightGranularity == .sentence ? nil : audioPlayback.playbackHighlightRangeOverride,
                     granularity: lyricsHighlightGranularity,
                     isSavedHighlightEnabled: isSavedHighlightEnabled,
                     savedSegmentLocations: savedSegmentLocations,
@@ -378,7 +378,7 @@ extension ReadView {
                         handleReadModeSegmentTap(location, tappedSegmentRect: rect, sourceView: sourceView)
                     },
                     onDismiss: {
-                        isShowingLyricsView = false
+                        audioPlayback.isShowingLyricsView = false
                     },
                     onFocusSetting: onFocusSetting,
                     onCueEdit: { edit in
@@ -388,12 +388,12 @@ extension ReadView {
                     isReAligning: lyricRealign.isReAligningWholeNote,
                     reAlignMessage: lyricRealign.reAlignProgressMessage,
                     stemAvailable: stemAvailableForActiveAudio,
-                    isListeningToStem: $isListeningToStem
+                    isListeningToStem: $audioPlayback.isListeningToStem
                 )
-                .opacity(isShowingLyricsView ? 1 : 0)
-                .allowsHitTesting(isShowingLyricsView)
-                .animation(.easeInOut(duration: 0.2), value: isShowingLyricsView)
-                .onChange(of: isListeningToStem) { _, listening in
+                .opacity(audioPlayback.isShowingLyricsView ? 1 : 0)
+                .allowsHitTesting(audioPlayback.isShowingLyricsView)
+                .animation(.easeInOut(duration: 0.2), value: audioPlayback.isShowingLyricsView)
+                .onChange(of: audioPlayback.isListeningToStem) { _, listening in
                     switchLyricAudioSource(toStem: listening)
                 }
             }
@@ -482,7 +482,7 @@ extension ReadView {
     // sets selectedReadNote and pendingScrollTarget together but loadSelectedNoteIfNeeded's text/
     // activeNoteID update can land on either side of that in the update cycle. Finds the surface's
     // first occurrence, selects it (the same highlight the lookup sheet's star context menu shows)
-    // and borrows playbackHighlightRangeOverride to scroll it into view — the one existing
+    // and borrows audioPlayback.playbackHighlightRangeOverride to scroll it into view — the one existing
     // scroll-to-range mechanism in this renderer, normally driven by audio cue playback (see
     // KiokuCoreTextRendererView's scrollRangeIntoView call). Safe to reuse outside playback: the
     // "unplayed" dimming it also drives requires real cue data (cueHasReliableDimCoverage), which
@@ -500,15 +500,15 @@ extension ReadView {
         }
         selectedSegmentLocation = nsRange.location
         selectedHighlightRangeOverride = nsRange
-        playbackHighlightRangeOverride = nsRange
+        audioPlayback.playbackHighlightRangeOverride = nsRange
         pendingScrollTarget = nil
 
-        pendingScrollHighlightClearTask?.cancel()
-        pendingScrollHighlightClearTask = Task { @MainActor in
+        audioPlayback.pendingScrollHighlightClearTask?.cancel()
+        audioPlayback.pendingScrollHighlightClearTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             if Task.isCancelled { return }
-            if playbackHighlightRangeOverride == nsRange {
-                playbackHighlightRangeOverride = nil
+            if audioPlayback.playbackHighlightRangeOverride == nsRange {
+                audioPlayback.playbackHighlightRangeOverride = nil
             }
         }
     }

@@ -27,7 +27,7 @@ nonisolated final class AlignmentCancellationToken: @unchecked Sendable {
 // aligns transcription segments to note text lines, and saves the resulting SRT.
 extension ReadView {
     var hasEditableSubtitles: Bool {
-        if activeAudioAttachmentID != nil {
+        if audioPlayback.activeAudioAttachmentID != nil {
             return true
         }
 
@@ -196,9 +196,9 @@ extension ReadView {
     // and presents a resolution dialog if any are found.
     @MainActor
     func checkForSubtitleMismatches() {
-        let count = audioAttachmentCues.enumerated().filter { index, cue in
-            guard index < audioAttachmentHighlightRanges.count,
-                  let range = audioAttachmentHighlightRanges[index],
+        let count = audioPlayback.audioAttachmentCues.enumerated().filter { index, cue in
+            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
+                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
                   let swiftRange = Range(range, in: text) else {
                 return false
             }
@@ -229,7 +229,7 @@ extension ReadView {
     @MainActor
     func realignWholeNote() async {
         guard lyricRealign.isReAligningWholeNote == false, lyricRealign.realigningCueIndex == nil else { return }
-        guard let attachmentID = activeAudioAttachmentID,
+        guard let attachmentID = audioPlayback.activeAudioAttachmentID,
               let audioURL = NotesAudioStore.shared.audioURL(for: attachmentID) else { return }
 
         let lyrics = lyricsForAlignment
@@ -276,7 +276,7 @@ extension ReadView {
 
             // Build cues straight from the structured result, folding each line's aligner units
             // into per-character karaoke checkpoints (UTF-16 offsets map 1:1 onto CueCharTiming).
-            let durationMs = audioController.duration > 0 ? Int(audioController.duration * 1000) : nil
+            let durationMs = audioPlayback.audioController.duration > 0 ? Int(audioPlayback.audioController.duration * 1000) : nil
             var cues: [SubtitleCue] = []
             for (i, line) in result.lines.enumerated() {
                 let startMs = max(0, Int((line.start * 1000).rounded()))
@@ -316,14 +316,14 @@ extension ReadView {
             // these cues (♪ markers and all), so no .srt sidecar is written. Per-word checkpoints
             // ride inline on each cue.
             try NotesAudioStore.shared.saveCues(cuesWithMarkers, attachmentID: attachmentID)
-            audioAttachmentCues = cuesWithMarkers
+            audioPlayback.audioAttachmentCues = cuesWithMarkers
             // Recompute the cue→note-line ranges against the NEW cue list. They map 1:1 with the
             // cues by position, so they must be regenerated whenever the cue list changes shape —
             // inserting ♪ markers shifts every index, and a stale array desyncs the active card,
             // the rows above it, and the mismatch flag (the karaoke view indexes both by the same
             // position).
-            audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cuesWithMarkers, in: text)
-            audioController.updateCues(cuesWithMarkers)
+            audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: cuesWithMarkers, in: text)
+            audioPlayback.audioController.updateCues(cuesWithMarkers)
         } catch is CancellationError {
             // User navigated away / cancelled mid-run; nothing to surface.
         } catch {
@@ -379,12 +379,12 @@ extension ReadView {
 
         if activeNoteID == noteID {
             loadAudioAttachmentIfNeeded(attachmentID: newAttachmentID)
-            // loadAudioAttachmentIfNeeded resets isShowingLyricsView to false (correct on
+            // loadAudioAttachmentIfNeeded resets audioPlayback.isShowingLyricsView to false (correct on
             // note-open, where the overlay should stay hidden). But this is an *explicit*
             // import/align completion — the user just asked for these cues — so reveal the
             // lyric overlay. Without this the cues load but sit at opacity 0 until the user
             // manually taps the ♪ button, which reads as "the import did nothing."
-            isShowingLyricsView = true
+            audioPlayback.isShowingLyricsView = true
         }
     }
 
@@ -464,7 +464,7 @@ extension ReadView {
             return
         }
 
-        audioController.stop()
+        audioPlayback.audioController.stop()
         NotesAudioStore.shared.deleteAttachment(attachmentID)
         notesStore.updateAudioAttachment(id: noteID, attachmentID: nil)
         loadAudioAttachmentIfNeeded(attachmentID: nil)
@@ -473,13 +473,13 @@ extension ReadView {
     // Ensures an audio attachment is loaded before opening the subtitle editor so the editor always has cue data.
     @MainActor
     func presentSubtitleEditorIfPossible() {
-        if activeAudioAttachmentID == nil,
+        if audioPlayback.activeAudioAttachmentID == nil,
            let activeNoteID,
            let attachmentID = notesStore.note(withID: activeNoteID)?.audioAttachmentID {
             loadAudioAttachmentIfNeeded(attachmentID: attachmentID)
         }
 
-        if activeAudioAttachmentID != nil {
+        if audioPlayback.activeAudioAttachmentID != nil {
             lyricRealign.isShowingSubtitleEditor = true
         }
     }
@@ -669,11 +669,11 @@ extension ReadView {
     // Resolves mismatches caused by Whisper transcription errors in the alignment output.
     @MainActor
     func syncSubtitlesToNote() {
-        guard let attachmentID = activeAudioAttachmentID else { return }
+        guard let attachmentID = audioPlayback.activeAudioAttachmentID else { return }
 
-        let rebuilt = audioAttachmentCues.enumerated().map { index, cue -> SubtitleCue in
-            guard index < audioAttachmentHighlightRanges.count,
-                  let range = audioAttachmentHighlightRanges[index],
+        let rebuilt = audioPlayback.audioAttachmentCues.enumerated().map { index, cue -> SubtitleCue in
+            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
+                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
                   let swiftRange = Range(range, in: text) else {
                 return cue
             }
@@ -682,14 +682,14 @@ extension ReadView {
         }
         // Carry per-word checkpoints onto any line whose text is unchanged; lines re-pointed at the
         // note text lose theirs (their characters differ, so the old offsets no longer apply).
-        let updatedCues = SubtitleEditorTimingTools.mergeCheckpoints(into: rebuilt, from: audioAttachmentCues)
+        let updatedCues = SubtitleEditorTimingTools.mergeCheckpoints(into: rebuilt, from: audioPlayback.audioAttachmentCues)
 
         do {
             // cues.json is the sole persisted truth — no .srt sidecar is written.
             try NotesAudioStore.shared.saveCues(updatedCues, attachmentID: attachmentID)
-            audioAttachmentCues = updatedCues
+            audioPlayback.audioAttachmentCues = updatedCues
             // Re-resolve highlight ranges now that cue text matches note text exactly.
-            audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: updatedCues, in: text)
+            audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: updatedCues, in: text)
         } catch {
             print("[SyncSubtitles] failed to save updated cues: \(error)")
         }
@@ -701,9 +701,9 @@ extension ReadView {
     func syncNoteToSubtitles() {
         var newText = text
         // Apply replacements in reverse order so earlier ranges stay valid.
-        let replacements: [(NSRange, String)] = audioAttachmentCues.enumerated().compactMap { index, cue in
-            guard index < audioAttachmentHighlightRanges.count,
-                  let range = audioAttachmentHighlightRanges[index],
+        let replacements: [(NSRange, String)] = audioPlayback.audioAttachmentCues.enumerated().compactMap { index, cue in
+            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
+                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
                   let swiftRange = Range(range, in: newText) else { return nil }
             let noteLineText = String(newText[swiftRange])
             guard noteLineText != cue.text else { return nil }
@@ -717,6 +717,6 @@ extension ReadView {
 
         text = newText
         // Re-resolve highlight ranges against the updated note text.
-        audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: audioAttachmentCues, in: text)
+        audioPlayback.audioAttachmentHighlightRanges = SubtitleParser.resolveHighlightRanges(for: audioPlayback.audioAttachmentCues, in: text)
     }
 }

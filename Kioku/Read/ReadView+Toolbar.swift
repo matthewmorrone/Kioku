@@ -124,7 +124,7 @@ extension ReadView {
     // visual peers — same capsule background, same accent treatment — so the row reads as
     // "actions for the currently-open note."
     var titleLyricsButton: some View {
-        titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: isShowingLyricsView))
+        titleActionLabel(systemImage: "music.note", foreground: ReadToggleAppearance.foreground(isOn: audioPlayback.isShowingLyricsView))
             .contentShape(Capsule())
             .onTapGesture {
                 // Nothing attached yet → the lyric view would be empty, so jump straight to the
@@ -133,10 +133,10 @@ extension ReadView {
                 // with no cues yet, showing an empty lyrics overlay is fine and playback still works;
                 // alignment is a separate, explicit action (the Re-align control), not auto-triggered
                 // by this tap.
-                if activeAudioAttachmentID == nil {
+                if audioPlayback.activeAudioAttachmentID == nil {
                     isShowingLyricMediaPicker = true
                 } else {
-                    isShowingLyricsView.toggle()
+                    audioPlayback.isShowingLyricsView.toggle()
                 }
             }
             .onLongPressGesture(minimumDuration: 0.35) {
@@ -147,7 +147,7 @@ extension ReadView {
                 // attachment first when needed, so it's safe to call without checking.
                 presentSubtitleEditorIfPossible()
             }
-            .accessibilityLabel(isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
+            .accessibilityLabel(audioPlayback.isShowingLyricsView ? "Hide Lyrics" : "Show Lyrics")
             .accessibilityHint("Long press to edit subtitles")
             .accessibilityAddTraits(.isButton)
     }

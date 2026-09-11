@@ -215,10 +215,10 @@ extension ReadView {
     // Returns the set of cue text strings that don't match their corresponding note text.
     private func buildMismatchedCueTexts() -> Set<String> {
         var mismatched = Set<String>()
-        for (index, cue) in audioAttachmentCues.enumerated() {
+        for (index, cue) in audioPlayback.audioAttachmentCues.enumerated() {
             guard SubtitleParser.isNonSpeechCue(cue.text) == false else { continue }
-            guard index < audioAttachmentHighlightRanges.count,
-                  let range = audioAttachmentHighlightRanges[index],
+            guard index < audioPlayback.audioAttachmentHighlightRanges.count,
+                  let range = audioPlayback.audioAttachmentHighlightRanges[index],
                   let swiftRange = Range(range, in: text) else { continue }
             let noteLineText = String(text[swiftRange])
             if noteLineText != cue.text {
