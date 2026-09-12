@@ -3,9 +3,8 @@ import XCTest
 
 // Pins docs/INVARIANTS.md Alignment #9 — alignment quality against ground truth.
 //
-// Slow tests: each fixture runs the full on-device aligner (Whisper-in-the-loop)
-// on a real audio file, then compares the output cues to a stable-ts large-v3
-// oracle. One song takes 30-90s depending on length and model size.
+// Slow tests: each fixture runs the full on-device aligner on a real audio file, then
+// compares the output cues to a stable-ts large-v3 oracle.
 //
 // Gating strategy: each test self-skips when its fixture directory isn't in the
 // test bundle. Adding a fixture (running scripts/generate-alignment-oracle.py
@@ -113,9 +112,17 @@ final class AlignmentQualityTests: XCTestCase {
 
         // Call the EXACT function the app's Re-align actions use. Test and production share
         // this code path so the test measures user-facing quality, not a re-implementation.
+        // Romanization comes from the real dictionary-backed segmenter, as in the app.
+        let resources = try TestReadResources.shared()
+        let romanizer = LyricRomanizer(
+            segmenter: resources.segmenter,
+            surfaceReadingData: SurfaceReadingDataMap(try resources.dictionaryStore.fetchSurfaceReadingData()),
+            kanjiReadingFallback: KanjiReadingFallbackMap(try resources.dictionaryStore.fetchKanjiReadingFallbackMap())
+        )
         let alignedCues = try await WholeSongAlignment.cues(
             audioURL: audioURL,
-            lyrics: noteLines.joined(separator: "\n")
+            lyrics: noteLines.joined(separator: "\n"),
+            romanize: romanizer.spans(for:)
         )
 
         let afterSpeechCues = alignedCues.filter { SubtitleParser.isNonSpeechCue($0.text) == false }

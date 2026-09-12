@@ -26,6 +26,11 @@ nonisolated final class AlignmentCancellationToken: @unchecked Sendable {
 // Hosts the note-level lyric-alignment flow: transcribes audio on-device using SwiftWhisper,
 // aligns transcription segments to note text lines, and saves the resulting SRT.
 extension ReadView {
+    // Romanizes lyric lines with the reader's own segmenter and readings, for the aligner.
+    private var lyricRomanizer: LyricRomanizer {
+        LyricRomanizer(segmenter: segmenter, surfaceReadingData: surfaceReadingData, kanjiReadingFallback: kanjiReadingFallback)
+    }
+
     var hasEditableSubtitles: Bool {
         if audioPlayback.activeAudioAttachmentID != nil {
             return true
@@ -154,6 +159,7 @@ extension ReadView {
             let cues = try await WholeSongAlignment.cues(
                 audioURL: sourceURL,
                 lyrics: trimmedLyrics,
+                romanize: lyricRomanizer.spans(for:),
                 cancellationCheck: { [token = subtitleImport.alignmentCancellationToken] in token.isCancelled },
                 onStage: { [self] stage in
                     Task { @MainActor in subtitleImport.lyricAlignmentProgressMessage = stage }
@@ -224,6 +230,7 @@ extension ReadView {
             let cuesWithMarkers = try await WholeSongAlignment.cues(
                 audioURL: audioURL,
                 lyrics: lyrics,
+                romanize: lyricRomanizer.spans(for:),
                 durationMs: durationMs,
                 cancellationCheck: { [token = subtitleImport.alignmentCancellationToken] in token.isCancelled },
                 // The stage string already carries its own per-phase percent

@@ -22,15 +22,15 @@ nonisolated enum DownloadedModelsStore {
             + sizeBytes(at: try? ModelStorage.directory(for: ModelStorage.asrModelId))
     }
 
-    // On-disk size of the downloaded Qwen3-ForcedAligner weights, or 0 if not yet downloaded.
-    // Sums the build the app loads plus any retired quantization an older app version
+    // On-disk size of the forced-aligner weights, or 0 if not yet downloaded. Sums the MMS
+    // CoreML model the app loads plus any retired Qwen3 aligner build an older app version
     // downloaded — orphaned, but still worth reclaiming.
     static func qwenForcedAlignerSizeBytes() -> Int {
         forcedAlignerModelIds.reduce(0) { $0 + sizeBytes(at: try? ModelStorage.directory(for: $1)) }
     }
 
     private static var forcedAlignerModelIds: [String] {
-        [ModelStorage.forcedAlignerModelId] + ModelStorage.retiredForcedAlignerModelIds
+        [MMSModelStore.modelId] + ModelStorage.retiredForcedAlignerModelIds
     }
 
     // Sums every on-disk copy of the vocal isolator a user could have, depending on which app
@@ -63,7 +63,7 @@ nonisolated enum DownloadedModelsStore {
         removeContents(of: try? ModelStorage.directory(for: ModelStorage.asrModelId))
     }
 
-    // Deletes every on-disk copy of the Qwen3-ForcedAligner weights (see
+    // Deletes every on-disk copy of the forced-aligner weights (see
     // qwenForcedAlignerSizeBytes). No-op if nothing is downloaded.
     static func deleteQwenForcedAligner() {
         for id in forcedAlignerModelIds {

@@ -3,7 +3,8 @@ import Foundation
 import SwiftWhisperAlign
 
 // The one way lyrics get timed against a song: a single forced-alignment pass over the whole
-// track from the note text, then ♪ markers over the instrumental stretches. Existing cues are
+// track from the note text (romanized per line by the caller), then ♪ markers over the
+// instrumental stretches. Existing cues are
 // never consulted — a full pass takes seconds, so re-aligning everything is cheaper and more
 // predictable than keeping old timings as anchors and patching the gaps between them.
 enum WholeSongAlignment {
@@ -13,6 +14,7 @@ enum WholeSongAlignment {
     static func cues(
         audioURL: URL,
         lyrics: String,
+        romanize: (String) -> [RomanizedSpan],
         durationMs knownDurationMs: Int? = nil,
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil
@@ -20,6 +22,7 @@ enum WholeSongAlignment {
         let result = try await OnDeviceLyricAligner.alignDetailed(
             audioURL: audioURL,
             lyrics: lyrics,
+            romanize: romanize,
             cancellationCheck: cancellationCheck,
             onStage: onStage
         )

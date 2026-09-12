@@ -126,10 +126,9 @@ public enum HTDemucsModelStore {
     }
 }
 
-// Bridges URLSession's download-progress callback to a Swift closure. Kept module-private
-// because the model archive download is the only place in SwiftWhisperAlign that needs
-// progress-driven URLSession.
-private final class HTDemucsDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+// Bridges URLSession's download-progress callback to a Swift closure. Module-internal:
+// shared by the .mlmodelc archive downloads (HTDemucsModelStore, MMSModelStore).
+final class HTDemucsDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let onProgress: @Sendable (Double) -> Void
 
     // Captures the progress callback for the lifetime of the download task.

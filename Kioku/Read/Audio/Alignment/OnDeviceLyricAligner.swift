@@ -37,11 +37,12 @@ enum OnDeviceLyricAligner {
     }
 
     // Force-aligns the lyric lines to the audio and returns the structured result: per-line
-    // timings, per-unit sub-line checkpoints (for the per-word/per-mora karaoke sweep), and the
-    // stem's vocal regions (for ♪ markers).
+    // timings and per-span sub-line checkpoints (for the per-mora karaoke sweep). `romanize`
+    // supplies each line's romanized spans — the aligner reads romaji, not Japanese.
     static func alignDetailed(
         audioURL: URL,
         lyrics: String,
+        romanize: (String) -> [RomanizedSpan],
         cancellationCheck: (@Sendable () -> Bool)? = nil,
         onStage: (@Sendable (String) -> Void)? = nil,
         onSegment: (@Sendable ([SwiftWhisperAlign.AlignedLine]) -> Void)? = nil
@@ -60,7 +61,7 @@ enum OnDeviceLyricAligner {
         }
 
         AppLog.info(.audioAlignment, "force-aligning \(lines.count) line(s) via CTC")
-        let input = AlignmentInput(audioURL: audioURL, lines: lines)
+        let input = AlignmentInput(audioURL: audioURL, lines: lines, romanization: lines.map(romanize))
 
         #if canImport(UIKit)
         let bg = BackgroundTaskHolder.begin("kioku.lyric-alignment")

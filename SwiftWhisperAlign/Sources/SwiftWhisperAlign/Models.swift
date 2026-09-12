@@ -6,9 +6,22 @@ import Foundation
 public struct AlignmentInput {
     public let audioURL: URL
     public let lines: [String]
-    public let language: String
-    public init(audioURL: URL, lines: [String], language: String = "ja") {
-        self.audioURL = audioURL; self.lines = lines; self.language = language
+    /// One array per line: the line's romanization as spans that each cover a UTF-16 range of
+    /// the line text. The aligner reads only the romaji; the ranges become karaoke checkpoints.
+    public let romanization: [[RomanizedSpan]]
+    public init(audioURL: URL, lines: [String], romanization: [[RomanizedSpan]]) {
+        self.audioURL = audioURL; self.lines = lines; self.romanization = romanization
+    }
+}
+
+/// A run of romaji (lowercase a–z) and the UTF-16 span of the source line it transcribes —
+/// one kana, or one kanji run with its reading.
+public struct RomanizedSpan: Sendable {
+    public let romaji: String
+    public let charOffsetUTF16: Int
+    public let charLengthUTF16: Int
+    public init(romaji: String, charOffsetUTF16: Int, charLengthUTF16: Int) {
+        self.romaji = romaji; self.charOffsetUTF16 = charOffsetUTF16; self.charLengthUTF16 = charLengthUTF16
     }
 }
 
