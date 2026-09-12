@@ -75,19 +75,24 @@ final class AlignmentQualityTests: XCTestCase {
         for name in names {
             rows.append((name, try await runQualityCheck(fixtureName: name)))
         }
-        var lines = ["", "┌─ [QualityTest] all fixtures ──", "│  song                              lines  within±500ms   median    max   missing"]
-        var withinTotal = 0, cueTotal = 0, medians: [Int] = []
+        var lines = ["", "┌─ [QualityTest] all fixtures ──", "│  song                              lines  within±500ms   median    max   missing   words  within±500ms   median"]
+        var withinTotal = 0, cueTotal = 0, medians: [Int] = [], wordsWithinTotal = 0, wordTotal = 0
         for r in rows {
             let within = Int((Double(r.metrics.matchedCueCount) * r.metrics.coverageFraction).rounded())
             withinTotal += within; cueTotal += r.metrics.oracleCueCount; medians.append(r.metrics.medianStartDeltaMs)
-            lines.append(String(format: "│  %-32@ %5d  %3d (%5.1f%%)  %6dms %6dms  %d",
+            wordsWithinTotal += r.metrics.wordsWithinCount; wordTotal += r.metrics.wordCount
+            let wordPct = r.metrics.wordCount == 0 ? 0 : Double(r.metrics.wordsWithinCount) / Double(r.metrics.wordCount) * 100
+            lines.append(String(format: "│  %-32@ %5d  %3d (%5.1f%%)  %6dms %6dms  %d   %5d  %4d (%5.1f%%)  %6dms",
                                 r.name as NSString, r.metrics.oracleCueCount, within, r.metrics.coverageFraction * 100,
-                                r.metrics.medianStartDeltaMs, r.metrics.maxStartDeltaMs, r.metrics.missingFromOutput.count))
+                                r.metrics.medianStartDeltaMs, r.metrics.maxStartDeltaMs, r.metrics.missingFromOutput.count,
+                                r.metrics.wordCount, r.metrics.wordsWithinCount, wordPct, r.metrics.wordMedianDeltaMs))
         }
         let sortedMedians = medians.sorted()
         lines.append(String(format: "│  TOTAL %d songs: %d / %d lines within ±500ms (%.1f%%), median of medians %dms",
                             rows.count, withinTotal, cueTotal, cueTotal == 0 ? 0 : Double(withinTotal) / Double(cueTotal) * 100,
                             sortedMedians.isEmpty ? 0 : sortedMedians[sortedMedians.count / 2]))
+        lines.append(String(format: "│  WORDS %d / %d within ±500ms (%.1f%%)",
+                            wordsWithinTotal, wordTotal, wordTotal == 0 ? 0 : Double(wordsWithinTotal) / Double(wordTotal) * 100))
         lines.append("└────────────────────────────────────────────────────────────────────")
         print(lines.joined(separator: "\n"))
     }
@@ -108,6 +113,18 @@ final class AlignmentQualityTests: XCTestCase {
         let maxStartDeltaMs: Int             // across matched cues
         let missingFromOutput: [String]      // oracle cue texts with no matching output cue
         let extrasInOutput: [String]         // output cue texts not in oracle (informational)
+        let wordCount: Int                   // reference words (kakasi chunks) graded
+        let wordsWithinCount: Int            // of those, within perCueStartMsTolerance
+        let wordMedianDeltaMs: Int
+        let wordMaxDeltaMs: Int
+    }
+
+    // One confirmed sub-line reference point from `<fixture>.words.json`: the UTF-16 range of a
+    // kakasi chunk in its lyric line and the consensus start of its first character.
+    private struct RefWord: Decodable {
+        let off: Int
+        let len: Int
+        let start: Double
     }
 
     // Loads a fixture, runs the on-device aligner, and asserts the result is
@@ -138,6 +155,9 @@ final class AlignmentQualityTests: XCTestCase {
         let oracleText = try String(contentsOf: oracleURL, encoding: .utf8)
         let toleranceData = try Data(contentsOf: toleranceURL)
         let tolerance = try JSONDecoder().decode(Tolerance.self, from: toleranceData)
+        // Optional word-level reference, one array per lyric line in note order.
+        let refWords: [[RefWord]]? = try bundle.url(forResource: "\(fixtureName).words", withExtension: "json")
+            .map { try JSONDecoder().decode([[RefWord]].self, from: Data(contentsOf: $0)) }
 
         let oracleCues = SubtitleParser.parse(oracleText)
             .filter { SubtitleParser.isNonSpeechCue($0.text) == false }
@@ -166,6 +186,7 @@ final class AlignmentQualityTests: XCTestCase {
             output: afterSpeechCues,
             oracle: oracleCues,
             noteLines: noteLines,
+            refWords: refWords,
             perCueStartMsTolerance: tolerance.perCueStartMsTolerance
         )
 
@@ -218,7 +239,9 @@ final class AlignmentQualityTests: XCTestCase {
         // expectFailure suppresses the red so CI tracks the numbers instead of
         // blocking on quality. When quality improves to consistently meet
         // tolerance, XCTExpectFailure will itself fail and we drop the wrapper.
-        XCTExpectFailure("Alignment timing not yet within tolerance — see printed metrics for the current AFTER numbers and the BEFORE/AFTER delta") {
+        let gate = XCTExpectedFailure.Options()
+        gate.isStrict = false   // songs that already meet the gate must not error for lacking a failure
+        XCTExpectFailure("Alignment timing not yet within tolerance — see printed metrics for the current AFTER numbers and the BEFORE/AFTER delta", options: gate) {
             XCTAssertGreaterThanOrEqual(afterMetrics.coverageFraction, tolerance.minCoverage,
                                         "Coverage \(afterMetrics.coverageFraction) < tolerance.minCoverage \(tolerance.minCoverage)")
             XCTAssertLessThanOrEqual(afterMetrics.medianStartDeltaMs, tolerance.medianStartMsTolerance,
@@ -233,6 +256,7 @@ final class AlignmentQualityTests: XCTestCase {
         tolerance: Tolerance,
         afterMetrics: QualityMetrics
     ) {
+        let perCueStartMsTolerance = tolerance.perCueStartMsTolerance
         func row(_ label: String, _ metrics: QualityMetrics, totalOracleCount: Int) -> [String] {
             let textMatchPct = totalOracleCount == 0 ? 100.0 : Double(metrics.matchedCueCount) / Double(totalOracleCount) * 100
             let withinTolerancePct = metrics.coverageFraction * 100
@@ -246,6 +270,7 @@ final class AlignmentQualityTests: XCTestCase {
                 "│   median Δstart:      \(medianFmt)",
                 "│   max Δstart:         \(maxFmt)",
                 "│   missing from out:   \(missingDisplay)",
+                "│   words:              \(metrics.wordsWithinCount) / \(metrics.wordCount) within ±\(perCueStartMsTolerance)ms · median \(metrics.wordMedianDeltaMs) ms · max \(metrics.wordMaxDeltaMs) ms",
             ]
         }
 
@@ -293,28 +318,37 @@ final class AlignmentQualityTests: XCTestCase {
         output: [SubtitleCue],
         oracle: [SubtitleCue],
         noteLines: [String],
+        refWords: [[RefWord]]?,
         perCueStartMsTolerance: Int
     ) -> QualityMetrics {
         var nextOracle = 0
         var nextOutput = 0
         var deltas: [Int] = []
+        var wordDeltas: [Int] = []
         var missingFromOutput: [String] = []
         var matchedOutputIndices = Set<Int>()
 
-        for line in noteLines {
+        for (li, line) in noteLines.enumerated() {
             guard let oi = (nextOracle..<oracle.count).first(where: { cueMatchesNoteLine(oracle[$0].text, line) }) else {
                 continue   // ungradable: the oracle never produced this line
             }
             nextOracle = oi + 1
-            if oracle[oi].startMs == 0 && oracle[oi].endMs == 0 {
-                continue   // ungradable: a consensus oracle lists the line but its aligners disagreed on it
-            }
+            // A consensus oracle lists a line its aligners disagreed on as a zero-time cue: the line
+            // start is ungradable, but its confirmed words (if any) still are.
+            let lineDisputed = oracle[oi].startMs == 0 && oracle[oi].endMs == 0
             guard let j = (nextOutput..<output.count).first(where: { cueMatchesNoteLine(output[$0].text, line) }) else {
-                missingFromOutput.append(line)
+                if lineDisputed == false { missingFromOutput.append(line) }
                 continue
             }
             nextOutput = j + 1
             matchedOutputIndices.insert(j)
+            if let refWords, li < refWords.count {
+                for w in refWords[li] {
+                    guard let cp = output[j].checkpoints.first(where: { w.off >= $0.charOffsetInCue && w.off < $0.charOffsetInCue + $0.charLength }) else { continue }
+                    wordDeltas.append(abs(cp.timeMs - Int((w.start * 1000).rounded())))
+                }
+            }
+            if lineDisputed { continue }
             deltas.append(abs(output[j].startMs - oracle[oi].startMs))
         }
 
@@ -322,6 +356,7 @@ final class AlignmentQualityTests: XCTestCase {
             .filter { matchedOutputIndices.contains($0.offset) == false }
             .map { $0.element.text }
         let sorted = deltas.sorted()
+        let sortedWords = wordDeltas.sorted()
         let graded = deltas.count + missingFromOutput.count
         return QualityMetrics(
             oracleCueCount: graded,
@@ -330,7 +365,11 @@ final class AlignmentQualityTests: XCTestCase {
             medianStartDeltaMs: sorted.isEmpty ? 0 : sorted[sorted.count / 2],
             maxStartDeltaMs: sorted.last ?? 0,
             missingFromOutput: missingFromOutput,
-            extrasInOutput: extrasInOutput
+            extrasInOutput: extrasInOutput,
+            wordCount: wordDeltas.count,
+            wordsWithinCount: wordDeltas.filter { $0 <= perCueStartMsTolerance }.count,
+            wordMedianDeltaMs: sortedWords.isEmpty ? 0 : sortedWords[sortedWords.count / 2],
+            wordMaxDeltaMs: sortedWords.last ?? 0
         )
     }
 }
