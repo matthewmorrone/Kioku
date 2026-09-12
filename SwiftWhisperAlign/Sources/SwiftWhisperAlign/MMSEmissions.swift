@@ -29,7 +29,12 @@ enum MMSEmissions {
     static func loadModel(onStage: (@Sendable (String) -> Void)? = nil) async throws -> MLModel {
         let url = try await MMSModelStore.ensureModel(onStage: onStage)
         let cfg = MLModelConfiguration()
-        cfg.computeUnits = .all
+        // CPU only, deliberately. Measured on an iPhone 17 for a 260 s song: `.all` loads in
+        // 11 s, holds ~1.1 GB and writes ~1 GB of compile cache on first use for a 5 s emission
+        // pass; CPU loads in 1 s with ~100 MB and takes 9 s — identical output, faster overall,
+        // and no memory cliff next to the isolator. `.cpuAndNeuralEngine` differs numerically
+        // enough to park one line 13 s off.
+        cfg.computeUnits = .cpuOnly
         return try MLModel(contentsOf: url, configuration: cfg)
     }
 

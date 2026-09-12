@@ -18,9 +18,9 @@ public struct CTCForcedAligner {
     public init() {}
 
     // CTC fires a token at the end of its phone, so every start lands late by roughly a
-    // consonant. Measured on the oracle fixture: −200 ms gives the best median, −400 ms the
-    // most lines within ±500 ms; this sits between.
-    static let startLead = 0.30
+    // consonant. Swept on device against the oracle: 0.20 s gives the best median and coverage
+    // (0.30 and 0.40 trade median for nothing).
+    static let startLead = 0.20
     // Frames this far outside a sung region are pinned to blank.
     static let regionMargin = 0.5
 
