@@ -98,7 +98,12 @@ enum MMSEmissions {
             let F = lp.shape[1].intValue
             frameSec = windowSec / Double(F)
             let lead = Int(((t - a) / frameSec).rounded())
-            let keep = min(Int((min(windowSec - (t - a), total - t) / frameSec).rounded()), F - lead)
+            // Frames in a window's last second have no right-hand context and come out garbled;
+            // stop short of them and let the next window (which starts overlapSec earlier) supply
+            // them with context on both sides. Only the final window runs to its end.
+            let lastWindow = a + windowSec >= total
+            let tailTrim = lastWindow ? 0 : overlapSec / 2
+            let keep = min(Int((min(windowSec - (t - a) - tailTrim, total - t) / frameSec).rounded()), F - lead)
             guard keep > 0 else { break }
             // The fp16 export hands back a Float16 array on device; convert rather than
             // reinterpret the buffer.

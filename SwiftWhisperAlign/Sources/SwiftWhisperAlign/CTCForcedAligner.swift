@@ -94,6 +94,10 @@ public struct CTCForcedAligner {
             onProgress: { frac in onProgress?(0.45 + 0.45 * frac) }
         )
         Self.breadcrumb("emissions \(matrix.frames) frames × \(MMSEmissions.classes)")
+        #if DEBUG
+        Self.debugDump(matrix.values.withUnsafeBufferPointer { Data(buffer: $0) },
+                       name: "\(VocalStemCache.identityKey(for: input.audioURL)).emissions.f32")
+        #endif
 
         // Outside the sung regions the emissions are weak and near-blank, and the DP would
         // happily start the next line anywhere inside an interlude. Pinning those frames to
@@ -130,6 +134,10 @@ public struct CTCForcedAligner {
             }
             spanTokenRanges.append(ranges)
         }
+        #if DEBUG
+        Self.debugDump(Data(input.romanization.map { $0.map(\.romaji).joined(separator: "|") }.joined(separator: "\n").utf8),
+                       name: "\(VocalStemCache.identityKey(for: input.audioURL)).romaji.txt")
+        #endif
         guard tokens.isEmpty == false else {
             throw NSError(domain: "SwiftWhisperAlign.CTC", code: 4,
                           userInfo: [NSLocalizedDescriptionKey: "The lyrics romanized to nothing alignable."])
