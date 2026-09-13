@@ -440,7 +440,19 @@ struct SettingsView: View {
                 // moved off the main screen to keep it focused. See advancedSettings.
                 Section {
                     NavigationLink {
-                        Form { advancedSettings }
+                        Form {
+                            advancedSettings
+                            // MARK: Storage — models, isolated vocals and caches live at the bottom of
+                            // Advanced (own file: self-contained @State + alerts). Its Clear Caches
+                            // confirmation and state stay on this view.
+                            DownloadedModelsSection(
+                                refreshToken: storageRefreshToken,
+                                cachesBytes: cachesBytes,
+                                isClearingCaches: isClearingCaches,
+                                onClearCaches: { isShowingClearCachesConfirmation = true },
+                                onStorageChanged: { Task { await refreshCachesBytes() } }
+                            )
+                        }
                             .scrollDismissesKeyboard(.interactively)
                             .washiBackground()
                             .navigationTitle("Advanced")
@@ -477,16 +489,6 @@ struct SettingsView: View {
                 } header: {
                     Text("Data")
                 }
-
-                // MARK: Downloaded Models — extracted to its own file (self-contained @State +
-                // alerts) so this file stays under the 1000-line invariant cap.
-                DownloadedModelsSection(
-                    refreshToken: storageRefreshToken,
-                    cachesBytes: cachesBytes,
-                    isClearingCaches: isClearingCaches,
-                    onClearCaches: { isShowingClearCachesConfirmation = true },
-                    onStorageChanged: { Task { await refreshCachesBytes() } }
-                )
             }
             .scrollDismissesKeyboard(.interactively)
             .washiBackground()
