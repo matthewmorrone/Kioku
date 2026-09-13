@@ -76,14 +76,21 @@ final class SongBreakdownService {
         // it's just unsupported for this one feature. Throw the distinct, accurate error instead.
         // With on-device Apple Intelligence selected (correction's best home), the breakdown
         // goes to Private Cloud Compute instead whenever the device offers it: no key, no cost,
-        // and the feature isn't lost to a picker that serves both features.
-        if provider == .appleIntelligence, AppleIntelligenceCloudAvailability.isAvailable == false {
-            NSLog("[SongBreakdown] on-device Apple Intelligence selected and Cloud unavailable — throwing appleIntelligenceUnsupported")
-            throw SongBreakdownError.appleIntelligenceUnsupported
-        }
+        // and the feature isn't lost to a picker that serves both features. Note this fallback
+        // reads LLMSettings.correctionProvider(), not `provider` above: breakdownProvider() is
+        // the remote-only picker (see its doc comment) and never resolves to .appleIntelligence,
+        // so checking `provider` here would never trigger — correctionProvider() is what actually
+        // reports "on-device Apple Intelligence is where correction runs".
+        let onDeviceCorrectionFallback = provider == .none && LLMSettings.correctionProvider() == .appleIntelligence
         // The Cloud/Cloud Pro variants (Private Cloud Compute) get their own dispatch path,
-        // bypassing the API-key guard below for the same reason as the on-device check above.
-        if provider.isAppleIntelligence {
+        // bypassing the API-key guard below for the same reason as the on-device check above —
+        // either the breakdown picker itself is set to Cloud/Cloud Pro, or the on-device fallback
+        // above applies.
+        if provider.isAppleIntelligence || onDeviceCorrectionFallback {
+            guard AppleIntelligenceCloudAvailability.isAvailable else {
+                NSLog("[SongBreakdown] Apple Intelligence Cloud selected/fallback but unavailable — throwing appleIntelligenceUnsupported")
+                throw SongBreakdownError.appleIntelligenceUnsupported
+            }
             return try await generateViaAppleIntelligenceCloud(
                 noteID: noteID,
                 lyrics: lyrics,
