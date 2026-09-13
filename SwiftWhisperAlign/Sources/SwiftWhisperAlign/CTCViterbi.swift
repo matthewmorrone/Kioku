@@ -11,7 +11,8 @@ import Foundation
 public enum CTCViterbi {
     // `logProbs` is row-major [frames × classes]. Returns one (startFrame, endFrame-exclusive)
     // span per token, or nil when no monotonic path exists (more tokens than frames allow).
-    public static func align(logProbs: [Float], frames: Int, classes: Int, tokens: [Int]) -> [(start: Int, end: Int)]? {
+    public static func align(logProbs: [Float], frames: Int, classes: Int, tokens: [Int],
+                             optional: [Bool]? = nil) -> [(start: Int, end: Int)]? {
         let L = tokens.count
         guard L > 0, frames > 0 else { return nil }
         let S = 2 * L + 1
@@ -20,12 +21,17 @@ public enum CTCViterbi {
         @inline(__always) func label(_ s: Int) -> Int { s & 1 == 1 ? tokens[(s - 1) / 2] : 0 }
         // Skipping the blank between two tokens is only allowed when they differ.
         @inline(__always) func canSkip(_ s: Int) -> Bool { s >= 3 && s & 1 == 1 && tokens[(s - 1) / 2] != tokens[(s - 3) / 2] }
+        // An optional token (a star for wordless vocals) may be bypassed: the states after it can
+        // also be entered from the states before it. Optional tokens are never adjacent to each other.
+        let opt = optional ?? [Bool](repeating: false, count: L)
+        @inline(__always) func isOptionalTokenState(_ s: Int) -> Bool { s >= 1 && s & 1 == 1 && opt[(s - 1) / 2] }
 
         var prev = [Float](repeating: neg, count: S)
         var cur = [Float](repeating: neg, count: S)
-        var back = [UInt8](repeating: 0, count: frames * S)   // 0: stay, 1: from s-1, 2: from s-2
+        var back = [UInt8](repeating: 0, count: frames * S)   // offset to the predecessor state (0: stay)
         prev[0] = logProbs[0]
         prev[1] = logProbs[label(1)]
+        if opt[0], S > 3 { prev[2] = logProbs[0]; prev[3] = logProbs[label(3)] }
         for t in 1..<frames {
             let row = t * classes
             let bp = t * S
@@ -36,12 +42,22 @@ public enum CTCViterbi {
                 var best = prev[s]; var arg: UInt8 = 0
                 if s >= 1, prev[s - 1] > best { best = prev[s - 1]; arg = 1 }
                 if canSkip(s), prev[s - 2] > best { best = prev[s - 2]; arg = 2 }
+                if s & 1 == 0, isOptionalTokenState(s - 1) {            // blank after an optional token: skip it
+                    if prev[s - 2] > best { best = prev[s - 2]; arg = 2 }
+                    if s >= 3, prev[s - 3] > best { best = prev[s - 3]; arg = 3 }
+                } else if s & 1 == 1, s >= 3, isOptionalTokenState(s - 2) {   // token after an optional token: skip it
+                    if prev[s - 3] > best { best = prev[s - 3]; arg = 3 }
+                    if s >= 5, tokens[(s - 1) / 2] != tokens[(s - 5) / 2], prev[s - 4] > best { best = prev[s - 4]; arg = 4 }
+                }
                 cur[s] = best == neg ? neg : best + logProbs[row + label(s)]
                 back[bp + s] = arg
             }
             swap(&prev, &cur)
         }
         var s = prev[S - 1] >= prev[S - 2] ? S - 1 : S - 2
+        if opt[L - 1], S > 4 {                                  // a trailing optional token may go unused
+            for e in [S - 3, S - 4] where prev[e] > prev[s] { s = e }
+        }
         guard prev[s] > neg else { return nil }
 
         var spans = [(start: Int, end: Int)](repeating: (0, 0), count: L)

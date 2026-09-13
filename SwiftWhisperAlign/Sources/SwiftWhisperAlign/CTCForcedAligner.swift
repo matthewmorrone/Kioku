@@ -132,8 +132,12 @@ public struct CTCForcedAligner {
             }
         }
 
-        // Flatten every span's romaji into one token sequence, remembering each span's range.
-        var tokens: [Int] = []
+        // Flatten every span's romaji into one token sequence, remembering each span's range. An
+        // optional star (MMS's "any vocal" class) at each end of the song absorbs wordless intros and
+        // fades so they can't capture the first or last line. Between lines it would also eat weak
+        // short lines (measured: セラヴィ's 駆け抜けて), so it is only placed at the edges.
+        let star = MMSEmissions.labels.firstIndex(of: "*")
+        var tokens: [Int] = star.map { [$0] } ?? []
         var spanTokenRanges: [[Range<Int>]] = []   // per line, per span
         for lineSpans in input.romanization {
             var ranges: [Range<Int>] = []
@@ -152,12 +156,15 @@ public struct CTCForcedAligner {
         Self.debugDump(Data(input.romanization.map { $0.map(\.romaji).joined(separator: "|") }.joined(separator: "\n").utf8),
                        name: "\(VocalStemCache.identityKey(for: input.audioURL)).romaji.txt")
         #endif
-        guard tokens.isEmpty == false else {
+        guard tokens.count > (star == nil ? 0 : 1) else {
             throw NSError(domain: "SwiftWhisperAlign.CTC", code: 4,
                           userInfo: [NSLocalizedDescriptionKey: "The lyrics romanized to nothing alignable."])
         }
+        if let star { tokens.append(star) }
+        var optional = [Bool](repeating: false, count: tokens.count)
+        if star != nil { optional[0] = true; optional[tokens.count - 1] = true }
         guard let spans = CTCViterbi.align(logProbs: matrix.values, frames: matrix.frames,
-                                           classes: MMSEmissions.classes, tokens: tokens) else {
+                                           classes: MMSEmissions.classes, tokens: tokens, optional: optional) else {
             throw NSError(domain: "SwiftWhisperAlign.CTC", code: 5,
                           userInfo: [NSLocalizedDescriptionKey: "The lyrics don't fit the sung audio (more text than the song can hold)."])
         }
