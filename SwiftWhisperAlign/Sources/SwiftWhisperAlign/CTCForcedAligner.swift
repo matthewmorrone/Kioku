@@ -17,10 +17,14 @@ import CoreML
 public struct CTCForcedAligner {
     public init() {}
 
-    // CTC fires a token at the end of its phone, so every start lands late by roughly a
-    // consonant. Swept on device against the oracle: 0.20 s gives the best median and coverage
-    // (0.30 and 0.40 trade median for nothing).
-    static let startLead = 0.20
+    // CTC fires a token at the end of its phone, so a token's spike lands late by roughly a
+    // consonant. The letter probability ramps up over the frames before the spike as the syllable
+    // begins; a start is read at the foot of that ramp (walking back while the letter mass stays
+    // above `onsetMassThreshold`, at most `onsetMaxBack` s). Measured on 12 songs against the
+    // consensus reference: median line error 210 → 40 ms, early bias 210 → 10 ms, +4 lines,
+    // versus the fixed 0.20 s lead this replaces.
+    static let onsetMassThreshold: Float = 0.10
+    static let onsetMaxBack = 0.4
     // Frames this far outside a sung region are pinned to blank.
     static let regionMargin = 0.5
 
@@ -171,9 +175,10 @@ public struct CTCForcedAligner {
         Self.breadcrumb("viterbi placed \(tokens.count) tokens")
         onProgress?(0.95)
 
+        let onsets = Self.onsetFrames(matrix: matrix)
         let (lines, lineTokens) = Self.lineTimings(
             lines: input.lines, romanization: input.romanization, spanTokenRanges: spanTokenRanges,
-            tokenSpans: spans, frameSec: matrix.frameSec, durationSec: Double(vocalMono.count) / 44_100
+            tokenSpans: spans, onsetOf: { onsets[$0] }, frameSec: matrix.frameSec, durationSec: Double(vocalMono.count) / 44_100
         )
         onSegment?(lines)
         onProgress?(1.0)
@@ -204,14 +209,32 @@ public struct CTCForcedAligner {
         return mono
     }
 
-    // Turns token spans into per-line timings and per-span checkpoints. A line starts at its
-    // first placed token (less `startLead`) and ends at its last; the end is bridged to the
+    // For every frame, the frame where the letter-mass ramp leading up to it begins (see
+    // `onsetMassThreshold`): a token whose spike is at frame f starts at onsets[f].
+    private static func onsetFrames(matrix: MMSEmissions.Matrix) -> [Int] {
+        let C = MMSEmissions.classes, blank = MMSEmissions.blank, star = MMSEmissions.labels.firstIndex(of: "*")
+        var mass = [Float](repeating: 0, count: matrix.frames)
+        for f in 0..<matrix.frames {
+            var m: Float = 0
+            for c in 0..<C where c != blank && c != star { m += exp(matrix.values[f * C + c]) }
+            mass[f] = m
+        }
+        let maxBack = Int(onsetMaxBack / matrix.frameSec)
+        return (0..<matrix.frames).map { spike in
+            var f = spike
+            while f > 0, spike - f < maxBack, mass[f - 1] >= onsetMassThreshold { f -= 1 }
+            return f
+        }
+    }
+
+    // Turns token spans into per-line timings and per-span checkpoints. A line starts at the
+    // onset of its first placed token and ends at its last; the end is bridged to the
     // next line's start when the gap is short (a held final vowel plus a breath — CTC leaves
     // the token as soon as the phone is recognizable, so its own end lands well before the
     // singer stops), while a longer gap stays open for a ♪ marker.
     private static func lineTimings(
         lines: [String], romanization: [[RomanizedSpan]], spanTokenRanges: [[Range<Int>]],
-        tokenSpans: [(start: Int, end: Int)], frameSec: Double, durationSec: Double
+        tokenSpans: [(start: Int, end: Int)], onsetOf: (Int) -> Int, frameSec: Double, durationSec: Double
     ) -> (lines: [AlignedLine], lineTokens: [[AlignedToken]]) {
         let sustainedVowelGap = 4.0
         let bridgeMargin = 0.05
@@ -224,7 +247,7 @@ public struct CTCForcedAligner {
         for ranges in spanTokenRanges {
             let placed = ranges.flatMap { Array($0) }
             if let first = placed.first, let last = placed.last {
-                lineStart.append(max(0, time(tokenSpans[first].start) - startLead))
+                lineStart.append(time(onsetOf(tokenSpans[first].start)))
                 lineEnd.append(time(tokenSpans[last].end))
             } else {
                 lineStart.append(nil); lineEnd.append(nil)
@@ -253,7 +276,7 @@ public struct CTCForcedAligner {
             var lastStart = -Double.infinity
             for (span, range) in zip(romanization[i], spanTokenRanges[i]) {
                 guard let first = range.first else { continue }
-                var t = max(start, time(tokenSpans[first].start) - startLead)
+                var t = max(start, time(onsetOf(tokenSpans[first].start)))
                 // Keep checkpoints distinct and forward-only, clamped to the line end.
                 if t < lastStart + 0.1 { t = min(lastStart + 0.1, end) }
                 lastStart = t
