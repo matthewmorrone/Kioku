@@ -243,7 +243,10 @@ final class SongBreakdownStore: ObservableObject {
 
     // Hands the note's waiting correction to the caller (once) — nil when there is none.
     func takePendingCorrection(forNoteID id: UUID) -> LLMCorrectionResponse? {
-        pendingCorrectionByNoteID.removeValue(forKey: id)
+        // Mutating the @Published map publishes even when the key is absent, and the ReadView
+        // reacts to every publish by calling this — so only touch it when there is something.
+        guard pendingCorrectionByNoteID[id] != nil else { return nil }
+        return pendingCorrectionByNoteID.removeValue(forKey: id)
     }
 
     // Runs ONE merged LLM call (see MergedCorrectionBreakdownService) that returns both a
