@@ -236,7 +236,7 @@ final class SongBreakdownStore: ObservableObject {
     func startBreakdown(forNote note: Note, providerLabel: String) {
         let useLLM = LLMSettings.isEnabled()
         let remote = LLMSettings.breakdownProvider()
-        if useLLM, remote != .none, LLMSettings.activeProvider() == remote {
+        if useLLM, remote != .none, LLMSettings.correctionProvider() == remote {
             startMergedGeneration(forNote: note, providerLabel: providerLabel)
         } else {
             startGeneration(forNoteID: note.id, lyrics: note.content, providerLabel: providerLabel)
@@ -338,7 +338,7 @@ final class SongBreakdownStore: ObservableObject {
 
     // UI-only label resolution. Lives on the store so views and tests share one lookup
     // instead of each surface re-deriving the same UserDefaults read. Reflects the same
-    // useLLM / activeProvider decision the service will make at dispatch time.
+    // useLLM / breakdownProvider decision the service will make at dispatch time.
     static func loadingProviderLabel() -> String {
         let useLLM = LLMSettings.isEnabled()
         if useLLM == false { return "stub mode" }

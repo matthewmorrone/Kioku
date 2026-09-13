@@ -20,7 +20,7 @@ enum TranscriptionEngine: String, CaseIterable {
     var displayName: String {
         switch self {
         case .appleSpeech: return "Apple Speech"
-        case .whisper:     return "Whisper (Small, on-device)"
+        case .whisper:     return "Whisper (on-device)"
         case .qwen3:       return "Qwen3-ASR (on-device)"
         }
     }

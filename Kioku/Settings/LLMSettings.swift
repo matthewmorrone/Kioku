@@ -44,6 +44,7 @@ enum LLMProvider: String, CaseIterable {
 // Centralizes storage keys and defaults for LLM provider configuration.
 // Keys use the kioku.llm prefix to avoid collisions with other app settings.
 enum LLMSettings {
+    // The one shared remote-provider pick, used for both Correction and Breakdown.
     static let providerKey = "kioku.llm.provider"
     // API keys live in the Keychain. These constants double as the Keychain account
     // names and the legacy UserDefaults keys that pre-Keychain installs migrate from.
@@ -82,8 +83,15 @@ enum LLMSettings {
     // to invoke the tool, and song lyrics — the common case for Kioku — depend
     // heavily on contextual readings JMdict doesn't carry.
     static let useWebSearchKey = "kioku.llm.useWebSearch"
-    // Correction runs on the device's own model whenever it is present, unless this is off.
-    static let preferOnDeviceCorrectionKey = "kioku.llm.preferOnDeviceCorrection"
+    // Whether on-device Apple Intelligence should be usable at all when the device has it.
+    // Off means correctionProvider() never resolves to it, even if available — Correction
+    // falls straight through to the shared remote provider (or none).
+    static let appleIntelligenceEnabledKey = "kioku.llm.appleIntelligenceEnabled"
+    // True unless the user explicitly turned the toggle off.
+    static func isAppleIntelligenceEnabled() -> Bool {
+        UserDefaults.standard.object(forKey: appleIntelligenceEnabledKey) == nil
+            || UserDefaults.standard.bool(forKey: appleIntelligenceEnabledKey)
+    }
     // For OpenAI: when web search is enabled, this model is used in place of the
     // user's configured model because web_search is a model-level feature in the
     // Chat Completions API rather than a separately-passable tool. The user's
@@ -94,35 +102,26 @@ enum LLMSettings {
 
     static var defaultProvider: String { LLMProvider.none.rawValue }
 
-    // True unless the user turned it off: on-device Apple Intelligence handles correction
-    // whenever the device offers it, and the remote provider is only for what it can't do.
-    static func prefersOnDeviceCorrection() -> Bool {
-        UserDefaults.standard.object(forKey: preferOnDeviceCorrectionKey) == nil
-            || UserDefaults.standard.bool(forKey: preferOnDeviceCorrectionKey)
-    }
-
     // The provider picked in Settings: the REMOTE model (OpenAI / Claude), or none. On-device
-    // Apple Intelligence is not a choice here but a capability the app uses on its own, and
-    // Cloud / Cloud Pro need the Private Cloud Compute entitlement this app lacks (calling
-    // without it SIGTRAPs inside FoundationModels, confirmed on-device 2026-09-10 and -13) —
-    // so any stored Apple value reads as none.
+    // Apple Intelligence is not a choice here but a capability the app uses on its own (see
+    // correctionProvider), and Cloud / Cloud Pro need the Private Cloud Compute entitlement this
+    // app lacks (calling without it SIGTRAPs inside FoundationModels, confirmed on-device
+    // 2026-09-10 and -13) — so any stored Apple value reads as none.
     static func remoteProvider() -> LLMProvider {
         let raw = UserDefaults.standard.string(forKey: providerKey) ?? defaultProvider
         let provider = LLMProvider(rawValue: raw) ?? .none
         return provider.isAppleIntelligence ? .none : provider
     }
 
-    // The provider correction runs on: on-device when available and preferred, else the remote
-    // provider if it has a key, else on-device if merely available, else none.
-    static func activeProvider() -> LLMProvider {
-        let onDevice = AppleIntelligenceAvailability.isAvailable
-        if onDevice, prefersOnDeviceCorrection() { return .appleIntelligence }
+    // The provider correction runs on: on-device Apple Intelligence when it's available and the
+    // toggle hasn't turned it off, else the shared remote provider if it has a key, else none.
+    static func correctionProvider() -> LLMProvider {
+        if AppleIntelligenceAvailability.isAvailable, isAppleIntelligenceEnabled() { return .appleIntelligence }
         let remote = remoteProvider()
-        if remote != .none, apiKey(for: remote) != nil { return remote }
-        return onDevice ? .appleIntelligence : .none
+        return apiKey(for: remote) != nil ? remote : .none
     }
 
-    // The provider song breakdowns run on: always the remote one (on-device can't do them).
+    // The provider song breakdowns run on: always the shared remote one (on-device can't do them).
     static func breakdownProvider() -> LLMProvider { remoteProvider() }
 
     // The stored API key for a remote provider (Keychain), nil for none / Apple variants.
@@ -149,9 +148,9 @@ enum LLMSettings {
         }
     }
 
-    // Returns the API key for the currently configured provider, or nil if not set.
+    // Returns the API key for the current correction provider, or nil if not set.
     static func activeAPIKey() -> String? {
-        apiKey(for: activeProvider())
+        apiKey(for: correctionProvider())
     }
 
     // Returns the configured Claude model id, defaulting to Sonnet 5 when unset or blank.
@@ -177,12 +176,12 @@ enum LLMSettings {
         return UserDefaults.standard.bool(forKey: useWebSearchKey)
     }
 
-    // Returns true when useLLM is on and the active provider is usable (Apple
+    // Returns true when useLLM is on and the correction provider is usable (Apple
     // Intelligence available on-device or via Private Cloud Compute, or a remote
     // provider with a key), or when useLLM is off and a stub is set.
     static func isConfigured() -> Bool {
         if isEnabled() {
-            let provider = activeProvider()
+            let provider = correctionProvider()
             switch provider {
             case .appleIntelligence:
                 return AppleIntelligenceAvailability.isAvailable

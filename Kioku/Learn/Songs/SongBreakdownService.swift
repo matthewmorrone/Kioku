@@ -263,7 +263,7 @@ enum SongBreakdownError: LocalizedError {
         case .noKeyConfigured:
             return "No LLM is configured. Set one up in Settings, or paste a stub response for offline use."
         case .appleIntelligenceUnsupported:
-            return "Song breakdown isn't supported with on-device Apple Intelligence — pick Cloud, Cloud Pro, OpenAI, or Claude in Settings."
+            return "Song breakdown isn't supported with on-device Apple Intelligence — pick OpenAI or Claude in Settings."
         case .appleIntelligenceCloudUnavailable:
             return "Apple Intelligence Cloud isn't available. It needs iOS 27+, Apple Intelligence enabled, and a network connection."
         case .networkError(let msg):

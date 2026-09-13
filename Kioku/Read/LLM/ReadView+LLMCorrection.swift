@@ -62,7 +62,7 @@ extension ReadView {
         // single response; we apply it once at the end. Reading this once up
         // front avoids racing the @AppStorage value mid-request.
         let useLLM = LLMSettings.isEnabled()
-        let provider = LLMSettings.activeProvider()
+        let provider = LLMSettings.correctionProvider()
         let willStream = useLLM && (provider == .appleIntelligence
             || ((provider == .openAI || provider == .claude) && LLMSettings.isWebSearchEnabled() == false))
 
