@@ -41,6 +41,11 @@ private enum DownloadedModelKind: String, Identifiable, Equatable {
 struct DownloadedModelsSection: View {
     // Re-measures every row whenever the owner bumps this (e.g. after Clear Caches).
     var refreshToken: Int = 0
+    // What Clear Caches would free (Library/Caches + tmp, measured by the owner), shown on the
+    // button at the bottom of the Caches section; the rows above it sum to this figure.
+    var cachesBytes: Int = 0
+    var isClearingCaches: Bool = false
+    var onClearCaches: () -> Void = {}
     // Called after any deletion here so the owner can re-measure its own storage readouts.
     var onStorageChanged: () -> Void = {}
     @State private var whisperModelManager = WhisperModelManager()
@@ -54,12 +59,13 @@ struct DownloadedModelsSection: View {
     @State private var whisperModelFilenamePendingDeletion: String?
 
     var body: some View {
-        // Always mounted: the measuring `.task` below hangs off this Section, and a conditionally
-        // absent view never runs its task — which left the list permanently empty once every
-        // row started at zero.
-        Section {
-            if qwenASRBytes > 0 || qwenForcedAlignerBytes > 0 || htDemucsBytes > 0 || vocalStemsBytes > 0
-                || whisperModelManager.downloadedModels.isEmpty == false || cacheEntries.isEmpty == false {
+        // Both sections are always mounted: the measuring `.task` below hangs off this Group, and a
+        // conditionally absent view never runs its task — which left the list permanently empty
+        // once every row started at zero.
+        Group {
+            Section {
+                if qwenASRBytes > 0 || qwenForcedAlignerBytes > 0 || htDemucsBytes > 0 || vocalStemsBytes > 0
+                    || whisperModelManager.downloadedModels.isEmpty == false {
                     if qwenASRBytes > 0 {
                         downloadedModelRow(kind: .qwenASR, bytes: qwenASRBytes)
                     }
@@ -87,26 +93,47 @@ struct DownloadedModelsSection: View {
                             }
                         }
                     }
-                    ForEach(cacheEntries) { entry in
-                        HStack {
-                            Label(entry.label, systemImage: "internaldrive")
-                            Spacer()
-                            Text(formattedBytes(entry.bytes))
-                                .foregroundStyle(.secondary)
-                        }
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                cacheEntryPendingDeletion = entry
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+                } else {
+                    Text("Empty").foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Downloaded")
+            }
+            Section {
+                ForEach(cacheEntries) { entry in
+                    HStack {
+                        Label(entry.label, systemImage: "internaldrive")
+                        Spacer()
+                        Text(formattedBytes(entry.bytes))
+                            .foregroundStyle(.secondary)
+                    }
+                    .swipeActions {
+                        Button(role: .destructive) {
+                            cacheEntryPendingDeletion = entry
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
                     }
-            } else {
-                Text("Empty").foregroundStyle(.secondary)
+                }
+                // Files below the listing cutoff, so the rows sum to the button exactly.
+                let listed = cacheEntries.reduce(0) { $0 + $1.bytes }
+                if cachesBytes > listed {
+                    HStack {
+                        Label("Other", systemImage: "doc")
+                        Spacer()
+                        Text(formattedBytes(cachesBytes - listed)).foregroundStyle(.secondary)
+                    }
+                }
+                Button {
+                    onClearCaches()
+                } label: {
+                    Label(cachesBytes > 0 ? "Clear Caches (\(formattedBytes(cachesBytes)))" : "Clear Caches",
+                          systemImage: "trash")
+                }
+                .disabled(isClearingCaches || cachesBytes == 0)
+            } header: {
+                Text("Caches")
             }
-        } header: {
-            Text("Storage")
         }
         .alert(
             "Delete \(modelPendingDeletion?.displayName ?? "Model")?",

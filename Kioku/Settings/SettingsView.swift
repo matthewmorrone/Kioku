@@ -480,15 +480,6 @@ struct SettingsView: View {
                     } label: {
                         Label("Import", systemImage: "square.and.arrow.down")
                     }
-                    Button {
-                        isShowingClearCachesConfirmation = true
-                    } label: {
-                        Label(
-                            cachesBytes > 0 ? "Clear Caches (\(formattedBytes(cachesBytes)))" : "Clear Caches",
-                            systemImage: "internaldrive"
-                        )
-                    }
-                    .disabled(isClearingCaches || cachesBytes == 0)
                     Button(role: .destructive) {
                         isShowingResetConfirmation = true
                     } label: {
@@ -502,6 +493,9 @@ struct SettingsView: View {
                 // alerts) so this file stays under the 1000-line invariant cap.
                 DownloadedModelsSection(
                     refreshToken: storageRefreshToken,
+                    cachesBytes: cachesBytes,
+                    isClearingCaches: isClearingCaches,
+                    onClearCaches: { isShowingClearCachesConfirmation = true },
                     onStorageChanged: { Task { await refreshCachesBytes() } }
                 )
             }
