@@ -41,7 +41,7 @@ final class SongBreakdownService {
         // Keep the (often multi-minute) song-breakdown LLM call alive across app backgrounding.
         let bg = BackgroundTaskHolder.begin("kioku.llm.songBreakdown")
         defer { bg.endDetached() }
-        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
+        let useLLM = LLMSettings.isEnabled()
         let hash = SongBreakdownService.sha256(lyrics)
         let startedAt = Date()
         NSLog("[SongBreakdown] generate start noteID=%@ lyricLength=%d useLLM=%@",
@@ -67,20 +67,23 @@ final class SongBreakdownService {
             )
         }
 
-        let provider = LLMSettings.activeProvider()
+        let provider = LLMSettings.breakdownProvider()
         // Song breakdown doesn't support ON-DEVICE generation — the structured-output prompt is
         // wide enough that Apple Intelligence's small model can't reliably produce it. Checked
         // BEFORE the API-key guard below: Apple Intelligence needs no key by design
         // (LLMSettings.apiKey(for:) always returns nil for it), so without this check that guard
         // would fire first and claim "No LLM is configured" — false, since one IS configured,
         // it's just unsupported for this one feature. Throw the distinct, accurate error instead.
-        if provider == .appleIntelligence {
-            NSLog("[SongBreakdown] Apple Intelligence selected but unsupported for breakdown — throwing appleIntelligenceUnsupported")
+        // With on-device Apple Intelligence selected (correction's best home), the breakdown
+        // goes to Private Cloud Compute instead whenever the device offers it: no key, no cost,
+        // and the feature isn't lost to a picker that serves both features.
+        if provider == .appleIntelligence, AppleIntelligenceCloudAvailability.isAvailable == false {
+            NSLog("[SongBreakdown] on-device Apple Intelligence selected and Cloud unavailable — throwing appleIntelligenceUnsupported")
             throw SongBreakdownError.appleIntelligenceUnsupported
         }
         // The Cloud/Cloud Pro variants (Private Cloud Compute) get their own dispatch path,
         // bypassing the API-key guard below for the same reason as the on-device check above.
-        if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
+        if provider.isAppleIntelligence {
             return try await generateViaAppleIntelligenceCloud(
                 noteID: noteID,
                 lyrics: lyrics,
@@ -90,7 +93,7 @@ final class SongBreakdownService {
                 onPartialLines: onPartialLines
             )
         }
-        guard let apiKey = LLMSettings.activeAPIKey() else {
+        guard let apiKey = LLMSettings.apiKey(for: provider) else {
             NSLog("[SongBreakdown] no API key for active provider — throwing noKeyConfigured")
             throw SongBreakdownError.noKeyConfigured
         }

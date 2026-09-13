@@ -55,6 +55,10 @@ enum LLMSettings {
     static let keysRevisionKey = "kioku.llm.keysRevision"
     // When false (default), the stub response is used instead of a real API call.
     static let useLLMKey = "kioku.llm.useLLM"
+    // AI is on unless the developer stub mode (Advanced → Diagnostics) turned it off.
+    static func isEnabled() -> Bool {
+        UserDefaults.standard.object(forKey: useLLMKey) == nil || UserDefaults.standard.bool(forKey: useLLMKey)
+    }
     // Compact-format stub used when useLLM is false. Parsed by the same pipeline as real responses.
     static let stubResponseKey = "kioku.llm.stubResponse"
     // Sampling temperature sent to the LLM. Lower = more deterministic; range 0.0–1.0.
@@ -78,6 +82,8 @@ enum LLMSettings {
     // to invoke the tool, and song lyrics — the common case for Kioku — depend
     // heavily on contextual readings JMdict doesn't carry.
     static let useWebSearchKey = "kioku.llm.useWebSearch"
+    // Correction runs on the device's own model whenever it is present, unless this is off.
+    static let preferOnDeviceCorrectionKey = "kioku.llm.preferOnDeviceCorrection"
     // For OpenAI: when web search is enabled, this model is used in place of the
     // user's configured model because web_search is a model-level feature in the
     // Chat Completions API rather than a separately-passable tool. The user's
@@ -86,35 +92,40 @@ enum LLMSettings {
     // their Chat Completions replacement.
     static let openAISearchModel = "gpt-5-search-api"
 
-    // Computed so a fresh install on an Apple-Intelligence-capable device picks
-    // the on-device model by default instead of starting at "None". Existing
-    // installs keep their stored value (@AppStorage only consults the default
-    // when no value exists yet).
-    static var defaultProvider: String {
-        AppleIntelligenceAvailability.isAvailable
-            ? LLMProvider.appleIntelligence.rawValue
-            : LLMProvider.none.rawValue
+    static var defaultProvider: String { LLMProvider.none.rawValue }
+
+    // True unless the user turned it off: on-device Apple Intelligence handles correction
+    // whenever the device offers it, and the remote provider is only for what it can't do.
+    static func prefersOnDeviceCorrection() -> Bool {
+        UserDefaults.standard.object(forKey: preferOnDeviceCorrectionKey) == nil
+            || UserDefaults.standard.bool(forKey: preferOnDeviceCorrectionKey)
     }
 
-    // Returns the active provider from UserDefaults, defaulting to none if unrecognized.
-    // Apple Intelligence Cloud / Cloud Pro are clamped to .none here — Private Cloud Compute
-    // needs the com.apple.developer.private-cloud-compute entitlement (Apple Developer Program
-    // Small Business track, application-only, not self-service), which this app doesn't have.
-    // Calling into PrivateCloudComputeLanguageModel without it doesn't throw a catchable error —
-    // it SIGTRAPs inside FoundationModels itself (confirmed on-device 2026-09-10). Clamping here
-    // (not just hiding the picker rows in SettingsView+AICorrectionSection) self-heals any device
-    // that already has one of these values stored, without needing to touch UserDefaults directly.
-    static func activeProvider() -> LLMProvider {
+    // The provider picked in Settings: the REMOTE model (OpenAI / Claude), or none. On-device
+    // Apple Intelligence is not a choice here but a capability the app uses on its own, and
+    // Cloud / Cloud Pro need the Private Cloud Compute entitlement this app lacks (calling
+    // without it SIGTRAPs inside FoundationModels, confirmed on-device 2026-09-10 and -13) —
+    // so any stored Apple value reads as none.
+    static func remoteProvider() -> LLMProvider {
         let raw = UserDefaults.standard.string(forKey: providerKey) ?? defaultProvider
         let provider = LLMProvider(rawValue: raw) ?? .none
-        if provider == .appleIntelligenceCloud || provider == .appleIntelligenceCloudPro {
-            return .none
-        }
-        return provider
+        return provider.isAppleIntelligence ? .none : provider
     }
 
-    // Returns the API key for the given provider from the Keychain, or nil if not set.
-    // No Apple Intelligence variant (on-device or cloud) takes an API key — always returns nil.
+    // The provider correction runs on: on-device when available and preferred, else the remote
+    // provider if it has a key, else on-device if merely available, else none.
+    static func activeProvider() -> LLMProvider {
+        let onDevice = AppleIntelligenceAvailability.isAvailable
+        if onDevice, prefersOnDeviceCorrection() { return .appleIntelligence }
+        let remote = remoteProvider()
+        if remote != .none, apiKey(for: remote) != nil { return remote }
+        return onDevice ? .appleIntelligence : .none
+    }
+
+    // The provider song breakdowns run on: always the remote one (on-device can't do them).
+    static func breakdownProvider() -> LLMProvider { remoteProvider() }
+
+    // The stored API key for a remote provider (Keychain), nil for none / Apple variants.
     static func apiKey(for provider: LLMProvider) -> String? {
         switch provider {
         case .none, .appleIntelligence, .appleIntelligenceCloud, .appleIntelligenceCloudPro:
@@ -170,7 +181,7 @@ enum LLMSettings {
     // Intelligence available on-device or via Private Cloud Compute, or a remote
     // provider with a key), or when useLLM is off and a stub is set.
     static func isConfigured() -> Bool {
-        if UserDefaults.standard.bool(forKey: useLLMKey) {
+        if isEnabled() {
             let provider = activeProvider()
             switch provider {
             case .appleIntelligence:

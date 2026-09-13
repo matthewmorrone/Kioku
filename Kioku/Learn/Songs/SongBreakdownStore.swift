@@ -229,12 +229,14 @@ final class SongBreakdownStore: ObservableObject {
     }
 
     // Generates the breakdown the only way the UI now offers: the merged call (breakdown +
-    // segmentation correction in one request) whenever the active provider supports it, else
-    // the plain breakdown. The user never chooses; the correction half is handed to the
+    // segmentation correction in one request) when correction would go to the same remote
+    // provider anyway, else the plain breakdown — with on-device correction available, the
+    // correction stays local and free. The correction half of a merged call is handed to the
     // ReadView as pending changes via pendingCorrectionByNoteID.
     func startBreakdown(forNote note: Note, providerLabel: String) {
-        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
-        if useLLM, LLMSettings.activeProvider().isAppleIntelligence == false {
+        let useLLM = LLMSettings.isEnabled()
+        let remote = LLMSettings.breakdownProvider()
+        if useLLM, remote != .none, LLMSettings.activeProvider() == remote {
             startMergedGeneration(forNote: note, providerLabel: providerLabel)
         } else {
             startGeneration(forNoteID: note.id, lyrics: note.content, providerLabel: providerLabel)
@@ -338,12 +340,11 @@ final class SongBreakdownStore: ObservableObject {
     // instead of each surface re-deriving the same UserDefaults read. Reflects the same
     // useLLM / activeProvider decision the service will make at dispatch time.
     static func loadingProviderLabel() -> String {
-        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
+        let useLLM = LLMSettings.isEnabled()
         if useLLM == false { return "stub mode" }
-        switch LLMSettings.activeProvider() {
+        switch LLMSettings.breakdownProvider() {
         case .none: return ""
-        case .appleIntelligence: return "Apple Intelligence"
-        case .appleIntelligenceCloud: return "Apple Intelligence (Cloud)"
+        case .appleIntelligence, .appleIntelligenceCloud: return "Apple Intelligence (Cloud)"
         case .appleIntelligenceCloudPro: return "Apple Intelligence (Cloud Pro)"
         case .openAI: return "OpenAI"
         case .claude: return "Claude"

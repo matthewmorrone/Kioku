@@ -26,7 +26,15 @@ enum AppleIntelligenceCloudAvailability {
     // compiles fine) — only the newer PCC-specific symbols are missing. Xcode 27 ships Swift 6.4,
     // which does declare them, so `compiler(>=6.4)` gates this off on CI and on automatically once
     // the toolchain in use is new enough — no manual per-machine build setting required.
+    // Private Cloud Compute needs the managed entitlement com.apple.developer.private-cloud-compute,
+    // which Apple grants per request (https://developer.apple.com/contact/request/private-cloud-compute/).
+    // The framework's own isAvailable does NOT fold that in: on 2026-09-13 it returned true on a
+    // device and the first request then died with a fatal (uncatchable) "Missing entitlement".
+    // Flip this to true only once the entitlement is granted and added to Kioku.entitlements.
+    static let hasEntitlement = false
+
     static var isAvailable: Bool {
+        guard hasEntitlement else { return false }
         #if canImport(FoundationModels) && compiler(>=6.4)
         if #available(iOS 27.0, *) {
             return PrivateCloudComputeLanguageModel().isAvailable

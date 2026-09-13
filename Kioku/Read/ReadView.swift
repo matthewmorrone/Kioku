@@ -122,7 +122,7 @@ struct ReadView: View {
     // LLM-correction UI state (in-flight request, pending per-location changes, alerts) — see
     // LLMCorrectionUIState.
     @State var llmCorrection = LLMCorrectionUIState()
-    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false
+    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = true
     @AppStorage(LLMSettings.stubResponseKey) private var llmStubResponse = ""
     @AppStorage(SongBreakdownService.songStubResponseKey) private var breakdownStubResponse = ""
     // Keys themselves live in the Keychain; the revision counter is the reactive
@@ -205,13 +205,12 @@ struct ReadView: View {
     var isBreakdownConfigured: Bool {
         _ = llmKeysRevision
         if llmUseLLM {
-            switch LLMSettings.activeProvider() {
-            case .appleIntelligence:
-                return false
-            case .appleIntelligenceCloud, .appleIntelligenceCloudPro:
+            let provider = LLMSettings.breakdownProvider()
+            switch provider {
+            case .appleIntelligence, .appleIntelligenceCloud, .appleIntelligenceCloudPro:
                 return AppleIntelligenceCloudAvailability.isAvailable
             case .none, .openAI, .claude:
-                return LLMSettings.activeAPIKey() != nil
+                return LLMSettings.apiKey(for: provider) != nil
             }
         } else {
             return breakdownStubResponse.isEmpty == false

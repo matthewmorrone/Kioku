@@ -18,7 +18,7 @@ struct BulkImportSheet: View {
     @AppStorage("kioku.bulkImport.autoCorrect") private var autoCorrectImports = false
     // Mirror of LLMSettings.useLLMKey and keysRevision so the toggle row
     // appears/disappears live when the user adjusts LLM setup elsewhere.
-    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = false
+    @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = true
     @AppStorage(LLMSettings.keysRevisionKey) private var llmKeysRevision = 0
     @AppStorage(LLMSettings.providerKey) private var llmProviderRaw: String = LLMSettings.defaultProvider
 

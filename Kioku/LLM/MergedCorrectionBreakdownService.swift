@@ -49,7 +49,7 @@ final class MergedCorrectionBreakdownService {
         let bg = BackgroundTaskHolder.begin("kioku.llm.mergedCorrectionBreakdown")
         defer { bg.endDetached() }
 
-        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
+        let useLLM = LLMSettings.isEnabled()
         let compactInput = Self.compactFormat(forContent: noteContent)
 
         if useLLM == false {
@@ -60,7 +60,7 @@ final class MergedCorrectionBreakdownService {
             return try Self.parseCombined(stub, provider: .stub)
         }
 
-        let provider = LLMSettings.activeProvider()
+        let provider = LLMSettings.breakdownProvider()
         // No Apple Intelligence variant is supported here — not just the on-device model being
         // too small for the breakdown half, but because this feature couples correction and
         // breakdown into ONE call by design. Correction is meant to be free whenever Apple
@@ -78,7 +78,7 @@ final class MergedCorrectionBreakdownService {
         let system = Self.systemPrompt
         let user = Self.userMessage(noteContent: noteContent, compactInput: compactInput)
 
-        guard let apiKey = LLMSettings.activeAPIKey() else {
+        guard let apiKey = LLMSettings.apiKey(for: provider) else {
             throw SongBreakdownError.noKeyConfigured
         }
         let onDelta = Self.makeDeltaHandler(onPartialLines: onPartialLines)
