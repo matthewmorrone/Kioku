@@ -54,10 +54,12 @@ struct DownloadedModelsSection: View {
     @State private var whisperModelFilenamePendingDeletion: String?
 
     var body: some View {
-        Group {
+        // Always mounted: the measuring `.task` below hangs off this Section, and a conditionally
+        // absent view never runs its task — which left the list permanently empty once every
+        // row started at zero.
+        Section {
             if qwenASRBytes > 0 || qwenForcedAlignerBytes > 0 || htDemucsBytes > 0 || vocalStemsBytes > 0
                 || whisperModelManager.downloadedModels.isEmpty == false || cacheEntries.isEmpty == false {
-                Section {
                     if qwenASRBytes > 0 {
                         downloadedModelRow(kind: .qwenASR, bytes: qwenASRBytes)
                     }
@@ -100,10 +102,11 @@ struct DownloadedModelsSection: View {
                             }
                         }
                     }
-                } header: {
-                    Text("Storage")
-                }
+            } else {
+                Text("Empty").foregroundStyle(.secondary)
             }
+        } header: {
+            Text("Storage")
         }
         .alert(
             "Delete \(modelPendingDeletion?.displayName ?? "Model")?",
