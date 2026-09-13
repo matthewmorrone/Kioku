@@ -36,7 +36,7 @@ struct SettingsView: View {
     @AppStorage(AudioSettings.backgroundPlaybackKey) private var backgroundPlayback: Bool = AudioSettings.defaultBackgroundPlayback
     @AppStorage(AudioSettings.autoAdvanceToNextNoteKey) private var autoAdvanceToNextNote: Bool = AudioSettings.defaultAutoAdvanceToNextNote
     @AppStorage(ClipboardSettings.autoDetectKey) private var clipboardAutoDetect: Bool = ClipboardSettings.defaultAutoDetect
-    @AppStorage(DictionarySettings.includeArchaicReadingsKey) private var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
+    @AppStorage(DictionarySettings.includeArchaicReadingsKey) var includeArchaicReadings: Bool = DictionarySettings.defaultIncludeArchaicReadings
     @AppStorage(DictionarySettings.showJapaneseInPopoverKey) private var showJapaneseInPopover: Bool = DictionarySettings.defaultShowJapaneseInPopover
     @AppStorage(DictionarySettings.prefersSheetDirectSegmentActionsKey) private var prefersSheetDirectSegmentActions: Bool = DictionarySettings.defaultPrefersSheetDirectSegmentActions
     @AppStorage(ParticleSettings.storageKey) var particlesRaw: String = ParticleSettings.defaultRawValue
@@ -364,7 +364,6 @@ struct SettingsView: View {
 
                 // MARK: Dictionary — what the word detail screen surfaces.
                 Section {
-                    Toggle("Include Archaic & Obscure Readings", isOn: $includeArchaicReadings)
                     Toggle("Show Japanese in Popover", isOn: $showJapaneseInPopover)
                     Toggle("Open Full Lookup on Tap", isOn: $prefersSheetDirectSegmentActions)
                 } header: {
@@ -451,16 +450,6 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    NavigationLink {
-                        CrashLogsView()
-                    } label: {
-                        Label("Crash Logs", systemImage: "exclamationmark.triangle")
-                    }
-                    NavigationLink {
-                        LogSettingsView()
-                    } label: {
-                        Label("Debug Logs", systemImage: "text.alignleft")
-                    }
                     NavigationLink {
                         AboutView()
                     } label: {

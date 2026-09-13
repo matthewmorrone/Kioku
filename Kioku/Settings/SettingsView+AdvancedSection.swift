@@ -64,6 +64,29 @@ extension SettingsView {
             Text("Segmentation Demotions")
         }
 
+        // MARK: Dictionary — engine-level lookup knobs.
+        Section {
+            Toggle("Include Archaic & Obscure Readings", isOn: $includeArchaicReadings)
+        } header: {
+            Text("Dictionary")
+        }
+
+        // MARK: Diagnostics — logs, then (debug builds) the rendering overlays.
+        Section {
+            NavigationLink {
+                CrashLogsView()
+            } label: {
+                Label("Crash Logs", systemImage: "exclamationmark.triangle")
+            }
+            NavigationLink {
+                LogSettingsView()
+            } label: {
+                Label("Debug Logs", systemImage: "text.alignleft")
+            }
+        } header: {
+            Text("Diagnostics")
+        }
+
         #if DEBUG
         // MARK: Debug overlays — hidden in release builds.
         Section {
