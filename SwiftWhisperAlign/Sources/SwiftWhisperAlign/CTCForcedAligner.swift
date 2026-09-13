@@ -98,16 +98,20 @@ public struct CTCForcedAligner {
             onProgress: { frac in onProgress?(0.45 + 0.25 * frac) }
         )
         Self.breadcrumb("emissions \(matrix.frames) frames × \(MMSEmissions.classes)")
-        let mixMatrix = try MMSEmissions.logProbs(
-            model: model, audio: try MMSEmissions.resample(mixMono, from: 44_100), cancellationCheck: cancellationCheck,
-            onProgress: { frac in onProgress?(0.70 + 0.20 * frac) }
-        )
-        let filled = EmissionDropoutFill.fill(stem: &matrix, mix: mixMatrix)
-        Self.breadcrumb("mix filled \(filled.frames) stem-quiet frames in \(filled.runs) run(s)")
         #if DEBUG
         Self.debugDump(matrix.values.withUnsafeBufferPointer { Data(buffer: $0) },
                        name: "\(VocalStemCache.identityKey(for: input.audioURL)).emissions.f32")
         #endif
+        let mixMatrix = try MMSEmissions.logProbs(
+            model: model, audio: try MMSEmissions.resample(mixMono, from: 44_100), cancellationCheck: cancellationCheck,
+            onProgress: { frac in onProgress?(0.70 + 0.20 * frac) }
+        )
+        #if DEBUG
+        Self.debugDump(mixMatrix.values.withUnsafeBufferPointer { Data(buffer: $0) },
+                       name: "\(VocalStemCache.identityKey(for: input.audioURL)).mix-emissions.f32")
+        #endif
+        let filled = EmissionDropoutFill.fill(stem: &matrix, mix: mixMatrix)
+        Self.breadcrumb("mix filled \(filled.frames) stem-quiet frames in \(filled.runs) run(s)")
 
         // Outside the sung regions the emissions are weak and near-blank, and the DP would
         // happily start the next line anywhere inside an interlude. Pinning those frames to
