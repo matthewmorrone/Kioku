@@ -55,6 +55,7 @@ struct SongStepperView: View {
     // Lines are auto-expanded as they stream in; reset when a new generation starts.
     @State private var expandedByLineIndex: Set<Int> = []
     @State private var isRegenerateConfirmationPresented: Bool = false
+    @State private var isCancelConfirmationPresented: Bool = false
     // Drives the confirmation for the merged generate+correct path — kept separate from
     // isRegenerateConfirmationPresented so the two dialogs' distinct messages (and
     // destinations: startGeneration vs startMergedGeneration) can't cross-wire.
@@ -191,7 +192,7 @@ struct SongStepperView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Cancel", role: .destructive) {
-                            songBreakdownStore.cancelGeneration(forNoteID: note.id)
+                            isCancelConfirmationPresented = true
                         }
                     } label: {
                         ProgressView()
@@ -317,18 +318,53 @@ struct SongStepperView: View {
     // the toolbar icon spinning); otherwise the cached breakdown or the first-visit prompt.
     @ViewBuilder
     private var bodyContent: some View {
-        if case .failed(let message) = generationState {
-            errorView(message)
-        } else if isStreamingCards {
-            scrollList(items: displayItems)
-        } else if hasBreakdown, let breakdown = cachedBreakdown {
-            if isStale(breakdown) {
-                staleBanner
+        VStack(spacing: 0) {
+            if isRunning {
+                runningBanner
             }
-            scrollList(items: displayItems)
-        } else {
-            generatePrompt
+            if case .failed(let message) = generationState {
+                errorView(message)
+            } else if isStreamingCards {
+                scrollList(items: displayItems)
+            } else if hasBreakdown, let breakdown = cachedBreakdown {
+                if isStale(breakdown) {
+                    staleBanner
+                }
+                scrollList(items: displayItems)
+            } else {
+                generatePrompt
+            }
         }
+        .confirmationDialog("Cancel breakdown generation?", isPresented: $isCancelConfirmationPresented, titleVisibility: .visible) {
+            Button("Cancel Generation", role: .destructive) {
+                songBreakdownStore.cancelGeneration(forNoteID: note.id)
+            }
+            Button("Keep Going", role: .cancel) { }
+        }
+    }
+
+    // Shown for the whole run: says the sheet can be closed (generation is store-owned and
+    // keeps going in the background) and offers a visible Cancel, instead of hiding it in the
+    // toolbar spinner's menu.
+    private var runningBanner: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Generating breakdown")
+                    .font(.footnote.weight(.semibold))
+                Text("You can close this. It keeps running in the background.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Cancel", role: .destructive) {
+                isCancelConfirmationPresented = true
+            }
+            .font(.footnote.weight(.semibold))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color(.secondarySystemBackground))
     }
 
     // Banner shown when the cached breakdown's hash disagrees with the current note hash.
