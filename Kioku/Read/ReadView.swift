@@ -180,7 +180,7 @@ struct ReadView: View {
     var isLLMConfigured: Bool {
         _ = llmKeysRevision
         if llmUseLLM {
-            let provider = LLMSettings.activeProvider()
+            let provider = LLMSettings.correctionProvider()
             if provider == .appleIntelligence {
                 return AppleIntelligenceAvailability.isAvailable
             }

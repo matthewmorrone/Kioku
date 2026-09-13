@@ -46,7 +46,10 @@ struct SettingsView: View {
     // SettingsView+AICorrectionSection.swift and needs to read these as
     // bindings. Extensions in other source files can't reach `private`
     // members, so these stay at module-internal access.
+    // The one shared remote-provider pick, used for both Correction and Breakdown.
     @AppStorage(LLMSettings.providerKey) var llmProviderRaw: String = LLMSettings.defaultProvider
+    // Whether on-device Apple Intelligence handles Correction automatically when available.
+    @AppStorage(LLMSettings.appleIntelligenceEnabledKey) var appleIntelligenceEnabled: Bool = true
     // API keys live in the Keychain, not UserDefaults; @State holds the editing copy
     // and onChange writes through. keysRevision is a non-secret change counter other
     // views observe to re-check key presence without touching the secret itself.
@@ -58,7 +61,6 @@ struct SettingsView: View {
     // Default true so a fresh install gets canonical-lyrics grounding out of the
     // box for songs; the user can disable to cut cost or for privacy.
     @AppStorage(LLMSettings.useWebSearchKey) var useWebSearch: Bool = true
-    @AppStorage(LLMSettings.preferOnDeviceCorrectionKey) var preferOnDeviceCorrection: Bool = true
 
     @AppStorage(TokenColorSettings.enabledKey) var customTokenColorsEnabled: Bool = false
     @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
@@ -254,6 +256,16 @@ struct SettingsView: View {
                     Text("Typography")
                 }
 
+                // Per-state colors for the Read tab's "Saved Highlight" display option
+                // (Save/unmarked reuses the Highlight Color above). Its own section since
+                // it's independent of Custom Token Colors — Saved Highlight has its own
+                // on/off toggle in the Read toolbar.
+                Section {
+                    savedHighlightColorRows
+                } header: {
+                    Text("Saved Highlight")
+                }
+
                 // MARK: Theme — selects the visual identity (chrome + default token colors) and
                 // exposes optional customization on top. Theme picker, then optional overrides,
                 // all in one section because the user reads them as one concept. Section body
@@ -265,16 +277,6 @@ struct SettingsView: View {
                     customTokenColorRows
                 } header: {
                     Text("Theme")
-                }
-
-                // Per-state colors for the Read tab's "Saved Highlight" display option
-                // (Save/unmarked reuses the Highlight Color above). Its own section since
-                // it's independent of Custom Token Colors — Saved Highlight has its own
-                // on/off toggle in the Read toolbar.
-                Section {
-                    savedHighlightColorRows
-                } header: {
-                    Text("Saved Highlight")
                 }
 
                 // MARK: Lookup — how the word popover behaves.

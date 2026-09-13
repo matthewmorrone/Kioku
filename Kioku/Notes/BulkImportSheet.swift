@@ -20,7 +20,6 @@ struct BulkImportSheet: View {
     // appears/disappears live when the user adjusts LLM setup elsewhere.
     @AppStorage(LLMSettings.useLLMKey) private var llmUseLLM = true
     @AppStorage(LLMSettings.keysRevisionKey) private var llmKeysRevision = 0
-    @AppStorage(LLMSettings.providerKey) private var llmProviderRaw: String = LLMSettings.defaultProvider
 
     @State private var pickedURLs: [URL] = []
     @State private var modelSource: WhisperModelSource?
@@ -97,9 +96,9 @@ struct BulkImportSheet: View {
                     modelSection
                 }
                 // AI correction toggle — hidden when no provider is set up.
-                // Reactive: reading llmUseLLM / llmKeysRevision / llmProviderRaw
-                // ties the row's visibility to the configuration state, so
-                // changing Settings in another tab updates the sheet live.
+                // Reactive: reading llmUseLLM / llmKeysRevision ties the row's
+                // visibility to the configuration state, so changing Settings
+                // in another tab updates the sheet live.
                 if isLLMConfigured {
                     aiCorrectionSection
                 }
@@ -370,12 +369,11 @@ struct BulkImportSheet: View {
 
     // Mirrors ReadView.isLLMConfigured. Re-reads each render via the @AppStorage
     // properties so the toggle row appears/disappears the moment LLM setup
-    // changes elsewhere. Apple Intelligence is configured purely by being
-    // available on the device, with no API key required.
+    // changes elsewhere.
     private var isLLMConfigured: Bool {
         _ = llmKeysRevision
         if llmUseLLM {
-            let provider = LLMProvider(rawValue: llmProviderRaw) ?? .none
+            let provider = LLMSettings.correctionProvider()
             if provider == .appleIntelligence {
                 return AppleIntelligenceAvailability.isAvailable
             }

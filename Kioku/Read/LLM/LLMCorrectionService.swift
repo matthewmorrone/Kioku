@@ -63,7 +63,7 @@ final class LLMCorrectionService {
             return try parseCompactResponse(stub)
         }
 
-        let provider = LLMSettings.activeProvider()
+        let provider = LLMSettings.correctionProvider()
         AppLog.debug(.llmCorrection, "requestCorrections provider=\(provider) correctiveFeedback=\(correctiveFeedback != nil)")
 
         // On-device Apple Intelligence path: no API key, per-line chunked. The

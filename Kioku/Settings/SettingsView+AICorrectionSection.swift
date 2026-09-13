@@ -2,20 +2,20 @@ import SwiftUI
 
 // The AI section of Settings, extracted from SettingsView to keep the parent file under the
 // project's 1000-line invariant. All @AppStorage / @State it uses live on SettingsView; this
-// extension just shapes the UI. On-device Apple Intelligence is a capability the app uses on
-// its own (correction, when present); the Provider picker is the remote model, used for
-// breakdowns always and for correction when on-device isn't. The two status rows at the bottom
-// state where each feature will actually run.
+// extension just shapes the UI. On-device Apple Intelligence isn't a picker choice — it's a
+// capability the app uses on its own for Correction whenever the toggle is on and the device
+// has it (Breakdown can't use it at all). The Provider picker is the shared remote model
+// (None / OpenAI / Claude), used for Breakdown always and for Correction whenever on-device
+// isn't in play.
 extension SettingsView {
-    // On-device status and preference, remote provider and its key, per-provider options, and
-    // the resolved route per feature.
+    // On-device toggle, the shared remote Provider picker, and its key/search/temperature controls.
     @ViewBuilder
     var aiCorrectionSection: some View {
         Section {
-            LabeledContent("On-device Apple Intelligence",
-                           value: AppleIntelligenceAvailability.isAvailable ? "Available" : "Not available")
             if AppleIntelligenceAvailability.isAvailable {
-                Toggle("Prefer On-device for Correction", isOn: $preferOnDeviceCorrection)
+                Toggle("On-device Apple Intelligence", isOn: $appleIntelligenceEnabled)
+            } else {
+                LabeledContent("On-device Apple Intelligence", value: "Not available")
             }
             Picker("Provider", selection: $llmProviderRaw) {
                 ForEach(LLMProvider.allCases, id: \.rawValue) { provider in
@@ -25,32 +25,50 @@ extension SettingsView {
                 }
             }
             // The key field for the selected provider only; edits write through to the Keychain.
+            // A persistent leading label, not just the SecureField's own placeholder text — a
+            // placeholder disappears the moment a key is typed in, leaving the row unlabeled.
             if selectedRemoteProvider == .openAI {
-                SecureField("OpenAI API Key", text: $openAIKey)
-                    .textContentType(.password)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .onChange(of: openAIKey) {
-                        LLMSettings.setAPIKey(openAIKey, for: .openAI)
-                        llmKeysRevision += 1
-                    }
+                HStack {
+                    Text("OpenAI API Key")
+                    Spacer()
+                    SecureField("Required", text: $openAIKey)
+                        .multilineTextAlignment(.trailing)
+                        .textContentType(.password)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: openAIKey) {
+                            LLMSettings.setAPIKey(openAIKey, for: .openAI)
+                            llmKeysRevision += 1
+                        }
+                }
             }
             if selectedRemoteProvider == .claude {
-                SecureField("Claude API Key", text: $claudeKey)
-                    .textContentType(.password)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .onChange(of: claudeKey) {
-                        LLMSettings.setAPIKey(claudeKey, for: .claude)
-                        llmKeysRevision += 1
-                    }
+                HStack {
+                    Text("Claude API Key")
+                    Spacer()
+                    SecureField("Required", text: $claudeKey)
+                        .multilineTextAlignment(.trailing)
+                        .textContentType(.password)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: claudeKey) {
+                            LLMSettings.setAPIKey(claudeKey, for: .claude)
+                            llmKeysRevision += 1
+                        }
+                }
             }
-            // Web search: Claude gets the server-side web_search tool; OpenAI swaps to its search
-            // model. Costs more per call. Temperature: OpenAI only (Claude rejects it, on-device
-            // pins its own).
+            // Gated on the picker itself, not on whether Correction would currently route there —
+            // Correction preferring on-device Apple Intelligence (the default whenever it's
+            // available) would otherwise hide this permanently even with a remote provider
+            // picked, since correctionRoutesToRemote would never be true. Breakdown always uses
+            // the picked provider regardless of the on-device toggle, so the picker alone is the
+            // right signal. Claude gets the server-side web_search tool; OpenAI swaps to its
+            // search model. Costs more per call.
             if selectedRemoteProvider != .none {
                 Toggle("Web Search", isOn: $useWebSearch)
             }
+            // Temperature: same reasoning — gate on the picker, OpenAI only (Claude rejects the
+            // parameter, on-device pins its own).
             if selectedRemoteProvider == .openAI {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -63,8 +81,6 @@ extension SettingsView {
                     Slider(value: $temperature, in: 0.0...1.0, step: 0.05)
                 }
             }
-            LabeledContent("Correction", value: correctionRoute)
-            LabeledContent("Breakdown", value: breakdownRoute)
         } header: {
             Text("AI")
         }
@@ -74,23 +90,6 @@ extension SettingsView {
     private var selectedRemoteProvider: LLMProvider {
         let provider = LLMProvider(rawValue: llmProviderRaw) ?? .none
         return provider.isAppleIntelligence ? .none : provider
-    }
-
-    // Where a correction would run right now, or why it can't.
-    private var correctionRoute: String {
-        _ = llmKeysRevision
-        let provider = LLMSettings.activeProvider()
-        if provider == .none { return "Unavailable" }
-        if provider.isAppleIntelligence { return provider.displayName }
-        return LLMSettings.apiKey(for: provider) == nil ? "Needs API key" : provider.displayName
-    }
-
-    // Where a breakdown would run right now, or why it can't.
-    private var breakdownRoute: String {
-        _ = llmKeysRevision
-        let provider = LLMSettings.breakdownProvider()
-        if provider == .none { return "Needs a provider" }
-        return LLMSettings.apiKey(for: provider) == nil ? "Needs API key" : provider.displayName
     }
 
     // Only remote providers are choices; Apple's variants are capabilities or unavailable.
