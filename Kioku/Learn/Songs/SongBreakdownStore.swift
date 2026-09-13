@@ -32,6 +32,10 @@ final class SongBreakdownStore: ObservableObject {
     // re-entering the sheet picks the same state back up and the user sees a still-running
     // spinner or the last error verbatim. See `startGeneration(forNoteID:lyrics:)`.
     @Published private(set) var generationStateByNoteID: [UUID: SongBreakdownGenerationState] = [:]
+    // Segmentation corrections that came back with a merged breakdown, waiting for the note's
+    // ReadView to pick them up as pending AI changes (the sparkles confirm flow). Never applied
+    // headlessly: the user sees the diff before it lands.
+    @Published private(set) var pendingCorrectionByNoteID: [UUID: LLMCorrectionResponse] = [:]
 
     // Non-published memo for lazy disk reads. Mutated by `breakdown(forNoteID:)` so the
     // accessor stays safe to call during SwiftUI body evaluation — the field is not
@@ -224,21 +228,34 @@ final class SongBreakdownStore: ObservableObject {
         generationTasksByNoteID[id] = task
     }
 
-    // Opt-in alternative to startGeneration: runs ONE merged LLM call (see
-    // MergedCorrectionBreakdownService) that returns both a breakdown and a corrected
-    // segmentation, then lands each in its existing home — setBreakdown() here for the
-    // breakdown, and NotesStore.scheduleReadEditorPersist for the segmentation (the same
-    // headless apply LLMCorrectionQueue uses for notes with no open ReadView). Reuses the
-    // same generationStateByNoteID / generationTasksByNoteID bookkeeping as startGeneration
-    // so the existing loading/error UI works unchanged for this path. `notesStore` is passed
-    // in per-call rather than injected at init since the store already exists app-wide and
-    // this is the only method that needs it — keeping it out of the initializer avoids
-    // touching every other call site (tests included) that constructs a SongBreakdownStore.
-    func startMergedGeneration(forNote note: Note, notesStore: NotesStore, providerLabel: String) {
+    // Generates the breakdown the only way the UI now offers: the merged call (breakdown +
+    // segmentation correction in one request) whenever the active provider supports it, else
+    // the plain breakdown. The user never chooses; the correction half is handed to the
+    // ReadView as pending changes via pendingCorrectionByNoteID.
+    func startBreakdown(forNote note: Note, providerLabel: String) {
+        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
+        if useLLM, LLMSettings.activeProvider().isAppleIntelligence == false {
+            startMergedGeneration(forNote: note, providerLabel: providerLabel)
+        } else {
+            startGeneration(forNoteID: note.id, lyrics: note.content, providerLabel: providerLabel)
+        }
+    }
+
+    // Hands the note's waiting correction to the caller (once) — nil when there is none.
+    func takePendingCorrection(forNoteID id: UUID) -> LLMCorrectionResponse? {
+        pendingCorrectionByNoteID.removeValue(forKey: id)
+    }
+
+    // Runs ONE merged LLM call (see MergedCorrectionBreakdownService) that returns both a
+    // breakdown and a corrected segmentation: the breakdown lands via setBreakdown(), the
+    // segmentation is parked in pendingCorrectionByNoteID for the ReadView to present as
+    // pending AI changes. Reuses the same generationStateByNoteID / generationTasksByNoteID
+    // bookkeeping as startGeneration so the existing loading/error UI works unchanged.
+    func startMergedGeneration(forNote note: Note, providerLabel: String) {
         let id = note.id
         if generationTasksByNoteID[id] != nil { return }
         generationStateByNoteID[id] = .running(startedAt: Date(), providerLabel: providerLabel, partialLines: [])
-        let task = Task { @MainActor [weak self, weak notesStore] in
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 let result = try await self.mergedService.generate(
@@ -255,26 +272,7 @@ final class SongBreakdownStore: ObservableObject {
                     lines: result.breakdownLines
                 )
                 self.setBreakdown(breakdown)
-
-                if let notesStore {
-                    if let ranges = LLMCorrectionApplier.segmentRanges(
-                        from: result.correction,
-                        originalText: note.content
-                    ) {
-                        _ = notesStore.scheduleReadEditorPersist(
-                            id: id,
-                            title: note.title,
-                            content: note.content,
-                            segments: ranges,
-                            segmentsAreUserEdited: false
-                        )
-                    } else {
-                        // The breakdown still succeeded and is already saved above — only the
-                        // segmentation half is dropped, matching LLMCorrectionQueue's handling
-                        // of an unreconcilable response for a single-purpose correction.
-                        AppLog.error(.llmCorrection, "mergedGeneration: segmentation could not be reconciled with note \(id) content — breakdown saved, segmentation skipped")
-                    }
-                }
+                self.pendingCorrectionByNoteID[id] = result.correction
                 self.generationStateByNoteID.removeValue(forKey: id)
             } catch is CancellationError {
                 self.generationStateByNoteID.removeValue(forKey: id)

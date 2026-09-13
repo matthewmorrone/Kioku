@@ -48,10 +48,6 @@ struct SongStepperView: View {
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     // Drives the lookup sheet's save star for tapped words (globally injected at the app root).
     @EnvironmentObject private var wordsStore: WordsStore
-    // Only needed for the merged generate+correct path (see startMergedGeneration), which
-    // persists the corrected segmentation directly to the note. The plain breakdown path never
-    // touches notesStore.
-    @EnvironmentObject private var notesStore: NotesStore
     // Owns listen-along renders and resume positions across sheet dismissals.
     @EnvironmentObject var listenStore: SongListenStore
     // Per-line expansion state: whether a line's word/grammar explanations are visible.
@@ -62,7 +58,6 @@ struct SongStepperView: View {
     // Drives the confirmation for the merged generate+correct path — kept separate from
     // isRegenerateConfirmationPresented so the two dialogs' distinct messages (and
     // destinations: startGeneration vs startMergedGeneration) can't cross-wire.
-    @State private var isMergedRegenerateConfirmationPresented: Bool = false
     // Listen-along state shared with SongStepperView+Listen (internal for that reason).
     // True once this view has engaged the track (played anything); drives teardown.
     @State var isListening: Bool = false
@@ -221,9 +216,6 @@ struct SongStepperView: View {
                         Button("Regenerate") {
                             isRegenerateConfirmationPresented = true
                         }
-                        Button("Regenerate + Fix Segmentation (Merged)") {
-                            isMergedRegenerateConfirmationPresented = true
-                        }
                         if case .ready(let url) = listenStore.renderStateByNoteID[note.id] {
                             ShareLink(item: url) {
                                 Label("Export Audio", systemImage: "square.and.arrow.up")
@@ -261,18 +253,6 @@ struct SongStepperView: View {
             // The old breakdown stays until the new one finishes, so a failed call costs nothing
             // beyond whatever the active provider actually charges.
             Text("Sends the full lyrics to the configured LLM provider. Takes 30–180 seconds. The existing breakdown is replaced.")
-        }
-        .confirmationDialog(
-            "Regenerate with merged segmentation correction?",
-            isPresented: $isMergedRegenerateConfirmationPresented,
-            titleVisibility: .visible
-        ) {
-            Button("Regenerate + Fix Segmentation", role: .destructive) {
-                startMergedGeneration()
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Sends the full lyrics to the configured LLM provider in one combined call that both fixes this note's segmentation/readings and regenerates the breakdown. Not supported on Apple Intelligence. Takes 30–180 seconds and uses paid tokens. The existing breakdown is replaced.")
         }
         .preference(key: CardsStudySessionActivePreferenceKey.self, value: true)
         .preference(key: CardsPageDotsHiddenPreferenceKey.self, value: true)
@@ -411,15 +391,6 @@ struct SongStepperView: View {
             .controlSize(.large)
             .disabled(isRunning)
             .accessibilityLabel(isRunning ? "Generating breakdown" : "Generate breakdown")
-            Button {
-                startMergedGeneration()
-            } label: {
-                Label("Generate breakdown + Fix Segmentation", systemImage: "wand.and.stars.inverse")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .disabled(isRunning)
         }
         .padding(.horizontal, 32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -614,24 +585,7 @@ struct SongStepperView: View {
     // in place until the new one lands, so a cancelled or failed run loses nothing.
     private func startGeneration() {
         songBreakdownStore.clearGenerationError(forNoteID: note.id)
-        songBreakdownStore.startGeneration(
-            forNoteID: note.id,
-            lyrics: note.content,
-            providerLabel: SongBreakdownStore.loadingProviderLabel()
-        )
-    }
-
-    // Merged alternative to startGeneration(): one LLM call returns both the breakdown and a
-    // corrected segmentation, applied via SongBreakdownStore.startMergedGeneration. Shares the
-    // same store-owned running/failed state as the plain path, so the streaming cards and
-    // error view render unchanged regardless of which path is in flight.
-    private func startMergedGeneration() {
-        songBreakdownStore.clearGenerationError(forNoteID: note.id)
-        songBreakdownStore.startMergedGeneration(
-            forNote: note,
-            notesStore: notesStore,
-            providerLabel: SongBreakdownStore.loadingProviderLabel()
-        )
+        songBreakdownStore.startBreakdown(forNote: note, providerLabel: SongBreakdownStore.loadingProviderLabel())
     }
 
     // Compares the cached breakdown's hash against the current note text hash.

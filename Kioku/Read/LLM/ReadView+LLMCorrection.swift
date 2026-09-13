@@ -143,6 +143,26 @@ extension ReadView {
         }
     }
 
+    // Picks up a segmentation correction that arrived with a merged breakdown for the active
+    // note and presents it exactly like a one-shot correction response: merged per line
+    // against the current segmentation, applied, and held as pending AI changes until the
+    // sparkles checkmark confirms them. No-op while a correction request is in flight.
+    func consumePendingBreakdownCorrection() {
+        guard llmCorrection.llmCorrectionTask == nil, let noteID = document.activeNoteID,
+              let response = songBreakdownStore.takePendingCorrection(forNoteID: noteID) else { return }
+        let baseline = buildLLMSegmentEntries()
+        guard baseline.isEmpty == false else { return }
+        llmCorrection.pendingLLMChangedLocations = []
+        llmCorrection.pendingLLMChangedReadingLocations = []
+        llmCorrection.pendingLLMChangesByLocation = [:]
+        llmCorrection.preLLMSegmentEntries = []
+        llmCorrection.hasPendingLLMChanges = false
+        llmCorrection.llmCorrectionRetryContext = nil
+        let text = document.text
+        let merged = Self.mergeResponsePerLine(response: response, originalText: text, baseline: baseline)
+        handleLLMCorrectionResult(applyLLMCorrectionResponse(merged, originalText: text))
+    }
+
     // Retries after a parse failure by resending the SAME provider a corrected request that
     // includes the previous raw response and why it was rejected (see
     // LLMCorrectionService.correctiveFeedback), instead of a blind identical resend. Distinct

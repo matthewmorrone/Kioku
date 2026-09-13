@@ -200,6 +200,11 @@ extension ReadView {
                 // can finish either before or after pendingScrollTarget arrives from ContentView —
                 // whichever onChange fires last is the one that actually has both pieces ready.
                 jumpToPendingScrollSurfaceIfReady()
+                consumePendingBreakdownCorrection()
+            }
+            // A merged breakdown's segmentation half arrives here as pending AI changes.
+            .onReceive(songBreakdownStore.$pendingCorrectionByNoteID) { _ in
+                consumePendingBreakdownCorrection()
             }
             .onChange(of: editModeScroll.isEditMode) { _, editing in
                 if editing {
