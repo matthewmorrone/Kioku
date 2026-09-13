@@ -220,9 +220,11 @@ extension ReadView {
         lyricRealign.isReAligningWholeNote = true
         lyricRealign.reAlignProgressMessage = "Re-aligning \(totalLines) lines…"
         subtitleImport.alignmentCancellationToken.reset()
+        subtitleImport.isCancellingAlignment = false
         defer {
             lyricRealign.isReAligningWholeNote = false
             lyricRealign.reAlignProgressMessage = ""
+            subtitleImport.isCancellingAlignment = false
         }
 
         do {

@@ -8,22 +8,31 @@ extension LyricsView {
     func reAlignBar() -> some View {
         HStack(spacing: 8) {
             if isReAligning {
-                // Live progress is its OWN non-interactive chip, not the disabled Button's
-                // label — a disabled Button dims its whole label, which made the status text
-                // read as greyed-out/inactive. `.primary` keeps it high-contrast over the bar.
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.mini)
-                    Text(reAlignMessage.isEmpty ? "Re-aligning…" : reAlignMessage)
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                // The progress chip is the button while a run is in flight: tapping it asks
+                // before cancelling. `.primary` keeps the status text high-contrast over the bar.
+                Button {
+                    isShowingCancelReAlignConfirm = true
+                } label: {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text(reAlignMessage.isEmpty ? "Re-aligning…" : reAlignMessage)
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 16)
+                    .frame(height: 28)
+                    .background(Color.accentColor.opacity(0.16))
+                    .clipShape(Capsule())
                 }
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 16)
-                .frame(height: 28)
-                .background(Color.accentColor.opacity(0.16))
-                .clipShape(Capsule())
-                .accessibilityLabel(reAlignMessage.isEmpty ? "Re-aligning" : reAlignMessage)
+                .buttonStyle(.plain)
+                .disabled(isCancellingReAlign)
+                .accessibilityLabel(reAlignMessage.isEmpty ? "Re-aligning, tap to cancel" : "\(reAlignMessage), tap to cancel")
+                .confirmationDialog("Cancel alignment?", isPresented: $isShowingCancelReAlignConfirm, titleVisibility: .visible) {
+                    Button("Cancel Alignment", role: .destructive) { onCancelReAlign() }
+                    Button("Keep Going", role: .cancel) { }
+                }
             } else {
                 Button {
                     onReAlign()
@@ -48,6 +57,8 @@ extension LyricsView {
             }
 
             Spacer(minLength: 0)
+
+            exportMenu()
 
             Button {
                 let current = LyricsHighlightGranularity(rawValue: quickGranularityRaw) ?? .word

@@ -56,6 +56,10 @@ struct LyricsView: View {
     // progress text. Drives the top bar's spinner + label.
     var isReAligning: Bool = false
     var reAlignMessage: String = ""
+    // The top bar's Cancel while a re-align runs; ReadView cancels the shared alignment token.
+    var onCancelReAlign: () -> Void = {}
+    var isCancellingReAlign: Bool = false
+    @State var isShowingCancelReAlignConfirm = false
 
     // Horizontal fine-scrub sensitivity. 5 ms per point means a full ~300 pt swipe across the
     // card covers ~1.5 s — coarse enough to travel, fine enough to settle on a boundary.
