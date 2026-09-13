@@ -2,7 +2,7 @@ import SwiftUI
 
 // The four fixed-identity items DownloadedModelsStore manages (Whisper models are a
 // variable-length list instead — see WhisperModelManager.downloadedModels).
-private enum DownloadedModelKind: String, Identifiable, Equatable {
+private enum DownloadedModelKind: String, Identifiable, Equatable, CaseIterable {
     case qwenASR, qwenForcedAligner, htDemucs, vocalStems
 
     var id: String { rawValue }
@@ -56,6 +56,7 @@ struct DownloadedModelsSection: View {
     @State private var cacheEntries: [DownloadedModelsStore.CacheEntry] = []
     @State private var cacheEntryPendingDeletion: DownloadedModelsStore.CacheEntry?
     @State private var modelPendingDeletion: DownloadedModelKind?
+    @State private var isShowingDeleteDownloadedConfirmation = false
     @State private var whisperModelFilenamePendingDeletion: String?
 
     var body: some View {
@@ -92,6 +93,11 @@ struct DownloadedModelsSection: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                    }
+                    Button(role: .destructive) {
+                        isShowingDeleteDownloadedConfirmation = true
+                    } label: {
+                        Label("Delete Downloaded (\(formattedBytes(downloadedBytes)))", systemImage: "trash")
                     }
                 } else {
                     Text("Empty").foregroundStyle(.secondary)
@@ -134,6 +140,12 @@ struct DownloadedModelsSection: View {
             } header: {
                 Text("Caches")
             }
+        }
+        .alert("Delete Everything Downloaded?", isPresented: $isShowingDeleteDownloadedConfirmation) {
+            Button("Delete", role: .destructive) { performDeleteDownloaded() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Frees \(formattedBytes(downloadedBytes)). Models download again and isolated vocals are regenerated the next time they're needed.")
         }
         .alert(
             "Delete \(modelPendingDeletion?.displayName ?? "Model")?",
@@ -242,6 +254,23 @@ struct DownloadedModelsSection: View {
 
     // Deletes the Whisper model pending confirmation — WhisperModelManager.deleteModel already
     // refreshes its own downloadedModels list, which this section observes.
+    // Sum of every row in the Downloaded section, for the Delete Downloaded button.
+    private var downloadedBytes: Int {
+        qwenASRBytes + qwenForcedAlignerBytes + htDemucsBytes + vocalStemsBytes
+            + whisperModelManager.downloadedModels.reduce(0) { $0 + whisperModelManager.fileSizeBytes(filename: $1) }
+    }
+
+    // Deletes every model and cached stem the section lists, then re-measures.
+    private func performDeleteDownloaded() {
+        let whisperFiles = whisperModelManager.downloadedModels
+        Task {
+            await Task.detached(priority: .utility) { DownloadedModelKind.allCases.forEach { $0.delete() } }.value
+            for filename in whisperFiles { try? whisperModelManager.deleteModel(filename: filename) }
+            await refreshDownloadedModelBytes()
+            onStorageChanged()
+        }
+    }
+
     private func performWhisperModelDeletion() {
         guard let filename = whisperModelFilenamePendingDeletion else { return }
         whisperModelFilenamePendingDeletion = nil
