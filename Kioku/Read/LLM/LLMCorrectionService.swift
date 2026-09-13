@@ -7,7 +7,7 @@ final class LLMCorrectionService {
     // a large note can take well past URLSession.shared's default 60s, and this service is used
     // both interactively (ReadView) and unattended (LLMCorrectionQueue's bulk-import pass), where
     // a spurious timeout means a note silently falls back to unedited segmentation.
-    private let urlSession: URLSession
+    let urlSession: URLSession
 
     init(urlSession: URLSession? = nil) {
         self.urlSession = urlSession ?? LLMStreamingClient.makeLongTimeoutSession()
@@ -35,7 +35,7 @@ final class LLMCorrectionService {
         // Keep the LLM round-trip alive if the user backgrounds the app while it's in flight.
         let bg = BackgroundTaskHolder.begin("kioku.llm.correction")
         defer { bg.endDetached() }
-        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
+        let useLLM = LLMSettings.isEnabled()
 
         // Stub mode: parse the hand-corrected compact response without any API call.
         // Prefers the in-app text field; falls back to llm_stub.txt in the bundle.
@@ -107,6 +107,9 @@ final class LLMCorrectionService {
         AppLog.debug(.llmCorrection, "[\(provider)] User message:\n\(messages.user)")
 
         let raw: String
+        // Remote responses stream when the caller wants partials and no web-search tool is in
+        // play (the streaming client carries no tool config); otherwise one-shot as before.
+        let streams = onPartial != nil && LLMSettings.isWebSearchEnabled() == false
         switch provider {
         case .none:
             throw LLMCorrectionError.noKeyConfigured
@@ -117,11 +120,19 @@ final class LLMCorrectionService {
             // Handled above; included so the switch stays exhaustive.
             throw LLMCorrectionError.appleIntelligenceCloudUnavailable
         case .openAI:
-            raw = try await callOpenAIRaw(apiKey: apiKey, messages: messages)
+            raw = streams
+                ? try await streamRemote(provider: .openAI, apiKey: apiKey, messages: messages, onPartial: onPartial!)
+                : try await callOpenAIRaw(apiKey: apiKey, messages: messages)
         case .claude:
-            raw = try await callClaudeRaw(apiKey: apiKey, messages: messages)
+            raw = streams
+                ? try await streamRemote(provider: .claude, apiKey: apiKey, messages: messages, onPartial: onPartial!)
+                : try await callClaudeRaw(apiKey: apiKey, messages: messages)
         }
-        return try await parseWithSalvage(raw)
+        let parsed = try await parseWithSalvage(raw)
+        // The last streamed line has no trailing newline, so the final partial can miss it:
+        // hand the complete parse to the caller as the last partial, same as the Apple path.
+        if streams, let onPartial { onPartial(parsed) }
+        return parsed
     }
 
     // Logs the outcome of a single correction request: how many segments came back, or which

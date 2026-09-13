@@ -61,9 +61,10 @@ extension ReadView {
         // Only the on-device provider streams today. Remote and stub return a
         // single response; we apply it once at the end. Reading this once up
         // front avoids racing the @AppStorage value mid-request.
-        let useLLM = UserDefaults.standard.bool(forKey: LLMSettings.useLLMKey)
+        let useLLM = LLMSettings.isEnabled()
         let provider = LLMSettings.activeProvider()
-        let willStream = useLLM && provider == .appleIntelligence
+        let willStream = useLLM && (provider == .appleIntelligence
+            || ((provider == .openAI || provider == .claude) && LLMSettings.isWebSearchEnabled() == false))
 
         // Captured so a response that lands after the user has switched notes (cooperative
         // cancellation doesn't interrupt an in-flight network/model call) is discarded instead
