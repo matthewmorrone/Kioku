@@ -7,10 +7,9 @@ import SwiftUI
 // Granularity drives how tightly the override hugs the active line:
 //   - .sentence: the whole cue range (original behavior).
 //   - .word:     the segmentationRanges entry containing the current checkpoint's character.
-//   - .mora:     the raw checkpoint slice (one character/mora group at a time).
 //
-// When the active cue has no checkpoints (cue.checkpoints is empty), .word and .mora silently fall
-// back to .sentence behavior.
+// When the active cue has no checkpoints (cue.checkpoints is empty), .word silently falls back to
+// .sentence behavior.
 struct AudioCueHighlightObserver: View {
     // Throttles per-tick logging so the log file doesn't fill up.
     nonisolated(unsafe) private static var lastTickLog: Date = .distantPast
@@ -95,7 +94,7 @@ struct AudioCueHighlightObserver: View {
         switch granularity {
         case .sentence:
             playbackHighlightRangeOverride = cueRange
-        case .word, .mora:
+        case .word:
             // Treat "one checkpoint that covers the entire cue" as "no useful word-level
             // data" — it's what a segments-only TextGrid produces (the binder prefix-matches
             // the full SRT line against the cue text and emits a single full-length

@@ -6,14 +6,12 @@ import Foundation
 enum LyricsHighlightGranularity: String, CaseIterable {
     case sentence
     case word
-    case mora
 
     // Display name shown in Settings.
     var displayName: String {
         switch self {
         case .sentence: return "Sentence"
         case .word:     return "Word"
-        case .mora:     return "Mora"
         }
     }
 
