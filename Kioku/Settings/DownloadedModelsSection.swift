@@ -48,13 +48,15 @@ struct DownloadedModelsSection: View {
     @State private var qwenForcedAlignerBytes: Int = 0
     @State private var htDemucsBytes: Int = 0
     @State private var vocalStemsBytes: Int = 0
+    @State private var cacheEntries: [DownloadedModelsStore.CacheEntry] = []
+    @State private var cacheEntryPendingDeletion: DownloadedModelsStore.CacheEntry?
     @State private var modelPendingDeletion: DownloadedModelKind?
     @State private var whisperModelFilenamePendingDeletion: String?
 
     var body: some View {
         Group {
             if qwenASRBytes > 0 || qwenForcedAlignerBytes > 0 || htDemucsBytes > 0 || vocalStemsBytes > 0
-                || whisperModelManager.downloadedModels.isEmpty == false {
+                || whisperModelManager.downloadedModels.isEmpty == false || cacheEntries.isEmpty == false {
                 Section {
                     if qwenASRBytes > 0 {
                         downloadedModelRow(kind: .qwenASR, bytes: qwenASRBytes)
@@ -83,8 +85,23 @@ struct DownloadedModelsSection: View {
                             }
                         }
                     }
+                    ForEach(cacheEntries) { entry in
+                        HStack {
+                            Label(entry.label, systemImage: "internaldrive")
+                            Spacer()
+                            Text(formattedBytes(entry.bytes))
+                                .foregroundStyle(.secondary)
+                        }
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                cacheEntryPendingDeletion = entry
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
                 } header: {
-                    Text("Downloaded Models")
+                    Text("Storage")
                 }
             }
         }
@@ -113,6 +130,18 @@ struct DownloadedModelsSection: View {
             Button("Cancel", role: .cancel) { whisperModelFilenamePendingDeletion = nil }
         } message: {
             Text("This model will download again automatically the next time it's needed.")
+        }
+        .alert(
+            "Delete \(cacheEntryPendingDeletion?.label ?? "Cache")?",
+            isPresented: Binding(
+                get: { cacheEntryPendingDeletion != nil },
+                set: { if $0 == false { cacheEntryPendingDeletion = nil } }
+            )
+        ) {
+            Button("Delete", role: .destructive) { performCacheEntryDeletion() }
+            Button("Cancel", role: .cancel) { cacheEntryPendingDeletion = nil }
+        } message: {
+            Text("This is rebuilt automatically when it's needed again.")
         }
         .task(id: refreshToken) {
             whisperModelManager.refreshDownloadedModels()
@@ -147,13 +176,27 @@ struct DownloadedModelsSection: View {
                 DownloadedModelsStore.qwenASRSizeBytes(),
                 DownloadedModelsStore.qwenForcedAlignerSizeBytes(),
                 DownloadedModelsStore.htDemucsSizeBytes(),
-                DownloadedModelsStore.vocalStemsSizeBytes()
+                DownloadedModelsStore.vocalStemsSizeBytes(),
+                DownloadedModelsStore.cacheEntries()
             )
         }.value
         qwenASRBytes = sizes.0
         qwenForcedAlignerBytes = sizes.1
         htDemucsBytes = sizes.2
         vocalStemsBytes = sizes.3
+        cacheEntries = sizes.4
+    }
+
+    // Deletes the cache entry pending confirmation and re-measures, so the row disappears and the
+    // Clear Caches readout shrinks to match.
+    private func performCacheEntryDeletion() {
+        guard let entry = cacheEntryPendingDeletion else { return }
+        cacheEntryPendingDeletion = nil
+        Task {
+            await Task.detached(priority: .utility) { DownloadedModelsStore.delete(entry) }.value
+            await refreshDownloadedModelBytes()
+            onStorageChanged()
+        }
     }
 
     // Deletes the fixed-identity model pending confirmation and re-measures its (now empty) size.

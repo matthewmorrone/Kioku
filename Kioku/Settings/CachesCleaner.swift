@@ -41,8 +41,8 @@ nonisolated enum CachesCleaner {
     //     reads that copy (+ its .metadata sidecar), so the staging copy is never consulted
     //     again — it's a byte-for-byte duplicate of every model
     //   - Library/Caches/VocalStems: the stem cache's pre-Application-Support location
-    // Leaves CoreML's compiled-model bundles alone: those are keyed per app build, and
-    // recompiling costs a slow first load. Returns freed bytes.
+    //   - CoreML's compiled-model bundles, but only when the app build changed since the last
+    //     launch (see sweepCompiledBundlesIfBuildChanged). Returns freed bytes.
     @discardableResult
     static func sweepStaleDownloads() -> Int {
         let fm = FileManager.default
@@ -60,6 +60,31 @@ nonisolated enum CachesCleaner {
         let tmp = fm.temporaryDirectory
         freed += totalRegularFileBytes(at: tmp)
         removeContents(of: tmp)
+        freed += sweepCompiledBundlesIfBuildChanged()
+        return freed
+    }
+
+    // CoreML's compiled-model bundles are keyed per app build, so every install leaves the
+    // previous build's bundles behind (a day of development builds cost ~13 GB). On the first
+    // launch of a new build the compiled cache is dropped wholesale: this build has to compile
+    // its own bundles anyway, so nothing that would be reused is lost. Returns freed bytes.
+    private static func sweepCompiledBundlesIfBuildChanged() -> Int {
+        let fm = FileManager.default
+        let key = "kioku.caches.lastBuildFingerprint"
+        let fingerprint = Bundle.main.executableURL
+            .flatMap { try? fm.attributesOfItem(atPath: $0.path)[.modificationDate] as? Date }
+            .map { String($0.timeIntervalSince1970) } ?? Bundle.main.bundleIdentifier ?? ""
+        guard UserDefaults.standard.string(forKey: key) != fingerprint else { return 0 }
+        UserDefaults.standard.set(fingerprint, forKey: key)
+        var freed = 0
+        if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first,
+           let names = try? fm.contentsOfDirectory(atPath: caches.path) {
+            for name in names where name.lowercased().contains("e5rt") || name.lowercased().contains("coreml") {
+                let url = caches.appendingPathComponent(name)
+                freed += totalRegularFileBytes(at: url)
+                try? fm.removeItem(at: url)
+            }
+        }
         return freed
     }
 

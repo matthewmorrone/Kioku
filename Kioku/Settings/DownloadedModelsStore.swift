@@ -121,4 +121,48 @@ nonisolated enum DownloadedModelsStore {
             try? fm.removeItem(at: url)
         }
     }
+
+    // One reclaimable item under Library/Caches or tmp, shown in the Storage list so what
+    // "Clear Caches" removes is visible before and after. Top-level Caches entries are listed one
+    // per row; tmp is one row.
+    struct CacheEntry: Identifiable {
+        let id: String
+        let label: String
+        let url: URL
+        let bytes: Int
+        let isTmp: Bool
+    }
+
+    // Every non-empty top-level entry of Library/Caches plus tmp, with human labels for the
+    // well-known ones (CoreML's compiled-model bundles, the Hub downloader's staging copies).
+    static func cacheEntries() -> [CacheEntry] {
+        let fm = FileManager.default
+        var out: [CacheEntry] = []
+        if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first,
+           let names = try? fm.contentsOfDirectory(atPath: caches.path) {
+            for name in names.sorted() {
+                let url = caches.appendingPathComponent(name)
+                let bytes = sizeBytes(at: url)
+                if bytes > 0 { out.append(CacheEntry(id: url.path, label: cacheLabel(for: name), url: url, bytes: bytes, isTmp: false)) }
+            }
+        }
+        let tmp = fm.temporaryDirectory
+        let tmpBytes = sizeBytes(at: tmp)
+        if tmpBytes > 0 { out.append(CacheEntry(id: tmp.path, label: "Temporary Downloads", url: tmp, bytes: tmpBytes, isTmp: true)) }
+        return out
+    }
+
+    // Removes one cache entry (tmp keeps its directory, only its contents go).
+    static func delete(_ entry: CacheEntry) {
+        if entry.isTmp { removeContents(of: entry.url) } else { try? FileManager.default.removeItem(at: entry.url) }
+    }
+
+    // Friendly name for a Caches folder; unknown folders show their own name.
+    private static func cacheLabel(for name: String) -> String {
+        let lower = name.lowercased()
+        if lower.contains("e5rt") || lower.contains("coreml") || lower.contains("mlmodelc") { return "Compiled Model Bundles" }
+        if lower == "huggingface" || lower == "aufklarer" { return "Model Download Staging (\(name))" }
+        if lower == "vocalstems" { return "Old Isolated Vocals" }
+        return name
+    }
 }
