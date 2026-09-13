@@ -77,10 +77,10 @@ nonisolated enum CachesCleaner {
         guard UserDefaults.standard.string(forKey: key) != fingerprint else { return 0 }
         UserDefaults.standard.set(fingerprint, forKey: key)
         var freed = 0
-        if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first,
-           let names = try? fm.contentsOfDirectory(atPath: caches.path) {
-            for name in names where name.lowercased().contains("e5rt") || name.lowercased().contains("coreml") {
-                let url = caches.appendingPathComponent(name)
+        if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first, let bundleId = Bundle.main.bundleIdentifier {
+            // iOS: Library/Caches/<bundle id>/com.apple.e5rt.e5bundlecache holds the compiled bundles.
+            let url = caches.appendingPathComponent(bundleId, isDirectory: true).appendingPathComponent("com.apple.e5rt.e5bundlecache", isDirectory: true)
+            if fm.fileExists(atPath: url.path) {
                 freed += totalRegularFileBytes(at: url)
                 try? fm.removeItem(at: url)
             }

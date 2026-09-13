@@ -143,7 +143,7 @@ nonisolated enum DownloadedModelsStore {
             for name in names.sorted() {
                 let url = caches.appendingPathComponent(name)
                 let bytes = sizeBytes(at: url)
-                if bytes > 0 { out.append(CacheEntry(id: url.path, label: cacheLabel(for: name), url: url, bytes: bytes, isTmp: false)) }
+                if bytes >= 1_000_000 { out.append(CacheEntry(id: url.path, label: cacheLabel(for: name), url: url, bytes: bytes, isTmp: false)) }
             }
         }
         let tmp = fm.temporaryDirectory
@@ -157,10 +157,14 @@ nonisolated enum DownloadedModelsStore {
         if entry.isTmp { removeContents(of: entry.url) } else { try? FileManager.default.removeItem(at: entry.url) }
     }
 
-    // Friendly name for a Caches folder; unknown folders show their own name.
+    // Friendly name for a Caches folder; unknown folders show their own name. iOS keeps CoreML's
+    // compiled bundles (com.apple.e5rt.e5bundlecache) and the Metal shader caches inside a folder
+    // named after the app's bundle identifier.
     private static func cacheLabel(for name: String) -> String {
         let lower = name.lowercased()
+        if name == Bundle.main.bundleIdentifier { return "Compiled Model Bundles" }
         if lower.contains("e5rt") || lower.contains("coreml") || lower.contains("mlmodelc") { return "Compiled Model Bundles" }
+        if lower == "com.apple.dyld" { return "Launch Cache" }
         if lower == "huggingface" || lower == "aufklarer" { return "Model Download Staging (\(name))" }
         if lower == "vocalstems" { return "Old Isolated Vocals" }
         return name
