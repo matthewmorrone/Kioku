@@ -351,6 +351,16 @@ final class NotesStore: ObservableObject {
             return id
         }
 
+        // The id is missing or unknown, but a note with exactly this content already exists: the
+        // Read editor lost track of which note it was showing (a freshly imported one, mid-load)
+        // and is about to save it again as new. Update the existing note instead of minting a
+        // duplicate — the duplicate would carry no audio attachment and appear as a second row.
+        if let index = notes.firstIndex(where: { $0.content == content }) {
+            notes[index].segments = segments
+            if let segmentsAreUserEdited { notes[index].segmentsAreUserEdited = segmentsAreUserEdited }
+            notes[index].modifiedAt = now
+            return notes[index].id
+        }
         let newNote = Note(title: title, content: content, segments: segments, segmentsAreUserEdited: segmentsAreUserEdited ?? false, createdAt: now, modifiedAt: now)
         notes.insert(newNote, at: 0)
         return newNote.id
