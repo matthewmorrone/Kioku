@@ -99,7 +99,10 @@ public struct CTCForcedAligner {
         let audio16k = try MMSEmissions.resample(vocalMono, from: 44_100)
         var matrix = try MMSEmissions.logProbs(
             model: model, audio: audio16k, cancellationCheck: cancellationCheck,
-            onProgress: { frac in onProgress?(0.45 + 0.25 * frac) }
+            onProgress: { frac in
+                onProgress?(0.45 + 0.25 * frac)
+                onStage?("Aligning lyrics… \(Int((50 * frac).rounded()))%")
+            }
         )
         Self.breadcrumb("emissions \(matrix.frames) frames × \(MMSEmissions.classes)")
         #if DEBUG
@@ -108,7 +111,10 @@ public struct CTCForcedAligner {
         #endif
         let mixMatrix = try MMSEmissions.logProbs(
             model: model, audio: try MMSEmissions.resample(mixMono, from: 44_100), cancellationCheck: cancellationCheck,
-            onProgress: { frac in onProgress?(0.70 + 0.20 * frac) }
+            onProgress: { frac in
+                onProgress?(0.70 + 0.20 * frac)
+                onStage?("Aligning lyrics… \(50 + Int((50 * frac).rounded()))%")
+            }
         )
         #if DEBUG
         Self.debugDump(mixMatrix.values.withUnsafeBufferPointer { Data(buffer: $0) },
