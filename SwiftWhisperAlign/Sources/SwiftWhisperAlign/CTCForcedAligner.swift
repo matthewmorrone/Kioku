@@ -46,6 +46,17 @@ public struct CTCForcedAligner {
         Self.breadcrumb("RUN START", reset: true)
         Self.breadcrumb("stem cache \(VocalStemCache.debugKeyInfo(for: input.audioURL))")
 
+        // The raw mix is always needed too: it stands in for the stem wherever isolation erased
+        // the voice (see EmissionDropoutFill).
+        onStage?("Decoding audio…")
+        let stereo = try await Self.decodeStereoFloat(from: input.audioURL)
+        guard stereo.count == 2, stereo[0].isEmpty == false else {
+            throw NSError(domain: "SwiftWhisperAlign.CTC", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "Audio decoded to zero frames."])
+        }
+        Self.breadcrumb("decoded stereo \(stereo[0].count) frames (~\(stereo[0].count / 44_100)s)")
+        let mixMono = zip(stereo[0], stereo[1]).map { ($0 + $1) * 0.5 }
+
         // Vocal isolation is the most expensive stage and a pure function of the source audio,
         // so a re-align of unchanged audio loads the stem off disk.
         let vocalMono: [Float]
@@ -54,13 +65,6 @@ public struct CTCForcedAligner {
             onStage?("Loading cached vocals…")
             vocalMono = cached
         } else {
-            onStage?("Decoding audio…")
-            let stereo = try await Self.decodeStereoFloat(from: input.audioURL)
-            guard stereo.count == 2, stereo[0].isEmpty == false else {
-                throw NSError(domain: "SwiftWhisperAlign.CTC", code: 2,
-                              userInfo: [NSLocalizedDescriptionKey: "Audio decoded to zero frames."])
-            }
-            Self.breadcrumb("decoded stereo \(stereo[0].count) frames (~\(stereo[0].count / 44_100)s)")
             onProgress?(0.05)
             onStage?("Isolating…")
             let mono = try await HTDemucsCoreMLSeparator.isolateVocalsMono(
@@ -91,9 +95,15 @@ public struct CTCForcedAligner {
         let audio16k = try MMSEmissions.resample(vocalMono, from: 44_100)
         var matrix = try MMSEmissions.logProbs(
             model: model, audio: audio16k, cancellationCheck: cancellationCheck,
-            onProgress: { frac in onProgress?(0.45 + 0.45 * frac) }
+            onProgress: { frac in onProgress?(0.45 + 0.25 * frac) }
         )
         Self.breadcrumb("emissions \(matrix.frames) frames × \(MMSEmissions.classes)")
+        let mixMatrix = try MMSEmissions.logProbs(
+            model: model, audio: try MMSEmissions.resample(mixMono, from: 44_100), cancellationCheck: cancellationCheck,
+            onProgress: { frac in onProgress?(0.70 + 0.20 * frac) }
+        )
+        let filled = EmissionDropoutFill.fill(stem: &matrix, mix: mixMatrix)
+        Self.breadcrumb("mix filled \(filled.frames) stem-quiet frames in \(filled.runs) run(s)")
         #if DEBUG
         Self.debugDump(matrix.values.withUnsafeBufferPointer { Data(buffer: $0) },
                        name: "\(VocalStemCache.identityKey(for: input.audioURL)).emissions.f32")
