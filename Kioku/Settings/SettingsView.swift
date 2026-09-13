@@ -53,11 +53,12 @@ struct SettingsView: View {
     @State var openAIKey: String = LLMSettings.apiKey(for: .openAI) ?? ""
     @State var claudeKey: String = LLMSettings.apiKey(for: .claude) ?? ""
     @AppStorage(LLMSettings.keysRevisionKey) var llmKeysRevision: Int = 0
-    @AppStorage(LLMSettings.useLLMKey) var useLLM: Bool = false
+    @AppStorage(LLMSettings.useLLMKey) var useLLM: Bool = true
     @AppStorage(LLMSettings.temperatureKey) var temperature: Double = LLMSettings.defaultTemperature
     // Default true so a fresh install gets canonical-lyrics grounding out of the
     // box for songs; the user can disable to cut cost or for privacy.
     @AppStorage(LLMSettings.useWebSearchKey) var useWebSearch: Bool = true
+    @AppStorage(LLMSettings.preferOnDeviceCorrectionKey) var preferOnDeviceCorrection: Bool = true
 
     @AppStorage(TokenColorSettings.enabledKey) var customTokenColorsEnabled: Bool = false
     @AppStorage(TokenColorSettings.colorAKey) var tokenColorAHex: String = TokenColorSettings.defaultColorAHex
@@ -118,8 +119,8 @@ struct SettingsView: View {
     // Transient confirmation for the "Send Test" button: shows which word was scheduled and
     // auto-clears. wotdTestTapCount drives the success haptic and guards the auto-clear so a
     // rapid re-tap doesn't get its status wiped by the previous tap's timer.
-    @State private var wotdTestStatus: String?
-    @State private var wotdTestTapCount = 0
+    @State var wotdTestStatus: String?
+    @State var wotdTestTapCount = 0
 
     // Not private: SettingsView+BackupSection.swift's export/import functions read and write
     // these directly.
@@ -150,7 +151,6 @@ struct SettingsView: View {
     // Bumped after Clear Caches so the Downloaded Models section re-measures; the section
     // reports its own deletions back so the Clear Caches readout re-measures too.
     @State private var storageRefreshToken = 0
-    @State private var isShowingClearCachesConfirmation = false
 
     // advancedSettings (the "Advanced" screen's sections) and particlesBinding / demotionsBinding
     // live in SettingsView+AdvancedSection.swift to keep this file under the line-count guardrail.
@@ -277,6 +277,14 @@ struct SettingsView: View {
                     Text("Saved Highlight")
                 }
 
+                // MARK: Lookup — how the word popover behaves.
+                Section {
+                    Toggle("Show Japanese in Popover", isOn: $showJapaneseInPopover)
+                    Toggle("Open Full Lookup on Tap", isOn: $prefersSheetDirectSegmentActions)
+                } header: {
+                    Text("Lookup")
+                }
+
                 // MARK: Audio
                 Section {
                     Picker("Highlight Granularity", selection: $lyricsHighlightGranularityRaw) {
@@ -297,7 +305,73 @@ struct SettingsView: View {
                     Text("Audio")
                 }
 
-                // MARK: Word of the Day
+                // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
+                aiCorrectionSection
+
+                // MARK: Transcription — engine for importing audio → note.
+                Section {
+                    Picker("Engine", selection: $transcriptionEngine) {
+                        ForEach(TranscriptionEngine.allCases, id: \.rawValue) { engine in
+                            Text(engine.displayName).tag(engine.rawValue)
+                        }
+                    }
+                    if transcriptionEngine == TranscriptionEngine.whisper.rawValue {
+                        Button {
+                            isWhisperDownloadSheetPresented = true
+                        } label: {
+                            Label("Manage Whisper Models…", systemImage: "arrow.down.circle")
+                        }
+                    }
+                } header: {
+                    Text("Transcription")
+                }
+                .sheet(isPresented: $isWhisperDownloadSheetPresented) {
+                    WhisperDownloadSheet(manager: whisperModelManager) { _ in }
+                }
+
+                // MARK: Learning — auto-mark words as learned past a chosen bar, and whether the
+                // Learn tab keeps drilling words that have got there.
+                Section {
+                    // On-device only, and only where the device can actually do it — hidden rather
+                    // than shown disabled, since there's nothing the user could do to enable it.
+                    if AppleIntelligenceAvailability.isAvailable {
+                        Toggle("Smarter Quiz Options", isOn: $smarterQuizOptions)
+                    }
+
+                    Toggle("Skip Learned Words", isOn: $excludeLearnedInStudy)
+
+                    Toggle("Auto-mark as Learned", isOn: $autoLearnEnabled)
+                    if autoLearnEnabled {
+                        Picker("Rule", selection: $autoLearnRuleRaw) {
+                            ForEach(AutoLearnRule.allCases) { rule in
+                                Text(rule.title).tag(rule.rawValue)
+                            }
+                        }
+                        let rule = AutoLearnRule(rawValue: autoLearnRuleRaw) ?? .accuracyAndMinReviews
+                        if rule == .accuracyAndMinReviews || rule == .accuracyOnly {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Accuracy Threshold")
+                                    Spacer()
+                                    Text("\(Int((autoLearnThreshold * 100).rounded()))%")
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                }
+                                Slider(value: $autoLearnThreshold, in: 0.5...1.0, step: 0.05)
+                            }
+                        }
+                        if rule == .accuracyAndMinReviews {
+                            Stepper("Minimum Reviews: \(autoLearnMinReviews)", value: $autoLearnMinReviews, in: 1...20)
+                        }
+                        if rule == .consecutiveCorrect {
+                            Stepper("Correct in a Row: \(autoLearnStreak)", value: $autoLearnStreak, in: 1...20)
+                        }
+                    }
+                } header: {
+                    Text("Learning")
+                }
+
+                // MARK: System — Word of the Day notifications and clipboard detection.
                 Section {
                     Toggle("Word of the Day", isOn: $wotdEnabled)
                         .onChange(of: wotdEnabled) { _, _ in rescheduleWordOfTheDay() }
@@ -324,149 +398,13 @@ struct SettingsView: View {
                             }
                             .disabled(wotdPermissionStatus == .denied)
                         }
-
-                        Button("Send Test") {
-                            wotdTestTapCount += 1
-                            let tap = wotdTestTapCount
-                            let word = wordsStore.words.randomElement()
-                            let store = dictionaryStore
-                            wotdTestStatus = "Scheduling…"
-                            Task {
-                                await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
-                                wotdTestStatus = word.map { "Sent “\($0.surface)” — quit the app now; it arrives in ~10s, then tap it" } ?? "No saved word available"
-                                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                                if wotdTestTapCount == tap { wotdTestStatus = nil }
-                            }
-                        }
-                        .disabled(wordsStore.words.isEmpty)
-                        .sensoryFeedback(.success, trigger: wotdTestTapCount)
-
-                        if let wotdTestStatus {
-                            Text(wotdTestStatus)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .transition(.opacity)
-                        }
                     }
+                    Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
                 } header: {
-                    Text("Notifications")
+                    Text("System")
                 }
                 .task {
                     await refreshWotdStatus()
-                }
-
-                // MARK: Clipboard
-                Section {
-                    Toggle("Auto-detect Japanese in Clipboard", isOn: $clipboardAutoDetect)
-                } header: {
-                    Text("Clipboard")
-                }
-
-                // MARK: Dictionary — what the word detail screen surfaces.
-                Section {
-                    Toggle("Show Japanese in Popover", isOn: $showJapaneseInPopover)
-                    Toggle("Open Full Lookup on Tap", isOn: $prefersSheetDirectSegmentActions)
-                } header: {
-                    Text("Dictionary")
-                }
-
-                // MARK: Transcription — engine for importing audio → note.
-                Section {
-                    Picker("Engine", selection: $transcriptionEngine) {
-                        ForEach(TranscriptionEngine.allCases, id: \.rawValue) { engine in
-                            Text(engine.displayName).tag(engine.rawValue)
-                        }
-                    }
-                    if transcriptionEngine == TranscriptionEngine.whisper.rawValue {
-                        Button {
-                            isWhisperDownloadSheetPresented = true
-                        } label: {
-                            Label("Manage Whisper Models…", systemImage: "arrow.down.circle")
-                        }
-                    }
-                } header: {
-                    Text("Transcription")
-                }
-                .sheet(isPresented: $isWhisperDownloadSheetPresented) {
-                    WhisperDownloadSheet(manager: whisperModelManager) { _ in }
-                }
-
-                // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
-                aiCorrectionSection
-
-                // MARK: Learning — auto-mark words as learned past a chosen bar, and whether the
-                // Learn tab keeps drilling words that have got there.
-                Section {
-                    // On-device only, and only where the device can actually do it — hidden rather
-                    // than shown disabled, since there's nothing the user could do to enable it.
-                    if AppleIntelligenceAvailability.isAvailable {
-                        Toggle("Smarter quiz options", isOn: $smarterQuizOptions)
-                    }
-
-                    Toggle("Skip learned words", isOn: $excludeLearnedInStudy)
-
-                    Toggle("Auto-mark as learned", isOn: $autoLearnEnabled)
-                    if autoLearnEnabled {
-                        Picker("Rule", selection: $autoLearnRuleRaw) {
-                            ForEach(AutoLearnRule.allCases) { rule in
-                                Text(rule.title).tag(rule.rawValue)
-                            }
-                        }
-                        let rule = AutoLearnRule(rawValue: autoLearnRuleRaw) ?? .accuracyAndMinReviews
-                        if rule == .accuracyAndMinReviews || rule == .accuracyOnly {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Accuracy threshold")
-                                    Spacer()
-                                    Text("\(Int((autoLearnThreshold * 100).rounded()))%")
-                                        .foregroundStyle(.secondary)
-                                        .monospacedDigit()
-                                }
-                                Slider(value: $autoLearnThreshold, in: 0.5...1.0, step: 0.05)
-                            }
-                        }
-                        if rule == .accuracyAndMinReviews {
-                            Stepper("Minimum reviews: \(autoLearnMinReviews)", value: $autoLearnMinReviews, in: 1...20)
-                        }
-                        if rule == .consecutiveCorrect {
-                            Stepper("Correct in a row: \(autoLearnStreak)", value: $autoLearnStreak, in: 1...20)
-                        }
-                    }
-                } header: {
-                    Text("Learning")
-                }
-
-                // MARK: Advanced — segmentation engine/tuning, debug overlays, and the dev bridge,
-                // moved off the main screen to keep it focused. See advancedSettings.
-                Section {
-                    NavigationLink {
-                        Form {
-                            advancedSettings
-                            // MARK: Storage — models, isolated vocals and caches live at the bottom of
-                            // Advanced (own file: self-contained @State + alerts). Its Clear Caches
-                            // confirmation and state stay on this view.
-                            DownloadedModelsSection(
-                                refreshToken: storageRefreshToken,
-                                cachesBytes: cachesBytes,
-                                isClearingCaches: isClearingCaches,
-                                onClearCaches: { isShowingClearCachesConfirmation = true },
-                                onStorageChanged: { Task { await refreshCachesBytes() } }
-                            )
-                        }
-                            .scrollDismissesKeyboard(.interactively)
-                            .washiBackground()
-                            .navigationTitle("Advanced")
-                    } label: {
-                        Label("Advanced", systemImage: "gearshape.2")
-                    }
-                }
-
-                Section {
-                    NavigationLink {
-                        AboutView()
-                    } label: {
-                        Label("About", systemImage: "info.circle")
-                    }
                 }
 
                 // MARK: Data transfer
@@ -489,6 +427,40 @@ struct SettingsView: View {
                 } header: {
                     Text("Data")
                 }
+
+                // MARK: Advanced — segmentation engine/tuning, debug overlays, and the dev bridge,
+                // moved off the main screen to keep it focused. See advancedSettings.
+                Section {
+                    NavigationLink {
+                        Form {
+                            advancedSettings
+                            // MARK: Storage — models, isolated vocals and caches live at the bottom of
+                            // Advanced (own file: self-contained @State + alerts). Its Clear Caches
+                            // confirmation and state stay on this view.
+                            DownloadedModelsSection(
+                                refreshToken: storageRefreshToken,
+                                cachesBytes: cachesBytes,
+                                isClearingCaches: isClearingCaches,
+                                onClearCaches: { performCachesClear() },
+                                onStorageChanged: { Task { await refreshCachesBytes() } }
+                            )
+                        }
+                            .scrollDismissesKeyboard(.interactively)
+                            .washiBackground()
+                            .navigationTitle("Advanced")
+                    } label: {
+                        Label("Advanced", systemImage: "gearshape.2")
+                    }
+                }
+
+                Section {
+                    NavigationLink {
+                        AboutView()
+                    } label: {
+                        Label("About", systemImage: "info.circle")
+                    }
+                }
+
             }
             .scrollDismissesKeyboard(.interactively)
             .washiBackground()
@@ -544,12 +516,6 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently erase all notes, saved words, word lists, history, review progress, audio attachments, song breakdowns, and crash logs. App settings are kept. This cannot be undone.")
-        }
-        .alert("Clear Caches?", isPresented: $isShowingClearCachesConfirmation) {
-            Button("Clear", role: .destructive) { performCachesClear() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Frees \(formattedBytes(cachesBytes)) of on-disk caches (compiled model bundles, download staging, temporary files). Saved words, audio, downloaded models, and isolated vocals are not affected. The first alignment afterward recompiles the vocal isolator, so it takes a little longer.")
         }
         .task { await refreshCachesBytes() }
         .alert("Replace All Data?", isPresented: $isShowingImportConfirmation) {

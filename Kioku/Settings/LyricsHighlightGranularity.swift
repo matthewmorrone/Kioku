@@ -10,7 +10,7 @@ enum LyricsHighlightGranularity: String, CaseIterable {
     // Display name shown in Settings.
     var displayName: String {
         switch self {
-        case .sentence: return "Sentence"
+        case .sentence: return "Line"
         case .word:     return "Word"
         }
     }

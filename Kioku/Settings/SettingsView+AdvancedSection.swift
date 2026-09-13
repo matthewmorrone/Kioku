@@ -83,6 +83,30 @@ extension SettingsView {
             } label: {
                 Label("Debug Logs", systemImage: "text.alignleft")
             }
+            // Developer stub mode: AI calls return the canned response from UserDefaults instead
+            // of contacting any model. Off = real AI, the default.
+            Toggle("Use Stub AI Responses", isOn: Binding(get: { useLLM == false }, set: { useLLM = ($0 == false) }))
+            Button("Send Test Notification") {
+                wotdTestTapCount += 1
+                let tap = wotdTestTapCount
+                let word = wordsStore.words.randomElement()
+                let store = dictionaryStore
+                wotdTestStatus = "Scheduling…"
+                Task {
+                    await WordOfTheDayScheduler.sendTestNotification(word: word, dictionaryStore: store)
+                    wotdTestStatus = word.map { "Sent “\($0.surface)” — quit the app now; it arrives in ~10s, then tap it" } ?? "No saved word available"
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    if wotdTestTapCount == tap { wotdTestStatus = nil }
+                }
+            }
+            .disabled(wordsStore.words.isEmpty)
+            .sensoryFeedback(.success, trigger: wotdTestTapCount)
+            if let wotdTestStatus {
+                Text(wotdTestStatus)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .transition(.opacity)
+            }
         } header: {
             Text("Diagnostics")
         }

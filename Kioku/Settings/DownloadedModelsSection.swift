@@ -116,6 +116,7 @@ struct DownloadedModelsSection: View {
                     .swipeActions {
                         Button(role: .destructive) {
                             cacheEntryPendingDeletion = entry
+                            performCacheEntryDeletion()
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -172,18 +173,6 @@ struct DownloadedModelsSection: View {
             Button("Cancel", role: .cancel) { whisperModelFilenamePendingDeletion = nil }
         } message: {
             Text("This model will download again automatically the next time it's needed.")
-        }
-        .alert(
-            "Delete \(cacheEntryPendingDeletion?.label ?? "Cache")?",
-            isPresented: Binding(
-                get: { cacheEntryPendingDeletion != nil },
-                set: { if $0 == false { cacheEntryPendingDeletion = nil } }
-            )
-        ) {
-            Button("Delete", role: .destructive) { performCacheEntryDeletion() }
-            Button("Cancel", role: .cancel) { cacheEntryPendingDeletion = nil }
-        } message: {
-            Text("This is rebuilt automatically when it's needed again.")
         }
         .task(id: refreshToken) {
             whisperModelManager.refreshDownloadedModels()
