@@ -252,8 +252,6 @@ struct DownloadedModelsSection: View {
         }
     }
 
-    // Deletes the Whisper model pending confirmation — WhisperModelManager.deleteModel already
-    // refreshes its own downloadedModels list, which this section observes.
     // Sum of every row in the Downloaded section, for the Delete Downloaded button.
     private var downloadedBytes: Int {
         qwenASRBytes + qwenForcedAlignerBytes + htDemucsBytes + vocalStemsBytes
@@ -271,6 +269,8 @@ struct DownloadedModelsSection: View {
         }
     }
 
+    // Deletes the Whisper model pending confirmation — WhisperModelManager.deleteModel already
+    // refreshes its own downloadedModels list, which this section observes.
     private func performWhisperModelDeletion() {
         guard let filename = whisperModelFilenamePendingDeletion else { return }
         whisperModelFilenamePendingDeletion = nil
