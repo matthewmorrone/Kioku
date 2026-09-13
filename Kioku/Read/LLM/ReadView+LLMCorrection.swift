@@ -126,6 +126,8 @@ extension ReadView {
                     }
                 }
             } catch {
+                // A cancellation the user asked for is not an error to report.
+                if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
                 LLMCorrectionService.logOutcome(provider: provider, result: .failure(error))
                 await MainActor.run {
                     llmCorrection.llmCorrectionErrorMessage = error.localizedDescription
