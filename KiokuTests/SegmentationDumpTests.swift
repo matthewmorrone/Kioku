@@ -6,9 +6,11 @@ import XCTest
 // global longest-match strategies so we can see exactly where boundaries land — not derived
 // from pixel-color inspection of a screenshot.
 //
-// Not asserting anything — purely diagnostic. `xcrun xcodebuild test ... -only-testing:KiokuTests/SegmentationDumpTests`.
+// Not asserting anything — purely diagnostic. Skipped by default so it doesn't inflate the
+// passing-test count; opt in with `KIOKU_RUN_DUMPS=1 xcodebuild test ... -only-testing:KiokuTests/SegmentationDumpTests`.
 @MainActor
 final class SegmentationDumpTests: XCTestCase {
+    private var dumpsEnabled: Bool { ProcessInfo.processInfo.environment["KIOKU_RUN_DUMPS"] != nil }
 
     private let phrases = [
         "今すぐ会いたいよ",
@@ -27,12 +29,14 @@ final class SegmentationDumpTests: XCTestCase {
     ]
 
     func testDumpLocal() throws {
+        guard dumpsEnabled else { throw XCTSkip("Set KIOKU_RUN_DUMPS=1 to print this dump") }
         let resources = try TestReadResources.shared()
         UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
         dump(label: "LOCAL", segmenter: resources.segmenter)
     }
 
     func testDumpGlobal() throws {
+        guard dumpsEnabled else { throw XCTSkip("Set KIOKU_RUN_DUMPS=1 to print this dump") }
         let resources = try TestReadResources.shared()
         UserDefaults.standard.set(SegmentationStrategy.globalLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
         defer { UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey) }

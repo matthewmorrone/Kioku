@@ -5,7 +5,8 @@ import XCTest
 // segmenter (longest-match + deinflection) and dumps, per line, the chosen
 // surface tokens and their lemmas — the "stemmed result". Also emits a flat,
 // de-duplicated lemma vocabulary used to bias transcription / drive word-level
-// alignment. Prints between grep-able markers; always passes.
+// alignment. Prints between grep-able markers. Skipped by default so it doesn't inflate the
+// passing-test count; opt in with `KIOKU_RUN_DUMPS=1 xcodebuild test ... -only-testing:KiokuTests/StemmedLyricsDumpTests`.
 @MainActor
 final class StemmedLyricsDumpTests: XCTestCase {
 
@@ -46,6 +47,9 @@ final class StemmedLyricsDumpTests: XCTestCase {
     ]
 
     func testDumpStemmedLyrics() throws {
+        guard ProcessInfo.processInfo.environment["KIOKU_RUN_DUMPS"] != nil else {
+            throw XCTSkip("Set KIOKU_RUN_DUMPS=1 to print this dump")
+        }
         let resources = try TestReadResources.shared()
         let segmenter = resources.segmenter
 
