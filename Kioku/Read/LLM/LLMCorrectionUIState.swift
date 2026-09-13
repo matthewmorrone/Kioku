@@ -30,6 +30,10 @@ final class LLMCorrectionUIState {
     var llmChangePopoverLocation: Int? = nil
     var isShowingLLMChangePopover = false
     var isShowingLLMRerunConfirm = false
+    // Sparkles tapped on a fresh note: explains what the correction does before it runs.
+    var isShowingLLMStartConfirm = false
+    // Sparkles tapped mid-run: confirms before discarding the correction in progress.
+    var isShowingLLMCancelConfirm = false
 
     // True once an LLM correction has actually been applied to the currently-loaded note.
     // Gates the "Re-run AI Correction?" confirm so it only warns about replacing prior

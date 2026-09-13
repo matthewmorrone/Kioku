@@ -65,6 +65,18 @@ extension ReadView {
             } message: {
                 Text(llmCorrection.llmChangePopoverText)
             }
+            .alert("Run AI Correction?", isPresented: $llmCorrection.isShowingLLMStartConfirm) {
+                Button("Run") { requestLLMCorrection() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Sends this note's text and segmentation to \(LLMSettings.activeProvider().displayName). The suggested changes come back as pending edits for you to confirm before anything is applied.")
+            }
+            .alert("Cancel AI Correction?", isPresented: $llmCorrection.isShowingLLMCancelConfirm) {
+                Button("Cancel Correction", role: .destructive) { cancelLLMCorrection() }
+                Button("Keep Going", role: .cancel) {}
+            } message: {
+                Text("The correction in progress will be discarded.")
+            }
             .alert("Re-run AI Correction?", isPresented: $llmCorrection.isShowingLLMRerunConfirm) {
                 Button("Re-run", role: .destructive) {
                     requestLLMCorrection()

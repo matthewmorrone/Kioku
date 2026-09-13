@@ -39,7 +39,7 @@ extension ReadView {
     var llmCorrectionButton: some View {
         Button {
             if llmCorrection.isRequestingLLMCorrection {
-                cancelLLMCorrection()
+                llmCorrection.isShowingLLMCancelConfirm = true
             } else if llmCorrection.hasPendingLLMChanges {
                 confirmLLMChanges()
             } else if llmCorrection.hasAppliedLLMCorrectionForCurrentNote {
@@ -47,7 +47,7 @@ extension ReadView {
                 // applied — a fresh note runs straight away without the confirm dialog.
                 llmCorrection.isShowingLLMRerunConfirm = true
             } else {
-                requestLLMCorrection()
+                llmCorrection.isShowingLLMStartConfirm = true
             }
         } label: {
             Group {
