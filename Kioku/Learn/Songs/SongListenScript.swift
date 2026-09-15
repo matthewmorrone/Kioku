@@ -3,19 +3,20 @@ import Foundation
 // Turns a SongBreakdown into a flat, ordered list of things to play/say: for each line, the
 // sung audio clip (when a matched time range is available), then the Japanese original, then
 // the English gist, then each word's Japanese surface followed by its English definition —
-// before moving to the next line. This is the "script" that SongListenAudioService reads
-// from; the language tag on each SongListenSegment is what drives the Japanese/English voice
-// switching ("code switching") during synthesis, and the leading `.clip` step (when present)
-// is what lets the listener hear the line sung before its breakdown explains it.
+// before moving to the next line. This is the "script" that SongLiveListenController plays
+// through live, one step at a time; the language tag on each SongListenSegment is what drives
+// the Japanese/English voice switching ("code switching") during synthesis, and the leading
+// `.clip` step (when present) is what lets the listener hear the line sung before its
+// breakdown explains it.
 //
 // Mirrors SongLineCard's `.sameAsLine` / `.parallelTo` fall-through: a chorus repeat line
 // still speaks its own `original` text (it's literally different/identical lyrics being
 // sung), but borrows the referenced line's gist/words when its own are empty, exactly like
 // the card falls back for display.
 //
-// `nonisolated`: called from the `nonisolated` SongListenAudioService (see that file's header
-// comment) — without this, the module's default MainActor isolation would make `build`
-// callable only from the main actor.
+// `nonisolated`: a pure function of its inputs, callable without hopping onto the main actor
+// — without this, the module's default MainActor isolation would make `build` callable only
+// from the main actor.
 nonisolated enum SongListenScript {
     // Builds the ordered step list for a full breakdown. Pure function of its inputs so a
     // given breakdown + line-range map always produces the same script (and therefore the

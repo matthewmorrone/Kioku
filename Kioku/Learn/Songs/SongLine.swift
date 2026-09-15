@@ -55,13 +55,11 @@ nonisolated enum SongLineCardPhase: Equatable {
     case ready
 }
 
-// What a line card's audio button shows, in the order a line goes through them: a down
-// arrow (tap to generate the narration), a spinner while it's actively generating, play
-// (tap to hear this line's clip + narration), pause while this line is the one being
-// spoken. Nil at the call site hides the button (no breakdown yet).
+// What a line card's audio button shows: play (tap to hear this line's clip + narration) or
+// pause while this line is the one being spoken. Nil at the call site hides the button (no
+// breakdown yet) — see SongLiveListenController, which plays live rather than pre-rendering,
+// so there's no separate "generate" step to show a down-arrow/spinner for.
 nonisolated enum SongLineCardPlayState: Equatable {
-    case available
-    case loading
     case idle
     case playing
 }

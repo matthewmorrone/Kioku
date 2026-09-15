@@ -1,11 +1,11 @@
 import Foundation
 
-// Splits one segment's text into same-language runs so SongListenAudioService can switch
+// Splits one segment's text into same-language runs so SongLiveListenController can switch
 // voices *inside* a segment. An English gist or definition routinely quotes Japanese
 // ("contracted form of 愛している", "lit. 'the dusk hour', 黄昏 = 誰そ彼"), and a sung line can
 // carry English ("I said 愛してる to her"); handed whole to one voice, the other language's
-// characters are skipped or mangled. Runs keep the original order, so the cue for the whole
-// segment still covers everything that was said.
+// characters are skipped or mangled. Runs keep the original order and are spoken one after
+// another, so nothing said gets dropped.
 //
 // Classification is per character: kana/kanji (and Japanese punctuation) → Japanese, Latin
 // letters → English, everything else (spaces, ASCII punctuation, digits) is neutral and
@@ -13,7 +13,8 @@ import Foundation
 // character is carried into the first run. Text with no classified characters at all is one
 // run in `defaultLanguage`.
 //
-// `nonisolated`: called from the `nonisolated` SongListenAudioService.
+// `nonisolated`: a pure text transform called from both the `nonisolated` SongListenScript
+// context and the `@MainActor` SongLiveListenController.
 nonisolated enum SongListenLanguageRuns {
 
     // Splits `text` into runs; never returns an empty array for non-empty input.
