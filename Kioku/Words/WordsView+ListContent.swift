@@ -567,8 +567,15 @@ extension WordsView {
                         entry: materialized,
                         gloss: materialized?.senses.first?.glosses.first,
                         onTap: {
-                            historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
                             selectedDetailWord = wordForHistory(entry)
+                            // Recording moves this row to the top of the newest-first list, which is
+                            // visible the instant it happens — even reordered without animation, it
+                            // reads as a jump-cut if it lands before the sheet has actually covered
+                            // the row. Wait out the sheet's own presentation transition (~0.35s on
+                            // iOS) so the reorder happens once the list is fully hidden behind it.
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                historyStore.record(canonicalEntryID: entry.canonicalEntryID, surface: entry.surface)
+                            }
                         }
                     )
                     .tag(entry.canonicalEntryID)

@@ -84,6 +84,13 @@
 			);
 			target = C0FFEE000000000000000001 /* KiokuWidgetExtension */;
 		};
+		C0FFEE000000000000000014 /* Exceptions for "Kioku" folder in "Kioku" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Info-URLTypes.plist",
+			);
+			target = E3070AE72F4DFDB6005FD323 /* Kioku */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -97,6 +104,9 @@
 		};
 		E3070AEA2F4DFDB6005FD323 /* Kioku */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C0FFEE000000000000000014 /* Exceptions for "Kioku" folder in "Kioku" target */,
+			);
 			path = Kioku;
 			sourceTree = "<group>";
 		};
@@ -703,6 +713,7 @@
 				ENABLE_TESTABILITY = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Kioku/Info-URLTypes.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSBonjourServices = "_kioku-mcp._tcp";
@@ -752,6 +763,7 @@
 				ENABLE_TESTABILITY = YES;
 				GCC_OPTIMIZATION_LEVEL = s;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Kioku/Info-URLTypes.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSBonjourServices = "_kioku-mcp._tcp";
