@@ -3,19 +3,20 @@ import Foundation
 // Turns a SongBreakdown into a flat, ordered list of things to play/say: for each line, the
 // sung audio clip (when a matched time range is available), then the Japanese original, then
 // the English gist, then each word's Japanese surface followed by its English definition —
-// before moving to the next line. This is the "script" that SongListenAudioService reads
-// from; the language tag on each SongListenSegment is what drives the Japanese/English voice
-// switching ("code switching") during synthesis, and the leading `.clip` step (when present)
-// is what lets the listener hear the line sung before its breakdown explains it.
+// before moving to the next line. This is the "script" that SongLiveListenController plays
+// through live, one step at a time; the language tag on each SongListenSegment is what drives
+// the Japanese/English voice switching ("code switching") during synthesis, and the leading
+// `.clip` step (when present) is what lets the listener hear the line sung before its
+// breakdown explains it.
 //
 // Mirrors SongLineCard's `.sameAsLine` / `.parallelTo` fall-through: a chorus repeat line
 // still speaks its own `original` text (it's literally different/identical lyrics being
 // sung), but borrows the referenced line's gist/words when its own are empty, exactly like
 // the card falls back for display.
 //
-// `nonisolated`: called from the `nonisolated` SongListenAudioService (see that file's header
-// comment) — without this, the module's default MainActor isolation would make `build`
-// callable only from the main actor.
+// `nonisolated`: a pure function of its inputs, callable without hopping onto the main actor
+// — without this, the module's default MainActor isolation would make `build` callable only
+// from the main actor.
 nonisolated enum SongListenScript {
     // Builds the ordered step list for a full breakdown. Pure function of its inputs so a
     // given breakdown + line-range map always produces the same script (and therefore the
@@ -33,17 +34,23 @@ nonisolated enum SongListenScript {
             let original = line.original.trimmingCharacters(in: .whitespacesAndNewlines)
             guard original.isEmpty == false else { continue }
 
+            // When the sung clip is available, it already says the line — in the singer's own
+            // voice, with correct pronunciation for free. A synthesized reading right after it
+            // would just repeat the same words a second time. TTS only speaks the sentence
+            // when there's no clip to cover it; SongLiveListenController still highlights the
+            // Japanese row during the clip itself (see its synthetic `.sentence`-kind segment
+            // for `.clip` steps).
             if let range = lineRanges[line.index] {
                 steps.append(.clip(lineIndex: line.index, startMs: range.startMs, endMs: range.endMs))
+            } else {
+                steps.append(.speech(SongListenSegment(
+                    lineIndex: line.index,
+                    kind: .sentence,
+                    text: original,
+                    language: .japanese,
+                    spokenText: spokenReading(original: original, romaji: line.romaji)
+                )))
             }
-
-            steps.append(.speech(SongListenSegment(
-                lineIndex: line.index,
-                kind: .sentence,
-                text: original,
-                language: .japanese,
-                spokenText: spokenReading(original: original, romaji: line.romaji)
-            )))
 
             if let gist = effectiveGist(for: line, linesByIndex: linesByIndex), gist.isEmpty == false {
                 steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .translation, text: ttsFriendlyText(gist), language: .english)))
@@ -60,7 +67,7 @@ nonisolated enum SongListenScript {
                     spokenText: spokenReading(original: surface, romaji: word.sungRomaji)
                 )))
 
-                let definition = SongLineCard.stripInlineMarkdown(word.definition)
+                let definition = SongLineCard.truncatingAtSemicolon(SongLineCard.stripInlineMarkdown(word.definition))
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if definition.isEmpty == false {
                     steps.append(.speech(SongListenSegment(lineIndex: line.index, kind: .wordDefinition, text: ttsFriendlyText(definition), language: .english)))

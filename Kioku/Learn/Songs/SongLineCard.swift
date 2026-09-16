@@ -141,7 +141,7 @@ struct SongLineCard: View {
         case .wordSurface:
             return listenHighlight.text == word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
         case .wordDefinition:
-            return listenHighlight.text == SongLineCard.stripInlineMarkdown(word.definition)
+            return listenHighlight.text == SongLineCard.truncatingAtSemicolon(SongLineCard.stripInlineMarkdown(word.definition))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         case .sentence, .translation, .patternNote:
             return false
@@ -184,42 +184,32 @@ struct SongLineCard: View {
         }
     }
 
-    // Small accent-coloured ⬇︎ / ▶︎ / ❚❚ that triggers `onPlayLine` (the parent decides
-    // whether that means generate, play, or pause from the state), or a spinner while the
-    // narration track is actively being generated.
+    // Small accent-coloured ▶︎ / ❚❚ that triggers `onPlayLine` (the parent decides whether
+    // that means play or pause from the state).
     @ViewBuilder
     private func playButton(_ state: SongLineCardPlayState) -> some View {
-        switch state {
-        case .loading:
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel("Generating audio for line \(line.index)")
-        case .available, .idle, .playing:
-            Button(action: onPlayLine) {
-                Image(systemName: playButtonSymbol(state))
-                    .font(.system(size: 22))
-                    .foregroundStyle(Color.accentColor)
-                    .accessibilityLabel(playButtonLabel(state))
-            }
-            .buttonStyle(.plain)
+        Button(action: onPlayLine) {
+            Image(systemName: playButtonSymbol(state))
+                .font(.system(size: 22))
+                .foregroundStyle(Color.accentColor)
+                .accessibilityLabel(playButtonLabel(state))
         }
+        .buttonStyle(.plain)
     }
 
     // Icon per state for the audio button.
     private func playButtonSymbol(_ state: SongLineCardPlayState) -> String {
         switch state {
-        case .available: return "arrow.down.circle"
         case .playing: return "pause.circle.fill"
-        case .idle, .loading: return "play.circle.fill"
+        case .idle: return "play.circle.fill"
         }
     }
 
     // Accessibility label per state for the audio button.
     private func playButtonLabel(_ state: SongLineCardPlayState) -> String {
         switch state {
-        case .available: return "Generate audio for line \(line.index)"
         case .playing: return "Pause line \(line.index)"
-        case .idle, .loading: return "Play line \(line.index)"
+        case .idle: return "Play line \(line.index)"
         }
     }
 
@@ -376,12 +366,12 @@ struct SongLineCard: View {
 
     // Estimates which of the Read tab's segmented words (`segmentationRanges`, from the same
     // `longestMatchEdges` lookup already uses) is being spoken at `progress` through the
-    // sentence's cue, by distributing progress proportionally across each word's character
-    // count. This is a heuristic, not measured timing — AVSpeechSynthesizer's buffer-based
-    // rendering (see SongListenAudioService's header comment) never reports real per-word
-    // boundaries, so there's nothing exact to read. Character count (rather than, say, mora
-    // count) is a crude proxy for how long a word takes to say, but it's directionally right
-    // and doesn't require a second kana-aware pass over each word just for this estimate.
+    // sentence, by distributing progress proportionally across each word's character count.
+    // `progress` itself comes from AVSpeechSynthesizer's live per-character callback (see
+    // SongLiveListenController.handleWillSpeak) — real measured position, not a guess — but
+    // mapping that position onto word boundaries is still an estimate: character count (rather
+    // than, say, mora count) is a crude proxy for how long a word takes to say, and doesn't
+    // require a second kana-aware pass over each word just for this.
     static func estimatedActiveWordRange(
         progress: Double,
         segmentationRanges: [Range<String.Index>],
@@ -534,6 +524,17 @@ struct SongLineCard: View {
         return trimmed
     }
 
+    // Cuts a word definition off at its first semicolon. The LLM's manufactured-interpretation
+    // commentary (see SongBreakdownPrompt rule 5 — "suggests," "evokes," emotional overtones)
+    // reliably lands after a semicolon even when the prompt telling it not to write that
+    // sentence at all doesn't fully hold — a mechanical cut here is more reliable than another
+    // prompt instruction. Applied to both the on-screen definition and the narrated one (see
+    // SongListenScript) so what's spoken always matches what's shown.
+    nonisolated static func truncatingAtSemicolon(_ text: String) -> String {
+        guard let range = text.range(of: ";") else { return text }
+        return String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+    }
+
     // Renders one word entry: surface (with furigana when available), LLM definition wrapped
     // beneath. Tapping the row opens the shared lookup sheet (via onWordTapped) so the
     // breakdown's vocabulary is a jumping-off point into the dictionary, like tapping a
@@ -551,8 +552,9 @@ struct SongLineCard: View {
                 }
                 if word.definition.isEmpty == false {
                     // Strip inline-emphasis markers so `*foo*` / `**bar**` don't leak literal
-                    // asterisks into the rendered definition.
-                    Text(SongLineCard.stripInlineMarkdown(word.definition))
+                    // asterisks into the rendered definition, and cut anything past the first
+                    // semicolon — see truncatingAtSemicolon's doc comment.
+                    Text(SongLineCard.truncatingAtSemicolon(SongLineCard.stripInlineMarkdown(word.definition)))
                         .font(.footnote)
                         .foregroundStyle(.primary.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)

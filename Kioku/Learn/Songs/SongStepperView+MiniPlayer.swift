@@ -4,14 +4,14 @@ import SwiftUI
 // Persistent floating transport bar for the breakdown: play/pause, previous/next, and the
 // current position (intro / "Line N of M" / outro). Pinned to the bottom of SongStepperView via
 // `.safeAreaInset` so it never covers the last card, and its position survives leaving and
-// reopening the breakdown — including an app relaunch — via SongListenStore (see
+// reopening the breakdown — including an app relaunch — via SongPlaybackProgress (see
 // currentPlaybackStep's wiring in SongStepperView's body).
 //
 // "Next"/"previous" walk the same line order the cards are shown in; stepping past either end
 // plays the song's own intro (before the first line) or outro (after the last line) from the
-// note's original audio file via `introOutroPlayback` — the narrated listen-along track
-// (`listenPlayback`) can't do this itself, since it's a synthesized narration with TTS
-// interleaved between lines and has no notion of the song's own timeline.
+// note's original audio file via `introOutroPlayback` — the live listen-along controller
+// (`liveListen`) can't do this itself, since it plays a script of TTS narration interleaved
+// with sung clips and has no notion of the song's own timeline.
 extension SongStepperView {
 
     var miniPlayerBar: some View {
@@ -80,7 +80,7 @@ extension SongStepperView {
     }
 
     var isMiniPlayerPlaying: Bool {
-        listenPlayback.isPlaying || introOutroPlayback.isPlaying
+        liveListen.isPlaying || introOutroPlayback.isPlaying
     }
 
     // Stepping between lines always works (narration doesn't need a matched sung clip); only
@@ -126,7 +126,7 @@ extension SongStepperView {
     // MARK: - Transport
 
     func toggleMiniPlayerPlayback() {
-        if listenPlayback.isPlaying {
+        if liveListen.isPlaying {
             pauseListen()
             return
         }
@@ -202,18 +202,18 @@ extension SongStepperView {
     // MARK: - Intro / outro
 
     // Plays the song's own audio from its very start (or a previously-saved position within
-    // that span — see SongListenStore.lastIntroOutroPositionMs) up to the first matched line's
-    // cue — the instrumental (or vocal) intro before the lyrics being broken down begin.
+    // that span — see SongPlaybackProgress.lastIntroOutroPositionMs) up to the first matched
+    // line's cue — the instrumental (or vocal) intro before the lyrics being broken down begin.
     func playIntro() {
         guard let sourceURL = listenSourceAudioURL,
               let firstStartMs = lineRangesByIndex.values.map({ $0.startMs }).min(),
               firstStartMs > 0 else { return }
-        listenPlayback.pause()
+        liveListen.pause()
         let isFreshLoad = loadedIntroOutroURL != sourceURL
         loadIntroOutroSourceIfNeeded(sourceURL) {
             var startMs = 0
             if isFreshLoad {
-                let saved = listenStore.lastIntroOutroPositionMs(forNoteID: note.id)
+                let saved = SongPlaybackProgress.lastIntroOutroPositionMs(forNoteID: note.id)
                 if saved > 0, saved < firstStartMs { startMs = saved }
             }
             introOutroPlayback.playRange(startMs: startMs, endMs: firstStartMs)
@@ -227,14 +227,14 @@ extension SongStepperView {
     func playOutro() {
         guard let sourceURL = listenSourceAudioURL,
               let lastEndMs = lineRangesByIndex.values.map({ $0.endMs }).max() else { return }
-        listenPlayback.pause()
+        liveListen.pause()
         let isFreshLoad = loadedIntroOutroURL != sourceURL
         loadIntroOutroSourceIfNeeded(sourceURL) {
             let durationMs = Int(introOutroPlayback.duration * 1000)
             guard durationMs > lastEndMs else { return }
             var startMs = lastEndMs
             if isFreshLoad {
-                let saved = listenStore.lastIntroOutroPositionMs(forNoteID: note.id)
+                let saved = SongPlaybackProgress.lastIntroOutroPositionMs(forNoteID: note.id)
                 if saved > lastEndMs, saved < durationMs { startMs = saved }
             }
             introOutroPlayback.playRange(startMs: startMs, endMs: durationMs)

@@ -9,9 +9,9 @@ import SwiftUI
 // There is no separate loading screen. The Generate button (or, on a regenerate, the toolbar
 // icon) spins while the call runs, and as the model streams each line's card appears in the
 // scroll with the one being written highlighted and auto-expanded. Listen-along is not a
-// separate screen either: the toolbar headphones button plays every line's narration in
-// sequence (spinning while the track renders), each card's play button plays just that
-// line, and the line and row being spoken are highlighted in place.
+// separate screen either: the toolbar headphones button plays every line's narration live, in
+// sequence, each card's play button plays just that line, and the line and row being spoken
+// are highlighted in place.
 //
 // Major sections:
 //   1. Toolbar with listen / expand-all / regenerate actions (spinners while running)
@@ -48,8 +48,6 @@ struct SongStepperView: View {
     @EnvironmentObject private var songBreakdownStore: SongBreakdownStore
     // Drives the lookup sheet's save star for tapped words (globally injected at the app root).
     @EnvironmentObject private var wordsStore: WordsStore
-    // Owns listen-along renders and resume positions across sheet dismissals.
-    @EnvironmentObject var listenStore: SongListenStore
     // Per-line expansion state: whether a line's word/grammar explanations are visible.
     // Keyed by `line.index` (not array offset) so it survives regenerate / breakdown rebuilds.
     // Lines are auto-expanded as they stream in; reset when a new generation starts.
@@ -60,31 +58,27 @@ struct SongStepperView: View {
     // isRegenerateConfirmationPresented so the two dialogs' distinct messages (and
     // destinations: startGeneration vs startMergedGeneration) can't cross-wire.
     // Listen-along state shared with SongStepperView+Listen (internal for that reason).
-    // True once this view has engaged the track (played anything); drives teardown.
+    // True once this view has engaged listen-along (played anything); drives teardown.
     @State var isListening: Bool = false
-    // The URL the listen player was last loaded for, so a body re-evaluation doesn't
-    // reload/reseek/replay an already-loaded track.
-    @State var loadedListenURL: URL?
-    // One segment per track cue, in order, so the playhead maps back to a line and row
-    // (see activeListenSegment).
-    @State var listenSegments: [SongListenSegment] = []
-    // The line a card's play button asked for before the track existed; played on load.
-    @State var pendingPlayLineIndex: Int?
-    // Plays the rendered listen-along track (sung clips included).
-    @StateObject var listenPlayback = AudioPlaybackController()
+    // Plays the breakdown's script live (sung clips + TTS narration), one step at a time —
+    // see SongLiveListenController. Owned by this view, not the environment: it has no
+    // cross-session position of its own to persist, so a fresh sheet gets a fresh controller
+    // (see SongPlaybackProgress for what IS persisted — the mini player's step).
+    @StateObject var liveListen = SongLiveListenController()
     // Separate player for the song's own intro (before the first line) and outro (after the
-    // last line) — the narrated listen-along track (`listenPlayback`) is a synthesized
-    // narration with TTS interleaved between lines, so it has no notion of the song's own
-    // timeline; intro/outro playback needs the note's original audio file instead. Kept
-    // entirely separate from `listenPlayback` so intro/outro playback can't disturb the
-    // narration track's own load/position state. See SongStepperView+MiniPlayer.
+    // last line) — the live listen-along controller plays a script of TTS narration
+    // interleaved with sung clips, with no notion of the song's own timeline; intro/outro
+    // playback needs the note's original audio file instead. Kept entirely separate from
+    // `liveListen` so intro/outro playback can't disturb its state. See
+    // SongStepperView+MiniPlayer.
     @StateObject var introOutroPlayback = AudioPlaybackController()
     // The URL currently loaded into introOutroPlayback, so repeated intro/outro taps don't
     // reload the same file. Nil before the first intro/outro play.
     @State var loadedIntroOutroURL: URL?
     // The mini player's current position: intro, a specific line, or outro. Restored from
-    // SongListenStore on appear so it survives leaving and reopening the breakdown (including
-    // an app relaunch), and re-persisted on every change. See SongStepperView+MiniPlayer.
+    // SongPlaybackProgress on appear so it survives leaving and reopening the breakdown
+    // (including an app relaunch), and re-persisted on every change. See
+    // SongStepperView+MiniPlayer.
     @State var currentPlaybackStep: SongPlaybackStep = .intro
     // The note's SRT cues, for matching each line to its sung time range (see
     // lineRangesByIndex). Empty when the note has no audio attachment or no cues.
@@ -237,11 +231,6 @@ struct SongStepperView: View {
                         Button("Regenerate") {
                             isRegenerateConfirmationPresented = true
                         }
-                        if case .ready(let url) = listenStore.renderStateByNoteID[note.id] {
-                            ShareLink(item: url) {
-                                Label("Export Audio", systemImage: "square.and.arrow.up")
-                            }
-                        }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
@@ -249,15 +238,22 @@ struct SongStepperView: View {
                 }
             }
         }
-        // A freshly-ready render (or a regenerated breakdown's fresh render) loads into the
-        // player as soon as the store publishes it.
-        .onChange(of: listenStore.renderStateByNoteID[note.id]) { _, _ in
-            loadListenTrackIfReady()
-        }
-        // A regenerate replaces the lines the track was narrating; stop rather than keep
-        // highlighting rows that no longer exist.
+        // A regenerate replaces the lines the script was narrating; stop rather than keep
+        // highlighting rows that no longer exist. When generation finishes (running goes
+        // false), hand the controller the freshly-available script speculatively — same
+        // reasoning as the `.onAppear`/`.task` calls: finish its background setup before the
+        // user's first play tap rather than on it.
         .onChange(of: isRunning) { _, running in
-            if running, isListening { stopListening() }
+            if running {
+                if isListening { stopListening() }
+                // The regenerate about to run will replace every line the saved step/position
+                // was measured against — a stale line index or intro/outro ms offset from the
+                // old breakdown isn't meaningful once its text is gone.
+                SongPlaybackProgress.clear(forNoteID: note.id)
+                currentPlaybackStep = .intro
+            } else {
+                configureLiveListen()
+            }
         }
         // The mini player follows whichever line the narration track is actively speaking;
         // when nothing is playing this simply doesn't fire, leaving the step wherever the user
@@ -270,7 +266,7 @@ struct SongStepperView: View {
         // Persists the mini player's position on every change, not just on dismiss, so an app
         // relaunch mid-song still resumes close to where playback actually was.
         .onChange(of: currentPlaybackStep) { _, newStep in
-            listenStore.recordStep(newStep, forNoteID: note.id)
+            SongPlaybackProgress.recordStep(newStep, forNoteID: note.id)
         }
         .confirmationDialog(
             "Regenerate this breakdown?",
@@ -320,13 +316,19 @@ struct SongStepperView: View {
         .onAppear {
             noteFuriganaRestoration = Self.restoreNoteFurigana(from: note)
             refreshLineDerivedState(for: displayItems)
-            // Reassigned on every appearance (harmless — same closure, same `listenPlayback`
+            // Reassigned on every appearance (harmless — same closure, same `liveListen`
             // instance for this view's lifetime) so "continue to the next note" fires only
-            // once the whole track finishes on its own, never on a per-line stop.
-            listenPlayback.onDidFinishPlayingNaturally = { [note, onFinishedPlaying] in
+            // once the whole script finishes on its own, never on a per-line stop.
+            liveListen.onDidFinishPlayingNaturally = { [note, onFinishedPlaying] in
                 onFinishedPlaying?(note)
             }
-            currentPlaybackStep = listenStore.lastStep(forNoteID: note.id) ?? .intro
+            currentPlaybackStep = SongPlaybackProgress.lastStep(forNoteID: note.id) ?? .intro
+            // Speculative: hands the controller its script now, before any tap, so its
+            // one-time setup (opening the note's audio file, resolving voices) finishes in the
+            // background well ahead of the user actually pressing play. No-ops here if there's
+            // no cached breakdown yet — generation finishing re-triggers this view's body, but
+            // not this `.onAppear`, so `playAllListen`/`playListen` still call it themselves.
+            configureLiveListen()
         }
         // Loads the note's SRT cues (if it has audio) so each line can be matched to its sung
         // range for the listen-along render. No attachment, no file, or no cues are all the
@@ -335,15 +337,18 @@ struct SongStepperView: View {
             guard let attachmentID = note.audioAttachmentID,
                   NotesAudioStore.shared.audioURL(for: attachmentID) != nil else { return }
             noteCues = NotesAudioStore.shared.loadCues(for: attachmentID)
+            // The clip ranges above depend on noteCues, which just changed — reconfigure so
+            // the audio-file preload (see configureLiveListen) starts as soon as it can,
+            // rather than waiting for the first play tap.
+            configureLiveListen()
         }
         .onDisappear {
-            // Release the audio file + deactivate the session when the sheet/screen leaves.
-            // Without this, the controller would hold its `AVAudioPlayer` (and the audio
-            // session) until SwiftUI deallocates the @StateObject, which is non-deterministic.
-            // Records the playhead first so reopening resumes where it left off.
+            // Stop speech/clip playback and deactivate the audio session when the sheet/screen
+            // leaves, rather than leaving it to SwiftUI's non-deterministic @StateObject
+            // deallocation. Reopening starts listen-along over from the top.
             if isListening { stopListening() }
             if loadedIntroOutroURL != nil {
-                listenStore.recordIntroOutroPosition(introOutroPlayback.currentTimeMs, forNoteID: note.id)
+                SongPlaybackProgress.recordIntroOutroPosition(introOutroPlayback.currentTimeMs, forNoteID: note.id)
                 introOutroPlayback.unload()
                 loadedIntroOutroURL = nil
             }
@@ -497,15 +502,12 @@ struct SongStepperView: View {
 
     // MARK: - Listen control
 
-    // The listen button: headphones plays every line in sequence, a spinner while the
-    // track renders, pause while anything is playing, a warning that retries a failed render.
+    // The listen button: headphones plays every line in sequence, pause while anything is
+    // playing, a warning (missing voices, or the audio session couldn't activate) that retries
+    // on tap.
     @ViewBuilder
     private var listenControl: some View {
         switch listenControlState {
-        case .rendering:
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel("Preparing listen-along audio")
         case .playing:
             Button {
                 pauseListen()
@@ -553,10 +555,9 @@ struct SongStepperView: View {
                             onToggleExpansion: { toggleExpansion(for: item.line) },
                             onPlayLine: {
                                 switch cardPlayState(for: item.line) {
-                                case .available: generateListenTrack()
                                 case .idle: playListen(line: item.line)
                                 case .playing: pauseListen()
-                                case .loading, nil: break
+                                case nil: break
                                 }
                             },
                             onWordTapped: { presentWordLookup($0) },

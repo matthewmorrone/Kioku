@@ -3,8 +3,8 @@ import Foundation
 // Where the breakdown's floating mini player is parked: before the first line (the song's
 // instrumental/vocal intro), on a specific line, or after the last line (the outro). Backs the
 // mini player's next/previous navigation and the current-position label in SongStepperView+
-// MiniPlayer, and is persisted (see SongListenStore) so reopening a note's breakdown — even
-// after an app relaunch — remembers where playback left off.
+// MiniPlayer, and is persisted (see SongPlaybackProgress) so reopening a note's breakdown —
+// even after an app relaunch — remembers where playback left off.
 enum SongPlaybackStep: Equatable {
     case intro
     case line(Int)

@@ -1,13 +1,12 @@
 import Foundation
 
 // One utterance's worth of text plus which voice should read it — the atomic unit
-// SongListenScript.build produces and SongListenAudioService synthesizes in order. Kept as
+// SongListenScript.build produces and SongLiveListenController plays in order. Kept as
 // plain data (no logic) so it can sit alongside its two companion enums in one file per the
 // "pure data types may be grouped" rule.
 //
-// All three types here are `nonisolated`: they're built and consumed entirely inside
-// SongListenAudioService, which is itself `nonisolated` (see that file's header comment) —
-// without this, the module's default MainActor isolation would make even their synthesized
+// All three types here are `nonisolated`: they're built by the `nonisolated` SongListenScript
+// — without this, the module's default MainActor isolation would make even their synthesized
 // `Equatable` conformances MainActor-isolated, unusable from that nonisolated context.
 nonisolated struct SongListenSegment: Equatable, Sendable {
     let lineIndex: Int
@@ -23,9 +22,9 @@ nonisolated struct SongListenSegment: Equatable, Sendable {
     var spokenText: String? = nil
 }
 
-// What role a segment plays within its line — drives the silence gap inserted after it
-// (SongListenAudioSink.writeSilence) and lets the script builder self-document why the
-// segment exists.
+// What role a segment plays within its line — drives the gap SongLiveListenController waits
+// before the next step (see its `gapSeconds(after:)`) and lets the script builder
+// self-document why the segment exists.
 nonisolated enum SongListenSegmentKind: Equatable, Sendable {
     case sentence
     case translation
@@ -41,8 +40,8 @@ nonisolated enum SongListenLanguage: Equatable, Sendable {
     case english
 }
 
-// One step in the render pipeline: either a spoken segment, or a slice of the song's own
-// source audio (the sung line itself) copied in verbatim. Kept distinct from
+// One step in the listen-along script: either a spoken segment, or a slice of the song's own
+// source audio (the sung line itself) played in verbatim. Kept distinct from
 // SongListenSegment rather than adding a `.clip` case there — a clip has no `text` or TTS
 // `language`, just a time range into a different file.
 nonisolated enum SongListenStep: Equatable, Sendable {
