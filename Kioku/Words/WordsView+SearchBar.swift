@@ -200,17 +200,26 @@ extension WordsView {
             if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
                 dictionarySearchFilterMenu
             } else {
+                let filterTint = isFilterActive ? Color.accentColor : Color.secondary
                 Button {
                     isFilterSheetPresented = true
                 } label: {
-                    Image(systemName: isFilterActive
-                        ? "line.3.horizontal.decrease.circle.fill"
-                        : "line.3.horizontal.decrease.circle")
-                        .font(.system(size: 22))
-                        .foregroundStyle(isFilterActive ? Color.accentColor : Color.secondary)
+                    HStack(spacing: 4) {
+                        // Names the list you're looking at — the only place this ever showed
+                        // was buried inside the filter sheet's own "Show" picker, so nothing on
+                        // screen said Saved vs. History while you were actually scrolling one.
+                        Text(activeTab == .saved ? "Saved" : "History")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(filterTint)
+                        Image(systemName: isFilterActive
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 22))
+                            .foregroundStyle(filterTint)
+                    }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Filter by Note or List")
+                .accessibilityLabel("\(activeTab == .saved ? "Saved" : "History"), filter by Note or List")
             }
         }
         .padding(.horizontal, 12)
