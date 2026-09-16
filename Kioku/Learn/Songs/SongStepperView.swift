@@ -343,6 +343,7 @@ struct SongStepperView: View {
             // Records the playhead first so reopening resumes where it left off.
             if isListening { stopListening() }
             if loadedIntroOutroURL != nil {
+                listenStore.recordIntroOutroPosition(introOutroPlayback.currentTimeMs, forNoteID: note.id)
                 introOutroPlayback.unload()
                 loadedIntroOutroURL = nil
             }

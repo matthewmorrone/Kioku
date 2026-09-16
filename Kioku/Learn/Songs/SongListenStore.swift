@@ -26,6 +26,11 @@ final class SongListenStore: ObservableObject {
     // Same persistence shape as lastPositionMsByNoteID, for the mini player's current step
     // (intro / a specific line / outro) — see recordStep/lastStep.
     private var lastStepByNoteID: [UUID: SongPlaybackStep] = [:]
+    // Same shape again, for the intro/outro player's playhead — a single absolute millisecond
+    // offset into the note's own audio file, valid for either range since intro [0, firstLine)
+    // and outro [lastLine, duration) never overlap. See recordIntroOutroPosition/
+    // lastIntroOutroPositionMs.
+    private var lastIntroOutroPositionMsByNoteID: [UUID: Int] = [:]
 
     // Which breakdown version (and clip inputs) `renderStateByNoteID[noteID]` currently
     // reflects: `sourceTextHash` plus SongListenAudioService's own clip signature, so this
@@ -89,10 +94,29 @@ final class SongListenStore: ObservableObject {
         UserDefaults.standard.set(step.persistedValue, forKey: Self.stepDefaultsKey(id))
     }
 
+    // The intro/outro player's playhead to resume from, in milliseconds absolute into the
+    // note's own audio file. 0 for a note that's never played its intro/outro.
+    func lastIntroOutroPositionMs(forNoteID id: UUID) -> Int {
+        if let cached = lastIntroOutroPositionMsByNoteID[id] { return cached }
+        let stored = UserDefaults.standard.integer(forKey: Self.introOutroPositionDefaultsKey(id))
+        lastIntroOutroPositionMsByNoteID[id] = stored
+        return stored
+    }
+
+    // Called when the breakdown view disappears while the intro/outro player has a loaded
+    // source, so leaving mid-intro/outro and reopening resumes from there instead of the
+    // range's start — mirroring recordPosition for the narration track.
+    func recordIntroOutroPosition(_ ms: Int, forNoteID id: UUID) {
+        lastIntroOutroPositionMsByNoteID[id] = ms
+        UserDefaults.standard.set(ms, forKey: Self.introOutroPositionDefaultsKey(id))
+    }
+
     // UserDefaults key for a note's saved playhead position.
     private static func positionDefaultsKey(_ id: UUID) -> String { "songListen.positionMs.\(id.uuidString)" }
     // UserDefaults key for a note's saved mini player step.
     private static func stepDefaultsKey(_ id: UUID) -> String { "songListen.step.\(id.uuidString)" }
+    // UserDefaults key for a note's saved intro/outro playhead.
+    private static func introOutroPositionDefaultsKey(_ id: UUID) -> String { "songListen.introOutroPositionMs.\(id.uuidString)" }
 
     // Drops both the in-memory cache AND the persisted value for a note's saved position/step —
     // used when a new breakdown/clip version makes the old saved position meaningless (see
@@ -101,8 +125,10 @@ final class SongListenStore: ObservableObject {
     private func clearSavedProgress(forNoteID id: UUID) {
         lastPositionMsByNoteID[id] = nil
         lastStepByNoteID[id] = nil
+        lastIntroOutroPositionMsByNoteID[id] = nil
         UserDefaults.standard.removeObject(forKey: Self.positionDefaultsKey(id))
         UserDefaults.standard.removeObject(forKey: Self.stepDefaultsKey(id))
+        UserDefaults.standard.removeObject(forKey: Self.introOutroPositionDefaultsKey(id))
     }
 
     // Starts a render for `breakdown` (optionally splicing in the sung clips at

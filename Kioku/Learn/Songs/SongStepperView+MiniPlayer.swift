@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 // Persistent floating transport bar for the breakdown: play/pause, previous/next, and the
@@ -83,16 +84,18 @@ extension SongStepperView {
     }
 
     // Stepping between lines always works (narration doesn't need a matched sung clip); only
-    // stepping past either end into the intro/outro needs a matched cue range to know where
-    // the song's own intro/outro actually is (lineRangesByIndex empty means no audio, or no
-    // line matched a cue).
+    // stepping past either end into the intro/outro needs there to actually BE one — a first
+    // line already at ms 0 has no intro, and a last line already at the source's end has no
+    // outro. Checking just "some line matched a cue" (as this used to) left the button enabled
+    // in those cases even though playIntro()/playOutro() would then no-op.
     private var canStepPrevious: Bool {
         switch currentPlaybackStep {
         case .intro: return false
         case .outro: return true
         case .line(let index):
             if displayItems.contains(where: { $0.line.index < index }) { return true }
-            return lineRangesByIndex.isEmpty == false
+            guard let firstStartMs = lineRangesByIndex.values.map({ $0.startMs }).min() else { return false }
+            return firstStartMs > 0
         }
     }
 
@@ -102,8 +105,22 @@ extension SongStepperView {
         case .intro: return true
         case .line(let index):
             if displayItems.contains(where: { $0.line.index > index }) { return true }
-            return lineRangesByIndex.isEmpty == false
+            guard let sourceURL = listenSourceAudioURL,
+                  let lastEndMs = lineRangesByIndex.values.map({ $0.endMs }).max(),
+                  let durationMs = Self.sourceAudioDurationMs(sourceURL) else { return false }
+            return lastEndMs < durationMs
         }
+    }
+
+    // Reads a local audio file's total duration via its header alone (no decode) — used only
+    // to gate whether outro playback actually has anything after the last matched line, so the
+    // "Next" button isn't left enabled-but-a-no-op when the last line already reaches the end
+    // of the source file.
+    private static func sourceAudioDurationMs(_ url: URL) -> Int? {
+        guard let file = try? AVAudioFile(forReading: url) else { return nil }
+        let sampleRate = file.processingFormat.sampleRate
+        guard sampleRate > 0 else { return nil }
+        return Int(Double(file.length) / sampleRate * 1000)
     }
 
     // MARK: - Transport
@@ -184,29 +201,43 @@ extension SongStepperView {
 
     // MARK: - Intro / outro
 
-    // Plays the song's own audio from its very start up to the first matched line's cue — the
-    // instrumental (or vocal) intro before the lyrics being broken down begin.
+    // Plays the song's own audio from its very start (or a previously-saved position within
+    // that span — see SongListenStore.lastIntroOutroPositionMs) up to the first matched line's
+    // cue — the instrumental (or vocal) intro before the lyrics being broken down begin.
     func playIntro() {
         guard let sourceURL = listenSourceAudioURL,
               let firstStartMs = lineRangesByIndex.values.map({ $0.startMs }).min(),
               firstStartMs > 0 else { return }
         listenPlayback.pause()
+        let isFreshLoad = loadedIntroOutroURL != sourceURL
         loadIntroOutroSourceIfNeeded(sourceURL) {
-            introOutroPlayback.playRange(startMs: 0, endMs: firstStartMs)
+            var startMs = 0
+            if isFreshLoad {
+                let saved = listenStore.lastIntroOutroPositionMs(forNoteID: note.id)
+                if saved > 0, saved < firstStartMs { startMs = saved }
+            }
+            introOutroPlayback.playRange(startMs: startMs, endMs: firstStartMs)
         }
         currentPlaybackStep = .intro
     }
 
-    // Plays the song's own audio from the last matched line's cue end through the end of the
-    // file — the outro after the lyrics being broken down finish.
+    // Plays the song's own audio from the last matched line's cue end (or a previously-saved
+    // position within that span) through the end of the file — the outro after the lyrics
+    // being broken down finish.
     func playOutro() {
         guard let sourceURL = listenSourceAudioURL,
               let lastEndMs = lineRangesByIndex.values.map({ $0.endMs }).max() else { return }
         listenPlayback.pause()
+        let isFreshLoad = loadedIntroOutroURL != sourceURL
         loadIntroOutroSourceIfNeeded(sourceURL) {
             let durationMs = Int(introOutroPlayback.duration * 1000)
             guard durationMs > lastEndMs else { return }
-            introOutroPlayback.playRange(startMs: lastEndMs, endMs: durationMs)
+            var startMs = lastEndMs
+            if isFreshLoad {
+                let saved = listenStore.lastIntroOutroPositionMs(forNoteID: note.id)
+                if saved > lastEndMs, saved < durationMs { startMs = saved }
+            }
+            introOutroPlayback.playRange(startMs: startMs, endMs: durationMs)
         }
         currentPlaybackStep = .outro
     }
