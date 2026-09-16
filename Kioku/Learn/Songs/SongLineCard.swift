@@ -141,7 +141,7 @@ struct SongLineCard: View {
         case .wordSurface:
             return listenHighlight.text == word.surface.trimmingCharacters(in: .whitespacesAndNewlines)
         case .wordDefinition:
-            return listenHighlight.text == SongLineCard.stripInlineMarkdown(word.definition)
+            return listenHighlight.text == SongLineCard.truncatingAtSemicolon(SongLineCard.stripInlineMarkdown(word.definition))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         case .sentence, .translation, .patternNote:
             return false
@@ -524,6 +524,17 @@ struct SongLineCard: View {
         return trimmed
     }
 
+    // Cuts a word definition off at its first semicolon. The LLM's manufactured-interpretation
+    // commentary (see SongBreakdownPrompt rule 5 — "suggests," "evokes," emotional overtones)
+    // reliably lands after a semicolon even when the prompt telling it not to write that
+    // sentence at all doesn't fully hold — a mechanical cut here is more reliable than another
+    // prompt instruction. Applied to both the on-screen definition and the narrated one (see
+    // SongListenScript) so what's spoken always matches what's shown.
+    nonisolated static func truncatingAtSemicolon(_ text: String) -> String {
+        guard let range = text.range(of: ";") else { return text }
+        return String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+    }
+
     // Renders one word entry: surface (with furigana when available), LLM definition wrapped
     // beneath. Tapping the row opens the shared lookup sheet (via onWordTapped) so the
     // breakdown's vocabulary is a jumping-off point into the dictionary, like tapping a
@@ -536,8 +547,9 @@ struct SongLineCard: View {
                 wordHeadword(word)
                 if word.definition.isEmpty == false {
                     // Strip inline-emphasis markers so `*foo*` / `**bar**` don't leak literal
-                    // asterisks into the rendered definition.
-                    Text(SongLineCard.stripInlineMarkdown(word.definition))
+                    // asterisks into the rendered definition, and cut anything past the first
+                    // semicolon — see truncatingAtSemicolon's doc comment.
+                    Text(SongLineCard.truncatingAtSemicolon(SongLineCard.stripInlineMarkdown(word.definition)))
                         .font(.footnote)
                         .foregroundStyle(.primary.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
