@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import os
+import SwiftWhisperAlign
 
 // Renders a SongBreakdown into a single linear, exportable audio file: for each line, the
 // sung clip from the song's own audio (when a matched time range is available), then the
@@ -178,13 +179,21 @@ nonisolated final class SongListenAudioService {
         }
     }
 
-    // Reads the [startMs, endMs) slice of the song's own audio file as one PCM buffer, in
-    // that file's native format (SongListenAudioSink converts it into the track's target
-    // format). Clamped to the file's actual length in case a cue's endMs slightly overruns
-    // the source (SRT timing drift) rather than throwing on an out-of-range read. The result
-    // is then tightened to the audible sound within it — see trimmedToSound.
+    // Reads the [startMs, endMs) slice of the song's audio as one PCM buffer, in that file's
+    // native format (SongListenAudioSink converts it into the track's target format). Reads
+    // from the isolated vocal stem (VocalStemCache) when one is already cached for this file —
+    // shared with the alignment pipeline that produced the cues in the first place, so this
+    // costs nothing extra — and only THEN applies the silence trim below: on the raw mix, the
+    // backing track plays under the vocal the entire time, so there's no such thing as
+    // "silence" to detect at a boundary, only the instrumental's own level, which the trim
+    // could just as easily cut into as leave alone. On the isolated stem, a quiet span between
+    // words really is near-silence, so the same edge-detection is meaningful there. Falls back
+    // to the raw mix, untrimmed, when no stem is cached (song never aligned/isolated). Frame
+    // range is clamped to the file's actual length in case a cue's endMs slightly overruns the
+    // source (SRT timing drift) rather than throwing on an out-of-range read.
     private func readClip(from url: URL, startMs: Int, endMs: Int) throws -> AVAudioPCMBuffer {
-        let file = try AVAudioFile(forReading: url)
+        let stemURL = VocalStemCache.stemWAVURL(for: url)
+        let file = try AVAudioFile(forReading: stemURL ?? url)
         let sampleRate = file.processingFormat.sampleRate
         let startFrame = max(0, AVAudioFramePosition((Double(startMs) / 1000) * sampleRate))
         let endFrame = min(file.length, AVAudioFramePosition((Double(endMs) / 1000) * sampleRate))
@@ -195,11 +204,13 @@ nonisolated final class SongListenAudioService {
         }
         file.framePosition = startFrame
         try file.read(into: buffer, frameCount: frameCount)
+        guard stemURL != nil else { return buffer }
         return Self.trimmedToSound(buffer)
     }
 
-    // Tightens a clip's boundaries to the audible sound within it. The SRT cue timestamps a
-    // clip is sliced at (SongLineCueMatcher) are taken verbatim from whatever produced the
+    // Tightens a clip's boundaries to the audible sound within it, given a buffer read from the
+    // isolated vocal stem (see readClip — never called on the raw mix). The SRT cue timestamps
+    // a clip is sliced at (SongLineCueMatcher) are taken verbatim from whatever produced the
     // subtitle file — typically forced alignment — which routinely leaves 50-150ms of
     // near-silence, or the trailing edge of the previous/next word, padded onto either side.
     // Played back in isolation (rather than as part of the continuous song) that reads as a
@@ -295,7 +306,10 @@ nonisolated final class SongListenAudioService {
     // r4: preferredVoice now honors the user's system default voice instead of always
     // overriding it with the highest quality tier, and readClip now trims silence at each
     // clip's edges — both change the rendered audio for unchanged inputs.
-    private static let renderVersion = "r4"
+    // r5: readClip now reads from the isolated vocal stem (when cached) instead of the raw
+    // mix, and only trims silence in that case — trimming against the raw mix's continuous
+    // backing track wasn't a reliable signal.
+    private static let renderVersion = "r5"
 
     // Folds the clip inputs (which audio file, and every line's matched range within it) into
     // one short signature for the cache key. "noaudio" when there's no attachment, so a note
