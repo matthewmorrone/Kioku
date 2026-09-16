@@ -7,10 +7,12 @@ import os
 // Japanese sentence, then the English gist, then every word's Japanese surface followed by
 // its English definition — one line after another (see SongListenScript for the exact
 // ordering). Synthesis alternates between a Japanese and an English AVSpeechSynthesisVoice
-// — the best-quality (premium, else enhanced, else default) voice installed for each
-// language — per same-language run *within* each segment (SongListenLanguageRuns), so the
-// listener always hears each language spoken by a voice built for it ("code switching")
-// instead of one voice skipping or mangling the other language's text.
+// — whichever voice the user configured as their system default for each language in
+// Settings > Accessibility > Spoken Content > Voices, falling back to the best-quality
+// (premium, else enhanced, else default) voice installed only when no system default resolves
+// — per same-language run *within* each segment (SongListenLanguageRuns), so the listener
+// always hears each language spoken by a voice built for it ("code switching") instead of one
+// voice skipping or mangling the other language's text.
 //
 // Runs entirely on-device via AVSpeechSynthesizer's buffer-based `write(_:toBufferCallback:)`
 // — no network call, no API key, no per-request cost. Buffers (speech and song-clip alike)
@@ -179,7 +181,8 @@ nonisolated final class SongListenAudioService {
     // Reads the [startMs, endMs) slice of the song's own audio file as one PCM buffer, in
     // that file's native format (SongListenAudioSink converts it into the track's target
     // format). Clamped to the file's actual length in case a cue's endMs slightly overruns
-    // the source (SRT timing drift) rather than throwing on an out-of-range read.
+    // the source (SRT timing drift) rather than throwing on an out-of-range read. The result
+    // is then tightened to the audible sound within it — see trimmedToSound.
     private func readClip(from url: URL, startMs: Int, endMs: Int) throws -> AVAudioPCMBuffer {
         let file = try AVAudioFile(forReading: url)
         let sampleRate = file.processingFormat.sampleRate
@@ -192,21 +195,75 @@ nonisolated final class SongListenAudioService {
         }
         file.framePosition = startFrame
         try file.read(into: buffer, frameCount: frameCount)
-        return buffer
+        return Self.trimmedToSound(buffer)
     }
 
-    // Picks the best-quality installed voice for a language: premium, else enhanced, else
-    // whatever `AVSpeechSynthesisVoice(language:)` resolves to (the plain system default also
-    // used everywhere else word audio plays in this app). Premium/enhanced voices sound
-    // distinctly more natural and, being a deliberate download rather than always-present,
-    // read as a different voice than the app's other TTS call sites — appropriate for a
-    // longer narrated track where voice quality matters more than for a one-word tap-to-hear.
-    private static func preferredVoice(languageCode: String) -> AVSpeechSynthesisVoice? {
-        let candidates = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == languageCode }
-        if let best = candidates.max(by: { qualityRank($0.quality) < qualityRank($1.quality) }) {
-            return best
+    // Tightens a clip's boundaries to the audible sound within it. The SRT cue timestamps a
+    // clip is sliced at (SongLineCueMatcher) are taken verbatim from whatever produced the
+    // subtitle file — typically forced alignment — which routinely leaves 50-150ms of
+    // near-silence, or the trailing edge of the previous/next word, padded onto either side.
+    // Played back in isolation (rather than as part of the continuous song) that reads as a
+    // clipped or bleeding-over word. This walks in from each edge to the first frame whose
+    // peak amplitude clears a quiet floor, then crops to that span with a small fixed pad kept
+    // on each side so a genuinely quiet onset (e.g. unvoiced す/し) isn't shaved into the
+    // following attack. Falls back to the untrimmed buffer whenever the format can't be read
+    // as float PCM or the whole buffer is at/under the quiet floor (nothing to trim toward).
+    private static func trimmedToSound(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        guard let channelData = buffer.floatChannelData else { return buffer }
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0 else { return buffer }
+        let channelCount = Int(buffer.format.channelCount)
+        let quietFloor: Float = 0.02
+        let padFrames = Int(buffer.format.sampleRate * 0.02) // 20ms
+
+        // The loudest channel at a given frame — trimming looks at whichever channel is
+        // carrying the most signal rather than e.g. only the left channel.
+        func peakAmplitude(atFrame frame: Int) -> Float {
+            var peak: Float = 0
+            for channel in 0..<channelCount {
+                peak = max(peak, abs(channelData[channel][frame]))
+            }
+            return peak
         }
-        return AVSpeechSynthesisVoice(language: languageCode)
+
+        var firstLoudFrame = 0
+        while firstLoudFrame < frameCount, peakAmplitude(atFrame: firstLoudFrame) < quietFloor {
+            firstLoudFrame += 1
+        }
+        var lastLoudFrame = frameCount - 1
+        while lastLoudFrame > firstLoudFrame, peakAmplitude(atFrame: lastLoudFrame) < quietFloor {
+            lastLoudFrame -= 1
+        }
+        guard firstLoudFrame < lastLoudFrame else { return buffer }
+
+        let trimStart = max(0, firstLoudFrame - padFrames)
+        let trimEnd = min(frameCount, lastLoudFrame + padFrames)
+        let trimmedLength = trimEnd - trimStart
+        guard trimmedLength > 0, trimmedLength < frameCount,
+              let trimmed = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: AVAudioFrameCount(trimmedLength)),
+              let trimmedChannelData = trimmed.floatChannelData else {
+            return buffer
+        }
+        trimmed.frameLength = AVAudioFrameCount(trimmedLength)
+        for channel in 0..<channelCount {
+            trimmedChannelData[channel].assign(from: channelData[channel] + trimStart, count: trimmedLength)
+        }
+        return trimmed
+    }
+
+    // Resolves the voice to speak `languageCode` with: the user's own system default for that
+    // language first — `AVSpeechSynthesisVoice(language:)` is exactly the voice configured in
+    // Settings > Accessibility > Spoken Content > Voices, and every other TTS call site in the
+    // app (SpeechSynthesisHelper) honors that same default, so this track should too rather
+    // than silently overriding the user's choice. Only when no default resolves at all (no
+    // voice installed for the language) do we fall back to hunting for the best quality tier
+    // among whatever IS installed.
+    private static func preferredVoice(languageCode: String) -> AVSpeechSynthesisVoice? {
+        if let systemDefault = AVSpeechSynthesisVoice(language: languageCode) {
+            return systemDefault
+        }
+        let candidates = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == languageCode }
+        return candidates.max(by: { qualityRank($0.quality) < qualityRank($1.quality) })
     }
 
     // Orders voice quality tiers so `max(by:)` above picks premium over enhanced over default.
@@ -235,7 +292,10 @@ nonisolated final class SongListenAudioService {
     }
 
     // Bump when synthesis output changes shape for the same inputs (see destinationURL).
-    private static let renderVersion = "r3"
+    // r4: preferredVoice now honors the user's system default voice instead of always
+    // overriding it with the highest quality tier, and readClip now trims silence at each
+    // clip's edges — both change the rendered audio for unchanged inputs.
+    private static let renderVersion = "r4"
 
     // Folds the clip inputs (which audio file, and every line's matched range within it) into
     // one short signature for the cache key. "noaudio" when there's no attachment, so a note

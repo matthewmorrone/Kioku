@@ -18,8 +18,14 @@ final class SongListenStore: ObservableObject {
     @Published private(set) var cuesByNoteID: [UUID: [SubtitleCue]] = [:]
 
     // Not published: read once when the sheet (re)loads the player, not on every tick — the
-    // playback controller itself is what drives UI updates while a sheet is open.
+    // playback controller itself is what drives UI updates while a sheet is open. Backed by
+    // UserDefaults (see lastPositionMs/recordPosition) so it survives an app relaunch, not just
+    // a sheet dismiss/reopen within one launch; this dictionary is just an in-memory read cache
+    // in front of that.
     private var lastPositionMsByNoteID: [UUID: Int] = [:]
+    // Same persistence shape as lastPositionMsByNoteID, for the mini player's current step
+    // (intro / a specific line / outro) — see recordStep/lastStep.
+    private var lastStepByNoteID: [UUID: SongPlaybackStep] = [:]
 
     // Which breakdown version (and clip inputs) `renderStateByNoteID[noteID]` currently
     // reflects: `sourceTextHash` plus SongListenAudioService's own clip signature, so this
@@ -50,15 +56,53 @@ final class SongListenStore: ObservableObject {
     }
 
     // Playhead position to resume from, in milliseconds. 0 (start of track) for a note that's
-    // never been played or has never had its position recorded.
+    // never been played or has never had its position recorded. Persisted to UserDefaults, so
+    // this survives an app relaunch, not just leaving and reopening the breakdown.
     func lastPositionMs(forNoteID id: UUID) -> Int {
-        lastPositionMsByNoteID[id] ?? 0
+        if let cached = lastPositionMsByNoteID[id] { return cached }
+        let stored = UserDefaults.standard.integer(forKey: Self.positionDefaultsKey(id))
+        lastPositionMsByNoteID[id] = stored
+        return stored
     }
 
     // Called on sheet dismissal to remember where playback left off, so the next open resumes
     // instead of restarting at 0.
     func recordPosition(_ ms: Int, forNoteID id: UUID) {
         lastPositionMsByNoteID[id] = ms
+        UserDefaults.standard.set(ms, forKey: Self.positionDefaultsKey(id))
+    }
+
+    // The mini player's current step (intro / a line / outro) to restore on next open, nil for
+    // a note that's never been played. Persisted alongside lastPositionMs.
+    func lastStep(forNoteID id: UUID) -> SongPlaybackStep? {
+        if let cached = lastStepByNoteID[id] { return cached }
+        guard let raw = UserDefaults.standard.string(forKey: Self.stepDefaultsKey(id)),
+              let step = SongPlaybackStep.from(persistedValue: raw) else { return nil }
+        lastStepByNoteID[id] = step
+        return step
+    }
+
+    // Called whenever the mini player's current step changes, so the position it's showing
+    // survives an app relaunch.
+    func recordStep(_ step: SongPlaybackStep, forNoteID id: UUID) {
+        lastStepByNoteID[id] = step
+        UserDefaults.standard.set(step.persistedValue, forKey: Self.stepDefaultsKey(id))
+    }
+
+    // UserDefaults key for a note's saved playhead position.
+    private static func positionDefaultsKey(_ id: UUID) -> String { "songListen.positionMs.\(id.uuidString)" }
+    // UserDefaults key for a note's saved mini player step.
+    private static func stepDefaultsKey(_ id: UUID) -> String { "songListen.step.\(id.uuidString)" }
+
+    // Drops both the in-memory cache AND the persisted value for a note's saved position/step —
+    // used when a new breakdown/clip version makes the old saved position meaningless (see
+    // startRender below). Clearing only the in-memory dict would leave the stale UserDefaults
+    // value in place for `lastPositionMs`/`lastStep` to read right back on the next call.
+    private func clearSavedProgress(forNoteID id: UUID) {
+        lastPositionMsByNoteID[id] = nil
+        lastStepByNoteID[id] = nil
+        UserDefaults.standard.removeObject(forKey: Self.positionDefaultsKey(id))
+        UserDefaults.standard.removeObject(forKey: Self.stepDefaultsKey(id))
     }
 
     // Starts a render for `breakdown` (optionally splicing in the sung clips at
@@ -93,10 +137,10 @@ final class SongListenStore: ObservableObject {
     // Shared implementation behind `ensureRendered`/`retry`: bumps the generation counter,
     // publishes the "rendering" state immediately (so the sheet never shows stale state from a
     // prior note/version while the task spins up), and launches the render task. Also drops
-    // any saved playback position if this is a genuinely new breakdown version/clip set (not
-    // just a same-key retry) — a position saved against the old track's timing is meaningless
-    // (and can seek past the end, or into unrelated text) once the track it was measured
-    // against no longer exists.
+    // any saved playback position/step if this is a genuinely new breakdown version/clip set
+    // (not just a same-key retry) — a position saved against the old track's timing is
+    // meaningless (and can seek past the end, or into unrelated text) once the track it was
+    // measured against no longer exists.
     private func startRender(
         for breakdown: SongBreakdown,
         sourceAudioURL: URL?,
@@ -105,7 +149,7 @@ final class SongListenStore: ObservableObject {
     ) {
         let noteID = breakdown.noteID
         if renderedKeyByNoteID[noteID] != key {
-            lastPositionMsByNoteID[noteID] = nil
+            clearSavedProgress(forNoteID: noteID)
         }
         let generation = (renderGenerationByNoteID[noteID] ?? 0) + 1
         renderGenerationByNoteID[noteID] = generation

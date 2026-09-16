@@ -208,6 +208,20 @@ nonisolated final class SongBreakdownParser: Sendable {
             }
         }
 
+        // Optional grammar tag: `[past]`, `[te-form]`, etc. — only present for inflected
+        // verbs/adjectives (see SongBreakdownPrompt rule 11). Must come before the dash strip
+        // below, since the tag sits between the romaji parenthetical and the separator dash.
+        var grammarTag: String? = nil
+        if remainder.hasPrefix("[") {
+            if let endBracket = remainder.firstIndex(of: "]") {
+                let tag = String(remainder[remainder.index(after: remainder.startIndex)..<endBracket])
+                    .trimmingCharacters(in: .whitespaces)
+                grammarTag = tag.isEmpty ? nil : tag
+                remainder = String(remainder[remainder.index(after: endBracket)...])
+                    .trimmingCharacters(in: .whitespaces)
+            }
+        }
+
         // Strip an optional separator dash between the romaji and the definition.
         // Order matters: longer alternatives must precede their substrings.
         let dashAlternates: [String] = ["—", "–", "--", "-", ":"]
@@ -219,7 +233,7 @@ nonisolated final class SongBreakdownParser: Sendable {
             }
         }
 
-        return SongWord(surface: surface, sungRomaji: sungRomaji, definition: remainder)
+        return SongWord(surface: surface, sungRomaji: sungRomaji, definition: remainder, grammarTag: grammarTag)
     }
 
     // Recognizes `**Gist:** text`, `**Gist**: text`, or the plain `Gist: text` form.

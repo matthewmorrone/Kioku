@@ -1,5 +1,4 @@
 import UIKit
-import AVFoundation
 
 // View construction and action wiring for SurfaceSheetViewController.
 // Split from the main file to keep each file under the 800-line preferred limit.
@@ -357,14 +356,9 @@ extension SurfaceSheetViewController {
             actionMenuStack.heightAnchor.constraint(equalToConstant: 44),
         ])
 
-        // Speak button retains the synthesizer via associated object so it lives long enough to finish.
-        speakButton.addAction(UIAction { [weak speakButton, weak self] _ in
+        speakButton.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            let synthesizer = AVSpeechSynthesizer()
-            objc_setAssociatedObject(speakButton as Any, &SegmentLookupSheet.speechSynthesizerKey, synthesizer, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-            let utterance = AVSpeechUtterance(string: currentSurface)
-            utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
-            synthesizer.speak(utterance)
+            SpeechSynthesisHelper.shared.speak(self.currentSurface, languageCode: "ja-JP")
         }, for: .touchUpInside)
     }
 

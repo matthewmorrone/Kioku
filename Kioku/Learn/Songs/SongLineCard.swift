@@ -544,6 +544,11 @@ struct SongLineCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 wordHeadword(word)
+                if let tag = word.grammarTag, tag.isEmpty == false {
+                    Text(tag)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
                 if word.definition.isEmpty == false {
                     // Strip inline-emphasis markers so `*foo*` / `**bar**` don't leak literal
                     // asterisks into the rendered definition.
