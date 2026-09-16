@@ -1,20 +1,16 @@
 import Foundation
 
-// Engine used to turn an imported audio file into a note (audio → text).
+// Engine used to turn an imported audio file into a note (audio → text). Qwen3-ASR is the only
+// one selectable — a measured CER comparison (2026-09) showed it clearly beating both
+// alternatives on real song audio (Apple Speech: 90.7% CER vs. Qwen3's 59.3-70.4%; Whisper
+// crashed on-device before producing a result). appleSpeech/whisper stay as enum cases and their
+// AudioTranscriptionService code paths are left in place, just unreachable — no UI selects them.
 //
-// Apple Speech (SFSpeechRecognizer) is the default: near real-time and strong on
-// clean spoken Japanese. Whisper (on-device, Small model) is slower but holds up
-// better on noisy/hard audio. Small is chosen deliberately — measured CER on a song
-// was base 137% / small 64% / medium 89%, i.e. Small beats both base and medium
-// (larger models over-generate on non-speech). See project_audio_capability_findings.
-//
-// This selects only the transcription engine; forced alignment stays on the Base
-// model regardless (its model lives in a separate directory).
+// This selects only the transcription engine; forced alignment stays on its own MMS model
+// regardless (a separate pipeline, not user-selectable).
 enum TranscriptionEngine: String, CaseIterable {
     case appleSpeech
     case whisper
-    // Qwen3-ASR (0.6B, on-device MLX) — the same checkpoint that powers forced alignment, far
-    // stronger on Japanese than Whisper-Small or Apple Speech. Default engine.
     case qwen3
 
     var displayName: String {
@@ -27,10 +23,8 @@ enum TranscriptionEngine: String, CaseIterable {
 
     static let storageKey = "kioku.transcription.engine"
 
-    // Reads the user's current choice from UserDefaults (defaults to Qwen3-ASR).
-    static var current: TranscriptionEngine {
-        TranscriptionEngine(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .qwen3
-    }
+    // Always Qwen3-ASR — no UI writes another value to storageKey anymore.
+    static var current: TranscriptionEngine { .qwen3 }
 }
 
 // Whether to isolate the vocal stem before transcribing — orthogonal to the engine. ON (default) is

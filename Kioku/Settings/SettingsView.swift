@@ -98,12 +98,6 @@ struct SettingsView: View {
     @AppStorage(SegmenterSettings.mecabDictionaryKey) var mecabDictionary: String = SegmenterSettings.defaultMeCabDictionary
     @AppStorage(SegmenterSettings.strategyKey) var segmentationStrategy: SegmentationStrategy = SegmenterSettings.defaultStrategy
 
-    @AppStorage(TranscriptionEngine.storageKey) private var transcriptionEngine: String = TranscriptionEngine.appleSpeech.rawValue
-    // Backs the "Manage Whisper Models…" row below — lets a user download a model straight
-    // from Settings instead of only discovering the download sheet inside Bulk Import.
-    @State private var whisperModelManager = WhisperModelManager()
-    @State private var isWhisperDownloadSheetPresented = false
-
     @AppStorage(DebugSettings.pixelRulerKey) var debugPixelRuler: Bool = false
     @AppStorage(DebugSettings.furiganaRectsKey) var debugFuriganaRects: Bool = false
     @AppStorage(DebugSettings.headwordRectsKey) var debugHeadwordRects: Bool = false
@@ -309,27 +303,6 @@ struct SettingsView: View {
 
                 // MARK: AI Correction — body lives in SettingsView+AICorrectionSection.swift
                 aiCorrectionSection
-
-                // MARK: Transcription — engine for importing audio → note.
-                Section {
-                    Picker("Engine", selection: $transcriptionEngine) {
-                        ForEach(TranscriptionEngine.allCases, id: \.rawValue) { engine in
-                            Text(engine.displayName).tag(engine.rawValue)
-                        }
-                    }
-                    if transcriptionEngine == TranscriptionEngine.whisper.rawValue {
-                        Button {
-                            isWhisperDownloadSheetPresented = true
-                        } label: {
-                            Label("Manage Whisper Models…", systemImage: "arrow.down.circle")
-                        }
-                    }
-                } header: {
-                    Text("Transcription")
-                }
-                .sheet(isPresented: $isWhisperDownloadSheetPresented) {
-                    WhisperDownloadSheet(manager: whisperModelManager) { _ in }
-                }
 
                 // MARK: Learning — auto-mark words as learned past a chosen bar, and whether the
                 // Learn tab keeps drilling words that have got there.
