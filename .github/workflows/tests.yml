@@ -13,7 +13,12 @@ jobs:
     # so matching CI to the local runtime eliminates the cluster of
     # environmental crashes without skip-listing real test coverage.
     runs-on: macos-26
-    timeout-minutes: 30
+    # Was 30: the build (mostly compiling the mlx-swift dependency from scratch — this
+    # workflow has no dependency cache) has been landing at 30-32 minutes on a clean run,
+    # tipping over the old budget on ordinary runner variance rather than any actual
+    # regression (reproduced on main's own HEAD with zero code changes). 45 gives real
+    # headroom without masking a genuine hang.
+    timeout-minutes: 45
     steps:
       # Submodules now use public HTTPS URLs directly (.gitmodules), so no deploy key
       # is needed. This SSH→HTTPS rewrite is a harmless safety net for any stray SSH URL
