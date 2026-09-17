@@ -61,10 +61,25 @@ struct SongStepperView: View {
     // True once this view has engaged listen-along (played anything); drives teardown.
     @State var isListening: Bool = false
     // Plays the breakdown's script live (sung clips + TTS narration), one step at a time —
-    // see SongLiveListenController. Owned by this view, not the environment: unlike the old
-    // file-render approach there's no cross-session position to persist, so a fresh sheet gets
-    // a fresh controller.
+    // see SongLiveListenController. Owned by this view, not the environment: it has no
+    // cross-session position of its own to persist, so a fresh sheet gets a fresh controller
+    // (see SongPlaybackProgress for what IS persisted — the mini player's step).
     @StateObject var liveListen = SongLiveListenController()
+    // Separate player for the song's own intro (before the first line) and outro (after the
+    // last line) — the live listen-along controller plays a script of TTS narration
+    // interleaved with sung clips, with no notion of the song's own timeline; intro/outro
+    // playback needs the note's original audio file instead. Kept entirely separate from
+    // `liveListen` so intro/outro playback can't disturb its state. See
+    // SongStepperView+MiniPlayer.
+    @StateObject var introOutroPlayback = AudioPlaybackController()
+    // The URL currently loaded into introOutroPlayback, so repeated intro/outro taps don't
+    // reload the same file. Nil before the first intro/outro play.
+    @State var loadedIntroOutroURL: URL?
+    // The mini player's current position: intro, a specific line, or outro. Restored from
+    // SongPlaybackProgress on appear so it survives leaving and reopening the breakdown
+    // (including an app relaunch), and re-persisted on every change. See
+    // SongStepperView+MiniPlayer.
+    @State var currentPlaybackStep: SongPlaybackStep = .intro
     // The note's SRT cues, for matching each line to its sung time range (see
     // lineRangesByIndex). Empty when the note has no audio attachment or no cues.
     @State private var noteCues: [SubtitleCue] = []
@@ -138,8 +153,9 @@ struct SongStepperView: View {
     }
 
     // Rows for the scroll, with the line being written marked while streaming and the line
-    // being spoken marked while listening.
-    private var displayItems: [SongLineDisplayItem] {
+    // being spoken marked while listening. Internal (not private): also read by
+    // SongStepperView+MiniPlayer for next/previous line navigation.
+    var displayItems: [SongLineDisplayItem] {
         SongBreakdownProgressComposer.items(
             lines: currentLines,
             isStreaming: isStreamingCards,
@@ -171,6 +187,11 @@ struct SongStepperView: View {
     var body: some View {
         VStack(spacing: 0) {
             bodyContent
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if hasBreakdown {
+                miniPlayerBar
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -225,9 +246,27 @@ struct SongStepperView: View {
         .onChange(of: isRunning) { _, running in
             if running {
                 if isListening { stopListening() }
+                // The regenerate about to run will replace every line the saved step/position
+                // was measured against — a stale line index or intro/outro ms offset from the
+                // old breakdown isn't meaningful once its text is gone.
+                SongPlaybackProgress.clear(forNoteID: note.id)
+                currentPlaybackStep = .intro
             } else {
                 configureLiveListen()
             }
+        }
+        // The mini player follows whichever line the narration track is actively speaking;
+        // when nothing is playing this simply doesn't fire, leaving the step wherever the user
+        // (or intro/outro playback) last parked it.
+        .onChange(of: activeListenSegment?.lineIndex) { _, newLineIndex in
+            if let newLineIndex {
+                currentPlaybackStep = .line(newLineIndex)
+            }
+        }
+        // Persists the mini player's position on every change, not just on dismiss, so an app
+        // relaunch mid-song still resumes close to where playback actually was.
+        .onChange(of: currentPlaybackStep) { _, newStep in
+            SongPlaybackProgress.recordStep(newStep, forNoteID: note.id)
         }
         .confirmationDialog(
             "Regenerate this breakdown?",
@@ -283,6 +322,7 @@ struct SongStepperView: View {
             liveListen.onDidFinishPlayingNaturally = { [note, onFinishedPlaying] in
                 onFinishedPlaying?(note)
             }
+            currentPlaybackStep = SongPlaybackProgress.lastStep(forNoteID: note.id) ?? .intro
             // Speculative: hands the controller its script now, before any tap, so its
             // one-time setup (opening the note's audio file, resolving voices) finishes in the
             // background well ahead of the user actually pressing play. No-ops here if there's
@@ -307,6 +347,11 @@ struct SongStepperView: View {
             // leaves, rather than leaving it to SwiftUI's non-deterministic @StateObject
             // deallocation. Reopening starts listen-along over from the top.
             if isListening { stopListening() }
+            if loadedIntroOutroURL != nil {
+                SongPlaybackProgress.recordIntroOutroPosition(introOutroPlayback.currentTimeMs, forNoteID: note.id)
+                introOutroPlayback.unload()
+                loadedIntroOutroURL = nil
+            }
         }
     }
 

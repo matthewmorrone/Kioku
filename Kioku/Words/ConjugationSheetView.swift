@@ -1,4 +1,3 @@
-import AVFoundation
 import SwiftUI
 
 // Bottom sheet showing all conjugation groups for a word.
@@ -13,13 +12,9 @@ struct ConjugationSheetView: View {
     // All conjugation groups to display.
     let groups: [ConjugationGroup]
 
-    @State private var speechSynthesizer = AVSpeechSynthesizer()
-
-    // Speaks a conjugated surface aloud, mirroring WordDetailView's own speak(_:).
+    // Speaks a conjugated surface aloud via the app-wide shared synthesizer.
     private func speak(_ text: String) {
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
-        speechSynthesizer.speak(utterance)
+        SpeechSynthesisHelper.shared.speak(text, languageCode: "ja-JP")
     }
 
     var body: some View {

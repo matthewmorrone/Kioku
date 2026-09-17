@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 
 // Tabs available in the Words screen.
 enum WordsTab { case saved, history }
@@ -92,8 +91,6 @@ struct WordsView: View {
     // Drives the "Choose Lemma…" disambiguation sheet for saved-word and history rows.
     @State var lemmaPickerContext: WordsLemmaPickerContext?
     @State var editMode: EditMode = .inactive
-    // ja-JP text-to-speech for the per-row pronunciation buttons (mirrors WordDetailView.speak).
-    @State var rowSpeechSynthesizer = AVSpeechSynthesizer()
     @State var selectedWordIDs: Set<Int64> = []
     // Parallel selection for saved kanji in edit mode. SwiftUI's List(selection:) is keyed to
     // one Hashable type (Int64 word ids here), so kanji — identified by their String literal —

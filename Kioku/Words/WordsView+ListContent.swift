@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 
 // Applies .swipeActions only when not editing — merely attaching the modifier (even with an
 // empty action set) fights List(selection:)'s native multi-select circle for the same row
@@ -271,15 +270,10 @@ extension WordsView {
     }
 
     // Speaks the row's Japanese pronunciation via ja-JP TTS. Prefers the kana reading (least
-    // ambiguous for the synthesizer), then the kanji headword, then the raw surface. Stops any
-    // in-flight utterance first so rapid taps don't queue up.
+    // ambiguous for the synthesizer), then the kanji headword, then the raw surface.
     func speakRow(reading: String?, headword: String?, surface: String) {
         let text = reading ?? headword ?? surface
-        guard text.isEmpty == false else { return }
-        rowSpeechSynthesizer.stopSpeaking(at: .immediate)
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
-        rowSpeechSynthesizer.speak(utterance)
+        SpeechSynthesisHelper.shared.speak(text, languageCode: "ja-JP")
     }
 
     // The single context menu for every word row. Shared items first; then the global

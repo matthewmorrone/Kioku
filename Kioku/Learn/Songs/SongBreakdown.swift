@@ -45,6 +45,17 @@ nonisolated struct SongWord: Codable, Equatable, Sendable {
     let surface: String
     let sungRomaji: String
     let definition: String
+    // Grammatical form tag for an inflected verb/adjective — e.g. "past", "te-form",
+    // "causative-passive". Nil for dictionary-form words, nouns, particles, and any
+    // breakdown generated before this field existed (missing in cached JSON decodes to nil).
+    let grammarTag: String?
+
+    init(surface: String, sungRomaji: String, definition: String, grammarTag: String? = nil) {
+        self.surface = surface
+        self.sungRomaji = sungRomaji
+        self.definition = definition
+        self.grammarTag = grammarTag
+    }
 }
 
 // Encodes "this line repeats an earlier one" so the stepper can render a chip linking back

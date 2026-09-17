@@ -1,13 +1,10 @@
 import UIKit
-import AVFoundation
 
 // Presents a native UIKit popover anchored to tapped segment rects in the read-mode text view.
 final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegate, UIAdaptivePresentationControllerDelegate, UISheetPresentationControllerDelegate {
     static let shared = SegmentLookupSheet()
     // Key for retaining the tap handler via associated objects (gesture recognizer holds weak ref).
     static var tapHandlerKey: UInt8 = 0
-    // Key for retaining the speech synthesizer so it lives long enough to finish speaking.
-    static var speechSynthesizerKey: UInt8 = 0
 
     // Not private: also read/written by presentationControllerDidDismiss in
     // SegmentLookupSheet+Presentation.swift.
@@ -391,13 +388,9 @@ final class SegmentLookupSheet: NSObject, UIPopoverPresentationControllerDelegat
         // Reads popoverSurface (not a captured `surface` snapshot) so a reused, in-place-updated
         // popover always speaks the currently-shown word, not whichever word first built this button.
         wordButton.addAction(
-            UIAction { [weak self, weak wordButton] _ in
+            UIAction { [weak self] _ in
                 guard let self else { return }
-                let synthesizer = AVSpeechSynthesizer()
-                objc_setAssociatedObject(wordButton as Any, &SegmentLookupSheet.speechSynthesizerKey, synthesizer, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-                let utterance = AVSpeechUtterance(string: self.popoverSurface)
-                utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
-                synthesizer.speak(utterance)
+                SpeechSynthesisHelper.shared.speak(self.popoverSurface, languageCode: "ja-JP")
             },
             for: .touchUpInside
         )

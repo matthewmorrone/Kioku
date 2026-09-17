@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 
 // Renders the full-screen word detail screen shown from Words list rows.
 // Major sections: title/header (furigana + lemma), definitions (all matching entries), alternate spellings, examples, components.
@@ -94,9 +93,6 @@ struct WordDetailView: View {
     // Not private: written by wordDetailDefinitionSections's Forms section.
     @State var showingConjugations: Bool = false
     @State var sublatticePaths: [[String]] = []
-    // Retained for the lifetime of the view so on-demand word/sentence pronunciation
-    // finishes even after the tap handler returns. Reference type → @State keeps it alive.
-    @State private var speechSynthesizer = AVSpeechSynthesizer()
 
     // Live re-point target. Nil until the user taps a homonym definition card to switch which
     // dictionary entry this card is saved as; once set, it overrides word.canonicalEntryID as the
@@ -192,9 +188,7 @@ struct WordDetailView: View {
     // Speaks arbitrary Japanese text using the system Japanese voice. Used by the header
     // speaker button and the per-example speaker buttons.
     func speak(_ text: String) {
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
-        speechSynthesizer.speak(utterance)
+        SpeechSynthesisHelper.shared.speak(text, languageCode: "ja-JP")
     }
 
     // Surfaces to highlight inside example sentences — the saved surface plus the entry's

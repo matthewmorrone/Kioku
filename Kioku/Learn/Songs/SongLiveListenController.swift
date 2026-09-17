@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import SwiftWhisperAlign
 
 // Plays a SongBreakdown's listen-along script live, one step at a time, instead of
 // pre-rendering it into a file: each step (a sung clip from the note's own audio, or a
@@ -51,6 +52,10 @@ final class SongLiveListenController: NSObject, ObservableObject {
 
     private let synthesizer = AVSpeechSynthesizer()
     private var clipPlayer: AVAudioPlayer?
+    // Whether `clipPlayer` is currently loaded from the isolated vocal stem rather than the
+    // raw mix — see loadClipPlayer's header comment. Gates the silence-based boundary trim in
+    // `tightenedClipRange`, which is only meaningful against a stem.
+    private var clipPlaybackIsStem = false
     private var scheduledWork: DispatchWorkItem?
 
     // The same-language runs of the segment currently being synthesized (code-switching
@@ -95,23 +100,36 @@ final class SongLiveListenController: NSObject, ObservableObject {
         }
     }
 
-    // Opens the note's source audio file once (off the main thread) and keeps it around for
-    // every `.clip` step to seek within — NOT one `AVAudioPlayer` per clip. Re-opening a
-    // multi-minute song file on every synced line was the actual cause of a real, repeated
-    // "significant delay" between lines (not just once at the start): AVAudioPlayer's
-    // synchronous initializer decodes/prepares the whole file, and doing that on the main
-    // thread once per line stutters the whole song, not just the first play tap.
+    // Opens the note's source audio once (off the main thread) and keeps it around for every
+    // `.clip` step to seek within — NOT one `AVAudioPlayer` per clip. Re-opening a multi-minute
+    // song file on every synced line was the actual cause of a real, repeated "significant
+    // delay" between lines (not just once at the start): AVAudioPlayer's synchronous
+    // initializer decodes/prepares the whole file, and doing that on the main thread once per
+    // line stutters the whole song, not just the first play tap.
+    //
+    // Opens the isolated vocal stem (VocalStemCache — the same one the alignment pipeline that
+    // produced this note's cues already generated) instead of the raw mix, when one is cached:
+    // clean, unaccompanied vocals read as clearer pronunciation for a language-learning app
+    // than the full mix, and it's what makes the silence-based trim in `tightenedClipRange`
+    // meaningful in the first place — a full mix has continuous backing music, so there's no
+    // such thing as "silence" at a clip boundary to detect there. Falls back to the raw mix,
+    // untrimmed, when no stem is cached (song never aligned/isolated).
     private func loadClipPlayer() {
         clipPlayer = nil
         guard let sourceAudioURL else { return }
         Task.detached(priority: .userInitiated) {
-            guard let player = try? AVAudioPlayer(contentsOf: sourceAudioURL) else { return }
+            // Resolved here, off the main thread: VocalStemCache.stemWAVURL does real file
+            // I/O (hashing the source file's content, possibly writing a derived WAV) that
+            // would otherwise undercut this whole function's reason for existing.
+            let playbackURL = VocalStemCache.stemWAVURL(for: sourceAudioURL) ?? sourceAudioURL
+            guard let player = try? AVAudioPlayer(contentsOf: playbackURL) else { return }
             player.prepareToPlay()
             await MainActor.run { [weak self] in
                 // Only adopt it if nothing else (a newer configure() call) has since changed
                 // which source URL is current.
                 guard let self, self.sourceAudioURL == sourceAudioURL else { return }
                 self.clipPlayer = player
+                self.clipPlaybackIsStem = (playbackURL != sourceAudioURL)
             }
         }
     }
@@ -325,7 +343,7 @@ final class SongLiveListenController: NSObject, ObservableObject {
     // just this line. Reuses the one `clipPlayer` `loadClipPlayer` already opened (the common
     // case — by the time any line plays, the background load from `configure()` has long since
     // finished); the synchronous open here is only a rare fallback for a tap that lands before
-    // that background load completes.
+    // that background load completes (matching `loadClipPlayer`'s own stem preference).
     private func runClip(startMs: Int, endMs: Int) {
         guard let sourceAudioURL else {
             completeCurrentStep()
@@ -334,17 +352,23 @@ final class SongLiveListenController: NSObject, ObservableObject {
         let player: AVAudioPlayer
         if let existing = clipPlayer {
             player = existing
-        } else if let loaded = try? AVAudioPlayer(contentsOf: sourceAudioURL) {
+        } else {
+            let playbackURL = VocalStemCache.stemWAVURL(for: sourceAudioURL) ?? sourceAudioURL
+            guard let loaded = try? AVAudioPlayer(contentsOf: playbackURL) else {
+                completeCurrentStep()
+                return
+            }
             loaded.prepareToPlay()
             clipPlayer = loaded
+            clipPlaybackIsStem = (playbackURL != sourceAudioURL)
             player = loaded
-        } else {
-            completeCurrentStep()
-            return
         }
-        let clampedEndMs = min(endMs, Int(player.duration * 1000))
-        let durationMs = max(0, clampedEndMs - startMs)
-        player.currentTime = TimeInterval(startMs) / 1000
+        let (tightStartMs, tightEndMs) = clipPlaybackIsStem
+            ? tightenedClipRange(player: player, startMs: startMs, endMs: endMs)
+            : (startMs, endMs)
+        let clampedEndMs = min(tightEndMs, Int(player.duration * 1000))
+        let durationMs = max(0, clampedEndMs - tightStartMs)
+        player.currentTime = TimeInterval(tightStartMs) / 1000
         player.play()
         let item = DispatchWorkItem { [weak self] in
             self?.clipPlayer?.pause()
@@ -352,6 +376,66 @@ final class SongLiveListenController: NSObject, ObservableObject {
         }
         scheduledWork = item
         DispatchQueue.main.asyncAfter(deadline: .now() + Double(durationMs) / 1000, execute: item)
+    }
+
+    // Tightens a clip's boundaries to the audible sound within it, reading directly from
+    // `player`'s own (isolated vocal stem) file — only ever called when `clipPlaybackIsStem`
+    // is true, never against the raw mix, whose continuous backing music makes "silence"
+    // undetectable. SongLineCueMatcher's own checkpoint-based tightening (upstream, applied
+    // before this step was even built) already uses real per-character alignment timestamps;
+    // this adds a second, waveform-based pass for whatever slack remains — walking in from
+    // each edge to the first frame whose peak amplitude clears a quiet floor, then cropping to
+    // that span with a small fixed pad kept on each side so a genuinely quiet onset (e.g.
+    // unvoiced す/し) isn't shaved into the following attack. Falls back to the untrimmed range
+    // on any read failure, or when there's nothing to trim toward (the whole span is at/under
+    // the quiet floor).
+    private func tightenedClipRange(player: AVAudioPlayer, startMs: Int, endMs: Int) -> (startMs: Int, endMs: Int) {
+        guard let url = player.url, let file = try? AVAudioFile(forReading: url) else { return (startMs, endMs) }
+        let sampleRate = file.processingFormat.sampleRate
+        let startFrame = max(0, AVAudioFramePosition((Double(startMs) / 1000) * sampleRate))
+        let endFrame = min(file.length, AVAudioFramePosition((Double(endMs) / 1000) * sampleRate))
+        let frameCount = AVAudioFrameCount(max(0, endFrame - startFrame))
+        guard frameCount > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount) else {
+            return (startMs, endMs)
+        }
+        file.framePosition = startFrame
+        guard (try? file.read(into: buffer, frameCount: frameCount)) != nil,
+              let channelData = buffer.floatChannelData else {
+            return (startMs, endMs)
+        }
+        let totalFrames = Int(buffer.frameLength)
+        guard totalFrames > 0 else { return (startMs, endMs) }
+        let channelCount = Int(buffer.format.channelCount)
+        let quietFloor: Float = 0.02
+        let padFrames = Int(sampleRate * 0.02) // 20ms
+
+        // The loudest channel at a given frame — trimming looks at whichever channel is
+        // carrying the most signal rather than e.g. only the left channel.
+        func peakAmplitude(atFrame frame: Int) -> Float {
+            var peak: Float = 0
+            for channel in 0..<channelCount {
+                peak = max(peak, abs(channelData[channel][frame]))
+            }
+            return peak
+        }
+
+        var firstLoudFrame = 0
+        while firstLoudFrame < totalFrames, peakAmplitude(atFrame: firstLoudFrame) < quietFloor {
+            firstLoudFrame += 1
+        }
+        var lastLoudFrame = totalFrames - 1
+        while lastLoudFrame > firstLoudFrame, peakAmplitude(atFrame: lastLoudFrame) < quietFloor {
+            lastLoudFrame -= 1
+        }
+        guard firstLoudFrame < lastLoudFrame else { return (startMs, endMs) }
+
+        let trimStartFrame = max(0, firstLoudFrame - padFrames)
+        let trimEndFrame = min(totalFrames, lastLoudFrame + padFrames)
+        let tightStartMs = startMs + Int(Double(trimStartFrame) / sampleRate * 1000)
+        let tightEndMs = startMs + Int(Double(trimEndFrame) / sampleRate * 1000)
+        guard tightEndMs > tightStartMs else { return (startMs, endMs) }
+        return (tightStartMs, tightEndMs)
     }
 
     // MARK: - Session + voices
@@ -380,17 +464,19 @@ final class SongLiveListenController: NSObject, ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    // Picks the best-quality installed voice for a language: premium, else enhanced, else
-    // whatever `AVSpeechSynthesisVoice(language:)` resolves to. Same preference the old
-    // file-rendering service used — premium/enhanced voices sound distinctly more natural for
-    // a longer narrated track than the plain system default used elsewhere for a one-word
-    // tap-to-hear.
+    // Resolves the voice to speak `languageCode` with: the user's own system default for that
+    // language first — `AVSpeechSynthesisVoice(language:)` is exactly the voice configured in
+    // Settings > Accessibility > Spoken Content > Voices, and every other TTS call site in the
+    // app (SpeechSynthesisHelper) honors that same default, so this narration should too rather
+    // than silently overriding the user's choice. Only when no default resolves at all (no
+    // voice installed for the language) do we fall back to hunting for the best quality tier
+    // among whatever IS installed.
     private static func preferredVoice(languageCode: String) -> AVSpeechSynthesisVoice? {
-        let candidates = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == languageCode }
-        if let best = candidates.max(by: { qualityRank($0.quality) < qualityRank($1.quality) }) {
-            return best
+        if let systemDefault = AVSpeechSynthesisVoice(language: languageCode) {
+            return systemDefault
         }
-        return AVSpeechSynthesisVoice(language: languageCode)
+        let candidates = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == languageCode }
+        return candidates.max(by: { qualityRank($0.quality) < qualityRank($1.quality) })
     }
 
     // Orders voice quality tiers so `preferredVoice`'s `max(by:)` picks premium over enhanced
