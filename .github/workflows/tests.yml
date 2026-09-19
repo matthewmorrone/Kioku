@@ -124,7 +124,6 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
             -parallel-testing-enabled NO \
             -skip-testing:KiokuTests/AlignmentQualityTests \
-            -skip-testing:KiokuTests/TranscriptionEngineCERTests \
             -enableCodeCoverage YES \
             -derivedDataPath build \
             -resultBundlePath build/Kioku.xcresult \

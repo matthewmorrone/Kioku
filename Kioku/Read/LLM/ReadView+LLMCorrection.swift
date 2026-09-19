@@ -67,10 +67,13 @@ extension ReadView {
         let willStream = useLLM && (provider == .appleIntelligence
             || ((provider == .openAI || provider == .claude) && LLMSettings.isWebSearchEnabled() == false))
 
-        // Captured so a response that lands after the user has switched notes (cooperative
-        // cancellation doesn't interrupt an in-flight network/model call) is discarded instead
-        // of being applied against whatever note happens to be active when it arrives.
+        // Captured so a response that lands after the user has switched notes or edited this one
+        // (cooperative cancellation doesn't interrupt an in-flight network/model call) is discarded
+        // instead of being staged against offsets that belong to the old text.
         let sourceNoteID = document.activeNoteID
+        let isStillCurrent: @MainActor () -> Bool = {
+            document.activeNoteID == sourceNoteID && document.text == capturedText
+        }
 
         AppLog.debug(.llmCorrection, "requestLLMCorrection starting — provider=\(provider) streaming=\(willStream) segments=\(currentSegments.count) isRetry=\(correctiveFeedback != nil)")
         llmCorrection.isRequestingLLMCorrection = true
@@ -89,7 +92,7 @@ extension ReadView {
                     dictionary: dictionaryStore,
                     correctiveFeedback: correctiveFeedback,
                     onPartial: willStream ? { @MainActor partial in
-                        guard self.document.activeNoteID == sourceNoteID else { return }
+                        guard isStillCurrent() else { return }
                         let merged = Self.mergeResponsePerLine(
                             response: partial,
                             originalText: capturedText,
@@ -101,7 +104,7 @@ extension ReadView {
                 LLMCorrectionService.logOutcome(provider: provider, result: .success(response))
 
                 await MainActor.run {
-                    guard document.activeNoteID == sourceNoteID else { return }
+                    guard isStillCurrent() else { return }
                     if willStream {
                         // Streaming already applied every line as it arrived;
                         // the final response equals the last partial. Just flag
