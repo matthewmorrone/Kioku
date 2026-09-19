@@ -69,6 +69,32 @@ print(matches[0] if matches else '')
   exit 0
 fi
 
+# Refuse to publish a dictionary that predates extras.json. The pin hash only proves these are the
+# bytes someone intended to ship, not that they were regenerated after the last lexicon edit —
+# dictionary-v8 was built before ユア was added to extras.json in the same commit, so the entry its
+# own release notes describe was never in the file. Every extras surface must be present.
+MISSING_EXTRAS=$(python3 - "$ROOT_DIR/Resources/extras.json" "$SQLITE" <<'PY'
+import json, sqlite3, sys
+extras = json.load(open(sys.argv[1], encoding="utf-8"))
+conn = sqlite3.connect(sys.argv[2])
+known = {text for (text,) in conn.execute("SELECT text FROM kana_forms UNION SELECT text FROM kanji")}
+missing = []
+for entry in extras.get("entries", []):
+    for field in ("kana", "kanji"):
+        value = entry.get(field)
+        for item in value if isinstance(value, list) else [value]:
+            text = item.get("text") if isinstance(item, dict) else item
+            if isinstance(text, str) and text and text not in known:
+                missing.append(text)
+print(" ".join(missing))
+PY
+)
+if [[ -n "$MISSING_EXTRAS" ]]; then
+  echo "✗ $SQLITE is missing extras.json entries: $MISSING_EXTRAS" >&2
+  echo "  It was built before extras.json last changed — rerun Resources/generate_db.py, then re-pin." >&2
+  exit 1
+fi
+
 echo "→ Publishing $RELEASE_TAG ($ACTUAL_SHA256)"
 gh release create "$RELEASE_TAG" "$SQLITE" \
   --repo "$REPO" \
