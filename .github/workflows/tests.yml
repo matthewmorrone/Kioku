@@ -109,7 +109,25 @@ jobs:
       # maintainer-controlled path outside this condition (e.g. pushing the reviewed diff to a
       # same-repo branch, or a trusted-label/workflow_dispatch gate) — not implemented here. A
       # permanently-red fork-PR check is the deliberate fail-safe, not a bug.
-      - name: Build & test
+      # Restores compiled dependencies (mlx-swift is the bulk of a cold build) and the resolved
+      # package checkouts from the last run with the same Package.resolved. Only Build/ and
+      # SourcePackages/ are cached — build/Kioku.xcresult lives beside them and must not be
+      # restored, because xcodebuild refuses to overwrite an existing result bundle. The cache is
+      # saved only when the job succeeds; restore-keys falls back to the newest cache for the
+      # same dependency set, so a source-only change rebuilds just the app targets.
+      - name: Cache build products and packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/Build
+            build/SourcePackages
+          key: ios-build-${{ runner.os }}-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            ios-build-${{ runner.os }}-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}-
+
+      # Build and test run as separate steps so a hang shows up as a test-phase problem rather than
+      # an undifferentiated 30-minute "Build & test", and each phase's time is visible.
+      - name: Build for testing
         env:
           TRUST_PACKAGE_PLUGINS: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
@@ -118,7 +136,20 @@ jobs:
           if [[ "$TRUST_PACKAGE_PLUGINS" == "true" ]]; then
             plugin_flag=(-skipPackagePluginValidation)
           fi
-          xcodebuild test \
+          xcodebuild build-for-testing \
+            -project Kioku.xcodeproj \
+            -scheme Kioku \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -enableCodeCoverage YES \
+            -derivedDataPath build \
+            "${plugin_flag[@]}" \
+            ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
             -project Kioku.xcodeproj \
             -scheme Kioku \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
@@ -126,9 +157,7 @@ jobs:
             -skip-testing:KiokuTests/AlignmentQualityTests \
             -enableCodeCoverage YES \
             -derivedDataPath build \
-            -resultBundlePath build/Kioku.xcresult \
-            "${plugin_flag[@]}" \
-            CODE_SIGNING_ALLOWED=NO
+            -resultBundlePath build/Kioku.xcresult
 
       # Emit a per-target line-coverage summary into the workflow run page so
       # PR reviewers see coverage without downloading the artifact. xccov reads
