@@ -240,13 +240,18 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // allowing dictionary words that start mid-unknown-run to be reached.
             if keptMatches == 0 {
                 let fallbackRange = unknownFallbackRange(in: text, startingAt: index)
-                edges.append(
-                    LatticeEdge(
-                        start: fallbackRange.lowerBound,
-                        end: fallbackRange.upperBound,
-                        surface: String(text[fallbackRange])
-                    )
+                var fallbackEdge = LatticeEdge(
+                    start: fallbackRange.lowerBound,
+                    end: fallbackRange.upperBound,
+                    surface: String(text[fallbackRange])
                 )
+                if text.index(after: index) == fallbackRange.upperBound,
+                   index > text.startIndex,
+                   isSpanBreak(text[text.index(before: index)]) == false,
+                   isBoundCharacter(at: index, in: text) {
+                    fallbackEdge.isAbsorbedBoundCharacter = true
+                }
+                edges.append(fallbackEdge)
             }
 
             index = text.index(after: index)
@@ -330,11 +335,9 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
     }
 
     // Produces both the full candidate lattice and the currently selected path for one text snapshot.
-    // Path selection is local longest-match ("greedy") by default; when the strategy is
-    // SegmenterSettings.usesGlobalLongestMatch, the same lattice is re-scored via the Viterbi DP
-    // (POS bigram + node costs) and the minimum-cost path is returned instead. The global branch
-    // is opt-in so changing the strategy in Settings instantly reverts to the long-shipped local
-    // behavior — no rebuild needed.
+    // Path selection is global by default: the Viterbi DP picks the minimum-cost path over the whole
+    // line, with node costs from SegmenterScoring.edgeCost. When the strategy setting is
+    // localLongestMatch, the same lattice is instead walked greedily, longest edge first.
     func longestMatchResult(for text: String) -> (latticeEdges: [LatticeEdge], selectedEdges: [LatticeEdge]) {
         let latticeEdges = buildLattice(for: text)
 
@@ -343,7 +346,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
             // If Viterbi fails to terminate (no path reaches text.endIndex), fall through to greedy
             // so we never return a partial / empty segmentation. This keeps the flag safe to flip.
             if !path.isEmpty {
-                return (latticeEdges: annotatedEdges, selectedEdges: path)
+                return (latticeEdges: annotatedEdges, selectedEdges: absorbingBoundCharacters(in: path, of: text))
             }
         }
 
@@ -424,6 +427,53 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
         }
 
         return (latticeEdges: latticeEdges, selectedEdges: selectedEdges)
+    }
+
+    // Folds bound characters at the head of a selected edge into the segment before it, so no
+    // segment of the global path starts with a glyph that can never begin a word. Same two classes
+    // the local walk absorbs inline: small kana and the prolonged sound mark always; small tsu only
+    // when it is not followed by kana (って/った are legitimate segment heads). A bound character
+    // with no preceding segment, or one directly after a boundary character, is left alone.
+    private func absorbingBoundCharacters(in path: [LatticeEdge], of text: String) -> [LatticeEdge] {
+        var result: [LatticeEdge] = []
+        result.reserveCapacity(path.count)
+
+        for edge in path {
+            var start = edge.start
+            while start < edge.end,
+                  let last = result.last,
+                  !(last.surface.count == 1 && isSpanBreak(last.surface.first!)),
+                  isBoundCharacter(at: start, in: text) {
+                let next = text.index(after: start)
+                result[result.count - 1] = LatticeEdge(
+                    start: last.start,
+                    end: next,
+                    surface: String(text[last.start..<next])
+                )
+                start = next
+            }
+
+            if start == edge.start {
+                result.append(edge)
+            } else if start < edge.end {
+                result.append(LatticeEdge(start: start, end: edge.end, surface: String(text[start..<edge.end])))
+            }
+        }
+
+        return result
+    }
+
+    // True when the character at this index can never begin a segment: a never-initial kana, or a
+    // small tsu that is not followed by kana.
+    private func isBoundCharacter(at index: String.Index, in text: String) -> Bool {
+        let character = text[index]
+        if Self.neverInitialKana.contains(character) { return true }
+        guard character == "っ" || character == "ッ" else { return false }
+        let afterTsu = text.index(after: index)
+        let followedByKana = afterTsu < text.endIndex
+            && isSpanBreak(text[afterTsu]) == false
+            && ScriptClassifier.isPureKana(String(text[afterTsu]))
+        return followedByKana == false
     }
 
     // Builds a greedy segmentation edge list so downstream features can use chosen surface/lemma references.

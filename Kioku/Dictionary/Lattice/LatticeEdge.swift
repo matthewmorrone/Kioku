@@ -23,6 +23,11 @@ struct LatticeEdge {
     // prefix + grammatical ending. Used by the Viterbi node-cost to discourage rare bundled
     // entries (たいよ, 生まれた) from outranking the compositional split.
     var decomposesAtGrammaticalEnding: Bool = false
+    // True for a non-dictionary single-character edge whose character can never begin a segment
+    // here (small kana, ー, or a small tsu not followed by kana) and that has a segment before it
+    // to join. Path selection folds such an edge into the preceding segment, so the cost model
+    // prices it at zero instead of as unknown text.
+    var isAbsorbedBoundCharacter: Bool = false
     // IPADic context IDs tagged at dictionary-build time. When both are populated on adjacent
     // edges, Viterbi looks up the connection cost directly in IPADic's matrix.bin instead of
     // bucketing through POS classes — the same scoring fidelity MeCab itself uses. nil when

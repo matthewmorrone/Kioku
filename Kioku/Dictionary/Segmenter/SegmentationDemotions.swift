@@ -12,11 +12,10 @@ import Foundation
 // app without a code change + rebuild. Encoding mirrors ParticleSettings (comma-joined) so the
 // SettingsView binds the same way.
 //
-// The demotion is intentionally *soft*. It is consulted in two places, one per engine:
-//   • Local longest-match  — Segmenter.compareEdgePriority sinks a demoted candidate below every
-//     non-demoted candidate that starts at the same position (still chosen if it's the only one).
-//   • Global longest-match — SegmenterScoring.edgeCost adds costDemotedSurfacePenalty to the node
-//     cost. A demoted surface can still win if no cheaper global path exists.
+// The demotion is intentionally *soft*, and applies to the local longest-match strategy only:
+// Segmenter.compareEdgePriority sinks a demoted candidate below every non-demoted candidate that
+// starts at the same position (still chosen if it's the only one). The global strategy does not
+// consult this list — its cost model prices these fusions out through surface frequency.
 nonisolated enum SegmentationDemotions {
     static let storageKey = "kioku.segmenter.demotions"
 

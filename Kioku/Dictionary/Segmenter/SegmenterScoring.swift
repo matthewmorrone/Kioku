@@ -22,45 +22,28 @@ nonisolated struct SegmenterScoring {
         posBadTransitionPenalty: 150
     )
 
-    // MARK: - Cost-model constants (consumed by edgeCost, the node-cost layer of the global longest-match path)
+    // MARK: - Node-cost model (consumed by edgeCost, the node layer of the global path)
+    //
+    // A word's cost is its negative log probability, −ln P(word), in centi-nats, taken from the
+    // frequency of the surface AS WRITTEN (see DictionaryStore.fetchFrequencyScoreBySurface). That
+    // single quantity does every job the structural bonuses used to be hand-tuned for: every word
+    // pays at least a few nats, so fewer/longer words win without a length reward; a rare word
+    // costs more than a common one without a rarity penalty; and a kana string nobody writes as a
+    // word (がそ for 画素) is unranked and therefore expensive, so が + そこ beats がそ + こ without a
+    // denylist. Do not add per-surface or per-script special cases here — fix the frequency data.
 
-    // Flat cost charged once per edge, independent of length. This is the term that makes the
-    // global path a *longest*-match: the per-character length reward cancels across any full-
-    // coverage path (every path spans the same characters), so without a flat per-edge cost the
-    // only thing differentiating paths is the −3 dictionary bonus — which silently rewards *more*
-    // splits (e.g. このまま=-27 loses to この+まま=-30). Charging +10 per edge minimizes token
-    // count, so a single whole-word edge beats two shorter ones unless the split is genuinely
-    // cheaper. Sized above costDictionaryBonus (3) so it dominates the per-split bonus.
-    static let costPerEdgeBase = 10
+    // frequencyScore is Zipf-like: log10 of occurrences per `zipfScaleExponent` decades of words,
+    // so −ln P = (zipfScaleExponent − score) · ln 10. This is also the fixed overhead every word
+    // pays, i.e. how strongly the path prefers fewer words.
+    static let zipfScaleExponent = 9.0
 
-    // Weight on the frequency term in edgeCost (multiplies the ~0–7 frequencyScore). This is the
-    // *primary* statistical signal — the reason a global cost-path segmenter beats greedy at all.
-    // Higher = frequency dominates structure more. Start ~3 and tune on-device: too low and rare-
-    // word chains (のす, 蟹) still win on structural bonuses; too high and frequency swamps every
-    // other signal. A Double so the weight can be fractioned without changing call sites.
-    static let costFrequencyWeight: Double = 3.0
+    // Score assumed for a dictionary word with no frequency rank at all: rarer than any ranked word.
+    static let unrankedDictionaryScore = 1.0
 
-    // Penalty for a dictionary edge with NO frequency data (jpdb_rank absent → frequencyScore 0).
-    // These are obscure/archaic entries (たの) a learner text never intends; without this they sat
-    // at a neutral 0 frequency cost and won fusions like あな+「たの」 for free. Sized to lose to any
-    // ranked alternative parse, while still being chosen when it is the only edge available. Tunable.
-    static let costUnrankedDictionaryPenalty = 30
-
-    static let costDictionaryBonus = -3
-    static let costSingleCharacterPenalty = 3
-    static let costNonFunctionalSingleCharacterPenalty = 12
-    static let costUnknownPenalty = 6
-    static let costLengthRewardPerCharacter = -6
-    static let costVerbBonus = -3
-    // Penalty applied to multi-char dict entries that decompose into prefix + grammatical kana
-    // (e.g. たいよ = たい + よ, 生まれた = 生まれ + た). Pushes Viterbi toward the compositional
-    // path so auxiliaries and sentence-final particles don't get absorbed into the verb stem.
-    static let costBundledGrammaticalEndingPenalty = 15
-    // Soft penalty for surfaces in the SegmentationDemotions denylist (のか, のす, …). Sized in
-    // the same band as the grammatical-ending demotion: enough to cancel a 2-char surface's
-    // dictionary+length advantage so the compositional split wins, without forbidding the surface
-    // outright. Viterbi may still pick a demoted surface when no cheaper global path exists.
-    static let costDemotedSurfacePenalty = 18
+    // Unknown (non-dictionary) text: a flat word cost plus a steep per-character cost, in nats, so
+    // stranding a fragment is always worse than any parse that covers it with real words.
+    static let unknownBaseNats = 12.0
+    static let unknownPerCharacterNats = 6.0
 
     // Trailing kana that signal "this surface ends with a grammatical particle/auxiliary fused
     // onto its stem" — checked at lattice-build time, not at every transition lookup.
@@ -139,66 +122,23 @@ nonisolated struct SegmenterScoring {
     static let costCopulaNounPenalty = 9              // raw 948   (n=5952)   — same cells as aux-noun
     static let costParticleAuxiliaryPenalty = 10      // raw 1023  (n=41292)
 
-    // Calculates edge-local node cost independent of predecessor transitions.
+    // Node cost of one lattice edge: −ln P(surface) in centi-nats, independent of its neighbours.
     static func edgeCost(_ edge: LatticeEdge) -> Int {
-        var cost = costPerEdgeBase
+        // Punctuation and whitespace are forced single-character edges every path must take.
+        if isPunctuationSurface(edge.surface) { return 0 }
 
-        if edge.isDictionaryMatch {
-            cost += costDictionaryBonus
+        // A bound character that path selection will fold into the preceding segment (see
+        // LatticeEdge.isAbsorbedBoundCharacter) must not be priced as unknown text, or the path
+        // contorts to avoid it (だ|めっ over だめ|っ). A small tsu that is NOT absorbed — one followed
+        // by kana — keeps its full unknown cost, so もっとも|っ|と still loses to もっと|もっと.
+        if edge.isAbsorbedBoundCharacter { return 0 }
+
+        guard edge.isDictionaryMatch else {
+            return Int(((unknownBaseNats + unknownPerCharacterNats * Double(edge.surface.count)) * 100).rounded())
         }
 
-        if edge.surface.count == 1 {
-            cost += costSingleCharacterPenalty + 5
-            if !PartOfSpeech.isParticle(edge.partOfSpeech)
-                && !PartOfSpeech.isAuxiliary(edge.partOfSpeech)
-                && !isPunctuationSurface(edge.surface) {
-                cost += costNonFunctionalSingleCharacterPenalty
-            }
-        }
-
-        if !edge.isDictionaryMatch {
-            cost += costUnknownPenalty
-        }
-
-        cost += edge.surface.count * costLengthRewardPerCharacter
-
-        // Frequency term — the core statistical node cost (≈ −log P(word)).
-        //   • Ranked words: reward proportional to commonness (~0–7 score). Common = cheap. This is
-        //     what lets すべて (rank 1,305) beat のす (伸す, rank 44,453).
-        //   • Known but UNRANKED words (no jpdb_rank at all): a heavy penalty, NOT a neutral 0. Such
-        //     entries (たの, entry 139584) are obscure/archaic forms a learner text never intends —
-        //     an unseen word has P≈0, so its cost should approach ∞. Treating missing frequency as 0
-        //     let 「たの」 fuse for free; this blasts it. It is still chosen when it is the only parse.
-        // Unknown (non-dictionary) edges are handled by costUnknownPenalty above, not here.
-        if edge.frequencyScore > 0 {
-            cost += Int((-costFrequencyWeight * edge.frequencyScore).rounded())
-        } else if edge.isDictionaryMatch {
-            // frequencyScore reflects the full resolution closure: the surface, all writings of its
-            // entry (per-entry propagation in fetchFrequencyScoreBySurface), and its deinflected
-            // bases (resolvedTrieLemmas). So a score of 0 now means "no ranked form ANYWHERE in this
-            // word's resolution" — i.e. genuine junk like 「たの」 (an `exp` that deinflects to
-            // nothing). Conjugations (会いたい→会う), compounds (追いかけて→追いかける), and alternate
-            // writings (ケンカ=喧嘩) all reach a ranked form, so they take the reward branch above and
-            // never land here. This penalty therefore fires only on the たの/のす-class fusions.
-            cost += costUnrankedDictionaryPenalty
-        }
-
-        // Verb bonus disabled: a flat reward for *any* verb is frequency-blind and systematically
-        // helped rare verbs (伸す/貸す/醸す) win over common non-verb words. The frequency term above
-        // now distinguishes common from rare directly. Re-enable only if a real regression needs it.
-        // if PartOfSpeech.isVerb(edge.partOfSpeech) && !PartOfSpeech.isNoun(edge.partOfSpeech) {
-        //     cost += costVerbBonus
-        // }
-
-        if edge.decomposesAtGrammaticalEnding {
-            cost += costBundledGrammaticalEndingPenalty
-        }
-
-        if SegmentationDemotions.contains(edge.surface) {
-            cost += costDemotedSurfacePenalty
-        }
-
-        return cost
+        let score = edge.frequencyScore > 0 ? edge.frequencyScore : unrankedDictionaryScore
+        return Int(((zipfScaleExponent - score) * log(10.0) * 100).rounded())
     }
 
     // Detects punctuation-only single-character surfaces so they avoid strong lexical penalties.

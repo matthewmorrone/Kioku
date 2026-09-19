@@ -18,7 +18,7 @@ nonisolated enum SegmenterSettings {
     static let strategyKey = "kioku.segmenter.strategy"
     static let defaultBackend = SegmenterBackend.trie.rawValue
     static let defaultMeCabDictionary = MeCabDictionary.ipadic.rawValue
-    static let defaultStrategy = SegmentationStrategy.localLongestMatch
+    static let defaultStrategy = SegmentationStrategy.globalLongestMatch
 
     // Runtime probe for the trie segmenter's selection strategy.
     // Read on the Segmenter's worker thread, so this must stay a cheap
