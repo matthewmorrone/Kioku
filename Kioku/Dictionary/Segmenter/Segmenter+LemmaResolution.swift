@@ -88,13 +88,39 @@ extension Segmenter {
         return trusted.union(deinflected)
     }
 
+    // resolvedTrieLemmas plus the fewest deinflection rules needed to reach any of those lemmas — the
+    // input to SegmenterScoring's inflection-step cost. 0 when the surface is itself a dictionary
+    // surface, or when its lemmas are reached only by script normalization rather than conjugation.
+    // One deinflectionPaths traversal serves both results.
+    func resolvedTrieLemmasWithInflectionSteps(for surface: String) -> (lemmas: Set<String>, inflectionSteps: Int) {
+        let paths = deinflector?.deinflectionPaths(for: surface)
+        let (trusted, deinflected) = resolvedTrieLemmasBySource(for: surface, paths: paths)
+        let lemmas = trusted.union(deinflected)
+        guard let paths, trie.contains(surface) == false else {
+            return (lemmas, 0)
+        }
+
+        var fewestSteps: Int?
+        for lemma in lemmas {
+            for path in paths[lemma] ?? [] where path.chain.isEmpty == false {
+                if fewestSteps == nil || path.chain.count < fewestSteps! {
+                    fewestSteps = path.chain.count
+                }
+            }
+        }
+        return (lemmas, fewestSteps ?? 0)
+    }
+
     // Same resolution as resolvedTrieLemmas, but split by source so lemmaCandidates can gate only
     // genuine deinflection guesses: `trusted` holds exact trie hits, iteration-mark expansions, and
     // kana-script normalization (katakana↔hiragana) — script/notation equivalences that hold
     // regardless of POS. `deinflected` holds candidates the deinflector reached via an actual
     // conjugation-chain guess, which POS gating uses to reject coincidental hits on a real but
     // unrelated non-conjugating word (see lemmaCandidates).
-    private func resolvedTrieLemmasBySource(for surface: String) -> (trusted: Set<String>, deinflected: Set<String>) {
+    private func resolvedTrieLemmasBySource(
+        for surface: String,
+        paths precomputedPaths: DeinflectionPathMap? = nil
+    ) -> (trusted: Set<String>, deinflected: Set<String>) {
         var trusted = matchedTrieLemmas(for: surface)
         var deinflected = Set<String>()
         let hasExactSurfaceMatch = trie.contains(surface)
@@ -106,7 +132,7 @@ extension Segmenter {
         }
 
         if let deinflector {
-            let candidates = deinflector.generateCandidates(for: surface)
+            let candidates = deinflector.generateCandidates(from: precomputedPaths ?? deinflector.deinflectionPaths(for: surface))
             for candidate in candidates {
                 let isKanaNormalized = deinflector.isNormalizedKanaCandidate(candidate, for: surface)
                 if hasExactSurfaceMatch, candidate != surface, isKanaNormalized {

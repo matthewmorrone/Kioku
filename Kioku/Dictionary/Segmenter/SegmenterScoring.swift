@@ -34,8 +34,17 @@ nonisolated struct SegmenterScoring {
 
     // frequencyScore is Zipf-like: log10 of occurrences per `zipfScaleExponent` decades of words,
     // so −ln P = (zipfScaleExponent − score) · ln 10. This is also the fixed overhead every word
-    // pays, i.e. how strongly the path prefers fewer words.
-    static let zipfScaleExponent = 9.0
+    // pays, i.e. how strongly the path prefers fewer words. Fitted on training sentences and
+    // confirmed on held-out ones (see ~/Projects/kioku-segmentation-eval): below ~8.5 it stops
+    // fixing errors and only trades merged units for split ones.
+    static let zipfScaleExponent = 8.5
+
+    // Nats charged per deinflection rule applied (LatticeEdge.inflectionSteps): P(this form | lemma)
+    // is below 1, and without it a conjugated surface inherits its lemma's whole frequency however
+    // contorted the chain — which is how junk spans like つ始める (問題|はい|つ始める) came out cheap.
+    // Fitted with zipfScaleExponent; it peaks at 2–3, and past that it starts splitting genuine
+    // conjugated forms.
+    static let inflectionStepNats = 3.0
 
     // Score assumed for a dictionary word with no frequency rank at all: rarer than any ranked word.
     static let unrankedDictionaryScore = 1.0
@@ -138,7 +147,8 @@ nonisolated struct SegmenterScoring {
         }
 
         let score = edge.frequencyScore > 0 ? edge.frequencyScore : unrankedDictionaryScore
-        return Int(((zipfScaleExponent - score) * log(10.0) * 100).rounded())
+        let nats = (zipfScaleExponent - score) * log(10.0) + inflectionStepNats * Double(edge.inflectionSteps)
+        return Int((nats * 100).rounded())
     }
 
     // Detects punctuation-only single-character surfaces so they avoid strong lexical penalties.
