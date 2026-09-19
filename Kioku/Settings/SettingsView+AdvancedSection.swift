@@ -25,10 +25,11 @@ extension SettingsView {
             }
 
             if segmenterBackend == SegmenterBackend.trie.rawValue {
-                Toggle("Global longest-match (experimental)", isOn: Binding(
-                    get: { segmentationStrategy == .globalLongestMatch },
-                    set: { segmentationStrategy = $0 ? .globalLongestMatch : .localLongestMatch }
-                ))
+                Picker("Strategy", selection: $segmentationStrategy) {
+                    ForEach(SegmentationStrategy.allCases, id: \.rawValue) { strategy in
+                        Text(strategy.displayName).tag(strategy)
+                    }
+                }
             }
         } header: {
             Text("Segmentation")
