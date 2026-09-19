@@ -125,6 +125,28 @@ jobs:
           restore-keys: |
             ios-build-${{ runner.os }}-${{ hashFiles('Kioku.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}-
 
+      # Starts booting the test simulator now so it comes up while the build compiles; on this
+      # runner a cold boot after the build was the largest single wait in the Test step. The
+      # device matches the destination below (iPhone 17 on the newest iOS runtime — several
+      # iPhone 17s exist, one per runtime, so it is picked by UDID). `simctl boot` returns
+      # immediately and the boot continues in the background. Best-effort: if it fails, the
+      # test step boots the device itself exactly as before.
+      - name: Pre-boot simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          def version(key):
+              return tuple(int(n) for n in re.findall(r"\d+", key.rsplit(".", 1)[-1]))
+          for key in sorted((k for k in runtimes if "iOS" in k), key=version, reverse=True):
+              for device in runtimes[key]:
+                  if device["name"] == "iPhone 17":
+                      print(device["udid"])
+                      sys.exit(0)
+          ')
+          echo "Pre-booting iPhone 17: ${udid:-none found}"
+          [[ -n "$udid" ]] && xcrun simctl boot "$udid" || true
+
       # Build and test run as separate steps so a hang shows up as a test-phase problem rather than
       # an undifferentiated 30-minute "Build & test", and each phase's time is visible.
       - name: Build for testing
