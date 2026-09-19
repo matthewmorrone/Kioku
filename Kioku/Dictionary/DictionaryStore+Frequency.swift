@@ -200,18 +200,28 @@ extension DictionaryStore {
     }
 
     // Surface → frequency-score map (~0–7 Zipf-equivalent, higher = more common) used by the
-    // segmenter. Derived from the per-entry-propagated rank map so it agrees, surface-for-surface,
-    // with every other frequency consumer; rank→score reuses FrequencyData so the mapping matches.
+    // segmenter's cost model. Read from `surface_frequency`, which carries the JPDB rank of each
+    // surface AS IT IS WRITTEN: する scores by its kana-spelling rank (11), not by its rare kanji
+    // form 為る (34586); kana はこ scores far below 箱; a kana string nobody writes as a word (がそ
+    // for 画素) has no row at all and so reads as unranked. That orthography match is what lets
+    // the segmenter tell a real kana word from a particle fused onto the next word's first kana.
+    // Deliberately NOT the per-entry-propagated ranks of fetchBestRankBySurface — propagation
+    // gives every spelling of an entry the same rank, which erases exactly this distinction.
     nonisolated func fetchFrequencyScoreBySurface() throws -> [String: Double] {
-        let bestRankBySurface = try fetchBestRankBySurface()
-        var scoreBySurface: [String: Double] = [:]
-        scoreBySurface.reserveCapacity(bestRankBySurface.count)
-        for (surface, rank) in bestRankBySurface {
-            if let score = FrequencyData(jpdbRank: rank, wordfreqZipf: nil).normalizedScore, score > 0 {
-                scoreBySurface[surface] = score
+        try withSerializedDatabaseAccess {
+            var scoreBySurface: [String: Double] = [:]
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            try prepare(sql: "SELECT surface, jpdb_rank FROM surface_frequency", statement: &statement)
+            while sqlite3_step(statement) == SQLITE_ROW {
+                guard let textPointer = sqlite3_column_text(statement, 0) else { continue }
+                let rank = Int(sqlite3_column_int(statement, 1))
+                if let score = FrequencyData(jpdbRank: rank, wordfreqZipf: nil).normalizedScore, score > 0 {
+                    scoreBySurface[String(cString: textPointer)] = score
+                }
             }
+            return scoreBySurface
         }
-        return scoreBySurface
     }
 
     // Fetches all unique dictionary surfaces from kanji and kana_forms tables.

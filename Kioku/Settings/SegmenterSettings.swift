@@ -1,14 +1,24 @@
 import Foundation
 
 // The trie segmenter's path-selection strategy. Both strategies walk the *same* lattice from
-// Segmenter.buildLattice; they differ only in the scope of each boundary decision.
+// Segmenter.buildLattice; they differ in how a path through it is chosen.
 //   • localLongestMatch  — a.k.a. "greedy": take the longest edge at each position and commit,
-//     with no lookahead. Fast, but can strand un-parseable fragments downstream.
-//   • globalLongestMatch — minimize total path cost across the whole line, computed by the
-//     Viterbi DP. Sees the entire line before deciding, so it won't paint itself into a corner.
-nonisolated enum SegmentationStrategy: String {
+//     with no lookahead, consulting the SegmentationDemotions list. Can strand fragments downstream.
+//   • globalLongestMatch — minimize total path cost across the whole line with the Viterbi DP,
+//     where each word costs −ln P of its surface as written (SegmenterScoring.edgeCost). Sees the
+//     entire line before deciding, and does not consult the demotion list.
+// Raw values are persisted in UserDefaults, so they stay fixed even though the display names differ.
+nonisolated enum SegmentationStrategy: String, CaseIterable {
     case localLongestMatch
     case globalLongestMatch
+
+    // Returns a human-readable label for display in the settings picker.
+    var displayName: String {
+        switch self {
+        case .localLongestMatch: return "Longest Match (Greedy)"
+        case .globalLongestMatch: return "Word Frequency (Viterbi)"
+        }
+    }
 }
 
 // Centralizes UserDefaults keys and defaults for the segmentation backend configuration.
@@ -18,7 +28,7 @@ nonisolated enum SegmenterSettings {
     static let strategyKey = "kioku.segmenter.strategy"
     static let defaultBackend = SegmenterBackend.trie.rawValue
     static let defaultMeCabDictionary = MeCabDictionary.ipadic.rawValue
-    static let defaultStrategy = SegmentationStrategy.localLongestMatch
+    static let defaultStrategy = SegmentationStrategy.globalLongestMatch
 
     // Runtime probe for the trie segmenter's selection strategy.
     // Read on the Segmenter's worker thread, so this must stay a cheap

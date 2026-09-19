@@ -32,6 +32,7 @@ final class SegmentationDumpTests: XCTestCase {
         guard dumpsEnabled else { throw XCTSkip("Set KIOKU_RUN_DUMPS=1 to print this dump") }
         let resources = try TestReadResources.shared()
         UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
+        defer { UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey) }
         dump(label: "LOCAL", segmenter: resources.segmenter)
     }
 
@@ -39,7 +40,7 @@ final class SegmentationDumpTests: XCTestCase {
         guard dumpsEnabled else { throw XCTSkip("Set KIOKU_RUN_DUMPS=1 to print this dump") }
         let resources = try TestReadResources.shared()
         UserDefaults.standard.set(SegmentationStrategy.globalLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
-        defer { UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey) }
+        defer { UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey) }
         dump(label: "GLOBAL", segmenter: resources.segmenter)
     }
 

@@ -613,19 +613,19 @@ struct ContentView: View {
             print("Deinflector initialization failed: \(error)")
         }
 
-        // Frequency comes straight from word_frequency (the table that carries jpdb_rank), NOT from
-        // surface_readings.jpdb_rank — that column is NULL for kana surfaces, so reading it produced
-        // an empty map and left the segmenter's frequency term inert. fetchBestRankBySurface reads the
-        // populated source with per-entry rank propagation. The segmenter consumes the derived SCORE
-        // map; the lookup/split-editor frequency fallback consumes the RANK map directly (so a kana
-        // split piece like こと / する reports its entry's rank instead of rendering a bare "–").
+        // Two frequency maps with two different jobs:
+        //   • frequencyRankBySurface — per-ENTRY best JPDB rank, propagated to every spelling of the
+        //     entry. Backs the lookup/split-editor frequency display, where a kana split piece like
+        //     こと / する should report its word's rank instead of rendering a bare "–".
+        //   • frequencyScoreBySurface — the rank of each surface AS WRITTEN (surface_frequency), which
+        //     is what the segmenter's cost model needs: する scores by its kana-spelling rank, and a
+        //     kana string nobody writes as a word (がそ for 画素) is unranked. Feeding the segmenter
+        //     the propagated map instead erases exactly that distinction.
         let frequencyRankBySurface: [String: Int] = StartupTimer.measure("frequencyRankBySurface build") {
             (try? dictionaryStore?.fetchBestRankBySurface()) ?? [:]
         }
-        let frequencyScoreBySurface: [String: Double] = frequencyRankBySurface.reduce(into: [:]) { result, pair in
-            if let score = FrequencyData(jpdbRank: pair.value, wordfreqZipf: nil).normalizedScore, score > 0 {
-                result[pair.key] = score
-            }
+        let frequencyScoreBySurface: [String: Double] = StartupTimer.measure("frequencyScoreBySurface build") {
+            (try? dictionaryStore?.fetchFrequencyScoreBySurface()) ?? [:]
         }
 
         // Choose segmenter based on the user's backend preference.

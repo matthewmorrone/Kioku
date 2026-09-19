@@ -11,6 +11,7 @@
 # Usage: python3 scripts/generate_kyujitai_table.py
 import hashlib
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -18,7 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "Resources" / "data-manifest.json"
 KANJIDIC2 = ROOT / "Resources" / "kanjidic2-all.json"
-CACHE = ROOT / "Resources" / ".source-cache"
+# Shared with Resources/generate_db.py: outside the checkout so it survives disposable worktrees.
+CACHE = Path(os.environ.get("KIOKU_SOURCE_CACHE") or Path.home() / "Projects" / "kioku-source-cache")
 OUTPUT = ROOT / "Kioku" / "Dictionary" / "KyujitaiTable.swift"
 
 # Legitimate variant spellings of common kanji that OpenCC's table lacks as keys. Each maps to the

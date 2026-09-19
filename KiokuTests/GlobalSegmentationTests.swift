@@ -8,26 +8,17 @@ import XCTest
 // These run with frequency data loaded (TestReadResources now builds frequencyScoreBySurface), so
 // they exercise the real production cost model, not a frequency-blind one.
 //
-// NOTE: some of these are expected to FAIL until the rare-conjugation penalty lands. That red is
-// intentional — it is the signal that the bug is still present. The fusions のす / のま / たの
-// launder through a common lemma via deinflection and escape the frequency/unranked signals, so
-// they need the bound-stem ("rare conjugation") penalty before these go green.
+// The cost model is −ln P(word) over frequencies of each surface as written (see
+// SegmenterScoring.edgeCost), which is what keeps the のす / のま / たの fusions out: a kana string
+// nobody writes as a word is unranked, so the compositional parse is cheaper.
 @MainActor
 final class GlobalSegmentationTests: XCTestCase {
-
-    // SKIPPED: global longest-match is shelved — local + exceptions is the shipped path (see
-    // memory/feedback_segmentation_local_not_global). These assert correct *global* output that the
-    // current model doesn't fully deliver, so they're kept as a record of intent but skipped to keep
-    // the suite green. Delete this override to re-enable them if global is ever revived.
-    override func setUpWithError() throws {
-        throw XCTSkip("global longest-match is shelved; kept as a record only")
-    }
 
     // Segments `phrase` under the global longest-match strategy and returns the chosen surfaces.
     private func segmentGlobally(_ phrase: String) throws -> [String] {
         let resources = try TestReadResources.shared()
         UserDefaults.standard.set(SegmentationStrategy.globalLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey)
-        defer { UserDefaults.standard.set(SegmentationStrategy.localLongestMatch.rawValue, forKey: SegmenterSettings.strategyKey) }
+        defer { UserDefaults.standard.removeObject(forKey: SegmenterSettings.strategyKey) }
         return resources.segmenter.longestMatchResult(for: phrase).selectedEdges.map { $0.surface }
     }
 

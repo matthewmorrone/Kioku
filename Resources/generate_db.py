@@ -4,6 +4,7 @@ import csv
 import gzip
 import io
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -21,9 +22,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_CLASSIFIER_SWIFT_PATH = PROJECT_ROOT / "Kioku" / "Dictionary" / "ScriptClassifier.swift"
 RESOURCES_DIR = PROJECT_ROOT / "Resources"
 MANIFEST_PATH = RESOURCES_DIR / "data-manifest.json"
-# Downloaded upstream archives live here (gitignored). Derivation inputs that are huge once
-# extracted (UniDic lex.csv, Tatoeba links.csv) are streamed straight out of these archives.
-SOURCE_CACHE_DIR = RESOURCES_DIR / ".source-cache"
+# Downloaded upstream archives live OUTSIDE the checkout, so the ~330 MB of sources is fetched once
+# per machine rather than once per checkout — a cache inside the repo is deleted along with any
+# disposable worktree the generator happens to run in. KIOKU_SOURCE_CACHE overrides the location.
+# Derivation inputs that are huge once extracted (UniDic lex.csv, Tatoeba links.csv) are streamed
+# straight out of these archives.
+SOURCE_CACHE_DIR = Path(os.environ.get("KIOKU_SOURCE_CACHE") or Path.home() / "Projects" / "kioku-source-cache")
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
 JPDB_PATH = RESOURCES_DIR / "jpdb-frequency-kana-2.2.json"
@@ -1842,6 +1846,7 @@ def build_database():
     with phase("Materializing frequency lookup tables..."):
         materialize_surface_readings(conn)
         materialize_word_frequency(conn)
+        materialize_surface_frequency(conn)
 
     with phase("Estimating JLPT levels for unlabeled entries from frequency..."):
         estimate_jlpt_levels_from_frequency(conn)
@@ -2005,6 +2010,70 @@ def materialize_word_frequency(conn):
     )
     wf_count = conn.execute("SELECT COUNT(*) FROM word_frequency").fetchone()[0]
     print(f"  Done: {wf_count} word_frequency rows materialized")
+
+
+def materialize_surface_frequency(conn):
+    # Builds surface_frequency: written surface → the JPDB rank of THAT spelling. JPDB measures
+    # each word twice — once as written in kanji, once as written in kana (the ㋕ rows) — and the
+    # segmenter needs the one matching the text it is looking at: する is rank 11 in kana while its
+    # kanji form 為る is rank 34586; 箱 is rank 1625 while kana はこ is 36099; がそ (画素 spelled in
+    # kana) has no rank at all because nobody writes it. import_jpdb keeps only the kanji-spelling
+    # rank (it lives on kanji_kana_links, which has no row for a kana-only spelling), so this table
+    # is the only place the kana-spelling ranks land. Restricted to surfaces the dictionary
+    # actually contains so it stays small. Owns its table (idempotent), like word_frequency.
+    if not JPDB_PATH.exists():
+        raise RuntimeError(
+            f"JPDB frequency file not found at {JPDB_PATH} — surface_frequency is required by the "
+            "segmenter's cost model; see data-manifest.json."
+        )
+
+    print("Materializing surface_frequency table...")
+    with open(JPDB_PATH, "r", encoding="utf-8") as f:
+        rows = json.load(f)
+
+    best_rank_by_surface = {}
+
+    def keep_best(surface, rank):
+        # Several homographs share a spelling (する = 為る/刷る/掏る…); the surface's rank is its commonest.
+        if not surface or rank is None:
+            return
+        existing = best_rank_by_surface.get(surface)
+        if existing is None or rank < existing:
+            best_rank_by_surface[surface] = rank
+
+    for row in rows:
+        if len(row) < 3 or row[1] != "freq":
+            continue
+        payload = row[2]
+        if isinstance(payload, dict) and "reading" in payload:
+            freq_info = payload.get("frequency", {})
+            if str(freq_info.get("displayValue", "")).endswith("㋕"):
+                keep_best(payload.get("reading"), freq_info.get("value"))
+            else:
+                keep_best(row[0], freq_info.get("value"))
+        elif isinstance(payload, dict):
+            keep_best(row[0], payload.get("value"))
+        elif isinstance(payload, int):
+            keep_best(row[0], payload)
+
+    known_surfaces = {
+        text for (text,) in conn.execute("SELECT text FROM kana_forms UNION SELECT text FROM kanji")
+    }
+    conn.executescript(
+        """
+        DROP TABLE IF EXISTS surface_frequency;
+        CREATE TABLE surface_frequency (
+            surface TEXT PRIMARY KEY,
+            jpdb_rank INTEGER NOT NULL
+        ) WITHOUT ROWID;
+        """
+    )
+    conn.executemany(
+        "INSERT INTO surface_frequency (surface, jpdb_rank) VALUES (?, ?)",
+        ((surface, rank) for surface, rank in best_rank_by_surface.items() if surface in known_surfaces),
+    )
+    count = conn.execute("SELECT COUNT(*) FROM surface_frequency").fetchone()[0]
+    print(f"  Done: {count} surface_frequency rows materialized")
 
 
 def materialize_canonical_entry_ids(conn):
