@@ -140,7 +140,6 @@ jobs:
             -project Kioku.xcodeproj \
             -scheme Kioku \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
-            -enableCodeCoverage YES \
             -derivedDataPath build \
             "${plugin_flag[@]}" \
             ONLY_ACTIVE_ARCH=YES \
@@ -155,51 +154,8 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
             -parallel-testing-enabled NO \
             -skip-testing:KiokuTests/AlignmentQualityTests \
-            -enableCodeCoverage YES \
             -derivedDataPath build \
             -resultBundlePath build/Kioku.xcresult
-
-      # Emit a per-target line-coverage summary into the workflow run page so
-      # PR reviewers see coverage without downloading the artifact. xccov reads
-      # the same xcresult the artifact step uploads — single source of truth.
-      - name: Coverage summary
-        if: always()
-        run: |
-          if [[ ! -d build/Kioku.xcresult ]]; then
-            echo "No xcresult — skipping coverage summary." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          {
-            echo "## Coverage"
-            echo
-            echo "| Target | Lines covered | Executable lines | % |"
-            echo "|---|---:|---:|---:|"
-            xcrun xccov view --report --json build/Kioku.xcresult \
-              | python3 -c '
-          import json, sys
-          report = json.load(sys.stdin)
-          targets = report.get("targets", [])
-          saw_executable = False
-          for target in targets:
-              name = target.get("name", "?")
-              covered = target.get("coveredLines", 0)
-              executable = target.get("executableLines", 0)
-              if executable > 0:
-                  saw_executable = True
-              pct = "—" if executable == 0 else f"{(covered / executable * 100):.1f}%"
-              print(f"| {name} | {covered} | {executable} | {pct} |")
-          # Guard: a changed xccov JSON shape (renamed keys / restructured report) would leave
-          # every row at 0/0 and read as real 0% coverage. Surface it loudly instead.
-          if not targets:
-              print("")
-              print("> ⚠️ **Coverage parsing found no targets** — the `xccov --report --json` shape "
-                    "may have changed (check `report[\"targets\"]`).")
-          elif not saw_executable:
-              print("")
-              print("> ⚠️ **No executable lines across any target** — likely a changed xccov JSON "
-                    "shape (`coveredLines`/`executableLines` keys), not genuinely zero coverage.")
-          '
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload xcresult bundle
         if: always()
