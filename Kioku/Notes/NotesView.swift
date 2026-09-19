@@ -491,10 +491,16 @@ struct NotesView: View {
 
         ShareLink(
             item: shareText(for: note),
-            subject: Text(note.resolvedTitle),
-            message: Text("Shared from Kioku")
+            subject: Text(note.resolvedTitle)
         ) {
             Label("Share", systemImage: "square.and.arrow.up")
+        }
+
+        ShareLink(
+            item: pipeSegmentedText(for: note),
+            subject: Text(note.resolvedTitle)
+        ) {
+            Label("Share Segmented", systemImage: "square.and.arrow.up.on.square")
         }
 
         if let attachmentID = note.audioAttachmentID {
@@ -582,6 +588,61 @@ struct NotesView: View {
         }
 
         return "\(title)\n\n\(note.content)"
+    }
+
+    // Builds a pipe-delimited view of the note's segmentation for sharing/export, reusing
+    // LLMCorrectionDiagnostics.buildCompactFormat — the exact same "(kanji)[reading]" / "|"
+    // compact format sent to the LLM for corrections — instead of a parallel formatter, so this
+    // export always matches what the correction pipeline actually sees. Falls back to shareText
+    // when the note has no persisted segmentation yet.
+    //
+    // Whitespace-only segments (a bare space before a parenthetical aside, say) are dropped
+    // before formatting — they're semantically empty in Japanese and just noise as their own
+    // "| |" token in a display meant for reviewing word boundaries. This is unlike the LLM
+    // response parser, which must preserve them exactly: that path validates the reconstructed
+    // text against the note's stored content character-for-character, so dropping a real space
+    // there breaks the match and sends the whole line to baseline fallback. This export has no
+    // such round-trip requirement, so it's free to omit them. "\n" entries are kept regardless —
+    // buildCompactFormat relies on them to know where note lines break.
+    private func pipeSegmentedText(for note: Note) -> String {
+        guard let segments = note.segments, segments.isEmpty == false else {
+            return shareText(for: note)
+        }
+
+        let entries = segments
+            .filter { $0.surface == "\n" || $0.surface.trimmingCharacters(in: .whitespaces).isEmpty == false }
+            .map { segment in
+                LLMSegmentEntry(surface: segment.surface, reading: reconstructedReading(for: segment))
+            }
+        let compact = LLMCorrectionDiagnostics.buildCompactFormat(from: entries)
+
+        return "\(note.resolvedTitle)\n\n\(compact)"
+    }
+
+    // Reconstructs a segment's full reading (kanji-run readings interleaved with its own literal
+    // kana) from its persisted furigana annotations, whose start/end are UTF-16 offsets relative
+    // to the segment's own surface. Empty when the segment has no furigana (kana-only segments,
+    // or a kanji segment whose reading was never computed).
+    private func reconstructedReading(for segment: SegmentRange) -> String {
+        guard let furigana = segment.furigana, furigana.isEmpty == false else { return "" }
+        let surface = segment.surface
+
+        var reading = ""
+        var cursor = surface.startIndex
+        for annotation in furigana.sorted(by: { $0.start < $1.start }) {
+            let start = String.Index(utf16Offset: annotation.start, in: surface)
+            let end = String.Index(utf16Offset: annotation.end, in: surface)
+            guard start >= cursor, end <= surface.endIndex, start <= end else { continue }
+            if cursor < start {
+                reading += surface[cursor..<start]
+            }
+            reading += annotation.reading
+            cursor = end
+        }
+        if cursor < surface.endIndex {
+            reading += surface[cursor...]
+        }
+        return reading
     }
 }
 

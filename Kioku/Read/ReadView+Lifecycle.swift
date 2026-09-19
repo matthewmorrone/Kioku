@@ -50,13 +50,13 @@ extension ReadView {
             } message: {
                 Text(llmCorrection.llmCorrectionErrorMessage)
             }
-            .alert("", isPresented: $llmCorrection.isShowingLLMChangePopover) {
+            .alert("AI Correction", isPresented: $llmCorrection.isShowingLLMChangePopover) {
                 Button("Confirm") {
                     if let loc = llmCorrection.llmChangePopoverLocation {
                         confirmLLMChange(at: loc)
                     }
                 }
-                Button("Undo", role: .destructive) {
+                Button("Reject", role: .destructive) {
                     if let loc = llmCorrection.llmChangePopoverLocation {
                         rejectLLMChange(at: loc)
                     }

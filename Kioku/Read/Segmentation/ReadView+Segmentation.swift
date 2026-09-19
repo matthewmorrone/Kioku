@@ -95,7 +95,8 @@ extension ReadView {
         llmCorrection.pendingLLMChangedLocations = []
         llmCorrection.pendingLLMChangedReadingLocations = []
         llmCorrection.pendingLLMChangesByLocation = [:]
-        llmCorrection.preLLMSegmentEntries = []
+        llmCorrection.pendingLLMRebuiltEdges = []
+        llmCorrection.pendingLLMWorkingEntries = []
         llmCorrection.hasPendingLLMChanges = false
         // Corrections were just cleared, so the next AI run should go straight through.
         llmCorrection.hasAppliedLLMCorrectionForCurrentNote = false

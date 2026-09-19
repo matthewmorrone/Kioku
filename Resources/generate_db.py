@@ -1,8 +1,17 @@
+import argparse
+import bz2
+import csv
+import gzip
+import io
 import json
 import re
+import shutil
 import sqlite3
 import hashlib
 import bisect
+import tarfile
+import urllib.request
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 import sys
@@ -11,13 +20,14 @@ import time
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_CLASSIFIER_SWIFT_PATH = PROJECT_ROOT / "Kioku" / "Dictionary" / "ScriptClassifier.swift"
 RESOURCES_DIR = PROJECT_ROOT / "Resources"
+MANIFEST_PATH = RESOURCES_DIR / "data-manifest.json"
+# Downloaded upstream archives live here (gitignored). Derivation inputs that are huge once
+# extracted (UniDic lex.csv, Tatoeba links.csv) are streamed straight out of these archives.
+SOURCE_CACHE_DIR = RESOURCES_DIR / ".source-cache"
 JMDICT_PATH = RESOURCES_DIR / "jmdict-eng-3.6.2.json"
 EXTRAS_PATH = RESOURCES_DIR / "extras.json"
 JPDB_PATH = RESOURCES_DIR / "jpdb-frequency-kana-2.2.json"
 KANJIDIC2_PATH = RESOURCES_DIR / "kanjidic2-all.json"
-PITCH_ACCENT_PATH = RESOURCES_DIR / "pitch-accent.tsv"
-SENTENCE_PAIRS_PATH = RESOURCES_DIR / "sentence-pairs.tsv"
-JLPT_VOCAB_PATH = RESOURCES_DIR / "jlpt-vocab.tsv"
 RADKFILE_PATH = RESOURCES_DIR / "radkfile2.utf8"
 KRADFILE_PATH = RESOURCES_DIR / "kradfile2.utf8"
 KANJIVG_PATH = RESOURCES_DIR / "kanjivg.xml"
@@ -71,10 +81,229 @@ def sha256_of_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def ensure_input_exists():
+# ---------------------------------------------------------------------------------------------
+# Upstream sources
+#
+# Resources/data-manifest.json is the single source of truth for every upstream input. An entry
+# with a "fetch" spec is downloaded (into SOURCE_CACHE_DIR) and, when marked "materialize", unpacked
+# to its "path" under Resources/ for the importers below. Three inputs used to be hand-built TSVs
+# (pitch-accent, sentence-pairs, jlpt-vocab) whose generating scripts were lost; they are now
+# derived in-process from the raw upstream archives by the derive_* functions, so a clean checkout
+# with internet access can rebuild dictionary.sqlite end to end.
+# ---------------------------------------------------------------------------------------------
+
+# When true (--offline), missing archives are an error instead of being downloaded.
+OFFLINE = False
+
+
+# Loads the manifest and indexes its resources by name.
+def load_manifest():
+    with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
+        return {entry["name"]: entry for entry in json.load(f)["resources"]}
+
+
+# Downloads url to dest via a temp file and rename, so an interrupted run never leaves a
+# truncated archive that a later run would trust.
+def _download(url, dest):
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    request = urllib.request.Request(url, headers={"User-Agent": "Kioku-dictionary-builder"})
+    print(f"  Downloading {url}")
+    with urllib.request.urlopen(request, timeout=120) as response, open(part, "wb") as out:
+        shutil.copyfileobj(response, out, 1 << 20)
+    part.replace(dest)
+
+
+# Returns the cached archive for a manifest entry, downloading it when absent or when its
+# pinned archiveSha256 no longer matches. Rolling upstreams (Tatoeba) pin no hash and are
+# reused as cached; delete SOURCE_CACHE_DIR to refresh them.
+def fetch_archive(entry):
+    fetch = entry["fetch"]
+    archive = SOURCE_CACHE_DIR / fetch["cacheName"]
+    pinned = fetch.get("archiveSha256")
+    if archive.exists() and pinned and sha256_of_file(archive) != pinned:
+        print(f"  Cached {archive.name} does not match its pinned hash — re-downloading")
+        archive.unlink()
+    if not archive.exists():
+        if OFFLINE:
+            raise RuntimeError(f"--offline: {archive} is missing (needed for {entry['name']})")
+        _download(fetch["url"], archive)
+        if pinned and sha256_of_file(archive) != pinned:
+            raise RuntimeError(
+                f"{entry['name']}: downloaded archive hash {sha256_of_file(archive)} != pinned {pinned}"
+            )
+    return archive
+
+
+# Opens the member a manifest fetch spec points at as a binary stream: a zip or tar member, a
+# single gzip/bzip2-compressed file, or the file itself.
+def open_source_member(fetch, archive):
+    fmt = fetch["format"]
+    if fmt == "zip":
+        return zipfile.ZipFile(archive).open(fetch["member"])
+    if fmt == "tar.bz2":
+        return tarfile.open(archive, "r:bz2").extractfile(fetch["member"])
+    if fmt == "gz":
+        return gzip.open(archive, "rb")
+    if fmt == "bz2":
+        return bz2.open(archive, "rb")
+    if fmt == "file":
+        return open(archive, "rb")
+    raise ValueError(f"unknown fetch format {fmt!r}")
+
+
+# Writes a direct-input file (one the importers read from Resources/) from its archive, applying
+# the entry's optional character-set transform, then verifies it against the pinned sha256.
+def materialize_source(entry):
+    dest = PROJECT_ROOT / entry["path"]
+    pinned = entry.get("sha256")
+    if dest.exists() and pinned and sha256_of_file(dest) == pinned:
+        return
+    archive = fetch_archive(entry)
+    fetch = entry["fetch"]
+    print(f"  Extracting {entry['name']} -> {dest.relative_to(PROJECT_ROOT)}")
+    with open_source_member(fetch, archive) as source, open(dest, "wb") as out:
+        if fetch.get("transform") == "eucjp-to-utf8":
+            out.write(source.read().decode("euc_jp").encode("utf-8"))
+        else:
+            shutil.copyfileobj(source, out, 1 << 20)
+    if pinned and sha256_of_file(dest) != pinned:
+        raise RuntimeError(f"{entry['name']}: extracted {dest.name} hash {sha256_of_file(dest)} != pinned {pinned}")
+
+
+# Fails fast, before any long phase, when the tools the build depends on are missing. wordfreq
+# and the mecab CLI both feed ranking/segmentation columns; silently skipping either ships a
+# degraded dictionary (see import_wordfreq and import_mecab_context_ids).
+def check_build_tools():
+    problems = []
+    try:
+        import wordfreq  # noqa: F401
+    except ImportError:
+        problems.append("wordfreq (pip install -r requirements.txt)")
+    if shutil.which("mecab") is None:
+        problems.append("the mecab CLI with mecab-ipadic (brew install mecab mecab-ipadic)")
+    if problems:
+        raise RuntimeError("Missing build tools: " + "; ".join(problems))
+
+
+# Downloads and unpacks every manifest source that carries a fetch spec, so a broken address or a
+# hash mismatch surfaces immediately rather than partway through the build.
+def ensure_sources():
+    SOURCE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    for entry in load_manifest().values():
+        if "fetch" not in entry:
+            continue
+        if entry.get("materialize"):
+            materialize_source(entry)
+        else:
+            fetch_archive(entry)
     if not JMDICT_PATH.exists():
         print(f"Missing JMdict file at: {JMDICT_PATH}")
         sys.exit(1)
+
+
+# Kana that combine with the preceding kana into a single mora; every other kana (including the
+# small tsu and the long-vowel mark) counts as one mora.
+SMALL_KANA = frozenset("ゃゅょャュョァィゥェォヮぁぃぅぇぉゎ")
+
+# UniDic lex.csv column positions used by derive_pitch_accent_rows.
+LEX_SURFACE, LEX_POS1, LEX_POS2, LEX_PRON_BASE, LEX_ACCENT_TYPE = 0, 4, 5, 15, 27
+
+
+# Derives pitch-accent rows (id, word, kana, kind, accent, morae) from UniDic's kana-accent
+# lex.csv. A row needs an accent value; kind is the second POS field (the first when that is "*");
+# accent is the first of the comma-separated accent types; the reading is the base-form
+# pronunciation. Rows whose accent falls beyond the mora count are invalid and dropped, and
+# duplicates are dropped keeping the first occurrence in file order.
+def derive_pitch_accent_rows():
+    entry = load_manifest()["unidic-kana-accent-src"]
+    archive = fetch_archive(entry)
+    seen = set()
+    row_id = 0
+    with open_source_member(entry["fetch"], archive) as raw:
+        for row in csv.reader(io.TextIOWrapper(raw, encoding="utf-8", newline="")):
+            accent_type = row[LEX_ACCENT_TYPE]
+            if accent_type in ("*", ""):
+                continue
+            accent = int(accent_type.split(",")[0])
+            kana = row[LEX_PRON_BASE]
+            morae = sum(1 for ch in kana if ch not in SMALL_KANA)
+            if accent > morae:
+                continue
+            kind = row[LEX_POS2] if row[LEX_POS2] != "*" else row[LEX_POS1]
+            key = (row[LEX_SURFACE], kana, kind, accent)
+            if key in seen:
+                continue
+            seen.add(key)
+            row_id += 1
+            yield (row_id, row[LEX_SURFACE], kana, kind, accent, morae)
+
+
+# Reads a Tatoeba per-language sentences export (id, language, text) into {id: text}, keeping only
+# ids in `wanted` when given. Lines are split on tabs only and text is never CSV-unquoted, so
+# sentences that begin with a quotation mark survive intact.
+def _read_tatoeba_sentences(entry, wanted=None):
+    archive = fetch_archive(entry)
+    texts = {}
+    with open_source_member(entry["fetch"], archive) as raw:
+        for line in io.TextIOWrapper(raw, encoding="utf-8", newline="\n"):
+            sentence_id, _language, text = line.rstrip("\n").split("\t", 2)
+            sentence_id = int(sentence_id)
+            if wanted is None or sentence_id in wanted:
+                texts[sentence_id] = text
+    return texts
+
+
+# Derives Japanese-English sentence pairs (ja_id, japanese, en_id, english) from Tatoeba's
+# per-language sentence exports and its links table, sorted by (ja_id, en_id). Tatoeba re-exports
+# weekly, so this output is not byte-stable across runs.
+def derive_sentence_pairs_rows():
+    manifest = load_manifest()
+    japanese = _read_tatoeba_sentences(manifest["tatoeba-jpn-sentences"])
+    links_entry = manifest["tatoeba-links"]
+    candidates = set()
+    with open_source_member(links_entry["fetch"], fetch_archive(links_entry)) as raw:
+        for line in io.TextIOWrapper(raw, encoding="utf-8", newline="\n"):
+            left, right = line.rstrip("\n").split("\t")
+            if int(left) in japanese:
+                candidates.add((int(left), int(right)))
+    english = _read_tatoeba_sentences(manifest["tatoeba-eng-sentences"], {en_id for _, en_id in candidates})
+    for ja_id, en_id in sorted(candidates):
+        if en_id in english:
+            yield (ja_id, japanese[ja_id], en_id, english[en_id])
+
+
+# Derives JLPT vocabulary rows (surface, reading, level) from the Bluskyo/JLPT_Vocabulary CSV
+# (columns Kanji, Reading, Level; Level is the N-number, 5 = N5 easiest ... 1 = N1 hardest),
+# dropping blank surfaces and levels outside 1-5.
+def derive_jlpt_vocab_rows():
+    entry = load_manifest()["jlpt-vocab-source"]
+    archive = fetch_archive(entry)
+    with open_source_member(entry["fetch"], archive) as raw:
+        reader = csv.reader(io.TextIOWrapper(raw, encoding="utf-8", newline=""))
+        next(reader, None)
+        for row in reader:
+            if len(row) < 3:
+                continue
+            surface, reading, level = row[0].strip(), row[1].strip(), row[2].strip()
+            if surface and level in {"1", "2", "3", "4", "5"}:
+                yield (surface, reading, int(level))
+
+
+# Writes the three derived datasets to out_dir in their canonical serialization (the byte layout
+# the manifest's derived-output hashes are computed over), for verification and inspection.
+def emit_derived_files(out_dir):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with open(out_dir / "pitch-accent.tsv", "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f, delimiter="\t")
+        writer.writerow(["id", "word", "kana", "kind", "accent", "morae"])
+        writer.writerows(derive_pitch_accent_rows())
+    with open(out_dir / "sentence-pairs.tsv", "w", encoding="utf-8-sig", newline="") as f:
+        csv.writer(f, delimiter="\t").writerows(derive_sentence_pairs_rows())
+    with open(out_dir / "jlpt-vocab.tsv", "w", encoding="utf-8", newline="") as f:
+        f.write("surface\treading\tlevel\n")
+        for surface, reading, level in derive_jlpt_vocab_rows():
+            f.write(f"{surface}\t{reading}\t{level}\n")
 
 
 def create_schema(conn):
@@ -995,51 +1224,33 @@ def import_kanjidic2(conn):
 
 
 def import_pitch_accent(conn):
-    # Populates pitch_accent from pitch-accent.tsv (UniDic-derived).
-    # Columns: id, word, kana, kind, accent, morae.
-    if not PITCH_ACCENT_PATH.exists():
-        print(f"  Pitch accent file not found at {PITCH_ACCENT_PATH} — skipping")
-        return
+    # Populates pitch_accent from rows derived out of UniDic's kana-accent lexicon
+    # (derive_pitch_accent_rows): id, word, kana, kind, accent, morae.
+    print("  Importing pitch accent derived from UniDic kana-accent lex.csv...")
 
-    print(f"  Importing pitch accent from {PITCH_ACCENT_PATH.name}...")
-
-    import csv
     count = 0
-    with open(PITCH_ACCENT_PATH, encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        for row in reader:
-            conn.execute(
-                "INSERT INTO pitch_accent (id, word, kana, kind, accent, morae) VALUES (?, ?, ?, ?, ?, ?)",
-                (int(row["id"]), row["word"], row["kana"], row["kind"] or None,
-                 int(row["accent"]), int(row["morae"])),
-            )
-            count += 1
+    for row_id, word, kana, kind, accent, morae in derive_pitch_accent_rows():
+        conn.execute(
+            "INSERT INTO pitch_accent (id, word, kana, kind, accent, morae) VALUES (?, ?, ?, ?, ?, ?)",
+            (row_id, word, kana, kind or None, accent, morae),
+        )
+        count += 1
 
     print(f"  Done: {count} pitch accent entries imported")
 
 
 def import_sentence_pairs(conn):
-    # Populates sentence_pairs from sentence-pairs.tsv (Tatoeba-derived).
-    # Columns (no header): ja_id, japanese, en_id, english.
-    if not SENTENCE_PAIRS_PATH.exists():
-        print(f"  Sentence pairs file not found at {SENTENCE_PAIRS_PATH} — skipping")
-        return
+    # Populates sentence_pairs from Japanese-English pairs derived out of Tatoeba's exports
+    # (derive_sentence_pairs_rows): ja_id, japanese, en_id, english.
+    print("  Importing sentence pairs derived from Tatoeba exports...")
 
-    print(f"  Importing sentence pairs from {SENTENCE_PAIRS_PATH.name}...")
-
-    import csv
     count = 0
-    with open(SENTENCE_PAIRS_PATH, encoding="utf-8-sig", newline="") as f:
-        reader = csv.reader(f, delimiter="\t")
-        for row in reader:
-            if len(row) != 4:
-                continue
-            ja_id, japanese, en_id, english = row
-            conn.execute(
-                "INSERT OR IGNORE INTO sentence_pairs (ja_id, japanese, en_id, english) VALUES (?, ?, ?, ?)",
-                (int(ja_id), japanese, int(en_id), english),
-            )
-            count += 1
+    for ja_id, japanese, en_id, english in derive_sentence_pairs_rows():
+        conn.execute(
+            "INSERT OR IGNORE INTO sentence_pairs (ja_id, japanese, en_id, english) VALUES (?, ?, ?, ?)",
+            (ja_id, japanese, en_id, english),
+        )
+        count += 1
 
     print(f"  Done: {count} sentence pairs imported")
 
@@ -1073,11 +1284,7 @@ def import_jlpt_levels(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_entry_jlpt_level ON entry_jlpt_level(level)")
     conn.execute("DELETE FROM entry_jlpt_level")
 
-    if not JLPT_VOCAB_PATH.exists():
-        print(f"  JLPT vocab file not found at {JLPT_VOCAB_PATH} — skipping")
-        return
-
-    print(f"  Importing JLPT levels from {JLPT_VOCAB_PATH.name}...")
+    print("  Importing JLPT levels derived from the JLPT vocabulary CSV...")
 
     # Surface → entry ids, built once from the dictionary.
     kanji_map = {}
@@ -1092,35 +1299,26 @@ def import_jlpt_levels(conn):
     best = {}  # entry_id → easiest (highest N-number) level seen
     total_rows = 0
     matched_rows = 0
-    with open(JLPT_VOCAB_PATH, encoding="utf-8") as f:
-        next(f, None)  # header
-        for line in f:
-            parts = line.rstrip("\n").split("\t")
-            if len(parts) < 3:
-                continue
-            surface, reading, level_s = parts[0].strip(), parts[1].strip(), parts[2].strip()
-            if not surface or not level_s.isdigit():
-                continue
-            total_rows += 1
-            level = int(level_s)
+    for surface, reading, level in derive_jlpt_vocab_rows():
+        total_rows += 1
 
-            ids = set()
-            if surface in kanji_map:
-                kanji_ids = kanji_map[surface]
-                if reading:
-                    reading_matched = {e for e in kanji_ids if reading in entry_readings.get(e, ())}
-                    ids = reading_matched or set(kanji_ids)
-                else:
-                    ids = set(kanji_ids)
-            elif surface in kana_map:
-                ids = set(kana_map[surface])
+        ids = set()
+        if surface in kanji_map:
+            kanji_ids = kanji_map[surface]
+            if reading:
+                reading_matched = {e for e in kanji_ids if reading in entry_readings.get(e, ())}
+                ids = reading_matched or set(kanji_ids)
+            else:
+                ids = set(kanji_ids)
+        elif surface in kana_map:
+            ids = set(kana_map[surface])
 
-            if not ids:
-                continue
-            matched_rows += 1
-            for entry_id in ids:
-                if entry_id not in best or level > best[entry_id]:
-                    best[entry_id] = level
+        if not ids:
+            continue
+        matched_rows += 1
+        for entry_id in ids:
+            if entry_id not in best or level > best[entry_id]:
+                best[entry_id] = level
 
     conn.executemany(
         "INSERT OR REPLACE INTO entry_jlpt_level (entry_id, level) VALUES (?, ?)",
@@ -1915,8 +2113,25 @@ def materialize_canonical_entry_ids(conn):
 
 
 def main():
+    global OUTPUT_DB, OFFLINE
+    parser = argparse.ArgumentParser(description="Builds dictionary.sqlite from the upstream sources in data-manifest.json.")
+    parser.add_argument("--output", type=Path, help="write the database here instead of Resources/dictionary.sqlite")
+    parser.add_argument("--offline", action="store_true", help="never download; fail if a source archive is missing")
+    parser.add_argument("--sources-only", action="store_true", help="fetch and verify every source, then exit")
+    parser.add_argument("--emit-derived", type=Path, metavar="DIR", help="write the derived TSVs (pitch-accent, sentence-pairs, jlpt-vocab) to DIR, then exit")
+    args = parser.parse_args()
+    OFFLINE = args.offline
+    if args.output:
+        OUTPUT_DB = args.output.resolve()
+
     start = time.time()
-    ensure_input_exists()
+    ensure_sources()
+    if args.sources_only:
+        return
+    if args.emit_derived:
+        emit_derived_files(args.emit_derived)
+        return
+    check_build_tools()
 
     print("Building dictionary.sqlite...")
     print(f"JMdict SHA256: {sha256_of_file(JMDICT_PATH)}")

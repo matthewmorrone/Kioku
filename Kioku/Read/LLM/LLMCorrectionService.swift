@@ -644,10 +644,16 @@ final class LLMCorrectionService {
     private func appendLineEntries(_ inner: String, to entries: inout [LLMSegmentEntry]) {
         if inner.isEmpty == false {
             for raw in inner.components(separatedBy: "|") {
-                // Trim spaces the model may pad around segment delimiters.
-                let raw = raw.trimmingCharacters(in: .init(charactersIn: " "))
-                guard raw.isEmpty == false else { continue }
-                let (surface, reading) = parseSegmentToken(raw)
+                // Trim spaces the model may pad around segment delimiters — but not when the
+                // whole token IS a space. A lone " " token is the model's own segment for an
+                // actual space character in the source text (song lyrics routinely have one
+                // before a parenthetical aside), and trimming it down to "" would silently drop
+                // it here, breaking the surface-concat match against the source line and
+                // sending that whole line to baseline fallback instead of the model's correction.
+                let trimmed = raw.trimmingCharacters(in: .init(charactersIn: " "))
+                let token = (trimmed.isEmpty && raw.isEmpty == false) ? raw : trimmed
+                guard token.isEmpty == false else { continue }
+                let (surface, reading) = parseSegmentToken(token)
                 entries.append(LLMSegmentEntry(surface: surface, reading: reading))
             }
         }
@@ -679,7 +685,8 @@ final class LLMCorrectionService {
                     if i < token.endIndex, token[i] == "[" {
                         let afterBracket = token.index(after: i)
                         if let closeBracket = token[afterBracket...].firstIndex(of: "]") {
-                            reading += String(token[afterBracket..<closeBracket])
+                            let bracketReading = String(token[afterBracket..<closeBracket])
+                            reading += Self.readingAligningToKanjiText(kanjiText, bracketReading: bracketReading)
                             i = token.index(after: closeBracket)
                             hasAnnotation = true
                         }
@@ -711,6 +718,41 @@ final class LLMCorrectionService {
 
         // Pure-kana tokens have no annotation; their reading is left empty.
         return (surface, hasAnnotation ? reading : "")
+    }
+
+    // The model is expected to wrap only the kanji run itself in `(kanji)[reading]`, with any
+    // trailing okurigana left outside the parens as plain characters — e.g. `(大切)[たいせつ]に
+    // してた`. It occasionally sweeps trailing kana inside the parens instead —
+    // `(大切にしてた)[たいせつ]` — which would otherwise make `reading` just "たいせつ", missing
+    // the "にしてた" suffix that per-run furigana projection needs downstream. When kanjiText is
+    // pure kanji (the common case), the bracket reading is used as-is. Otherwise, kanjiText's own
+    // kanji runs are re-split against bracketReading and the surrounding kana characters are
+    // spliced back in at their original positions, so `reading` still lines up with kanjiText
+    // character-for-character. Falls back to the raw bracket reading if the re-split fails.
+    private static func readingAligningToKanjiText(_ kanjiText: String, bracketReading: String) -> String {
+        let innerRuns = FuriganaAttributedString.kanjiRuns(in: kanjiText)
+        let chars = Array(kanjiText)
+        guard innerRuns.count != 1 || innerRuns[0].start != 0 || innerRuns[0].end != chars.count else {
+            return bracketReading
+        }
+        guard let runReadings = FuriganaAttributedString.normalizedRunReadings(surface: kanjiText, reading: bracketReading, runs: innerRuns),
+              runReadings.count == innerRuns.count else {
+            return bracketReading
+        }
+
+        var aligned = ""
+        var idx = 0
+        for (run, runReading) in zip(innerRuns, runReadings) {
+            if idx < run.start {
+                aligned += String(chars[idx..<run.start])
+            }
+            aligned += runReading
+            idx = run.end
+        }
+        if idx < chars.count {
+            aligned += String(chars[idx...])
+        }
+        return aligned
     }
 }
 
