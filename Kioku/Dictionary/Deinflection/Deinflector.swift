@@ -310,7 +310,12 @@ nonisolated final class Deinflector {
     // Produces candidate dictionary surfaces by delegating to deinflectionPaths and adding alternate surface forms.
     // deinflectionPaths is the canonical traversal; this adds kana normalization and iteration-mark expansions on top.
     func generateCandidates(for surface: String) -> Set<String> {
-        let paths = deinflectionPaths(for: surface)
+        generateCandidates(from: deinflectionPaths(for: surface))
+    }
+
+    // Same candidate set, from an already-computed traversal — lets a caller that also needs the
+    // chain lengths (the segmenter's inflection-step cost) pay for deinflectionPaths only once.
+    func generateCandidates(from paths: DeinflectionPathMap) -> Set<String> {
         var results = Set(paths.keys)
         for candidate in paths.keys {
             results.formUnion(alternateSurfaceCandidates(for: candidate))

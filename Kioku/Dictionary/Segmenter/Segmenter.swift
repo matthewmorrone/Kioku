@@ -172,7 +172,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                     continue
                 }
 
-                let lemmas = resolvedTrieLemmas(for: surface)
+                let (lemmas, inflectionSteps) = resolvedTrieLemmasWithInflectionSteps(for: surface)
 
                 if lemmas.isEmpty == false {
                     // Bound single-kana morphemes (た、ら、etc.) are excluded; only standalone-valid kana pass.
@@ -193,6 +193,7 @@ nonisolated final class Segmenter: TextSegmenting, @unchecked Sendable {
                         surface: surface
                     )
                     edge.partOfSpeech = posBits
+                    edge.inflectionSteps = inflectionSteps
                     edge.isDictionaryMatch = true
                     // Best (highest) frequency score across the surface and its resolved lemmas.
                     // Conjugated surfaces (流されて) carry no direct score, so the lemma (流される)

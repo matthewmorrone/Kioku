@@ -28,6 +28,10 @@ struct LatticeEdge {
     // to join. Path selection folds such an edge into the preceding segment, so the cost model
     // prices it at zero instead of as unknown text.
     var isAbsorbedBoundCharacter: Bool = false
+    // Fewest deinflection rules needed to reach any lemma this surface resolves to; 0 for a surface
+    // that is itself a dictionary surface. The cost model charges per step, because a conjugated
+    // form is rarer than its lemma and a long contorted chain usually means a spurious span.
+    var inflectionSteps: Int = 0
     // IPADic context IDs tagged at dictionary-build time. When both are populated on adjacent
     // edges, Viterbi looks up the connection cost directly in IPADic's matrix.bin instead of
     // bucketing through POS classes — the same scoring fidelity MeCab itself uses. nil when
